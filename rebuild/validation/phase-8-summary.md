@@ -107,7 +107,7 @@ own successful maintained gate and verified capsule. Supplying the historical
 candidate `6031641c46cf014a754442dcee3137caf265882e`, or any other candidate
 argument, cannot qualify a different worktree HEAD. The fresh campaign must
 retain the maintained three-class, eight-cycle/sixteen-session reviewer-blind behavior-profile, distinct work/resume-session, automated,
-replacement-required human-review, resource, and accessibility qualification contract.
+common qualitative-review, targeted human escalation and explicit operator approval contract.
 The campaign worktree itself must be the sealed candidate; a different
 support-branch HEAD cannot qualify by supplying only a candidate argument.
 Every campaign helper transition that mutates candidate-bound review,
@@ -162,12 +162,12 @@ canonical bundles, bounded Runtime/activation summaries, all four document
 kinds in Markdown and self-contained HTML, and read-only static Viewer
 snapshots.
 
-Automated Dogfood can complete without a human review. Campaign-level human
-review is prepared and recorded separately against the immutable
-automated result. Its absence leaves replacement qualification pending rather
-than failing automated Dogfood, and a human pass cannot override any machine
-failure. Ordinary independent review uses the byte-exact raw rollout archive
-plus the bounded review package, not a full Runtime Home.
+Machine evaluation completes independently of common qualitative review. The maintained
+qualification policy combines verified candidate-specific technical gate evidence, hard
+facts, evidence-backed semantic reviews and targeted human escalations. Final Phase 9
+readiness additionally requires explicit operator approval; no review can waive hard
+violations. Ordinary independent review uses the bounded package with explicitly selected
+private raw rollouts, not a full Runtime Home.
 
 The candidate-specific gate capsule and verified evidence archive, rather than
 this tracked summary, own the technical-entry result. This summary records
@@ -211,4 +211,5 @@ semantic evaluation. `dogfood-campaign evaluate` appends typed machine findings 
 `evaluations/`; status and disposition are independent, uncertainty remains review-required,
 and hard evidence integrity is non-overridable. Collection/evaluation do not qualify Product.
 Existing historical failed campaigns above remain unchanged. The technical gate is separate;
-new qualitative workflow and final replacement policy are pending later work.
+common qualitative workflow and final qualification policy are maintained in
+`qualitative-review.md` and `qualification_policy.py`.

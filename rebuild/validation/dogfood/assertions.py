@@ -486,8 +486,14 @@ def main() -> int:
         raise AssertionError("Phase 8 harness may not invoke direct final validation")
     if "rebuild/scripts/validate gate" in source:
         raise AssertionError("Phase 8 harness may not own the final gate")
-    if "rehearse_target" not in source or "V11_HARNESS" not in source:
-        raise AssertionError("Phase 8 harness no longer reuses the maintained product journey")
+    import qualification_policy
+    if json.loads(DEFINITION.read_text())["qualification_policy"] != qualification_policy.contract():
+        raise AssertionError("qualification policy definition drift")
+    policy_source = (HERE / "qualification_policy.py").read_text()
+    if "verify-validation-archive" not in policy_source or "verify_technical" not in policy_source:
+        raise AssertionError("Phase 8 qualification must reuse the candidate technical gate")
+    if "def run_evaluation(" in source or 'subparsers.add_parser("run")' in source:
+        raise AssertionError("superseded technical/automated qualification path remains")
     if "real_session_evidence" not in source or "REAL_SESSION_CHECKS" not in source:
         raise AssertionError("Phase 8 harness no longer requires real-session evidence")
     for marker in (
@@ -534,7 +540,6 @@ def main() -> int:
         "verified_state_continuation",
         "repository_scoped_activation_observed",
         "operator_environment_invalid",
-        "deterministic_qualitative_review_samples",
         "project_resolve",
         "repository_bound_project_resolution",
         "qualify-work-blocker",
@@ -545,8 +550,6 @@ def main() -> int:
         "continuation_basis",
         "check-descriptors",
         "batch_campaign_contract",
-        "automated_qualification",
-        "replacement_qualification",
     ):
         if marker not in source and marker not in event_source:
             raise AssertionError(f"Phase 8 content normalizer is missing {marker}")
@@ -1298,8 +1301,8 @@ def main() -> int:
         or material_grounding.get("possible_material_concerns_are_exhaustive") is not False
     ):
         raise AssertionError("Phase 8 campaign-level human-review contract is incomplete")
-    if "rehearse_target(kind, cycle_root, recorder, base_env, None)" not in source:
-        raise AssertionError("Phase 8 deterministic V11 coverage may not launch Codex")
+    if "rehearse_target(" in source:
+        raise AssertionError("naturalistic qualification must reuse gate evidence without rerunning V11")
     fixture_source = CURRENT_MCP_FIXTURE.read_text(encoding="utf-8")
     for marker in ("text(JSON.stringify(x))", '"type":"mcp_tool_call_end"', '"server":"volicord"'):
         if marker not in fixture_source:

@@ -405,7 +405,7 @@
       "purpose": "Ground the bounded reviewer completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
     },
     "qualification_authority": false,
-    "policy_revision": 1,
+    "policy_revision": 2,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -483,6 +483,7 @@
         "package_bytes": 536870912,
         "draft_bytes": 8388608
       },
+      "human_observations": "explicit_candidate_bound_direct_human_live_observations",
       "qualification_authority": false
     }
   },
@@ -613,12 +614,20 @@
         "implementation_internal"
       ],
       "material_boundary_review_requires_exactly_once_and_choice_backlinks": true,
-      "interaction_review_axes": ["reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery"],
+      "interaction_review_axes": [
+        "reference_basis",
+        "composition_and_precedence",
+        "multi_item_effects",
+        "failure_and_recovery"
+      ],
       "interaction_review_requires_current_outcome_and_source_closure": true,
       "discovery_evidence_precedes_work_authority": true,
       "agent_owned_learning_disposition": "agent_owned_implementation_choice",
       "learning_participation_source": "bounded_verbatim_statement_in_explicit_current_host_first_task_turn",
-      "learning_value_states": ["routine", "deliberation_worthy"],
+      "learning_value_states": [
+        "routine",
+        "deliberation_worthy"
+      ],
       "deliberation_worthy_required_fields": [
         "interruption_counterfactual",
         "participation_scope_alignment"
@@ -626,7 +635,11 @@
       "learning_participation_preserves_complete_current_goal_scope": true,
       "behavioral_context_basis": {
         "identity_type": "canonical_context_item_id",
-        "allowed_roles": ["learning", "preference", "constraint"],
+        "allowed_roles": [
+          "learning",
+          "preference",
+          "constraint"
+        ],
         "active_learning_requires_matching_durable_context": true,
         "current_host_source_required": true,
         "completeness_rationale_required": true,
@@ -681,9 +694,22 @@
         "no_coupled_artifact_requires_basis": true,
         "late_discovery_is_prospective_only": true,
         "new_material_outcome_requires_materiality_reevaluation": true,
-        "materiality_closure_states": ["no_new_material_outcome", "new_material_outcome"],
-        "no_new_outcome_binding": ["review_candidate_id", "review_revision", "engineering_choice_discovery_candidate_id", "source_ids", "exact_planned_scope_and_artifact_assessments"],
-        "commitment_binding_states": ["reviewed_choice", "reviewed_interaction", "private_equivalent"],
+        "materiality_closure_states": [
+          "no_new_material_outcome",
+          "new_material_outcome"
+        ],
+        "no_new_outcome_binding": [
+          "review_candidate_id",
+          "review_revision",
+          "engineering_choice_discovery_candidate_id",
+          "source_ids",
+          "exact_planned_scope_and_artifact_assessments"
+        ],
+        "commitment_binding_states": [
+          "reviewed_choice",
+          "reviewed_interaction",
+          "private_equivalent"
+        ],
         "unmapped_commitment_becomes_new_material_outcome": true,
         "new_outcome_revokes_scope_until_current_rediscovery": true,
         "repository_root_convenience_scope_allowed": false
@@ -1059,8 +1085,18 @@
         "input": "immutable_candidate_bound_evidence_set",
         "publication": "append_only_evaluations",
         "qualification_state": "not_run",
-        "statuses": ["confirmed_pass", "confirmed_violation", "indeterminate", "not_observed", "not_applicable"],
-        "dispositions": ["hard_blocking", "qualitative_review_required", "advisory"],
+        "statuses": [
+          "confirmed_pass",
+          "confirmed_violation",
+          "indeterminate",
+          "not_observed",
+          "not_applicable"
+        ],
+        "dispositions": [
+          "hard_blocking",
+          "qualitative_review_required",
+          "advisory"
+        ],
         "policy_owner": "machine_findings.py",
         "hard_integrity_review_override": false
       },
@@ -1084,9 +1120,20 @@
       "terminal_work_failure_repaired_by_resume": false,
       "missing_activation_classification": "operator_environment_invalid",
       "failure_attribution": {
-        "cycle_fields": ["failed_checks", "failure_attribution"],
-        "batch_fields": ["failed_checks", "failure_attribution"],
-        "domains": ["environment", "evidence", "behavior_contract", "validation_internal"],
+        "cycle_fields": [
+          "failed_checks",
+          "failure_attribution"
+        ],
+        "batch_fields": [
+          "failed_checks",
+          "failure_attribution"
+        ],
+        "domains": [
+          "environment",
+          "evidence",
+          "behavior_contract",
+          "validation_internal"
+        ],
         "basis_visibility": "bounded_evaluator_safe_identifier",
         "validation_internal_scope": "actual_validator_invariant_or_internal_failure_only",
         "changes_qualification_outcome": false
@@ -1137,8 +1184,30 @@
       "indeterminate_required_evidence_outcome": "evidence_failed",
       "actual_missing_required_operation_outcome": "campaign_stop",
       "mixed_failure_checks_preserved": true,
-      "failure_attribution_domains": ["environment", "product_integration", "evidence", "behavior_contract", "validation_internal"],
+      "failure_attribution_domains": [
+        "environment",
+        "product_integration",
+        "evidence",
+        "behavior_contract",
+        "validation_internal"
+      ],
       "failure_attribution_basis_visibility": "bounded_evaluator_safe_identifier"
     }
+  },
+  "qualification_policy": {
+    "revision": "replacement-qualification-1",
+    "human_required": [
+      "interaction/decision_comprehension_when_applicable",
+      "live_viewer/*"
+    ],
+    "human_rationale": "Live accessibility and the user's Decision comprehension require direct human observation.",
+    "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
+    "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
+    "insufficient": "Unresolved; high-impact authority/context recovery insufficiency escalates to human.",
+    "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
+    "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
+    "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
+    "cycles": 8,
+    "fresh_sessions": 16
   }
 }

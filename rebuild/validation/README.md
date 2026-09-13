@@ -272,18 +272,12 @@ is an operator/environment setup failure and stops that campaign path without
 attributing missing Inquiry behavior to Volicord. Repository and hook trust
 remain explicit operator actions.
 
-The current result schema reports `automated_qualification`, `human_review`,
-and `replacement_qualification` separately. The automated `run` path covers
-three repository classes with the public distribution `volicord = 3`,
-`small-python = 3`, and `polyglot-medium = 2`, and two globally distinct fresh
-VS Code Codex sessions per cycle: eight cycles and sixteen sessions, plus every
-maintained machine check. Exact behavior multiplicity, duplication, coverage,
-and behavior-to-cycle assignment remain in the evaluator/steward-private
-qualification profile until all eight provisional reviews
-are fixed.
-It exits successfully when those checks pass even if human review is
-`not_provided`; in that state replacement is `pending_human_review` and neither
-`replacement_pass_candidate` nor Phase 9 readiness is true.
+The qualification result separates evidence validity, exact-candidate technical gate,
+machine findings, qualitative completion, human escalations, operator approval,
+replacement qualification and Phase 9 readiness. Collection still requires eight
+cycles and sixteen globally distinct fresh sessions across the unchanged three
+repository classes. The private behavior profile remains blind until all eight
+provisional reviews are fixed.
 
 The following table is a human-readable projection of the public operating
 contract in `dogfood/evaluation.json`; it does not own a separate campaign
@@ -563,57 +557,46 @@ evidence. Collection is not qualification. Run non-mutating semantic analysis wi
 rebuild/scripts/dogfood-campaign evaluate --campaign-root /absolute/private/campaign
 ```
 
-It consumes the exact evidence-set hash and appends `evaluations/<run_id>.json`.
-Finding certainty and disposition are separate; review-required findings remain unresolved.
-Campaign collection stays `collected`, evaluation becomes `produced`, and qualification stays
-`not_run`. Earlier evaluation runs and raw bytes are never overwritten. The maintained
-technical aggregate remains a separate candidate boundary. Its `harness.py run` command
-requires `--machine-evaluation /absolute/private/campaign/evaluations/<run_id>.json`
-and consumes those exact findings instead of evaluating the naturalistic captures again.
-Unresolved or hard-blocked findings stop qualification admission; this does not rewrite the
-machine run as a Product pass or rejection. The separate technical gate remains available. The following existing human
-rubric operations consume technical aggregate results; a qualitative workflow for the new
-machine runs will be defined separately. If replacement qualification is needed, create one campaign-level
-review artifact from the immutable automated result:
+Evaluation publishes a new sibling directory with `evaluation.json` and a receipt;
+`--output` chooses another new directory outside the Campaign. `--previous-evaluation`
+retains an earlier run ID/hash for comparison. Product identity stays bound to the
+evidence set even when the evaluator HEAD or policy changes. Raw files, Campaign
+metadata and earlier results are never rewritten.
 
-```text
-rebuild/scripts/dogfood-campaign prepare-human-review \
+Prepare, validate, record and package common agent/human reviews using
+[`qualitative-review.md`](../docs/design/qualitative-review.md). Every collected
+cycle is reviewable, including hard-blocked and indeterminate runs. The bounded
+review package excludes evaluator answers, private profile, runtime and source
+copies. Raw work/resume rollouts enter only with `--include-raw-rollouts` and remain
+private. Schema-valid review is not Product passage.
+
+```sh
+rebuild/scripts/dogfood-campaign qualify \
   --campaign-root /absolute/private/campaign \
-  --automated-result /absolute/private/automated-result.json
+  --candidate-head <original-product-candidate> \
+  --machine-evaluation /absolute/private/evaluation-run/evaluation.json \
+  --review-root /absolute/private/recorded-agent-review \
+  --review-root /absolute/private/recorded-human-review \
+  --gate-capsule /absolute/private/candidate-capsule.json \
+  --gate-archive /absolute/private/candidate-archive.tar.gz \
+  --output /absolute/private/qualification-run
 ```
 
-The artifact requires review of every automated-passed interaction cycle.
-Each cycle covers Question necessity and unnecessary interruption, while explicit
-material-decision handling quality and hidden material-discovery quality apply only
-to their respective behavior classes. Relevant cycles also cover
-user ownership, Decision comprehension when applicable, repository-analysis and
-structural-navigation usefulness, semantic value and honesty, CLI usability,
-Viewer understanding, and all four documents' fidelity, usefulness, remaining
-work accuracy, grounding distinction, and requested-language body. Polyglot
-cycles additionally cover cross-language/component/config/API/process
-comprehension. Volicord live Viewer samples in `en` and `ko` cover keyboard,
-focus, color, narrow layout, and zoom accessibility.
-Every human criterion is `not_provided` initially. After bounded review,
-`qualify-review` combines that artifact with the byte-identical automated
-result and does not rerun the sessions or machine evaluation. A human failure
-preserves an automated pass but fails replacement; a human pass cannot
-override any automated failure.
+This rechecks the existing candidate-specific technical gate using the maintained
+independent archive verifier and capsule contract. It does not execute final,
+provider qualification or V11. Unique naturalistic observations remain in the
+machine run and common rubric. Missing technical evidence/review stays unresolved;
+hard violations stay blocked. Only policy-permitted evidence-backed semantic
+criteria can be resolved by agents. Live accessibility and actual user Decision
+comprehension, plus explicit high-impact conflicts, require targeted human review.
 
-`package-review`
-then creates a deterministic bounded archive containing campaign metadata,
-the manifest, eight descriptors, blind-first reviewer preparations,
-provisional reviews, derived review views, hash inventory,
-canonical bundles, the campaign-level human review when present,
-runtime/activation summaries, blocker records
-when present, and all generated-document summaries, review indexes, Markdown,
-and HTML evidence. Raw rollouts are excluded by
-default and enter only with `--include-raw-rollouts`. Full Runtime Homes,
-SQLite files and sidecars, derived directories, installation files, source
-repositories, credentials, private prompts, and provider payloads are never
-selected by the default packager. Keep the campaign root in ignored private
-state. Ordinary independent review requires both the byte-exact raw rollout
-archive and the bounded review package; transfer them as separate private
-artifacts. It does not require, and must not substitute, a full Runtime Home.
+An operator may authorize a fully qualified result with `approve-phase-9
+--qualification <run>/qualification.json --operator <identity> --authorization
+approve-phase-9 --output <new-approval-run>`. This explicit action verifies all
+original inputs again and publishes an immutable approval containing the final
+state. Evaluation and review never call it. Approval cannot fill missing evidence.
+`validate-qualification --qualification <run>/qualification.json` independently
+rechecks the maintained policy and exact inputs without publishing a new run.
 
 This distinction does not change admission, exact final, official V11, gate
 ownership, or the capsule lifecycle described below.
@@ -649,9 +632,8 @@ repository/hook trust, completes all sixteen fresh naturalistic chats without
 per-session evidence processing, and supplies the raw rollouts once to
 `collect-batch`. The helper derives cycle mapping, bundles, bounded Runtime and
 activation summaries, four document kinds, and static Viewer snapshots.
-Automated qualification may complete without human review; absent review keeps
-replacement pending rather than failing automation, while human review can
-never override a machine failure.
+Evaluation may complete without qualitative review; unresolved criteria stay
+unresolved and confirmed hard violations cannot be waived by any reviewer.
 
 Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
 observations, and session identities remain non-reusable for a future candidate.

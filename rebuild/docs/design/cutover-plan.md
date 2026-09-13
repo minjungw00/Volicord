@@ -406,7 +406,7 @@ work/resume을 포함하는 8-cycle/16-fresh-session campaign과
 - [ ] failure recovery rehearsal
 - [ ] 사용자가 raw protocol 없이 Project를 이해하고 판단·재개할 수 있음
 - [ ] 모든 qualifying cycle의 fact/interpretation, analysis/polyglot, CLI, Viewer,
-      documents, Question necessity·Decision comprehension와 interruption-cost human review
+      documents, Question necessity·Decision comprehension와 interruption-cost common qualitative review
 - [ ] final gate의 warning-clean clippy
 
 ## 4. 기존 Runtime Home과 데이터
@@ -493,3 +493,15 @@ reconstruction workspace package가 legacy crate를 의존하지 않는지도 Ca
 6. clean new Runtime Home에서 Project를 초기화한다.
 7. legacy migration, data detection, export와 compatibility 기능이 없다.
 8. 임시 `rebuild/` 이름과 product-generation labels가 active artifact에 남지 않는다.
+
+### Naturalistic qualification authority
+
+The active Phase 8 combination is `qualification_policy.py`: exact Product candidate
+technical gate/capsule/archive, immutable evidence integrity, typed machine authority,
+common agent/human review completion and targeted human escalations. Evaluation policy
+and evaluator HEAD are distinct from the Product candidate; old evidence never binds a
+new candidate. Procedural uncertainty is unresolved until supported review resolves it.
+Only an explicit `approve-phase-9` operator action over the fully qualified state opens
+Phase 9. Approval cannot substitute for evidence or waive hard facts. Cutover remains
+out of scope until this complete state exists. The 8-cycle/16-fresh-session requirement
+and pre-campaign blind provisional boundary remain unchanged.

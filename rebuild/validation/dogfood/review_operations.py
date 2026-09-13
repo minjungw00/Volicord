@@ -39,6 +39,7 @@ def workflow_contract():
         "raw_rollouts": "explicit_opt_in_private_surface", "evaluator_private_answers": "excluded",
         "artifact_limits": {"files": MAX_FILES, "file_bytes": MAX_FILE_BYTES, "raw_file_bytes": MAX_RAW_BYTES,
             "package_bytes": MAX_PACKAGE_BYTES, "draft_bytes": MAX_DRAFT_BYTES},
+        "human_observations": "explicit_candidate_bound_direct_human_live_observations",
         "qualification_authority": False}
 
 
@@ -276,7 +277,7 @@ No review result grants final replacement or Phase 9 approval.
 """
 
 
-def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, evaluation_path=None, include_raw=False, run_id=None):
+def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, evaluation_path=None, include_raw=False, run_id=None, human_observations=None):
     c = campaign_api()
     root, output = root.resolve(), output.absolute()
     review.require(not output.resolve().is_relative_to(root), "review run must be outside immutable campaign input")
@@ -302,6 +303,31 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
     sessions = sorted(item["session_id"] for item in manifest["raw_inputs"])
     review.validate_reviewer(reviewer, sessions)
     files, index, unavailable = select_evidence(root, manifest, evaluation, include_raw=include_raw)
+    if human_observations is not None:
+        review.require(reviewer_kind == "human", "agent preparation cannot supply human-observed accessibility")
+        data = bounded_read(human_observations)
+        review.require(not any(marker.encode() in data.lower() for marker in c.harness.SECRET_MARKERS), "human observations contain a prohibited secret marker")
+        observed = json.loads(data)
+        review.require(isinstance(observed, dict) and set(observed) == {"kind", "candidate_head", "evidence_set_sha256", "observer", "observations"}
+            and observed["kind"] == "dogfood_human_observations" and observed["candidate_head"] == manifest["candidate_head"]
+            and observed["evidence_set_sha256"] == evidence_hash, "human observation candidate/evidence binding mismatch")
+        review.validate_reviewer(observed["observer"], sessions)
+        review.require(observed["observer"]["kind"] == "human", "agent authorship cannot claim direct human observation")
+        review.require(isinstance(observed["observations"], list) and len(observed["observations"]) == 2, "both live accessibility locales require observations")
+        for item in observed["observations"]:
+            review.require(isinstance(item, dict) and set(item) == {"sample_id", "locale", "observation", "limits"}
+                and item["sample_id"] == "volicord-1" and item["locale"] in {"en", "ko"}
+                and all(authority.bounded_text(item[k]) for k in ("observation", "limits")), "invalid direct human observation")
+            identity_key = "volicord-1-live-" + item["locale"]
+            review.require(identity_key not in index["evidence"], "duplicate human observation locale")
+            body = encoded({"binding": {k: observed[k] for k in ("candidate_head", "evidence_set_sha256", "observer")}, **item})
+            name = "evidence/" + identity_key + ".json"
+            files[name] = body
+            pointers, count = locators(body)
+            index["evidence"][identity_key] = {"path": name, "bytes": len(body), "sha256": digest(body),
+                "sample_id": item["sample_id"], "surface": "live_viewer_observation", "locale": item["locale"],
+                "origin": {"kind": "declared_direct_human_observation", "sha256": digest(data)}, "locators": pointers, "line_count": count}
+        unavailable = [u for u in unavailable if not (u["sample_id"] == "volicord-1" and u["surface"] == "live_viewer_observation")]
     binding = {"state": "verified", "source": "immutable_campaign_evidence",
         "candidate_head": manifest["candidate_head"], "evidence_set": {"sha256": evidence_hash},
         "machine_evaluation": machine_binding, "policy_revision": policy["policy_revision"],

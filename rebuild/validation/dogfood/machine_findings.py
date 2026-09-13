@@ -164,3 +164,21 @@ def validate_run(value):
         raise ValueError("evaluation disposition disagrees with findings")
     if value.get("run_id") != digest({k: v for k, v in value.items() if k != "run_id"}):
         raise ValueError("evaluation run identity changed")
+
+
+def review_groups(rule):
+    """Finite semantic jurisdiction; extended by the authority audit."""
+    if rule in {"generated_document_outputs"}:
+        return {"documents"}
+    if rule in {"static_viewer_snapshot"}:
+        return {"viewer_snapshot", "live_viewer"}
+    if rule in {"grounded_pre_work_repository_baseline", "hidden_material_discovery_order", "engineering_choice_discovery"}:
+        return {"repository_intelligence", "authority"}
+    if rule in {"meaningful_recalled_continuation", "resume_contract", "resume_pre_work_repository_baseline",
+        "resume_materiality_work_authority", "recall_matches_checkpoint_decision_and_context",
+        "learning_recall_continuity", "resolved_material_question_not_reasked",
+        "recall_precedes_inspection_and_continuation", "repository_bound_project_resolution"}:
+        return {"context_recovery"}
+    if rule in BEHAVIOR_RULES:
+        return {"interaction", "authority"}
+    return set()

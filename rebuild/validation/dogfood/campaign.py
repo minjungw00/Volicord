@@ -3468,6 +3468,21 @@ def parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--campaign-root", required=True)
     evaluate.add_argument("--output", help="New immutable run directory outside the campaign")
     evaluate.add_argument("--previous-evaluation", help="Historical run to retain by identity/hash for comparison")
+    qualify = sub.add_parser("qualify", help="Combine verified candidate technical gate and evidence-bound qualitative reviews")
+    qualify.add_argument("--campaign-root", required=True)
+    qualify.add_argument("--candidate-head", required=True)
+    qualify.add_argument("--machine-evaluation", required=True)
+    qualify.add_argument("--review-root", action="append", default=[])
+    qualify.add_argument("--gate-capsule")
+    qualify.add_argument("--gate-archive")
+    qualify.add_argument("--output", required=True)
+    approve = sub.add_parser("approve-phase-9", help="Explicit operator authorization of a complete qualification")
+    approve.add_argument("--qualification", required=True)
+    approve.add_argument("--operator", required=True)
+    approve.add_argument("--authorization", choices=["approve-phase-9"], required=True)
+    approve.add_argument("--output", required=True)
+    validate_qualification = sub.add_parser("validate-qualification", help="Recheck all exact qualification inputs without mutation")
+    validate_qualification.add_argument("--qualification", required=True)
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
@@ -3480,6 +3495,7 @@ def parser() -> argparse.ArgumentParser:
     prepare_qualitative.add_argument("--reviewer-identity", help="JSON file with explicit unverified identity claims")
     prepare_qualitative.add_argument("--machine-evaluation")
     prepare_qualitative.add_argument("--include-raw-rollouts", action="store_true")
+    prepare_qualitative.add_argument("--human-observations", help="Candidate/evidence-bound direct human en/ko live accessibility observations")
     for operation in (validate_qualitative, record_qualitative):
         operation.add_argument("--review-root", required=True)
         operation.add_argument("--draft", required=True)
@@ -3524,6 +3540,13 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    if args.command in {"approve-phase-9", "validate-qualification"}:
+        import qualification_policy
+        value = (qualification_policy.approve(Path(args.qualification), Path(args.output),
+            operator=args.operator, statement=args.authorization) if args.command == "approve-phase-9"
+            else qualification_policy.verify_qualification(Path(args.qualification)))
+        print(json.dumps(value, indent=2, sort_keys=True))
+        return 0
     root = Path(getattr(args, "campaign_root", None) or args.review_root).resolve()
     if args.command == "prepare":
         value = prepare_campaign(root, args.campaign_id, args.candidate_head, Path(args.repositories).resolve())
@@ -3578,6 +3601,12 @@ def main() -> int:
     elif args.command == "evaluate":
         value = evaluate_campaign(root, Path(args.output) if args.output else None,
             Path(args.previous_evaluation) if args.previous_evaluation else None)
+    elif args.command == "qualify":
+        import qualification_policy
+        value = qualification_policy.qualify(root, Path(args.machine_evaluation), Path(args.output),
+            candidate=args.candidate_head, review_roots=[Path(p) for p in args.review_root],
+            capsule_path=Path(args.gate_capsule) if args.gate_capsule else None,
+            archive_path=Path(args.gate_archive) if args.gate_archive else None)
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
     elif args.command == "prepare-qualitative-review":
@@ -3585,7 +3614,8 @@ def main() -> int:
             session_id=args.review_session_id,
             identity=read_json(Path(args.reviewer_identity)) if args.reviewer_identity else None,
             evaluation_path=Path(args.machine_evaluation) if args.machine_evaluation else None,
-            include_raw=args.include_raw_rollouts)
+            include_raw=args.include_raw_rollouts,
+            human_observations=Path(args.human_observations) if args.human_observations else None)
     elif args.command in {"validate-qualitative-review", "record-qualitative-review"}:
         operation = review_operations.validate if args.command == "validate-qualitative-review" else review_operations.record
         value = operation(root, Path(args.draft))

@@ -243,7 +243,7 @@ not imply Product passage. `dogfood-campaign evaluate` consumes that exact set a
 an immutable machine run. Findings distinguish certainty from disposition, retain original
 checks/basis, and leave semantic uncertainty unresolved for later review. Confirmed hard
 integrity violations cannot be waived. The technical gate remains separate. Agent and human reviewers share the maintained
-qualitative rubric; final replacement policy is separate work.
+qualitative rubric; `qualification_policy.py` owns the maintained final combination.
 
 New campaigns use cryptographically random opaque slot IDs for qualifying
 workspace, Runtime Home, reviewer preparation/draft/provisional filenames,
@@ -585,8 +585,8 @@ separate private archive for the independent review handoff.
 In a later session, use the maintained campaign helper to prepare a wholly
 fresh opaque-slot campaign in a separate clean worktree at exactly
 `1227448ebbd8c59606c003cfbf1188c149ee52a6`, run all sixteen genuine sessions,
-and obtain the automated result first. Add the campaign-level human review when
-evaluating replacement. The documentation-only child commit is not a substitute
+and obtain the immutable machine evaluation. Common qualitative review is available
+independently of machine outcome when evaluating replacement. The documentation-only child commit is not a substitute
 for that exact campaign HEAD.
 
 ## Rejected alternatives and reasons
@@ -633,8 +633,8 @@ required work/resume chats with only the frozen tasks, answer the actual
 material Questions and Learning Deliberations, provide all raw rollouts once to batch collection, assemble
 the manifest, and provide the raw rollout archive with the bounded default
 review package. If replacement qualification is requested, complete the
-deterministic campaign-level human review against the immutable automated
-result.
+common evidence-bound reviews and targeted human escalations, verify the candidate gate
+capsule/archive, then obtain explicit operator approval of the qualified state.
 
 ## Artifacts
 

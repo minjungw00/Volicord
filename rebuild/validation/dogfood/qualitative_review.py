@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
@@ -149,7 +149,7 @@ def template(preparation, preparation_sha256):
             "inspected_evidence": [], "unavailable_surfaces": copy.deepcopy(preparation["unavailable_surfaces"]),
             "limits": ["Review is limited to indexed artifacts; unobserved behavior is not established."]},
         "assessments": [observation(spec["criterion_id"]) for spec in criterion_specs(preparation["index"], preparation["rubric"])],
-        "additional_outcomes": []}
+        "additional_outcomes": [], "resolves_review_runs": {}}
 
 
 def validate_references(references, index, inspected, sample_id, *, allow_empty=False):
@@ -265,6 +265,14 @@ def _validate_value(preparation, preparation_sha256, value):
     for field in ("kind", "schema_version", "preparation_sha256", "binding", "reviewer"):
         require(value[field] == expected[field], f"immutable review {field} changed")
     validate_reviewer(value["reviewer"], preparation["evaluated_sessions"])
+    resolutions = value["resolves_review_runs"]
+    require(isinstance(resolutions, dict) and len(resolutions) <= 512, "invalid review conflict resolutions")
+    require(not resolutions or value["reviewer"]["kind"] == "human", "only human review may resolve escalated review conflicts")
+    criterion_ids = {s["criterion_id"] for s in criterion_specs(preparation["index"], preparation["rubric"])}
+    for cid, runs in resolutions.items():
+        require(cid in criterion_ids and isinstance(runs, list) and 1 <= len(runs) <= 64
+            and len(set(runs)) == len(runs) and all(re.fullmatch(r"[0-9a-f]{32}", str(r))
+                and r != value["reviewer"]["run_id"] for r in runs), "invalid resolved criterion/review run identities")
     scope = value["observation_scope"]
     require(isinstance(scope, dict) and set(scope) == set(expected["observation_scope"]), "invalid observation scope")
     for field in ("available_evidence", "unavailable_surfaces"):

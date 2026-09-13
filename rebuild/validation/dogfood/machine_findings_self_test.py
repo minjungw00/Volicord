@@ -57,18 +57,6 @@ class MachineFindingTests(unittest.TestCase):
         value["continuation_basis"]["failure_basis"] = "terminal_validation_failed"
         self.assertEqual(m.from_observation(value)[0]["status"], "confirmed_violation")
 
-    def test_unresolved_findings_cannot_enter_technical_qualification(self):
-        unknown = m.finding("meaningful_recalled_continuation", m.Status.INDETERMINATE, {"observed": "unknown"})
-        args = Namespace(candidate_head="a" * 40, repositories="/tmp/repositories.json",
-            machine_evaluation="/tmp/evaluation.json", output_dir="/tmp/unused-technical-output")
-        definition = harness.load_definition()
-        with patch.object(harness, "load_definition", return_value=definition), \
-             patch.object(harness, "git_head", return_value=args.candidate_head), \
-             patch.object(harness, "load_machine_evaluation", return_value={("volicord", 1): {"machine_findings": [unknown]}}), \
-             patch.object(harness, "load_v11", side_effect=AssertionError("technical gate started")):
-            with self.assertRaisesRegex(RuntimeError, "unresolved or hard-blocked"):
-                harness.run_evaluation(args)
-
     def test_append_only_evaluation_reads_exact_evidence_set(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(harness, "git_clean", return_value=True):
             parent = Path(directory)
@@ -102,22 +90,13 @@ class MachineFindingTests(unittest.TestCase):
             self.assertEqual({name: (root / name).read_bytes() for name in frozen}, frozen)
             self.assertIsNone(c.load_campaign(root)["terminal_outcome"])
             self.assertEqual(c.load_campaign(root)["qualification_state"], "not_run")
-            manifest_path = c.finalize_manifest(root)
-            before_aggregate = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+            from evaluation_runs import load
             with patch.object(harness, "real_session_evidence", side_effect=AssertionError("semantic evaluation reran")):
-                consumed = harness.load_machine_evaluation(manifest_path, root / first["evaluation"],
-                    result["candidate_head"])
-                aggregate_cycle = harness.sanitized_cycle("volicord", 1, {}, parent / "technical-result",
-                    1.0, result["candidate_head"], result["candidate_head"], parent / "repository",
-                    consumed[("volicord", 1)], {}, {})
-                self.assertEqual(aggregate_cycle["real_session_dogfood"], consumed[("volicord", 1)])
-            self.assertEqual(len(consumed), 8)
-            self.assertEqual(consumed[("volicord", 1)]["machine_evaluation_run_id"], first["run_id"])
-            self.assertEqual({p: p.read_bytes() for p in before_aggregate}, before_aggregate)
+                self.assertEqual(load(Path(first["evaluation"])), result)
             outside = parent / "unregistered-evaluation.json"
             outside.write_bytes(first_bytes)
             with self.assertRaises(ValueError):
-                harness.load_machine_evaluation(manifest_path, outside, result["candidate_head"])
+                load(outside)
             invalid = deepcopy(result)
             invalid["qualification_state"] = "passed"
             invalid["run_id"] = m.digest({k: v for k, v in invalid.items() if k != "run_id"})

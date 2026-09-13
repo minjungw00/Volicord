@@ -79,8 +79,8 @@ Machine relationships are `agrees`, `clarifies_indeterminate`,
 Clarification requires a review-required machine disposition and stronger,
 surface-backed reviewer evidence. Disagreements are preserved without modifying
 the machine run. Even a probable false-positive finding against a confirmed hard
-violation leaves that machine finding blocking. There is no override field,
-approval combiner or semantic prose scorer.
+violation leaves that machine finding blocking. There is no hard override field or semantic prose scorer. The maintained
+qualification policy consumes reviews without changing the machine observations.
 
 Review validity and the aggregate assessment describe only the recorded review.
 Every result retains `qualification_state = not_run` and `phase_9_ready = false`.
@@ -104,7 +104,7 @@ rebuild/scripts/dogfood-campaign prepare-qualitative-review \
   --output /absolute/private/review-run \
   --reviewer-kind agent \
   --review-session-id <actual-review-session-id> \
-  --machine-evaluation /absolute/private/campaign/evaluations/<run-id>.json \
+  --machine-evaluation /absolute/private/evaluation-run/evaluation.json \
   --include-raw-rollouts
 ```
 
@@ -187,3 +187,29 @@ not a signature or a sandbox against that owner. A retained publication lock aft
 process death is a fail-closed recovery barrier: preserve the interrupted output
 for inspection and prepare a new run rather than overwriting it. Publication
 errors roll back staged files; preflight never repairs or rewrites evidence.
+
+## Qualification, targeted escalation and human observations
+
+`qualification_policy.py` consumes recorded runs using this rubric. All criteria except
+live accessibility and actual user Decision comprehension permit agent review with the
+required evidence. Missing surfaces remain insufficient, and a static HTML proxy never
+establishes human-observed usability. Human review may resolve only the remaining criteria.
+A high-impact authority/context-recovery insufficiency or conflicting review requires an
+explicit human assessment whose `resolves_review_runs` maps the criterion ID to the other
+review run IDs addressed. Agent reviews must leave that map empty. This is evidence-bound
+judgment, not voting or statistical independence.
+
+For direct live observations, human preparation additionally accepts `--human-observations
+<json>`. The object has kind `dogfood_human_observations`, original `candidate_head`,
+`evidence_set_sha256`, an `observer` using the common human reviewer identity shape, and
+exactly two `observations`: `{sample_id: "volicord-1", locale: "en"|"ko", observation:
+<bounded actual observation>, limits: <bounded limits>}`. Preparation copies and hashes
+these declared observations into immutable review evidence. Agent authorship is rejected.
+These are additional direct human observations, not reconstructed historical rollout bytes.
+Identity remains self-reported; do not use agent-generated claims of a human experience.
+
+`qualify` combines evidence validity, verified exact-candidate technical gate, hard machine
+facts, resolved semantic findings, common review completion and targeted human escalations.
+`approve-phase-9` then requires explicit operator authorization of a fully qualified run.
+Approval rechecks the exact original inputs; it cannot replace missing evidence or review.
+The common review result itself always retains `phase_9_ready = false`.

@@ -1222,8 +1222,8 @@ clean install
   evaluator alternative 또는 expected user choice를 성공 조건으로 삼지 않는다.
 - Naturalistic Dogfood의 machine-observable qualification은 human review 부재와 구분되어
   독립적으로 통과할 수 있다.
-- Common qualitative review와 후속 final-policy 결정이 없으면 replacement는 `pending_human_review`이며 pass로
-  표현되지 않는다.
+- Common qualitative review와 필수 human escalation이 미완료면 qualification은 `unresolved`다.
+  Exact-candidate gate와 hard integrity를 포함한 policy 충족 뒤 explicit operator approval만 Phase 9를 연다.
 - Replacement usability review는 reviewer kind를 명시하고 모든 collected cycle을 대상으로 source-vs-interpretation
   comprehension, repository-analysis usefulness, polyglot comprehension, CLI usability,
   Viewer understanding, four-document usefulness, Question necessity/Decision comprehension과
@@ -1247,3 +1247,11 @@ clean install
   inspect할 evidence/basis로 남긴다. Collected, evaluated, qualified/rejected는 독립 상태다.
 - Common review는 불확실성, counterevidence와 observation limit를 evidence locator와 보존한다.
   구조적으로 valid한 review도 Phase 9 approval이 아니며 final replacement policy는 별도다.
+
+- Later evaluator HEAD may append a run over an older immutable evidence set; Product
+  candidate and raw hashes remain unchanged. Historical results are never overwritten.
+- Valid evidence-backed agent reviews resolve permitted semantic criteria. Missing or
+  insufficient reviews cannot pass. Only direct human/user observations and high-impact
+  conflicts need targeted human escalation. Review alone never grants Phase 9 readiness.
+- The candidate technical gate is reused by capsule/archive verification; naturalistic
+  re-evaluation does not rerun final/provider/V11 or relabel old evidence as a new candidate.

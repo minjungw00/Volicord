@@ -951,10 +951,11 @@ Phase 8 Dogfood full passage는 V11 scripted conformance와 별개의 real-sessi
 actual repository class에 `volicord = 3`, `small-python = 3`, `polyglot-medium = 2` cycle을
 배분하고, 각 cycle은 globally distinct한 fresh VS Code Codex work session과 fresh resume
 session을 사용한다. 따라서 automated qualification에는 `8 cycles × 2 sessions = 16`개의 distinct real
-session이 필요하다. Current result schema는 `automated_qualification`, `qualitative_review`,
-`replacement_qualification`을 분리한다. 모든 machine requirement가 통과하면 qualitative review가
-`not_recorded`여도 automated command는 성공하지만 replacement는
-`pending_human_review`이며 `replacement_pass_candidate`와 `phase_9_ready`는 false다.
+session이 필요하다. `qualification_policy.py`의 단일 maintained policy는 evidence validity,
+exact-candidate technical gate, machine findings, qualitative completeness, unresolved/human
+escalations, operator approval, replacement qualification과 Phase 9 readiness를 분리한다.
+Agent/human review는 모든 collected cycle에서 가능하며 automated pass를 선행 조건으로 두지 않는다.
+Qualified evidence에도 explicit operator approval 전까지 `phase_9_ready = false`다.
 
 각 cycle descriptor는 unique Question, alternatives, recommendation, terminal outcome,
 Decision 또는 prescribed user selection을 evaluator 정답으로 두지 않는다. 대신 pinned
@@ -1417,15 +1418,17 @@ Phase 8 evidence lifecycle은 네 독립 layer로 구성한다.
 3. Qualitative review: unresolved machine finding과 underlying evidence를 검사하는 후속
    책임이다. Confirmed hard evidence-integrity violation은 review로 override할 수 없다.
 4. Final qualification policy: collected/evaluated 사실에서 Product passage를 추론하지
-   않는다. Complete review workflow와 replacement policy는 후속 작업에서 정의한다.
+   않는다. `qualification_policy.py`의 finite policy가 common review와 targeted human escalation,
+   exact-candidate technical evidence와 explicit operator approval을 결합한다.
 
 `dogfood-campaign evaluate --campaign-root <root>`는 `evidence-set.json`의 exact SHA-256와
 모든 member hash를 재검증하고 raw capture/bundle/support artifact만으로 evaluation한다.
-Raw session rerun, Product export와 Runtime mutation은 하지 않는다. `evaluations/<run_id>.json`은
+Raw session rerun, Product export와 Runtime mutation은 하지 않는다. Campaign 밖의 새 run directory의
+`evaluation.json`은
 content-derived identity, unique run nonce, evidence-set hash, candidate/evaluator revision,
 evaluator file hashes와 finite policy version을 포함한다. 이전 run을 덮어쓰지 않는다.
-Campaign은 `evaluation_state = produced`와 append-only run references만 추가하며
-`collection_state = collected`, `qualification_state = not_run`을 유지한다.
+Campaign metadata는 수정하지 않는다. Evaluation artifact 자체가 produced state를 기록하며
+collection과 qualification state를 변경하지 않는다.
 
 Finding status는 `confirmed_pass`, `confirmed_violation`, `indeterminate`, `not_observed`,
 `not_applicable`이다. 독립 disposition은 `hard_blocking`, `qualitative_review_required`,
@@ -1437,14 +1440,12 @@ violation으로 변환하지 않는다. Existing determinate violations는 보�
 유지하며 broad heuristic authority audit는 후속 작업이다. Required hard integrity의 uncertainty도
 valid admission을 허용하지 않는다. `finding_state = hard_blocked|review_required|observations_complete`
 어느 값도 final qualification verdict가 아니다. Technical aggregate는 별도 유지한다. Common qualitative-review contract는 아래 rubric을
-사용하며 최종 adoption/qualification policy는 후속 작업이다.
+사용하며 최종 qualification은 아래 maintained policy가 소유한다.
 
-기존 technical aggregate의 `harness.py run`은 required `--machine-evaluation`으로 해당
-campaign의 inventory-bound immutable run을 받아 동일 observation/findings를 사용한다.
-Aggregate는 naturalistic capture를 별도로 재평가하지 않는다. Candidate, finalized repository
-manifest와 exact evidence-set/run binding이 다르면 technical execution 전에 거부한다.
-Unresolved 또는 hard-blocked machine run은 기존 aggregate의 qualification으로 진입할 수 없다.
-이를 Product rejection/pass로 변환하지 않고 후속 review/qualification policy를 기다린다.
+`dogfood-campaign qualify`는 immutable machine evaluation과 recorded common reviews를
+소비하며 해당 Product candidate의 기존 gate capsule/archive를 독립 검증한다. Naturalistic
+qualification을 위해 final/provider/V11 또는 deterministic technical rehearsal을 반복하지 않는다.
+Unique Phase 8 observations와 8-cycle/16-session requirement는 그대로 유지한다.
 
 Technical candidate gate와 maintained final admission/gate/V11 owner는 별도 경계로 유지한다.
 이 분리는 technical gate를 실행하거나 통과했다고 주장하지 않는다.
@@ -1743,8 +1744,11 @@ reviewer metadata와 reviewer-safe operation 계약을 정의한다. Agent와 hu
 Missing observation은 inapplicability가 아니며 incomplete review는 만족으로 집계하지 않는다.
 Review artifact의 구조·hash·locator validation은 semantic judgment의 proof가 아니다.
 Technical result의 `qualitative_review = not_recorded`는 review publication과 독립이며 기존
-`pending_human_review`는 후속 final-policy 결정을 기다리는 보수적 placeholder다. 이 세션은
-어떤 criterion이 항상 human을 요구하는지, operator approval 또는 Phase 9 통과를 정하지 않는다.
+qualification은 `qualification_policy.py`가 결정한다. Live accessibility와 실제 사용자 Decision
+comprehension은 human observation을 요구하고 나머지 semantic criteria는 evidence-backed agent
+review로 해결할 수 있다. Conflict 또는 high-impact authority/context-recovery insufficiency는
+해당 criterion만 human에게 escalate한다. Human은 `resolves_review_runs`로 충돌한 review ID를
+명시하며 무관한 criterion을 재검토할 필요가 없다. 어떤 hard violation도 override하지 못한다.
 
 ### Append-only evaluation identity
 
@@ -1764,3 +1768,25 @@ only fresh evidence can establish the behavior of a different Product candidate.
 Review packaging consumes the external immutable evaluation receipt rather than
 requiring registration by mutating the Campaign. One evaluator serves collection
 and re-evaluation; historical run bytes remain addressable, never rewritten.
+
+### Maintained replacement qualification and operator authorization
+
+`qualification_policy.py.contract()` owns the finite criterion authority and escalation
+policy. `machine_findings` owns machine certainty/disposition and semantic jurisdiction.
+`dogfood-campaign qualify` verifies immutable evaluation/review identities and publishes
+`qualification.json` with exact input references. `blocked`, `unresolved`, `qualified`
+are distinct. Missing evidence never becomes inapplicability or satisfaction. A schema-valid
+review is a recorded judgment, not verified semantic truth.
+
+`approve-phase-9` is a separate explicit operator action with the exact
+`approve-phase-9` authorization assertion. It rechecks the qualification's complete
+input set and current policy and refuses missing technical evidence, hard violations,
+unfinished reviews or unresolved escalations. Its immutable approval embeds the complete
+qualification state and binds the original qualification bytes/hash. Operator identity
+is declared, not authenticated; the cooperative filesystem does not provide signatures.
+The engineering agent must not exercise this operator action without explicit authorization.
+
+The maintained candidate technical gate remains authoritative and unchanged. Qualification
+requires a capsule matching the independently verified archive's completion transition for
+the exact Product candidate. Policy changes never trigger expensive technical execution.
+The engineering final HEAD still requires its own admission and maintained gate.
