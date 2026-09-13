@@ -1407,6 +1407,26 @@ Phase 8 evidence lifecycle은 네 독립 layer로 구성한다.
 4. Final qualification policy: collected/evaluated 사실에서 Product passage를 추론하지
    않는다. Complete review workflow와 replacement policy는 후속 작업에서 정의한다.
 
+`dogfood-campaign evaluate --campaign-root <root>`는 `evidence-set.json`의 exact SHA-256와
+모든 member hash를 재검증하고 raw capture/bundle/support artifact만으로 evaluation한다.
+Raw session rerun, Product export와 Runtime mutation은 하지 않는다. `evaluations/<run_id>.json`은
+content-derived identity, unique run nonce, evidence-set hash, candidate/evaluator revision,
+evaluator file hashes와 finite policy version을 포함한다. 이전 run을 덮어쓰지 않는다.
+Campaign은 `evaluation_state = produced`와 append-only run references만 추가하며
+`collection_state = collected`, `qualification_state = not_run`을 유지한다.
+
+Finding status는 `confirmed_pass`, `confirmed_violation`, `indeterminate`, `not_observed`,
+`not_applicable`이다. 독립 disposition은 `hard_blocking`, `qualitative_review_required`,
+`advisory`이며 `machine_findings.py`의 finite rule table이 소유한다. Unknown rule, invalid
+status/disposition, evidence/hash mismatch와 inconsistent aggregate는 거부한다. Existing
+check와 전체 observation/basis를 run 안에 보존하고 finding이 exact check와 basis를 참조한다.
+Explicit semantic indeterminacy와 missing observation은 review-required이며 pass나 confirmed
+violation으로 변환하지 않는다. Existing determinate violations는 보수적으로 hard-blocking을
+유지하며 broad heuristic authority audit는 후속 작업이다. Required hard integrity의 uncertainty도
+valid admission을 허용하지 않는다. `finding_state = hard_blocked|review_required|observations_complete`
+어느 값도 final qualification verdict가 아니다. Existing technical aggregate와 human rubric을
+대체하지 않으며 새 run의 qualitative-review/adoption interface는 후속 세션이 소유한다.
+
 Technical candidate gate와 maintained final admission/gate/V11 owner는 별도 경계로 유지한다.
 이 분리는 technical gate를 실행하거나 통과했다고 주장하지 않는다.
 

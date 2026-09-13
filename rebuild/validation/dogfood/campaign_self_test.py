@@ -3291,6 +3291,7 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         "collect-work": lambda: campaign.collect_work(root, "volicord", 1, missing),
         "collect-resume": lambda: campaign.collect_resume(root, "volicord", 1, missing),
         "collect-batch": lambda: campaign.collect_batch(root, []),
+        "evaluate": lambda: campaign.evaluate_campaign(root),
         "finalize-manifest": lambda: campaign.finalize_manifest(root),
         "package-review": lambda: campaign.build_review_package(root, archive),
         "prepare-human-review": lambda: campaign.prepare_human_review(root, missing),

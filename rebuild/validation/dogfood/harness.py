@@ -24,6 +24,7 @@ import threading
 import time
 from typing import Any, Callable
 
+import machine_findings
 import authority_obligations
 
 from codex_events import (
@@ -1784,6 +1785,7 @@ def load_definition() -> dict[str, Any]:
                 "collect-work",
                 "collect-resume",
                 "collect-batch",
+                "evaluate",
                 "finalize-manifest",
                 "package-review",
                 "prepare-human-review",
@@ -9743,11 +9745,12 @@ def real_session_evidence(
                       "recorded_user_owned_authority", "meaningful_ordinary_changes"):
             if checks[check] == "failed":
                 checks[check] = "partial"
-    return {
+    observation = {
         "evidence_class": "actual_repository_real_session",
         "status": status_from_steps(checks),
         "checks": checks,
-        "work_evidence_basis": {"hidden_investigation_state": hidden_evidence["state"],
+        "work_evidence_basis": {"turn_lifecycle": work_capture.turn_lifecycle.bounded_evidence() if work_capture else None,
+            "hidden_investigation_state": hidden_evidence["state"],
             "hidden_investigation_reasons": sorted({i.reason for i in hidden_evidence["issues"]}),
             "exploration_state": exploration.get("state"),
             "exploration_reasons": sorted({i.reason for i in exploration.get("issues", ())}),
@@ -9908,6 +9911,9 @@ def real_session_evidence(
         },
         "evidence_origin": "repository_normalized_codex_rollout_and_canonical_bundle",
     }
+
+    observation["machine_findings"] = machine_findings.from_observation(observation)
+    return observation
 
 
 def quality_observations(step_statuses: dict[str, str]) -> dict[str, dict[str, str]]:

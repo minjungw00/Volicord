@@ -1178,6 +1178,19 @@ def main() -> int:
     }:
         raise AssertionError("Phase 8 failure-only work-blocker contract is incomplete")
     batch_contract = real_session.get("batch_campaign_contract", {})
+    from machine_findings import Status, Disposition, BEHAVIOR_RULES
+    machine = batch_contract.get("machine_evaluation", {})
+    if (batch_contract.get("semantic_evaluation_during_collection") is not False
+        or batch_contract.get("evidence_set_manifest") != "evidence-set.json"
+        or machine.get("operation") != "evaluate"
+        or machine.get("qualification_state") != "not_run"
+        or machine.get("hard_integrity_review_override") is not False
+        or set(machine.get("statuses", [])) != set(Status)
+        or set(machine.get("dispositions", [])) != set(Disposition)):
+        raise AssertionError("Phase 8 evidence/finding lifecycle is incomplete")
+    import harness
+    if not set(harness.REAL_SESSION_CHECKS) <= BEHAVIOR_RULES:
+        raise AssertionError("machine check missing finite disposition policy")
     candidate_guard = batch_contract.get("candidate_mutation_guard", {})
     if (
         batch_contract.get("operation") != "collect-batch"
@@ -1199,6 +1212,7 @@ def main() -> int:
                 "collect-work",
                 "collect-resume",
                 "collect-batch",
+                "evaluate",
                 "finalize-manifest",
                 "package-review",
                 "prepare-human-review",

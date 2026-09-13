@@ -238,18 +238,13 @@ not the evaluation basis, behavior reasoning, or
 provenance. Typed provenance is reverified against an active architecture owner
 at the candidate revision or a real file at the pinned target revision.
 
-Batch collection reports `intake_state = accepted|rejected` and always records
-`qualification_state = not_run`; intake acceptance means only that bounded
-work-blocker/evidence collection completed and is never a qualification pass.
-Each rejected cycle now reports `failed_checks` plus bounded
-`failure_attribution` entries with `phase`, `domain`, and an evaluator-safe
-`basis`. The maintained domains are `environment`, `evidence`,
-`behavior_contract`, and `validation_internal`; the last is emitted only for an
-actual validator assertion/internal invariant failure. The batch summary counts
-the same domains and checks across affected cycles. These diagnostics do not
-alter outcome precedence or allow later resume evidence to repair a terminal
-work-behavior failure, and they do not include evaluator reasoning or raw
-rollout content.
+Batch collection publishes an immutable candidate-bound `evidence-set.json` after deterministic
+integrity validation. `collection_state = collected` and `qualification_state = not_run` do
+not imply Product passage. `dogfood-campaign evaluate` consumes that exact set and appends
+an immutable machine run. Findings distinguish certainty from disposition, retain original
+checks/basis, and leave semantic uncertainty unresolved for later review. Confirmed hard
+integrity violations cannot be waived. Existing technical gate and human rubric remain;
+the complete new qualitative workflow and final replacement policy are separate work.
 
 New campaigns use cryptographically random opaque slot IDs for qualifying
 workspace, Runtime Home, reviewer preparation/draft/provisional filenames,
@@ -261,11 +256,9 @@ cycle-numbered layout compatibility branch and no prior campaign is migrated.
 
 `collect-batch` maps all unordered inputs before mutating campaign state. It
 rejects ambiguous, missing, duplicate, wrong-task, wrong-workspace,
-wrong-revision, non-VS-Code, and session-reused evidence. A terminal work
-blocker cannot be repaired by a later resume, while missing activation remains
-an operator/environment-invalid classification. The helper still parses later
-captures for bounded diagnostics and safely available extraction. It verifies
-Project resolution and Recall order and invokes the installed candidate's
+wrong-revision, non-VS-Code, and session-reused evidence. Invalid activation blocks
+publication. Behavioral work/resume interpretation happens after collection. The helper
+preserves Project binding and invokes the installed candidate's
 supported repository-selected context export plus all four supported
 generated-document exports
 in Markdown and self-contained HTML and the public static Viewer snapshot

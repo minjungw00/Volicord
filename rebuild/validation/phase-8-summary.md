@@ -203,3 +203,12 @@ Phase 9.
 - `rebuild/docs/design/acceptance-scenarios.md`
 - `rebuild/docs/design/validation-plan.md`
 - `rebuild/docs/design/cutover-plan.md`
+
+## Immutable evidence and machine findings
+
+Current campaign collection publishes candidate-bound `evidence-set.json` independently of
+semantic evaluation. `dogfood-campaign evaluate` appends typed machine findings under
+`evaluations/`; status and disposition are independent, uncertainty remains review-required,
+and hard evidence integrity is non-overridable. Collection/evaluation do not qualify Product.
+Existing historical failed campaigns above remain unchanged. The technical gate is separate;
+new qualitative workflow and final replacement policy are pending later work.

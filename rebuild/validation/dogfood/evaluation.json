@@ -955,6 +955,20 @@
     },
     "batch_campaign_contract": {
       "operation": "collect-batch",
+      "collection_state": "collected",
+      "evidence_set_manifest": "evidence-set.json",
+      "semantic_evaluation_during_collection": false,
+      "machine_evaluation": {
+        "operation": "evaluate",
+        "result_kind": "dogfood_machine_evaluation",
+        "input": "immutable_candidate_bound_evidence_set",
+        "publication": "append_only_evaluations",
+        "qualification_state": "not_run",
+        "statuses": ["confirmed_pass", "confirmed_violation", "indeterminate", "not_observed", "not_applicable"],
+        "dispositions": ["hard_blocking", "qualitative_review_required", "advisory"],
+        "policy_owner": "machine_findings.py",
+        "hard_integrity_review_override": false
+      },
       "required_raw_rollout_count": 16,
       "input_modes": [
         "sixteen_explicit_paths",
@@ -994,6 +1008,7 @@
           "collect-work",
           "collect-resume",
           "collect-batch",
+          "evaluate",
           "finalize-manifest",
           "package-review",
           "prepare-human-review",

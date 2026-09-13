@@ -29,6 +29,7 @@ from typing import Any, Callable
 
 import harness
 import document_realization
+import machine_findings
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -68,6 +69,21 @@ class CampaignError(ValueError):
     def __init__(self, message: str, *, diagnostic: dict[str, Any] | None = None):
         super().__init__(message)
         self.diagnostic = diagnostic
+
+
+class IntegrityError(CampaignError):
+    def __init__(self, rule: str, error: Exception):
+        super().__init__(str(error), diagnostic={"kind": "dogfood_integrity_rejection",
+            "finding": machine_findings.finding(rule, "confirmed_violation",
+                {"error_kind": type(error).__name__, "detail": str(error)}),
+            "collection_state": "rejected", "qualification_state": "not_run"})
+
+
+def integrity_check(rule, operation, *args):
+    try:
+        return operation(*args)
+    except (CampaignError, EvidenceError, OSError) as error:
+        raise IntegrityError(rule, error) from error
 
 
 RESUME_FAILURE_DOMAINS = {
@@ -500,7 +516,8 @@ def verify_inventory(root: Path) -> None:
     for name, expected in sorted(inventory.get("artifacts", {}).items()):
         path = root / name
         if (
-            not path.is_file()
+            relative(root, path) != name
+            or not path.is_file()
             or path.stat().st_size != expected.get("bytes")
             or harness.sha256(path) != expected.get("sha256")
         ):
@@ -3070,15 +3087,15 @@ def collect_batch(
     ] = generate_document,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root)
-    verify_inventory(root)
+    campaign = integrity_check("candidate_binding", load_campaign_for_mutation, root)
+    integrity_check("campaign_inventory", verify_inventory, root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("campaign already stopped; create a new campaign identity")
     if any(state.get("state") != "sealed" for state in campaign["cycles"].values()):
         raise CampaignError("batch collection requires all eight sealed cycles")
     # Global identity mapping is read-only and complete before staging anything.
-    mapped = map_batch_rollouts(root, raw_paths)
-    document_realization.require_batch_ready(root, campaign, mapped)
+    mapped = integrity_check("session_mapping", map_batch_rollouts, root, raw_paths)
+    integrity_check("realization_binding", document_realization.require_batch_ready, root, campaign, mapped)
     for slot, rollout in mapped.items():
         failure = harness.activation_failure(rollout.capture)
         if failure is not None:
@@ -3088,7 +3105,7 @@ def collect_batch(
     for (kind, cycle, role), rollout in mapped.items():
         destination = cycle_root(root, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
         if destination.exists() or rollout.source.resolve() == destination.resolve():
-            raise CampaignError("batch evidence destination must be absent and distinct from its source")
+            raise IntegrityError("destination_collision", CampaignError("batch evidence destination must be absent and distinct from its source"))
     baseline = {name: (root / name).read_bytes() for name in
                 ["campaign.json", "evidence-inventory.json"]}
     stage = Path(tempfile.mkdtemp(prefix=".batch-intake-", dir=root))
@@ -3103,7 +3120,7 @@ def collect_batch(
             destination = cycle_root(stage, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
             copy_exact(rollout.source, destination)
             if harness.sha256(destination) != rollout.capture.source_sha256:
-                raise CampaignError("raw capture changed after candidate-bound mapping")
+                raise IntegrityError("raw_hash", CampaignError("raw capture changed after candidate-bound mapping"))
             register_artifact(stage, destination)
         summary = normalize_batch(
             stage, mapped, exporter=exporter, documenter=documenter, snapshotter=snapshotter,
@@ -3135,7 +3152,7 @@ def publish_batch(root: Path, stage: Path, baseline: dict[str, bytes]) -> None:
     names += ["evidence-inventory.json", "campaign.json"]
     known = set(load_inventory(root)["artifacts"]) | {"evidence-inventory.json", "campaign.json"}
     if any((root / name).exists() and name not in known for name in names):
-        raise CampaignError("evidence destination collision during publication")
+        raise IntegrityError("destination_collision", CampaignError("evidence destination collision during publication"))
     changed = [name for name in names if not (root / name).is_file()
                or harness.sha256(root / name) != harness.sha256(stage / name)]
     backup = stage / "publication-backup"
@@ -3215,7 +3232,7 @@ def normalize_batch(
             work, resume = (mapped[(kind, cycle, role)].capture for role in ("work", "resume"))
             work_ids, resume_ids = observed_project_ids(work), observed_project_ids(resume)
             if len(work_ids) > 1 or (work_ids and resume_ids and work_ids != resume_ids):
-                raise CampaignError("capture Project identity conflicts across the cycle")
+                raise IntegrityError("project_binding", CampaignError("capture Project identity conflicts across the cycle"))
             state["project_id"] = work_ids[0] if work_ids else None
             state["work_session_id"] = work.session_id
             state["resume_session_id"] = resume.session_id
@@ -3291,7 +3308,71 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         if relative(root, path) != name or not path.is_file() or binding != {
             "bytes": path.stat().st_size, "sha256": harness.sha256(path)}:
             raise CampaignError("immutable evidence-set artifact changed")
+    expected_slots = {(kind, cycle, role) for kind in CLASSES for cycle in cycle_numbers(kind)
+        for role in ("work", "resume")}
+    if {tuple(item.get("cycle", [])) for item in manifest["raw_inputs"]} != expected_slots:
+        raise CampaignError("evidence-set rollout coverage changed")
+    sessions = set()
+    for item in manifest["raw_inputs"]:
+        kind, cycle, role = item["cycle"]
+        state = manifest["cycles"][cycle_key(kind, cycle)]
+        raw = root / "slots" / state["review_slot_id"] / "evidence" / f"{role}.rollout.jsonl"
+        if (not nonempty_session_id(item.get("session_id")) or item["session_id"] in sessions
+            or item["session_id"] != state.get(f"{role}_session_id")
+            or item.get("sha256") != harness.sha256(raw)):
+            raise CampaignError("evidence-set raw session/hash binding changed")
+        sessions.add(item["session_id"])
     return manifest
+
+
+def evaluate_campaign(root: Path) -> dict[str, Any]:
+    """Append a machine run over frozen evidence; no export, replay or qualification."""
+    campaign = load_campaign_for_mutation(root)
+    manifest = load_evidence_set(root)
+    baseline = {name: (root / name).read_bytes() for name in ("campaign.json", "evidence-inventory.json")}
+    cycles = []
+    for kind in CLASSES:
+        for cycle in cycle_numbers(kind):
+            state = manifest["cycles"][cycle_key(kind, cycle)]
+            descriptor = read_json(root / "evaluator/descriptors" / f"{state['review_slot_id']}.json")
+            descriptor["_evidence_directory"] = str(root)
+            observation = harness.real_session_evidence(descriptor, kind=kind, cycle=cycle,
+                repository_revision=state["repository_revision"], candidate_revision=manifest["candidate_head"],
+                target_repository=Path(state["repository_path"]))
+            # The enclosing immutable observation retains every existing check/basis.
+            observation.pop("machine_findings", None)
+            cycles.append({"repository_class": kind, "cycle": cycle, "observation": observation,
+                "findings": machine_findings.from_observation(observation)})
+    result = {"kind": "dogfood_machine_evaluation", "schema_version": 1,
+        "candidate_head": manifest["candidate_head"], "evidence_set": campaign["evidence_set"],
+        "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
+        "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
+            for name in ("harness.py", "codex_events.py", "machine_findings.py", "campaign.py")},
+        "run_nonce": secrets.token_hex(16), "collection_state": "collected",
+        "evaluation_state": "produced", "qualification_state": "not_run", "cycles": cycles,
+        "finding_state": machine_findings.evaluation_state([f for c in cycles for f in c["findings"]])}
+    result["run_id"] = machine_findings.digest(result)
+    machine_findings.validate_run(result)
+    # Recheck input hashes after evaluation and before the controlled publication.
+    load_evidence_set(root)
+    stage = Path(tempfile.mkdtemp(prefix=".machine-evaluation-", dir=root))
+    try:
+        for name in load_inventory(root)["artifacts"]:
+            copy_exact(root / name, stage / name)
+        write_json(inventory_path(stage), load_inventory(root))
+        result_name = f"evaluations/{result['run_id']}.json"
+        write_json(stage / result_name, result)
+        register_artifact(stage, stage / result_name)
+        campaign["evaluation_state"] = "produced"
+        campaign.setdefault("evaluation_runs", []).append({"path": result_name,
+            "sha256": harness.sha256(stage / result_name), "run_id": result["run_id"]})
+        save_campaign(stage, campaign)
+        publish_batch(root, stage, baseline)
+    finally:
+        if not (root / "batch-publication.json").exists():
+            shutil.rmtree(stage)
+    return {"evaluation": result_name, "run_id": result["run_id"],
+        "finding_state": result["finding_state"], "qualification_state": "not_run"}
 
 
 def finalize_manifest(root: Path, output: Path | None = None) -> Path:
@@ -3550,6 +3631,8 @@ def parser() -> argparse.ArgumentParser:
     prepare_documents = sub.add_parser("prepare-document-realizations")
     validate_document = sub.add_parser("validate-document-realization")
     record_document = sub.add_parser("record-document-realization")
+    evaluate = sub.add_parser("evaluate")
+    evaluate.add_argument("--campaign-root", required=True)
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_review = sub.add_parser("prepare-human-review")
@@ -3653,6 +3736,8 @@ def main() -> int:
         )
         value = (document_realization.prepare(root, paths) if args.command == "prepare-document-realizations"
                  else collect_batch(root, paths))
+    elif args.command == "evaluate":
+        value = evaluate_campaign(root)
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
     elif args.command == "prepare-human-review":

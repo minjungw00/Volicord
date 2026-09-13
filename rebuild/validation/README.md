@@ -511,10 +511,9 @@ Product checks structure, grounding, protected terms and provenance; the active
 host confirmation and existing human review still own semantic language quality.
 
 After mapping and required realization checks succeed, `collect-batch` copies and hashes every rollout
-byte-for-byte. It preserves a terminal work blocker even when the matching
-resume exists and continues parsing later captures only for bounded diagnostic
-and extractable evidence. Missing activation remains
-`operator_environment_invalid`. For each safely identifiable cycle it derives
+byte-for-byte and publishes a candidate-bound `evidence-set.json`. Semantic work/resume
+checks do not run during collection. Invalid activation and deterministic identity/hash
+violations block publication. For each safely identifiable cycle it derives
 the Project ID, invokes the installed candidate's repository-selected
 `context export --output`, completes descriptor evidence references and hashes,
 and invokes the supported same-locale `document export`
@@ -547,9 +546,20 @@ self-contained share/review artifact that works without a Runtime or listener;
 it is not interchangeable with a generated document and does not share the
 document-adoption lifecycle.
 
-`finalize-manifest` deterministically assembles `repositories.json` after all
-eight resume captures. Run the automated Dogfood evaluation without subjective
-inputs. If replacement qualification is needed, create one campaign-level
+`finalize-manifest` deterministically assembles immutable `repositories.json` from collected
+evidence. Collection is not qualification. Run non-mutating semantic analysis with:
+
+```text
+rebuild/scripts/dogfood-campaign evaluate --campaign-root /absolute/private/campaign
+```
+
+It consumes the exact evidence-set hash and appends `evaluations/<run_id>.json`.
+Finding certainty and disposition are separate; review-required findings remain unresolved.
+Campaign collection stays `collected`, evaluation becomes `produced`, and qualification stays
+`not_run`. Earlier evaluation runs and raw bytes are never overwritten. The maintained
+technical aggregate remains a separate candidate boundary. The following existing human
+rubric operations consume technical aggregate results; a qualitative workflow for the new
+machine runs will be defined separately. If replacement qualification is needed, create one campaign-level
 review artifact from the immutable automated result:
 
 ```text
