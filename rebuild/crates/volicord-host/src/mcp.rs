@@ -74,7 +74,7 @@ pub const HOST_TOOL_NAMES: [&str; 21] = [
 ];
 
 fn server_instructions() -> String {
-    "Project work starts with project_resolve. Follow workflow.required_next_action; never bypass a blocking transition. Relevant evidence is not exact authority: materially different outcomes need an exact current-Goal user specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects product scope. A broad Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Non-project requests need no ceremony.".into()
+    "Project work starts with project_resolve. Follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority: material outcomes need an exact current-Goal specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects scope. A Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes.".into()
 }
 
 #[derive(Debug)]
@@ -1975,7 +1975,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "inquiry_frontier" => (
-            "Read and present current promoted material Questions. Each returned Question includes a session-local presentation_receipt_id binding its exact revision, alternatives, and recommendation; pass that receipt to decision_record only after the current user responds to that presentation. For a clear valid answer, call decision_record promptly with the existing valid presentation_receipt_id, exact revision and exact current user_turn. Do not re-present an unchanged Question merely for confirmation. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
+            "Read and present current promoted material Questions. Each returned Question includes a session-local presentation_receipt_id binding its exact revision, alternatives, and recommendation; pass that receipt to decision_record only after the current user responds to that presentation. For a clear valid answer, call decision_record promptly with the existing valid presentation_receipt_id, exact revision and exact current user_turn. Do not re-present an unchanged Question merely for confirmation. If presentation or another required transition fails, report the blocker and retry the same canonical path; ordinary prose does not resolve the Question. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -1986,7 +1986,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "decision_record" => (
-            "Record one explicit current-host user response against the exact current Question revision previously presented by this host through inquiry_frontier. For a clear valid answer, use the existing valid presentation_receipt_id, exact revision and exact current user_turn promptly. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. This boundary accepts a caller-supplied current-host response and does not authenticate arbitrary chat text; never infer a Decision from recommendation or silence. A caller-supplied Question basis, agent recommendation, or implementation preference is not presentation evidence or a user Decision.",
+            "Record one explicit current-host user response against the exact current Question revision previously presented by this host through inquiry_frontier. For a clear valid answer, use the existing valid presentation_receipt_id, exact revision and exact current user_turn promptly. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions, stale/invalid receipts, rejected calls, or unavailable transitions leave authority unresolved and require the current canonical presentation/response path. This boundary accepts a caller-supplied current-host response and does not authenticate arbitrary chat text; never infer a Decision from recommendation, silence, or ordinary prose. A caller-supplied Question basis, agent recommendation, or implementation preference is not presentation evidence or a user Decision.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -2056,7 +2056,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "candidate_manage" => (
-            "Own the Question Candidate lifecycle when material user authority remains unresolved: submit a Candidate, attach source-grounded repository research when required, mark sufficient research ready, explicitly promote a reviewed ready Candidate to a Question, or disposition Candidate-local content without creating a user Decision. Never use a Question Candidate to ask for a repository fact or to add ceremony to delegated, exploratory, or trivial choices.",
+            "Own the Question Candidate lifecycle when material user authority remains unresolved: submit a Candidate, attach source-grounded repository research when required, mark sufficient research ready, explicitly promote a reviewed ready Candidate to a Question, or disposition Candidate-local content without creating a user Decision. A rejected or unavailable required transition leaves question_required blocking; retry/report that canonical path rather than substituting ordinary prose. Never use a Question Candidate to ask for a repository fact or to add ceremony to delegated, exploratory, or trivial choices.",
             json!({"oneOf": candidate_management_schemas()}),
             ToolBehavior::DestructiveClosed,
         ),
@@ -6632,6 +6632,15 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                     "forbidden_substitute_operations":["candidate_manage.submit_question_from_materiality","decision_record"],
                     "warning":"Do not create a Question Candidate or call decision_record merely to record this learning selection. A genuinely user-owned material outcome must have remained on the Question/current-host Decision path instead."
                 },
+            })
+        }
+        WorkflowStage::QuestionCandidate | WorkflowStage::Inquiry | WorkflowStage::Decision => {
+            json!({
+                "authority_state":"unresolved_until_canonical_decision",
+                "required_action":workflow.required_next_action.as_ref().map(|action| json!({"tool":action.tool,"action":action.action})),
+                "failure_contract":"A rejected, unavailable, or failed required transition leaves the current Question requirement blocking. Report the exact blocker and retry the supported canonical action.",
+                "forbidden_substitutes":["ordinary prose or chat","agent recommendation","guarded execution confirmation","Context-only preference","silence or inferred consent"],
+                "canonical_path":["Question Candidate","promoted canonical Question","current inquiry_frontier presentation receipt","current-host response","Decision","Materiality Review revision"],
             })
         }
         _ => Value::Null,

@@ -774,6 +774,15 @@ Rejection은 Source/Decision/Question 일부만 성공한 것처럼 보고하지
 revision을 다시 표시하거나 ambiguity를 명확히 해 달라고 요청할 수 있지만 기존
 Question의 의미를 추측으로 바꾸지 않는다.
 
+Required Question Candidate submission/promotion, Frontier presentation 또는 Decision
+transition이 rejected, unavailable 또는 failed이면 해당 material authority는 계속 unresolved이고
+`question_required`/blocking이다. Host는 exact failed action과 retry 가능한 canonical next action을
+보고한다. 일반 prose/chat, 별도 Context Item, agent가 요약한 선택, Guarded confirmation 또는 작업을
+진행했다는 사실은 `Question Candidate → Question → current Frontier presentation receipt →
+current-host response → Decision`을 대신하지 않는다. 정상 복구는 실패 지점의 supported action을
+재시도한 뒤 canonical Decision을 Materiality Review에 적용하며, 그 전에는 ready-for-work나
+Checkpoint success를 만들지 않는다.
+
 ## 8. Abstract atomic response boundary
 
 한 response가 Decision을 만드는 logical operation은 최소 다음 네 meaning을 하나의
@@ -832,6 +841,8 @@ research 또는 disposition 처리의 bounded unit이다.
   보존한다.
 - Partial round는 성공한 Question과 실패/거부된 Question을 구분하며 전체 성공으로
   표현하지 않는다.
+- Required transition failure는 open Question requirement를 유지하고 ordinary 대화의 후속 문장을
+  terminal response로 추론하지 않는다.
 - User가 pause하면 current canonical Question/Decision state를 먼저 보존한다.
 - Resume은 persisted frontier list를 replay하지 않고 current canonical state에서
   frontier를 deterministic하게 재계산한다.

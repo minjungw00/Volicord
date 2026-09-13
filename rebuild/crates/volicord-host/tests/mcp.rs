@@ -1041,7 +1041,7 @@ fn exercise_mcp_rediscovery(temporal: bool) {
 
 #[test]
 fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
-    let (_temporary, mut adapter, project) = setup();
+    let (temporary, mut adapter, project) = setup();
     let goal = call(
         &mut adapter,
         "context_record",
@@ -1141,6 +1141,55 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
     let review_id = review["review_candidate_id"]
         .as_str()
         .expect("review Candidate identity");
+
+    let rejected_transition = call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"submit_question_from_materiality",
+            "project_id":project,
+            "review_candidate_id":review_id,
+            "dimension_id":"failure-mode"
+        }),
+    );
+    assert_eq!(rejected_transition["result"]["isError"], true);
+    adapter
+        .operations()
+        .record_user_source(
+            parse_project(&project),
+            "codex".into(),
+            "plain-chat-fallback".into(),
+            "Use the structured error".into(),
+        )
+        .expect("plain chat Source");
+    let review_candidate_id = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .expect("Candidate basis after rejected transition")
+        .candidates
+        .into_iter()
+        .find(|candidate| candidate.id.to_string() == review_id)
+        .expect("review Candidate after rejected transition")
+        .id;
+    let still_blocked = adapter
+        .operations()
+        .workflow_for_review_candidate(parse_project(&project), review_candidate_id)
+        .expect("workflow after rejected transition");
+    assert_eq!(
+        still_blocked.stage,
+        volicord_operations::WorkflowStage::QuestionCandidate
+    );
+    assert_eq!(
+        still_blocked.disposition,
+        volicord_operations::WorkflowDisposition::QuestionRequired
+    );
+    assert!(still_blocked.blocks_ordinary_work);
+    assert!(adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .expect("canonical basis after failed transition")
+        .active_decisions
+        .is_empty());
 
     let candidate = call(
         &mut adapter,
@@ -1304,6 +1353,62 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         .expect("basis identities")
         .iter()
         .any(|basis| basis["kind"] == "decision" && basis["identity"] == decision_id));
+
+    let repository = temporary.path().join("repository");
+    fs::create_dir_all(repository.join("src")).expect("source directory");
+    fs::write(
+        repository.join("src/decision.rs"),
+        "pub fn structured_error() -> bool { true }\n",
+    )
+    .expect("ordinary implementation change");
+    let verification_invocation = "test -f src/decision.rs";
+    let verification = Command::new("sh")
+        .args(["-c", verification_invocation])
+        .current_dir(&repository)
+        .output()
+        .expect("run focused verification");
+    assert_eq!(verification.status.code(), Some(0));
+    let checkpoint = structured(&call(
+        &mut adapter,
+        "checkpoint_record",
+        json!({
+            "project_id":project,
+            "goal_context_id":goal_context_id,
+            "baseline_analysis_snapshot_id":baseline,
+            "kind":"completion",
+            "work_state":"completed",
+            "state_change":"Implemented the selected structured failure response",
+            "applied_decision_ids":[decision_id],
+            "verification_basis":{"state":"ordinary_change"},
+            "verification":[{"state":"passed","command_label":"focused decision-path check","command_invocation":verification_invocation,"exit_code":verification.status.code(),"termination":"exited","outcome":"selected path exists"}],
+            "next_step":"Continue from the canonical Decision"
+        }),
+    ))
+    .clone();
+    assert_eq!(checkpoint["applied_decision_ids"], json!([decision_id]));
+
+    let recalled = structured(&call(&mut adapter, "recall", json!({"project_id":project}))).clone();
+    assert!(recalled["decisions"]
+        .as_array()
+        .expect("Recall Decisions")
+        .iter()
+        .any(|item| item["identity"] == decision_id && item["state"] == "current"));
+    assert_eq!(
+        recalled["checkpoint"]["applied_decisions"],
+        json!([decision_id])
+    );
+    let understanding = structured(&call(
+        &mut adapter,
+        "repository_understanding",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    assert_eq!(understanding["overview"]["active_decisions"], 1);
+    assert!(understanding["decision_context_code"]
+        .as_array()
+        .expect("Decision projection")
+        .iter()
+        .any(|item| item["decision_id"] == decision_id));
 }
 
 #[test]
@@ -3792,13 +3897,15 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         .expect("server instructions");
     assert!(instructions.contains("Project work starts with project_resolve"));
     assert!(instructions.contains("workflow.required_next_action"));
-    assert!(instructions.contains("never bypass a blocking transition"));
-    assert!(instructions.contains("Relevant evidence is not exact authority"));
+    assert!(instructions.contains("never bypass a blocker"));
+    assert!(instructions.contains("Failed required transitions stay blocking"));
+    assert!(instructions.contains("prose is not canonical resolution"));
+    assert!(instructions.contains("Relevant evidence is not authority"));
     assert!(instructions.contains("exact dimension or containing scope"));
     assert!(instructions.contains("explicit current-host responses"));
     assert!(instructions.contains("separate authorization"));
     assert!(instructions.contains("observed outcomes"));
-    assert!(instructions.contains("execution confirmation never selects product scope"));
+    assert!(instructions.contains("execution confirmation never selects scope"));
     assert!(
         instructions.len() < 768,
         "server instructions should stay compact"
@@ -3847,12 +3954,17 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(descriptions["decision_record"]
         .contains("Explanation requests before selection are not Decisions"));
     assert!(descriptions["decision_record"].contains("clarify genuinely ambiguous answers"));
-    assert!(descriptions["decision_record"]
-        .contains("Changed revisions or stale/invalid receipts require current presentation"));
+    assert!(descriptions["decision_record"].contains(
+        "Changed revisions, stale/invalid receipts, rejected calls, or unavailable transitions"
+    ));
     assert!(descriptions["decision_record"].contains("caller-supplied current-host response"));
     assert!(descriptions["decision_record"].contains("does not authenticate arbitrary chat text"));
     assert!(descriptions["decision_record"]
-        .contains("never infer a Decision from recommendation or silence"));
+        .contains("never infer a Decision from recommendation, silence, or ordinary prose"));
+    assert!(descriptions["decision_record"]
+        .contains("unavailable transitions leave authority unresolved"));
+    assert!(descriptions["decision_record"].contains("ordinary prose"));
+    assert!(descriptions["candidate_manage"].contains("leaves question_required blocking"));
     assert!(descriptions["materiality_review"].contains("broad Goal alone is not delegation"));
     assert!(descriptions["materiality_review"].contains("semantic rationale"));
     assert!(

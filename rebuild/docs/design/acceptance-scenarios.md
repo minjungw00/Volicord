@@ -415,6 +415,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - 질문에는 제품, architecture와 implementation 관점이 필요한 만큼 포함된다.
 - 사용자는 선택, 수정안, 위임, 조사, prototype 또는 보류로 답할 수 있다.
 - 답변에 따라 다음 질문이 열리거나 닫힌다.
+- required Candidate/Question/presentation/Decision transition이 실패하거나 unavailable이면
+  `question_required`와 blocking 상태를 유지하고 exact blocker와 canonical retry action을 보여준다.
+  일반 chat 답변이나 Guarded confirmation은 실패한 transition을 건너뛰지 않는다.
 - 세션을 중단하고 새 세션에서 이어갈 수 있다.
 - 같은 질문을 CLI에서 다시 입력하지 않는다.
 
@@ -434,6 +437,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 - 코드에서 확인할 수 있는 사실을 사용자에게 질문
 - 모호한 과거의 “좋아요”를 Decision으로 적용
+- failed/unavailable required transition 뒤 ordinary prose를 canonical response/Decision으로 간주
 - agent recommendation을 사용자 choice로 저장
 - agent recommendation, preferred implementation 또는 한 API dimension 선택으로 별도의
   independently material user-owned policy를 조용히 결정
