@@ -285,12 +285,9 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
     evaluation, machine_binding = None, None
     if evaluation_path is not None:
         evaluation_path = evaluation_path.resolve()
-        name = c.relative(root, evaluation_path)
+        from evaluation_runs import load
         data = bounded_read(evaluation_path)
-        review.require(c.load_inventory(root)["artifacts"].get(name) == {"bytes": len(data), "sha256": digest(data)},
-                       "machine run is not immutable campaign evidence")
-        evaluation = json.loads(data)
-        machine.validate_run(evaluation)
+        evaluation = load(evaluation_path)
         review.require(evaluation["candidate_head"] == manifest["candidate_head"]
             and evaluation["evidence_set"] == {"path": "evidence-set.json", "sha256": evidence_hash}, "machine run evidence-set/candidate mismatch")
         machine_binding = {"run_id": evaluation["run_id"], "sha256": digest(data)}

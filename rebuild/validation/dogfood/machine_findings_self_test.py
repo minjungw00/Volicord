@@ -86,7 +86,16 @@ class MachineFindingTests(unittest.TestCase):
             m.validate_run(result)
             self.assertEqual(len(result["cycles"]), 8)
             self.assertEqual(result["evidence_set"]["sha256"], harness.sha256(root / "evidence-set.json"))
-            second = c.evaluate_campaign(root)
+            before_campaign = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+            with patch.object(harness, "git_head", return_value="c" * 40):
+                second = c.evaluate_campaign(root, previous=Path(first["evaluation"]))
+            self.assertEqual({p: p.read_bytes() for p in before_campaign}, before_campaign)
+            later = c.read_json(Path(second["evaluation"]))
+            self.assertEqual(later["candidate_head"], result["candidate_head"])
+            self.assertNotEqual(later["candidate_head"], later["evaluator_revision"])
+            self.assertEqual(later["previous_evaluation"]["run_id"], first["run_id"])
+            with self.assertRaises(ValueError):
+                c.evaluate_campaign(root, output=Path(second["evaluation"]).parent)
             self.assertNotEqual(first["run_id"], second["run_id"])
             self.assertEqual((root / first["evaluation"]).read_bytes(), first_bytes)
             self.assertEqual((root / "evidence-set.json").read_bytes(), identity)
@@ -120,7 +129,7 @@ class MachineFindingTests(unittest.TestCase):
             c.register_artifact(root, root / name, replace=True)
             with self.assertRaises(c.CampaignError):
                 c.evaluate_campaign(root)
-            self.assertEqual(len(list((root / "evaluations").glob("*.json"))), 2)
+            self.assertEqual(len(list((root.parent / (root.name + "-evaluations")).glob("*/evaluation.json"))), 2)
 
 
 if __name__ == "__main__":

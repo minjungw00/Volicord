@@ -1745,3 +1745,22 @@ Review artifact의 구조·hash·locator validation은 semantic judgment의 proo
 Technical result의 `qualitative_review = not_recorded`는 review publication과 독립이며 기존
 `pending_human_review`는 후속 final-policy 결정을 기다리는 보수적 placeholder다. 이 세션은
 어떤 criterion이 항상 human을 요구하는지, operator approval 또는 Phase 9 통과를 정하지 않는다.
+
+### Append-only evaluation identity
+
+`dogfood-campaign evaluate --campaign-root <input> --output <new-run>` reads an
+immutable evidence set without changing Campaign metadata, inventory or artifacts.
+The output must be outside the Campaign and is published once with a receipt.
+Omitting output selects a new sibling run directory. The same operation performs
+re-evaluation; `--previous-evaluation <file>` retains the original run ID and byte
+hash for comparison without interpreting historical policy as current authority.
+Missing historical evidence is never synthesized or upgraded.
+
+Machine schema 2 separates Product `candidate_head`, evidence-set SHA-256,
+`evaluator_revision` and implementation file hashes, policy revision/hash, random
+run nonce/content-derived run ID, and consumed qualitative review IDs (empty for
+machine-only evaluation). A later evaluator HEAD may inspect an older candidate;
+only fresh evidence can establish the behavior of a different Product candidate.
+Review packaging consumes the external immutable evaluation receipt rather than
+requiring registration by mutating the Campaign. One evaluator serves collection
+and re-evaluation; historical run bytes remain addressable, never rewritten.

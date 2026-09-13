@@ -3328,11 +3328,12 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     return manifest
 
 
-def evaluate_campaign(root: Path) -> dict[str, Any]:
+def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | None = None) -> dict[str, Any]:
     """Append a machine run over frozen evidence; no export, replay or qualification."""
-    campaign = load_campaign_for_mutation(root)
+    campaign = load_campaign(root)
     manifest = load_evidence_set(root)
-    baseline = {name: (root / name).read_bytes() for name in ("campaign.json", "evidence-inventory.json")}
+    from evaluation_runs import policy_identity, historical_reference
+    prior = historical_reference(previous, manifest["candidate_head"], campaign["evidence_set"]) if previous else None
     cycles = []
     for kind in CLASSES:
         for cycle in cycle_numbers(kind):
@@ -3346,11 +3347,12 @@ def evaluate_campaign(root: Path) -> dict[str, Any]:
             observation.pop("machine_findings", None)
             cycles.append({"repository_class": kind, "cycle": cycle, "observation": observation,
                 "findings": machine_findings.from_observation(observation)})
-    result = {"kind": "dogfood_machine_evaluation", "schema_version": 1,
+    result = {"kind": "dogfood_machine_evaluation", "schema_version": 2,
         "candidate_head": manifest["candidate_head"], "evidence_set": campaign["evidence_set"],
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
         "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "campaign.py")},
+        "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "cycles": cycles,
         "finding_state": machine_findings.evaluation_state([f for c in cycles for f in c["findings"]])}
@@ -3358,22 +3360,11 @@ def evaluate_campaign(root: Path) -> dict[str, Any]:
     machine_findings.validate_run(result)
     # Recheck input hashes after evaluation and before the controlled publication.
     load_evidence_set(root)
-    stage = Path(tempfile.mkdtemp(prefix=".machine-evaluation-", dir=root))
-    try:
-        for name in load_inventory(root)["artifacts"]:
-            copy_exact(root / name, stage / name)
-        write_json(inventory_path(stage), load_inventory(root))
-        result_name = f"evaluations/{result['run_id']}.json"
-        write_json(stage / result_name, result)
-        register_artifact(stage, stage / result_name)
-        campaign["evaluation_state"] = "produced"
-        campaign.setdefault("evaluation_runs", []).append({"path": result_name,
-            "sha256": harness.sha256(stage / result_name), "run_id": result["run_id"]})
-        save_campaign(stage, campaign)
-        publish_batch(root, stage, baseline)
-    finally:
-        if not (root / "batch-publication.json").exists():
-            shutil.rmtree(stage)
+    destination = output or root.parent / (root.name + "-evaluations") / result["run_id"]
+    if destination.resolve().is_relative_to(root.resolve()):
+        raise CampaignError("evaluation output must be outside the immutable campaign")
+    from evaluation_runs import publish
+    result_name = str(publish(destination, result))
     return {"evaluation": result_name, "run_id": result["run_id"],
         "finding_state": result["finding_state"], "qualification_state": "not_run"}
 
@@ -3473,8 +3464,10 @@ def parser() -> argparse.ArgumentParser:
     prepare_documents = sub.add_parser("prepare-document-realizations")
     validate_document = sub.add_parser("validate-document-realization")
     record_document = sub.add_parser("record-document-realization")
-    evaluate = sub.add_parser("evaluate")
+    evaluate = sub.add_parser("evaluate", help="Append a new evaluation of immutable evidence, including an older Product candidate")
     evaluate.add_argument("--campaign-root", required=True)
+    evaluate.add_argument("--output", help="New immutable run directory outside the campaign")
+    evaluate.add_argument("--previous-evaluation", help="Historical run to retain by identity/hash for comparison")
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
@@ -3583,7 +3576,8 @@ def main() -> int:
         value = (document_realization.prepare(root, paths) if args.command == "prepare-document-realizations"
                  else collect_batch(root, paths))
     elif args.command == "evaluate":
-        value = evaluate_campaign(root)
+        value = evaluate_campaign(root, Path(args.output) if args.output else None,
+            Path(args.previous_evaluation) if args.previous_evaluation else None)
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
     elif args.command == "prepare-qualitative-review":

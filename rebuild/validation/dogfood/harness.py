@@ -10665,16 +10665,13 @@ def load_machine_evaluation(repository_manifest: Path, evaluation_path: Path, ca
     root = repository_manifest.parent
     evidence = campaign.load_evidence_set(root)
     state = campaign.load_campaign(root)
-    name = campaign.relative(root, evaluation_path)
     if (repository_manifest != root / "repositories.json"
         or "repositories.json" not in campaign.load_inventory(root)["artifacts"]
         or evidence["candidate_head"] != candidate_head):
         raise ValueError("technical aggregate requires the finalized immutable campaign manifest")
-    result = campaign.read_json(evaluation_path)
-    machine_findings.validate_run(result)
-    if (result["candidate_head"] != candidate_head or result["evidence_set"] != state["evidence_set"]
-        or {"path": name, "sha256": sha256(evaluation_path), "run_id": result["run_id"]}
-        not in state.get("evaluation_runs", [])):
+    from evaluation_runs import load
+    result = load(evaluation_path)
+    if (result["candidate_head"] != candidate_head or result["evidence_set"] != state["evidence_set"]):
         raise ValueError("technical aggregate machine run does not bind this exact evidence set")
     return {(item["repository_class"], item["cycle"]): {
         **item["observation"], "machine_findings": item["findings"],

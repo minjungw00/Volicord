@@ -126,7 +126,7 @@ def digest(value):
 
 
 def validate_run(value):
-    if (value.get("kind") != "dogfood_machine_evaluation" or value.get("schema_version") != 1
+    if (value.get("kind") != "dogfood_machine_evaluation" or value.get("schema_version") != 2
         or value.get("qualification_state") != "not_run"
         or value.get("collection_state") != "collected"
         or value.get("policy_version") != POLICY_VERSION
@@ -137,9 +137,17 @@ def validate_run(value):
     if (reference.get("path") != "evidence-set.json"
         or not re.fullmatch(r"[0-9a-f]{64}", str(reference.get("sha256", "")))
         or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("candidate_head", "")))
-        or value.get("candidate_head") != value.get("evaluator_revision")
+        or not re.fullmatch(r"[0-9a-f]{40}", str(value.get("evaluator_revision", "")))
         or not re.fullmatch(r"[0-9a-f]{32}", str(value.get("run_nonce", "")))):
         raise ValueError("invalid evaluation evidence/candidate binding")
+    from evaluation_runs import policy_identity
+    if (value.get("policy") != policy_identity() or value.get("qualitative_review_runs") != []
+        or not isinstance(value.get("evaluator_files"), dict)):
+        raise ValueError("evaluation policy or review identity mismatch")
+    prior = value.get("previous_evaluation")
+    if prior is not None and (not isinstance(prior, dict) or set(prior) != {"run_id", "sha256"}
+        or any(not re.fullmatch(r"[0-9a-f]{64}", str(v)) for v in prior.values())):
+        raise ValueError("invalid prior evaluation identity")
     expected_cycles = {(kind, cycle) for kind, count in
         (("volicord", 3), ("small-python", 3), ("polyglot-medium", 2)) for cycle in range(1, count + 1)}
     if {(c.get("repository_class"), c.get("cycle")) for c in value["cycles"]} != expected_cycles:

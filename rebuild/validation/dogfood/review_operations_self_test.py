@@ -236,15 +236,11 @@ class WorkflowTests(unittest.TestCase):
         invalid["evidence_set"]["sha256"] = "0" * 64
         invalid["run_id"] = ops.machine.digest({k: v for k, v in invalid.items() if k != "run_id"})
         data = ops.encoded(invalid)
-        original_read, original_inventory = ops.bounded_read, c.load_inventory
-        inventory = copy.deepcopy(original_inventory(self.root))
-        inventory["artifacts"][self.evaluation.relative_to(self.root).as_posix()] = {"bytes": len(data), "sha256": ops.digest(data)}
-        # Isolate the machine-input check without rewriting the actual campaign.
-        with patch.object(ops, "bounded_read", side_effect=lambda p, *args: data if p == self.evaluation else original_read(p, *args)), \
-             patch.object(c, "load_inventory", return_value=inventory), \
-             patch.object(c, "load_evidence_set", return_value=c.read_json(self.root / "evidence-set.json")):
-            with self.assertRaisesRegex(ValueError, "machine run evidence-set/candidate mismatch"):
-                ops.prepare(self.root, self.target(), reviewer_kind="human", evaluation_path=self.evaluation)
+        from evaluation_runs import publish
+        target = self.parent / "mismatched-machine-run"
+        evaluation = publish(target, invalid)
+        with self.assertRaisesRegex(ValueError, "machine run evidence-set/candidate mismatch"):
+            ops.prepare(self.root, self.target(), reviewer_kind="human", evaluation_path=evaluation)
 
     def test_hard_and_indeterminate_machine_cycles_are_reviewable(self):
         invalid = c.read_json(self.evaluation)
