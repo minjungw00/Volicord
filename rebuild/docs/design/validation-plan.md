@@ -1393,44 +1393,43 @@ evidence로 보존한다. Realizer plan/draft/record와 private source represent
 Campaign self-test는 private preparation, preflight, immutable fixation, before-terminal blocking,
 Product topology/protected-term rejection과 canonical purity를 포함한다.
 
-Mapping과 required realization preflight 뒤 campaign-local staging에서 raw byte와 mapped capture SHA-256를 재확인하고
-모든 eight cycle을 평가한다. 이 동안 authoritative campaign metadata, descriptor와 inventory는
-변경하지 않는다. Supported work lifecycle/binding failure는 `WorkCaptureContractError`의 finite
-basis/check로 `evidence_failed` intake가 되고, `NoWorkBlocker`는 정상 full-qualification 경로다.
-`ResumeContractError`는 finite typed basis와 domain을 보존한다. Recall transport/identity와
-indeterminate verification은 evidence, actual failed Recall/validation은 product_integration,
-order/baseline/scope/missing post-change validation은 behavior_contract다.
-`EvidenceError`/supported extraction failure는 evidence,
-validator assertion/unknown ValueError는 `validation_internal`로 구분한다. Activation의 기존
-`environment`/`evidence`/`validation_internal` 구분은 유지한다. Error message text로 routing하지 않는다.
+Phase 8 evidence lifecycle은 네 독립 layer로 구성한다.
 
-각 derived extraction에는 staging savepoint를 적용해 실패한 export의 partial file, descriptor와
-inventory mutation을 되돌리고 다른 cycle의 bounded diagnostics를 계속 수집한다. 완성된 summary는
-cycle/role/check/basis, work lifecycle과 interruption evidence, `intake_state`, `outcome`,
-`qualification_state = not_run`을 보존한다. 최종 publication은 exact files, inventory와 campaign state를
-controlled-persist하며 실패 시 original bytes로 rollback한다. Publication journal이 존재하면 모든
-campaign consumer는 `repair_required`로 차단된다. Forced interruption 또는 rollback 실패의 journal과
-staging/backup은 inspection을 위해 보존하며 성공이나 재시도 허가로 추정하지 않는다. Derived process
-logs는 실제 staging execution의 bytes를 유지하고 maintained artifact references는 published relative
-path를 사용한다. Terminal rejection은 immutable하며 같은 identity에서 selected rollout 교체,
-collect-work/resume/batch retry 또는 qualifying manifest 생성으로 repair할 수 없다.
+1. `collect-batch`: immutable evidence validity/collection. Candidate, inventory, 16개
+   session/task/workspace/revision mapping, required activation와 realization binding을
+   먼저 검증한다. Wrong/missing/duplicate session, work/resume reuse, raw hash change,
+   destination collision와 corrupted inventory는 valid publication을 차단한다.
+2. Machine observations/findings: 저장된 evidence set만 읽는 별도 evaluation이다.
+   Semantic uncertainty는 confirmed Product violation이 아니며 collection을 거부하거나
+   raw evidence를 변경하는 근거가 아니다.
+3. Qualitative review: unresolved machine finding과 underlying evidence를 검사하는 후속
+   책임이다. Confirmed hard evidence-integrity violation은 review로 override할 수 없다.
+4. Final qualification policy: collected/evaluated 사실에서 Product passage를 추론하지
+   않는다. Complete review workflow와 replacement policy는 후속 작업에서 정의한다.
 
-Raw byte와 SHA-256를 보존하고, terminal work blocker가 있어도 resume evidence로 이를
-복구하지 않는다. Proven missing activation은 operator/environment invalid로 유지하고 ambiguous
-activation evidence는 evidence_failed로 구분한다. Cycle별
-`intake_state = accepted|rejected`와 `qualification_state = not_run`을 기록하여 batch
-intake acceptance를 full qualification passage와 구분한다. 다른 capture는
-bounded diagnostic과 안전하게 식별 가능한 evidence extraction을 위해 계속 parse한다. Extraction은
-Project identity, canonical bundle, bounded Runtime/activation summary, descriptor evidence reference,
-supported product CLI export 또는 active-host MCP realization path로 네 initial kind 각각의 Markdown과
-self-contained HTML을 deterministic private evidence path에 생성한다. Summary는 모든
-kind/format의 status, bounded failure basis 또는 relative path, bytes와 SHA-256를 보존하고,
-operator document-review index는 produced path만 노출한다. 한 kind라도 usable evidence가
-없으면 automated document evidence가 실패한다. Public static Viewer snapshot
-capability도 cycle마다 campaign fixed locale/language로 self-contained read-only HTML을 만들고
-path, bytes, SHA-256와 Project/candidate basis를 summary에 기록한다. Review package는 이
-summary/index, produced documents와 Viewer snapshots를 포함하지만 Runtime Home, SQLite/sidecar, raw Derived
-Analysis, credential, prompt, provider payload와 source copy는 계속 제외한다.
+Technical candidate gate와 maintained final admission/gate/V11 owner는 별도 경계로 유지한다.
+이 분리는 technical gate를 실행하거나 통과했다고 주장하지 않는다.
+
+Mapping과 realization preflight 뒤 campaign-local staging에서 exact raw bytes/hash를
+보존하고 supported canonical bundle, document와 Viewer output을 추출한다. Behavioral
+work blocker와 resume continuation evaluator는 collection에서 호출하지 않는다.
+Complete immutable raw evidence의 terminal lifecycle이나 naturalistic grammar uncertainty는
+나중 machine evaluation의 basis다. Conflicting Project identity나 잘못된 bundle binding은
+여전히 hard integrity failure다. Runtime/derived store 또는 credential을 evidence set에
+복사하지 않으며 existing private archive filtering을 유지한다.
+
+`evidence-set.json`은 candidate/campaign identity, sixteen raw session/hash bindings,
+cycle mapping과 당시 artifact inventory를 닫힌 immutable manifest로 보존한다. Exact file
+SHA-256가 evidence-set identity다. Mutable campaign metadata, inventory와 미래 evaluation은
+이 hash에 포함하지 않는다. `collection_state = collected`, `evaluation_state = not_run`,
+`qualification_state = not_run`은 별도 값이며 `terminal_outcome`으로 semantic failure를
+기록하지 않는다. Finalize-manifest는 collected descriptors의 immutable projection이고
+qualification approval이 아니다. Historical failed campaign은 rewrite/retry하지 않는다.
+
+Publication은 기존 staging/savepoint, exact-byte rollback과 journal read barrier를 유지한다.
+Incomplete publication은 `repair_required`이며 journal이 남은 campaign을 읽거나 재시도해
+성공으로 취급하지 않는다. Collection 성공 뒤 raw evidence 교체는 금지된다.
+
 각 cycle의 document/Viewer evidence는 requested-language generated body를 실제 검사하고,
 Project Understanding required meaning, verified-fact/generated-interpretation distinction과
 diagram relation grounding을 machine-inspectable basis와 human review surface에 보존한다.

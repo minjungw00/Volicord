@@ -284,8 +284,12 @@ clean Linux install
 통과 조건은 `acceptance-scenarios.md`의 최종 통과 조건과 일치한다.
 Automated Dogfood passage alone is not replacement passage: the current
 campaign-level human review must also pass, while an absent review leaves
-replacement explicitly pending and a human pass cannot override machine
-failure.
+replacement explicitly pending. Immutable evidence collection, machine findings,
+qualitative review and final qualification policy are distinct layers. Semantic
+uncertainty is unresolved evidence for review; a confirmed hard evidence-integrity
+violation cannot be overridden. Collection and evaluation alone do not qualify a
+candidate. The technical gate remains separate; the complete later review and
+replacement policy is not defined by this lifecycle change.
 Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고 maintained
 behavior vocabulary로 independent classification을 수행한다. Exact campaign behavior profile과
 behavior-to-cycle assignment는 evaluator/steward-private state에 integrity-bound되고, 모든 eight blind

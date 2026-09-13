@@ -1236,3 +1236,14 @@ clean install
 - partial analyzer, provider와 derived-index 실패가 canonical state를 손상시키지 않는다.
 - Final qualification의 maintained clippy execution은 warning을 남기지 않는다.
 - active product에 legacy migration, data detection, compatibility와 workflow surface가 없다.
+
+### Phase 8 evidence lifecycle acceptance
+
+- Candidate-bound/hash-valid 16-session evidence는 semantic evaluation 없이 immutable
+  evidence-set identity로 수집할 수 있다. 수집 성공은 Product qualification이 아니다.
+- Candidate/session/task/revision/activation/realization identity 또는 raw/inventory hash
+  위반은 valid publication을 차단한다. Qualitative review가 이를 override할 수 없다.
+- Machine semantic indeterminate는 confirmed Product violation과 다르며 후속 review에서
+  inspect할 evidence/basis로 남긴다. Collected, evaluated, qualified/rejected는 독립 상태다.
+- Technical gate는 별도 candidate boundary이며 full qualitative workflow와 final
+  replacement policy는 이 acceptance가 새로 정의하지 않는다.
