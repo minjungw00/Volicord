@@ -186,7 +186,7 @@
     ],
     "manual_observation_may_override_deterministic_failure": false
   },
-  "human_review_contract": {
+  "qualitative_review_contract": {
     "authority_obligation_contract": {
       "required_fields": [
         "authority_basis",
@@ -233,20 +233,17 @@
         "locator"
       ],
       "maximum_text_utf8_bytes": 8192,
-      "semantic_judgment_owner": "bounded_campaign_human_review",
+      "semantic_judgment_owner": "bounded_campaign_qualitative_review",
       "interaction_review_instruction": "Challenge independently material reference/context, composition/precedence, multi-item ordering/partial durability, and failure/retry/recovery results in actual implementation, tests and contracts. A resolved rejection policy does not itself resolve durable partial effects. Inspect current Discovery interaction identities and pre-write commitment bindings, then seek further uncovered outcomes in actual work. These are semantic completeness prompts, never ownership classifiers or mandatory Questions.",
-      "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the private post-session descriptor and verify its SHA-256; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle."
+      "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the bounded concern projection and its descriptor field/hash binding; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle."
     },
-    "artifact_kind": "phase8_dogfood_human_review",
+    "artifact_kind": "dogfood_qualitative_review",
     "states": [
-      "not_provided",
-      "passed",
-      "failed"
-    ],
-    "replacement_states": [
-      "pending_human_review",
-      "passed",
-      "failed"
+      "satisfied",
+      "violated",
+      "insufficient_evidence",
+      "not_applicable",
+      "not_reviewed"
     ],
     "interaction_repository_classes": [
       "volicord",
@@ -269,7 +266,7 @@
       "narrow_and_zoomed_presentation"
     ],
     "machine_accessibility_may_be_overridden": false,
-    "sampling_algorithm": "every_automated_passed_interaction_cycle",
+    "sampling_algorithm": "every_collected_cycle",
     "every_cycle_review_surfaces": [
       "interaction",
       "generated_documents",
@@ -324,7 +321,9 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_fork_value": {
-        "applies_to": ["learning_deliberation"],
+        "applies_to": [
+          "learning_deliberation"
+        ],
         "review_prompt": "Pass only when the surfaced agent-owned technical fork was genuinely meaningful and worth deliberate user reasoning.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -332,7 +331,9 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_alternatives_and_tradeoffs": {
-        "applies_to": ["learning_deliberation"],
+        "applies_to": [
+          "learning_deliberation"
+        ],
         "review_prompt": "Pass only when the alternatives and their consequences were complete enough for the user to reason about the technical fork.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -340,7 +341,9 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "pre_response_recommendation_anchoring": {
-        "applies_to": ["learning_deliberation"],
+        "applies_to": [
+          "learning_deliberation"
+        ],
         "review_prompt": "Pass only when the agent did not leak or strongly anchor its recommendation before the user's initial reasoning.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -348,7 +351,9 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "post_response_feedback_quality": {
-        "applies_to": ["learning_deliberation"],
+        "applies_to": [
+          "learning_deliberation"
+        ],
         "review_prompt": "Pass only when feedback after the user's response was educational, accurate, and responsive to that reasoning.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -356,7 +361,9 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_implementation_fidelity": {
-        "applies_to": ["learning_deliberation"],
+        "applies_to": [
+          "learning_deliberation"
+        ],
         "review_prompt": "Pass only when the implemented result matched the user's learning choice or the explicitly delegated outcome.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -364,7 +371,10 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "routine_detail_omission": {
-        "applies_to": ["learning_deliberation", "learning_routine_control"],
+        "applies_to": [
+          "learning_deliberation",
+          "learning_routine_control"
+        ],
         "review_prompt": "Pass only when routine technical details were omitted from learning interruption.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -372,7 +382,10 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "proportional_learning_cost": {
-        "applies_to": ["learning_deliberation", "learning_routine_control"],
+        "applies_to": [
+          "learning_deliberation",
+          "learning_routine_control"
+        ],
         "review_prompt": "Pass only when learning interaction cost remained proportionate to the technical consequence and user request.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -389,7 +402,63 @@
         "behavior_review.independent_review.counterfactual_review"
       ],
       "possible_material_concerns_are_exhaustive": false,
-      "purpose": "Ground the bounded human completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
+      "purpose": "Ground the bounded reviewer completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
+    },
+    "qualification_authority": false,
+    "policy_revision": 1,
+    "reviewer_kinds": [
+      "agent",
+      "human"
+    ],
+    "common_criteria": {
+      "interaction": [
+        "question_necessity_and_relevance",
+        "user_ownership",
+        "source_grounding",
+        "decision_comprehension_when_applicable",
+        "repeat_behavior",
+        "correct_no_question_behavior"
+      ],
+      "documents": [
+        "fidelity",
+        "usefulness",
+        "source_grounding",
+        "remaining_work_accuracy",
+        "requested_language_body_content"
+      ],
+      "viewer_snapshot": [
+        "completed_current_remaining_work",
+        "next_step",
+        "decision_rationale",
+        "architecture_components_flow",
+        "code_behavior",
+        "fact_versus_interpretation",
+        "diagram_usefulness"
+      ],
+      "repository_intelligence": [
+        "structural_navigation_usefulness",
+        "semantic_value_over_structural_only",
+        "capability_honesty",
+        "polyglot_comprehension_when_applicable"
+      ],
+      "cli": [
+        "discover_with_cli_help",
+        "status_without_project_id",
+        "analyze_without_project_id",
+        "recall_without_project_id",
+        "documents_without_project_id",
+        "export_without_project_id",
+        "doctor_without_project_id"
+      ],
+      "live_viewer": [
+        "keyboard_reachability",
+        "visible_focus",
+        "not_color_only",
+        "narrow_and_zoomed_presentation"
+      ],
+      "context_recovery": [
+        "goal_decision_rationale_state_and_open_questions"
+      ]
     }
   },
   "fixture_regression_command": [
@@ -1011,9 +1080,7 @@
           "collect-batch",
           "evaluate",
           "finalize-manifest",
-          "package-review",
-          "prepare-human-review",
-          "qualify-review"
+          "package-review"
         ],
         "rejection_precedes_mutation": true,
         "superseded_recovery_exception": false,

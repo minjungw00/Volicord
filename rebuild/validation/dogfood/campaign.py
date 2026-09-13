@@ -3557,63 +3557,6 @@ def build_review_package(root: Path, output: Path, *, include_raw: bool = False)
     return output
 
 
-def prepare_human_review(root: Path, automated_result_path: Path) -> Path:
-    load_campaign_for_mutation(root)
-    verify_inventory(root)
-    automated_bytes = automated_result_path.read_bytes()
-    try:
-        automated_result = json.loads(automated_bytes)
-    except json.JSONDecodeError as error:
-        raise CampaignError("automated Dogfood result is malformed") from error
-    destination = root / "operator/human-review.json"
-    if destination.exists():
-        raise CampaignError("campaign-level human review artifact already exists")
-    try:
-        artifact = harness.human_review_template(
-            automated_result,
-            hashlib.sha256(automated_bytes).hexdigest(),
-        )
-    except ValueError as error:
-        raise CampaignError(str(error)) from error
-    write_json(destination, artifact)
-    return destination
-
-
-def qualify_human_review(
-    root: Path,
-    automated_result_path: Path,
-    human_review_path: Path,
-    output: Path,
-) -> Path:
-    load_campaign_for_mutation(root)
-    verify_inventory(root)
-    if output.exists():
-        raise CampaignError("qualified Dogfood result destination already exists")
-    expected_review = (root / "operator/human-review.json").resolve()
-    if human_review_path.resolve() != expected_review:
-        raise CampaignError("human review must be the campaign-level operator artifact")
-    automated_bytes = automated_result_path.read_bytes()
-    try:
-        automated_result = json.loads(automated_bytes)
-        human_review = read_json(human_review_path)
-    except json.JSONDecodeError as error:
-        raise CampaignError("automated Dogfood result is malformed") from error
-    try:
-        qualified = harness.combine_human_review(
-            automated_result,
-            human_review,
-            hashlib.sha256(automated_bytes).hexdigest(),
-        )
-    except ValueError as error:
-        raise CampaignError(str(error)) from error
-    if output.resolve().parent != root.resolve():
-        raise CampaignError("qualified Dogfood result must remain at the campaign root")
-    write_json(output, qualified)
-    register_artifact(root, human_review_path)
-    register_artifact(root, output)
-    return output
-
-
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     sub = result.add_subparsers(dest="command", required=True)
@@ -3639,8 +3582,6 @@ def parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--campaign-root", required=True)
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
-    prepare_review = sub.add_parser("prepare-human-review")
-    qualify_review = sub.add_parser("qualify-review")
     for command in (prepare_reviewer, seal, activate, collect_w, collect_r):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--repository-class", choices=CLASSES, required=True)
@@ -3678,12 +3619,6 @@ def parser() -> argparse.ArgumentParser:
     package.add_argument("--campaign-root", required=True)
     package.add_argument("--output", required=True)
     package.add_argument("--include-raw-rollouts", action="store_true")
-    prepare_review.add_argument("--campaign-root", required=True)
-    prepare_review.add_argument("--automated-result", required=True)
-    qualify_review.add_argument("--campaign-root", required=True)
-    qualify_review.add_argument("--automated-result", required=True)
-    qualify_review.add_argument("--human-review", required=True)
-    qualify_review.add_argument("--output", required=True)
     return result
 
 
@@ -3744,23 +3679,6 @@ def main() -> int:
         value = evaluate_campaign(root)
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
-    elif args.command == "prepare-human-review":
-        value = {
-            "human_review": str(
-                prepare_human_review(root, Path(args.automated_result).resolve())
-            )
-        }
-    elif args.command == "qualify-review":
-        value = {
-            "result": str(
-                qualify_human_review(
-                    root,
-                    Path(args.automated_result).resolve(),
-                    Path(args.human_review).resolve(),
-                    Path(args.output).resolve(),
-                )
-            )
-        }
     else:
         value = {"archive": str(build_review_package(root, Path(args.output), include_raw=args.include_raw_rollouts))}
     print(json.dumps(value, indent=2, sort_keys=True))

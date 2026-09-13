@@ -3202,59 +3202,6 @@ def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -
     assert all(item["status"] == "failed" for item in failed["formats"].values())
 
 
-def assert_campaign_level_human_review_operations(parent: Path, binary: Path) -> None:
-    root = parent / "human-review-campaign"
-    prepare(root, parent / "human-review-sources", binary)
-    automated = parent / "automated-result.json"
-    automated.write_bytes(b'{"kind":"fixture-automated-result"}\n')
-    expected_sha = hashlib.sha256(automated.read_bytes()).hexdigest()
-    original_template = harness.human_review_template
-    original_combine = harness.combine_human_review
-
-    def fake_template(result: dict[str, object], result_sha: str) -> dict[str, object]:
-        assert result == {"kind": "fixture-automated-result"}
-        assert result_sha == expected_sha
-        return {
-            "kind": "phase8_dogfood_human_review",
-            "automated_result_sha256": result_sha,
-            "status": "not_provided",
-        }
-
-    def fake_combine(
-        result: dict[str, object],
-        review: dict[str, object],
-        result_sha: str,
-    ) -> dict[str, object]:
-        assert result == {"kind": "fixture-automated-result"}
-        assert review["status"] == "passed"
-        assert result_sha == expected_sha
-        return {
-            "kind": "phase8_dogfood_result",
-            "automated_result_sha256": result_sha,
-            "replacement_qualification": {"status": "passed"},
-        }
-
-    harness.human_review_template = fake_template
-    harness.combine_human_review = fake_combine
-    try:
-        review_path = campaign.prepare_human_review(root, automated)
-        review = campaign.read_json(review_path)
-        assert review["automated_result_sha256"] == expected_sha
-        review["status"] = "passed"
-        campaign.write_json(review_path, review)
-        qualified_path = campaign.qualify_human_review(
-            root,
-            automated,
-            review_path,
-            root / "qualified-result.json",
-        )
-        assert campaign.read_json(qualified_path)["automated_result_sha256"] == expected_sha
-        assert automated.read_bytes() == b'{"kind":"fixture-automated-result"}\n'
-    finally:
-        harness.human_review_template = original_template
-        harness.combine_human_review = original_combine
-
-
 def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> None:
     root = parent / "superseded-campaign"
     prepare(root, parent / "superseded-sources", binary)
@@ -3294,10 +3241,7 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         "evaluate": lambda: campaign.evaluate_campaign(root),
         "finalize-manifest": lambda: campaign.finalize_manifest(root),
         "package-review": lambda: campaign.build_review_package(root, archive),
-        "prepare-human-review": lambda: campaign.prepare_human_review(root, missing),
-        "qualify-review": lambda: campaign.qualify_human_review(
-            root, missing, missing, qualified
-        ),
+
     }
     original_head = harness.git_head
     original_clean = harness.git_clean
@@ -3364,7 +3308,6 @@ def main() -> int:
             assert_batch_workflow(parent, binary)
             assert_batch_failure_atomicity(parent, binary)
             assert_failed_document_kind_is_machine_failure(parent, binary)
-            assert_campaign_level_human_review_operations(parent, binary)
             assert_resume_baseline_identity_and_ordering(parent)
             assert_successful_campaign(parent, binary)
             assert_superseded_candidate_mutation_guard(parent, binary)
@@ -3376,7 +3319,6 @@ def main() -> int:
             "production_session_start_sixteen_session_parser_and_intake_integration",
             "vscode_session_start_agent_visible_ordering_current_and_legacy_transports",
             "activation_absent_late_malformed_binding_indeterminate_and_validator_failure_attribution",
-            "campaign_level_human_review_operations",
             "shared_candidate_guard_rejects_all_superseded_mutations_atomically",
             "collect_batch_rejects_superseded_or_dirty_candidate",
             "read_only_superseded_campaign_inspection_remains_available",

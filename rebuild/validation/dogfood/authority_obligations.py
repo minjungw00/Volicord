@@ -1,4 +1,4 @@
-"""Bounded human judgments about material authority; never a text classifier.
+"""Bounded reviewer judgments about material authority; never a text classifier.
 
 Machine evidence establishes provenance and chronology of recorded operations.
 A reviewer must establish whether that authority actually covers the observable
@@ -41,9 +41,9 @@ def assessment_contract() -> dict[str, Any]:
         "chronology": ["prospective", "late", "not_applicable", "uncertain"],
         "evidence_fields": ["evidence_id", "locator"],
         "maximum_text_utf8_bytes": MAX_TEXT_BYTES,
-        "semantic_judgment_owner": "bounded_campaign_human_review",
+        "semantic_judgment_owner": "bounded_campaign_qualitative_review",
         "interaction_review_instruction": "Challenge independently material reference/context, composition/precedence, multi-item ordering/partial durability, and failure/retry/recovery results in actual implementation, tests and contracts. A resolved rejection policy does not itself resolve durable partial effects. Inspect current Discovery interaction identities and pre-write commitment bindings, then seek further uncovered outcomes in actual work. These are semantic completeness prompts, never ownership classifiers or mandatory Questions.",
-        "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the private post-session descriptor and verify its SHA-256; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle.",
+        "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve initial_concern_reference against the bounded concern projection and its descriptor field/hash binding; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and coverage_basis to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle.",
     }
 
 
@@ -74,7 +74,7 @@ def review_basis(evaluation: dict[str, Any], behavior_review: dict[str, Any], ca
             continue
         evidence_index[f"initial_authority_{index}"] = dict(reference)
     return {
-        "state": "requires_bounded_human_review",
+        "state": "requires_bounded_qualitative_review",
         "initial_challenge_is_rebuttable": True,
         "machine_proves_semantic_authority": False,
         "obligations": [{"obligation_id": f"material-outcome-{index + 1}", "initial_concern_reference": concern}
@@ -142,7 +142,7 @@ def assess(value: Any, evidence_index: dict[str, Any]) -> str:
 
 def validate_reviews(reviews: Any, expected: list[dict[str, Any]]) -> list[str]:
     if not isinstance(reviews, list) or len(reviews) != len(expected):
-        raise ValueError("human review must account for every material authority obligation in every cycle")
+        raise ValueError("qualitative review must account for every material authority obligation in every cycle")
     states = []
     for review, template in zip(reviews, expected):
         if not isinstance(review, dict) or set(review) != {"sample", "review_basis", "obligations", "additional_outcomes", "coverage_basis"} or review["sample"] != template["sample"] or review["review_basis"] != template["review_basis"]:

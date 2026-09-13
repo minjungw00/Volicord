@@ -283,20 +283,21 @@ clean Linux install
 
 통과 조건은 `acceptance-scenarios.md`의 최종 통과 조건과 일치한다.
 Automated Dogfood passage alone is not replacement passage: the current
-campaign-level human review must also pass, while an absent review leaves
-replacement explicitly pending. Immutable evidence collection, machine findings,
+qualitative review is evidence for a later final-policy decision; an absent or
+incomplete review leaves replacement pending. Immutable evidence collection, machine findings,
 qualitative review and final qualification policy are distinct layers. Semantic
 uncertainty is unresolved evidence for review; a confirmed hard evidence-integrity
 violation cannot be overridden. Collection and evaluation alone do not qualify a
-candidate. The technical gate remains separate; the complete later review and
-replacement policy is not defined by this lifecycle change.
+candidate. The technical gate remains separate. The common agent/human review
+contract is maintained in `qualitative-review.md`; final replacement policy remains
+outside that contract, and no agent review grants Phase 9 authority.
 Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고 maintained
 behavior vocabulary로 independent classification을 수행한다. Exact campaign behavior profile과
 behavior-to-cycle assignment는 evaluator/steward-private state에 integrity-bound되고, 모든 eight blind
 provisional review가 고정된 뒤에만 reveal·validation·comparison에 사용한다. Public repository
 distribution은 `volicord = 3`, `small-python = 3`, `polyglot-medium = 2`이며, 모든 cycle의
 work/resume을 포함하는 8-cycle/16-fresh-session campaign과
-모든 qualifying cycle의 human review와 current production background semantic-provider의
+모든 collected cycle의 qualitative review와 current production background semantic-provider의
 별도로 authorized real success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
 

@@ -227,12 +227,11 @@ claim that VS Code actually executed SessionStart. If trust or activation is unc
 before sending a frozen task; real SessionStart capture evidence remains mandatory. Run all sixteen chats
 without per-chat collection, preserve their raw rollouts, and then use
 `collect-batch` with sixteen explicit paths or one directory containing exactly
-sixteen files. Then use `finalize-manifest` and `package-review`. The automated
-Dogfood result may pass with `human_review = not_provided`, while replacement
-remains `pending_human_review` and `replacement_pass_candidate = false`. If a
-replacement-usability conclusion is needed, use `prepare-human-review` on the
-immutable automated result, complete its deterministic campaign-level samples,
-and use `qualify-review`; neither operation reruns Dogfood. The operator
+sixteen files. Collection publishes immutable evidence independently of evaluation.
+Use the common agent/human rubric in
+[`qualitative-review.md`](../../docs/design/qualitative-review.md) for post-campaign
+review. The former `prepare-human-review` and `qualify-review` approval path is
+removed. Qualitative judgments never grant Phase 9 approval. The operator
 material contains the frozen tasks and paths but
 not the evaluation basis, behavior reasoning, or
 provenance. Typed provenance is reverified against an active architecture owner
@@ -243,8 +242,8 @@ integrity validation. `collection_state = collected` and `qualification_state = 
 not imply Product passage. `dogfood-campaign evaluate` consumes that exact set and appends
 an immutable machine run. Findings distinguish certainty from disposition, retain original
 checks/basis, and leave semantic uncertainty unresolved for later review. Confirmed hard
-integrity violations cannot be waived. Existing technical gate and human rubric remain;
-the complete new qualitative workflow and final replacement policy are separate work.
+integrity violations cannot be waived. The technical gate remains separate. Agent and human reviewers share the maintained
+qualitative rubric; final replacement policy is separate work.
 
 New campaigns use cryptographically random opaque slot IDs for qualifying
 workspace, Runtime Home, reviewer preparation/draft/provisional filenames,

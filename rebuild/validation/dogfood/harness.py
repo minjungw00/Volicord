@@ -27,6 +27,7 @@ from typing import Any, Callable
 
 import machine_findings
 import authority_obligations
+import qualitative_review
 
 from codex_events import (
     ACTIVATION_PREFIX,
@@ -1235,19 +1236,19 @@ def load_definition() -> dict[str, Any]:
         "document_html_language",
     ):
         raise ValueError("the Phase 8 automated accessibility qualification changed")
-    human_review = value.get("human_review_contract", {})
+    human_review = value.get("qualitative_review_contract", {})
     if (
-        human_review.get("artifact_kind") != "phase8_dogfood_human_review"
+        human_review.get("artifact_kind") != "dogfood_qualitative_review"
         or human_review.get("authority_obligation_contract") != authority_obligations.assessment_contract()
-        or human_review.get("states") != ["not_provided", "passed", "failed"]
-        or human_review.get("replacement_states")
-        != ["pending_human_review", "passed", "failed"]
+        or human_review.get("states") != qualitative_review.STATES
+        or human_review.get("qualification_authority") is not False
+        or human_review.get("common_criteria") != qualitative_review.CRITERIA
         or tuple(human_review.get("interaction_repository_classes", [])) != CLASSES
         or tuple(human_review.get("document_repository_classes", [])) != CLASSES
         or human_review.get("live_viewer_locales") != ["en", "ko"]
         or human_review.get("machine_accessibility_may_be_overridden") is not False
         or human_review.get("sampling_algorithm")
-        != "every_automated_passed_interaction_cycle"
+        != "every_collected_cycle"
         or tuple(human_review.get("every_cycle_review_surfaces", []))
         != (
             "interaction",
@@ -1270,7 +1271,7 @@ def load_definition() -> dict[str, Any]:
             "proportional_learning_cost",
         )
     ):
-        raise ValueError("the Phase 8 campaign-level human review contract changed")
+        raise ValueError("the Phase 8 campaign-level qualitative review contract changed")
     if (
         evidence.get("required_capture_format")
         != "codex_mcp_completion_rollout_jsonl"
@@ -1789,8 +1790,6 @@ def load_definition() -> dict[str, Any]:
                 "evaluate",
                 "finalize-manifest",
                 "package-review",
-                "prepare-human-review",
-                "qualify-review",
             ],
             "rejection_precedes_mutation": True,
             "superseded_recovery_exception": False,
@@ -6461,7 +6460,7 @@ def interaction_review_facts(value: Any, choices: dict[str, Any] | None, reposit
             evidence_required = any(choices[choice_id]["evidence_state"] != "sufficient" for choice_id in descendants(conclusion["choice_ids"]))
             if not evidence_required and represented != {r["result_id"] for r in outcome["credible_outcomes"]}:
                 return False, {}
-    return True, {"reviewed_axes": sorted(seen_axes), "outcome_ids": sorted(outcomes), "semantic_judgment_owner": "active_agent_and_bounded_human_review"}
+    return True, {"reviewed_axes": sorted(seen_axes), "outcome_ids": sorted(outcomes), "semantic_judgment_owner": "active_agent_and_bounded_qualitative_review"}
 
 
 def material_boundary_review_facts(
@@ -8290,15 +8289,15 @@ def question_review_facts(
             "decision_recorded": decision_recorded,
         },
         "ask_user_invariants": {
-            "material_consequence": "requires_bounded_human_review",
-            "user_ownership": "requires_bounded_human_review",
-            "not_repository_or_environment_fact": "requires_bounded_human_review",
-            "not_settled_by_accepted_decision": "requires_bounded_human_review",
-            "not_delegated": "requires_bounded_human_review",
+            "material_consequence": "requires_bounded_qualitative_review",
+            "user_ownership": "requires_bounded_qualitative_review",
+            "not_repository_or_environment_fact": "requires_bounded_qualitative_review",
+            "not_settled_by_accepted_decision": "requires_bounded_qualitative_review",
+            "not_delegated": "requires_bounded_qualitative_review",
             "current_relevance": nonempty_string(revision.get("why_it_matters_now")) if revision else False,
             "source_grounding": bool(established_facts)
             and required_research_complete,
-            "real_consequence_between_alternatives": "requires_bounded_human_review",
+            "real_consequence_between_alternatives": "requires_bounded_qualitative_review",
         },
         "exact_preferred_expression_required": False,
     }
@@ -10397,7 +10396,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
     if "status" in result or "blockers" in result:
         raise ValueError("dogfood result may not conflate automated and replacement status")
     automated = result.get("automated_qualification")
-    human = result.get("human_review")
+    human = result.get("qualitative_review")
     replacement = result.get("replacement_qualification")
     if (
         not isinstance(automated, dict)
@@ -10409,30 +10408,12 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
         or result.get("automated_campaign_complete") is not True
     ):
         raise ValueError("dogfood automated qualification is incomplete or inconsistent")
-    if (
-        not isinstance(human, dict)
-        or human.get("state") not in {"not_provided", "passed", "failed"}
-        or human.get("required_samples")
-        != deterministic_human_review_samples(result.get("repositories", []))
-        or (
-            human.get("state") == "not_provided"
-            and human.get("artifact_sha256") is not None
-        )
-        or (
-            human.get("state") != "not_provided"
-            and not valid_capture_sha256(human.get("artifact_sha256"))
-        )
-    ):
-        raise ValueError("dogfood human-review state is incomplete or inconsistent")
-    expected_replacement = (
-        "failed"
-        if not automated["passed"]
-        else "pending_human_review"
-        if human["state"] == "not_provided"
-        else "passed"
-        if human["state"] == "passed"
-        else "failed"
-    )
+    if (not isinstance(human, dict) or human != {
+        "state": "not_recorded", "artifact_sha256": None,
+        "required_samples": deterministic_qualitative_review_samples(result.get("repositories", []))
+    }):
+        raise ValueError("technical aggregate cannot ingest or approve qualitative reviews")
+    expected_replacement = "failed" if not automated["passed"] else "pending_human_review"
     if (
         not isinstance(replacement, dict)
         or replacement.get("status") != expected_replacement
@@ -10475,7 +10456,7 @@ def validate_result(result: dict[str, Any], definition: dict[str, Any]) -> None:
                 raise ValueError("dogfood cycle lacks the real-session evidence class")
             if actual.get("status") == "passed" and (
                 not isinstance(actual.get("material_authority_review"), dict)
-                or actual["material_authority_review"].get("state") != "requires_bounded_human_review"
+                or actual["material_authority_review"].get("state") != "requires_bounded_qualitative_review"
                 or actual["material_authority_review"].get("machine_proves_semantic_authority") is not False
                 or not actual["material_authority_review"].get("obligations")
             ):
@@ -10630,7 +10611,7 @@ def aggregate_status(
     return "environment_blocked" if blockers else "passed"
 
 
-def deterministic_human_review_samples(
+def deterministic_qualitative_review_samples(
     repositories: list[dict[str, Any]],
 ) -> dict[str, Any]:
     interaction: list[dict[str, Any]] = []
@@ -10639,8 +10620,6 @@ def deterministic_human_review_samples(
         candidates = sorted([
             cycle
             for cycle in repository.get("cycles", [])
-            if cycle.get("status") == "passed"
-            and cycle.get("real_session_dogfood", {}).get("status") == "passed"
         ], key=lambda item: item.get("cycle", 999))
         for cycle in candidates:
             interaction.append({
@@ -10654,7 +10633,7 @@ def deterministic_human_review_samples(
         None,
     )
     return {
-        "algorithm": "every_automated_passed_interaction_cycle",
+        "algorithm": "every_collected_cycle",
         "interaction": interaction,
         "documents": interaction,
         "viewer_snapshots": interaction,
@@ -10665,395 +10644,6 @@ def deterministic_human_review_samples(
             "locales": ["en", "ko"],
         },
     }
-
-
-COMMON_INTERACTION_REVIEW_CRITERIA = (
-    "question_necessity_and_relevance",
-    "user_ownership",
-    "source_grounding",
-    "decision_comprehension_when_applicable",
-    "repeat_behavior",
-    "correct_no_question_behavior",
-)
-
-
-def interaction_review_criteria(
-    behavior_class: Any,
-    definition: dict[str, Any],
-) -> tuple[str, ...]:
-    contract = definition["human_review_contract"]
-    criterion_contracts = contract["interaction_behavior_criterion_contracts"]
-    applicable = tuple(
-        criterion
-        for criterion in contract["interaction_behavior_criteria"]
-        if behavior_class in criterion_contracts[criterion]["applies_to"]
-    )
-    return (*COMMON_INTERACTION_REVIEW_CRITERIA, *applicable)
-
-
-def human_review_observation_template(review_prompt: str | None = None) -> dict[str, str]:
-    return {
-        "status": "not_provided",
-        "basis": (
-            f"Not yet reviewed. Apply this maintained contract: {review_prompt}"
-            if review_prompt is not None
-            else "Not yet reviewed; replace with a bounded human observation."
-        ),
-    }
-
-
-def material_authority_review_templates(automated_result: dict[str, Any]) -> list[dict[str, Any]]:
-    templates = []
-    for sample in automated_result["human_review"]["required_samples"]["interaction"]:
-        repository = next(item for item in automated_result["repositories"] if item["class"] == sample["repository_class"])
-        cycle = next(item for item in repository["cycles"] if item["cycle"] == sample["cycle"])
-        basis = cycle["real_session_dogfood"]["material_authority_review"]
-        templates.append(authority_obligations.review_template(sample, basis))
-    return templates
-
-
-def human_review_template(automated_result: dict[str, Any], result_sha256: str) -> dict[str, Any]:
-    if not isinstance(automated_result, dict):
-        raise ValueError("automated Dogfood result must be a JSON object")
-    validate_result(automated_result, load_definition())
-    if automated_result["automated_qualification"]["passed"] is not True:
-        raise ValueError("human review is only meaningful after automated qualification passes")
-    samples = automated_result["human_review"]["required_samples"]
-    definition = load_definition()
-    behavior_contracts = definition["human_review_contract"][
-        "interaction_behavior_criterion_contracts"
-    ]
-    return {
-        "kind": "phase8_dogfood_human_review",
-        "candidate_head": automated_result["candidate_head"],
-        "automated_result_sha256": result_sha256,
-        "sampling": samples,
-        "authority_obligation_contract": authority_obligations.assessment_contract(),
-        "authority_obligation_reviews": material_authority_review_templates(automated_result),
-        "interaction_reviews": [
-            {
-                "sample": sample,
-                **{
-                    criterion: human_review_observation_template(
-                        behavior_contracts[criterion]["review_prompt"]
-                        if criterion in behavior_contracts
-                        else None
-                    )
-                    for criterion in interaction_review_criteria(
-                        sample.get("behavior_class"), definition
-                    )
-                },
-            }
-            for sample in samples["interaction"]
-        ],
-        "document_reviews": [
-            {
-                "sample": sample,
-                **{
-                    criterion: human_review_observation_template()
-                    for criterion in (
-                        "fidelity",
-                        "usefulness",
-                        "source_grounding",
-                        "remaining_work_accuracy",
-                        "requested_language_body_content",
-                    )
-                },
-            }
-            for sample in samples["documents"]
-        ],
-        "viewer_snapshot_reviews": [
-            {
-                "sample": sample,
-                **{
-                    criterion: human_review_observation_template()
-                    for criterion in (
-                        "completed_current_remaining_work",
-                        "next_step",
-                        "decision_rationale",
-                        "architecture_components_flow",
-                        "code_behavior",
-                        "fact_versus_interpretation",
-                        "diagram_usefulness",
-                    )
-                },
-            }
-            for sample in samples["viewer_snapshots"]
-        ],
-        "repository_intelligence_reviews": [
-            {
-                "sample": sample,
-                **{
-                    criterion: human_review_observation_template()
-                    for criterion in (
-                        "structural_navigation_usefulness",
-                        "semantic_value_over_structural_only",
-                        "capability_honesty",
-                        "polyglot_comprehension_when_applicable",
-                    )
-                },
-            }
-            for sample in samples["repository_intelligence"]
-        ],
-        "cli_usability_reviews": [
-            {
-                "sample": sample,
-                **{
-                    task: human_review_observation_template()
-                    for task in (
-                        "discover_with_cli_help",
-                        "status_without_project_id",
-                        "analyze_without_project_id",
-                        "recall_without_project_id",
-                        "documents_without_project_id",
-                        "export_without_project_id",
-                        "doctor_without_project_id",
-                    )
-                },
-            }
-            for sample in samples["cli"]
-        ],
-        "live_viewer_accessibility": {
-            "sample": samples["live_viewer"]["sample"],
-            "locales": {
-                locale: {
-                    criterion: human_review_observation_template()
-                    for criterion in (
-                        "keyboard_reachability",
-                        "visible_focus",
-                        "not_color_only",
-                        "narrow_and_zoomed_presentation",
-                    )
-                }
-                for locale in samples["live_viewer"]["locales"]
-            },
-        },
-    }
-
-
-def human_review_observations(artifact: dict[str, Any]) -> list[dict[str, Any]]:
-    values: list[dict[str, Any]] = []
-    for review in artifact.get("interaction_reviews", []):
-        if isinstance(review, dict):
-            values.extend(value for name, value in review.items() if name != "sample")
-    for field in (
-        "document_reviews",
-        "viewer_snapshot_reviews",
-        "repository_intelligence_reviews",
-    ):
-        for review in artifact.get(field, []):
-            if isinstance(review, dict):
-                values.extend(value for name, value in review.items() if name != "sample")
-    for review in artifact.get("cli_usability_reviews", []):
-        if isinstance(review, dict):
-            values.extend(value for name, value in review.items() if name != "sample")
-    live = artifact.get("live_viewer_accessibility", {})
-    locales = live.get("locales", {}) if isinstance(live, dict) else {}
-    if isinstance(locales, dict):
-        for review in locales.values():
-            if isinstance(review, dict):
-                values.extend(review.values())
-    return values
-
-
-def validate_human_review_artifact(
-    artifact: dict[str, Any],
-    automated_result: dict[str, Any],
-    automated_result_sha256: str,
-) -> str:
-    if not isinstance(artifact, dict):
-        raise ValueError("human review artifact must be a JSON object")
-    expected_samples = automated_result["human_review"]["required_samples"]
-    expected_artifact_fields = {
-        "kind",
-        "candidate_head",
-        "automated_result_sha256",
-        "sampling",
-        "interaction_reviews",
-        "authority_obligation_contract",
-        "authority_obligation_reviews",
-        "document_reviews",
-        "viewer_snapshot_reviews",
-        "repository_intelligence_reviews",
-        "cli_usability_reviews",
-        "live_viewer_accessibility",
-    }
-    interaction_reviews = artifact.get("interaction_reviews")
-    document_reviews = artifact.get("document_reviews")
-    snapshot_reviews = artifact.get("viewer_snapshot_reviews")
-    intelligence_reviews = artifact.get("repository_intelligence_reviews")
-    cli_reviews = artifact.get("cli_usability_reviews")
-    live_review = artifact.get("live_viewer_accessibility")
-    locales = live_review.get("locales") if isinstance(live_review, dict) else None
-    if (
-        set(artifact) != expected_artifact_fields
-        or artifact.get("kind") != "phase8_dogfood_human_review"
-        or artifact.get("candidate_head") != automated_result.get("candidate_head")
-        or artifact.get("automated_result_sha256") != automated_result_sha256
-        or artifact.get("sampling") != expected_samples
-        or not isinstance(interaction_reviews, list)
-        or len(interaction_reviews) != len(expected_samples["interaction"])
-        or not all(isinstance(item, dict) for item in interaction_reviews)
-        or not isinstance(document_reviews, list)
-        or not isinstance(snapshot_reviews, list)
-        or not isinstance(intelligence_reviews, list)
-        or not isinstance(cli_reviews, list)
-        or not all(
-            isinstance(item, dict)
-            for collection in (document_reviews, snapshot_reviews, intelligence_reviews, cli_reviews)
-            for item in collection
-        )
-        or not isinstance(live_review, dict)
-        or not isinstance(locales, dict)
-        or set(locales) != {"en", "ko"}
-        or not all(isinstance(item, dict) for item in locales.values())
-    ):
-        raise ValueError("human review artifact identity or deterministic sampling is invalid")
-    if [item.get("sample") for item in interaction_reviews] != expected_samples[
-        "interaction"
-    ]:
-        raise ValueError("human interaction review samples are not deterministic")
-    definition = load_definition()
-    if any(
-        set(item)
-        != {
-            "sample",
-            *interaction_review_criteria(item["sample"].get("behavior_class"), definition),
-        }
-        for item in interaction_reviews
-    ):
-        raise ValueError("human interaction review criteria are incomplete")
-    document_criteria = {
-        "fidelity",
-        "usefulness",
-        "source_grounding",
-        "remaining_work_accuracy",
-        "requested_language_body_content",
-    }
-    viewer_criteria = {
-        "completed_current_remaining_work",
-        "next_step",
-        "decision_rationale",
-        "architecture_components_flow",
-        "code_behavior",
-        "fact_versus_interpretation",
-        "diagram_usefulness",
-    }
-    intelligence_criteria = {
-        "structural_navigation_usefulness",
-        "semantic_value_over_structural_only",
-        "capability_honesty",
-        "polyglot_comprehension_when_applicable",
-    }
-    for collection, samples, criteria, label in (
-        (document_reviews, expected_samples["documents"], document_criteria, "document"),
-        (snapshot_reviews, expected_samples["viewer_snapshots"], viewer_criteria, "Viewer"),
-        (intelligence_reviews, expected_samples["repository_intelligence"], intelligence_criteria, "Repository Intelligence"),
-    ):
-        if [item.get("sample") for item in collection] != samples or any(
-            set(item) != {"sample", *criteria} for item in collection
-        ):
-            raise ValueError(f"human {label} review samples or criteria are incomplete")
-    cli_criteria = {
-        "discover_with_cli_help",
-        "status_without_project_id",
-        "analyze_without_project_id",
-        "recall_without_project_id",
-        "documents_without_project_id",
-        "export_without_project_id",
-        "doctor_without_project_id",
-    }
-    if (
-        [item.get("sample") for item in cli_reviews] != expected_samples["cli"]
-        or any(set(item) != {"sample", *cli_criteria} for item in cli_reviews)
-    ):
-        raise ValueError("human CLI review does not cover representative help-discovered tasks")
-    if (
-        set(live_review) != {"sample", "locales"}
-        or live_review.get("sample") != expected_samples["live_viewer"]["sample"]
-        or any(
-            set(review) != set(load_definition()["human_review_contract"]["live_viewer_criteria"])
-            for review in locales.values()
-        )
-    ):
-        raise ValueError("human live Viewer sample is not deterministic")
-    observations = human_review_observations(artifact)
-    expected_count = (
-        sum(
-            len(interaction_review_criteria(sample.get("behavior_class"), definition))
-            for sample in expected_samples["interaction"]
-        )
-        + len(expected_samples["documents"]) * len(document_criteria)
-        + len(expected_samples["viewer_snapshots"]) * len(viewer_criteria)
-        + len(expected_samples["repository_intelligence"]) * len(intelligence_criteria)
-        + len(expected_samples["cli"]) * len(cli_criteria)
-        + 2 * 4
-    )
-    if len(observations) != expected_count:
-        raise ValueError("human review artifact does not contain every required criterion")
-    if artifact.get("authority_obligation_contract") != authority_obligations.assessment_contract():
-        raise ValueError("human review authority obligation contract is not current")
-    statuses = authority_obligations.validate_reviews(artifact.get("authority_obligation_reviews"), material_authority_review_templates(automated_result))
-    for index, observation in enumerate(observations):
-        if not isinstance(observation, dict) or set(observation) != {"status", "basis"}:
-            raise ValueError("human review observations require status and basis")
-        status = observation.get("status")
-        basis = observation.get("basis")
-        if status not in {"not_provided", "passed", "failed"}:
-            raise ValueError("human review observation status is invalid")
-        if not nonempty_string(basis) or len(basis.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
-            raise ValueError(f"human review observation {index} has no bounded basis")
-        statuses.append(str(status))
-    if set(statuses) == {"not_provided"}:
-        return "not_provided"
-    return "passed" if set(statuses) == {"passed"} else "failed"
-
-
-def combine_human_review(
-    automated_result: dict[str, Any],
-    artifact: dict[str, Any],
-    automated_result_sha256: str,
-) -> dict[str, Any]:
-    if not isinstance(automated_result, dict):
-        raise ValueError("automated Dogfood result must be a JSON object")
-    definition = load_definition()
-    validate_result(automated_result, definition)
-    if automated_result.get("human_review", {}).get("state") != "not_provided":
-        raise ValueError("qualification requires the immutable automated Dogfood result")
-    review_state = validate_human_review_artifact(
-        artifact,
-        automated_result,
-        automated_result_sha256,
-    )
-    result = json.loads(json.dumps(automated_result))
-    result["human_review"] = {
-        "state": review_state,
-        "artifact_sha256": hashlib.sha256(
-            json.dumps(artifact, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest(),
-        "required_samples": artifact["sampling"],
-    }
-    automated_passed = result["automated_qualification"]["passed"] is True
-    if not automated_passed:
-        replacement_status = "failed"
-        basis = "automated qualification did not pass and cannot be overridden by human review"
-    elif review_state == "not_provided":
-        replacement_status = "pending_human_review"
-        basis = "automated qualification passed; campaign-level human review was not provided"
-    elif review_state == "passed":
-        replacement_status = "passed"
-        basis = "automated qualification and the maintained campaign-level human review passed"
-    else:
-        replacement_status = "failed"
-        basis = "one or more maintained qualitative human-review criteria did not pass"
-    result["replacement_qualification"] = {
-        "status": replacement_status,
-        "basis": basis,
-    }
-    result["replacement_pass_candidate"] = replacement_status == "passed"
-    result["phase_9_ready"] = replacement_status == "passed"
-    validate_result(result, definition)
-    return result
 
 
 def run_fixture_regression(v11: Any, raw_root: Path, base_env: dict[str, str], definition: dict[str, Any]) -> dict[str, Any]:
@@ -11319,15 +10909,15 @@ def run_evaluation(args: argparse.Namespace) -> int:
             "passed": automated_passed,
             "blockers": blockers,
         },
-        "human_review": {
-            "state": "not_provided",
+        "qualitative_review": {
+            "state": "not_recorded",
             "artifact_sha256": None,
-            "required_samples": deterministic_human_review_samples(repository_results),
+            "required_samples": deterministic_qualitative_review_samples(repository_results),
         },
         "replacement_qualification": {
             "status": "pending_human_review" if automated_passed else "failed",
             "basis": (
-                "automated qualification passed; campaign-level human review was not provided"
+                "automated qualification passed; qualitative review and final replacement policy are separate"
                 if automated_passed
                 else "automated qualification did not pass"
             ),
@@ -11372,7 +10962,7 @@ def run_evaluation(args: argparse.Namespace) -> int:
     print(json.dumps({
         "automated_qualification": automated_status,
         "automated_passed": automated_passed,
-        "human_review": "not_provided",
+        "qualitative_review": "not_recorded",
         "replacement_qualification": result["replacement_qualification"]["status"],
         "candidate_head": candidate_head,
         "blockers": blockers,
@@ -15160,7 +14750,7 @@ def self_test() -> int:
             observed = real_session_evidence(challenge_fixture, kind="volicord", cycle=1, repository_revision=revision)
             if observed["status"] != "passed":
                 raise AssertionError(f"initial {challenge} forced ceremony for {actual_route}: " + str({key: value for key, value in observed["checks"].items() if value != "passed"}))
-            if observed["material_authority_review"]["state"] != "requires_bounded_human_review":
+            if observed["material_authority_review"]["state"] != "requires_bounded_qualitative_review":
                 raise AssertionError("recorded non-Question authority became automatic semantic proof")
 
     hidden_early_directory = evidence_directory / "current-intake-hidden-early-write"
@@ -15410,7 +15000,7 @@ def self_test() -> int:
     ask_basis = external_result["inquiry_behavior_basis"]["ask_user_question_basis"]
     if (
         ask_basis.get("exact_preferred_expression_required") is not False
-        or ask_basis.get("ask_user_invariants", {}).get("material_consequence") != "requires_bounded_human_review"
+        or ask_basis.get("ask_user_invariants", {}).get("material_consequence") != "requires_bounded_qualitative_review"
         or external_result["checks"]["decision_provenance_when_required"] != "passed"
     ):
         raise AssertionError("ASK_USER invariants or current-host provenance were not qualified")
@@ -16393,7 +15983,7 @@ def self_test() -> int:
             "cycles": cycles,
         })
     accessibility_aggregate = aggregate_machine_accessibility(repositories, definition)
-    samples = deterministic_human_review_samples(repositories)
+    samples = deterministic_qualitative_review_samples(repositories)
     result = {
         "kind": "phase8_dogfood_result",
         "candidate_head": revision,
@@ -16403,14 +15993,14 @@ def self_test() -> int:
             "passed": True,
             "blockers": [],
         },
-        "human_review": {
-            "state": "not_provided",
+        "qualitative_review": {
+            "state": "not_recorded",
             "artifact_sha256": None,
             "required_samples": samples,
         },
         "replacement_qualification": {
             "status": "pending_human_review",
-            "basis": "automated qualification passed; campaign-level human review was not provided",
+            "basis": "automated qualification passed; qualitative review and final replacement policy are separate",
         },
         "replacement_pass_candidate": False,
         "phase_9_ready": False,
@@ -16424,207 +16014,16 @@ def self_test() -> int:
     validate_result(result, definition)
     if (
         result["automated_qualification"]["passed"] is not True
-        or result["human_review"]["state"] != "not_provided"
+        or result["qualitative_review"]["state"] != "not_recorded"
         or result["replacement_qualification"]["status"] != "pending_human_review"
         or result["replacement_pass_candidate"] is not False
     ):
         raise AssertionError("automated pass without human review was not kept pending")
-    if deterministic_human_review_samples(repositories) != samples:
+    if deterministic_qualitative_review_samples(repositories) != samples:
         raise AssertionError("campaign-level representative sampling is not deterministic")
 
-    automated_result_sha256 = "ab" * 32
-    review_template = human_review_template(result, automated_result_sha256)
-    if validate_human_review_artifact(
-        review_template,
-        result,
-        automated_result_sha256,
-    ) != "not_provided":
-        raise AssertionError("empty campaign-level human review was not explicit")
-    for interaction_review in review_template["interaction_reviews"]:
-        behavior_class = interaction_review["sample"]["behavior_class"]
-        expected = set(interaction_review_criteria(behavior_class, definition))
-        if set(interaction_review) != {"sample", *expected}:
-            raise AssertionError("behavior-specific human review applicability drifted")
-        if behavior_class in {
-            "research_or_no_question",
-            "delegated_implementation_choice",
-            "exploratory_uncertainty",
-            "learning_routine_control",
-        }:
-            if (
-                "unnecessary_interruption" not in interaction_review
-                or "explicit_material_handling_quality" in interaction_review
-                or "hidden_material_discovery_quality" in interaction_review
-            ):
-                raise AssertionError("non-user-owned cycle gained a material Question requirement")
-    passed_review = json.loads(json.dumps(review_template))
-    for observation in human_review_observations(passed_review):
-        observation["status"] = "passed"
-        observation["basis"] = "Bounded representative human review passed."
-
-    from authority_obligations_self_test import complete_synthetic_reviews
-    complete_synthetic_reviews(passed_review["authority_obligation_reviews"])
-    explicit_review = next(
-        review
-        for review in passed_review["interaction_reviews"]
-        if review["sample"]["behavior_class"] == "explicit_user_owned_decision"
-    )
-    explicit_review["explicit_material_handling_quality"]["basis"] = (
-        "The agent used different wording and alternatives while exposing each independent "
-        "retention and observable-output consequence before work; no evaluator answer was required."
-    )
-    hidden_review = next(
-        review
-        for review in passed_review["interaction_reviews"]
-        if review["sample"]["behavior_class"] == "hidden_user_owned_decision"
-    )
-    hidden_review["hidden_material_discovery_quality"]["basis"] = (
-        "Repository investigation found the user-owned boundary and one coupled choice disclosed "
-        "all independently material lifetime and cancellation consequences without oracle wording."
-    )
-    qualified = combine_human_review(result, passed_review, automated_result_sha256)
-    if (
-        qualified["automated_qualification"] != result["automated_qualification"]
-        or qualified["human_review"]["state"] != "passed"
-        or qualified["replacement_qualification"]["status"] != "passed"
-        or qualified["replacement_pass_candidate"] is not True
-    ):
-        raise AssertionError("passed human review did not qualify replacement independently")
-    from authority_obligations_self_test import assessment as synthetic_authority_assessment
-    for resolution, relation, expected in [
-        ("user_decision", "resolves_this_outcome", "passed"),
-        ("repository_or_contract_settlement", "concern_disproved", "passed"),
-        ("applicable_prior_authority", "resolves_this_outcome", "passed"),
-        ("exact_delegation", "resolves_this_outcome", "passed"),
-        ("prototype", "no_commitment", "passed"),
-        ("defer", "no_commitment", "passed"),
-        ("avoidance", "no_commitment", "passed"),
-        ("silent_commitment", "does_not_resolve_this_outcome", "failed"),
-        ("user_decision", "does_not_resolve_this_outcome", "failed"),
-    ]:
-        obligation_review = json.loads(json.dumps(passed_review))
-        assessment = synthetic_authority_assessment(resolution, expression="A differently expressed authority claim")
-        assessment["authority_relation_to_outcome"] = relation
-        obligation_review["authority_obligation_reviews"][0]["obligations"][0]["assessment"] = assessment
-        combined = combine_human_review(result, obligation_review, automated_result_sha256)
-        if combined["replacement_qualification"]["status"] != expected:
-            raise AssertionError(f"material authority disposition did not control qualification: {resolution}/{relation}")
-    from authority_obligations_self_test import interaction_fixture, interaction_assessment
-    for interaction_case in interaction_fixture()["cases"]:
-        interaction_obligation_review = json.loads(json.dumps(passed_review))
-        interaction_obligation_review["authority_obligation_reviews"][0]["additional_outcomes"] = [interaction_assessment(interaction_case)]
-        combined = combine_human_review(result, interaction_obligation_review, automated_result_sha256)
-        if combined["replacement_qualification"]["status"] != interaction_case["expected"]:
-            raise AssertionError("independent interaction authority did not control cycle qualification: " + interaction_case["id"])
-        failed_machine = json.loads(json.dumps(result))
-        failed_machine["automated_qualification"] = {"status":"failed", "passed":False, "blockers":["evidence_failure"]}
-        failed_machine["replacement_qualification"] = {"status":"failed", "basis":"Machine evidence failed before human review"}
-        if combine_human_review(failed_machine, interaction_obligation_review, automated_result_sha256)["replacement_pass_candidate"]:
-            raise AssertionError("interaction human review overrode machine/evidence failure")
-    extra_review = json.loads(json.dumps(passed_review))
-    extra_review["authority_obligation_reviews"][0]["additional_outcomes"] = [synthetic_authority_assessment("silent_commitment")]
-    if combine_human_review(result, extra_review, automated_result_sha256)["replacement_qualification"]["status"] != "failed":
-        raise AssertionError("new independently reviewed silent commitment escaped qualification")
-    silent_policy_review = json.loads(json.dumps(passed_review))
-    silent_hidden_review = next(
-        review
-        for review in silent_policy_review["interaction_reviews"]
-        if review["sample"]["behavior_class"] == "hidden_user_owned_decision"
-    )
-    silent_hidden_review["hidden_material_discovery_quality"] = {
-        "status": "failed",
-        "basis": (
-            "The agent asked about cancellation transport but its recommendation silently fixed "
-            "the independently material timed-token lifetime reset and partial-work semantics."
-        ),
-    }
-    silent_policy_qualification = combine_human_review(
-        result,
-        silent_policy_review,
-        automated_result_sha256,
-    )
-    if (
-        silent_policy_qualification["human_review"]["state"] != "failed"
-        or silent_policy_qualification["replacement_qualification"]["status"] != "failed"
-        or silent_policy_qualification["replacement_pass_candidate"] is not False
-    ):
-        raise AssertionError("silent independent material policy remained replacement-passable")
-    delegated_detail_review = json.loads(json.dumps(passed_review))
-    delegated_explicit_review = next(
-        review
-        for review in delegated_detail_review["interaction_reviews"]
-        if review["sample"]["behavior_class"] == "explicit_user_owned_decision"
-    )
-    delegated_explicit_review["explicit_material_handling_quality"]["basis"] = (
-        "Every material user consequence was exposed; the only omitted choice was the delegated "
-        "private helper and scheduling mechanism, which has no independent observable consequence."
-    )
-    delegated_detail_qualification = combine_human_review(
-        result,
-        delegated_detail_review,
-        automated_result_sha256,
-    )
-    if delegated_detail_qualification["replacement_qualification"]["status"] != "passed":
-        raise AssertionError("delegated implementation detail created false incompleteness")
-    failed_review = json.loads(json.dumps(passed_review))
-    human_review_observations(failed_review)[0]["status"] = "failed"
-    human_review_observations(failed_review)[0]["basis"] = "Question was not relevant."
-    failed_qualification = combine_human_review(
-        result,
-        failed_review,
-        automated_result_sha256,
-    )
-    if (
-        failed_qualification["automated_qualification"]["passed"] is not True
-        or failed_qualification["human_review"]["state"] != "failed"
-        or failed_qualification["replacement_qualification"]["status"] != "failed"
-    ):
-        raise AssertionError("failed human review incorrectly destroyed automated truth")
-
-    compatibility_review = json.loads(json.dumps(passed_review))
-    delegated_work_review = next(
-        review for review in compatibility_review["interaction_reviews"]
-        if review["sample"]["behavior_class"] == "delegated_implementation_choice"
-    )
-    delegated_work_review["source_grounding"] = {
-        "status": "failed",
-        "basis": (
-            "Sanitized fixture: work claimed completion after focused tests, but fresh resume "
-            "proved that the adapter rejected an existing supported input. Resume added the "
-            "missing compatibility test and repaired the implementation. That later repair "
-            "does not make the original work completion source-grounded."
-        ),
-    }
-    compatibility_qualification = combine_human_review(
-        result, compatibility_review, automated_result_sha256
-    )
-    if (
-        compatibility_qualification["automated_qualification"]["passed"] is not True
-        or compatibility_qualification["human_review"]["state"] != "failed"
-        or compatibility_qualification["replacement_pass_candidate"] is not False
-        or compatibility_qualification["replacement_qualification"]["status"] != "failed"
-    ):
-        raise AssertionError("later compatibility repair erased a reviewed work failure")
-    machine_failed = json.loads(json.dumps(result))
-    machine_failed["automated_qualification"] = {
-        "status": "failed",
-        "passed": False,
-        "blockers": ["deterministic machine failure"],
-    }
-    machine_failed["replacement_qualification"] = {
-        "status": "failed",
-        "basis": "automated qualification did not pass",
-    }
-    machine_failed_qualified = combine_human_review(
-        machine_failed,
-        passed_review,
-        automated_result_sha256,
-    )
-    if (
-        machine_failed_qualified["automated_qualification"]["passed"] is not False
-        or machine_failed_qualified["replacement_qualification"]["status"] != "failed"
-    ):
-        raise AssertionError("human review overrode a deterministic machine failure")
+    from qualitative_review_self_test import run_contract_tests
+    run_contract_tests()
     weakened_session_contract = json.loads(json.dumps(definition))
     weakened_session_contract["real_session_evidence"]["full_replacement_session_count"] = (
         QUALIFICATION_SESSION_COUNT - 1
@@ -16667,8 +16066,8 @@ def self_test() -> int:
     unavailable_resources["resource_qualification"] = aggregate_resource_qualification(
         unavailable_resources["repositories"]
     )
-    unavailable_resources["human_review"]["required_samples"] = (
-        deterministic_human_review_samples(unavailable_resources["repositories"])
+    unavailable_resources["qualitative_review"]["required_samples"] = (
+        deterministic_qualitative_review_samples(unavailable_resources["repositories"])
     )
     validate_result(unavailable_resources, definition)
     unavailable_as_pass = json.loads(json.dumps(unavailable_resources))
@@ -18773,9 +18172,8 @@ def self_test() -> int:
 
     # Semantic compatibility needs retained review evidence; readiness alone
     # cannot establish implementation correctness, even when resume passes.
-    canonical_result_truth_table["compatibility_regression_repaired_in_resume"] = (
-        compatibility_qualification["replacement_qualification"]["status"]
-    )
+    from qualitative_review_self_test import compatibility_review_result
+    canonical_result_truth_table["compatibility_regression_repaired_in_resume"] = compatibility_review_result()
 
     terminal_work_failure = canonical_result_fixture(
         "polyglot-medium", 1, "delegated_implementation_choice"
@@ -23188,7 +22586,7 @@ def self_test() -> int:
         "recall_without_post_inspection_verification_rejected": "passed",
         "repository_scoped_activation_required": "passed",
         "missing_activation_operator_environment_classification": "passed",
-        "campaign_level_human_review_state_round_trip": "passed",
+        "campaign_level_qualitative_review_contract": "passed",
         "material_dimension_completeness_review": "passed",
         "semantically_complete_non_oracle_review": "passed",
         "delegated_detail_not_material_incompleteness": "passed",
@@ -23246,7 +22644,7 @@ def self_test() -> int:
         "accessibility_heading_order_rejected": "passed",
         "accessibility_machine_failure_authority": "passed",
         "viewer_environment_blocking": "passed",
-        "human_review_cannot_override_machine_failure": "passed",
+        "qualitative_review_cannot_override_machine_failure": "passed",
         "linux_process_tree_peak_rss": process_peak["status"],
         "linux_process_tree_transient_child_disappearance": "passed",
         "linux_process_tree_start_stop_and_monotonicity": "passed",

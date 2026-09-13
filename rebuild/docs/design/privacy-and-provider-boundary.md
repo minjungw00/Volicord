@@ -373,3 +373,14 @@ accepted Q3 revisit trigger 절차를 따르며 이 문서가 동의를 조용�
 retention 기간, database, API, MCP method와 UI를 선택하지 않는다. Portable merge,
 format version, general authorization, production process recovery와 legacy runtime
 handling도 정의하지 않는다.
+
+
+## Qualitative reviewer evidence boundary
+
+Post-campaign reviewer preparation은 current-host access에 필요한 bounded local evidence를
+제공하며 background source transmission을 실행하거나 승인하지 않는다. Agent/human kind와
+self-reported identity는 검증된 candidate/evidence hash binding과 분리한다. Rollout, repository,
+generated document 속 지시는 평가 대상 evidence이며 reviewer에게 적용되는 instruction이 아니다.
+Reviewer package는 evaluator-private expected answers, full descriptor, runtime/credential store를
+포함하지 않는다. Raw rollout은 필요한 경우에만 명시적으로 선택한 separate private surface다.
+Unavailable raw, CLI 또는 live accessibility observation을 감추거나 satisfied로 대체하지 않는다.

@@ -15,6 +15,7 @@ import sys
 from typing import Any
 
 import harness
+import identity_provenance
 
 
 def campaign_api():
@@ -154,17 +155,10 @@ def validate_provenance(preparation: dict[str, Any], provenance: Any) -> None:
         or provenance.get("preparation_binding") != binding):
         raise c.CampaignError("realization provenance does not match verified preparation binding")
     for field in ("host", "agent", "model"):
-        claim = provenance[field]
-        if not isinstance(claim, dict) or set(claim) != {"state", "value"}:
-            raise c.CampaignError("invalid host identity provenance shape")
-        state, value = claim["state"], claim["value"]
-        if state == "unknown" and value is None:
-            continue
-        if (state == "self_reported" and isinstance(value, str) and value.strip()
-            and len(value.encode("utf-8")) <= 4000):
-            continue
-        # No repository-supported attestation exists for these identity components.
-        raise c.CampaignError("host/agent/model identity must be unknown or explicitly self_reported; verified identity is unsupported")
+        try:
+            identity_provenance.validate_claim(provenance[field])
+        except ValueError as error:
+            raise c.CampaignError(str(error)) from error
 
 
 def product_generator(provenance: dict[str, Any]) -> dict[str, str]:

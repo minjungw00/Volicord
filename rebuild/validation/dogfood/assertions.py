@@ -534,10 +534,7 @@ def main() -> int:
         "verified_state_continuation",
         "repository_scoped_activation_observed",
         "operator_environment_invalid",
-        "deterministic_human_review_samples",
-        "human_review_template",
-        "validate_human_review_artifact",
-        "combine_human_review",
+        "deterministic_qualitative_review_samples",
         "project_resolve",
         "repository_bound_project_resolution",
         "qualify-work-blocker",
@@ -1216,8 +1213,6 @@ def main() -> int:
                 "evaluate",
                 "finalize-manifest",
                 "package-review",
-                "prepare-human-review",
-                "qualify-review",
             ],
             "rejection_precedes_mutation": True,
             "superseded_recovery_exception": False,
@@ -1227,7 +1222,7 @@ def main() -> int:
         not in batch_contract.get("automatic_cycle_evidence", [])
     ):
         raise AssertionError("Phase 8 batch campaign contract is incomplete")
-    human_review = definition_value.get("human_review_contract", {})
+    human_review = definition_value.get("qualitative_review_contract", {})
     import authority_obligations
     from authority_obligations_self_test import self_test as authority_obligation_self_test
     if human_review.get("authority_obligation_contract") != authority_obligations.assessment_contract():
@@ -1245,10 +1240,10 @@ def main() -> int:
     behavior_criteria = human_review.get("interaction_behavior_criterion_contracts", {})
     material_grounding = human_review.get("material_completeness_grounding", {})
     if (
-        human_review.get("artifact_kind") != "phase8_dogfood_human_review"
+        human_review.get("artifact_kind") != "dogfood_qualitative_review"
         or human_review.get("machine_accessibility_may_be_overridden") is not False
         or human_review.get("sampling_algorithm")
-        != "every_automated_passed_interaction_cycle"
+        != "every_collected_cycle"
         or human_review.get("every_cycle_review_surfaces")
         != [
             "interaction",

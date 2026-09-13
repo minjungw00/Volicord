@@ -1222,16 +1222,16 @@ clean install
   evaluator alternative 또는 expected user choice를 성공 조건으로 삼지 않는다.
 - Naturalistic Dogfood의 machine-observable qualification은 human review 부재와 구분되어
   독립적으로 통과할 수 있다.
-- Human review가 없으면 replacement는 명시적으로 `pending_human_review`이며 pass로
+- Common qualitative review와 후속 final-policy 결정이 없으면 replacement는 `pending_human_review`이며 pass로
   표현되지 않는다.
-- Replacement usability review는 모든 qualifying cycle을 대상으로 source-vs-interpretation
+- Replacement usability review는 reviewer kind를 명시하고 모든 collected cycle을 대상으로 source-vs-interpretation
   comprehension, repository-analysis usefulness, polyglot comprehension, CLI usability,
   Viewer understanding, four-document usefulness, Question necessity/Decision comprehension과
   interruption cost를 평가한다. Static Viewer readability와 `en`/`ko` live Viewer
   accessibility도 유지하며 lowest-numbered cycle 하나만으로 repository class를 대표하지
   않는다.
-- Human review는 deterministic machine failure를 override하지 않으며, immutable automated
-  result에 나중에 결합할 때 naturalistic session을 다시 실행하지 않는다.
+- Agent/human qualitative review는 hard machine failure를 override하지 않으며 immutable evidence
+  set과 optional machine run에 binding할 때 naturalistic session을 다시 실행하지 않는다.
 - Guarded effect만 action-scoped confirmation을 요구한다.
 - partial analyzer, provider와 derived-index 실패가 canonical state를 손상시키지 않는다.
 - Final qualification의 maintained clippy execution은 warning을 남기지 않는다.
@@ -1245,5 +1245,5 @@ clean install
   위반은 valid publication을 차단한다. Qualitative review가 이를 override할 수 없다.
 - Machine semantic indeterminate는 confirmed Product violation과 다르며 후속 review에서
   inspect할 evidence/basis로 남긴다. Collected, evaluated, qualified/rejected는 독립 상태다.
-- Technical gate는 별도 candidate boundary이며 full qualitative workflow와 final
-  replacement policy는 이 acceptance가 새로 정의하지 않는다.
+- Common review는 불확실성, counterevidence와 observation limit를 evidence locator와 보존한다.
+  구조적으로 valid한 review도 Phase 9 approval이 아니며 final replacement policy는 별도다.

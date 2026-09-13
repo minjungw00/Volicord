@@ -951,9 +951,9 @@ Phase 8 Dogfood full passage는 V11 scripted conformance와 별개의 real-sessi
 actual repository class에 `volicord = 3`, `small-python = 3`, `polyglot-medium = 2` cycle을
 배분하고, 각 cycle은 globally distinct한 fresh VS Code Codex work session과 fresh resume
 session을 사용한다. 따라서 automated qualification에는 `8 cycles × 2 sessions = 16`개의 distinct real
-session이 필요하다. Current result schema는 `automated_qualification`, `human_review`,
-`replacement_qualification`을 분리한다. 모든 machine requirement가 통과하면 human review가
-`not_provided`여도 automated command는 성공하지만 replacement는
+session이 필요하다. Current result schema는 `automated_qualification`, `qualitative_review`,
+`replacement_qualification`을 분리한다. 모든 machine requirement가 통과하면 qualitative review가
+`not_recorded`여도 automated command는 성공하지만 replacement는
 `pending_human_review`이며 `replacement_pass_candidate`와 `phase_9_ready`는 false다.
 
 각 cycle descriptor는 unique Question, alternatives, recommendation, terminal outcome,
@@ -1435,8 +1435,8 @@ Explicit semantic indeterminacy와 missing observation은 review-required이며 
 violation으로 변환하지 않는다. Existing determinate violations는 보수적으로 hard-blocking을
 유지하며 broad heuristic authority audit는 후속 작업이다. Required hard integrity의 uncertainty도
 valid admission을 허용하지 않는다. `finding_state = hard_blocked|review_required|observations_complete`
-어느 값도 final qualification verdict가 아니다. Existing technical aggregate와 human rubric을
-대체하지 않으며 새 run의 qualitative-review/adoption interface는 후속 세션이 소유한다.
+어느 값도 final qualification verdict가 아니다. Technical aggregate는 별도 유지한다. Common qualitative-review contract는 아래 rubric을
+사용하며 최종 adoption/qualification policy는 후속 작업이다.
 
 기존 technical aggregate의 `harness.py run`은 required `--machine-evaluation`으로 해당
 campaign의 inventory-bound immutable run을 받아 동일 observation/findings를 사용한다.
@@ -1482,10 +1482,9 @@ Automated run은 repository/candidate identity, 16-session semantics, post-revea
 qualification profile, bundle/provenance, document와 static snapshot 생성,
 requested-language realization, production
 provider success authorization, machine accessibility, resource, regression, Decision revisit와
-candidate cleanliness를 독립 판정한다. Human review는 immutable automated result 뒤에
-한 번만 생성하며 replacement qualification에 필수다. Lowest-numbered 또는 lowest
-automated-passed cycle 하나를 repository class 대표로 삼지 않고 모든 qualifying cycle을
-검토한다. 각 cycle에서 source-vs-interpretation comprehension, repository-analysis
+candidate cleanliness를 독립 판정한다. 공통 qualitative review는 immutable evidence set에서 agent 또는 human reviewer별
+독립 run으로 생성한다. Machine evaluation은 optional binding이며 통과를 요구하지 않는다.
+Lowest-numbered 또는 automated-passed cycle로 한정하지 않고 모든 collected cycle을 검토한다. 각 cycle에서 source-vs-interpretation comprehension, repository-analysis
 usefulness, CLI usability, Viewer Project Understanding, four-document usefulness, Question
 necessity/Decision comprehension과 interruption cost를 평가한다. Interaction review는 explicit
 material handling quality, hidden material discovery quality, normal-mode no-question interruption
@@ -1493,7 +1492,7 @@ precision과 learning-active quality를 구분한다. Learning review는 fork의
 alternatives/trade-offs completeness, initial reasoning 전 recommendation anchoring 부재,
 response 뒤 educational feedback 정확성, implementation fidelity, routine-detail omission과
 proportional interaction cost를 판정한다. 두 user-owned quality criterion은 Question 존재만으로 통과하지
-않는다. Human reviewer는 actual material outcome마다 observable implementation commitment,
+않는다. 명시된 reviewer는 actual material outcome마다 observable implementation commitment,
 actual resolution path와 supporting authority를 구분한다. Current user Decision, applicable prior
 authority, exact delegation, repository/contract settlement는 해당 outcome을 prospective하게
 resolve해야 한다. Stronger inspectable authority는 initial concern을 반증할 수 있고,
@@ -1506,20 +1505,20 @@ wording, alternative label, expected answer 또는 하나의 decomposition은 �
 agent에 위임된 trivial implementation detail은 별도 Question 누락으로 판정하지 않는다.
 Machine lifecycle checks는 recorded dimension의 Source/identity, current response/Decision
 linkage와 write 전 chronology만 판정한다. `recorded_user_owned_authority`는 hidden completeness의
-semantic proof가 아니다. Semantic ask-user invariants는 `requires_bounded_human_review`이며
+semantic proof가 아니다. Semantic ask-user invariants는 `requires_bounded_qualitative_review`이며
 Question wording, count, keyword 또는 similarity로 자동 판정하지 않는다. Hidden repository
 investigation은 필요하지만 multiple choices 또는 coupling이라는 고정 형태를 요구하지 않는다.
 
-Mandatory `authority_obligation_reviews`는 every qualifying cycle에서 initial concern마다
+Mandatory `authority_obligation_reviews`는 every collected cycle에서 initial concern마다
 `material_outcome`, `observable_implementation_commitment`, `commitment_state`, `resolution_path`,
 `authority_kind`, bounded `authority_basis`, `authority_relation_to_outcome`, `chronology`와
 `evidence`를 기록한다. Evidence는 immutable capture/bundle hash 또는 pinned owner provenance의
 `evidence_id`와 exact call/turn, Decision revision, file/line 또는 diff hunk `locator`를 인용한다.
 Sanitized automated result는 initial concern text 대신 private descriptor field와 SHA-256만
-보존한다. Post-session review package의 evaluator descriptor와 별도 raw-rollout archive에서
-이를 resolve한다. 모든 실제 변경과 coupled artifact를 검토한 `coverage_basis`가 필요하고,
+보존한다. Reviewer-safe bounded concern projection과 별도 private raw-rollout surface에서
+이를 resolve한다. Full evaluator descriptor와 expected answers는 reviewer instructions가 아니다. 모든 실제 변경과 coupled artifact를 검토한 `coverage_basis`가 필요하고,
 initial challenge에 없던 independent outcome은 `additional_outcomes`에 각각 평가한다.
-Human review는 current Discovery의 interaction outcome identities와 pre-write planned commitment
+Qualitative review는 current Discovery의 interaction outcome identities와 pre-write planned commitment
 binding/scope를 같은 implementation observation에서 inspect한다. Reference/context basis,
 composition/precedence, multi-item ordering/partial durability와 failure/retry/recovery는 actual work와
 coupled artifacts에서 additional independent outcome을 찾기 위한 completeness prompt이며 ownership
@@ -1534,15 +1533,15 @@ evidence가 아니다. Human pass는 machine/evidence failure를 override하지 
 Draft의 null assessment/coverage는 미완료이며 generic interaction pass로 대체할 수 없다.
 Silent/unresolved, late, unrelated authority 또는 production commitment를 가진 prototype/defer
 주장은 실패한다. Typed schema와 immutable evidence linkage는 판단을 재현 가능하게 만들지만,
-인용한 authority가 실제 outcome을 resolve하는지는 bounded human judgment가 소유한다.
+인용한 authority가 실제 outcome을 resolve하는지는 명시된 reviewer의 bounded judgment가 소유한다.
 
 Evaluator-private concern과 counterfactual evidence는 naturalistic execution 뒤 bounded review
 grounding으로만 사용하며 frozen operator task와 work/resume session에는 노출하지 않는다.
 Polyglot cycle은 언어·component
 경계와 flow comprehension을 추가하고, static Viewer readability와 Volicord live Viewer의
-`en`/`ko` keyboard/focus/color/zoom accessibility도 campaign에서 검토한다. Human fail은
-automated pass를 훼손하지 않지만 replacement를 fail하며, human pass도 machine failure를 override할
-수 없다. `prepare-human-review`와 `qualify-review`는 session 또는 machine Dogfood를 rerun하지 않는다.
+`en`/`ko` keyboard/focus/color/zoom accessibility도 campaign에서 검토한다. Reviewer violation은 immutable automated result를 바꾸지 않으며 satisfied judgment도 hard machine
+failure를 override할 수 없다. 종전 `prepare-human-review`, `qualify-review` 및 approval combiner는
+폐기한다. Common review artifact는 final Phase 9 approval authority를 얻지 않는다.
 
 ## 16. Architecture 확정 gate
 
@@ -1729,3 +1728,16 @@ Meaningful text manifests such as requirements.txt and CMakeLists.txt are reposi
 known synthetic markers/generated state are excluded, rather than an entire text-file suffix family.
 A later Goal invalidates the earlier authority frontier even when the older Goal's Source linkage is
 still valid historical evidence.
+
+
+### Common evidence-bound qualitative review
+
+`qualitative-review.md`와 `evaluation.json.qualitative_review_contract`가 공통 rubric,
+reviewer metadata와 reviewer-safe operation 계약을 정의한다. Agent와 human은 같은 criterion을
+사용하지만 immutable `reviewer.kind`를 공유하거나 prose로 추론하지 않는다. Criterion assessment는
+`satisfied`, `violated`, `insufficient_evidence`, `not_applicable`, `not_reviewed`를 구분한다.
+Missing observation은 inapplicability가 아니며 incomplete review는 만족으로 집계하지 않는다.
+Review artifact의 구조·hash·locator validation은 semantic judgment의 proof가 아니다.
+Technical result의 `qualitative_review = not_recorded`는 review publication과 독립이며 기존
+`pending_human_review`는 후속 final-policy 결정을 기다리는 보수적 placeholder다. 이 세션은
+어떤 criterion이 항상 human을 요구하는지, operator approval 또는 Phase 9 통과를 정하지 않는다.
