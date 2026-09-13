@@ -2061,73 +2061,6 @@ def update_activation_summary(root: Path, kind: str, cycle: int, **updates: Any)
     return path
 
 
-def collect_work(root: Path, kind: str, cycle: int, raw_capture: Path) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root)
-    if document_realization.required(campaign["document_language"], campaign["viewer_locale"]):
-        raise CampaignError("cross-locale collection requires prepare-document-realizations and collect-batch")
-    verify_inventory(root)
-    if campaign.get("terminal_outcome") is not None:
-        raise CampaignError("campaign already stopped; create a new campaign identity")
-    key = cycle_key(kind, cycle)
-    state = campaign["cycles"][key]
-    if state["state"] != "sealed":
-        raise CampaignError("work collection requires a valid sealed evaluator descriptor")
-    descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
-    destination = cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl"
-    copy_exact(raw_capture.resolve(), destination)
-    try:
-        capture = load_codex_capture(destination)
-    except (OSError, EvidenceError) as error:
-        raise CampaignError("work rollout is not a supported normalized Codex capture") from error
-    project_ids = observed_project_ids(capture)
-    result: dict[str, Any]
-    try:
-        blocker = harness.build_work_blocker_result(
-            campaign["candidate_head"],
-            descriptor,
-            harness.sha256(descriptor_path),
-            capture,
-            target_repository=Path(state["repository_path"]),
-        )
-    except harness.NoWorkBlocker:
-        if len(project_ids) != 1:
-            raise CampaignError("qualifying work capture must expose one Project identity")
-        result = {
-            "kind": "phase8_dogfood_work_intake",
-            "outcome": "resume_allowed",
-            "repository_class": kind,
-            "cycle": cycle,
-            "project_id": project_ids[0],
-            "work_capture_sha256": capture.source_sha256,
-            "repository_scoped_activation_observed": True,
-        }
-        state["state"] = "work_collected"
-        state["project_id"] = project_ids[0]
-        state["work_session_id"] = capture.session_id
-    except harness.WorkCaptureContractError as error:
-        result = work_capture_failure_result(kind, cycle, error)
-        result["failure_attribution"] = bounded_failure_attribution("work", "evidence", error.basis, [error.check])
-        state["state"] = "evidence_failed"
-        campaign["terminal_outcome"] = "evidence_failed"
-    else:
-        result = blocker
-        state["state"] = blocker["outcome"]
-        campaign["terminal_outcome"] = blocker["outcome"]
-        write_json(cycle_root(root, kind, cycle) / "blocker-result.json", blocker)
-        register_artifact(root, cycle_root(root, kind, cycle) / "blocker-result.json")
-    write_json(cycle_root(root, kind, cycle) / "work-intake.json", result)
-    activation = update_activation_summary(
-        root,
-        kind,
-        cycle,
-        work_session_start_activation_observed=capture.repository_scoped_activation_observed,
-    )
-    save_campaign(root, campaign)
-    for path in (destination, cycle_root(root, kind, cycle) / "work-intake.json", activation):
-        register_artifact(root, path)
-    return result
-
-
 def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, Any]) -> str:
     if (
         capture.source != "vscode"
@@ -2775,45 +2708,6 @@ def extract_resume_evidence(
     }
 
 
-def collect_resume(
-    root: Path,
-    kind: str,
-    cycle: int,
-    raw_capture: Path,
-    *,
-    exporter: Callable[[Path, Path, Path, Path], None] = default_export,
-    documenter: Callable[
-        [Path, Path, Path, str, str, Path, str, str], dict[str, Any]
-    ] = generate_document,
-    snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
-) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root)
-    if document_realization.required(campaign["document_language"], campaign["viewer_locale"]):
-        raise CampaignError("cross-locale collection requires prepare-document-realizations and collect-batch")
-    verify_inventory(root)
-    if campaign.get("terminal_outcome") is not None:
-        raise CampaignError("later collection is blocked; create a new campaign identity")
-    state = campaign["cycles"][cycle_key(kind, cycle)]
-    if state["state"] != "work_collected":
-        raise CampaignError("resume collection requires a resume_allowed work intake")
-    destination = cycle_root(root, kind, cycle) / "evidence/resume.rollout.jsonl"
-    copy_exact(raw_capture.resolve(), destination)
-    try:
-        capture = load_codex_capture(destination)
-    except (OSError, EvidenceError) as error:
-        raise CampaignError("resume rollout is not a supported normalized Codex capture") from error
-    return extract_resume_evidence(
-        root,
-        kind,
-        cycle,
-        capture,
-        destination,
-        exporter=exporter,
-        documenter=documenter,
-        snapshotter=snapshotter,
-    )
-
-
 def batch_rollout_paths(
     explicit_paths: list[Path] | None,
     rollout_directory: Path | None,
@@ -3304,6 +3198,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 1
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
+        or manifest.get("cycles") != campaign["cycles"]
         or len(manifest.get("raw_inputs", [])) != BATCH_CAPTURE_COUNT):
         raise CampaignError("evidence-set identity or candidate binding mismatch")
     for name, binding in manifest["artifacts"].items():
@@ -3328,12 +3223,8 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     return manifest
 
 
-def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | None = None) -> dict[str, Any]:
-    """Append a machine run over frozen evidence; no export, replay or qualification."""
-    campaign = load_campaign(root)
-    manifest = load_evidence_set(root)
-    from evaluation_runs import policy_identity, historical_reference
-    prior = historical_reference(previous, manifest["candidate_head"], campaign["evidence_set"]) if previous else None
+def evaluate_cycles(root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """One observation engine for intact evidence and incomplete historical diagnostics."""
     cycles = []
     for kind in CLASSES:
         for cycle in cycle_numbers(kind):
@@ -3347,11 +3238,22 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
             observation.pop("machine_findings", None)
             cycles.append({"repository_class": kind, "cycle": cycle, "observation": observation,
                 "findings": machine_findings.from_observation(observation)})
+    return cycles
+
+
+def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | None = None) -> dict[str, Any]:
+    """Append a machine run over frozen evidence; no export, replay or qualification."""
+    campaign = load_campaign(root)
+    manifest = load_evidence_set(root)
+    from evaluation_runs import policy_identity, historical_reference
+    prior = historical_reference(previous, manifest["candidate_head"], campaign["evidence_set"]) if previous else None
+    cycles = evaluate_cycles(root, manifest)
     result = {"kind": "dogfood_machine_evaluation", "schema_version": 2,
         "candidate_head": manifest["candidate_head"], "evidence_set": campaign["evidence_set"],
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
         "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
-            for name in ("harness.py", "codex_events.py", "machine_findings.py", "campaign.py")},
+            for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
+                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "cycles": cycles,
@@ -3360,6 +3262,8 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
     machine_findings.validate_run(result)
     # Recheck input hashes after evaluation and before the controlled publication.
     load_evidence_set(root)
+    if previous and historical_reference(previous, manifest["candidate_head"], campaign["evidence_set"]) != prior:
+        raise CampaignError("previous evaluation changed during replay")
     destination = output or root.parent / (root.name + "-evaluations") / result["run_id"]
     if destination.resolve().is_relative_to(root.resolve()):
         raise CampaignError("evaluation output must be outside the immutable campaign")
@@ -3367,6 +3271,43 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
     result_name = str(publish(destination, result))
     return {"evaluation": result_name, "run_id": result["run_id"],
         "finding_state": result["finding_state"], "qualification_state": "not_run"}
+
+
+def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
+    """Read-only diagnostic of existing artifacts; never manufacture a collection receipt."""
+    import evaluation_runs
+    campaign = load_campaign(root)
+    verify_inventory(root)
+    names = set(load_inventory(root)["artifacts"]) | {"campaign.json", "evidence-inventory.json"}
+    names.update(relative(root, p) for p in (root / "raw-rollouts").glob("*.jsonl"))
+    def snapshot():
+        return {name: {"sha256": harness.sha256(root / name), "bytes": (root / name).stat().st_size}
+            for name in sorted(names)}
+    before = snapshot()
+    # The original descriptors are consumed as stored. Absent raw/support links
+    # stay absent even when unrelated files elsewhere might look like replacements.
+    cycles = evaluate_cycles(root, campaign)
+    result = {"kind": "dogfood_evaluation_diagnostic", "schema_version": 1,
+        "candidate_head": campaign["candidate_head"],
+        "evidence_set": {"state": "historical_inventory_only", "sha256": machine_findings.digest(before)},
+        "evaluator_revision": harness.git_head(ROOT),
+        "policy": evaluation_runs.policy_identity(),
+        "evaluation_run_nonce": secrets.token_hex(16), "qualitative_review_runs": [],
+        "historical_campaign_sha256": before["campaign.json"]["sha256"],
+        "historical_terminal_outcome": campaign.get("terminal_outcome"),
+        "artifacts": before, "cycles": cycles,
+        "finding_state": machine_findings.evaluation_state([f for c in cycles for f in c["findings"]]),
+        "qualification_state": "not_run", "replacement_pass_candidate": False, "phase_9_ready": False,
+        "limitation": "Diagnostic inventory is not an immutable collection receipt; missing historical evidence is not synthesized."}
+    result["run_id"] = machine_findings.digest(result)
+    if snapshot() != before:
+        raise CampaignError("historical evidence changed during diagnostic replay")
+    if output.resolve().is_relative_to(root.resolve()):
+        raise CampaignError("diagnostic output must be outside historical campaign")
+    review_operations.publish_directory(output, {"diagnostic.json": json_bytes(result)})
+    return {"diagnostic": str(output / "diagnostic.json"), "run_id": result["run_id"],
+        "candidate_head": result["candidate_head"], "finding_state": result["finding_state"],
+        "qualification_state": "not_run", "phase_9_ready": False}
 
 
 def finalize_manifest(root: Path, output: Path | None = None) -> Path:
@@ -3458,12 +3399,13 @@ def parser() -> argparse.ArgumentParser:
     seal = sub.add_parser("seal-cycle")
     activate = sub.add_parser("activate-cycle")
     activate_every = sub.add_parser("activate-all")
-    collect_w = sub.add_parser("collect-work")
-    collect_r = sub.add_parser("collect-resume")
     collect_b = sub.add_parser("collect-batch")
     prepare_documents = sub.add_parser("prepare-document-realizations")
     validate_document = sub.add_parser("validate-document-realization")
     record_document = sub.add_parser("record-document-realization")
+    diagnostic = sub.add_parser("diagnose", help="Read-only historical inventory diagnostic when a collection receipt is unavailable; never qualifies")
+    diagnostic.add_argument("--campaign-root", required=True)
+    diagnostic.add_argument("--output", required=True)
     evaluate = sub.add_parser("evaluate", help="Append a new evaluation of immutable evidence, including an older Product candidate")
     evaluate.add_argument("--campaign-root", required=True)
     evaluate.add_argument("--output", help="New immutable run directory outside the campaign")
@@ -3483,6 +3425,9 @@ def parser() -> argparse.ArgumentParser:
     approve.add_argument("--output", required=True)
     validate_qualification = sub.add_parser("validate-qualification", help="Recheck all exact qualification inputs without mutation")
     validate_qualification.add_argument("--qualification", required=True)
+    validate_approval = sub.add_parser("validate-approval", help="Verify immutable operator approval and all bound qualification inputs")
+    validate_approval.add_argument("--approval", required=True)
+    validate_approval.add_argument("--qualification", required=True)
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
@@ -3499,7 +3444,7 @@ def parser() -> argparse.ArgumentParser:
     for operation in (validate_qualitative, record_qualitative):
         operation.add_argument("--review-root", required=True)
         operation.add_argument("--draft", required=True)
-    for command in (prepare_reviewer, seal, activate, collect_w, collect_r):
+    for command in (prepare_reviewer, seal, activate):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--repository-class", choices=CLASSES, required=True)
         command.add_argument(
@@ -3517,8 +3462,6 @@ def parser() -> argparse.ArgumentParser:
     reveal_profile.add_argument("--campaign-root", required=True)
     reveal_profile.add_argument("--candidate-head", required=True)
     seal.add_argument("--descriptor", required=True)
-    collect_w.add_argument("--raw-rollout", required=True)
-    collect_r.add_argument("--raw-rollout", required=True)
     activate_every.add_argument("--campaign-root", required=True)
     collect_b.add_argument("--campaign-root", required=True)
     batch_input = collect_b.add_mutually_exclusive_group(required=True)
@@ -3540,6 +3483,10 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    if args.command == "validate-approval":
+        import qualification_policy
+        print(json.dumps(qualification_policy.verify_approval(Path(args.approval), Path(args.qualification)), indent=2, sort_keys=True))
+        return 0
     if args.command in {"approve-phase-9", "validate-qualification"}:
         import qualification_policy
         value = (qualification_policy.approve(Path(args.qualification), Path(args.output),
@@ -3584,10 +3531,6 @@ def main() -> int:
         value = activate_cycle(root, args.repository_class, args.cycle)
     elif args.command == "activate-all":
         value = activate_all(root)
-    elif args.command == "collect-work":
-        value = collect_work(root, args.repository_class, args.cycle, Path(args.raw_rollout))
-    elif args.command == "collect-resume":
-        value = collect_resume(root, args.repository_class, args.cycle, Path(args.raw_rollout))
     elif args.command in {"validate-document-realization", "record-document-realization"}:
         operation = document_realization.validate if args.command == "validate-document-realization" else document_realization.record
         value = operation(root, args.realization_id, Path(args.draft).resolve())
@@ -3598,6 +3541,8 @@ def main() -> int:
         )
         value = (document_realization.prepare(root, paths) if args.command == "prepare-document-realizations"
                  else collect_batch(root, paths))
+    elif args.command == "diagnose":
+        value = diagnose_campaign(root, Path(args.output))
     elif args.command == "evaluate":
         value = evaluate_campaign(root, Path(args.output) if args.output else None,
             Path(args.previous_evaluation) if args.previous_evaluation else None)

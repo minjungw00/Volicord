@@ -18,7 +18,7 @@ class MachineFindingTests(unittest.TestCase):
             value = m.finding("meaningful_recalled_continuation", status, {"sequence": 42})
             m.validate_finding(value)
             self.assertEqual(value["status"], status)
-        violation = m.finding("meaningful_recalled_continuation", m.Status.VIOLATION, {"exit_code": 1})
+        violation = m.finding("required_validation_execution", m.Status.VIOLATION, {"exit_code": 1})
         unknown = m.finding("meaningful_recalled_continuation", m.Status.INDETERMINATE, {"exit_code": None})
         absent = m.finding("meaningful_recalled_continuation", m.Status.NOT_OBSERVED, {"commands": []})
         self.assertEqual(violation["disposition"], m.Disposition.HARD)
@@ -30,6 +30,24 @@ class MachineFindingTests(unittest.TestCase):
                 self.assertEqual(m.disposition(rule, status), m.Disposition.HARD)
         with self.assertRaises(ValueError):
             m.disposition("unregistered", m.Status.PASS)
+
+    def test_finite_authority_audit_preserves_procedural_signals(self):
+        m.validate_policy()
+        for rule in ("naturalistic_prompt_integrity", "hidden_material_discovery_order", "meaningful_ordinary_changes",
+            "repository_bound_project_resolution", "recall_precedes_inspection_and_continuation", "static_viewer_snapshot",
+            "generated_document_outputs", "learning_deliberation_order", "decision_provenance_when_required"):
+            self.assertEqual(m.disposition(rule, "confirmed_violation"), m.Disposition.REVIEW)
+            self.assertTrue(m.POLICY["rules"][rule]["owner"])
+            self.assertTrue(m.POLICY["rules"][rule]["rationale"])
+        for rule in ("unnecessary_question_repetition", "procedure_invocation_counts", "learning_interruption_precision"):
+            self.assertEqual(m.disposition(rule, "confirmed_violation"), m.Disposition.ADVISORY)
+        observed = {"checks": {"static_viewer_snapshot": "failed", "generated_document_outputs": "failed"},
+            "capture_sha256": {"work": "a" * 64}}
+        before = deepcopy(observed)
+        findings = m.from_observation(observed)
+        self.assertEqual(observed, before)
+        self.assertTrue(all(f["disposition"] == m.Disposition.REVIEW for f in findings))
+        self.assertNotIn("human_observed", str(findings))
 
     def test_impossible_combinations_rejected(self):
         valid = m.finding("raw_hash", m.Status.VIOLATION, {"actual": "different"})
@@ -85,6 +103,13 @@ class MachineFindingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 c.evaluate_campaign(root, output=Path(second["evaluation"]).parent)
             self.assertNotEqual(first["run_id"], second["run_id"])
+            diagnostic_before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+            diagnostic = c.diagnose_campaign(root, parent / "diagnostic")
+            self.assertEqual({p: p.read_bytes() for p in diagnostic_before}, diagnostic_before)
+            self.assertEqual(diagnostic["candidate_head"], result["candidate_head"])
+            self.assertFalse(diagnostic["phase_9_ready"])
+            with self.assertRaises(ValueError):
+                c.diagnose_campaign(root, parent / "diagnostic")
             self.assertEqual((root / first["evaluation"]).read_bytes(), first_bytes)
             self.assertEqual((root / "evidence-set.json").read_bytes(), identity)
             self.assertEqual({name: (root / name).read_bytes() for name in frozen}, frozen)

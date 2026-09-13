@@ -1,0 +1,447 @@
+{
+  "revision": 2,
+  "rules": {
+    "activation_identity": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Measured sessions require actual repository-scoped activation provenance.",
+      "review_groups": []
+    },
+    "campaign_inventory": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Closed artifact membership and exact byte hashes are deterministic integrity facts.",
+      "review_groups": []
+    },
+    "candidate_binding": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Evidence cannot be rebound to a different Product candidate.",
+      "review_groups": []
+    },
+    "destination_collision": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Append-only publication must not overwrite evidence or earlier runs.",
+      "review_groups": []
+    },
+    "privacy_credential_integrity": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Credential retention and unauthorized disclosure are disqualifying safety violations.",
+      "review_groups": []
+    },
+    "project_binding": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Cross-session canonical Project identity cannot change.",
+      "review_groups": []
+    },
+    "raw_hash": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Changed raw bytes invalidate immutable evidence.",
+      "review_groups": []
+    },
+    "realization_binding": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Generator identity, source plan and raw realization provenance must remain truthful.",
+      "review_groups": []
+    },
+    "session_mapping": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/evidence integrity",
+      "rationale": "Sixteen globally distinct fresh measured sessions must map to exact frozen tasks and workspaces.",
+      "review_groups": []
+    },
+    "repository_scoped_activation": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/measurement provenance",
+      "rationale": "Both measured sessions must carry actual SessionStart activation, not inferred behavior.",
+      "review_groups": []
+    },
+    "naturalistic_prompt_integrity": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "validation-plan.md/blind campaign",
+      "rationale": "Exact task transport is separately integrity-checked; lexical coaching and naturalness are semantic signals.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "plain_task_goal_linkage": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/Goal and Checkpoint",
+      "rationale": "This composite includes canonical decomposition and terminal selection; semantic attribution needs evidence review.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "grounded_pre_work_repository_baseline": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "repository-intelligence.md",
+      "rationale": "Composite baseline timing/selection is a proxy for sufficient pre-work investigation; identity conflicts are separately hard.",
+      "review_groups": [
+        "authority",
+        "repository_intelligence"
+      ]
+    },
+    "engineering_choice_discovery": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "Absent recognized discovery is not proof that a material choice was missed.",
+      "review_groups": [
+        "authority",
+        "repository_intelligence"
+      ]
+    },
+    "pre_write_materiality_work_authority": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "Typed frontier observations need semantic applicability and outcome coverage review; actual Decision provenance is separately hard.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "learning_participation": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/learning",
+      "rationale": "Composite opt-in, durable context and scope interpretation needs review; authority is never inferred from proficiency.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "learning_deliberation_order": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md/learning",
+      "rationale": "Chronology and lifecycle proxies must be assessed against actual affected work and useful deliberation.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "learning_not_canonical_decision": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md/learning",
+      "rationale": "Historical Decision counts in a composite do not prove agent learning was promoted to user authority; exact provenance is separately hard.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "learning_interruption_precision": {
+      "authority": "advisory",
+      "uncertainty": "advisory",
+      "owner": "product-charter.md/learning",
+      "rationale": "Ordering and operation-count efficiency signals do not establish learning quality; the rubric still requires proportionality.",
+      "review_groups": []
+    },
+    "behavior_classification": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "validation-plan.md/naturalistic qualification",
+      "rationale": "Observed terminal disposition need not equal the provisional behavior label.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "appropriate_inquiry_outcome": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "No-question research, prototype, deferment and deliberation usefulness require semantic review.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "unnecessary_question_repetition": {
+      "authority": "advisory",
+      "uncertainty": "advisory",
+      "owner": "product-charter.md/low interruption",
+      "rationale": "Repeated-operation detection is an efficiency signal; actual repeated user judgment remains a required rubric criterion.",
+      "review_groups": []
+    },
+    "hidden_material_discovery_order": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "Supported command/count/ordering heuristics cannot establish investigation sufficiency or materiality.",
+      "review_groups": [
+        "authority",
+        "repository_intelligence"
+      ]
+    },
+    "recorded_user_owned_authority": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "Whether each material outcome actually required and received applicable authority is semantic; false response provenance is separately hard.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "meaningful_ordinary_changes": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/ordinary work",
+      "rationale": "Path and operation counts cannot decide the value of no-change investigation or a narrow valid implementation.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "source_grounded_checkpoint": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/Checkpoint",
+      "rationale": "Composite terminal Checkpoint selection and verification matching require interpretation; observed required validation failure is separately hard.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "decision_provenance_when_required": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "The composite infers Decision necessity from behavior classification; actual recorded response integrity is separately hard.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "distinct_work_and_resume_invocations": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/measurement provenance",
+      "rationale": "Session IDs, declared host origin and actual CLI provenance are deterministic measured-session facts.",
+      "review_groups": []
+    },
+    "fresh_resume_without_prior_context": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/Recall",
+      "rationale": "This predicate also imposes exact pre-Recall turn counts; actual fresh-thread provenance is separately hard.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "repository_bound_project_resolution": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "portable-context.md",
+      "rationale": "Unique project_resolve/Recall counts and ordering are procedural proxies; measured Project conflicts remain hard.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "recall_precedes_inspection_and_continuation": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/Recall",
+      "rationale": "Exact terminal/order selection can reject redundant read-only Recall or inspection; assess recovery against actual evidence.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "resume_pre_work_repository_baseline": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "repository-intelligence.md",
+      "rationale": "Analysis/Checkpoint selection is a procedural proxy for an adequate current baseline.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "resume_materiality_work_authority": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "Current applicability and no-change continuation need bounded outcome/authority review.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "recall_matches_checkpoint_decision_and_context": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/Recall",
+      "rationale": "Record inclusion and terminal selection are proxies for complete useful context recovery.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "learning_recall_continuity": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/learning",
+      "rationale": "Lifecycle and relation proxies require review of recovered learning meaning.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "resolved_material_question_not_reasked": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "A later frontier/Decision invocation need not repeat the same resolved judgment.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "meaningful_recalled_continuation": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/Recall",
+      "rationale": "Composite command classification, timing and path counts cannot alone judge continuation; numeric validation failure is independently hard.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "canonical_bundle_and_provenance": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "portable-context.md",
+      "rationale": "Bundle decoding/checksum and Project identity are deterministic integrity facts.",
+      "review_groups": []
+    },
+    "generated_document_outputs": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "projections-and-documents.md",
+      "rationale": "Output presence and metadata are observations, not proof of document fidelity, requested-language quality or usefulness.",
+      "review_groups": [
+        "documents"
+      ]
+    },
+    "static_viewer_snapshot": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "projections-and-documents.md",
+      "rationale": "Static structural proxies do not establish actual human-observed readability or live accessibility.",
+      "review_groups": [
+        "live_viewer",
+        "viewer_snapshot"
+      ]
+    },
+    "bounded_runtime_and_activation_evidence": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "privacy-and-provider-boundary.md",
+      "rationale": "Runtime content exclusion and measured activation summary identity are bounded integrity conditions.",
+      "review_groups": []
+    },
+    "work_turn_lifecycle": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "validation-plan.md/measurement",
+      "rationale": "Intact incomplete or semantically ambiguous work must remain observable without implying Product failure.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "resume_contract": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/Recall",
+      "rationale": "Composite continuation and classifier uncertainty requires evidence-bound review.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "evaluation_execution": {
+      "authority": "qualitative_review_required",
+      "uncertainty": "qualitative_review_required",
+      "owner": "validation-plan.md/evaluation",
+      "rationale": "An evaluator error or unsupported observation is not proof of a Product failure.",
+      "review_groups": [
+        "authority",
+        "interaction"
+      ]
+    },
+    "recorded_decision_integrity": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "inquiry-and-decision.md",
+      "rationale": "An actually successful Decision must bind the captured current user response and canonical Source/Question/receipt/witness; no reviewer can invent authority.",
+      "review_groups": []
+    },
+    "measured_project_identity": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "portable-context.md",
+      "rationale": "Every observed resolved/initialized Project and Recall identity must agree with the canonical bundle.",
+      "review_groups": []
+    },
+    "measured_session_provenance": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/measurement provenance",
+      "rationale": "Actual fresh-thread/host origin, distinct identity and activation are required independently of invocation counts.",
+      "review_groups": []
+    },
+    "required_validation_execution": {
+      "authority": "hard_blocking",
+      "uncertainty": "qualitative_review_required",
+      "owner": "product-charter.md/verification",
+      "rationale": "An observed numeric failed required validation after the final material mutation is disqualifying; ambiguity is reviewable.",
+      "review_groups": [
+        "context_recovery"
+      ]
+    },
+    "procedure_invocation_counts": {
+      "authority": "advisory",
+      "uncertainty": "advisory",
+      "owner": "product-charter.md/low interruption",
+      "rationale": "Exact project_resolve/Recall and total operation counts are efficiency observations; identity and user recovery are separate invariants.",
+      "review_groups": []
+    },
+    "projection_evidence_identity": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "projections-and-documents.md/provenance",
+      "rationale": "Candidate, Project and cycle identity and nested file hashes in document/Viewer summaries are deterministic facts independent of quality or usability.",
+      "review_groups": []
+    }
+  },
+  "work_observations": {
+    "project_session_entry": "repository_bound_project_resolution",
+    "goal_context_operation": "plain_task_goal_linkage",
+    "repository_baseline_operation": "grounded_pre_work_repository_baseline",
+    "materiality_review_operation": "pre_write_materiality_work_authority",
+    "behavior_class_evidence": "behavior_classification",
+    "source_grounded_checkpoint_operation": "source_grounded_checkpoint",
+    "hidden_pre_discovery_repository_investigation": "hidden_material_discovery_order",
+    "unnecessary_question_repetition": "unnecessary_question_repetition",
+    "material_question_candidate_lifecycle": "appropriate_inquiry_outcome",
+    "explicit_current_host_user_decision_operation": "decision_provenance_when_required",
+    "repository_scoped_session_start_activation": "activation_identity"
+  }
+}

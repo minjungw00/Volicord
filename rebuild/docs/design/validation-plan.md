@@ -1232,41 +1232,21 @@ representations가 함께 있으면 모두 일치해야 한다. 각 text는 최�
 arbitrary prose, malformed/truncated JSON, unsupported content shape와 conflicting result를
 structured success로 복원하지 않는다. Transport-level `Err`와 semantic MCP error는 실패다.
 
-Internal harness는 completed real work capture 뒤 machine-observable terminal failure를
-보존하기 위한 failure-only command를 제공한다.
+Internal `harness.py inspect-work --candidate-head <original-candidate> --descriptor
+<descriptor> --repository <pinned-repository> --work-capture <raw> --output <new-file>`는
+completed work의 bounded machine observations를 보존하는 read-only diagnostic이다.
+Original descriptor/capture identity를 검증하고 `dogfood_work_observation`에 원래 failed
+checks와 typed certainty/disposition을 함께 남긴다. Operation-count/semantic uncertainty는
+`review_required`이며 campaign을 terminal reject하지 않는다. Measured activation이나
+raw identity 위반은 계속 integrity failure다. 이 command는 collection/qualification을
+실행하지 않으며 positive capture에서 부정 관찰을 발명하지 않는다.
 
-```text
-python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
-  --candidate-head <current-candidate-head> \
-  --descriptor <one-cycle-descriptor.json> \
-  --repository <exact-pinned-cycle-repository> \
-  --work-capture <completed-work-rollout.jsonl> \
-  --output <blocker-result.json>
-```
-
-이 path는 current candidate, valid descriptor와 completed capture의 repository class,
-cycle, revision, `source=vscode`, `originator=codex_vscode`, fresh thread와 exact first
-`work_user_task`를 먼저 검증한다. Completed work capture에 required high-level Project,
-Goal, baseline, evidence-backed behavior classification 또는 grounded Checkpoint operation이
-없으면 later resume이 그 operation을 work session에 retroactively 추가할 수 없으므로
-terminal blocker다. 두 user-owned class는 material Question Candidate/promotion과
-current-host user Decision이 없으면 blocker이지만 다른 class에 이 operation을 요구하지
-않는다. 반대로 capture만으로 required semantic fact를
-증명할 수 없으면 blocker를 추측하지 않고 full qualification을 요구한다. 모든 required
-work-session condition을 충족한 positive capture는 early-stop failure로 변환할 수 없다.
-
-Maintained focused Checkpoint validation은 campaign과 별개로 missing/unresolved/late review가
-canonical Checkpoint를 만들지 못함을 확인한다. 또한 settled/repository-fact no-Question path와
-exact current-host response에서 나온 applicable Decision path가 same Goal/exact baseline으로
-restart 뒤에도 성공하고, authority Decision 누락이 거부됨을 검증한다.
-
-Early-stop output은 `kind = phase8_dogfood_blocker_result`이며 항상
-`campaign_complete = false`, `replacement_pass_candidate = false`,
-`phase_9_ready = false`다. Candidate, repository class, cycle, revision, failed check,
-completed capture SHA-256와 later required session/check의 `not_run` 상태만 보존한다. Plain
-task text, evaluator behavior-review reasoning, source body, credential과 raw provider content는
-보존하지 않는다.
-이 result는 full passage, Phase 8 completion 또는 Phase 9 readiness의 evidence가 아니다.
+Maintained focused Checkpoint validation은 missing/unresolved/late review의 canonical
+promotion 거부와 settled/repository-fact no-Question, exact current-host response의 Decision,
+Goal/baseline과 restart continuity를 별도로 검증한다. Diagnostic observation은 이 Product
+invariant를 변경하지 않는다. `qualification_state = not_run`, `campaign_complete = false`,
+`replacement_pass_candidate = false`, `phase_9_ready = false`이며 private task/source/credential
+body를 포함하지 않는다. Semantic review는 naturalistic evidence set의 모든 필수 기준을 유지한다.
 
 Campaign 준비와 routine evidence collection은 maintained internal helper인
 `rebuild/scripts/dogfood-campaign`을 사용한다. 사용자는 repository/hook trust를 직접 승인하고,
@@ -1402,7 +1382,7 @@ Project/candidate와 exact sixteen raw input binding을 요구한다. Missing ro
 preparation blocker이며 Product crash가 아니다. Collection은 current plan을 다시 읽고 fixed realization을
 Product `document_preview`에 제출하며 Product-returned Markdown/HTML bytes와 SHA-256만 document
 evidence로 보존한다. Realizer plan/draft/record와 private source representation은 review archive에서
-제외한다. Cross-locale의 개별 `collect-work`/`collect-resume`은 이 pre-batch 경계를 우회할 수 없다.
+제외한다. Production collection은 단일 `collect-batch` 경로만 제공하며 이 pre-batch 경계를 우회할 수 없다.
 Campaign self-test는 private preparation, preflight, immutable fixation, before-terminal blocking,
 Product topology/protected-term rejection과 canonical purity를 포함한다.
 
@@ -1436,8 +1416,8 @@ Finding status는 `confirmed_pass`, `confirmed_violation`, `indeterminate`, `not
 status/disposition, evidence/hash mismatch와 inconsistent aggregate는 거부한다. Existing
 check와 전체 observation/basis를 run 안에 보존하고 finding이 exact check와 basis를 참조한다.
 Explicit semantic indeterminacy와 missing observation은 review-required이며 pass나 confirmed
-violation으로 변환하지 않는다. Existing determinate violations는 보수적으로 hard-blocking을
-유지하며 broad heuristic authority audit는 후속 작업이다. Required hard integrity의 uncertainty도
+violation으로 변환하지 않는다. `machine-policy.json`의 finite audit table은 모든 check의
+owner/rationale와 review jurisdiction을 기록한다. Required hard integrity의 uncertainty도
 valid admission을 허용하지 않는다. `finding_state = hard_blocked|review_required|observations_complete`
 어느 값도 final qualification verdict가 아니다. Technical aggregate는 별도 유지한다. Common qualitative-review contract는 아래 rubric을
 사용하며 최종 qualification은 아래 maintained policy가 소유한다.
@@ -1790,3 +1770,37 @@ The maintained candidate technical gate remains authoritative and unchanged. Qua
 requires a capsule matching the independently verified archive's completion transition for
 the exact Product candidate. Policy changes never trigger expensive technical execution.
 The engineering final HEAD still requires its own admission and maintained gate.
+
+### Machine authority audit
+
+The sole finite disposition contract is
+`rebuild/validation/dogfood/machine-policy.json`. It names every maintained integrity,
+behavior, execution and procedural rule, its owner, rationale, uncertainty authority
+and permitted semantic review groups. `machine_findings.py` validates complete coverage.
+
+- Exact `project_resolve`/Recall counts and total operation counts are retained as
+  advisory efficiency observations. Composite recovery/ordering predicates require
+  qualitative review; observed conflicting Project/session identities remain hard.
+- Lexical task/coaching tests, investigation sufficiency, discovery order, no-change
+  deliberation, terminal Checkpoint selection, path-count and operation-count proxies
+  cannot terminally reject naturalistic work. Their original check values remain intact.
+- Question necessity, authority applicability, learning proportionality and source-grounded
+  document/interpretation usefulness use the common rubric. Structural HTML checks are
+  observations and never direct human-observed accessibility or usability evidence.
+- Canonical Decision response/Source/Question/receipt/witness integrity, measured Project
+  and session provenance, raw mutation, credentials/privacy and candidate binding remain
+  hard. An actually observed numeric failed required validation after the last material
+  mutation also remains hard. Missing/ambiguous command classification is reviewable;
+  an echoed success cannot establish a numeric outcome.
+- Hard facts are extracted independently of broad procedural checks, so a redundant
+  Recall cannot erase an identity conflict, and a positive review cannot waive a failed
+  required validation. Review-required findings need explicit evidence-backed relationships
+  in their permitted semantic group; they never automatically pass.
+
+Historical campaigns without an immutable collection receipt may use `dogfood-campaign
+diagnose --campaign-root <historical> --output <new-run>`. It runs the same cycle observation
+engine over existing descriptors and hashes the historical inventory, metadata and raw
+rollouts before/after. It does not add missing evidence links, create a collection receipt,
+rewrite rejection results or qualify any candidate. An intact collected campaign instead
+uses the ordinary `evaluate` append-only operation. Sanitized fresh fixtures prove the full
+re-evaluation contract; historical incomplete diagnostics prove only what was observable.

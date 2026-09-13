@@ -677,3 +677,18 @@ including a verified recorded review when present. These operations share the
 common rubric and validator. Insufficient/unreviewed criteria remain explicit;
 no review result grants Phase 9 approval. See the full maintained workflow and
 limits in [`qualitative-review.md`](../../docs/design/qualitative-review.md).
+
+## Current qualification workflow
+
+Machine evaluation and re-evaluation are append-only runs outside the immutable Campaign.
+The original Product candidate, evidence-set hash, evaluator implementation, policy and
+consumed review runs retain distinct identities. `machine-policy.json` is the complete
+check authority/owner/rationale audit; procedural and quality observations retain their
+basis without claiming direct human usability or terminal failure.
+
+`qualify` reuses the exact-candidate technical gate capsule/archive, combines hard facts
+and common qualitative reviews, and retains unresolved criteria and targeted human
+escalations. Only the separate explicit operator `approve-phase-9` action can authorize
+readiness after complete qualification. Historical results above remain history and do
+not supply the new candidate's naturalistic evidence. Incomplete historical campaigns
+use the shared observation engine's `diagnose` inventory view without qualification.

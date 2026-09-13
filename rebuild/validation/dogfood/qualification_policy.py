@@ -65,7 +65,9 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid")
         decisive = [(r, a) for r, a in entries if a["assessment"] in {"satisfied", "not_applicable", "violated"}]
         conflict = len({a["assessment"] == "violated" for _, a in decisive}) > 1
         impact_gap = spec["group"] in {"authority", "context_recovery"} and any(a["assessment"] == "insufficient_evidence" for _, a in entries)
-        requires_human = human_required(spec) or conflict or impact_gap
+        inapplicable_comprehension = (spec["group"] == "interaction" and spec["name"] == "decision_comprehension_when_applicable"
+            and bool(entries) and all(a["assessment"] == "not_applicable" for _, a in entries))
+        requires_human = (human_required(spec) and not inapplicable_comprehension) or conflict or impact_gap
         eligible = humans if requires_human else entries
         if conflict or impact_gap:
             eligible = [(r, a) for r, a in humans if
@@ -214,9 +216,18 @@ def approve(qualification_path, output, *, operator, statement):
     """Explicit operator action, never invoked by evaluation or reviewer recording."""
     data = operations.bounded_read(qualification_path)
     value = json.loads(data)
-    verify_qualification(qualification_path)
+    review.require(verify_qualification(qualification_path) == value, "qualification changed during approval")
     review.require(value["replacement_qualification"] == "qualified", "operator approval cannot replace missing evidence or required review")
     review.require(review.authority.bounded_text(operator) and statement == "approve-phase-9", "explicit operator authorization is required")
+    inputs = json.loads(operations.bounded_read(qualification_path.with_name("inputs.json")))
+    review.require(not output.resolve().is_relative_to(Path(inputs["campaign_root"]).resolve()), "approval must remain outside immutable campaign")
+    result = approval_value(value, data, operator, statement)
+    review.require(operations.bounded_read(qualification_path) == data, "qualification changed before approval publication")
+    operations.publish_directory(output, {"approval.json": operations.encoded(result), "qualification.json": data})
+    return result
+
+
+def approval_value(value, data, operator, statement):
     result = {**value, "kind": "dogfood_operator_approval", "schema_version": 1, "policy": identity(),
         "candidate_head": value["candidate_head"], "evidence_set": value["evidence_set"],
         "qualification_run_id": value["run_id"], "qualification_sha256": operations.digest(data),
@@ -224,7 +235,6 @@ def approve(qualification_path, output, *, operator, statement):
         "operator_approval": {"state": "approved"}, "replacement_qualification": "qualified", "phase_9_ready": True}
     result.pop("run_id", None)
     result["run_id"] = machine.digest(result)
-    operations.publish_directory(output, {"approval.json": operations.encoded(result), "qualification.json": data})
     return result
 
 
@@ -236,7 +246,19 @@ def verify_qualification(path):
         candidate=inputs["candidate"], review_roots=[Path(p) for p in inputs["review_roots"]],
         capsule_path=Path(inputs["capsule"]) if inputs["capsule"] else None,
         archive_path=Path(inputs["archive"]) if inputs["archive"] else None)
-    for key in ("run_id", "run_nonce"):
+    for key in ("run_id", "run_nonce", "evaluator_revision"):
         recomputed[key] = value[key]
     review.require(value == recomputed, "qualification differs from verified evidence and recorded reviews")
+    return value
+
+
+def verify_approval(path, qualification_path):
+    value = json.loads(operations.bounded_read(path))
+    qualified = verify_qualification(qualification_path)
+    data = operations.bounded_read(qualification_path)
+    review.require(qualified["replacement_qualification"] == "qualified", "approval cannot replace qualification")
+    operator = value.get("operator", {}).get("identity")
+    review.require(review.authority.bounded_text(operator), "approval requires explicit operator identity")
+    review.require(value == approval_value(qualified, data, operator, "approve-phase-9"), "approval state/hash or qualification binding changed")
+    review.require(operations.bounded_read(path.with_name("qualification.json")) == data, "approval's preserved qualification changed")
     return value

@@ -1538,7 +1538,7 @@ def load_definition() -> dict[str, Any]:
         "actual_tool_or_application_failure_is_transport_indeterminate": False,
         "required_operation_indeterminate_classification": "evidence_transport_failure",
         "required_operation_indeterminate_outcome": "evidence_failed",
-        "actual_missing_required_operation_classification": "product_work_session_blocker",
+        "actual_missing_required_operation_classification": "semantic_work_observation",
         "unknown_means_pass": False,
     }:
         raise ValueError("the Dogfood evidence transport attribution contract changed")
@@ -1587,18 +1587,18 @@ def load_definition() -> dict[str, Any]:
         or evaluation_basis.get("prescribed_user_selection_required") is not False
         or evidence.get("full_replacement_session_count") != QUALIFICATION_SESSION_COUNT
         or evidence.get("required_codex_sessions_per_cycle") != 2
-        or evidence.get("work_blocker_qualification")
+        or evidence.get("work_observation_contract")
         != {
-            "subcommand": "qualify-work-blocker",
-            "result_kind": "phase8_dogfood_blocker_result",
-            "failure_only": True,
+            "subcommand": "inspect-work",
+            "result_kind": "dogfood_work_observation",
+            "observation_only": True,
             "campaign_complete": False,
             "replacement_pass_candidate": False,
             "phase_9_ready": False,
             "later_evidence_status": "not_run",
             "missing_activation_outcome": "operator_environment_invalid",
-            "indeterminate_required_evidence_outcome": "evidence_failed",
-            "actual_missing_required_operation_outcome": "campaign_stop",
+            "indeterminate_required_evidence_outcome": "review_required",
+            "actual_missing_required_operation_outcome": "review_required",
             "mixed_failure_checks_preserved": True,
             "failure_attribution_domains": [
                 "environment", "product_integration",
@@ -1784,10 +1784,7 @@ def load_definition() -> dict[str, Any]:
                 "seal-cycle",
                 "activate-cycle",
                 "activate-all",
-                "collect-work",
-                "collect-resume",
                 "collect-batch",
-                "evaluate",
                 "finalize-manifest",
             ],
             "rejection_precedes_mutation": True,
@@ -2161,6 +2158,40 @@ def campaign_support_evidence(
         if isinstance(snapshot, dict)
         else None
     )
+    projection_identity = (
+        "not_observed" if not isinstance(documents, dict) or not isinstance(snapshot, dict)
+        else "confirmed_pass" if all(
+            value.get("candidate_head") == candidate_revision and value.get("project_id") == project_id
+            and value.get("repository_class") == kind and value.get("cycle") == cycle
+            for value in (documents, snapshot)) else "confirmed_violation")
+    # File existence/availability does not prove quality, but an observed payload
+    # with a conflicting declared hash is an independently hard integrity fact.
+    references = []
+    if isinstance(snapshot, dict) and snapshot.get("relative_evidence_path"):
+        references.append(snapshot)
+    if isinstance(documents, dict):
+        document_entries = documents.get("documents", {})
+        if not isinstance(document_entries, dict):
+            projection_identity = "confirmed_violation"
+        else:
+            for document in document_entries.values():
+                formats = document.get("formats") if isinstance(document, dict) else None
+                if not isinstance(formats, dict):
+                    projection_identity = "confirmed_violation"
+                else:
+                    references.extend(formats.values())
+    if evidence_directory is not None:
+        for reference in references:
+            if not isinstance(reference, dict):
+                projection_identity = "confirmed_violation"
+                continue
+            name = reference.get("relative_evidence_path")
+            if name and safe_relative_evidence_path(name) is None:
+                projection_identity = "confirmed_violation"
+            if name and safe_relative_evidence_path(name) is not None:
+                path = evidence_directory / name
+                if path.is_file() and sha256(path) != reference.get("sha256"):
+                    projection_identity = "confirmed_violation"
     checks = {
         "canonical_bundle_and_provenance": (
             bundle is not None
@@ -2191,6 +2222,7 @@ def campaign_support_evidence(
         ),
     }
     return checks, {
+        "projection_evidence_identity": projection_identity,
         "canonical_bundle_sha256": bundle.source_sha256 if bundle is not None else None,
         "generated_document_summary_status": (
             documents.get("status") if isinstance(documents, dict) else "unavailable"
@@ -5174,7 +5206,7 @@ class WorkCaptureContractError(ValueError):
         super().__init__(f"work capture is not machine-observably completed: {basis}")
 
 
-class NoWorkBlocker(ValueError):
+class NoWorkObservation(ValueError):
     """Failure-only evaluation found no terminal behavior blocker."""
 
 
@@ -5198,7 +5230,7 @@ def require_completed_work(capture: CodexCapture) -> None:
             raise WorkCaptureContractError("recovery_verification_missing")
 
 
-def build_work_blocker_result(
+def build_work_observation(
     candidate_head: str,
     descriptor: dict[str, Any],
     descriptor_sha256: str,
@@ -5367,14 +5399,14 @@ def build_work_blocker_result(
         else [name for name in required_checks if not observed[name]]
     )
     if not failed_checks:
-        raise NoWorkBlocker(
+        raise NoWorkObservation(
             "completed work capture has no machine-observable terminal work blocker; use normal full qualification"
         )
     evidence_transport = work_evidence_transport_attribution(capture, failed_checks,
         hidden_basis["issues"] if HIDDEN_INVESTIGATION_CHECKS[0] in failed_checks else (),
         exploration.get("issues", ()) if "behavior_class_evidence" in failed_checks else ())
     evidence_failed_checks = evidence_transport["affected_checks"]
-    product_failed_checks = [
+    determinate_failed_checks = [
         check
         for check in failed_checks
         if check not in evidence_failed_checks and check != SETUP_ACTIVATION_CHECK
@@ -5397,21 +5429,21 @@ def build_work_blocker_result(
         "failed_checks": failed_checks,
     }
     result = {
-        "kind": "phase8_dogfood_blocker_result",
-        "status": "failed",
+        "kind": "dogfood_work_observation",
+        "findings": machine_findings.work_findings(failed_checks, evidence_failed_checks),
+        "qualification_state": "not_run",
+        "status": "observed",
         "classification": (
             activation_problem.classification
             if activation_problem is not None
             else "evidence_transport_failure"
             if evidence_failed_checks
-            else "product_work_session_blocker"
+            else "semantic_work_observation"
         ),
         "outcome": (
             activation_problem.outcome
             if activation_problem is not None
-            else "evidence_failed"
-            if evidence_failed_checks
-            else "campaign_stop"
+            else "review_required"
         ),
         "candidate_head": candidate_head,
         "repository_class": descriptor["repository_class"],
@@ -5424,7 +5456,7 @@ def build_work_blocker_result(
         "failed_check_count": len(failed_checks),
         "failure_attribution": failure_attribution,
         "evidence_transport": evidence_transport,
-        "product_failed_checks": product_failed_checks,
+        "determinate_failed_checks": determinate_failed_checks,
         "campaign_complete": False,
         "replacement_pass_candidate": False,
         "phase_9_ready": False,
@@ -5438,11 +5470,11 @@ def build_work_blocker_result(
         },
         "evidence_origin": "completed_repository_normalized_codex_work_rollout",
     }
-    validate_blocker_result(result)
+    validate_work_observation(result)
     return result
 
 
-def validate_blocker_result(result: dict[str, Any]) -> None:
+def validate_work_observation(result: dict[str, Any]) -> None:
     expected_keys = {
         "kind",
         "status",
@@ -5459,7 +5491,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         "failed_check_count",
         "failure_attribution",
         "evidence_transport",
-        "product_failed_checks",
+        "determinate_failed_checks",
         "campaign_complete",
         "replacement_pass_candidate",
         "phase_9_ready",
@@ -5469,23 +5501,27 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     failed_checks = result.get("failed_checks")
     failure_attribution = result.get("failure_attribution")
     later = result.get("later_required_evidence")
-    if set(result) != expected_keys or result.get("kind") != "phase8_dogfood_blocker_result":
+    expected_keys |= {"findings", "qualification_state"}
+    if set(result) != expected_keys or result.get("kind") != "dogfood_work_observation":
         raise ValueError("unexpected Phase 8 work-blocker result shape")
     if (
-        result.get("status") != "failed"
+        result.get("status") != "observed"
         or result.get("campaign_complete") is not False
         or result.get("replacement_pass_candidate") is not False
         or result.get("phase_9_ready") is not False
     ):
         raise ValueError("work-blocker result cannot claim campaign completion or passage")
+    if (result["qualification_state"] != "not_run" or result["findings"] != machine_findings.work_findings(
+        failed_checks, result.get("evidence_transport", {}).get("affected_checks", []))):
+        raise ValueError("work observation findings or authority changed")
     classification = result.get("classification")
     outcome = result.get("outcome")
     if (classification, outcome) not in {
         ("operator_environment_setup_failure", "operator_environment_invalid"),
         ("activation_evidence_failure", "evidence_failed"),
         ("validation_internal_failure", "evidence_failed"),
-        ("evidence_transport_failure", "evidence_failed"),
-        ("product_work_session_blocker", "campaign_stop"),
+        ("evidence_transport_failure", "review_required"),
+        ("semantic_work_observation", "review_required"),
     }:
         raise ValueError("work-blocker result has an invalid failure classification")
     if (
@@ -5508,7 +5544,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         )
         or (
             classification
-            in {"product_work_session_blocker", "evidence_transport_failure"}
+            in {"semantic_work_observation", "evidence_transport_failure"}
             and failed_checks
             != [
                 name
@@ -5524,7 +5560,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
             "evidence",
             "required_evidence_transport_indeterminate",
         ),
-        "product_work_session_blocker": (
+        "semantic_work_observation": (
             "behavior_contract",
             "maintained_work_behavior_contract_failed",
         ),
@@ -5543,7 +5579,7 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     } for domain, basis in permitted_attributions):
         raise ValueError("work-blocker failure attribution is inconsistent")
     evidence_transport = result.get("evidence_transport")
-    product_failed_checks = result.get("product_failed_checks")
+    determinate_failed_checks = result.get("determinate_failed_checks")
     if (
         not isinstance(evidence_transport, dict)
         or set(evidence_transport)
@@ -5553,13 +5589,13 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
         or not isinstance(evidence_transport.get("issues"), list)
         or evidence_transport.get("issue_count")
         != len(evidence_transport.get("issues", []))
-        or not isinstance(product_failed_checks, list)
-        or any(check not in failed_checks for check in product_failed_checks)
+        or not isinstance(determinate_failed_checks, list)
+        or any(check not in failed_checks for check in determinate_failed_checks)
         or any(
-            check in product_failed_checks
+            check in determinate_failed_checks
             for check in evidence_transport.get("affected_checks", [])
         )
-        or set(product_failed_checks)
+        or set(determinate_failed_checks)
         | set(evidence_transport.get("affected_checks", []))
         != {check for check in failed_checks if check != SETUP_ACTIVATION_CHECK}
         or any(
@@ -5597,10 +5633,8 @@ def validate_blocker_result(result: dict[str, Any]) -> None:
     sanitize_check(result)
 
 
-def qualify_work_blocker(args: argparse.Namespace) -> int:
-    candidate_head = git_head(ROOT)
-    if candidate_head is None or candidate_head != args.candidate_head:
-        raise RuntimeError("candidate HEAD does not match --candidate-head")
+def inspect_work(args: argparse.Namespace) -> int:
+    candidate_head = args.candidate_head
     descriptor_path = Path(args.descriptor)
     capture_path = Path(args.work_capture)
     output_path = Path(args.output)
@@ -5612,7 +5646,7 @@ def qualify_work_blocker(args: argparse.Namespace) -> int:
         capture = load_codex_capture(capture_path)
     except (OSError, json.JSONDecodeError, EvidenceError) as error:
         raise ValueError("work-blocker input evidence is invalid") from error
-    result = build_work_blocker_result(
+    result = build_work_observation(
         candidate_head,
         descriptor,
         hashlib.sha256(descriptor_bytes).hexdigest(),
@@ -5621,7 +5655,7 @@ def qualify_work_blocker(args: argparse.Namespace) -> int:
     )
     write_json(output_path, result)
     print(json.dumps(result, indent=2, sort_keys=True))
-    return 1
+    return 0
 
 
 def decision_facts(
@@ -9744,7 +9778,44 @@ def real_session_evidence(
                       "recorded_user_owned_authority", "meaningful_ordinary_changes"):
             if checks[check] == "failed":
                 checks[check] = "partial"
+    validation = continuation_facts["change_validation"] if continuation_facts["last_change_sequence"] is not None else continuation_facts["post_inspection_validation"]
+    validation_status = (
+        "confirmed_violation" if validation["unresolved_terminal_failure"]
+        else "confirmed_pass" if validation["qualified"]
+        else "not_observed" if validation["terminal_sequence"] is None
+        else "indeterminate")
+    recorded_decisions = work_capture.successful_calls("decision_record") if work_capture else []
+    observed_ids = {call.result.get("project_id") for capture in (work_capture, resume_capture) if capture
+        for op in ("project_initialize", "project_resolve", "recall") for call in capture.successful_calls(op)
+        if nonempty_string(call.result.get("project_id"))}
+    facts = {
+        "projection_evidence_identity": {"status": support_basis["projection_evidence_identity"],
+            "basis": {"summary_identity_and_observed_file_hashes": support_basis["projection_evidence_identity"]}},
+        "recorded_decision_integrity": {"status": (
+            "not_observed" if work_capture is None
+            else "not_applicable" if not recorded_decisions
+            else "not_observed" if bundle is None
+            else "confirmed_pass" if decision_ok else "confirmed_violation"),
+            "basis": {"successful_decision_calls": len(recorded_decisions), "canonical_bundle_observed": bundle is not None,
+                "valid_response_decision_ids": sorted(decision_evidence), "response_source_question_witness_valid": decision_ok}},
+        "measured_project_identity": {"status": (
+            "not_observed" if not observed_ids or bundle is None
+            else "confirmed_pass" if observed_ids == {bundle.project_id} else "confirmed_violation"),
+            "basis": {"observed_project_ids": sorted(observed_ids), "canonical_project_id": bundle.project_id if bundle else None}},
+        "measured_session_provenance": {"status": "not_observed" if not work_capture or not resume_capture
+            else "confirmed_pass" if invocations_ok and work_capture.fresh_user_thread and resume_capture.fresh_user_thread and activation_ok
+            else "confirmed_violation", "basis": {"distinct_host_invocations": invocations_ok,
+                "work_fresh_thread": work_capture.fresh_user_thread if work_capture else None,
+                "resume_fresh_thread": resume_capture.fresh_user_thread if resume_capture else None, "activation_observed": activation_ok}},
+        "required_validation_execution": {"status": validation_status, "basis": validation},
+        "procedure_invocation_counts": {"status": "confirmed_pass" if resolve_call and recall_call else "confirmed_violation",
+            "basis": {"resume_project_resolve_count": len(resume_capture.successful_calls("project_resolve")) if resume_capture else 0,
+                "resume_recall_count": len(resume_capture.successful_calls("recall")) if resume_capture else 0,
+                "work_tool_call_count": len(work_capture.tool_calls) if work_capture else 0,
+                "resume_tool_call_count": len(resume_capture.tool_calls) if resume_capture else 0}},
+    }
     observation = {
+        "machine_facts": facts,
         "evidence_class": "actual_repository_real_session",
         "status": status_from_steps(checks),
         "checks": checks,
@@ -14005,13 +14076,13 @@ def self_test() -> int:
         json.dumps(current_transport_fixture, sort_keys=True).encode("utf-8")
     ).hexdigest()
     try:
-        build_work_blocker_result(
+        build_work_observation(
             candidate_revision,
             current_transport_fixture,
             current_descriptor_identity,
             current_work_capture,
         )
-    except NoWorkBlocker:
+    except NoWorkObservation:
         pass
     else:
         raise AssertionError("valid current-format work intake became an early-stop blocker")
@@ -14025,13 +14096,13 @@ def self_test() -> int:
             json.dumps(fixture, sort_keys=True).encode("utf-8")
         ).hexdigest()
         try:
-            build_work_blocker_result(
+            build_work_observation(
                 candidate_revision,
                 fixture,
                 identity,
                 capture,
             )
-        except NoWorkBlocker:
+        except NoWorkObservation:
             pass
         else:
             raise AssertionError(f"valid current {label} work intake became a blocker")
@@ -14205,7 +14276,7 @@ def self_test() -> int:
     hidden_early_identity = hashlib.sha256(
         json.dumps(hidden_early_fixture, sort_keys=True).encode("utf-8")
     ).hexdigest()
-    hidden_early_result = build_work_blocker_result(
+    hidden_early_result = build_work_observation(
         candidate_revision,
         hidden_early_fixture,
         hidden_early_identity,
@@ -14286,7 +14357,7 @@ def self_test() -> int:
             ),
             encoding="utf-8",
         )
-        rejected_goal_result = build_work_blocker_result(
+        rejected_goal_result = build_work_observation(
             candidate_revision,
             current_transport_fixture,
             current_descriptor_identity,
@@ -14311,7 +14382,7 @@ def self_test() -> int:
         ),
         encoding="utf-8",
     )
-    malformed_project_blocker = build_work_blocker_result(
+    malformed_project_blocker = build_work_observation(
         candidate_revision,
         current_transport_fixture,
         current_descriptor_identity,
@@ -14320,7 +14391,7 @@ def self_test() -> int:
     if (
         malformed_project_blocker["classification"]
         != "evidence_transport_failure"
-        or malformed_project_blocker["outcome"] != "evidence_failed"
+        or malformed_project_blocker["outcome"] != "review_required"
         or malformed_project_blocker["evidence_transport"]["state"]
         != "indeterminate"
         or "project_session_entry"
@@ -14345,15 +14416,15 @@ def self_test() -> int:
         ),
         encoding="utf-8",
     )
-    missing_project_blocker = build_work_blocker_result(
+    missing_project_blocker = build_work_observation(
         candidate_revision,
         current_transport_fixture,
         current_descriptor_identity,
         load_codex_capture(missing_project_path),
     )
     if (
-        missing_project_blocker["classification"] != "product_work_session_blocker"
-        or missing_project_blocker["outcome"] != "campaign_stop"
+        missing_project_blocker["classification"] != "semantic_work_observation"
+        or missing_project_blocker["outcome"] != "review_required"
         or missing_project_blocker["evidence_transport"]["state"] != "complete"
     ):
         raise AssertionError("actual missing Project operation was not a product blocker")
@@ -14934,13 +15005,13 @@ def self_test() -> int:
         json.dumps(external_fixture, sort_keys=True).encode("utf-8")
     ).hexdigest()
     try:
-        build_work_blocker_result(
+        build_work_observation(
             candidate_revision,
             external_fixture,
             descriptor_identity,
             positive_work_capture,
         )
-    except NoWorkBlocker:
+    except NoWorkObservation:
         pass
     else:
         raise AssertionError("positive work session converted into an early-stop failure")
@@ -14961,13 +15032,13 @@ def self_test() -> int:
         json.dumps(non_question_fixture, sort_keys=True).encode("utf-8")
     ).hexdigest()
     try:
-        build_work_blocker_result(
+        build_work_observation(
             candidate_revision,
             non_question_fixture,
             non_question_descriptor_identity,
             non_question_capture,
         )
-    except NoWorkBlocker:
+    except NoWorkObservation:
         pass
     else:
         raise AssertionError("correct non-question work was treated as a blocker")
@@ -14988,7 +15059,7 @@ def self_test() -> int:
         ),
         encoding="utf-8",
     )
-    non_question_blocker = build_work_blocker_result(
+    non_question_blocker = build_work_observation(
         candidate_revision,
         non_question_fixture,
         non_question_descriptor_identity,
@@ -15020,18 +15091,18 @@ def self_test() -> int:
         encoding="utf-8",
     )
     zero_workflow_capture = load_codex_capture(zero_workflow_path)
-    blocker_result = build_work_blocker_result(
+    blocker_result = build_work_observation(
         candidate_revision,
         external_fixture,
         descriptor_identity,
         zero_workflow_capture,
     )
     if (
-        blocker_result["kind"] != "phase8_dogfood_blocker_result"
+        blocker_result["kind"] != "dogfood_work_observation"
         or blocker_result["failed_checks"]
         != list(WORK_BLOCKER_CHECKS)
-        or blocker_result["classification"] != "product_work_session_blocker"
-        or blocker_result["outcome"] != "campaign_stop"
+        or blocker_result["classification"] != "semantic_work_observation"
+        or blocker_result["outcome"] != "review_required"
         or set(blocker_result["later_required_evidence"].values()) != {"not_run"}
     ):
         raise AssertionError("zero-Volicord completed work capture was not a terminal blocker")
@@ -15057,7 +15128,7 @@ def self_test() -> int:
         encoding="utf-8",
     )
     missing_activation_capture = load_codex_capture(missing_activation_path)
-    setup_result = build_work_blocker_result(
+    setup_result = build_work_observation(
         candidate_revision,
         external_fixture,
         descriptor_identity,
@@ -15086,7 +15157,7 @@ def self_test() -> int:
         encoding="utf-8",
     )
     transport_blocker_sha256 = sha256(transport_blocker_path)
-    transport_blocker_result = build_work_blocker_result(
+    transport_blocker_result = build_work_observation(
         candidate_revision,
         external_fixture,
         descriptor_identity,
@@ -15130,7 +15201,7 @@ def self_test() -> int:
         encoding="utf-8",
     )
     try:
-        build_work_blocker_result(
+        build_work_observation(
             candidate_revision, external_fixture, descriptor_identity,
             zero_workflow_capture, target_repository=ROOT,
         )
@@ -15143,7 +15214,7 @@ def self_test() -> int:
             sys.executable,
             "-B",
             str(Path(__file__).resolve()),
-            "qualify-work-blocker",
+            "inspect-work",
             "--candidate-head",
             current_candidate,
             "--descriptor",
@@ -15161,15 +15232,15 @@ def self_test() -> int:
         check=False,
     )
     if (
-        blocker_cli.returncode != 1
+        blocker_cli.returncode != 0
         or not blocker_output_path.is_file()
         or json.loads(blocker_output_path.read_text(encoding="utf-8")).get("kind")
-        != "phase8_dogfood_blocker_result"
+        != "dogfood_work_observation"
         or json.loads(blocker_output_path.read_text(encoding="utf-8")).get("failed_checks")
         != list(WORK_BLOCKER_CHECKS)
     ):
         raise AssertionError(
-            "qualify-work-blocker CLI did not emit the failure-only result: "
+            "inspect-work CLI did not emit the failure-only result: "
             f"exit={blocker_cli.returncode} stderr={blocker_cli.stderr.strip()}"
         )
     for forbidden_true in (
@@ -15180,7 +15251,7 @@ def self_test() -> int:
         invalid_blocker = json.loads(json.dumps(blocker_result))
         invalid_blocker[forbidden_true] = True
         try:
-            validate_blocker_result(invalid_blocker)
+            validate_work_observation(invalid_blocker)
         except ValueError:
             pass
         else:
@@ -15197,7 +15268,7 @@ def self_test() -> int:
         encoding="utf-8",
     )
     try:
-        build_work_blocker_result(
+        build_work_observation(
             candidate_revision,
             external_fixture,
             descriptor_identity,
@@ -16792,7 +16863,7 @@ def self_test() -> int:
         / decomposed_context["evidence"]["captures"]["work"]["file"]
     )
     try:
-        build_work_blocker_result(
+        build_work_observation(
             candidate_revision,
             decomposed_context,
             hashlib.sha256(
@@ -16800,7 +16871,7 @@ def self_test() -> int:
             ).hexdigest(),
             load_codex_capture(decomposed_capture_path),
         )
-    except NoWorkBlocker:
+    except NoWorkObservation:
         pass
     else:
         raise AssertionError(
@@ -17011,13 +17082,13 @@ def self_test() -> int:
         json.dumps(independent_questions, sort_keys=True).encode("utf-8")
     ).hexdigest()
     try:
-        build_work_blocker_result(
+        build_work_observation(
             candidate_revision,
             independent_questions,
             independent_descriptor_identity,
             load_codex_capture(independent_capture_path),
         )
-    except NoWorkBlocker:
+    except NoWorkObservation:
         pass
     else:
         raise AssertionError(
@@ -21810,7 +21881,7 @@ def self_test() -> int:
         "missing_user_decision_rejected": "passed",
         "valid_hash_insufficient_semantics_rejected": "passed",
         "candidate_question_lifecycle_provenance_required": "passed",
-        "terminal_work_blocker_early_stop": "passed",
+        "nonterminal_work_observations": "passed",
         "branch_aware_non_question_blocker": "passed",
         "positive_work_blocker_attempt_rejected": "passed",
         "early_stop_completion_claims_rejected": "passed",
@@ -21821,7 +21892,7 @@ def self_test() -> int:
         "accessibility_button_text_and_aria_names": "passed",
         "accessibility_unlabeled_controls_rejected": "passed",
         "accessibility_heading_order_rejected": "passed",
-        "accessibility_machine_failure_authority": "passed",
+        "accessibility_structure_observations_without_human_claim": "passed",
         "viewer_environment_blocking": "passed",
         "qualitative_review_cannot_override_machine_failure": "passed",
         "linux_process_tree_peak_rss": process_peak["status"],
@@ -21858,7 +21929,7 @@ def parse_args() -> argparse.Namespace:
     subparsers.add_parser("self-test")
     descriptors = subparsers.add_parser("check-descriptors")
     descriptors.add_argument("descriptors", nargs="+")
-    blocker = subparsers.add_parser("qualify-work-blocker")
+    blocker = subparsers.add_parser("inspect-work")
     blocker.add_argument("--candidate-head", required=True)
     blocker.add_argument("--descriptor", required=True)
     blocker.add_argument("--repository", required=True)
@@ -21873,8 +21944,8 @@ def main() -> int:
         return self_test()
     if args.command == "check-descriptors":
         return check_descriptors(args.descriptors)
-    if args.command == "qualify-work-blocker":
-        return qualify_work_blocker(args)
+    if args.command == "inspect-work":
+        return inspect_work(args)
     raise ValueError("unknown Dogfood operation")
 
 

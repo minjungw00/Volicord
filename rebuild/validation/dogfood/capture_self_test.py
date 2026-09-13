@@ -257,9 +257,9 @@ class CurrentExecutionTests(unittest.TestCase):
             capture = load_codex_capture(root / descriptor["evidence"]["captures"]["work"]["file"])
             capture = replace(capture, path_observations=(), evidence_transport_issues=(
                 EvidenceTransportIssue(10, capture.user_turns[0].turn_id, "file", "codex", None, "malformed_file_change"),))
-            result = h.build_work_blocker_result(head, descriptor, "0" * 64, capture)
+            result = h.build_work_observation(head, descriptor, "0" * 64, capture)
             self.assertEqual(result["classification"], "evidence_transport_failure")
-            h.validate_blocker_result(result)
+            h.validate_work_observation(result)
 
     def test_labeled_results_and_malformed_completion(self):
         prefix = 'const [a,b]=await Promise.all([tools.exec_command({cmd:"rg --files"}),tools.exec_command({cmd:"git diff --check"})]);'

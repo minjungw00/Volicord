@@ -114,7 +114,7 @@ class WorkflowTests(unittest.TestCase):
         p, _, package = ops.load_package(target)
         self.assertEqual(p["binding"]["machine_evaluation"]["run_id"], self.evaluation_result["run_id"])
         self.assertEqual(len([n for n in package["artifacts"] if n.startswith("private-rollouts/")]), 16)
-        self.assertEqual(len(p["index"]["machine_findings"]), 8 * len(harness.REAL_SESSION_CHECKS))
+        self.assertEqual(len(p["index"]["machine_findings"]), 8 * (len(harness.REAL_SESSION_CHECKS) + len(ops.machine.FACT_RULES)))
         self.assertEqual(snapshot(self.root), before)
         for entry in p["index"]["evidence"].values():
             if entry["surface"] == "work_capture":
@@ -245,7 +245,7 @@ class WorkflowTests(unittest.TestCase):
     def test_hard_and_indeterminate_machine_cycles_are_reviewable(self):
         invalid = c.read_json(self.evaluation)
         observation = invalid["cycles"][0]["observation"]
-        observation["checks"]["source_grounded_checkpoint"] = "failed"
+        observation["checks"]["canonical_bundle_and_provenance"] = "failed"
         observation["checks"]["appropriate_inquiry_outcome"] = "partial"
         invalid["cycles"][0]["findings"] = ops.machine.from_observation(observation)
         invalid["finding_state"] = ops.machine.evaluation_state([f for cycle in invalid["cycles"] for f in cycle["findings"]])

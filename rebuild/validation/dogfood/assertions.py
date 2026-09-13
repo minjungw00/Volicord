@@ -542,8 +542,8 @@ def main() -> int:
         "operator_environment_invalid",
         "project_resolve",
         "repository_bound_project_resolution",
-        "qualify-work-blocker",
-        "phase8_dogfood_blocker_result",
+        "inspect-work",
+        "dogfood_work_observation",
         "naturalistic_prompt_integrity",
         "task_goal_basis",
         "inquiry_behavior_basis",
@@ -922,7 +922,7 @@ def main() -> int:
         "actual_tool_or_application_failure_is_transport_indeterminate": False,
         "required_operation_indeterminate_classification": "evidence_transport_failure",
         "required_operation_indeterminate_outcome": "evidence_failed",
-        "actual_missing_required_operation_classification": "product_work_session_blocker",
+        "actual_missing_required_operation_classification": "semantic_work_observation",
         "unknown_means_pass": False,
     }:
         raise AssertionError("Phase 8 evidence transport attribution contract changed")
@@ -1150,18 +1150,18 @@ def main() -> int:
             raise AssertionError(
                 f"Dogfood reviewer/operator path retains fixed-cycle identity: {stale_public_identity}"
             )
-    blocker_contract = real_session.get("work_blocker_qualification", {})
+    blocker_contract = real_session.get("work_observation_contract", {})
     if blocker_contract != {
-        "subcommand": "qualify-work-blocker",
-        "result_kind": "phase8_dogfood_blocker_result",
-        "failure_only": True,
+        "subcommand": "inspect-work",
+        "result_kind": "dogfood_work_observation",
+        "observation_only": True,
         "campaign_complete": False,
         "replacement_pass_candidate": False,
         "phase_9_ready": False,
         "later_evidence_status": "not_run",
         "missing_activation_outcome": "operator_environment_invalid",
-        "indeterminate_required_evidence_outcome": "evidence_failed",
-        "actual_missing_required_operation_outcome": "campaign_stop",
+        "indeterminate_required_evidence_outcome": "review_required",
+        "actual_missing_required_operation_outcome": "review_required",
         "mixed_failure_checks_preserved": True,
         "failure_attribution_domains": [
             "environment", "product_integration",
@@ -1205,10 +1205,7 @@ def main() -> int:
                 "seal-cycle",
                 "activate-cycle",
                 "activate-all",
-                "collect-work",
-                "collect-resume",
                 "collect-batch",
-                "evaluate",
                 "finalize-manifest",
             ],
             "rejection_precedes_mutation": True,

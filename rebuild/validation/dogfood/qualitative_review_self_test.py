@@ -151,7 +151,7 @@ class ContractTests(unittest.TestCase):
 
     def test_machine_disagreement_and_hard_block_remain(self):
         p = preparation()
-        finding = m.finding("source_grounded_checkpoint", "confirmed_violation", {"reason": "fixture"})
+        finding = m.finding("raw_hash", "confirmed_violation", {"reason": "fixture"})
         p["index"]["machine_findings"]["f1"] = {"sample_id": "volicord-1", "finding": finding}
         value = completed(p)
         relation = {"finding_id": "f1", "relationship": "probable_false_positive", "reasoning": "Reviewer disputes the machine basis; policy remains blocking."}

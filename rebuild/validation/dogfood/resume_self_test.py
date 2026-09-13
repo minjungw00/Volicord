@@ -427,6 +427,40 @@ class LearningContinuityTests(unittest.TestCase):
         self.recall = self.resume.successful_calls("recall")[0]
         self.item = self.recall.result["learning_context"][0]
 
+    def evaluate_capture(self, resume):
+        loader = h.load_codex_capture
+        resume_name = self.descriptor["evidence"]["captures"]["resume"]["file"]
+        with patch.object(h, "load_codex_capture", side_effect=lambda path:
+            resume if path.name == Path(resume_name).name else loader(path)):
+            return h.real_session_evidence(self.descriptor, kind="volicord", cycle=1, repository_revision="0" * 40)
+
+    def test_redundant_recall_is_reviewable_but_project_conflict_is_hard(self):
+        import machine_findings as machine
+        repeated = replace(self.recall, call_id="redundant-recall", sequence=self.recall.sequence + 1,
+            completion_sequence=self.recall.completion_sequence + 1)
+        value = self.evaluate_capture(replace(self.resume, tool_calls=(*self.resume.tool_calls, repeated)))
+        findings = {f["check"]: f for f in machine.from_observation(value)}
+        self.assertEqual(findings["procedure_invocation_counts"]["disposition"], "advisory")
+        self.assertEqual(findings["repository_bound_project_resolution"]["disposition"], "qualitative_review_required")
+        self.assertEqual(findings["measured_project_identity"]["status"], "confirmed_pass")
+        conflict = replace(repeated, result={**repeated.result, "project_id": "ff" * 16})
+        value = self.evaluate_capture(replace(self.resume, tool_calls=(*self.resume.tool_calls, conflict)))
+        finding = next(f for f in machine.from_observation(value) if f["check"] == "measured_project_identity")
+        self.assertEqual(finding["status"], "confirmed_violation")
+        self.assertEqual(finding["disposition"], "hard_blocking")
+
+    def test_numeric_failed_validation_and_unknown_command_have_distinct_authority(self):
+        import machine_findings as machine
+        verification = next(c for c in reversed(self.resume.commands) if h.dogfood_command_role(c.parsed_command, self.resume.cwd) == "validation")
+        for changed, expected_status, expected_disposition in (
+            (replace(verification, exit_code=1), "confirmed_violation", "hard_blocking"),
+            (replace(verification, exit_code=None, evidence_state="indeterminate"), "indeterminate", "qualitative_review_required"),
+        ):
+            value = self.evaluate_capture(replace(self.resume, commands=tuple(changed if c is verification else c for c in self.resume.commands)))
+            finding = next(f for f in machine.from_observation(value) if f["check"] == "required_validation_execution")
+            self.assertEqual(finding["status"], expected_status)
+            self.assertEqual(finding["disposition"], expected_disposition)
+
     def trace(self, work=None):
         return h.learning_deliberation_trace(work or self.work,
             review_id=self.begin.arguments["review_candidate_id"],

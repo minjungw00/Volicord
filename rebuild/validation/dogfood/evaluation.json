@@ -559,7 +559,7 @@
       "actual_tool_or_application_failure_is_transport_indeterminate": false,
       "required_operation_indeterminate_classification": "evidence_transport_failure",
       "required_operation_indeterminate_outcome": "evidence_failed",
-      "actual_missing_required_operation_classification": "product_work_session_blocker",
+      "actual_missing_required_operation_classification": "semantic_work_observation",
       "unknown_means_pass": false
     },
     "interaction_cost_diagnostics": {
@@ -1147,10 +1147,7 @@
           "seal-cycle",
           "activate-cycle",
           "activate-all",
-          "collect-work",
-          "collect-resume",
           "collect-batch",
-          "evaluate",
           "finalize-manifest"
         ],
         "rejection_precedes_mutation": true,
@@ -1172,17 +1169,17 @@
       "ordinary_repository_paths_and_public_api_names_allowed": true
     },
     "raw_evidence_retention": "ignored_local_state_only",
-    "work_blocker_qualification": {
-      "subcommand": "qualify-work-blocker",
-      "result_kind": "phase8_dogfood_blocker_result",
-      "failure_only": true,
+    "work_observation_contract": {
+      "subcommand": "inspect-work",
+      "result_kind": "dogfood_work_observation",
+      "observation_only": true,
       "campaign_complete": false,
       "replacement_pass_candidate": false,
       "phase_9_ready": false,
       "later_evidence_status": "not_run",
       "missing_activation_outcome": "operator_environment_invalid",
-      "indeterminate_required_evidence_outcome": "evidence_failed",
-      "actual_missing_required_operation_outcome": "campaign_stop",
+      "indeterminate_required_evidence_outcome": "review_required",
+      "actual_missing_required_operation_outcome": "review_required",
       "mixed_failure_checks_preserved": true,
       "failure_attribution_domains": [
         "environment",

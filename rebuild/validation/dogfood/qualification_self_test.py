@@ -84,11 +84,41 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "only human"):
             review.validate_value(self.prep, "d" * 64, self.agent)
 
+    def test_explicit_operator_action_is_append_only_and_binds_complete_state(self):
+        import review_operations as ops
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / 'qualification.json'
+            value = {"kind": "phase8_dogfood_result", "schema_version": 2, "policy": policy.identity(),
+                "candidate_head": "a" * 40, "evaluator_revision": "b" * 40, "run_nonce": "c" * 32,
+                "evidence_set": {"path": "evidence-set.json", "sha256": "d" * 64},
+                "evaluation_run": {"run_id": "e" * 64, "sha256": "f" * 64}, "qualitative_review_runs": [],
+                **self.result()}
+            value["run_id"] = m.digest(value)
+            policy.validate_result(value)
+            original = ops.encoded(value)
+            path.write_bytes(original)
+            (root / 'inputs.json').write_bytes(ops.encoded({"campaign_root": str(root / 'source-campaign')}))
+            with patch.object(policy, 'verify_qualification', return_value=value) as verify:
+                approval = policy.approve(path, root / 'approval', operator='synthetic operator', statement='approve-phase-9')
+                verify.assert_called_once_with(path)
+                self.assertTrue(approval['phase_9_ready'])
+                self.assertEqual(policy.verify_approval(root / 'approval/approval.json', path), approval)
+                self.assertEqual(approval['qualification_sha256'], ops.digest(original))
+                self.assertEqual((root / 'approval/qualification.json').read_bytes(), original)
+                with self.assertRaises(ValueError):
+                    policy.approve(path, root / 'approval', operator='synthetic operator', statement='approve-phase-9')
+            self.assertEqual(path.read_bytes(), original)
+            value['phase_9_ready'] = True
+            value['run_id'] = m.digest({k: v for k,v in value.items() if k != 'run_id'})
+            with self.assertRaises(ValueError):
+                policy.validate_result(value)
+
     def test_approval_refuses_missing_required_review(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'qualification.json'
             path.write_text(json.dumps({"replacement_qualification": "unresolved"}))
-            with patch.object(policy, 'verify_qualification'):
+            with patch.object(policy, 'verify_qualification', return_value={"replacement_qualification": "unresolved"}):
                 with self.assertRaisesRegex(ValueError, 'cannot replace'):
                     policy.approve(path, Path(directory) / 'approval', operator='operator', statement='approve-phase-9')
             self.assertFalse((Path(directory) / 'approval').exists())

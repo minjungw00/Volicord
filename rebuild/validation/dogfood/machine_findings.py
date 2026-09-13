@@ -1,12 +1,9 @@
-"""Finite machine certainty/disposition policy; no review or passage authority.
-
-Existing determinate failed checks remain blocking pending the later heuristic
-capacity audit. Only explicit uncertainty/missing-observation bases are unresolved.
-"""
+"""Finite authority policy over preserved observations; no automatic semantic oracle."""
 from enum import StrEnum
 import hashlib
 import json
 import re
+from pathlib import Path
 
 
 class Status(StrEnum):
@@ -23,7 +20,10 @@ class Disposition(StrEnum):
     ADVISORY = "advisory"
 
 
-POLICY_VERSION = 1
+POLICY = json.loads(Path(__file__).with_name("machine-policy.json").read_text())
+POLICY_VERSION = POLICY["revision"]
+FACT_RULES = frozenset({"recorded_decision_integrity", "measured_project_identity",
+    "measured_session_provenance", "required_validation_execution", "procedure_invocation_counts", "projection_evidence_identity"})
 # Integrity uncertainty cannot admit evidence either. Review cannot waive it.
 INTEGRITY_RULES = frozenset({
     "candidate_binding", "campaign_inventory", "session_mapping", "activation_identity",
@@ -50,15 +50,14 @@ BEHAVIOR_RULES = frozenset({
 
 def disposition(rule, status):
     status = Status(status)
-    if rule not in INTEGRITY_RULES | BEHAVIOR_RULES:
+    if rule not in POLICY["rules"]:
         raise ValueError("unregistered machine policy rule")
     if status in {Status.PASS, Status.NOT_APPLICABLE}:
         if rule in INTEGRITY_RULES and status == Status.NOT_APPLICABLE:
             raise ValueError("required integrity cannot be not applicable")
         return Disposition.ADVISORY
-    if rule in INTEGRITY_RULES or status == Status.VIOLATION:
-        return Disposition.HARD
-    return Disposition.REVIEW
+    policy = POLICY["rules"][rule]
+    return Disposition(policy["authority"] if status == Status.VIOLATION else policy["uncertainty"])
 
 
 def finding(rule, status, basis):
@@ -66,7 +65,7 @@ def finding(rule, status, basis):
         raise ValueError("machine finding requires inspectable basis")
     value = {"check": rule, "status": Status(status).value,
         "disposition": disposition(rule, status).value,
-        "policy_owner": "machine_findings", "policy_version": POLICY_VERSION, "basis": basis}
+        "policy_owner": POLICY["rules"][rule]["owner"], "policy_version": POLICY_VERSION, "basis": basis}
     validate_finding(value)
     return value
 
@@ -75,7 +74,7 @@ def validate_finding(value):
     if not isinstance(value, dict) or set(value) != {
         "check", "status", "disposition", "policy_owner", "policy_version", "basis"}:
         raise ValueError("invalid machine finding shape")
-    if (value["policy_owner"] != "machine_findings" or value["policy_version"] != POLICY_VERSION
+    if (value["policy_owner"] != POLICY["rules"].get(value["check"], {}).get("owner") or value["policy_version"] != POLICY_VERSION
         or value["disposition"] != disposition(value["check"], value["status"])
         or not isinstance(value["basis"], dict) or not value["basis"]):
         raise ValueError("inconsistent machine finding policy or basis")
@@ -108,6 +107,10 @@ def from_observation(observation):
             status, reason = Status.NOT_APPLICABLE, "learning_not_required_for_behavior_class"
         findings.append(finding(check, status, {"observed_check_status": observed,
             "reason": reason, "observation_pointer": "/observation"}))
+    for rule, fact in sorted(observation.get("machine_facts", {}).items()):
+        if rule not in FACT_RULES:
+            raise ValueError("unknown audited fact rule")
+        findings.append(finding(rule, fact["status"], fact["basis"]))
     return findings
 
 
@@ -126,6 +129,11 @@ def digest(value):
 
 
 def validate_run(value):
+    if not isinstance(value, dict) or set(value) != {"kind", "schema_version", "candidate_head", "evidence_set",
+        "evaluator_revision", "policy_version", "evaluator_files", "policy", "qualitative_review_runs",
+        "previous_evaluation", "run_nonce", "collection_state", "evaluation_state", "qualification_state",
+        "cycles", "finding_state", "run_id"}:
+        raise ValueError("invalid machine evaluation shape")
     if (value.get("kind") != "dogfood_machine_evaluation" or value.get("schema_version") != 2
         or value.get("qualification_state") != "not_run"
         or value.get("collection_state") != "collected"
@@ -157,6 +165,8 @@ def validate_run(value):
         if set(cycle["observation"].get("checks", {})) != BEHAVIOR_RULES - {
             "work_turn_lifecycle", "resume_contract", "evaluation_execution"}:
             raise ValueError("evaluation silently omitted required checks")
+        if set(cycle["observation"].get("machine_facts", {})) != FACT_RULES:
+            raise ValueError("evaluation omitted audited integrity/execution facts")
         if cycle["findings"] != from_observation(cycle["observation"]):
             raise ValueError("findings do not preserve observed certainty/basis")
         findings.extend(cycle["findings"])
@@ -167,18 +177,26 @@ def validate_run(value):
 
 
 def review_groups(rule):
-    """Finite semantic jurisdiction; extended by the authority audit."""
-    if rule in {"generated_document_outputs"}:
-        return {"documents"}
-    if rule in {"static_viewer_snapshot"}:
-        return {"viewer_snapshot", "live_viewer"}
-    if rule in {"grounded_pre_work_repository_baseline", "hidden_material_discovery_order", "engineering_choice_discovery"}:
-        return {"repository_intelligence", "authority"}
-    if rule in {"meaningful_recalled_continuation", "resume_contract", "resume_pre_work_repository_baseline",
-        "resume_materiality_work_authority", "recall_matches_checkpoint_decision_and_context",
-        "learning_recall_continuity", "resolved_material_question_not_reasked",
-        "recall_precedes_inspection_and_continuation", "repository_bound_project_resolution"}:
-        return {"context_recovery"}
-    if rule in BEHAVIOR_RULES:
-        return {"interaction", "authority"}
-    return set()
+    return set(POLICY["rules"][rule]["review_groups"])
+
+
+def validate_policy():
+    if set(POLICY["rules"]) != INTEGRITY_RULES | BEHAVIOR_RULES | FACT_RULES:
+        raise ValueError("finite policy coverage changed")
+    for value in POLICY["rules"].values():
+        if (set(value) != {"authority", "uncertainty", "owner", "rationale", "review_groups"}
+            or not value["owner"] or not value["rationale"]):
+            raise ValueError("policy requires a rationale and owner for every rule")
+        for key in ("authority", "uncertainty"):
+            Disposition(value[key])
+        if "qualitative_review_required" in {value["authority"], value["uncertainty"]} and not value["review_groups"]:
+            raise ValueError("reviewable rule has no semantic jurisdiction")
+
+
+validate_policy()
+
+
+def work_findings(failed_checks, indeterminate_checks):
+    return [finding(POLICY["work_observations"][check],
+        Status.INDETERMINATE if check in indeterminate_checks else Status.VIOLATION,
+        {"work_observation_check": check, "indeterminate": check in indeterminate_checks}) for check in failed_checks]

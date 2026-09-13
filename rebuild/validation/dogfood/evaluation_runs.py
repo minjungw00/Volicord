@@ -8,7 +8,7 @@ import machine_findings as machine
 def policy_identity():
     import qualitative_review
     import harness
-    policy = {"machine_version": machine.POLICY_VERSION,
+    policy = {"machine_version": machine.POLICY_VERSION, "authority": machine.POLICY,
         "machine_policy_sha256": harness.sha256(Path(machine.__file__)),
         "rubric": qualitative_review.rubric(harness.load_definition())}
     return {"revision": "evidence-evaluation-1", "sha256": machine.digest(policy)}

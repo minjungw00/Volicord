@@ -239,14 +239,14 @@ class FrontierTests(unittest.TestCase):
                     for c in capture.commands)
                 changed = replace(capture, commands=tuple(c for c in commands if c is not None))
                 if state == "complete":
-                    with self.assertRaises(h.NoWorkBlocker):
-                        h.build_work_blocker_result(head, descriptor, "0" * 64, changed)
+                    with self.assertRaises(h.NoWorkObservation):
+                        h.build_work_observation(head, descriptor, "0" * 64, changed)
                 else:
-                    result = h.build_work_blocker_result(head, descriptor, "0" * 64, changed)
+                    result = h.build_work_observation(head, descriptor, "0" * 64, changed)
                     self.assertEqual(result["failed_checks"], list(h.HIDDEN_INVESTIGATION_CHECKS))
                     self.assertEqual(result["failure_attribution"]["domain"],
                         "behavior_contract" if state == "missing" else "evidence")
-                    self.assertEqual(result["product_failed_checks"],
+                    self.assertEqual(result["determinate_failed_checks"],
                         list(h.HIDDEN_INVESTIGATION_CHECKS) if state == "missing" else [])
                     original_loader = h.load_codex_capture
                     work_file = descriptor["evidence"]["captures"]["work"]["file"]
@@ -907,7 +907,7 @@ class FrontierTests(unittest.TestCase):
         self.assertTrue(h.decision_facts(capture, bundle)[0])
         self.assertEqual(len(h.unnecessary_question_repetitions(capture)), 1)
         with patch.object(h, "cycle_descriptor_errors", return_value=[]):
-            blocked = h.build_work_blocker_result("0" * 40, descriptor, "0" * 64, capture)
+            blocked = h.build_work_observation("0" * 40, descriptor, "0" * 64, capture)
         self.assertEqual(blocked["failed_checks"], ["unnecessary_question_repetition"])
         self.assertEqual(blocked["failure_attribution"]["domain"], "behavior_contract")
         for text in ("Please explain the alternatives first.", "Either option might work."):

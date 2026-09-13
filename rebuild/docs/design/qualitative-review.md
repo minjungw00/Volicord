@@ -213,3 +213,14 @@ facts, resolved semantic findings, common review completion and targeted human e
 `approve-phase-9` then requires explicit operator authorization of a fully qualified run.
 Approval rechecks the exact original inputs; it cannot replace missing evidence or review.
 The common review result itself always retains `phase_9_ready = false`.
+
+A valid `not_applicable` assessment for Decision comprehension when no user Decision is
+in scope may be established by an agent from the permitted evidence; it does not require
+a human to experience a nonexistent Decision. Applicable comprehension remains human-only.
+The single machine disposition table is `machine-policy.json`; check names and historical
+domains alone do not determine authority. Exact hard facts remain non-overridable even
+when a broad procedural check in the same cycle is review-required or advisory.
+
+`validate-approval --approval <approval-run>/approval.json --qualification
+<qualification-run>/qualification.json` rechecks the immutable approval, preserved
+qualification bytes and every original input without exercising approval again.

@@ -295,17 +295,11 @@ definition.
 | `complete_batch_raw_rollouts` | `16` |
 <!-- phase8-public-campaign-contract:end -->
 
-A completed work session with a machine-observable terminal work blocker may
-be classified without executing later qualifying sessions:
-
-```text
-python3 rebuild/validation/dogfood/harness.py qualify-work-blocker \
-  --candidate-head <current-candidate-head> \
-  --descriptor <one-cycle-descriptor.json> \
-  --repository <exact-pinned-cycle-repository> \
-  --work-capture <completed-work-rollout.jsonl> \
-  --output <blocker-result.json>
-```
+`harness.py inspect-work --candidate-head <original-candidate> --descriptor <descriptor>
+--repository <pinned-repository> --work-capture <completed-raw> --output <new-file>`
+preserves bounded work observations. Semantic missing-operation/count/ordering findings
+are review signals, not terminal campaign decisions. This read-only diagnostic does not
+collect or qualify evidence.
 
 SessionStart identity is owned by
 `rebuild/crates/volicord-operations/src/session_start_identity.txt`, consumed by
@@ -335,20 +329,10 @@ Candidate/revision/workspace/role mismatches remain pre-mutation mapping errors.
 for each failure class, including an injected validator false negative over
 unmodified production-generated evidence.
 
-The failure-only result kind is `phase8_dogfood_blocker_result`. Missing
-required high-level Project, Goal Context, repository baseline, behavior-class
-evidence, or grounded Checkpoint operations are terminal when absent from a
-completed work capture. Material Question Candidate/promotion and explicit
-current-host Decision are additionally required only for the two user-owned
-decision classes; a later resume cannot retroactively put them in that session.
-If the capture
-cannot prove a required semantic fact, the harness requires normal full
-qualification instead of inventing a blocker. A positive work session cannot
-be converted into an early failure. The result always records
-`campaign_complete = false`, `replacement_pass_candidate = false`, and
-`phase_9_ready = false`, identifies later sessions/checks as `not_run`, and
-retains only bounded identities, failed checks, and the capture hash—not task
-text, hidden evaluation material, source bodies, credentials, or raw provider content.
+The diagnostic result kind is `dogfood_work_observation`. Original failed checks remain
+inspectable alongside policy-typed findings and `qualification_state = not_run`.
+Hard measurement integrity remains non-overridable; semantic uncertainty stays reviewable.
+No diagnostic claims campaign completion, replacement qualification or Phase 9 readiness.
 
 The maintained internal campaign helper reduces evidence handling without
 creating or coaching a naturalistic session:
@@ -510,7 +494,7 @@ later draft edits cannot change that record. Fixed records cannot be overwritten
 All required records must be fixed before `collect-batch` can create staging or
 publish immutable evidence. The preparation also binds all sixteen raw hashes and the
 campaign hash. Missing realizer evidence is a preparation blocker, not a Product
-crash. Individual cross-locale `collect-work`/`collect-resume` cannot bypass this step.
+crash. The single `collect-batch` collection path cannot bypass this step.
 Product checks structure, grounding, protected terms and provenance; the active
 host confirmation and existing human review still own semantic language quality.
 
@@ -537,9 +521,8 @@ index lists the produced paths without evaluator material. The helper also
 writes a bounded Runtime Home summary containing managed logical names and sizes,
 derived-analysis size, configuration presence, and activation booleans; it
 never reads or copies store, derived-analysis, credential, provider-payload,
-prompt, or source-body contents. `collect-work` and `collect-resume` remain
-available for same-locale non-default focused diagnostics; they are not the ordinary
-operator workflow.
+prompt, or source-body contents. Production collection uses only `collect-batch`; per-cycle extraction helpers are
+limited to synthetic fixtures.
 
 The generated documents and Viewer serve different review needs. Each document
 uses a comprehension-first body and moves opaque identities, hashes, complete
@@ -838,3 +821,14 @@ through the repository-local focused runner:
 rebuild/scripts/validate focused realistic-external-fetch -- python3 rebuild/validation/repository-intelligence/realistic-qualification/external_corpus.py fetch
 rebuild/scripts/validate focused realistic-corpus-qualification -- python3 rebuild/validation/repository-intelligence/realistic-qualification/assertions.py
 ```
+
+The finite machine authority/rationale/owner table is `dogfood/machine-policy.json`.
+Intact older evidence uses `dogfood-campaign evaluate` without changing its Product
+candidate. An incomplete historical campaign without `evidence-set.json` may use
+`dogfood-campaign diagnose --campaign-root <old> --output <new>` for a separate, explicitly
+non-qualifying inventory diagnostic. Neither path rewrites historical rejection/raw data.
+
+Use `validate-approval --approval <approval-run>/approval.json --qualification
+<qualification-run>/qualification.json` to recheck a recorded authorization without
+creating another approval. The original qualification input references must remain
+available for this independent check.
