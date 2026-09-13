@@ -482,11 +482,21 @@ assignment, expected outcome, or raw session data. Never put it in tracked state
 
 The active host fills each draft's `realization` with the exact plan fingerprint,
 translated `title`, ordered `sections` (`key`, `title`, `claims`), and ordered claims
-(`identity`, `text`), preserving every protected code/path term. It supplies the
-`generator` object with non-empty `generator`, `agent`, and `model` identities.
-The outer draft contains exactly `preparation_sha256`, `requested_language`,
-`all_generated_prose_realized`, and `realization`. Keep the prepared hash/language
-and set the prose confirmation to `true` only after reviewing the complete body.
+(`identity`, `text`), preserving every protected code/path term. Draft schema version 2
+has exactly `schema_version`, `preparation_sha256`, `requested_language`,
+`all_generated_prose_realized`, `provenance`, and `realization`. The realization has
+no caller-supplied `generator`. Keep the prepared hash/language and set the prose
+confirmation to `true` only after reviewing the complete body.
+
+Keep `provenance.preparation_binding` unchanged: it verifies the prepared candidate and
+local MCP executable hash, not the author or exact model. Each of `host`, `agent`, and
+`model` is either `{"state":"unknown","value":null}` or
+`{"state":"self_reported","value":"the reported identity"}`. No exact host/model
+attestation is available on this path, so `verified` claims are rejected. The recorder
+derives Product generator metadata with explicit unverified labels, including
+`unknown (unverified)` for an unavailable model identity. The accepted structured
+provenance and its exact bytes/hash remain immutable.
+
 Python never writes translated prose. Field text is bounded to 4,096 UTF-8 bytes;
 each private preparation/draft is bounded to 2 MiB. The host then runs:
 
@@ -504,7 +514,7 @@ Fix errors in the mutable draft and rerun preflight. Recording asks Product to
 validate both formats against the current plan, then fixes the exact bytes/hash;
 later draft edits cannot change that record. Fixed records cannot be overwritten.
 All required records must be fixed before `collect-batch` can create staging or
-publish terminal intake. The preparation also binds all sixteen raw hashes and the
+publish immutable evidence. The preparation also binds all sixteen raw hashes and the
 campaign hash. Missing realizer evidence is a preparation blocker, not a Product
 crash. Individual cross-locale `collect-work`/`collect-resume` cannot bypass this step.
 Product checks structure, grounding, protected terms and provenance; the active

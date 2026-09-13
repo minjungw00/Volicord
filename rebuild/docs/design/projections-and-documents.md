@@ -396,6 +396,17 @@ headroom을 남기기 위해 plan `source_text`는 3,072 UTF-8 bytes 이하다. 
 term도 deterministic representative set만 plan에 포함하며 term/item bound 때문에 제외된
 수는 exact하게 기록한다. 이 bound와 omission metadata는 plan fingerprint에 포함된다.
 
+### Active-host realization provenance in campaign evidence
+
+Phase 8 recorder는 preparation의 candidate/local MCP executable binding과 realizer의
+identity claim을 구분한다. Verified preparation은 exact plan/route의 local evidence일 뿐
+active-host authorship 또는 exact model identity의 attestation이 아니다. 현재 control path가
+독립 검증하지 못하는 host/agent/model은 `self_reported` 또는 `unknown`으로 immutable하게
+기록하고, 기존 Product generator metadata에도 unverified 상태를 명시한다. Arbitrary
+non-empty model string이나 환경의 session ID만으로 verified model provenance를 만들지 않는다.
+Unknown exact identity는 language failure가 아니다. Fingerprint, topology, protected-term,
+field/language attestation 검사는 유지하며 provenance 검증이 prose quality classifier가 되지 않는다.
+
 ## 8. Grounding metadata
 
 각 generated draft, preview와 export는 최소 다음 grounding을 가진다.

@@ -40,7 +40,8 @@ def complete_synthetic_draft(value):
     value = deepcopy(value)
     value["all_generated_prose_realized"] = True
     value["realization"]["title"] = "프로젝트 인수인계"
-    value["realization"]["generator"] = {"generator": "synthetic-test-host", "agent": "fixture", "model": "fixture"}
+    for field, label in (("host", "synthetic-test-host"), ("agent", "fixture")):
+        value["provenance"][field] = {"state": "self_reported", "value": label}
     value["realization"]["sections"][0]["title"] = "현재 작업"
     value["realization"]["sections"][0]["claims"][0]["text"] = "소스 src/example.py에서 Example을 사용합니다."
     return value
@@ -110,6 +111,17 @@ class DocumentRealizationTests(unittest.TestCase):
             with self.assertRaises(c.CampaignError):
                 r.record(root, entry["realization_id"], draft_path)
             self.assertEqual(snapshot(root), before)
+            before = snapshot(root)
+            def changed_plan(binary, runtime, arguments):
+                result = product_preview(binary, runtime, arguments)
+                if "plan" in result:
+                    result["plan"]["plan_fingerprint"] = "sha256:" + "f" * 64
+                return result
+            with patch.object(r, "preview", side_effect=changed_plan):
+                with self.assertRaises(c.IntegrityError):
+                    c.collect_batch(root, captures, exporter=fixtures.batch_exporter(bundles),
+                        snapshotter=fixtures.snapshotter)
+            self.assertEqual(snapshot(root), before)
             summary = c.collect_batch(root, captures, exporter=fixtures.batch_exporter(bundles),
                 documenter=lambda *args: self.fail("cross-locale documents used the CLI exporter"),
                 snapshotter=lambda binary, runtime, project, destination, locale, language:
@@ -167,6 +179,52 @@ class DocumentRealizationTests(unittest.TestCase):
             with self.assertRaises(c.CampaignError):
                 c.collect_batch(root, captures)
             self.assertEqual(snapshot(root), before)
+
+    def test_model_claims_are_unverified_and_fixed_immutably(self):
+        root, captures, _ = self.prepared()
+        with patch.object(r, "preview", side_effect=product_preview):
+            r.prepare(root, captures)
+            entry = c.read_json(root / "realizer/index.json")["documents"][0]
+            draft_path = root / entry["draft"]
+            value = complete_synthetic_draft(c.read_json(draft_path))
+            self.assertEqual(value["provenance"]["model"], {"state": "unknown", "value": None})
+            for field in ("host", "agent", "model"):
+                invalid = deepcopy(value)
+                invalid["provenance"][field] = {"state": "verified", "value": "arbitrary-exact-identity"}
+                c.write_json(draft_path, invalid)
+                before = snapshot(root)
+                for operation in (r.validate, r.record):
+                    with self.assertRaises(c.CampaignError):
+                        operation(root, entry["realization_id"], draft_path)
+                    self.assertEqual(snapshot(root), before)
+            invalid = deepcopy(value)
+            invalid["provenance"]["model"] = {"state": "unknown", "value": "GPT-5"}
+            c.write_json(draft_path, invalid)
+            with self.assertRaises(c.CampaignError):
+                r.validate(root, entry["realization_id"], draft_path)
+            invalid = deepcopy(value)
+            invalid["provenance"]["preparation_binding"]["mcp_sha256"] = "0" * 64
+            c.write_json(draft_path, invalid)
+            with self.assertRaises(c.CampaignError):
+                r.record(root, entry["realization_id"], draft_path)
+            value["provenance"]["model"] = {"state": "self_reported", "value": "GPT-5"}
+            c.write_json(draft_path, value)
+            observed_generators = []
+            def observe(binary, runtime, arguments):
+                if "realization" in arguments:
+                    observed_generators.append(arguments["realization"]["generator"])
+                return product_preview(binary, runtime, arguments)
+            with patch.object(r, "preview", side_effect=observe):
+                result = r.record(root, entry["realization_id"], draft_path)
+            self.assertEqual(result["provenance"], value["provenance"])
+            self.assertEqual(len(observed_generators), 2)
+            self.assertTrue(all(g["model"] == "self_reported (unverified): GPT-5" for g in observed_generators))
+            recorded = r.artifact(root, "recorded", entry["realization_id"])
+            exact = recorded.read_bytes()
+            value["provenance"]["model"] = {"state": "verified", "value": "another-model"}
+            c.write_json(draft_path, value)
+            self.assertEqual(recorded.read_bytes(), exact)
+            self.assertEqual(c.read_json(recorded)["provenance"]["model"]["state"], "self_reported")
 
     def test_same_locale_fixed_export_needs_no_realizer(self):
         for language, locale in (("en", "en"), ("en-US", "en"), ("ko-KR", "ko")):
@@ -261,7 +319,9 @@ class DocumentRealizationTests(unittest.TestCase):
             preparation = {"project_id": project_id, "document_kind": kind, "language": "ko-KR", "locale": "en"}
             plan = r.current_plan(binary, runtime, preparation, "markdown")
             self.assertEqual(plan, r.current_plan(binary, runtime, preparation, "html"))
-            preparation["plan"] = plan
+            preparation.update(plan=plan, schema_version=2, candidate_head=h.git_head(c.ROOT))
+            preparation["provenance_binding"] = {"state": "verified", "source": "candidate_local_document_preview",
+                "candidate_head": preparation["candidate_head"], "mcp_sha256": r.route(binary)["mcp_sha256"]}
             # Synthetic host input tests topology/grounding transport, not language quality.
             realization = {"plan_fingerprint": plan["plan_fingerprint"], "title": "프로젝트 설명",
                 "generator": {"generator": "contract-test-host", "agent": "fixture", "model": "fixture"},
@@ -269,7 +329,10 @@ class DocumentRealizationTests(unittest.TestCase):
                     "claims": [{"identity": claim["identity"], "text": "확인할 프로젝트 근거: " + " ".join(claim["protected_terms"])}
                         for claim in s["claims"]]} for s in plan["sections"]]}
             for format_name, _ in c.DOCUMENT_FORMATS:
-                content = r.consume(binary, runtime, preparation, {"realization": realization}, format_name)
+                content = r.consume(binary, runtime, preparation,
+                    {"realization": {k: v for k, v in realization.items() if k != "generator"},
+                     "provenance": r.provenance_template(preparation["provenance_binding"])}, format_name)
+                self.assertIn("unknown (unverified)", content)
                 self.assertIn("프로젝트 설명", content)
                 if format_name == "html":
                     self.assertIn('lang="ko-kr"', content.lower())

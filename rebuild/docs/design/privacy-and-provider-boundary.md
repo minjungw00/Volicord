@@ -72,6 +72,12 @@ Interactive access는 다음 조건을 가진다.
 - host/model 동작의 외부성은 background provider opt-in을 대신하지 않는다. 제품은
   두 authority를 user-visible하게 구분한다.
 
+Active-host realization의 exact model/author identity를 independent source로 검증할 수
+없으면 unknown 또는 explicitly self-reported로 기록한다. Session environment identifier는
+bounded correlation일 뿐 exact model/authorship attestation이 아니다. Campaign preparation의
+candidate HEAD와 local MCP executable hash를 verified binding으로 보존해도 host/model에
+그 verification authority를 전이하지 않는다. 이를 확인하려고 credential이나 auth file을 읽지 않는다.
+
 Host가 제공하지 않는 권한을 Volicord가 발명하지 않는다. Current-host interaction의
 구체적 UI나 wire representation은 이 문서의 계약이 아니다.
 

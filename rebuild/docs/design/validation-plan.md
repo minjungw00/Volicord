@@ -1372,8 +1372,19 @@ global read-only mapping으로 exact cycle Project를 구하고 maintained stdio
 opaque document identity의 plan/index와 null-text draft는 `realizer/`에 둔다. Realizer plane에는
 evaluator assignment, behavior class, expected qualification 또는 raw rollout을 투영하지 않는다.
 
-Active host/model만 draft의 requested-language title, section title, claim text와 generator/agent/model
-identity를 채운다. `validate-document-realization`은 exact preparation hash, closed draft shape,
+Active host/model만 draft의 requested-language title, section title와 claim text를 채운다.
+Preparation/draft schema version은 2이며 draft의 structured `provenance`는 verified
+`preparation_binding`과 독립 `host`, `agent`, `model` identity claim을 가진다. Verified binding은
+preparation이 확인한 candidate HEAD와 local `document_preview` MCP executable SHA-256만
+증명한다. Environment의 session ID 존재는 exact model이나 realization authorship 증명이
+아니다. 현재 repository/control path는 exact host/agent/model을 독립 attest할 수 없으므로
+이 세 claim은 `unknown` + null 또는 `self_reported` + bounded text만 허용한다. `verified`
+claim, unknown state의 non-null identity와 preparation binding mismatch는 reject한다.
+Caller는 `realization.generator`를 제출하지 않는다. Recorder는 structured provenance에서
+Product metadata를 derive하고 모든 host/agent/model 값에 `unverified`를 명시한다. Unknown
+model은 `unknown (unverified)`이며 arbitrary exact model을 verified identity로 표시하지 않는다.
+Accepted draft bytes/provenance와 generated evidence summary를 immutable하게 유지한다.
+이 binding은 local evidence consistency이며 cryptographic authorship/authentication 주장이 아니다. `validate-document-realization`은 exact preparation hash, closed draft shape,
 requested-language attestation, fingerprint, ordered section/claim identity, field bound와 protected
 code/path term을 non-mutating preflight로 확인한다. 이 preflight는 evaluator descriptor/profile을
 읽지 않는다. `record-document-realization`은 candidate guard와 inventory를 확인하고 현재 Product에

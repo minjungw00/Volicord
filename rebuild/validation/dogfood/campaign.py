@@ -2530,6 +2530,8 @@ def collect_document_evidence(
                     language,
                     locale,
                 )
+            except IntegrityError:
+                raise
             except (OSError, ValueError, CampaignError) as error:
                 result = {
                     "status": "failed",
@@ -2570,6 +2572,8 @@ def collect_document_evidence(
                     "bytes": destination.stat().st_size,
                     "sha256": harness.sha256(destination),
                 }
+                if "provenance" in result:
+                    formats[format_name]["realization_provenance"] = result["provenance"]
                 produced.append(destination)
             else:
                 basis = result.get("basis") if isinstance(result, dict) else None
