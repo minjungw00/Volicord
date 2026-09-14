@@ -36,6 +36,9 @@ documents.
   Implementation Plan, and Handoff / Resume bodies. Structural Fact, Semantic
   Result, and explicit Agent Interpretation claims remain distinct and carry
   their Source, Decision, and Analysis Snapshot bases.
+- Decision projections keep the chosen and agent-recommended alternative keys,
+  their separate rationale ownership, and each displayed alternative's expected
+  consequence through Recall, documents, and Viewer consumers.
 - Arbitrary requested-language prose uses a fingerprinted `NarrativePlan` and
   an active-host `NarrativeRealization`. Realization must preserve the exact
   section/claim topology and protected code/path terms; grounding is copied

@@ -5979,7 +5979,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         "not_run"
     );
     assert_eq!(
-        recalled["decisions"][0]["rationale"],
+        recalled["decisions"][0]["user_rationale"],
         "Canonical project memory remains local"
     );
     assert_eq!(
@@ -5991,11 +5991,16 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         recalled["decisions"][0]["recommendation_rationale"],
         "The accepted product boundary is local-first"
     );
+    assert_eq!(recalled["decisions"][0]["chosen_alternative_key"], "local");
     assert_eq!(
-        recalled["decisions"][0]["expected_consequences"],
+        recalled["decisions"][0]["recommended_alternative_key"],
+        "local"
+    );
+    assert_eq!(
+        recalled["decisions"][0]["displayed_alternatives"],
         json!([
-            "Keep canonical data local",
-            "Require a separate provider decision"
+            {"alternative_key":"local", "label":"Local", "expected_consequence":"Keep canonical data local"},
+            {"alternative_key":"remote", "label":"Remote", "expected_consequence":"Require a separate provider decision"}
         ])
     );
     assert!(!recalled["decisions"][0]["source_basis"]

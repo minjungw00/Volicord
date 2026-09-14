@@ -446,30 +446,39 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
             question_draft(&project, &repository, "What remains open?", 4),
         )?
         .value;
-    let response = |question: &volicord_context::Question, key: &str| QuestionResponseDraft {
-        expected_project_revision: project.revision,
-        question_id: question.id,
-        question_revision: question.revision,
-        user_turn_source: UserTurnSource::Existing(user_turn.id),
-        displayed_alternative_keys: vec!["local".to_owned(), "remote".to_owned()],
-        displayed_recommendation_key: Some("local".to_owned()),
-        response: ExplicitQuestionResponse::Choice {
-            alternative_key: key.to_owned(),
-            user_rationale: Some("preserve continuity".to_owned()),
-        },
-        applicability: ApplicabilityScope {
-            paths: Vec::new(),
-            components: vec!["storage".to_owned()],
-            work_contexts: vec!["phase-6".to_owned()],
-        },
-        assumptions: vec!["local-first".to_owned()],
-        revisit_triggers: vec!["source changes".to_owned()],
+    let response = |question: &volicord_context::Question,
+                    key: &str,
+                    user_rationale: Option<&str>|
+     -> QuestionResponseDraft {
+        QuestionResponseDraft {
+            expected_project_revision: project.revision,
+            question_id: question.id,
+            question_revision: question.revision,
+            user_turn_source: UserTurnSource::Existing(user_turn.id),
+            displayed_alternative_keys: vec!["local".to_owned(), "remote".to_owned()],
+            displayed_recommendation_key: Some("local".to_owned()),
+            response: ExplicitQuestionResponse::Choice {
+                alternative_key: key.to_owned(),
+                user_rationale: user_rationale.map(str::to_owned),
+            },
+            applicability: ApplicabilityScope {
+                paths: Vec::new(),
+                components: vec!["storage".to_owned()],
+                work_contexts: vec!["phase-6".to_owned()],
+            },
+            assumptions: vec!["local-first".to_owned()],
+            revisit_triggers: vec!["source changes".to_owned()],
+        }
     };
     let current_decision = store
         .record_question_response(
             operation(113),
             project.id,
-            response(&current_question, "local"),
+            response(
+                &current_question,
+                "remote",
+                Some("shared scale outweighs the local-first recommendation"),
+            ),
         )?
         .value
         .decision
@@ -477,18 +486,18 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
     store.record_question_response(
         operation(114),
         project.id,
-        response(&unavailable_question, "local"),
+        response(&unavailable_question, "local", None),
     )?;
     store.record_question_response(
         operation(120),
         project.id,
-        response(&stale_question, "local"),
+        response(&stale_question, "local", Some("preserve continuity")),
     )?;
     let historical = store
         .record_question_response(
             operation(115),
             project.id,
-            response(&historical_question, "local"),
+            response(&historical_question, "local", Some("preserve continuity")),
         )?
         .value
         .decision
@@ -629,6 +638,42 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
         .decisions
         .iter()
         .any(|decision| decision.state == BriefDecisionState::Superseded));
+    let projected_current = first
+        .decisions
+        .iter()
+        .find(|decision| decision.decision_id == current_decision.id)
+        .ok_or("current Decision missing from Recall")?;
+    assert_eq!(
+        projected_current.chosen_alternative_key.as_deref(),
+        Some("remote")
+    );
+    assert_eq!(
+        projected_current.recommended_alternative_key.as_deref(),
+        Some("local")
+    );
+    assert_eq!(
+        projected_current.user_rationale.as_deref(),
+        Some("shared scale outweighs the local-first recommendation")
+    );
+    assert_eq!(
+        projected_current.recommendation_rationale,
+        "local-first is safer"
+    );
+    assert!(projected_current
+        .displayed_alternatives
+        .iter()
+        .any(|alternative| alternative.key == "local"
+            && alternative.consequence == "keep local state"));
+    assert!(projected_current
+        .displayed_alternatives
+        .iter()
+        .any(|alternative| alternative.key == "remote"
+            && alternative.consequence == "use remote state"));
+    assert!(first.decisions.iter().any(|decision| {
+        decision.state == BriefDecisionState::UnavailableBasis
+            && decision.user_rationale.is_none()
+            && decision.recommendation_rationale == "local-first is safer"
+    }));
     assert_eq!(first.snapshots[0].analysis_snapshot, analysis.identity);
     assert!(first.snapshots[0]
         .capabilities

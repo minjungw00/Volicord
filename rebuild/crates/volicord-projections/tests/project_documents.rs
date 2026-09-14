@@ -447,7 +447,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
                 displayed_recommendation_key: Some("local".to_owned()),
                 response: ExplicitQuestionResponse::Choice {
                     alternative_key: "local".to_owned(),
-                    user_rationale: Some("preserve a read-only boundary".to_owned()),
+                    user_rationale: None,
                 },
                 applicability: ApplicabilityScope {
                     paths: vec!["src".to_owned()],
@@ -470,9 +470,9 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
                 previous_decision_id: first_decision.id,
                 user_turn_source: UserTurnSource::Existing(user_turn.id),
                 choice: volicord_context::DecisionChoice::Alternative {
-                    alternative_key: "local".to_owned(),
+                    alternative_key: "remote".to_owned(),
                 },
-                user_rationale: Some("render both portable formats from one body".to_owned()),
+                user_rationale: Some("share the rendered body across environments".to_owned()),
                 applicability: first_decision.applicability.clone(),
                 assumptions: first_decision.assumptions.clone(),
                 revisit_triggers: first_decision.revisit_triggers.clone(),
@@ -925,6 +925,13 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         &documents.implementation_plan,
         &documents.handoff_resume,
     ];
+    let decision_markdown = &documents.decision_report.markdown.content;
+    assert!(decision_markdown.contains("Remote \\[remote\\]"));
+    assert!(decision_markdown.contains("Local \\[local\\]"));
+    assert!(decision_markdown.contains("local structural evidence remains available"));
+    assert!(decision_markdown.contains("Local \\[local\\]: keep analysis local"));
+    assert!(decision_markdown.contains("Remote \\[remote\\]: use a remote service"));
+    assert!(decision_markdown.contains("user rationale=not recorded"));
     let architecture_classes = documents
         .project_architecture_guide
         .body

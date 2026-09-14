@@ -17,7 +17,7 @@ use volicord_operations::{
 };
 use volicord_privacy::{ProviderConfigurationState, ProviderOptInState};
 use volicord_projections::{
-    build_project_understanding, BriefDecisionState, CandidateDependencyState,
+    build_project_understanding, BriefDecision, BriefDecisionState, CandidateDependencyState,
     CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest, DocumentSet, FixedLocale,
     GeneratorIdentity, InspectionHealth, MapEntity, MapRelation, MapRelationClass,
     NarrativeRealizationState, OutputFormat, ProjectProjection, ProjectUnderstanding,
@@ -610,9 +610,18 @@ fn render_project_understanding(
         {
             html.push_str(&format!(
                 "<article class=\"understanding-card verified-fact\" data-statement-role=\"verified-canonical\"><h4>{}</h4><p><strong>{}:</strong> {}</p>",
-                escape(&decision_choice_label(&decision.decision.choice, request.locale)),
-                escape(text(request.locale, "Rationale", "근거")),
+                escape(&decision_choice_attribution(&decision.decision, request.locale)),
+                escape(text(request.locale, "User rationale", "사용자 근거")),
                 escape(decision.decision.user_rationale.as_deref().unwrap_or_else(|| text(request.locale, "Not recorded", "기록되지 않음")))
+            ));
+            html.push_str(&format!(
+                "<p><strong>{}:</strong> {} · <strong>{}:</strong> {}</p><p><strong>{}:</strong> {}</p>",
+                escape(text(request.locale, "Agent recommendation", "에이전트 권고")),
+                escape(&recommendation_attribution(&decision.decision, request.locale)),
+                escape(text(request.locale, "Recommendation rationale", "권고 근거")),
+                escape(&decision.decision.recommendation_rationale),
+                escape(text(request.locale, "Alternative consequences", "대안별 예상 결과")),
+                escape(&alternative_consequences(&decision.decision, request.locale)),
             ));
             if let Some(explanation) =
                 understanding
@@ -1589,19 +1598,34 @@ fn render_overview(html: &mut String, request: &ViewerRequest, projection: &Proj
     {
         html.push_str(&format!(
             "<p><strong>{}</strong> · {}: {} · {}: {}</p>",
-            escape(&decision_choice_label(&decision.choice, request.locale)),
+            escape(&decision_choice_attribution(decision, request.locale)),
             escape(text(request.locale, "Rationale", "근거")),
             escape(decision.user_rationale.as_deref().unwrap_or_else(|| text(
                 request.locale,
                 "Not recorded",
                 "기록되지 않음"
             ))),
-            escape(text(request.locale, "Consequence", "결과")),
-            escape(&bounded_names(
-                &decision.expected_consequences,
-                3,
-                request.locale
-            ))
+            escape(text(
+                request.locale,
+                "Alternative consequences",
+                "대안별 예상 결과"
+            )),
+            escape(&alternative_consequences(decision, request.locale))
+        ));
+        html.push_str(&format!(
+            "<p><strong>{}:</strong> {} · <strong>{}:</strong> {}</p>",
+            escape(text(
+                request.locale,
+                "Agent recommendation",
+                "에이전트 권고"
+            )),
+            escape(&recommendation_attribution(decision, request.locale)),
+            escape(text(
+                request.locale,
+                "Recommendation rationale",
+                "권고 근거"
+            )),
+            escape(&decision.recommendation_rationale),
         ));
     } else {
         empty_state(
@@ -1836,7 +1860,7 @@ fn render_decisions(html: &mut String, request: &ViewerRequest, projection: &Pro
                 .find(|link| link.decision_id == decision.decision_id);
             html.push_str(&format!(
                 "<li class=\"item\"><article><header><strong>{}</strong> <span class=\"badge\">{}</span></header>",
-                escape(&decision_choice_label(&decision.choice, request.locale)),
+                escape(&decision_choice_attribution(decision, request.locale)),
                 escape(brief_decision_state_label(decision.state, request.locale))
             ));
             html.push_str(&format!(
@@ -1847,6 +1871,15 @@ fn render_decisions(html: &mut String, request: &ViewerRequest, projection: &Pro
                     "Not recorded",
                     "기록되지 않음"
                 )))
+            ));
+            html.push_str(&format!(
+                "<p><strong>{}:</strong> {} · <strong>{}:</strong> {}</p><p><strong>{}:</strong> {}</p>",
+                escape(text(request.locale, "Agent recommendation", "에이전트 권고")),
+                escape(&recommendation_attribution(decision, request.locale)),
+                escape(text(request.locale, "Recommendation rationale", "권고 근거")),
+                escape(&decision.recommendation_rationale),
+                escape(text(request.locale, "Alternative consequences", "대안별 예상 결과")),
+                escape(&alternative_consequences(decision, request.locale)),
             ));
             if let Some(link) = link {
                 if request.explanation_level != ExplanationLevel::Overview {
@@ -3118,6 +3151,54 @@ fn decision_choice_label(choice: &DecisionChoice, locale: ViewerLocale) -> Strin
             )
         }
     }
+}
+
+fn decision_choice_attribution(decision: &BriefDecision, locale: ViewerLocale) -> String {
+    match decision.chosen_alternative_key.as_deref() {
+        Some(key) => decision
+            .displayed_alternatives
+            .iter()
+            .find(|alternative| alternative.key == key)
+            .map_or_else(
+                || decision_choice_label(&decision.choice, locale),
+                |alternative| format!("{} [{}]", alternative.label, alternative.key),
+            ),
+        None => decision_choice_label(&decision.choice, locale),
+    }
+}
+
+fn recommendation_attribution(decision: &BriefDecision, locale: ViewerLocale) -> String {
+    decision
+        .recommended_alternative_key
+        .as_deref()
+        .map(|key| {
+            decision
+                .displayed_alternatives
+                .iter()
+                .find(|alternative| alternative.key == key)
+                .map_or_else(
+                    || format!("{} [{}]", text(locale, "Alternative", "대안"), key),
+                    |alternative| format!("{} [{}]", alternative.label, alternative.key),
+                )
+        })
+        .unwrap_or_else(|| text(locale, "Not recorded", "기록되지 않음").to_owned())
+}
+
+fn alternative_consequences(decision: &BriefDecision, locale: ViewerLocale) -> String {
+    if decision.displayed_alternatives.is_empty() {
+        return text(locale, "Not recorded", "기록되지 않음").to_owned();
+    }
+    decision
+        .displayed_alternatives
+        .iter()
+        .map(|alternative| {
+            format!(
+                "{} [{}]: {}",
+                alternative.label, alternative.key, alternative.consequence
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 const fn checkpoint_kind_label(kind: CheckpointKind, locale: ViewerLocale) -> &'static str {

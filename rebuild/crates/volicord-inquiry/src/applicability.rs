@@ -59,7 +59,6 @@ pub struct DecisionBasisSummary {
     pub alternatives: Vec<QuestionAlternative>,
     pub recommendation_rationale: String,
     pub user_rationale: Option<String>,
-    pub expected_consequences: Vec<String>,
     pub uncertainty: Vec<String>,
     pub known_limits: Vec<String>,
     pub revisit_triggers: Vec<String>,
@@ -175,11 +174,6 @@ pub fn evaluate_decision_applicability(
         alternatives: decision.displayed_alternatives.clone(),
         recommendation_rationale: decision.displayed_recommendation.rationale.clone(),
         user_rationale: decision.user_rationale.clone(),
-        expected_consequences: decision
-            .displayed_alternatives
-            .iter()
-            .map(|alternative| alternative.consequence.clone())
-            .collect(),
         uncertainty: question.uncertainty.clone(),
         known_limits: question.known_limits.clone(),
         revisit_triggers: decision.revisit_triggers.clone(),

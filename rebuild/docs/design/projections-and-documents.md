@@ -144,8 +144,9 @@ Resume Brief는 최소 다음을 포함한다.
 - **behaviorally relevant user context:** authority, Question behavior, learning interruption 또는
   bounded work를 바꿀 수 있는 canonical Learning, Preference와 Constraint의 statement role,
   identity와 Source basis
-- **active Decisions and rationale:** applicability가 맞는 Decision, user rationale,
-  alternatives와 supersession state
+- **active Decisions and rationale:** applicability가 맞는 Decision, chosen alternative identity,
+  recommended alternative identity, user rationale, recommendation rationale, alternative별 expected
+  consequence와 supersession state
 - **current state and recent Checkpoint:** meaningful work state, recent change,
   verification, review/acceptance의 독립 상태
 - **open Questions:** canonical identity/revision, current frontier/blocked distinction과
@@ -369,7 +370,9 @@ Structural/Semantic basis 또는 explicit inference marker가 필요하다.
 
 Question, displayed alternatives, Agent Recommendation, explicit user Decision/rationale,
 applicability, assumptions, Source basis, expected consequence, revisit trigger와
-supersession trail을 구분한다. Agent recommendation을 user choice로 합치지 않는다.
+supersession trail을 구분한다. Chosen alternative와 recommended alternative identity를 각각
+보존하고 expected consequence는 해당 alternative에 연결한다. User rationale가 없으면
+recommendation rationale로 채우지 않고 missing으로 표시한다.
 
 ### Implementation Plan
 

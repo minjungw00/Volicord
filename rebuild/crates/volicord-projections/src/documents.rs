@@ -1,5 +1,6 @@
 use crate::{
-    BriefDecisionState, CapabilityGap, MapRelationClass, ProjectProjection, ProjectionIssue,
+    BriefDecision, BriefDecisionState, CapabilityGap, MapRelationClass, ProjectProjection,
+    ProjectionIssue,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -641,15 +642,21 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
             identity: format!("decision:{}", decision.decision_id),
             class: ClaimClass::CanonicalContext,
             text: format!(
-                "{}: {}; {}={}; {}={}",
+                "{}: {}; {}={}; {}={}; {}={}; {}={}; {}={}",
                 brief_decision_state_label(decision.state, locale),
-                decision_choice_label(&decision.choice, locale),
+                decision_choice_attribution(decision, locale),
                 fixed(locale, "rationale", "근거"),
                 decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
                     locale,
                     "not recorded",
                     "기록되지 않음"
                 )),
+                fixed(locale, "agent recommendation", "에이전트 권고"),
+                recommendation_attribution(decision, locale),
+                fixed(locale, "recommendation rationale", "권고 근거"),
+                decision.recommendation_rationale,
+                fixed(locale, "alternative consequences", "대안별 예상 결과"),
+                alternative_consequences(decision, locale),
                 fixed(locale, "applicability", "적용 범위"),
                 projection
                     .decision_context_code
@@ -726,7 +733,7 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                     fixed(locale, "state", "상태"),
                     brief_decision_state_label(decision.state, locale),
                     fixed(locale, "choice", "선택"),
-                    decision_choice_label(&decision.choice, locale),
+                    decision_choice_attribution(decision, locale),
                     fixed(locale, "user rationale", "사용자 근거"),
                     decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
                         locale,
@@ -734,9 +741,14 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                         "기록되지 않음"
                     )),
                     fixed(locale, "agent recommendation", "에이전트 권고"),
-                    decision.recommendation_rationale,
-                    fixed(locale, "expected consequence", "예상 결과"),
-                    display_strings(&decision.expected_consequences, locale),
+                    format!(
+                        "{}; {}={}",
+                        recommendation_attribution(decision, locale),
+                        fixed(locale, "rationale", "근거"),
+                        decision.recommendation_rationale
+                    ),
+                    fixed(locale, "alternative consequences", "대안별 예상 결과"),
+                    alternative_consequences(decision, locale),
                     fixed(locale, "assumptions", "가정"),
                     display_strings(&decision.assumptions, locale),
                     fixed(locale, "revisit triggers", "재검토 조건"),
@@ -1032,17 +1044,24 @@ fn decision_summary_section(
             identity: format!("decision-summary:{}", decision.decision_id),
             class: ClaimClass::CanonicalContext,
             text: format!(
-                "{}: {}; {}={}; {}={}",
+                "{}: {}; {}={}; {}={}; {}={}",
                 fixed(locale, "Decision", "결정"),
-                decision_choice_label(&decision.choice, locale),
+                decision_choice_attribution(decision, locale),
                 fixed(locale, "rationale", "근거"),
                 decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
                     locale,
                     "not recorded",
                     "기록되지 않음"
                 )),
-                fixed(locale, "consequence", "결과"),
-                display_strings(&decision.expected_consequences, locale),
+                fixed(locale, "agent recommendation", "에이전트 권고"),
+                format!(
+                    "{}; {}={}",
+                    recommendation_attribution(decision, locale),
+                    fixed(locale, "rationale", "근거"),
+                    decision.recommendation_rationale
+                ),
+                fixed(locale, "alternative consequences", "대안별 예상 결과"),
+                alternative_consequences(decision, locale),
             ),
             source_basis: decision.source_basis.clone(),
             decision_basis: vec![decision.decision_id],
@@ -2360,6 +2379,54 @@ fn decision_choice_label(choice: &DecisionChoice, locale: FixedLocale) -> String
             delegate_to
         ),
     }
+}
+
+fn decision_choice_attribution(decision: &BriefDecision, locale: FixedLocale) -> String {
+    match decision.chosen_alternative_key.as_deref() {
+        Some(key) => decision
+            .displayed_alternatives
+            .iter()
+            .find(|alternative| alternative.key == key)
+            .map_or_else(
+                || decision_choice_label(&decision.choice, locale),
+                |alternative| format!("{} [{}]", alternative.label, alternative.key),
+            ),
+        None => decision_choice_label(&decision.choice, locale),
+    }
+}
+
+fn recommendation_attribution(decision: &BriefDecision, locale: FixedLocale) -> String {
+    decision
+        .recommended_alternative_key
+        .as_deref()
+        .map(|key| {
+            decision
+                .displayed_alternatives
+                .iter()
+                .find(|alternative| alternative.key == key)
+                .map_or_else(
+                    || format!("{} [{}]", fixed(locale, "alternative", "대안"), key),
+                    |alternative| format!("{} [{}]", alternative.label, alternative.key),
+                )
+        })
+        .unwrap_or_else(|| fixed(locale, "none recorded", "기록 없음").to_owned())
+}
+
+fn alternative_consequences(decision: &BriefDecision, locale: FixedLocale) -> String {
+    if decision.displayed_alternatives.is_empty() {
+        return fixed(locale, "none recorded", "기록 없음").to_owned();
+    }
+    decision
+        .displayed_alternatives
+        .iter()
+        .map(|alternative| {
+            format!(
+                "{} [{}]: {}",
+                alternative.label, alternative.key, alternative.consequence
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 const fn brief_decision_state_label(

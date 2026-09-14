@@ -543,8 +543,10 @@ Decision은 다음 basis가 함께 맞을 때 재사용할 수 있다.
 - unresolved contradiction이나 후속 conflicting Decision이 없음
 - superseded 또는 forgotten 상태가 아님
 
-Decision은 당시 option, agent recommendation, user rationale, expected consequence,
-known uncertainty와 revisit trigger를 구분해 보존한다. 이 항목은 Decision의 의미
+Decision은 당시 option, chosen alternative identity, recommended alternative identity,
+user rationale, recommendation rationale, alternative별 expected consequence,
+known uncertainty와 revisit trigger를 구분해 보존한다. User rationale의 부재를 agent
+recommendation rationale로 채우지 않는다. 이 항목은 Decision의 의미
 일부지만 concrete serialized field를 지정하지 않는다.
 
 Applicability가 불확실하거나 중요한 basis가 바뀌면 `review_due`로 다루고 Inquiry가

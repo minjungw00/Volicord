@@ -74,7 +74,9 @@ the current applicability contract and records executed verification as
 command-execution Sources; the reported command outcome remains cooperative
 host evidence rather than an OS attestation. User review and acceptance remain
 independent and are not inferred by this operation. Recall prioritizes the latest Checkpoint so a restarted host can recover work
-state, Decisions, verification, limits, and next step. Its complete MCP result
+state, Decisions, verification, limits, and next step. Decision projection keeps
+chosen and recommended alternative keys, user and recommendation rationales, and
+alternative-specific consequences distinct. Its complete MCP result
 (text plus structured content) is bounded to 256 KiB, with 768 KiB headroom
 below the observed 1 MiB transport boundary. Whole-field or stable suffix
 `transport_omission` reports carry exact omitted counts/size and parent inspection

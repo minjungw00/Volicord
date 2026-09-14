@@ -512,11 +512,18 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
                 prompt_basis: "How should the Viewer present current work?".into(),
                 source_basis: vec![user_turn.id],
                 dependencies: Vec::new(),
-                alternatives: vec![QuestionAlternative {
-                    key: "operator-readable".into(),
-                    label: "Operator-readable cockpit".into(),
-                    consequence: "current work remains primary".into(),
-                }],
+                alternatives: vec![
+                    QuestionAlternative {
+                        key: "operator-readable".into(),
+                        label: "Operator-readable cockpit".into(),
+                        consequence: "current work remains primary".into(),
+                    },
+                    QuestionAlternative {
+                        key: "audit-first".into(),
+                        label: "Audit-first console".into(),
+                        consequence: "audit records remain the primary reading path".into(),
+                    },
+                ],
                 recommendation: AgentRecommendation {
                     alternative_key: Some("operator-readable".into()),
                     rationale: "the operator needs a resumable reading path".into(),
@@ -547,11 +554,11 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
                 question_id: question.id,
                 question_revision: question.revision,
                 user_turn_source: UserTurnSource::Existing(user_turn.id),
-                displayed_alternative_keys: vec!["operator-readable".into()],
+                displayed_alternative_keys: vec!["operator-readable".into(), "audit-first".into()],
                 displayed_recommendation_key: Some("operator-readable".into()),
                 response: ExplicitQuestionResponse::Choice {
-                    alternative_key: "operator-readable".into(),
-                    user_rationale: Some("resume state should be primary".into()),
+                    alternative_key: "audit-first".into(),
+                    user_rationale: Some("inspectable detail is the immediate priority".into()),
                 },
                 applicability: ApplicabilityScope::default(),
                 assumptions: Vec::new(),
@@ -641,7 +648,20 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
     assert!(page.html.contains(&context.id.to_string()));
     assert!(page
         .html
-        .contains("<summary><strong>Decision</strong>: Alternative: operator-readable"));
+        .contains("<summary><strong>Decision</strong>: Alternative: audit-first"));
+    assert!(page.html.contains("Audit-first console [audit-first]"));
+    assert!(page
+        .html
+        .contains("Operator-readable cockpit [operator-readable]"));
+    assert!(page
+        .html
+        .contains("the operator needs a resumable reading path"));
+    assert!(page
+        .html
+        .contains("Operator-readable cockpit [operator-readable]: current work remains primary"));
+    assert!(page.html.contains(
+        "Audit-first console [audit-first]: audit records remain the primary reading path"
+    ));
     assert!(page.html.contains(&decision.id.to_string()));
     assert!(page.html.contains("action=\"/memory/decision/supersede\""));
     assert!(page.html.contains("cargo test -p volicord-viewer"));
@@ -676,7 +696,8 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         "Keep mutation targets readable",
         "completed",
         "passed",
-        "Alternative: operator-readable",
+        "Audit-first console [audit-first]",
+        "Operator-readable cockpit [operator-readable]",
         "No open Questions.",
         "No further work is planned for this goal",
     ] {

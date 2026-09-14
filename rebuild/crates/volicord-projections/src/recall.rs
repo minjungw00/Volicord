@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
     CanonicalReadBasis, Checkpoint, ContextItemId, ContextItemRole, DecisionChoice, DecisionId,
-    ProjectId, QuestionId, SourceFreshness, SourceId, SourceReadBasis,
+    ProjectId, QuestionAlternative, QuestionId, SourceFreshness, SourceId, SourceReadBasis,
 };
 use volicord_inquiry::{
     compute_frontier, evaluate_decision_applicability, ApplicabilityQuery,
@@ -58,6 +58,12 @@ pub struct BriefDecision {
     pub revision: u64,
     pub state: BriefDecisionState,
     pub choice: DecisionChoice,
+    /// The exact alternative chosen by the user, absent for delegation.
+    pub chosen_alternative_key: Option<String>,
+    /// The exact alternative recommended by the agent at Decision time.
+    pub recommended_alternative_key: Option<String>,
+    /// Displayed alternatives retain their own expected consequence.
+    pub displayed_alternatives: Vec<QuestionAlternative>,
     pub user_rationale: Option<String>,
     pub recommendation_rationale: String,
     pub assumptions: Vec<String>,
@@ -71,7 +77,6 @@ pub struct BriefDecision {
     /// Limits that continue to qualify the selected Decision after the
     /// originating Question becomes terminal.
     pub known_limits: Vec<String>,
-    pub expected_consequences: Vec<String>,
     pub review_basis: Vec<String>,
 }
 
@@ -254,16 +259,23 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
                 .as_ref()
                 .map(|basis| basis.known_limits.clone())
                 .unwrap_or_default();
-            let expected_consequences = applicability
-                .displayed_basis
-                .as_ref()
-                .map(|basis| basis.expected_consequences.clone())
-                .unwrap_or_default();
+            let displayed_alternatives = lifecycle.decision.displayed_alternatives.clone();
+            let chosen_alternative_key = match &lifecycle.decision.choice {
+                DecisionChoice::Alternative { alternative_key } => Some(alternative_key.clone()),
+                DecisionChoice::Delegation { .. } => None,
+            };
             BriefDecision {
                 decision_id: lifecycle.decision.id,
                 revision: lifecycle.decision.revision,
                 state,
                 choice: lifecycle.decision.choice.clone(),
+                chosen_alternative_key,
+                recommended_alternative_key: lifecycle
+                    .decision
+                    .displayed_recommendation
+                    .alternative_key
+                    .clone(),
+                displayed_alternatives,
                 user_rationale: lifecycle.decision.user_rationale.clone(),
                 recommendation_rationale: lifecycle
                     .decision
@@ -275,7 +287,6 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
                 source_basis: applicability.source_basis,
                 question_uncertainty,
                 known_limits,
-                expected_consequences,
                 review_basis: applicability
                     .issues
                     .iter()

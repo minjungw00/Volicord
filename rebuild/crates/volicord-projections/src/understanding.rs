@@ -1733,6 +1733,13 @@ mod tests {
                 choice: DecisionChoice::Alternative {
                     alternative_key: "bounded-current-work".into(),
                 },
+                chosen_alternative_key: Some("bounded-current-work".into()),
+                recommended_alternative_key: Some("bounded-current-work".into()),
+                displayed_alternatives: vec![volicord_context::QuestionAlternative {
+                    key: "bounded-current-work".into(),
+                    label: "Keep current work grounded".into(),
+                    consequence: "The current-work component remains source-grounded".into(),
+                }],
                 user_rationale: Some("keep the current work explainable".into()),
                 recommendation_rationale: "retain grounded code".into(),
                 assumptions: Vec::new(),
@@ -1740,7 +1747,6 @@ mod tests {
                 source_basis: vec![SourceId::from_bytes([8; 16])],
                 question_uncertainty: Vec::new(),
                 known_limits: Vec::new(),
-                expected_consequences: Vec::new(),
                 review_basis: Vec::new(),
             })
             .into_iter()
