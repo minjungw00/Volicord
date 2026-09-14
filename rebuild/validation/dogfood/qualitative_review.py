@@ -165,6 +165,8 @@ def validate_references(references, index, inspected, sample_id, *, allow_empty=
         require(isinstance(ref, dict) and set(ref) == {"evidence_id", "locator"}, "invalid evidence reference")
         entry = index["evidence"].get(ref["evidence_id"]) if isinstance(ref["evidence_id"], str) else None
         require(entry is not None and entry["sample_id"] in {None, sample_id}
+            and (entry["surface"] != "cli_observation" or
+                 (entry["sample_id"] == sample_id and entry.get("repository_class") == sample_id))
             and ref["evidence_id"] in inspected, "evidence reference is missing, uninspected or belongs to another cycle")
         locator = ref["locator"]
         require(isinstance(locator, dict) and set(locator) == {"kind", "value"}

@@ -176,6 +176,13 @@ class WorkflowTests(unittest.TestCase):
                         if entry["surface"] == "cli_observation"]
         self.assertEqual(len(cli_evidence), 3)
         self.assertEqual({entry["repository_class"] for entry in cli_evidence}, set(c.CLASSES))
+        self.assertEqual({entry["sample_id"] for entry in cli_evidence}, set(c.CLASSES))
+        foreign_id = "small-python-cli-observation"
+        foreign = preparation["index"]["evidence"][foreign_id]
+        with self.assertRaisesRegex(ValueError, "another cycle"):
+            ops.review.validate_references(
+                [{"evidence_id": foreign_id, "locator": foreign["locators"][0]}],
+                preparation["index"], set(preparation["index"]["evidence"]), "volicord")
 
         original = (observation_root / "observations.json").read_bytes()
         changed = json.loads(original)

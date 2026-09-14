@@ -379,7 +379,7 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             kind = item["repository_class"]
             projected = encoded({"observation_set": outer, "repository_observation": item})
             identity = kind + "-cli-observation"
-            add(identity, projected, "cli_observation", None,
+            add(identity, projected, "cli_observation", kind,
                 {"kind": "candidate_bound_cli_observation_projection",
                  "observation_run_id": cli_observation_set["observation_run_id"],
                  "repository_class": kind, "repository_revision": item["repository_revision"]})
