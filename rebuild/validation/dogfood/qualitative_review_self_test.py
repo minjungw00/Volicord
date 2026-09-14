@@ -196,6 +196,30 @@ class ContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "authority disposition"):
                     q.validate_value(p, "d" * 64, value)
 
+    def test_human_resolution_accepts_only_a_valid_bound_additional_outcome(self):
+        p = preparation("human")
+        value = completed(p)
+        criterion_id = "volicord-1/authority/additional-durability"
+        extra = fill(q.observation(criterion_id), p)
+        extra["authority"] = assessment()
+        value["additional_outcomes"] = [{"sample_id": "volicord-1", "finding": extra}]
+        value["resolves_review_runs"] = {criterion_id: ["a" * 32]}
+        self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "satisfied")
+
+        for runs in (["a" * 32, "a" * 32], [value["reviewer"]["run_id"]], ["malformed"]):
+            invalid = copy.deepcopy(value)
+            invalid["resolves_review_runs"][criterion_id] = runs
+            with self.assertRaisesRegex(ValueError, "invalid resolved"):
+                q.validate_value(p, "d" * 64, invalid)
+        invalid = copy.deepcopy(value)
+        invalid["additional_outcomes"][0]["sample_id"] = "small-python-1"
+        with self.assertRaisesRegex(ValueError, "additional outcome"):
+            q.validate_value(p, "d" * 64, invalid)
+        unknown = copy.deepcopy(value)
+        unknown["resolves_review_runs"] = {"volicord-1/authority/additional-unknown": ["a" * 32]}
+        with self.assertRaisesRegex(ValueError, "invalid resolved"):
+            q.validate_value(p, "d" * 64, unknown)
+
     def test_partial_authority_observation_is_insufficient(self):
         p = preparation()
         value = completed(p)

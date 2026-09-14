@@ -276,11 +276,6 @@ def _validate_value(preparation, preparation_sha256, value):
     resolutions = value["resolves_review_runs"]
     require(isinstance(resolutions, dict) and len(resolutions) <= 512, "invalid review conflict resolutions")
     require(not resolutions or value["reviewer"]["kind"] == "human", "only human review may resolve escalated review conflicts")
-    criterion_ids = {s["criterion_id"] for s in criterion_specs(preparation["index"], preparation["rubric"])}
-    for cid, runs in resolutions.items():
-        require(cid in criterion_ids and isinstance(runs, list) and 1 <= len(runs) <= 64
-            and len(set(runs)) == len(runs) and all(re.fullmatch(r"[0-9a-f]{32}", str(r))
-                and r != value["reviewer"]["run_id"] for r in runs), "invalid resolved criterion/review run identities")
     scope = value["observation_scope"]
     require(isinstance(scope, dict) and set(scope) == set(expected["observation_scope"]), "invalid observation scope")
     for field in ("available_evidence", "unavailable_surfaces"):
@@ -305,9 +300,14 @@ def _validate_value(preparation, preparation_sha256, value):
         require(isinstance(finding, dict) and isinstance(finding.get("criterion_id"), str)
             and re.fullmatch(re.escape(item["sample_id"]) + r"/authority/additional-[a-z0-9-]{1,64}", finding["criterion_id"])
             and finding["criterion_id"] not in ids, "duplicate or invalid additional outcome identity")
+        state = validate_assessment(finding, {"criterion_id": finding["criterion_id"], "sample_id": item["sample_id"],
+            "group": "authority", "name": "additional", "locale": None}, preparation, inspected)
         ids.add(finding["criterion_id"])
-        states.append(validate_assessment(finding, {"criterion_id": finding["criterion_id"], "sample_id": item["sample_id"],
-            "group": "authority", "name": "additional", "locale": None}, preparation, inspected))
+        states.append(state)
+    for cid, runs in resolutions.items():
+        require(cid in ids and isinstance(runs, list) and 1 <= len(runs) <= 64
+            and len(set(runs)) == len(runs) and all(re.fullmatch(r"[0-9a-f]{32}", str(r))
+                and r != value["reviewer"]["run_id"] for r in runs), "invalid resolved criterion/review run identities")
     assessment_state = ("violated" if "violated" in states else "insufficient_evidence" if "insufficient_evidence" in states
         else "not_reviewed" if "not_reviewed" in states else "satisfied")
     return {"state": "valid", "assessment_state": assessment_state,

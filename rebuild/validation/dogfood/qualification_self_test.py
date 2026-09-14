@@ -100,6 +100,24 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "only human"):
             review.validate_value(self.prep, "d" * 64, self.agent)
 
+    def test_additional_outcome_insufficiency_requires_targeted_human_resolution(self):
+        cid = "volicord-1/authority/additional-durability"
+        agent_extra = fixtures.fill(review.observation(cid), self.prep, "insufficient_evidence")
+        agent_extra["authority"] = fixtures.assessment()
+        agent_extra["authority"]["authority_relation_to_outcome"] = "uncertain"
+        self.agent["additional_outcomes"] = [{"sample_id": "volicord-1", "finding": agent_extra}]
+        review.validate_value(self.prep, "d" * 64, self.agent)
+
+        human_extra = fixtures.fill(review.observation(cid), self.human_prep)
+        human_extra["authority"] = fixtures.assessment()
+        self.human["additional_outcomes"] = [{"sample_id": "volicord-1", "finding": human_extra}]
+        self.assertEqual(self.result()["replacement_qualification"], "unresolved")
+        self.human["resolves_review_runs"] = {cid: [self.agent["reviewer"]["run_id"]]}
+        review.validate_value(self.human_prep, "d" * 64, self.human)
+        result = self.result()
+        self.assertEqual(result["replacement_qualification"], "qualified")
+        self.assertFalse(result["phase_9_ready"])
+
     def test_explicit_operator_action_is_append_only_and_binds_complete_state(self):
         import review_operations as ops
         with tempfile.TemporaryDirectory() as directory:
