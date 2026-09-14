@@ -1388,6 +1388,16 @@ Product topology/protected-term rejection과 canonical purity를 포함한다.
 
 Phase 8 evidence lifecycle은 네 독립 layer로 구성한다.
 
+Naturalistic `collect-batch`와 별도로 `collect-cli-observations`는 immutable evidence set에
+candidate/evidence hash를 묶고 세 repository class의 pinned source를 각각 별도 ephemeral
+workspace와 Runtime Home에서 candidate-local CLI로 실행한다. Help, status, analyze, Recall,
+current document preview, portable-context export와 doctor의 repository-relative argv,
+bounded stdout/stderr, numeric exit 또는 explicit termination, order/time과 executable/path
+fingerprint를 append-only artifact와 receipt에 보존한다. 이 operation은 measured cycle
+workspace/Runtime Home이나 campaign metadata를 mutate하지 않고, credential/environment/source
+body와 absolute private path를 보존하지 않는다. Completed nonzero result는 review evidence이며
+process evidence 누락·hash/revision/candidate mismatch는 integrity failure다.
+
 1. `collect-batch`: immutable evidence validity/collection. Candidate, inventory, 16개
    session/task/workspace/revision mapping, required activation와 realization binding을
    먼저 검증한다. Wrong/missing/duplicate session, work/resume reuse, raw hash change,

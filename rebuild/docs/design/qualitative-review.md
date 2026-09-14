@@ -87,6 +87,34 @@ Every result retains `qualification_state = not_run` and `phase_9_ready = false`
 The old human-only schema, validator and publication/approval helpers are removed.
 The blind pre-campaign provisional workflow remains separate and unchanged.
 
+## Dedicated CLI observation
+
+CLI usability evidence is collected separately from the sixteen uncoached naturalistic
+sessions. After immutable evidence-set publication, `collect-cli-observations` clones each
+of the three pinned repository classes into a distinct ephemeral workspace, gives each a
+distinct ephemeral Runtime Home, and invokes the candidate-local `volicord` executable from
+the repository working directory. It records help, status, analyze, Recall, current document
+preview, portable-context export, and doctor journeys without `--project` or a Project UUID.
+
+The append-only observation set binds the exact Product candidate, evidence-set hash,
+repository class/revision, candidate executable hash, opaque workspace/runtime identities and
+path fingerprints, invocation identity/order, bounded stdout/stderr, timestamps, duration,
+and numeric exit or explicit termination. A completed nonzero invocation remains reviewable;
+missing or incomplete process evidence is rejected. Absolute paths, environment variables,
+credentials, repository source, Runtime contents, and measured naturalistic workspaces are not
+retained. The collector verifies that campaign metadata and the immutable evidence set did not
+change.
+
+```sh
+rebuild/scripts/dogfood-campaign collect-cli-observations \
+  --campaign-root /absolute/private/campaign \
+  --output /absolute/private/cli-observation-run
+```
+
+Preparation accepts the resulting directory through `--cli-observations`. It verifies the
+receipt and all candidate/evidence/repository/process bindings, then copies only bounded
+reviewer-safe per-class projections. It never reconstructs an invocation from prose.
+
 ## Current reviewer workflow
 
 Preparation reads an intact `evidence-set.json` and its bound artifacts. It may
@@ -105,6 +133,7 @@ rebuild/scripts/dogfood-campaign prepare-qualitative-review \
   --reviewer-kind agent \
   --review-session-id <actual-review-session-id> \
   --machine-evaluation /absolute/private/evaluation-run/evaluation.json \
+  --cli-observations /absolute/private/cli-observation-run \
   --include-raw-rollouts
 ```
 
@@ -148,9 +177,10 @@ inspected and use indexed evidence IDs with either a listed JSON pointer or a
 ```
 
 Line/pointer existence and hash membership are checked. Whether line 42 supports
-the actual judgment is still the reviewer's responsibility. Supported observed
-CLI invocations may be projected from opted-in raw captures; their presence does
-not prove every CLI task was exercised. Live accessibility is unavailable without
+the actual judgment is still the reviewer's responsibility. Dedicated candidate-bound
+CLI observations are the maintained evidence for the seven CLI journeys. Incidental CLI
+invocations in opted-in raw captures remain conversation evidence only and do not establish
+the maintained inventory. Live accessibility is unavailable without
 an actual observation surface and cannot be inferred from static HTML. Source
 owners that can no longer be read at their pinned revision remain explicit gaps.
 

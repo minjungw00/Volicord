@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import campaign as c
 import campaign_self_test as fixtures
+import cli_observations as cli_obs
 import harness
 import qualitative_review as q
 import review_operations as ops
@@ -18,6 +19,35 @@ import review_operations as ops
 
 def snapshot(root):
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+
+def collect_cli_fixture(campaign_root, output):
+    def cloner(source, destination, _revision):
+        assert not source.resolve().is_relative_to(campaign_root.resolve())
+        assert not destination.resolve().is_relative_to(campaign_root.resolve())
+        destination.mkdir(parents=True)
+
+    def revision(repository):
+        kind = repository.parent.name
+        return harness.git_head(c.ROOT) if kind == "volicord" else fixtures.REVISION
+
+    def runner(_binary, _runtime, _repository, argv, _directory, order, criterion):
+        logical = ["volicord", "--runtime", "<isolated-runtime>", *argv]
+        stdout = f"observed {criterion or 'setup'}\n"
+        stderr = "representative nonzero result\n" if criterion == "doctor_without_project_id" else ""
+        return {"order": order, "criterion": criterion,
+            "command_identity": cli_obs.digest(cli_obs.encoded(logical)), "argv": logical,
+            "raw_argv_sha256": "1" * 64, "working_directory": "<observation-workspace>",
+            "working_directory_sha256": "2" * 64, "started_at": "2026-09-14T00:00:00+00:00",
+            "ended_at": "2026-09-14T00:00:01+00:00", "duration_ms": 1,
+            "stdout": {"encoding": "utf-8", "text": stdout, "bytes": len(stdout.encode()),
+                "sha256": cli_obs.digest(stdout.encode())},
+            "stderr": {"encoding": "utf-8", "text": stderr, "bytes": len(stderr.encode()),
+                "sha256": cli_obs.digest(stderr.encode())},
+            "exit_code": 7 if criterion == "doctor_without_project_id" else 0, "termination": "exited"}
+
+    return cli_obs.collect(campaign_root, output, cloner=cloner, runner=runner,
+        revision_reader=revision, clean_reader=lambda _path: True, run_id="9" * 32)
 
 
 def insufficient_draft(root):
@@ -119,6 +149,56 @@ class WorkflowTests(unittest.TestCase):
         for entry in p["index"]["evidence"].values():
             if entry["surface"] == "work_capture":
                 self.assertEqual((target / entry["path"]).read_bytes(), (self.root / entry["origin"]["path"]).read_bytes())
+
+    def test_candidate_bound_cli_observations_are_isolated_hash_checked_and_reviewer_safe(self):
+        observation_root = self.parent / (self._testMethodName + "-observations")
+        before = snapshot(self.root)
+        result = collect_cli_fixture(self.root, observation_root)
+        self.assertEqual(result["criterion_count"], 21)
+        value, data, _receipt = cli_obs.load(self.root, observation_root)
+        self.assertEqual([v["repository_class"] for v in value["repository_observations"]], list(c.CLASSES))
+        self.assertTrue(all(len(v["invocations"]) == 8 for v in value["repository_observations"]))
+        self.assertEqual(value["repository_observations"][0]["invocations"][-1]["exit_code"], 7)
+        self.assertNotIn(str(self.root).encode(), data)
+        self.assertEqual(snapshot(self.root), before)
+
+        review_root = self.target()
+        ops.prepare(self.root, review_root, reviewer_kind="agent", session_id="cli-reviewer",
+            cli_observation_root=observation_root)
+        preparation, _, _ = ops.load_package(review_root)
+        cli_evidence = [entry for entry in preparation["index"]["evidence"].values()
+                        if entry["surface"] == "cli_observation"]
+        self.assertEqual(len(cli_evidence), 3)
+        self.assertEqual({entry["repository_class"] for entry in cli_evidence}, set(c.CLASSES))
+
+        original = (observation_root / "observations.json").read_bytes()
+        changed = json.loads(original)
+        changed["candidate_head"] = "0" * 40
+        (observation_root / "observations.json").chmod(0o600)
+        (observation_root / "observations.json").write_bytes(ops.encoded(changed))
+        with self.assertRaisesRegex(ValueError, "candidate/evidence"):
+            cli_obs.load(self.root, observation_root)
+        (observation_root / "observations.json").write_bytes(original + b"\n")
+        with self.assertRaisesRegex(ValueError, "receipt"):
+            cli_obs.load(self.root, observation_root)
+
+    def test_cli_observation_revision_and_process_integrity_fail_closed(self):
+        observation_root = self.parent / (self._testMethodName + "-observations")
+        collect_cli_fixture(self.root, observation_root)
+        original = json.loads((observation_root / "observations.json").read_bytes())
+        for label, edit, message in [
+            ("revision", lambda v: v["repository_observations"][1].update(repository_revision="0" * 40), "revision"),
+            ("class", lambda v: v["repository_observations"][1].update(repository_class="volicord"), "classes"),
+            ("process", lambda v: v["repository_observations"][0]["invocations"][1].update(exit_code=None), "exit or termination"),
+        ]:
+            with self.subTest(label=label):
+                changed = copy.deepcopy(original)
+                edit(changed)
+                with self.assertRaisesRegex(ValueError, message):
+                    cli_obs.validate_value(changed, candidate_head=original["candidate_head"],
+                        evidence_sha256=original["evidence_set_sha256"],
+                        revisions={item["repository_class"]: item["repository_revision"]
+                                   for item in original["repository_observations"]})
 
     def test_review_privacy_distinguishes_terminology_from_sensitive_payloads(self):
         benign = [

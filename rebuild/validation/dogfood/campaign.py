@@ -26,6 +26,7 @@ import tomllib
 from typing import Any, Callable
 
 import harness
+import cli_observations
 import document_realization
 import machine_findings
 import review_operations
@@ -3431,6 +3432,7 @@ def parser() -> argparse.ArgumentParser:
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
+    collect_cli = sub.add_parser("collect-cli-observations", help="Collect isolated repository-class CLI usability evidence")
     validate_qualitative = sub.add_parser("validate-qualitative-review")
     record_qualitative = sub.add_parser("record-qualitative-review")
     prepare_qualitative.add_argument("--campaign-root", required=True)
@@ -3441,6 +3443,9 @@ def parser() -> argparse.ArgumentParser:
     prepare_qualitative.add_argument("--machine-evaluation")
     prepare_qualitative.add_argument("--include-raw-rollouts", action="store_true")
     prepare_qualitative.add_argument("--human-observations", help="Candidate/evidence-bound direct human en/ko live accessibility observations")
+    prepare_qualitative.add_argument("--cli-observations", help="Candidate/evidence-bound repository-class CLI observation directory")
+    collect_cli.add_argument("--campaign-root", required=True)
+    collect_cli.add_argument("--output", required=True)
     for operation in (validate_qualitative, record_qualitative):
         operation.add_argument("--review-root", required=True)
         operation.add_argument("--draft", required=True)
@@ -3560,7 +3565,10 @@ def main() -> int:
             identity=read_json(Path(args.reviewer_identity)) if args.reviewer_identity else None,
             evaluation_path=Path(args.machine_evaluation) if args.machine_evaluation else None,
             include_raw=args.include_raw_rollouts,
-            human_observations=Path(args.human_observations) if args.human_observations else None)
+            human_observations=Path(args.human_observations) if args.human_observations else None,
+            cli_observation_root=Path(args.cli_observations) if args.cli_observations else None)
+    elif args.command == "collect-cli-observations":
+        value = cli_observations.collect(root, Path(args.output))
     elif args.command in {"validate-qualitative-review", "record-qualitative-review"}:
         operation = review_operations.validate if args.command == "validate-qualitative-review" else review_operations.record
         value = operation(root, Path(args.draft))

@@ -21,6 +21,7 @@ import tarfile
 import tempfile
 
 import authority_obligations as authority
+import cli_observations
 import machine_findings as machine
 import qualitative_review as review
 
@@ -74,6 +75,7 @@ def workflow_contract():
         "artifact_limits": {"files": MAX_FILES, "file_bytes": MAX_FILE_BYTES, "raw_file_bytes": MAX_RAW_BYTES,
             "package_bytes": MAX_PACKAGE_BYTES, "draft_bytes": MAX_DRAFT_BYTES},
         "human_observations": "explicit_candidate_bound_direct_human_live_observations",
+        "cli_observations": "explicit_candidate_and_evidence_bound_repository_class_process_observations",
         "qualification_authority": False}
 
 
@@ -257,7 +259,7 @@ def publish_directory(destination, files):
         lock.rmdir()
 
 
-def select_evidence(root, manifest, evaluation, *, include_raw):
+def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_set=None):
     """Positive allowlist, never a recursive archive of campaign inventory."""
     c = campaign_api()
     files, evidence, samples, unavailable, findings = {}, {}, [], [], {}
@@ -387,6 +389,21 @@ def select_evidence(root, manifest, evaluation, *, include_raw):
             add(sample_id + "-availability", encoded({"sample": sample, "available_surfaces": sorted(surfaces),
                 "unavailable_surfaces": [u for u in unavailable if u["sample_id"] == sample_id]}), "availability", sample_id,
                 {"kind": "evidence_set_selection"})
+    cli_classes = []
+    if cli_observation_set is not None:
+        outer = {key: cli_observation_set[key] for key in
+            ("kind", "schema_version", "observation_run_id", "candidate_head", "evidence_set_sha256",
+             "candidate_executable", "execution_root_identity", "created_at", "naturalistic_campaign_mutated")}
+        for item in cli_observation_set["repository_observations"]:
+            kind = item["repository_class"]
+            projected = encoded({"observation_set": outer, "repository_observation": item})
+            identity = kind + "-cli-observation"
+            add(identity, projected, "cli_observation", None,
+                {"kind": "candidate_bound_cli_observation_projection",
+                 "observation_run_id": cli_observation_set["observation_run_id"],
+                 "repository_class": kind, "repository_revision": item["repository_revision"]})
+            evidence[identity]["repository_class"] = kind
+            cli_classes.append(kind)
     if evaluation is not None:
         for cycle in evaluation["cycles"]:
             sample_id = f"{cycle['repository_class']}-{cycle['cycle']}"
@@ -396,7 +413,8 @@ def select_evidence(root, manifest, evaluation, *, include_raw):
         add("machine-findings", encoded(findings), "machine_findings", None,
             {"kind": "machine_run_projection", "run_id": evaluation["run_id"]})
     review.require(sum(map(len, files.values())) <= MAX_PACKAGE_BYTES, "review package exceeds byte bound")
-    return files, {"samples": samples, "live_viewer_sample": "volicord-1", "evidence": evidence,
+    return files, {"samples": samples, "cli_observation_classes": cli_classes,
+        "live_viewer_sample": "volicord-1", "evidence": evidence,
         "machine_findings": findings}, unavailable
 
 
@@ -417,7 +435,8 @@ No review result grants final replacement or Phase 9 approval.
 """
 
 
-def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, evaluation_path=None, include_raw=False, run_id=None, human_observations=None):
+def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, evaluation_path=None,
+            include_raw=False, run_id=None, human_observations=None, cli_observation_root=None):
     c = campaign_api()
     root, output = root.resolve(), output.absolute()
     review.require(not output.resolve().is_relative_to(root), "review run must be outside immutable campaign input")
@@ -442,7 +461,11 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         reviewer["identity"] = identity
     sessions = sorted(item["session_id"] for item in manifest["raw_inputs"])
     review.validate_reviewer(reviewer, sessions)
-    files, index, unavailable = select_evidence(root, manifest, evaluation, include_raw=include_raw)
+    cli_observation_set = None
+    if cli_observation_root is not None:
+        cli_observation_set, _, _ = cli_observations.load(root, cli_observation_root)
+    files, index, unavailable = select_evidence(root, manifest, evaluation, include_raw=include_raw,
+        cli_observation_set=cli_observation_set)
     if human_observations is not None:
         review.require(reviewer_kind == "human", "agent preparation cannot supply human-observed accessibility")
         data = bounded_read(human_observations)
@@ -478,7 +501,8 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         "rubric": policy, "index": index, "unavailable_surfaces": unavailable,
         "preparer_revision": c.harness.git_head(c.ROOT),
         "preparer_files": {name: c.harness.sha256(Path(__file__).with_name(name)) for name in
-            ("review_operations.py", "qualitative_review.py", "identity_provenance.py", "authority_obligations.py", "evaluation.json")}}
+            ("review_operations.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
+             "authority_obligations.py", "evaluation.json")}}
     preparation_bytes = encoded(preparation)
     review.require(len(preparation_bytes) <= MAX_FILE_BYTES, "review index exceeds bound")
     files["preparation.json"] = preparation_bytes

@@ -553,6 +553,24 @@ review package excludes evaluator answers, private profile, runtime and source
 copies. Raw work/resume rollouts enter only with `--include-raw-rollouts` and remain
 private. Schema-valid review is not Product passage.
 
+Collect the seven maintained CLI journeys independently of accidental command use in
+naturalistic chats. The collector uses one isolated ephemeral workspace and Runtime Home per
+repository class, retains bounded process evidence, and leaves the Campaign unchanged:
+
+```sh
+rebuild/scripts/dogfood-campaign collect-cli-observations \
+  --campaign-root /absolute/private/campaign \
+  --output /absolute/private/cli-observation-run
+
+rebuild/scripts/dogfood-campaign prepare-qualitative-review \
+  --campaign-root /absolute/private/campaign \
+  --output /absolute/private/review-run \
+  --reviewer-kind agent \
+  --review-session-id <actual-review-session-id> \
+  --machine-evaluation /absolute/private/evaluation-run/evaluation.json \
+  --cli-observations /absolute/private/cli-observation-run
+```
+
 ```sh
 rebuild/scripts/dogfood-campaign qualify \
   --campaign-root /absolute/private/campaign \
