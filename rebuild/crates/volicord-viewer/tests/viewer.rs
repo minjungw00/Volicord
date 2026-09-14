@@ -394,6 +394,7 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
             .collect::<Vec<_>>()
     );
     assert!(html.contains("data-explanation-kind=\"decision-impact\""));
+    assert!(html.contains("data-current-work-basis=\"decision-code-link"));
     assert!(html.contains("Inspect evidence basis"));
     assert!(html.contains(&decision.id.to_string()));
     assert!(html.contains("not proof of implementation"));

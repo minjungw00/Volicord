@@ -1,11 +1,13 @@
 use crate::{
-    project::select_bounded_topology, BriefContextItem, BriefDecision, BriefQuestion,
-    BriefSnapshot, CapabilityGap, CheckpointTimelineEntry, DecisionContextCodeLink, MapEntity,
-    MapInterpretation, MapRelation, ProjectProjection, ProjectionHealth, ProjectionIssue,
-    SourceStatusSummary,
+    project::BoundedTopology, BriefContextItem, BriefDecision, BriefQuestion, BriefSnapshot,
+    CapabilityGap, CheckpointTimelineEntry, DecisionContextCodeLink, MapEntity, MapInterpretation,
+    MapRelation, ProjectProjection, ProjectionHealth, ProjectionIssue, SourceStatusSummary,
 };
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
-    CheckpointId, DecisionId, ProjectId, SourceId, SourceReadBasis, VerificationFact, WorkState,
+    CheckpointId, ContextItemId, DecisionId, ProjectId, SourceId, SourceReadBasis,
+    VerificationFact, WorkState,
 };
 use volicord_repository_intelligence::{AnalysisSnapshotId, CodeEntityKind, RepositorySnapshotId};
 
@@ -62,7 +64,38 @@ pub struct UnderstandingArchitecture {
     /// Snapshot-bound inspectable dependency/flow relations. Their identity,
     /// endpoints, fact class, freshness, and evidence remain available.
     pub relationships: Vec<MapRelation>,
+    /// Bounded, inspectable reasons that tie each displayed component to the
+    /// current Goal, latest meaningful Checkpoint, active Decision, or one
+    /// grounded relation hop from one of those seeds.
+    pub selection_basis: Vec<UnderstandingArchitectureSelection>,
     pub gaps: Vec<CapabilityGap>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum UnderstandingArchitectureSelectionBasis {
+    ChangedPath {
+        checkpoint_id: CheckpointId,
+        path: String,
+    },
+    DecisionCodeLink {
+        decision_id: DecisionId,
+    },
+    GoalContextLink {
+        context_item_id: ContextItemId,
+    },
+    CheckpointLink {
+        checkpoint_id: CheckpointId,
+    },
+    GroundedOneHop {
+        relation_id: String,
+        seed_entity: String,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnderstandingArchitectureSelection {
+    pub entity_identity: String,
+    pub basis: Vec<UnderstandingArchitectureSelectionBasis>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -216,28 +249,9 @@ pub fn build_project_understanding(
     known_limits.dedup();
     bound_section(&mut known_limits, limit, "known_limits", &mut omissions);
 
-    let important_entities = projection
-        .decision_context_code
-        .iter()
-        .filter(|link| link.decision_state != crate::BriefDecisionState::Superseded)
-        .flat_map(|link| link.related_code_entities.iter().cloned())
-        .chain(
-            projection
-                .repository_map
-                .entities
-                .iter()
-                .filter(|entity| !entity.canonical_links.is_empty())
-                .map(|entity| entity.identity.clone()),
-        )
-        .collect::<std::collections::BTreeSet<_>>();
-    let topology = select_bounded_topology(
-        &projection.repository_map.entities,
-        &projection.repository_map.relations,
-        &important_entities,
-        limit,
-        limit,
-        false,
-    );
+    let architecture_selection =
+        select_current_work_architecture(projection, &active_decisions, limit);
+    let topology = architecture_selection.topology;
     let all_entities = projection
         .repository_map
         .entities
@@ -272,6 +286,7 @@ pub fn build_project_understanding(
     }
     let components = topology.entities;
     let relationships = topology.relations;
+    let selection_basis = architecture_selection.selection_basis;
     let visible_components = components
         .iter()
         .map(|entity| entity.identity.as_str())
@@ -316,6 +331,7 @@ pub fn build_project_understanding(
     let deterministic_explanations = deterministic_explanations(
         &components,
         &explanation_relationships,
+        &selection_basis,
         &active_decisions,
         &gaps,
         limit,
@@ -356,6 +372,7 @@ pub fn build_project_understanding(
         architecture: UnderstandingArchitecture {
             components,
             relationships,
+            selection_basis,
             gaps,
         },
         deterministic_explanations,
@@ -372,9 +389,292 @@ pub fn build_project_understanding(
     }
 }
 
+struct CurrentWorkArchitectureSelection {
+    topology: BoundedTopology,
+    selection_basis: Vec<UnderstandingArchitectureSelection>,
+}
+
+fn select_current_work_architecture(
+    projection: &ProjectProjection,
+    active_decisions: &[UnderstandingDecision],
+    limit: usize,
+) -> CurrentWorkArchitectureSelection {
+    let limit = limit.max(1);
+    let entities = projection
+        .repository_map
+        .entities
+        .iter()
+        .map(|entity| (entity.identity.as_str(), entity))
+        .collect::<BTreeMap<_, _>>();
+    let mut basis = BTreeMap::<String, BTreeSet<UnderstandingArchitectureSelectionBasis>>::new();
+
+    for link in &projection.current_work_code {
+        if !entities.contains_key(link.entity_identity.as_str()) {
+            continue;
+        }
+        for checkpoint_id in &link.checkpoint_basis {
+            for path in &link.changed_paths {
+                basis
+                    .entry(link.entity_identity.clone())
+                    .or_default()
+                    .insert(UnderstandingArchitectureSelectionBasis::ChangedPath {
+                        checkpoint_id: *checkpoint_id,
+                        path: path.clone(),
+                    });
+            }
+            if link.changed_paths.is_empty() {
+                basis
+                    .entry(link.entity_identity.clone())
+                    .or_default()
+                    .insert(UnderstandingArchitectureSelectionBasis::CheckpointLink {
+                        checkpoint_id: *checkpoint_id,
+                    });
+            }
+        }
+        for context_item_id in &link.goal_context_basis {
+            basis
+                .entry(link.entity_identity.clone())
+                .or_default()
+                .insert(UnderstandingArchitectureSelectionBasis::GoalContextLink {
+                    context_item_id: *context_item_id,
+                });
+        }
+    }
+
+    for decision in active_decisions {
+        for identity in &decision.affected_code_entities {
+            if entities.contains_key(identity.as_str()) {
+                basis.entry(identity.clone()).or_default().insert(
+                    UnderstandingArchitectureSelectionBasis::DecisionCodeLink {
+                        decision_id: decision.decision.decision_id,
+                    },
+                );
+            }
+        }
+    }
+
+    let seed_ids = select_seed_entities(&basis, active_decisions, &entities, limit);
+    let mut selected_ids = seed_ids.iter().cloned().collect::<BTreeSet<_>>();
+    let mut relation_candidates = projection
+        .repository_map
+        .relations
+        .iter()
+        .filter(|relation| {
+            relation.target_entity.as_deref().is_some_and(|target| {
+                entities.contains_key(relation.source_entity.as_str())
+                    && entities.contains_key(target)
+                    && (selected_ids.contains(&relation.source_entity)
+                        || selected_ids.contains(target))
+            })
+        })
+        .collect::<Vec<_>>();
+    relation_candidates.sort_by_key(|relation| {
+        let target_is_seed = relation
+            .target_entity
+            .as_deref()
+            .is_some_and(|target| selected_ids.contains(target));
+        (
+            Reverse(selected_ids.contains(&relation.source_entity) && target_is_seed),
+            Reverse(is_flow_relation(relation)),
+            relation.identity.as_str(),
+        )
+    });
+
+    let mut selected_relations = Vec::new();
+    for relation in relation_candidates {
+        if selected_relations.len() == limit {
+            break;
+        }
+        let Some(target) = relation.target_entity.as_deref() else {
+            continue;
+        };
+        let neighbor = if selected_ids.contains(&relation.source_entity) {
+            target
+        } else {
+            relation.source_entity.as_str()
+        };
+        if !selected_ids.contains(neighbor) && selected_ids.len() == limit {
+            continue;
+        }
+        if !selected_ids.contains(neighbor) {
+            let seed_entity = if neighbor == target {
+                relation.source_entity.clone()
+            } else {
+                target.to_owned()
+            };
+            selected_ids.insert(neighbor.to_owned());
+            basis.entry(neighbor.to_owned()).or_default().insert(
+                UnderstandingArchitectureSelectionBasis::GroundedOneHop {
+                    relation_id: relation.identity.clone(),
+                    seed_entity,
+                },
+            );
+        }
+        selected_relations.push(relation.clone());
+    }
+
+    let mut selected_entities = selected_ids
+        .iter()
+        .filter_map(|identity| entities.get(identity.as_str()).copied().cloned())
+        .collect::<Vec<_>>();
+    selected_entities.sort_by_key(|entity| {
+        (
+            seed_ids
+                .iter()
+                .position(|identity| identity == &entity.identity)
+                .unwrap_or(usize::MAX),
+            entity.identity.clone(),
+        )
+    });
+    selected_relations.sort_by(|left, right| left.identity.cmp(&right.identity));
+    let selection_basis = selected_entities
+        .iter()
+        .map(|entity| UnderstandingArchitectureSelection {
+            entity_identity: entity.identity.clone(),
+            basis: basis
+                .remove(&entity.identity)
+                .unwrap_or_default()
+                .into_iter()
+                .collect(),
+        })
+        .collect();
+    CurrentWorkArchitectureSelection {
+        topology: BoundedTopology {
+            omitted_entity_count: projection
+                .repository_map
+                .entities
+                .len()
+                .saturating_sub(selected_entities.len()),
+            omitted_relation_count: projection
+                .repository_map
+                .relations
+                .len()
+                .saturating_sub(selected_relations.len()),
+            entities: selected_entities,
+            relations: selected_relations,
+        },
+        selection_basis,
+    }
+}
+
+fn select_seed_entities(
+    basis: &BTreeMap<String, BTreeSet<UnderstandingArchitectureSelectionBasis>>,
+    active_decisions: &[UnderstandingDecision],
+    entities: &BTreeMap<&str, &MapEntity>,
+    limit: usize,
+) -> Vec<String> {
+    let mut selected = Vec::<String>::new();
+    let mut push_first = |predicate: &dyn Fn(&UnderstandingArchitectureSelectionBasis) -> bool| {
+        if selected.len() == limit {
+            return;
+        }
+        if let Some(identity) = basis
+            .iter()
+            .filter(|(identity, reasons)| {
+                reasons.iter().any(predicate) && !selected.contains(identity)
+            })
+            .min_by_key(|(identity, _)| {
+                (
+                    entities
+                        .get(identity.as_str())
+                        .map_or(usize::MAX, |entity| {
+                            architecture_entity_kind_rank(&entity.kind)
+                        }),
+                    identity.as_str(),
+                )
+            })
+            .map(|(identity, _)| (*identity).clone())
+        {
+            selected.push(identity);
+        }
+    };
+    push_first(&|reason| {
+        matches!(
+            reason,
+            UnderstandingArchitectureSelectionBasis::ChangedPath { .. }
+        )
+    });
+    for decision in active_decisions {
+        let decision_id = decision.decision.decision_id;
+        push_first(
+            &|reason| matches!(reason, UnderstandingArchitectureSelectionBasis::DecisionCodeLink { decision_id: candidate } if *candidate == decision_id),
+        );
+    }
+    push_first(&|reason| {
+        matches!(
+            reason,
+            UnderstandingArchitectureSelectionBasis::GoalContextLink { .. }
+        )
+    });
+    push_first(&|reason| {
+        matches!(
+            reason,
+            UnderstandingArchitectureSelectionBasis::CheckpointLink { .. }
+        )
+    });
+
+    let mut remaining = basis.keys().cloned().collect::<Vec<_>>();
+    remaining.sort_by_key(|identity| {
+        let reasons = basis
+            .get(identity)
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        (
+            Reverse(reasons.iter().any(|reason| {
+                matches!(
+                    reason,
+                    UnderstandingArchitectureSelectionBasis::ChangedPath { .. }
+                )
+            })),
+            Reverse(reasons.iter().any(|reason| {
+                matches!(
+                    reason,
+                    UnderstandingArchitectureSelectionBasis::DecisionCodeLink { .. }
+                )
+            })),
+            Reverse(reasons.len()),
+            entities
+                .get(identity.as_str())
+                .map_or(usize::MAX, |entity| {
+                    architecture_entity_kind_rank(&entity.kind)
+                }),
+            identity.clone(),
+        )
+    });
+    for identity in remaining {
+        if selected.len() == limit {
+            break;
+        }
+        if !selected.contains(&identity) {
+            selected.push(identity);
+        }
+    }
+    selected
+}
+
+const fn architecture_entity_kind_rank(kind: &CodeEntityKind) -> usize {
+    match kind {
+        CodeEntityKind::Package => 0,
+        CodeEntityKind::Module | CodeEntityKind::Namespace => 1,
+        CodeEntityKind::File | CodeEntityKind::Configuration => 2,
+        CodeEntityKind::Class
+        | CodeEntityKind::Interface
+        | CodeEntityKind::Trait
+        | CodeEntityKind::Struct => 3,
+        CodeEntityKind::Repository | CodeEntityKind::Test | CodeEntityKind::Document => 4,
+        CodeEntityKind::Function
+        | CodeEntityKind::Method
+        | CodeEntityKind::Enum
+        | CodeEntityKind::Type => 5,
+        CodeEntityKind::Field | CodeEntityKind::LanguageSpecific(_) => 6,
+    }
+}
+
 fn deterministic_explanations(
     components: &[MapEntity],
     relationships: &[MapRelation],
+    selection_basis: &[UnderstandingArchitectureSelection],
     decisions: &[UnderstandingDecision],
     gaps: &[CapabilityGap],
     limit: usize,
@@ -384,10 +684,21 @@ fn deterministic_explanations(
         .iter()
         .map(|entity| (entity.identity.as_str(), entity))
         .collect::<std::collections::BTreeMap<_, _>>();
+    let selection_by_entity = selection_basis
+        .iter()
+        .map(|selection| (selection.entity_identity.as_str(), selection))
+        .collect::<BTreeMap<_, _>>();
     let mut component_explanations = components
         .iter()
         .filter(|entity| is_explainable_component(entity, relationships))
-        .map(|entity| component_explanation(entity, relationships, &entities))
+        .map(|entity| {
+            component_explanation(
+                entity,
+                relationships,
+                &entities,
+                selection_by_entity.get(entity.identity.as_str()).copied(),
+            )
+        })
         .collect::<Vec<_>>();
     let mut relationship_explanations = relationships
         .iter()
@@ -469,6 +780,7 @@ fn component_explanation(
     entity: &MapEntity,
     relationships: &[MapRelation],
     entities: &std::collections::BTreeMap<&str, &MapEntity>,
+    selection: Option<&UnderstandingArchitectureSelection>,
 ) -> UnderstandingExplanation {
     let mut supporting_relations = relationships
         .iter()
@@ -572,14 +884,108 @@ fn component_explanation(
             ),
         )
     };
-    explanation_from_entity_and_relations(
+    let mut explanation = explanation_from_entity_and_relations(
         format!("deterministic:component:{}", entity.identity),
         UnderstandingExplanationKind::Component,
-        english,
-        korean,
+        format!("{} {}", selection_explanation(selection, false), english),
+        format!("{} {}", selection_explanation(selection, true), korean),
         entity,
         &supporting_relations,
-    )
+    );
+    if let Some(selection) = selection {
+        explanation
+            .decision_basis
+            .extend(selection.basis.iter().filter_map(|basis| match basis {
+                UnderstandingArchitectureSelectionBasis::DecisionCodeLink { decision_id } => {
+                    Some(*decision_id)
+                }
+                _ => None,
+            }));
+    }
+    normalize_explanation_basis(&mut explanation);
+    explanation
+}
+
+fn selection_explanation(
+    selection: Option<&UnderstandingArchitectureSelection>,
+    korean: bool,
+) -> String {
+    let Some(selection) = selection else {
+        return if korean {
+            "현재 작업 seed와 연결된 근거로 선택되었습니다.".to_owned()
+        } else {
+            "It was selected by grounded connection to a current-work seed.".to_owned()
+        };
+    };
+    let mut changed_paths = BTreeSet::new();
+    let mut has_decision = false;
+    let mut has_goal = false;
+    let mut has_checkpoint = false;
+    let mut has_one_hop_relation = false;
+    for basis in &selection.basis {
+        match basis {
+            UnderstandingArchitectureSelectionBasis::ChangedPath { path, .. } => {
+                changed_paths.insert(format!("`{path}`"));
+            }
+            UnderstandingArchitectureSelectionBasis::DecisionCodeLink { .. } => {
+                has_decision = true;
+            }
+            UnderstandingArchitectureSelectionBasis::GoalContextLink { .. } => has_goal = true,
+            UnderstandingArchitectureSelectionBasis::CheckpointLink { .. } => {
+                has_checkpoint = true;
+            }
+            UnderstandingArchitectureSelectionBasis::GroundedOneHop { .. } => {
+                has_one_hop_relation = true;
+            }
+        }
+    }
+    let mut parts = Vec::new();
+    if !changed_paths.is_empty() {
+        parts.push(if korean {
+            format!(
+                "변경 경로 {}",
+                changed_paths.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        } else {
+            format!(
+                "changed path {}",
+                changed_paths.into_iter().collect::<Vec<_>>().join(", ")
+            )
+        });
+    }
+    if has_decision {
+        parts.push(if korean {
+            "active Decision의 code link".to_owned()
+        } else {
+            "an active Decision's code link".to_owned()
+        });
+    }
+    if has_goal {
+        parts.push(if korean {
+            "현재 Goal Context link".to_owned()
+        } else {
+            "a current Goal Context link".to_owned()
+        });
+    }
+    if has_checkpoint {
+        parts.push(if korean {
+            "latest meaningful Checkpoint link".to_owned()
+        } else {
+            "a latest meaningful Checkpoint link".to_owned()
+        });
+    }
+    if has_one_hop_relation {
+        parts.push(if korean {
+            "근거 있는 한 홉 repository relation".to_owned()
+        } else {
+            "a grounded one-hop repository relation".to_owned()
+        });
+    }
+    if korean {
+        format!("현재 작업 근거({})로 선택되었습니다.", parts.join("; "))
+    } else {
+        format!("Selected for current work by {}.", parts.join("; "))
+    }
 }
 
 fn relation_explanation(
@@ -1070,5 +1476,441 @@ fn bound_section<T>(
             omitted_count: values.len() - limit,
         });
         values.truncate(limit);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_project_understanding, UnderstandingArchitectureSelectionBasis, UnderstandingBound,
+        UnderstandingExplanationKind,
+    };
+    use crate::{
+        BriefDecision, CandidateDependencyState, CheckpointTimelineEntry, CurrentWorkCodeLink,
+        DecisionContextCodeLink, MapEntity, MapRelation, MapRelationClass, ProjectOverview,
+        ProjectProjection, ProjectionHealth, RepositoryMap, ResumeBrief, SourceStatusSummary,
+    };
+    use volicord_context::{
+        Checkpoint, CheckpointId, CheckpointKind, ContextItemId, DecisionChoice, DecisionId,
+        ProjectId, SourceId, TimestampMicros, UserAcceptanceFact, UserAcceptanceState,
+        UserReviewFact, UserReviewState, WorkState,
+    };
+    use volicord_repository_intelligence::{
+        AnalysisSnapshotId, CodeEntityKind, FreshnessBasis, FreshnessState, Language,
+        RepositorySnapshotId, Uncertainty,
+    };
+
+    #[test]
+    fn current_work_seeds_outrank_disconnected_high_connectivity() {
+        let checkpoint_id = CheckpointId::from_bytes([2; 16]);
+        let decision_id = DecisionId::from_bytes([3; 16]);
+        let mut entities = vec![
+            entity("task", "src/task.py", Language::Python),
+            entity("service", "web/service.ts", Language::TypeScript),
+            entity("policy", "core/policy.rs", Language::Rust),
+        ];
+        entities.extend((0..16).map(|index| {
+            entity(
+                &format!("generic-{index:02}"),
+                &format!("vendor/generic-{index:02}.js"),
+                Language::JavaScript,
+            )
+        }));
+        let mut relations = vec![relation(
+            "flow:task-service",
+            "task",
+            "service",
+            "CallsSyntactically",
+        )];
+        relations.extend((1..16).map(|index| {
+            relation(
+                &format!("generic:hub-{index:02}"),
+                "generic-00",
+                &format!("generic-{index:02}"),
+                "Imports",
+            )
+        }));
+        let projection = projection(
+            entities,
+            relations,
+            checkpoint(checkpoint_id, vec!["src/task.py".into()], vec![decision_id]),
+            Some((decision_id, "policy")),
+        );
+
+        let understanding = build_project_understanding(
+            &projection,
+            UnderstandingBound {
+                max_items_per_section: 4,
+            },
+        );
+        let identities = understanding
+            .architecture
+            .components
+            .iter()
+            .map(|entity| entity.identity.as_str())
+            .collect::<Vec<_>>();
+        assert!(identities.contains(&"task"));
+        assert!(identities.contains(&"policy"));
+        assert!(identities.contains(&"service"));
+        assert!(identities
+            .iter()
+            .all(|identity| !identity.starts_with("generic")));
+        assert_eq!(
+            understanding
+                .architecture
+                .relationships
+                .iter()
+                .map(|relation| relation.identity.as_str())
+                .collect::<Vec<_>>(),
+            vec!["flow:task-service"]
+        );
+        let task_basis = selection(&understanding, "task");
+        assert!(task_basis.iter().any(|basis| matches!(
+            basis,
+            UnderstandingArchitectureSelectionBasis::ChangedPath {
+                checkpoint_id: candidate,
+                path
+            } if *candidate == checkpoint_id && path == "src/task.py"
+        )));
+        let policy_basis = selection(&understanding, "policy");
+        assert!(policy_basis.iter().any(|basis| matches!(
+            basis,
+            UnderstandingArchitectureSelectionBasis::DecisionCodeLink {
+                decision_id: candidate
+            } if *candidate == decision_id
+        )));
+        let service_basis = selection(&understanding, "service");
+        assert!(service_basis.iter().any(|basis| matches!(
+            basis,
+            UnderstandingArchitectureSelectionBasis::GroundedOneHop {
+                relation_id,
+                seed_entity
+            } if relation_id == "flow:task-service" && seed_entity == "task"
+        )));
+        assert!(understanding.architecture.components.len() <= 4);
+        assert!(understanding.architecture.relationships.len() <= 4);
+        assert!(understanding.architecture.components.iter().all(|entity| {
+            entity.source_id == SourceId::from_bytes([9; 16])
+                && entity.analysis_snapshot == analysis_snapshot()
+        }));
+
+        let mut reordered = projection.clone();
+        reordered.repository_map.entities.reverse();
+        reordered.repository_map.relations.reverse();
+        assert_eq!(
+            understanding.architecture,
+            build_project_understanding(
+                &reordered,
+                UnderstandingBound {
+                    max_items_per_section: 4,
+                },
+            )
+            .architecture
+        );
+    }
+
+    #[test]
+    fn no_grounded_current_work_flow_is_an_explicit_reduced_result() {
+        let checkpoint_id = CheckpointId::from_bytes([4; 16]);
+        let projection = projection(
+            vec![
+                entity("task", "src/task.py", Language::Python),
+                entity("generic-a", "vendor/a.js", Language::JavaScript),
+                entity("generic-b", "vendor/b.js", Language::JavaScript),
+            ],
+            vec![relation(
+                "generic:edge",
+                "generic-a",
+                "generic-b",
+                "Imports",
+            )],
+            checkpoint(checkpoint_id, vec!["src/task.py".into()], Vec::new()),
+            None,
+        );
+
+        let understanding = build_project_understanding(
+            &projection,
+            UnderstandingBound {
+                max_items_per_section: 8,
+            },
+        );
+        assert_eq!(understanding.architecture.components.len(), 1);
+        assert_eq!(understanding.architecture.components[0].identity, "task");
+        assert!(understanding.architecture.relationships.is_empty());
+        let flow_gap = understanding
+            .deterministic_explanations
+            .iter()
+            .find(|explanation| explanation.kind == UnderstandingExplanationKind::Gap)
+            .unwrap_or_else(|| panic!("missing explicit grounded-flow gap"));
+        assert!(flow_gap.relation_basis.is_empty());
+        assert!(flow_gap
+            .english
+            .contains("no execution or data-flow path is inferred"));
+    }
+
+    #[test]
+    fn goal_link_works_without_a_decision_or_changed_path() {
+        let checkpoint_id = CheckpointId::from_bytes([5; 16]);
+        let goal_id = ContextItemId::from_bytes([6; 16]);
+        let mut projection = projection(
+            vec![
+                entity("goal-component", "app/main.cpp", Language::Cpp),
+                entity("generic", "vendor/helper.js", Language::JavaScript),
+            ],
+            Vec::new(),
+            checkpoint(checkpoint_id, Vec::new(), Vec::new()),
+            None,
+        );
+        projection.current_work_code = vec![CurrentWorkCodeLink {
+            entity_identity: "goal-component".into(),
+            changed_paths: Vec::new(),
+            checkpoint_basis: Vec::new(),
+            goal_context_basis: vec![goal_id],
+        }];
+
+        let understanding = build_project_understanding(
+            &projection,
+            UnderstandingBound {
+                max_items_per_section: 4,
+            },
+        );
+        assert_eq!(understanding.architecture.components.len(), 1);
+        assert_eq!(
+            understanding.architecture.components[0].identity,
+            "goal-component"
+        );
+        assert!(selection(&understanding, "goal-component")
+            .iter()
+            .any(|basis| matches!(
+                basis,
+                UnderstandingArchitectureSelectionBasis::GoalContextLink {
+                    context_item_id
+                } if *context_item_id == goal_id
+            )));
+    }
+
+    fn selection<'a>(
+        understanding: &'a super::ProjectUnderstanding,
+        identity: &str,
+    ) -> &'a [UnderstandingArchitectureSelectionBasis] {
+        &understanding
+            .architecture
+            .selection_basis
+            .iter()
+            .find(|selection| selection.entity_identity == identity)
+            .unwrap_or_else(|| panic!("missing selection basis for {identity}"))
+            .basis
+    }
+
+    fn projection(
+        entities: Vec<MapEntity>,
+        relations: Vec<MapRelation>,
+        checkpoint: Checkpoint,
+        decision: Option<(DecisionId, &str)>,
+    ) -> ProjectProjection {
+        let current_work_code = entities
+            .iter()
+            .filter_map(|entity| {
+                let changed_paths = checkpoint
+                    .changed_paths
+                    .iter()
+                    .filter(|path| entity.locator == path.as_str())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                (!changed_paths.is_empty()).then(|| CurrentWorkCodeLink {
+                    entity_identity: entity.identity.clone(),
+                    changed_paths,
+                    checkpoint_basis: vec![checkpoint.id],
+                    goal_context_basis: Vec::new(),
+                })
+            })
+            .collect();
+        let decisions = decision
+            .map(|(decision_id, _)| BriefDecision {
+                decision_id,
+                revision: 1,
+                state: crate::BriefDecisionState::Current,
+                choice: DecisionChoice::Alternative {
+                    alternative_key: "bounded-current-work".into(),
+                },
+                user_rationale: Some("keep the current work explainable".into()),
+                recommendation_rationale: "retain grounded code".into(),
+                assumptions: Vec::new(),
+                revisit_triggers: Vec::new(),
+                source_basis: vec![SourceId::from_bytes([8; 16])],
+                question_uncertainty: Vec::new(),
+                known_limits: Vec::new(),
+                expected_consequences: Vec::new(),
+                review_basis: Vec::new(),
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        let decision_context_code = decision
+            .map(|(decision_id, entity)| DecisionContextCodeLink {
+                decision_id,
+                decision_revision: 1,
+                decision_state: crate::BriefDecisionState::Current,
+                declared_paths: vec!["core/policy.rs".into()],
+                declared_components: Vec::new(),
+                declared_work_contexts: Vec::new(),
+                assumption_context: Vec::new(),
+                related_context_items: Vec::new(),
+                related_code_entities: vec![entity.into()],
+                supporting_sources: vec![SourceId::from_bytes([8; 16])],
+                link_basis: vec!["explicit fixture Decision/code link".into()],
+                missing_or_uncertain_links: Vec::new(),
+            })
+            .into_iter()
+            .collect();
+        let checkpoint_entry = CheckpointTimelineEntry {
+            work_state: checkpoint.work_state,
+            verification: checkpoint.verification.clone(),
+            user_review: checkpoint.user_review.clone(),
+            user_acceptance: checkpoint.user_acceptance.clone(),
+            checkpoint: checkpoint.clone(),
+        };
+        ProjectProjection {
+            overview: ProjectOverview {
+                project_id: project_id(),
+                project_name: "Current work fixture".into(),
+                canonical_revision: 1,
+                current_goals: vec![checkpoint.goal.clone()],
+                active_decision_count: decisions.len(),
+                superseded_decision_count: 0,
+                open_question_count: 0,
+                latest_checkpoint_id: Some(checkpoint.id),
+                source_status: SourceStatusSummary::default(),
+                capability_reports: Vec::new(),
+                health: ProjectionHealth::Complete,
+            },
+            resume: ResumeBrief {
+                project_id: project_id(),
+                project_name: "Current work fixture".into(),
+                goals_and_why: Vec::new(),
+                behaviorally_relevant_context: Vec::new(),
+                decisions,
+                latest_meaningful_checkpoint: Some(checkpoint),
+                open_questions: Vec::new(),
+                risks_assumptions_and_limits: Vec::new(),
+                declared_assumptions: Vec::new(),
+                known_limits: Vec::new(),
+                next_meaningful_step: Some("inspect the selected flow".into()),
+                used_sources: Vec::new(),
+                snapshots: Vec::new(),
+                omissions: Vec::new(),
+                omitted_count: 0,
+                proposals: Vec::new(),
+            },
+            repository_map: RepositoryMap {
+                entities,
+                relations,
+                agent_interpretations: Vec::new(),
+                capabilities: Vec::new(),
+                gaps: Vec::new(),
+                health: ProjectionHealth::Complete,
+            },
+            current_work_code,
+            decision_context_code,
+            checkpoint_timeline: vec![checkpoint_entry],
+            canonical_inspection: Vec::new(),
+            candidate_inspection: Vec::new(),
+            candidate_dependency: CandidateDependencyState::Available,
+            source_catalog: Vec::new(),
+            issues: Vec::new(),
+            health: ProjectionHealth::Complete,
+        }
+    }
+
+    fn checkpoint(
+        id: CheckpointId,
+        changed_paths: Vec<String>,
+        decisions: Vec<DecisionId>,
+    ) -> Checkpoint {
+        Checkpoint {
+            id,
+            project_id: project_id(),
+            revision: 1,
+            kind: CheckpointKind::Pause,
+            goal: "Explain the current task architecture".into(),
+            work_state: WorkState::Paused,
+            state_change: Some("current work changed".into()),
+            source_basis: vec![SourceId::from_bytes([7; 16])],
+            changed_source_basis: vec![SourceId::from_bytes([9; 16])],
+            changed_paths,
+            applied_decisions: decisions,
+            verification: Vec::new(),
+            user_review: UserReviewFact {
+                state: UserReviewState::Pending,
+                source_id: None,
+            },
+            user_acceptance: UserAcceptanceFact {
+                state: UserAcceptanceState::NotRequested,
+                source_id: None,
+            },
+            known_limits: Vec::new(),
+            non_goals: Vec::new(),
+            open_questions: Vec::new(),
+            next_step: "inspect the selected flow".into(),
+            handoff_to: None,
+            recorded_at: TimestampMicros::from_unix_micros(10),
+        }
+    }
+
+    fn entity(identity: &str, locator: &str, language: Language) -> MapEntity {
+        MapEntity {
+            identity: identity.into(),
+            display_name: identity.into(),
+            locator: locator.into(),
+            kind: CodeEntityKind::Module,
+            language,
+            source_id: SourceId::from_bytes([9; 16]),
+            source_range: None,
+            analysis_snapshot: analysis_snapshot(),
+            repository_snapshot: repository_snapshot(),
+            freshness: freshness(),
+            uncertainty: Uncertainty::none(),
+            canonical_links: Vec::new(),
+        }
+    }
+
+    fn relation(identity: &str, source: &str, target: &str, kind: &str) -> MapRelation {
+        MapRelation {
+            identity: identity.into(),
+            class: MapRelationClass::StructuralFact,
+            kind: kind.into(),
+            source_entity: source.into(),
+            target_entity: Some(target.into()),
+            unresolved_target: None,
+            source_id: SourceId::from_bytes([9; 16]),
+            supporting_range: None,
+            analysis_snapshot: analysis_snapshot(),
+            repository_snapshot: repository_snapshot(),
+            freshness: freshness(),
+            uncertainty: Uncertainty::none(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn project_id() -> ProjectId {
+        ProjectId::from_bytes([1; 16])
+    }
+
+    fn repository_snapshot() -> RepositorySnapshotId {
+        RepositorySnapshotId::from_hex(&"11".repeat(32))
+            .unwrap_or_else(|error| panic!("valid Repository Snapshot fixture: {error}"))
+    }
+
+    fn analysis_snapshot() -> AnalysisSnapshotId {
+        AnalysisSnapshotId::from_hex(&"22".repeat(32))
+            .unwrap_or_else(|error| panic!("valid Analysis Snapshot fixture: {error}"))
+    }
+
+    fn freshness() -> FreshnessBasis {
+        FreshnessBasis {
+            state: FreshnessState::Current,
+            repository_snapshot: repository_snapshot(),
+            compared_repository_snapshot: None,
+            reason: None,
+        }
     }
 }

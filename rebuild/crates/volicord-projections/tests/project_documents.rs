@@ -408,19 +408,25 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             },
         )?
         .value;
-    store.record_context_item(
-        operation(104),
-        project.id,
-        ContextItemDraft {
-            expected_project_revision: project.revision,
-            role: ContextItemRole::Goal,
-            statement: "Explain the architecture without losing source identity".to_owned(),
-            provenance_role: StatementProvenanceRole::UserStatement,
-            author: principal(PrincipalKind::User, "owner"),
-            source_basis: vec![user_turn.id],
-            applicability: ApplicabilityScope::default(),
-        },
-    )?;
+    let goal = store
+        .record_context_item(
+            operation(104),
+            project.id,
+            ContextItemDraft {
+                expected_project_revision: project.revision,
+                role: ContextItemRole::Goal,
+                statement: "Explain the architecture without losing source identity".to_owned(),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author: principal(PrincipalKind::User, "owner"),
+                source_basis: vec![user_turn.id],
+                applicability: ApplicabilityScope {
+                    paths: vec!["src/lib.rs".to_owned()],
+                    components: Vec::new(),
+                    work_contexts: vec!["documents".to_owned()],
+                },
+            },
+        )?
+        .value;
     let first_question = store
         .create_question(
             operation(105),
@@ -672,6 +678,18 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .decision_context_code
         .iter()
         .any(|link| !link.related_code_entities.is_empty()));
+    assert!(projection.current_work_code.iter().any(|link| {
+        link.changed_paths.contains(&"src/lib.rs".to_owned())
+            && link.checkpoint_basis.contains(
+                &projection
+                    .resume
+                    .latest_meaningful_checkpoint
+                    .as_ref()
+                    .map(|checkpoint| checkpoint.id)
+                    .unwrap_or_else(|| panic!("latest meaningful Checkpoint missing")),
+            )
+            && link.goal_context_basis.contains(&goal.id)
+    }));
     let timeline = projection
         .checkpoint_timeline
         .last()

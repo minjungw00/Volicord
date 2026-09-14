@@ -71,6 +71,22 @@ architecture `components`/`relationships`, `generated_interpretations`와 `evide
 canonical, Candidate, analyzer, publication 또는 provider mutation capability를 받지
 않는다.
 
+`ProjectProjection.repository_map`은 계속 repository-wide entity/relation inventory에서
+고른 일반 Repository Map topology를 소유한다. 같은 projection의 `current_work_code`는
+latest meaningful Checkpoint path/identity와 Goal Context identity가 어떤 repository entity를
+seed로 삼는지만 보존하며 두 번째 map이 아니다. `ProjectUnderstanding.architecture`가 이
+seed와 active Decision의 inspectable code link를 사용해 현재 작업 설명 surface를 소유한다.
+실제 Repository Intelligence relation이 그 seed끼리 연결하거나 seed에서 한 홉 떨어진
+endpoint를 설명할 때만 관계와 이웃 component를 포함한다. Current-work seed가 하나도 없으면
+generic Repository Map node를 대신 채우지 않고 bounded empty/gap 결과를 제공한다.
+
+Current-work architecture의 각 component는 `selection_basis`에 changed path와 exact
+Checkpoint identity, Decision identity, Goal Context identity 또는 grounded one-hop relation
+identity/seed identity를 bounded provenance로 보존한다. 이 basis는 공개 scoring formula가
+아니며 relevance 이유를 검사하고 Viewer에서 current-work 강조를 설명하기 위한 typed
+근거다. Repository entity는 precise Source range가 없는 경우에도 portable area `locator`를
+보존하여 path grounding을 잃지 않는다.
+
 Architecture bound는 component를 먼저 자른 뒤 우연히 남은 endpoint 사이의 relation만
 보존하지 않는다. 실제 Repository Intelligence relation과 그 양 endpoint를 하나의
 deterministic selection으로 선택하고, current bound가 endpoint 둘과 relation 하나를
@@ -82,6 +98,12 @@ stable identity를 relevance/tie-break basis로 사용할 수 있다. 선택된 
 inspectable explanation evidence로 identity와 source endpoint를 보존할 수 있으며 target
 component를 발명하지 않는다. 이 bounded subgraph는 repository-wide completeness를 뜻하지
 않는다.
+
+Current-work diagram은 선택된 grounded relation endpoint를 우선 보존한다. Component
+topology는 relation이 없는 current-work seed를 축약된 node로 보여 줄 수 있지만,
+request/data/control-flow diagram은 남는 용량을 disconnected generic component로 채우지
+않는다. Qualifying grounded flow가 없으면 node/edge를 발명하는 대신 reduced diagram과
+explicit gap을 제공한다.
 
 `ProjectUnderstanding`의 local deterministic explanation은 verified canonical,
 Structural Fact와 Semantic Result만 조합한 `deterministic_derived` presentation layer다.

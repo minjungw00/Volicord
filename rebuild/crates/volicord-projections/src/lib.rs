@@ -31,10 +31,10 @@ pub use documents::{
 pub use project::{
     build_project_projection, CandidateDependencyFailure, CandidateDependencyFailureKind,
     CandidateDependencyState, CandidateProjectionInput, CanonicalInspectionItem,
-    CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry, DecisionContextCodeLink,
-    MapEntity, MapInterpretation, MapRelation, MapRelationClass, ProjectOverview,
-    ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionHealth, ProjectionIssue,
-    ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
+    CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry, CurrentWorkCodeLink,
+    DecisionContextCodeLink, MapEntity, MapInterpretation, MapRelation, MapRelationClass,
+    ProjectOverview, ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionHealth,
+    ProjectionIssue, ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
 };
 pub use recall::{
     build_resume_brief, build_resume_brief_from_metadata, BriefContextItem, BriefDecision,
@@ -44,6 +44,7 @@ pub use recall::{
 pub use trigger::{RecallTriggerOutcome, SessionRecallTrigger};
 pub use understanding::{
     build_project_understanding, ProjectUnderstanding, UnderstandingArchitecture,
+    UnderstandingArchitectureSelection, UnderstandingArchitectureSelectionBasis,
     UnderstandingBound, UnderstandingDecision, UnderstandingEvidence, UnderstandingEvidenceClass,
     UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingNextStep,
     UnderstandingOmission, UnderstandingWork,

@@ -15,7 +15,7 @@ fn diagram_bound_keeps_relationship_endpoints_beyond_the_naive_prefix() {
     let relationships = vec![relationship];
 
     let (nodes, selected_relationships) =
-        select_diagram_topology(&components, &relationships, 16, |_| true);
+        select_diagram_topology(&components, &relationships, 16, |_| true, true);
     let node_ids = nodes
         .iter()
         .map(|node| node.identity.clone())
@@ -31,7 +31,7 @@ fn diagram_bound_keeps_relationship_endpoints_beyond_the_naive_prefix() {
 
     components.reverse();
     let (reordered_nodes, reordered_relationships) =
-        select_diagram_topology(&components, &relationships, 16, |_| true);
+        select_diagram_topology(&components, &relationships, 16, |_| true, true);
     assert_eq!(
         node_ids,
         reordered_nodes
@@ -48,10 +48,43 @@ fn diagram_bound_keeps_relationship_endpoints_beyond_the_naive_prefix() {
     );
 }
 
+#[test]
+fn flow_diagram_does_not_fill_capacity_with_disconnected_components() {
+    let components = (0..12)
+        .map(|index| map_entity(format!("generic-{index:02}")))
+        .chain([
+            map_entity("current-a".into()),
+            map_entity("current-b".into()),
+        ])
+        .collect::<Vec<_>>();
+    let relationships = vec![map_relation(
+        "flow:current".into(),
+        "current-a".into(),
+        "current-b".into(),
+    )];
+
+    let (nodes, selected_relationships) =
+        select_diagram_topology(&components, &relationships, 8, |_| true, false);
+    assert_eq!(
+        nodes
+            .iter()
+            .map(|node| node.identity.as_str())
+            .collect::<Vec<_>>(),
+        vec!["current-a", "current-b"]
+    );
+    assert_eq!(selected_relationships.len(), 1);
+
+    let (gap_nodes, gap_relationships) =
+        select_diagram_topology(&components, &relationships, 8, |_| false, false);
+    assert!(gap_nodes.is_empty());
+    assert!(gap_relationships.is_empty());
+}
+
 fn map_entity(identity: String) -> MapEntity {
     let repository_snapshot = repository_snapshot();
     MapEntity {
         display_name: identity.clone(),
+        locator: format!("src/{identity}.rs"),
         identity,
         kind: CodeEntityKind::Module,
         language: Language::Rust,

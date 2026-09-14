@@ -5,14 +5,15 @@ use crate::{
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
-    CanonicalReadBasis, Checkpoint, ContextItemRole, DecisionChoice, DecisionId, DecisionLifecycle,
-    ProjectId, QuestionState, SourceFreshness, SourceId, SourcePayload, TimestampMicros, WorkState,
+    CanonicalReadBasis, Checkpoint, CheckpointId, ContextItemId, ContextItemRole, DecisionChoice,
+    DecisionId, DecisionLifecycle, ProjectId, QuestionState, SourceFreshness, SourceId,
+    SourcePayload, TimestampMicros, WorkState,
 };
 use volicord_inquiry::{ApplicabilityQuery, CandidateReadBasis};
 use volicord_repository_intelligence::{
-    AnalysisSnapshot, AnalysisSnapshotId, Capability, CapabilityReport, CapabilityState,
-    CodeEntityKind, FreshnessBasis, Language, RelationTarget, RepositorySnapshotId, SourceRange,
-    Uncertainty,
+    AnalysisSnapshot, AnalysisSnapshotId, CanonicalReference, Capability, CapabilityReport,
+    CapabilityState, CodeEntityKind, FreshnessBasis, Language, RelationTarget,
+    RepositorySnapshotId, SourceRange, Uncertainty,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -137,6 +138,9 @@ pub struct ProjectOverview {
 pub struct MapEntity {
     pub identity: String,
     pub display_name: String,
+    /// Portable repository-relative area locator retained even when a symbol
+    /// does not expose a precise Source range.
+    pub locator: String,
     pub kind: CodeEntityKind,
     pub language: Language,
     pub source_id: SourceId,
@@ -145,7 +149,7 @@ pub struct MapEntity {
     pub repository_snapshot: RepositorySnapshotId,
     pub freshness: FreshnessBasis,
     pub uncertainty: Uncertainty,
-    pub canonical_links: Vec<String>,
+    pub canonical_links: Vec<CanonicalReference>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -205,6 +209,7 @@ pub struct RepositoryMap {
     pub health: ProjectionHealth,
 }
 
+#[cfg(test)]
 pub(crate) fn select_bounded_topology(
     entities: &[MapEntity],
     relations: &[MapRelation],
@@ -365,7 +370,20 @@ fn select_topology<E: EntityView + Clone, R: RelationView + Clone>(
         relation_selection_key(*relation, &entity_by_id, important_entities, &degree)
     });
 
-    let mut selected_entities = BTreeSet::<String>::new();
+    let mut ranked_important_entities = important_entities
+        .iter()
+        .filter_map(|identity| {
+            entity_by_id
+                .get(identity.as_str())
+                .map(|entity| (identity, entity_kind_rank(entity.kind())))
+        })
+        .collect::<Vec<_>>();
+    ranked_important_entities.sort_by_key(|(identity, kind_rank)| (*kind_rank, identity.as_str()));
+    let mut selected_entities = ranked_important_entities
+        .into_iter()
+        .take(entity_limit)
+        .map(|(identity, _)| identity.clone())
+        .collect::<BTreeSet<_>>();
     let mut selected_relations = Vec::<R>::new();
     let mut selected_relation_ids = BTreeSet::<String>::new();
     while selected_relations.len() < relation_limit {
@@ -558,10 +576,22 @@ pub struct CanonicalInspectionItem {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CurrentWorkCodeLink {
+    pub entity_identity: String,
+    pub changed_paths: Vec<String>,
+    pub checkpoint_basis: Vec<CheckpointId>,
+    pub goal_context_basis: Vec<ContextItemId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
     pub overview: ProjectOverview,
     pub resume: ResumeBrief,
     pub repository_map: RepositoryMap,
+    /// Bounded current Goal/Checkpoint-to-code seed evidence. This is not a
+    /// second repository map; Project Understanding uses it to select a
+    /// current-work neighborhood from `repository_map`.
+    pub current_work_code: Vec<CurrentWorkCodeLink>,
     pub decision_context_code: Vec<DecisionContextCodeLink>,
     pub checkpoint_timeline: Vec<CheckpointTimelineEntry>,
     pub canonical_inspection: Vec<CanonicalInspectionItem>,
@@ -587,12 +617,10 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
     });
     let mut issues = source_issues(inputs.canonical);
     issues.extend_from_slice(inputs.analysis_issues);
-    let repository_map = build_repository_map(
-        inputs.canonical.project.id,
-        inputs.analyses,
-        limit,
-        &mut issues,
-    );
+    let repository_map =
+        build_repository_map(inputs.canonical, inputs.analyses, limit, &mut issues);
+    let current_work_code =
+        build_current_work_code_links(inputs.canonical, &repository_map, limit, &mut issues);
     let decision_context_code = build_decision_links(
         inputs.canonical,
         &resume,
@@ -710,6 +738,7 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         overview,
         resume,
         repository_map,
+        current_work_code,
         decision_context_code,
         checkpoint_timeline,
         canonical_inspection,
@@ -783,6 +812,7 @@ fn materialize_entity(entity: &volicord_repository_intelligence::CodeEntity) -> 
             .clone()
             .or_else(|| entity.display_name.clone())
             .unwrap_or_else(|| entity.identity.clone()),
+        locator: entity.area.path.clone(),
         kind: entity.kind.clone(),
         language: entity.language.clone(),
         source_id: entity.source.identity(),
@@ -791,11 +821,7 @@ fn materialize_entity(entity: &volicord_repository_intelligence::CodeEntity) -> 
         repository_snapshot: entity.repository_snapshot,
         freshness: entity.freshness.clone(),
         uncertainty: entity.uncertainty.clone(),
-        canonical_links: entity
-            .canonical_links
-            .iter()
-            .map(|link| format!("{link:?}"))
-            .collect(),
+        canonical_links: entity.canonical_links.clone(),
     }
 }
 
@@ -843,7 +869,7 @@ fn materialize_relation(reference: RelationRef<'_>) -> MapRelation {
 }
 
 fn build_repository_map(
-    project_id: ProjectId,
+    canonical: &CanonicalReadBasis,
     analyses: &[&AnalysisSnapshot],
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
@@ -854,7 +880,7 @@ fn build_repository_map(
     let mut capabilities = Vec::new();
     let mut gaps = Vec::new();
     for analysis in analyses {
-        if analysis.project.identity() != project_id {
+        if analysis.project.identity() != canonical.project.id {
             issues.push(ProjectionIssue {
                 kind: ProjectionIssueKind::WrongProject,
                 identity: analysis.identity.to_string(),
@@ -940,11 +966,20 @@ fn build_repository_map(
             ))
     });
     if entities.len() > limit || relations.len() > limit {
-        let important_entities = entities
+        let current_work_entities = entities
             .iter()
-            .filter(|entity| !entity.canonical_links.is_empty())
+            .filter(|entity| entity_matches_current_work(entity, canonical))
             .map(|entity| entity.identity.clone())
             .collect::<BTreeSet<_>>();
+        let important_entities = if current_work_entities.is_empty() {
+            entities
+                .iter()
+                .filter(|entity| !entity.canonical_links.is_empty())
+                .map(|entity| entity.identity.clone())
+                .collect::<BTreeSet<_>>()
+        } else {
+            current_work_entities
+        };
         let topology = select_topology(
             &entities,
             &relations,
@@ -1026,6 +1061,101 @@ fn build_decision_links(
     values
 }
 
+fn build_current_work_code_links(
+    canonical: &CanonicalReadBasis,
+    repository_map: &RepositoryMap,
+    limit: usize,
+    issues: &mut Vec<ProjectionIssue>,
+) -> Vec<CurrentWorkCodeLink> {
+    let checkpoint = canonical.latest_checkpoint.as_ref();
+    let goals = canonical
+        .context_items
+        .iter()
+        .filter(|context| context.role == ContextItemRole::Goal)
+        .collect::<Vec<_>>();
+    let mut links = repository_map
+        .entities
+        .iter()
+        .filter_map(|entity| {
+            let locator = entity
+                .source_range
+                .as_ref()
+                .map(|range| range.locator.as_str())
+                .unwrap_or(entity.locator.as_str());
+            let mut changed_paths = checkpoint
+                .into_iter()
+                .flat_map(|checkpoint| checkpoint.changed_paths.iter())
+                .filter(|path| path_matches(path, locator))
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut checkpoint_basis = checkpoint
+                .filter(|checkpoint| {
+                    !changed_paths.is_empty()
+                        || entity.canonical_links.iter().any(|link| {
+                            matches!(link, CanonicalReference::Checkpoint(reference) if reference.identity() == checkpoint.id)
+                        })
+                })
+                .map(|checkpoint| checkpoint.id)
+                .into_iter()
+                .collect::<Vec<_>>();
+            let mut goal_context_basis = goals
+                .iter()
+                .filter(|context| {
+                    map_entity_matches_scope(
+                        entity,
+                        &context.applicability.paths,
+                        &context.applicability.components,
+                    ) || entity.canonical_links.iter().any(|link| {
+                        matches!(link, CanonicalReference::ContextItem(reference) if reference.identity() == context.id)
+                    })
+                })
+                .map(|context| context.id)
+                .collect::<Vec<_>>();
+            changed_paths.sort();
+            changed_paths.dedup();
+            checkpoint_basis.sort();
+            checkpoint_basis.dedup();
+            goal_context_basis.sort();
+            goal_context_basis.dedup();
+            (!changed_paths.is_empty()
+                || !checkpoint_basis.is_empty()
+                || !goal_context_basis.is_empty())
+            .then(|| CurrentWorkCodeLink {
+                entity_identity: entity.identity.clone(),
+                changed_paths,
+                checkpoint_basis,
+                goal_context_basis,
+            })
+        })
+        .collect::<Vec<_>>();
+    links.sort_by_key(|link| {
+        (
+            Reverse(!link.changed_paths.is_empty()),
+            Reverse(!link.goal_context_basis.is_empty()),
+            repository_map
+                .entities
+                .iter()
+                .find(|entity| entity.identity == link.entity_identity)
+                .map_or(usize::MAX, |entity| entity_kind_rank(&entity.kind)),
+            link.entity_identity.clone(),
+        )
+    });
+    bound(&mut links, limit, "current_work_code", issues);
+    links
+}
+
+fn map_entity_matches_scope(entity: &MapEntity, paths: &[String], components: &[String]) -> bool {
+    let locator = entity
+        .source_range
+        .as_ref()
+        .map(|range| range.locator.as_str())
+        .unwrap_or(entity.locator.as_str());
+    paths.iter().any(|path| path_matches(path, locator))
+        || components
+            .iter()
+            .any(|component| locator.contains(component) || entity.display_name.contains(component))
+}
+
 fn decision_link(
     canonical: &CanonicalReadBasis,
     lifecycle: &DecisionLifecycle,
@@ -1059,11 +1189,12 @@ fn decision_link(
             .as_ref()
             .map(|range| range.locator.as_str())
             .unwrap_or_default();
-        let decision_marker = decision.id.to_string();
         if entity
             .canonical_links
             .iter()
-            .any(|link| link.contains(&decision_marker))
+            .any(|link| {
+                matches!(link, CanonicalReference::Decision(reference) if reference.identity() == decision.id)
+            })
         {
             related_code_entities.push(entity.identity.clone());
             link_basis.push(format!(
@@ -1513,6 +1644,60 @@ fn path_matches(scope: &str, locator: &str) -> bool {
             .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
+fn entity_matches_current_work(
+    entity: &volicord_repository_intelligence::CodeEntity,
+    canonical: &CanonicalReadBasis,
+) -> bool {
+    let locator = entity
+        .source_range
+        .as_ref()
+        .map(|range| range.locator.as_str())
+        .unwrap_or(entity.area.path.as_str());
+    let display_name = entity
+        .qualified_name
+        .as_deref()
+        .or(entity.display_name.as_deref())
+        .unwrap_or(entity.identity.as_str());
+    let matches_scope = |paths: &[String], components: &[String]| {
+        paths.iter().any(|path| path_matches(path, locator))
+            || components
+                .iter()
+                .any(|component| locator.contains(component) || display_name.contains(component))
+    };
+
+    if canonical.latest_checkpoint.as_ref().is_some_and(|checkpoint| {
+        checkpoint
+            .changed_paths
+            .iter()
+            .any(|path| path_matches(path, locator))
+            || entity.canonical_links.iter().any(|link| {
+                matches!(link, CanonicalReference::Checkpoint(reference) if reference.identity() == checkpoint.id)
+            })
+    }) {
+        return true;
+    }
+    if canonical.active_decisions.iter().any(|lifecycle| {
+        matches_scope(
+            &lifecycle.decision.applicability.paths,
+            &lifecycle.decision.applicability.components,
+        ) || entity.canonical_links.iter().any(|link| {
+            matches!(link, CanonicalReference::Decision(reference) if reference.identity() == lifecycle.decision.id)
+        })
+    }) {
+        return true;
+    }
+    canonical
+        .context_items
+        .iter()
+        .filter(|context| context.role == ContextItemRole::Goal)
+        .any(|context| {
+            matches_scope(&context.applicability.paths, &context.applicability.components)
+                || entity.canonical_links.iter().any(|link| {
+                    matches!(link, CanonicalReference::ContextItem(reference) if reference.identity() == context.id)
+                })
+        })
+}
+
 fn revision_for(canonical: &CanonicalReadBasis, kind: &str, identity: &str) -> u64 {
     canonical
         .revisions
@@ -1649,7 +1834,7 @@ mod tests {
             StructuralAnalysisRequest::new(InventoryRequest::new(&root, &grounding, source.id, 1)?),
         ))?;
         let mut issues = Vec::new();
-        let full = super::build_repository_map(project.id, &[&analysis], usize::MAX, &mut issues);
+        let full = super::build_repository_map(&canonical, &[&analysis], usize::MAX, &mut issues);
         let important = full
             .entities
             .iter()
@@ -1660,7 +1845,7 @@ mod tests {
             select_bounded_topology(&full.entities, &full.relations, &important, 8, 8, true);
         super::MATERIALIZED.with(|count| count.set((0, 0)));
         issues.clear();
-        let actual = super::build_repository_map(project.id, &[&analysis], 8, &mut issues);
+        let actual = super::build_repository_map(&canonical, &[&analysis], 8, &mut issues);
         assert_eq!(actual.entities, expected.entities);
         assert_eq!(actual.relations, expected.relations);
         assert!(full.entities.len() > 100 && full.relations.len() > 100);
@@ -1706,6 +1891,35 @@ mod tests {
             assert_eq!(issues[0].omitted_count, cardinality - limit);
             assert_eq!(health_from_issues(&issues), ProjectionHealth::Partial);
         }
+    }
+
+    #[test]
+    fn bounded_topology_never_displaces_an_isolated_current_work_seed() {
+        let mut entities = vec![map_entity("current-change".into())];
+        entities.extend((0..12).map(|index| map_entity(format!("generic-{index:02}"))));
+        let relations = (1..12)
+            .map(|index| {
+                map_relation(
+                    format!("generic:hub-{index:02}"),
+                    "generic-00".into(),
+                    format!("generic-{index:02}"),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let selected = select_bounded_topology(
+            &entities,
+            &relations,
+            &BTreeSet::from(["current-change".to_owned()]),
+            4,
+            4,
+            false,
+        );
+
+        assert!(selected
+            .entities
+            .iter()
+            .any(|entity| entity.identity == "current-change"));
     }
 
     #[test]
@@ -1786,6 +2000,7 @@ mod tests {
         let repository_snapshot = snapshot_id();
         MapEntity {
             display_name: identity.clone(),
+            locator: format!("src/{identity}.rs"),
             identity,
             kind: CodeEntityKind::Module,
             language: Language::Rust,

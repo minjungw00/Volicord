@@ -21,8 +21,9 @@ use volicord_projections::{
     CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest, DocumentSet, FixedLocale,
     GeneratorIdentity, InspectionHealth, MapEntity, MapRelation, MapRelationClass,
     NarrativeRealizationState, OutputFormat, ProjectProjection, ProjectUnderstanding,
-    ProjectionHealth, ProjectionIssueKind, RequestedDestination, UnderstandingBound,
-    UnderstandingEvidenceClass, UnderstandingExplanation, UnderstandingExplanationKind,
+    ProjectionHealth, ProjectionIssueKind, RequestedDestination,
+    UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingEvidenceClass,
+    UnderstandingExplanation, UnderstandingExplanationKind,
 };
 use volicord_repository_intelligence::{
     Capability, CapabilityState, CodeEntityKind, FreshnessState, Language,
@@ -738,6 +739,7 @@ fn render_project_understanding(
             "컴포넌트 및 의존성 토폴로지",
         ),
         |_| true,
+        true,
     );
     render_grounded_diagram(
         html,
@@ -750,6 +752,7 @@ fn render_project_understanding(
             "검사 가능한 코드 흐름",
         ),
         is_flow_relation,
+        false,
     );
 
     if !understanding.generated_interpretations.is_empty() {
@@ -950,6 +953,7 @@ fn render_grounded_diagram(
     diagram_id: &str,
     title: &str,
     include_relation: fn(&MapRelation) -> bool,
+    include_unconnected_components: bool,
 ) {
     let limit = match request.explanation_level {
         ExplanationLevel::Overview => 8,
@@ -961,6 +965,7 @@ fn render_grounded_diagram(
         &understanding.architecture.relationships,
         limit,
         include_relation,
+        include_unconnected_components,
     );
     let positions = nodes
         .iter()
@@ -979,11 +984,19 @@ fn render_grounded_diagram(
     if nodes.is_empty() {
         empty_state(
             html,
-            text(
-                request.locale,
-                "No inspectable repository nodes are available for this diagram.",
-                "이 도식에 사용할 검사 가능한 저장소 노드가 없습니다.",
-            ),
+            if understanding.architecture.components.is_empty() {
+                text(
+                    request.locale,
+                    "No repository component is grounded in the current Goal, Checkpoint, or active Decision; generic topology was not substituted.",
+                    "현재 Goal, Checkpoint 또는 active Decision에 근거가 있는 저장소 컴포넌트가 없습니다. 일반 토폴로지로 대신 채우지 않았습니다.",
+                )
+            } else {
+                text(
+                    request.locale,
+                    "No inspectable relationship of this kind connects the current-work components; no edge or unrelated node was inferred.",
+                    "현재 작업 컴포넌트를 연결하는 이 종류의 검사 가능한 관계가 없습니다. edge나 무관한 노드를 추론하지 않았습니다.",
+                )
+            },
         );
         html.push_str("</figure>");
         return;
@@ -1032,10 +1045,27 @@ fn render_grounded_diagram(
         let Some((x, y)) = positions.get(node.identity.as_str()) else {
             continue;
         };
+        let selection_keys = understanding
+            .architecture
+            .selection_basis
+            .iter()
+            .find(|selection| selection.entity_identity == node.identity)
+            .map(|selection| {
+                selection
+                    .basis
+                    .iter()
+                    .map(architecture_selection_key)
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default();
         html.push_str(&format!(
-            "<g class=\"diagram-node\" data-entity-id=\"{}\" data-analysis-snapshot=\"{}\"><title>{} — {}</title><rect x=\"{}\" y=\"{}\" width=\"220\" height=\"64\" rx=\"8\"/><text x=\"{}\" y=\"{}\">{}</text><text class=\"diagram-node-kind\" x=\"{}\" y=\"{}\">{}</text></g>",
+            "<g class=\"diagram-node\" data-entity-id=\"{}\" data-analysis-snapshot=\"{}\" data-current-work-basis=\"{}\"><title>{} — {}</title><rect x=\"{}\" y=\"{}\" width=\"220\" height=\"64\" rx=\"8\"/><text x=\"{}\" y=\"{}\">{}</text><text class=\"diagram-node-kind\" x=\"{}\" y=\"{}\">{}</text></g>",
             escape(&node.identity),
             node.analysis_snapshot,
+            escape(&selection_keys),
             escape(&node.display_name),
             escape(&code_entity_kind_label(&node.kind, request.locale)),
             x,
@@ -1073,6 +1103,7 @@ fn select_diagram_topology<'a>(
     relationships: &'a [MapRelation],
     limit: usize,
     include_relation: fn(&MapRelation) -> bool,
+    include_unconnected_components: bool,
 ) -> (Vec<&'a MapEntity>, Vec<&'a MapRelation>) {
     let limit = limit.max(1);
     let components_by_id = components
@@ -1135,17 +1166,29 @@ fn select_diagram_topology<'a>(
         selected_relationships.push(*relationship);
     }
 
-    for component in components_by_id.values() {
-        if selected_component_ids.len() == limit {
-            break;
+    if include_unconnected_components {
+        for component in components_by_id.values() {
+            if selected_component_ids.len() == limit {
+                break;
+            }
+            selected_component_ids.insert(component.identity.as_str());
         }
-        selected_component_ids.insert(component.identity.as_str());
     }
     let nodes = selected_component_ids
         .into_iter()
         .filter_map(|identity| components_by_id.get(identity).copied())
         .collect();
     (nodes, selected_relationships)
+}
+
+fn architecture_selection_key(basis: &UnderstandingArchitectureSelectionBasis) -> &'static str {
+    match basis {
+        UnderstandingArchitectureSelectionBasis::ChangedPath { .. } => "changed-path",
+        UnderstandingArchitectureSelectionBasis::DecisionCodeLink { .. } => "decision-code-link",
+        UnderstandingArchitectureSelectionBasis::GoalContextLink { .. } => "goal-context-link",
+        UnderstandingArchitectureSelectionBasis::CheckpointLink { .. } => "checkpoint-link",
+        UnderstandingArchitectureSelectionBasis::GroundedOneHop { .. } => "grounded-one-hop",
+    }
 }
 
 fn relationship_endpoint_is_selected(
