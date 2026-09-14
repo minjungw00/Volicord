@@ -677,6 +677,121 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
 }
 
 #[test]
+fn bounded_recall_keeps_the_repository_source_for_a_returned_snapshot(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut generated_ids = vec![[1; 16]];
+    for value in 2_u8..=9 {
+        generated_ids.push([value; 16]);
+        generated_ids.push([50 + value; 16]);
+    }
+    generated_ids.push([250; 16]);
+    let mut store = Store::open_with(
+        root.path().join("bounded-sources.sqlite3"),
+        DeterministicIdGenerator::new(generated_ids),
+        FixedClock::new(TimestampMicros::from_unix_micros(2_000)),
+    )?;
+    let project = store
+        .create_project(operation(130), "Bounded Recall Sources")?
+        .value;
+    let mut user_sources = Vec::new();
+    for value in 2_u8..=9 {
+        let source = store
+            .record_source(
+                operation(130 + value),
+                project.id,
+                SourceDraft {
+                    expected_project_revision: project.revision,
+                    payload: SourcePayload::CurrentHostUserTurn {
+                        host: "codex".to_owned(),
+                        session: "bounded-recall".to_owned(),
+                        turn: format!("turn-{value}"),
+                    },
+                    actor: principal(PrincipalKind::User, "owner"),
+                    observer: Some(principal(PrincipalKind::Agent, "codex")),
+                    availability: Availability::Available,
+                },
+            )?
+            .value;
+        store.record_context_item(
+            operation(140 + value),
+            project.id,
+            ContextItemDraft {
+                expected_project_revision: project.revision,
+                role: ContextItemRole::Goal,
+                statement: format!("bounded goal {value}"),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author: principal(PrincipalKind::User, "owner"),
+                source_basis: vec![source.id],
+                applicability: ApplicabilityScope::default(),
+            },
+        )?;
+        user_sources.push(source);
+    }
+    let repository = store
+        .record_source(
+            operation(150),
+            project.id,
+            source_draft(
+                &project,
+                SourcePayload::RepositorySnapshot {
+                    revision: "snapshot-current".to_owned(),
+                },
+                Availability::Available,
+            ),
+        )?
+        .value;
+    let repository_root = root.path().join("repo");
+    fs::create_dir_all(repository_root.join("src"))?;
+    fs::write(repository_root.join("src/lib.rs"), "pub fn recall() {}\n")?;
+    let canonical = store.read_canonical_basis(
+        project.id,
+        CanonicalReadOptions {
+            include_checkpoint_history: true,
+        },
+    )?;
+    let grounding = CanonicalGrounding::from_read_basis(&canonical)?;
+    let (_, analysis) = inventory_repository(InventoryRequest::new(
+        &repository_root,
+        &grounding,
+        repository.id,
+        2_000,
+    )?)?;
+    let brief = build_resume_brief(RecallInputs {
+        analysis_issues: &[],
+        canonical: &canonical,
+        analyses: &[&analysis],
+        scope: ApplicabilityQuery {
+            project_id: project.id,
+            paths: Vec::new(),
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+            current_assumptions: Vec::new(),
+            met_revisit_triggers: Vec::new(),
+        },
+        bound: RecallBound {
+            max_items_per_section: 8,
+        },
+    });
+
+    assert_eq!(brief.used_sources.len(), 8);
+    assert!(brief
+        .used_sources
+        .iter()
+        .any(|source| source.source.id == repository.id));
+    let omitted_user_source = user_sources.last().ok_or("user Source fixture missing")?;
+    assert!(brief.omissions.iter().any(|omission| {
+        omission.kind == "source"
+            && omission.identity == omitted_user_source.id.to_string()
+            && omission.reason == OmissionReason::Bound
+    }));
+    assert!(!brief.omissions.iter().any(|omission| {
+        omission.kind == "source" && omission.identity == repository.id.to_string()
+    }));
+    Ok(())
+}
+
+#[test]
 fn historical_checkpoint_remains_readable_with_non_current_source_basis(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempdir()?;

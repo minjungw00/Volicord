@@ -406,6 +406,16 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
         used_source_ids.extend(checkpoint.source_basis.iter().copied());
         used_source_ids.extend(checkpoint.changed_source_basis.iter().copied());
     }
+    let displayed_analysis_ids = snapshots
+        .iter()
+        .map(|snapshot| snapshot.analysis_snapshot)
+        .collect::<BTreeSet<_>>();
+    let displayed_repository_source_ids = inputs
+        .analyses
+        .iter()
+        .filter(|snapshot| displayed_analysis_ids.contains(&snapshot.identity))
+        .map(|snapshot| snapshot.repository_source.identity())
+        .collect::<BTreeSet<_>>();
     for snapshot in inputs.analyses {
         if snapshot.project.identity() == canonical.project.id {
             used_source_ids.insert(snapshot.repository_source.identity());
@@ -417,7 +427,12 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
         .filter(|source| used_source_ids.contains(&source.source.id))
         .cloned()
         .collect::<Vec<_>>();
-    used_sources.sort_by_key(|source| source.source.id);
+    used_sources.sort_by_key(|source| {
+        (
+            !displayed_repository_source_ids.contains(&source.source.id),
+            source.source.id,
+        )
+    });
     bound_items(
         &mut used_sources,
         limit,
