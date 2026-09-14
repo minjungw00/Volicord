@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from contextlib import contextmanager
 import copy
 from dataclasses import dataclass
 import hashlib
@@ -61,6 +62,7 @@ PROHIBITED_ARCHIVE_SUFFIXES = (".sqlite", ".sqlite3", ".db", "-wal", "-shm", "-j
 PROJECT_ID = re.compile(r"[0-9a-f]{32}")
 BATCH_CAPTURE_COUNT = harness.QUALIFICATION_SESSION_COUNT
 REVIEW_SLOT_ID = re.compile(r"[0-9a-f]{32}")
+CANDIDATE_ARTIFACTS = ("volicord", "volicord-mcp", "volicord-viewer")
 
 
 class CampaignError(ValueError):
@@ -183,6 +185,64 @@ def require_current_candidate(candidate_head: str) -> None:
         raise CampaignError(
             "campaign mutation requires its bound candidate to be the current clean qualifying HEAD"
         )
+
+
+def bind_candidate_artifacts(binary: Path) -> dict[str, dict[str, str]]:
+    binary = binary.resolve()
+    paths = {
+        "volicord": binary,
+        "volicord-mcp": binary.with_name("volicord-mcp").resolve(),
+        "volicord-viewer": binary.with_name("volicord-viewer").resolve(),
+    }
+    bindings: dict[str, dict[str, str]] = {}
+    for name in CANDIDATE_ARTIFACTS:
+        path = paths[name]
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise CampaignError(f"candidate executable is unavailable: {name}")
+        bindings[name] = {"path": str(path), "sha256": harness.sha256(path)}
+    return bindings
+
+
+def verify_candidate_artifacts(
+    campaign: dict[str, Any], names: tuple[str, ...] = CANDIDATE_ARTIFACTS
+) -> dict[str, dict[str, str]]:
+    bindings = campaign.get("candidate_artifacts")
+    if (not isinstance(bindings, dict) or len(bindings) != len(CANDIDATE_ARTIFACTS)
+            or set(bindings) != set(CANDIDATE_ARTIFACTS)):
+        raise CampaignError("campaign candidate executable bindings are missing or malformed")
+    if campaign.get("candidate_binary") != bindings.get("volicord", {}).get("path"):
+        raise CampaignError("campaign candidate executable path binding changed")
+    for name in names:
+        if name not in CANDIDATE_ARTIFACTS:
+            raise CampaignError("unknown candidate executable binding")
+        binding = bindings.get(name)
+        if (
+            not isinstance(binding, dict)
+            or set(binding) != {"path", "sha256"}
+            or not isinstance(binding.get("path"), str)
+            or not isinstance(binding.get("sha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", binding["sha256"]) is None
+        ):
+            raise CampaignError("campaign candidate executable binding is malformed")
+        path = Path(binding["path"])
+        if not path.is_absolute() or path.resolve(strict=False) != path:
+            raise CampaignError("campaign candidate executable path binding changed")
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise CampaignError(f"candidate executable is unavailable: {name}")
+        if harness.sha256(path) != binding["sha256"]:
+            raise CampaignError(f"candidate executable content mismatch: {name}")
+    return bindings
+
+
+@contextmanager
+def candidate_artifact_use(
+    campaign: dict[str, Any], names: tuple[str, ...] = CANDIDATE_ARTIFACTS
+):
+    verify_candidate_artifacts(campaign, names)
+    try:
+        yield
+    finally:
+        verify_candidate_artifacts(campaign, names)
 
 
 def load_campaign_for_mutation(
@@ -1805,23 +1865,24 @@ def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
     repository = Path(state["repository_path"])
     binary = Path(campaign["candidate_binary"])
     manifest = repository / ".codex/volicord-integration.json"
-    if manifest.exists():
-        run_checked([
-            str(binary), "--runtime", state["runtime_home"], "--json",
-            "--repository", str(repository), "codex", "disable",
-        ])
-    result = run_checked(
-        [
-            str(binary), "--runtime", state["runtime_home"], "--json",
-            "--repository", str(repository), "codex", "enable",
-        ]
-    )
-    verification = verify_static_codex_integration(
-        repository,
-        Path(state["runtime_home"]),
-        binary,
-        result,
-    )
+    with candidate_artifact_use(campaign, ("volicord", "volicord-mcp")):
+        if manifest.exists():
+            run_checked([
+                str(binary), "--runtime", state["runtime_home"], "--json",
+                "--repository", str(repository), "codex", "disable",
+            ])
+        result = run_checked(
+            [
+                str(binary), "--runtime", state["runtime_home"], "--json",
+                "--repository", str(repository), "codex", "enable",
+            ]
+        )
+        verification = verify_static_codex_integration(
+            repository,
+            Path(state["runtime_home"]),
+            binary,
+            result,
+        )
     state["codex_enabled"] = True
     campaign["active_cycle_by_repository"][kind] = cycle
     save_campaign(root, campaign)
@@ -1918,10 +1979,9 @@ def prepare_campaign(
     root.mkdir(parents=True, exist_ok=True)
     root.chmod(0o700)
     binary = candidate_binary.resolve() if candidate_binary else install_candidate(root)
+    candidate_artifacts = bind_candidate_artifacts(binary)
     realization_route = (document_realization.route(binary)
         if document_realization.required(document_language, viewer_locale) else None)
-    if not binary.is_file():
-        raise CampaignError("candidate binary is unavailable")
     cycles: dict[str, Any] = {}
     behavior_by_slot: dict[str, str] = {}
     for kind, number, behavior_class, review_slot_id in assignments:
@@ -1985,6 +2045,7 @@ def prepare_campaign(
         "campaign_root": str(root),
         "candidate_head": candidate_head,
         "candidate_binary": str(binary),
+        "candidate_artifacts": candidate_artifacts,
         "document_language": document_language,
         "viewer_locale": viewer_locale,
         "document_realization_route": realization_route,
@@ -2020,6 +2081,7 @@ def prepare_campaign(
         "repository_identities": identities,
         "cycle_count": QUALIFICATION_CYCLE_COUNT,
         "candidate_local_install": str(binary),
+        "candidate_artifacts": candidate_artifacts,
         "repository_trust": "user_controlled_not_automated",
     }
     write_json(root / "preparation.json", preparation)
@@ -2593,7 +2655,8 @@ def extract_resume_evidence(
     runtime = Path(state["runtime_home"])
     repository = Path(state["repository_path"])
     bundle = cycle_root(root, kind, cycle) / "context.bundle.json"
-    exporter(binary, runtime, repository, bundle)
+    with candidate_artifact_use(campaign, ("volicord",)):
+        exporter(binary, runtime, repository, bundle)
     try:
         canonical = harness.load_canonical_bundle(bundle)
     except (OSError, EvidenceError) as error:
@@ -2624,36 +2687,38 @@ def extract_resume_evidence(
             True,
         ),
     )
-    document_result, document_paths = collect_document_evidence(
-        root,
-        kind,
-        cycle,
-        binary,
-        runtime,
-        repository,
-        project_id,
-        campaign["candidate_head"],
-        campaign.get("viewer_locale", "en"),
-        campaign.get("document_language", "en"),
-        documenter,
-    )
+    with candidate_artifact_use(campaign, ("volicord",)):
+        document_result, document_paths = collect_document_evidence(
+            root,
+            kind,
+            cycle,
+            binary,
+            runtime,
+            repository,
+            project_id,
+            campaign["candidate_head"],
+            campaign.get("viewer_locale", "en"),
+            campaign.get("document_language", "en"),
+            documenter,
+        )
     document_summary = cycle_root(root, kind, cycle) / "documents-summary.json"
     write_json(document_summary, document_result)
     document_review_index = write_operator_document_review_index(
         root, kind, cycle, document_result
     )
-    snapshot_result, snapshot_paths = collect_viewer_snapshot_evidence(
-        root,
-        kind,
-        cycle,
-        binary,
-        runtime,
-        project_id,
-        campaign["candidate_head"],
-        campaign.get("viewer_locale", "en"),
-        campaign.get("document_language", "en"),
-        snapshotter,
-    )
+    with candidate_artifact_use(campaign, ("volicord-viewer",)):
+        snapshot_result, snapshot_paths = collect_viewer_snapshot_evidence(
+            root,
+            kind,
+            cycle,
+            binary,
+            runtime,
+            project_id,
+            campaign["candidate_head"],
+            campaign.get("viewer_locale", "en"),
+            campaign.get("document_language", "en"),
+            snapshotter,
+        )
     snapshot_summary = cycle_root(root, kind, cycle) / "viewer-snapshot-summary.json"
     descriptor["evidence"].update({
         "runtime_summary": {
@@ -2986,6 +3051,7 @@ def collect_batch(
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]] = generate_viewer_snapshot,
 ) -> dict[str, Any]:
     campaign = integrity_check("candidate_binding", load_campaign_for_mutation, root)
+    integrity_check("candidate_binding", verify_candidate_artifacts, campaign)
     integrity_check("campaign_inventory", verify_inventory, root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("campaign already stopped; create a new campaign identity")
@@ -3020,9 +3086,10 @@ def collect_batch(
             if harness.sha256(destination) != rollout.capture.source_sha256:
                 raise IntegrityError("raw_hash", CampaignError("raw capture changed after candidate-bound mapping"))
             register_artifact(stage, destination)
-        summary = normalize_batch(
-            stage, mapped, exporter=exporter, documenter=documenter, snapshotter=snapshotter,
-        )
+        with candidate_artifact_use(campaign):
+            summary = normalize_batch(
+                stage, mapped, exporter=exporter, documenter=documenter, snapshotter=snapshotter,
+            )
         verify_inventory(stage)
         staged_campaign = load_campaign(stage)
         staged_campaign["campaign_root"] = str(root)
@@ -3042,7 +3109,9 @@ def publish_batch(root: Path, stage: Path, baseline: dict[str, bytes]) -> None:
     Raw captures and derived process logs retain their exact observed bytes.
     Only relative artifact references and campaign metadata name published files.
     """
-    require_current_candidate(read_json(stage / "campaign.json")["candidate_head"])
+    staged_campaign = read_json(stage / "campaign.json")
+    require_current_candidate(staged_campaign["candidate_head"])
+    verify_candidate_artifacts(staged_campaign)
     verify_inventory(root)
     if any((root / name).read_bytes() != data for name, data in baseline.items()):
         raise CampaignError("campaign changed during batch evaluation")
@@ -3075,6 +3144,7 @@ def publish_batch(root: Path, stage: Path, baseline: dict[str, bytes]) -> None:
         for name in changed:
             written.append(name)
             atomic_write_bytes(root / name, (stage / name).read_bytes())
+        verify_candidate_artifacts(staged_campaign)
     except BaseException:
         try:
             for name in reversed(written):
@@ -3175,6 +3245,7 @@ def normalize_batch(
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
     manifest = {"kind": "dogfood_evidence_set", "schema_version": 1,
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
+        "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
         "raw_inputs": document_realization.raw_binding(mapped),
         "cycles": copy.deepcopy(campaign["cycles"]),
         "artifacts": copy.deepcopy(load_inventory(root)["artifacts"])}
@@ -3199,6 +3270,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 1
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
+        or manifest.get("candidate_artifacts") != campaign.get("candidate_artifacts")
         or manifest.get("cycles") != campaign["cycles"]
         or len(manifest.get("raw_inputs", [])) != BATCH_CAPTURE_COUNT):
         raise CampaignError("evidence-set identity or candidate binding mismatch")

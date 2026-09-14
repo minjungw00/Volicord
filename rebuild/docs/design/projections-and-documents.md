@@ -428,6 +428,10 @@ active-host authorship 또는 exact model identity의 attestation이 아니다. 
 non-empty model string이나 환경의 session ID만으로 verified model provenance를 만들지 않는다.
 Unknown exact identity는 language failure가 아니다. Fingerprint, topology, protected-term,
 field/language attestation 검사는 유지하며 provenance 검증이 prose quality classifier가 되지 않는다.
+이 local MCP route hash는 campaign preparation의 닫힌 candidate-artifact binding에 있는
+`volicord-mcp` hash와 동일해야 한다. Plan preparation, immutable realization record와 final
+generation은 MCP 사용 전후에 그 binding을 다시 검증하며 같은 path의 replacement를 realized
+document evidence로 publish하지 않는다.
 
 ## 8. Grounding metadata
 

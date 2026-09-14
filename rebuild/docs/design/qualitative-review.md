@@ -105,7 +105,10 @@ and numeric exit or explicit termination. A completed nonzero invocation remains
 missing or incomplete process evidence is rejected. Absolute paths, environment variables,
 credentials, repository source, Runtime contents, and measured naturalistic workspaces are not
 retained. The collector verifies that campaign metadata and the immutable evidence set did not
-change.
+change. The executable hash is the immutable `volicord` artifact hash fixed by campaign
+preparation, not a hash self-reported from whatever bytes occupy the path after execution.
+Every invocation verifies the current bytes before and after use; a same-path replacement
+rejects collection and cannot enter reviewer evidence.
 
 ```sh
 rebuild/scripts/dogfood-campaign collect-cli-observations \

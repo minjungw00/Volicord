@@ -207,11 +207,29 @@ class WorkflowTests(unittest.TestCase):
             with self.subTest(label=label):
                 changed = copy.deepcopy(original)
                 edit(changed)
+                campaign = c.load_campaign(self.root)
+                bound = campaign["candidate_artifacts"]["volicord"]
                 with self.assertRaisesRegex(ValueError, message):
                     cli_obs.validate_value(changed, candidate_head=original["candidate_head"],
                         evidence_sha256=original["evidence_set_sha256"],
                         revisions={item["repository_class"]: item["repository_revision"]
-                                   for item in original["repository_observations"]})
+                                   for item in original["repository_observations"]},
+                        candidate_executable={"name": "volicord", "sha256": bound["sha256"],
+                            "path_sha256": cli_obs.path_fingerprint(Path(bound["path"]))})
+
+    def test_cli_observation_rejects_same_path_candidate_replacement(self):
+        campaign = c.load_campaign(self.root)
+        binary = Path(campaign["candidate_binary"])
+        original = binary.read_bytes()
+        binary.write_bytes(original + b"\n# same-path CLI replacement\n")
+        binary.chmod(0o755)
+        try:
+            with self.assertRaisesRegex(ValueError, "candidate executable content mismatch"):
+                collect_cli_fixture(self.root, self.target())
+            self.assertFalse(self.target().exists())
+        finally:
+            binary.write_bytes(original)
+            binary.chmod(0o755)
 
     def test_review_privacy_distinguishes_terminology_from_sensitive_payloads(self):
         benign = [

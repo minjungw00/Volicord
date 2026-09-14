@@ -651,6 +651,67 @@ def prepared_batch(
     return root, captures, bundles
 
 
+def assert_same_path_candidate_replacement_rejected(parent: Path, binary: Path) -> None:
+    root, captures, bundles = prepared_batch(
+        parent, "same-path-candidate-replacement", binary
+    )
+    def campaign_snapshot() -> dict[str, bytes]:
+        return {
+            path.relative_to(root).as_posix(): path.read_bytes()
+            for path in root.rglob("*")
+            if path.is_file()
+        }
+
+    before = campaign_snapshot()
+    original_run_checked = campaign.run_checked
+    campaign.run_checked = fake_enable_command
+    try:
+        for artifact_name in ("volicord", "volicord-mcp"):
+            path = binary.with_name(artifact_name)
+            original = path.read_bytes()
+            path.write_bytes(original + b"\n# same-path replacement\n")
+            path.chmod(0o755)
+            try:
+                try:
+                    campaign.activate_cycle(root, "volicord", 1)
+                except campaign.CampaignError as error:
+                    assert f"candidate executable content mismatch: {artifact_name}" in str(error)
+                else:
+                    raise AssertionError(
+                        f"campaign activation accepted a same-path {artifact_name} replacement"
+                    )
+                assert campaign_snapshot() == before
+            finally:
+                path.write_bytes(original)
+                path.chmod(0o755)
+
+        viewer = binary.with_name("volicord-viewer")
+        original = viewer.read_bytes()
+        viewer.write_bytes(original + b"\n# same-path replacement\n")
+        viewer.chmod(0o755)
+        try:
+            try:
+                campaign.collect_batch(
+                    root,
+                    captures,
+                    exporter=batch_exporter(bundles),
+                    documenter=documenter,
+                    snapshotter=snapshotter,
+                )
+            except campaign.CampaignError as error:
+                assert "candidate executable content mismatch: volicord-viewer" in str(error)
+            else:
+                raise AssertionError(
+                    "campaign collection accepted a same-path volicord-viewer replacement"
+                )
+            assert campaign_snapshot() == before
+        finally:
+            viewer.write_bytes(original)
+            viewer.chmod(0o755)
+    finally:
+        campaign.run_checked = original_run_checked
+
+
 def batch_exporter(bundles: dict[str, Path]):
     def export(_binary: Path, _runtime: Path, repository: Path, destination: Path) -> None:
         assert repository.name == "repository"
@@ -3262,6 +3323,7 @@ def main() -> int:
             assert_session_start_ordering(parent)
             assert_production_session_start(parent, binary)
             assert_activation_failure_attribution(parent, binary)
+            assert_same_path_candidate_replacement_rejected(parent, binary)
             assert_strict_cli_contract(parent, binary)
             assert_default_document_process_evidence(parent, binary)
             assert_opaque_slot_preparation(parent, binary)
@@ -3282,6 +3344,7 @@ def main() -> int:
             "production_session_start_sixteen_session_parser_and_intake_integration",
             "vscode_session_start_agent_visible_ordering_current_and_legacy_transports",
             "activation_absent_late_malformed_binding_indeterminate_and_validator_failure_attribution",
+            "same_path_candidate_replacement_rejected_before_activation",
             "shared_candidate_guard_rejects_all_superseded_mutations_atomically",
             "collect_batch_rejects_superseded_or_dirty_candidate",
             "read_only_superseded_campaign_inspection_remains_available",

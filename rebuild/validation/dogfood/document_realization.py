@@ -62,7 +62,11 @@ def route(binary: Path) -> dict[str, str]:
 
 
 def verify_route(campaign: dict[str, Any]) -> None:
-    if campaign.get("document_realization_route") != route(Path(campaign["candidate_binary"])):
+    c = campaign_api()
+    c.verify_candidate_artifacts(campaign, ("volicord-mcp",))
+    bound = campaign["candidate_artifacts"]["volicord-mcp"]
+    if (campaign.get("document_realization_route") != {
+            "boundary": "active_host_document_preview", "mcp_sha256": bound["sha256"]}):
         raise campaign_api().CampaignError("cross-locale active-host realization route is missing or changed")
 
 
@@ -222,6 +226,7 @@ def prepare(root: Path, raw_paths: list[Path]) -> dict[str, Any]:
                           "draft": c.relative(root, artifact(root, "drafts", identity))})
     if any(harness.sha256(value.source) != value.capture.source_sha256 for value in mapped.values()):
         raise c.CampaignError("raw inputs changed during realization preparation")
+    verify_route(campaign)
     files[binding_path] = c.json_bytes({"candidate_head": campaign["candidate_head"],
         "campaign_sha256": harness.sha256(c.campaign_file(root)), "raw_inputs": raw_binding(mapped), "documents": bindings})
     files[root / "realizer/index.json"] = c.json_bytes({"documents": sorted(index, key=lambda x: x["realization_id"])})
@@ -296,6 +301,7 @@ def record(root: Path, identity: str, draft_path: Path) -> dict[str, Any]:
     for format_name, _ in c.DOCUMENT_FORMATS:
         consume(Path(campaign["candidate_binary"]), Path(state["runtime_home"]), preparation,
                 json.loads(data), format_name)
+    verify_route(campaign)
     destination = artifact(root, "recorded", identity)
     publish(root, {destination: data})
     return {"state": "fixed", "realization_id": identity,
@@ -370,6 +376,7 @@ def generate(root: Path, kind: str, cycle: int, project_id: str, document_kind: 
             raise c.CampaignError("fixed realization Project differs from cycle evidence")
         content = consume(Path(campaign["candidate_binary"]), Path(campaign["cycles"][key]["runtime_home"]),
                           preparation, draft, format_name)
+        verify_route(campaign)
     except c.CampaignError as error:
         raise c.IntegrityError("realization_binding", error) from error
     c.atomic_write_bytes(destination, content.encode("utf-8"))

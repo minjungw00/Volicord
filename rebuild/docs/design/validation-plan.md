@@ -1335,6 +1335,14 @@ collection, machine evaluation과 manifest publication을 어떤 Campaign artifa
 이 guard 대상이 아니며 historical evidence-set identity와 current review policy를 별도로 보존한다. Superseded campaign을 다른 candidate에서 reprocess하는 예외는 없다. Immutable predecessor
 evidence의 load, mapping과 reviewer-visible non-mutating validation은 diagnostic 목적으로 계속
 허용하지만 qualification state를 바꾸지 않는다.
+Campaign preparation은 candidate-local `volicord`, `volicord-mcp`, `volicord-viewer`의 absolute
+private path와 exact executable-byte SHA-256를 하나의 닫힌 candidate-artifact binding으로 고정한다.
+이 세 sibling은 각각 activation/CLI/export/document, Codex MCP/active-host preview, Viewer snapshot
+evidence에 실제 사용되므로 path 존재나 candidate HEAD만으로 대체하지 않는다. 각 실행 경계는
+사용 직전과 evidence publication 전 사용 직후에 bound hash를 다시 검사한다. 같은 path의 bytes가
+달라지거나 executable이 사라지면 candidate-binding integrity failure로 fail closed하며 qualitative
+uncertainty로 바꾸지 않는다. Historical evidence의 read-only review는 현재 executable의 존재를
+요구하지 않지만 새 evidence를 만들거나 publish할 수 없다.
 8개 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
 repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 16개 fresh
 chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 16개
@@ -1396,7 +1404,9 @@ bounded stdout/stderr, numeric exit 또는 explicit termination, order/time과 e
 fingerprint를 append-only artifact와 receipt에 보존한다. 이 operation은 measured cycle
 workspace/Runtime Home이나 campaign metadata를 mutate하지 않고, credential/environment/source
 body와 absolute private path를 보존하지 않는다. Completed nonzero result는 review evidence이며
-process evidence 누락·hash/revision/candidate mismatch는 integrity failure다.
+process evidence 누락·hash/revision/candidate mismatch는 integrity failure다. Observation의
+executable hash는 observation 시점의 self-report가 아니라 campaign preparation에서 고정한
+`volicord` artifact hash와 동일해야 하며 각 invocation 전후에 현재 bytes를 검증한다.
 
 1. `collect-batch`: immutable evidence validity/collection. Candidate, inventory, 16개
    session/task/workspace/revision mapping, required activation와 realization binding을
@@ -1450,7 +1460,8 @@ Complete immutable raw evidence의 terminal lifecycle이나 naturalistic grammar
 여전히 hard integrity failure다. Runtime/derived store 또는 credential을 evidence set에
 복사하지 않으며 existing private archive filtering을 유지한다.
 
-`evidence-set.json`은 candidate/campaign identity, sixteen raw session/hash bindings,
+`evidence-set.json`은 candidate/campaign identity, prepared candidate executable artifact bindings,
+sixteen raw session/hash bindings,
 cycle mapping과 당시 artifact inventory를 닫힌 immutable manifest로 보존한다. Exact file
 SHA-256가 evidence-set identity다. Mutable campaign metadata, inventory와 미래 evaluation은
 이 hash에 포함하지 않는다. `collection_state = collected`, `evaluation_state = not_run`,

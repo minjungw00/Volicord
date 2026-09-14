@@ -149,7 +149,7 @@ def validate_process(value: Any, criterion: str | None, expected_argv: list[str]
 
 
 def validate_value(value: Any, *, candidate_head: str, evidence_sha256: str,
-                   revisions: dict[str, str]) -> dict[str, Any]:
+                   revisions: dict[str, str], candidate_executable: dict[str, str]) -> dict[str, Any]:
     c = campaign_api()
     require(isinstance(value, dict) and set(value) == {"kind", "schema_version", "observation_run_id",
         "candidate_head", "evidence_set_sha256", "candidate_executable", "execution_root_identity",
@@ -167,6 +167,8 @@ def validate_value(value: Any, *, candidate_head: str, evidence_sha256: str,
         and executable["name"] == "volicord"
         and all(re.fullmatch(r"[0-9a-f]{64}", str(executable[k])) for k in ("sha256", "path_sha256")),
         "invalid candidate executable binding")
+    require(executable == candidate_executable,
+        "CLI observation executable does not match the campaign-bound candidate artifact")
     observations = value["repository_observations"]
     require(isinstance(observations, list) and [v.get("repository_class") for v in observations] == list(c.CLASSES),
         "CLI observations must cover the three ordered repository classes")
@@ -197,6 +199,9 @@ def validate_value(value: Any, *, candidate_head: str, evidence_sha256: str,
 def load(campaign_root: Path, observation_root: Path) -> tuple[dict[str, Any], bytes, bytes]:
     c = campaign_api()
     manifest = c.load_evidence_set(campaign_root)
+    bound = manifest["candidate_artifacts"]["volicord"]
+    candidate_executable = {"name": "volicord", "sha256": bound["sha256"],
+        "path_sha256": path_fingerprint(Path(bound["path"]))}
     evidence_sha256 = c.harness.sha256(campaign_root / "evidence-set.json")
     observation_root = observation_root.resolve()
     require(not observation_root.is_relative_to(campaign_root.resolve()), "CLI observations must remain outside the campaign")
@@ -213,7 +218,7 @@ def load(campaign_root: Path, observation_root: Path) -> tuple[dict[str, Any], b
         require(len(found) == 1, "campaign repository class has inconsistent pinned revisions")
         revisions[kind] = found.pop()
     validate_value(value, candidate_head=manifest["candidate_head"], evidence_sha256=evidence_sha256,
-                   revisions=revisions)
+                   revisions=revisions, candidate_executable=candidate_executable)
     require(receipt == {"kind": "phase8_cli_observation_receipt", "schema_version": 1,
         "observation_run_id": value["observation_run_id"], "candidate_head": value["candidate_head"],
         "evidence_set_sha256": evidence_sha256, "observations_sha256": digest(data)},
@@ -234,7 +239,10 @@ def collect(campaign_root: Path, output: Path, *,
     before = {name: (campaign_root / name).read_bytes() for name in ("campaign.json", "evidence-set.json", "evidence-inventory.json")}
     campaign = c.load_campaign(campaign_root)
     binary = Path(campaign["candidate_binary"]).resolve()
-    require(binary.is_file() and os.access(binary, os.X_OK), "candidate CLI executable is unavailable")
+    c.verify_candidate_artifacts(campaign, ("volicord",))
+    bound = campaign["candidate_artifacts"]["volicord"]
+    candidate_executable = {"name": "volicord", "sha256": bound["sha256"],
+        "path_sha256": path_fingerprint(Path(bound["path"]))}
     specs = c.repository_spec_map(c.read_json(campaign_root / "repository-input.json"))
     cloner = cloner or c.clone_repository
     clean_reader = clean_reader or c.harness.git_clean
@@ -258,9 +266,11 @@ def collect(campaign_root: Path, output: Path, *,
             require(revision_reader(repository) == revision, "CLI observation clone revision mismatch")
             commands = [["init", f"CLI Observation {kind}"], *CRITERION_COMMANDS.values()]
             criteria = [None, *CRITERION_COMMANDS]
-            invocations = [runner(binary, runtime, repository, list(argv),
-                                  execution_root / "processes" / kind / f"{order:02d}", order, criterion)
-                           for order, (criterion, argv) in enumerate(zip(criteria, commands), start=1)]
+            invocations = []
+            for order, (criterion, argv) in enumerate(zip(criteria, commands), start=1):
+                with c.candidate_artifact_use(campaign, ("volicord",)):
+                    invocations.append(runner(binary, runtime, repository, list(argv),
+                        execution_root / "processes" / kind / f"{order:02d}", order, criterion))
             observations.append({"repository_class": kind, "repository_revision": revision,
                 "workspace": {"identity": secrets.token_hex(16),
                     "path_basis": f"workspaces/{kind}/repository", "absolute_path_sha256": path_fingerprint(repository)},
@@ -271,13 +281,13 @@ def collect(campaign_root: Path, output: Path, *,
         value = {"kind": "phase8_cli_observation_set", "schema_version": 1,
             "observation_run_id": observation_run_id, "candidate_head": manifest["candidate_head"],
             "evidence_set_sha256": c.harness.sha256(campaign_root / "evidence-set.json"),
-            "candidate_executable": {"name": "volicord", "sha256": c.harness.sha256(binary),
-                "path_sha256": path_fingerprint(binary)}, "execution_root_identity": secrets.token_hex(16),
+            "candidate_executable": candidate_executable, "execution_root_identity": secrets.token_hex(16),
             "created_at": utc_now(), "repository_observations": observations,
             "naturalistic_campaign_mutated": False}
         revisions = {item["repository_class"]: item["repository_revision"] for item in observations}
         validate_value(value, candidate_head=manifest["candidate_head"],
-            evidence_sha256=value["evidence_set_sha256"], revisions=revisions)
+            evidence_sha256=value["evidence_set_sha256"], revisions=revisions,
+            candidate_executable=candidate_executable)
         data = encoded(value)
         require(len(data) <= MAX_ARTIFACT_BYTES, "CLI observation artifact exceeds its bound")
         receipt = {"kind": "phase8_cli_observation_receipt", "schema_version": 1,
