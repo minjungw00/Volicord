@@ -954,7 +954,7 @@ fn exercise_mcp_rediscovery(temporal: bool) {
             let mut report = bound["executable_work_scope"]["coupled_artifact_review"].clone();
             report["materiality_closure"] = json!({
                 "state":"no_new_material_outcome",
-                "commitments":[{"commitment_id":"batch-durability","description":"Prevalidate safe then unsafe statements as a whole input and persist nothing","repository_paths":["src/lib.rs"],"temporal_effect":{"state":"no_temporal_change","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
+                "commitments":[{"commitment_id":"batch-durability","description":"Prevalidate safe then unsafe statements as a whole input and persist nothing","repository_paths":["src/lib.rs"],"temporal_effect":{"state":"no_temporal_change","outcome_id":"fixture-TemporalAndLifetime","result_id":"unchanged","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
                 "outcome_binding":{"state":"reviewed_interaction","outcome_id":"unreviewed-batch-durability","result_id":"no-writes"}}],
                 "rationale":"Attempt to associate this concrete durable commitment with current reviewed authority"
             });
@@ -6798,7 +6798,7 @@ fn call(adapter: &mut HostAdapter, name: &str, mut arguments: Value) -> Value {
                         {"category":"schema_snapshot_or_generated_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no schema or generated artifact"},
                         {"category":"other_repository_owned_artifact","disposition":{"state":"no_coupled_artifact"},"basis_summary":"fixture repository inspection found no other coupled artifact"}
                     ],
-                    "materiality_closure":{"state":"no_new_material_outcome","commitments":[{"commitment_id":"private-test","description":"Private fixture preserves current outcomes","repository_paths":paths,"temporal_effect":{"state":"no_temporal_change","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
+                    "materiality_closure":{"state":"no_new_material_outcome","commitments":[{"commitment_id":"private-test","description":"Private fixture preserves current outcomes","repository_paths":paths,"temporal_effect":{"state":"no_temporal_change","outcome_id":"fixture-TemporalAndLifetime","result_id":"unchanged","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
                 "outcome_binding":{"state":"private_equivalent","equivalence_rationale":"The fixture preserves the complete current server-bound outcome graph"}}],"rationale":"fixture scope introduces no new material product outcome"}
                 }),
             );
@@ -6832,7 +6832,7 @@ fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
             .collect(),
         materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
             commitments: vec![volicord_inquiry::PlannedCommitment {
-                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { outcome_id: "fixture-TemporalAndLifetime".into(), result_id: "unchanged".into(), rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
                 commitment_id: "fixture-private-preservation".into(),
                 description: "Private fixture change preserves every current reviewed material outcome".into(),
                 repository_paths: paths.iter().map(|path| (*path).to_owned()).collect(),
@@ -8071,7 +8071,7 @@ fn compact_materiality_large_state_builds_record_revise_inspect_without_probes()
         })).collect::<Vec<_>>(),
         "materiality_closure":{"state":"no_new_material_outcome","rationale":"No current public result changes",
             "commitments":[{"commitment_id":"preserved-result","description":"Private module organization preserves the complete current outcome graph",
-                "repository_paths":["src/lib.rs"],"temporal_effect":{"state":"no_temporal_change","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
+                "repository_paths":["src/lib.rs"],"temporal_effect":{"state":"no_temporal_change","outcome_id":"fixture-TemporalAndLifetime","result_id":"unchanged","rationale":"This fixture makes no temporal selection and preserves the current temporal results."},
                 "outcome_binding":{"state":"private_equivalent","equivalence_rationale":"Every choice changes only private organization while preserving current public results"}}]}
     });
     let inspected = adapter

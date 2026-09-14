@@ -496,7 +496,8 @@ choice/alternative 또는 reviewed interaction/result identity에 bind된다. El
 unknown identity, outside-scope interaction을 material commitment authority로 사용하면 No-new를
 유지하지 않고 같은 atomic inspect에서 `new_material_outcome`으로 전환해 scope를 제거한다.
 Source-settled interaction은 fixed result와 current Source를 사용하며 별도 Question을 요구하지 않는다.
-각 planned commitment의 required `temporal_effect`는 `no_temporal_change`와 bounded rationale 또는
+각 planned commitment의 required `temporal_effect`는 existing `temporal_and_lifetime` outcome의
+exact fixed result identity에 bind된 `no_temporal_change`와 bounded rationale 또는
 `reviewed_temporal_outcome`의 exact outcome/result identity를 가진다. Concrete timestamp/lifetime
 preservation/reset/renewal은 후자를 사용한다. Temporal reference는 current `temporal_and_lifetime`
 axis의 applicable result여야 하고 primary `outcome_binding`과 동일 result를 요구한다. Choice binding은
@@ -508,6 +509,9 @@ rediscovery → new Materiality Review를 요구한다. Private equivalence는 �
 prospective chronology를 그대로 따르며 earlier writes를 소급 authorize하지 않는다. Temporal relevance,
 scenario completeness와 cited Source가 실제로 preservation을 요구하는지는 active-agent/independent-human
 review에 남는다. Production은 prose keyword로 temporal consequence나 user ownership을 추론하지 않는다.
+`outside_affected_scope`의 fixed temporal result는 실제 temporal selection이 없는 commitment가
+그 result를 보존한다는 basis로만 사용할 수 있다. 새 maximum age, expiry 또는 lifetime policy를
+authorize하지 않으며 그런 commitment는 applicable reviewed result가 없으면 rediscovery가 필요하다.
 
 모든 planned path는 commitment 또는 explicit `private_equivalent` assertion으로 account한다.
 Private equivalence는 entire current server-bound review graph의 모든 material result를 보존한다는

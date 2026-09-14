@@ -116,7 +116,7 @@ def coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
             }
             for category in categories
         ],
-        "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "temporal_effect": {"state": "no_temporal_change", "rationale": "This fixture preserves temporal results without choosing timestamp or lifetime behavior."}, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": (
+        "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "temporal_effect": {"state": "no_temporal_change", "outcome_id": "fixture-temporal_and_lifetime", "result_id": "unchanged", "rationale": "This fixture preserves temporal results without choosing timestamp or lifetime behavior."}, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": (
             "The bounded V11 artifact introduces no new material outcome beyond the current dimensions."
         )},
     }

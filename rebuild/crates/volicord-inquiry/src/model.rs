@@ -726,6 +726,8 @@ pub struct PlannedCommitment {
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlannedTemporalEffect {
     NoTemporalChange {
+        outcome_id: String,
+        result_id: String,
         rationale: String,
     },
     ReviewedTemporalOutcome {

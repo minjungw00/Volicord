@@ -2579,7 +2579,9 @@ fn pre_write_materiality_closure_schema() -> Value {
 fn planned_temporal_effect_schema() -> Value {
     json!({"description":"Challenge this concrete plan's temporal/lifetime consequences independently of replacement triggers; never an ownership classifier", "oneOf":[
         object_schema(vec![("state",enum_schema("Temporal consequence", &["no_temporal_change"])),
-            ("rationale",text_schema("Why this commitment makes no timestamp/age/expiry/lifetime selection; private equivalence preserves every reviewed temporal result",1,4096))], &["state","rationale"]),
+            ("outcome_id",text_schema("Current temporal_and_lifetime interaction outcome whose fixed result this commitment preserves",1,256)),
+            ("result_id",text_schema("Exact fixed temporal result preserved without change",1,256)),
+            ("rationale",text_schema("Why this commitment makes no timestamp/age/expiry/lifetime selection and preserves the cited fixed temporal result",1,4096))], &["state","outcome_id","result_id","rationale"]),
         object_schema(vec![("state",enum_schema("Temporal consequence", &["reviewed_temporal_outcome"])),
             ("outcome_id",text_schema("Current temporal_and_lifetime interaction outcome; unknown identities require NewMaterialOutcome rediscovery",1,256)),
             ("result_id",text_schema("Exact preserve/reset/renew/expiry result covered by the primary outcome_binding's current authority",1,256))], &["state","outcome_id","result_id"])

@@ -94,6 +94,9 @@ exact planned scope/artifact assessment, current review identity/revision, Disco
 current Source basis를 하나의 prospective binding으로 보존한다. Free prose는 executable scope의
 closure evidence를 대신하지 않는다. 이 scope는 current dimension identity set에 bind되며 parent
 repository path는 descendant file을 포함한다. Material
+commitment의 temporal no-change assertion도 current `temporal_and_lifetime` outcome과 fixed result
+identity를 보존하며, unrelated choice/Decision identity나 자유형 rationale만으로 새 lifetime
+commitment를 authorize하지 않는다.
 dimension identity/affected-scope가 확장되면 binding은 invalidated되고, baseline 뒤 이미 변경된
 path를 새 binding으로 retroactively 포함할 수 없다. 첫 authoritative review가 meaningful repository
 mutation 전이었는지와 이후 evidence revision을 구분한다. Maintained baseline/current repository

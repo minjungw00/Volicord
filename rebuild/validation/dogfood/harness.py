@@ -3333,7 +3333,7 @@ def planned_commitments_valid(commitments: Any, paths: tuple[str, ...]) -> bool:
             return False
         covered.update(planned_paths)
         temporal = commitment["temporal_effect"]
-        temporal_fields = {"no_temporal_change": {"rationale"}, "reviewed_temporal_outcome": {"outcome_id", "result_id"}}.get(temporal.get("state")) if isinstance(temporal, dict) and isinstance(temporal.get("state"), str) else None
+        temporal_fields = {"no_temporal_change": {"outcome_id", "result_id", "rationale"}, "reviewed_temporal_outcome": {"outcome_id", "result_id"}}.get(temporal.get("state")) if isinstance(temporal, dict) and isinstance(temporal.get("state"), str) else None
         if temporal_fields is None or set(temporal) != temporal_fields | {"state"} or not all(nonempty_string(temporal[key]) for key in temporal_fields):
             return False
 
@@ -3356,20 +3356,23 @@ def planned_commitments_match_graph(commitments: list[dict[str, Any]], discovery
         judgment = judgments.get(choice_id, {})
         return choice_id in choices and any(a["alternative_id"] == alternative_id for a in choices[choice_id]["alternatives"]) and any(a.get("choice_id") == choice_id and a.get("alternative_id") == alternative_id and a.get("status") in {"selected", "unresolved"} for a in judgment.get("alternative_accounting", []))
     outcomes = {o["outcome_id"]: o for r in discovery.get("interaction_review", []) for o in r.get("outcomes", [])}
-    temporal_outcomes = {
+    all_temporal_outcomes = {
         o["outcome_id"]: o for r in discovery.get("interaction_review", [])
         if r.get("axis") == "temporal_and_lifetime" for o in r.get("outcomes", [])
-        if o.get("conclusion", {}).get("basis") != "outside_affected_scope"
+    }
+    temporal_outcomes = {
+        outcome_id: outcome for outcome_id, outcome in all_temporal_outcomes.items()
+        if outcome.get("conclusion", {}).get("basis") != "outside_affected_scope"
     }
     for commitment in commitments:
         binding = commitment["outcome_binding"]
         temporal = commitment["temporal_effect"]
         if temporal["state"] == "no_temporal_change":
-            if any(
-                binding.get("choice_id") in o.get("affected_choice_ids", [])
-                or binding.get("outcome_id") == o["outcome_id"]
-                for o in temporal_outcomes.values()
-            ):
+            outcome = all_temporal_outcomes.get(temporal["outcome_id"])
+            if (not outcome
+                or temporal["result_id"] not in {r["result_id"] for r in outcome.get("credible_outcomes", [])}
+                or outcome.get("conclusion", {}).get("state") != "no_independent_fork"
+                or outcome["conclusion"].get("result_id") != temporal["result_id"]):
                 return False
         else:
             outcome = temporal_outcomes.get(temporal["outcome_id"])
@@ -3500,7 +3503,7 @@ def fixture_coupled_artifact_review(paths: list[str]) -> dict[str, Any]:
             }
             for category in categories
         ],
-        "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "temporal_effect": {"state": "no_temporal_change", "rationale": "This fixture preserves temporal results without choosing timestamp or lifetime behavior."}, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": (
+        "materiality_closure": {"state": "no_new_material_outcome", "commitments": [{"commitment_id": "private-fixture", "description": "Private fixture change preserves the entire current reviewed material outcome graph", "repository_paths": paths, "temporal_effect": {"state": "no_temporal_change", "outcome_id": "fixture-temporal_and_lifetime", "result_id": "unchanged", "rationale": "This fixture preserves temporal results without choosing timestamp or lifetime behavior."}, "outcome_binding": {"state": "private_equivalent", "equivalence_rationale": "The fixture introduces no new material result; all server-bound current dimensions and interactions remain unchanged"}}], "rationale": (
             "The executable artifacts introduce no material outcome beyond the current review dimensions."
         )},
     }

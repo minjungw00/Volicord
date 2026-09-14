@@ -1192,7 +1192,12 @@ class FrontierTests(unittest.TestCase):
         self.assertTrue(h.planned_commitments_match_graph([commitment], discovery, review.arguments["judgments"]))
         commitment["temporal_effect"]["result_id"] = "renewed"
         self.assertFalse(h.planned_commitments_match_graph([commitment], discovery, review.arguments["judgments"]))
-        commitment["temporal_effect"] = {"state": "no_temporal_change", "rationale": "Omitted"}
+        commitment["temporal_effect"] = {"state": "no_temporal_change", "outcome_id": "expiry", "result_id": "preserved", "rationale": "Omitted"}
+        self.assertTrue(h.planned_commitments_match_graph([commitment], discovery, review.arguments["judgments"]))
+        commitment["outcome_binding"] = {"state": "reviewed_choice", "dimension_id": "cleanup-trigger",
+            "choice_id": "cleanup-trigger", "alternative_id": "explicit-cleanup"}
+        commitment["temporal_effect"] = {"state": "no_temporal_change", "outcome_id": "cleanup-trigger",
+            "result_id": "explicit-cleanup", "rationale": "A trigger choice is not a lifetime result"}
         self.assertFalse(h.planned_commitments_match_graph([commitment], discovery, review.arguments["judgments"]))
 
 

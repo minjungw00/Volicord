@@ -189,7 +189,8 @@ Question/Decision lifecycle. Draft projects the compact variant table once as
 Discovery now reviews five interaction axes, including `temporal_and_lifetime`.
 Challenge preserve/reset timestamps, retain/renew expiry, replacement age, and
 retry/recovery validity independently of replacement triggers. Every planned
-commitment requires `temporal_effect`: `no_temporal_change` with rationale, or
+commitment requires `temporal_effect`: `no_temporal_change` with the exact fixed
+temporal outcome/result identity and rationale, or
 `reviewed_temporal_outcome` with current temporal outcome/result IDs. The primary
 choice or interaction binding must cover that same result. Unmapped commitments
 revoke executable scope and require rediscovery and a new Materiality Review.

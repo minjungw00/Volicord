@@ -65,7 +65,7 @@ fn categorized_coupled_artifact_review(
             .collect(),
         materiality_closure: volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
             commitments: vec![volicord_inquiry::PlannedCommitment {
-                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { outcome_id: "fixture-TemporalAndLifetime".into(), result_id: "unchanged".into(), rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
                 commitment_id: "fixture-private-preservation".into(),
                 description: "Private fixture change preserves every current reviewed material outcome".into(),
                 repository_paths: included.iter().flat_map(|(_, paths)| paths.iter().map(|p| (*p).to_owned())).collect(),
@@ -6016,7 +6016,7 @@ fn interaction_partial_durability_requires_decomposition_or_source_settlement(
     let mut atomic_plan = coupled_artifact_review(&["src/lib.rs"]);
     atomic_plan.materiality_closure = volicord_inquiry::PreWriteMaterialityClosure::NoNewMaterialOutcome {
         commitments: vec![volicord_inquiry::PlannedCommitment {
-                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { outcome_id: "fixture-TemporalAndLifetime".into(), result_id: "unchanged".into(), rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
             commitment_id: "atomic-input".into(), description: "Whole-input prevalidation preserves zero durable writes for safe-then-unsafe input".into(), repository_paths: vec!["src/lib.rs".into()],
             outcome_binding: volicord_inquiry::PlannedOutcomeBinding::ReviewedInteraction { outcome_id: "durable-prefix".into(), result_id: "nothing-committed".into() },
         }], rationale: "Current repository Source explicitly fixes the durable result".into(),
@@ -6093,6 +6093,7 @@ fn planned_commitment_graph_binding_is_prospective_and_unmapped_durability_redis
         "unreviewed-temporal",
         "wrong-axis-temporal",
         "temporal-private",
+        "cleanup-trigger-lifetime",
         "eliminated-alternative",
         "wrong-dimension",
         "unreviewed-source-result",
@@ -6111,7 +6112,7 @@ fn planned_commitment_graph_binding_is_prospective_and_unmapped_durability_redis
         )?;
         let mut plan = coupled_artifact_review(&["src/lib.rs"]);
         let mut commitment = PlannedCommitment {
-                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
+                temporal_effect: volicord_inquiry::PlannedTemporalEffect::NoTemporalChange { outcome_id: "fixture-TemporalAndLifetime".into(), result_id: "unchanged".into(), rationale: "This fixture commitment preserves temporal behavior and makes no timestamp or lifetime selection.".into() },
             commitment_id: "planned-result".into(),
             description:
                 "Preserve the reviewed hard rejection policy in implementation and its assertions"
@@ -6135,6 +6136,14 @@ fn planned_commitment_graph_binding_is_prospective_and_unmapped_durability_redis
                     outcome_id: if case == "wrong-axis-temporal" { "fixture-MultiItemEffects".into() } else { "unreviewed-lifetime".into() }, result_id: "preserved".into(),
                 };
                 if case == "temporal-private" { commitment.outcome_binding = PlannedOutcomeBinding::PrivateEquivalent { equivalence_rationale: "A private label cannot authorize this temporal commitment".into() }; }
+            },
+            "cleanup-trigger-lifetime" => {
+                commitment.description = "Persist records for a maximum age after the user selected explicit-trigger cleanup".into();
+                commitment.temporal_effect = volicord_inquiry::PlannedTemporalEffect::NoTemporalChange {
+                    outcome_id: "cleanup-trigger".into(),
+                    result_id: "explicit-cleanup".into(),
+                    rationale: "The cleanup trigger Decision does not itself review a maximum lifetime".into(),
+                };
             },
             "uncovered-path" => commitment.repository_paths.clear(),
             _ => (),
@@ -6449,7 +6458,7 @@ fn timed_key_rotation_reviews_independent_lifetime_and_binds_temporal_commitment
                 result_id: "renewed".into(),
             };
             if case == "no-change-bypass" {
-                reset.temporal_effect = PlannedTemporalEffect::NoTemporalChange { rationale: "A known temporal commitment cannot bypass its reviewed result by claiming no temporal change".into() };
+                reset.temporal_effect = PlannedTemporalEffect::NoTemporalChange { outcome_id: "fixture-TemporalAndLifetime".into(), result_id: "unchanged".into(), rationale: "A known temporal commitment cannot bypass its reviewed result by claiming no temporal change".into() };
             }
             if let PreWriteMaterialityClosure::NoNewMaterialOutcome { commitments, .. } =
                 &mut plan.materiality_closure

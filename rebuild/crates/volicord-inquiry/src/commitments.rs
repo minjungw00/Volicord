@@ -37,7 +37,11 @@ pub(crate) fn validate_shape(
             } => text(equivalence_rationale),
         };
         let temporal_valid = match &commitment.temporal_effect {
-            PlannedTemporalEffect::NoTemporalChange { rationale } => text(rationale),
+            PlannedTemporalEffect::NoTemporalChange {
+                outcome_id,
+                result_id,
+                rationale,
+            } => text(outcome_id) && text(result_id) && text(rationale),
             PlannedTemporalEffect::ReviewedTemporalOutcome {
                 outcome_id,
                 result_id,
@@ -135,26 +139,26 @@ fn temporal_mapping_valid(
         .iter()
         .filter(|review| review.axis == InteractionAxis::TemporalAndLifetime)
         .flat_map(|review| &review.outcomes)
-        .filter(|outcome| {
-            !matches!(
-                outcome.conclusion,
-                InteractionConclusion::NoIndependentFork {
-                    basis: NoIndependentForkBasis::OutsideAffectedScope,
-                    ..
-                }
-            )
-        })
         .collect::<Vec<_>>();
     match &commitment.temporal_effect {
-        PlannedTemporalEffect::NoTemporalChange { .. } => match &commitment.outcome_binding {
-            PlannedOutcomeBinding::ReviewedChoice { choice_id, .. } => !temporal
-                .iter()
-                .any(|outcome| outcome.affected_choice_ids.contains(choice_id)),
-            PlannedOutcomeBinding::ReviewedInteraction { outcome_id, .. } => !temporal
-                .iter()
-                .any(|outcome| &outcome.outcome_id == outcome_id),
-            PlannedOutcomeBinding::PrivateEquivalent { .. } => true,
-        },
+        PlannedTemporalEffect::NoTemporalChange {
+            outcome_id,
+            result_id,
+            ..
+        } => temporal.iter().any(|outcome| {
+            &outcome.outcome_id == outcome_id
+                && outcome
+                    .credible_outcomes
+                    .iter()
+                    .any(|result| &result.result_id == result_id)
+                && matches!(
+                    &outcome.conclusion,
+                    InteractionConclusion::NoIndependentFork {
+                        result_id: fixed,
+                        ..
+                    } if fixed == result_id
+                )
+        }),
         PlannedTemporalEffect::ReviewedTemporalOutcome {
             outcome_id,
             result_id,
@@ -165,6 +169,15 @@ fn temporal_mapping_valid(
             else {
                 return false;
             };
+            if matches!(
+                outcome.conclusion,
+                InteractionConclusion::NoIndependentFork {
+                    basis: NoIndependentForkBasis::OutsideAffectedScope,
+                    ..
+                }
+            ) {
+                return false;
+            }
             if !outcome
                 .credible_outcomes
                 .iter()
