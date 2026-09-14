@@ -71,6 +71,22 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.result([self.human], {"state": "not_provided"})["replacement_qualification"], "unresolved")
         self.assertEqual(self.result([self.human], {"state": "failed"})["replacement_qualification"], "blocked")
 
+    def test_one_missing_repository_class_cli_observation_is_a_bounded_gap(self):
+        missing = copy.deepcopy(self.agent)
+        for assessment in missing["assessments"]:
+            if assessment["criterion_id"].startswith("polyglot-medium/cli/"):
+                assessment["assessment"] = "insufficient_evidence"
+        human = copy.deepcopy(self.human)
+        for index, assessment in enumerate(human["assessments"]):
+            if "/cli/" in assessment["criterion_id"]:
+                human["assessments"][index] = review.observation(assessment["criterion_id"])
+        result = self.result([missing, human])
+        gaps = [cid for cid in result["qualitative_review"]["unresolved_criteria"]
+                if cid.startswith("polyglot-medium/cli/")]
+        self.assertEqual(len(gaps), 7)
+        self.assertEqual(result["qualitative_review"]["unresolved_criteria"], gaps)
+        self.assertEqual(result["replacement_qualification"], "unresolved")
+
     def test_conflict_requires_explicit_targeted_human_resolution(self):
         cid = self.agent["assessments"][0]["criterion_id"]
         negative = copy.deepcopy(self.agent)

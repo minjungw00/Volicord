@@ -405,8 +405,9 @@ work/resume을 포함하는 8-cycle/16-fresh-session campaign과
 - [ ] medium polyglot repository journey
 - [ ] failure recovery rehearsal
 - [ ] 사용자가 raw protocol 없이 Project를 이해하고 판단·재개할 수 있음
-- [ ] 모든 qualifying cycle의 fact/interpretation, analysis/polyglot, CLI, Viewer,
-      documents, Question necessity·Decision comprehension와 interruption-cost common qualitative review
+- [ ] 모든 qualifying cycle의 fact/interpretation, analysis/polyglot, Viewer, documents,
+      Question necessity·Decision comprehension와 interruption-cost common qualitative review
+- [ ] 세 repository class별 일곱 CLI usability criterion의 candidate-bound common qualitative review
 - [ ] final gate의 warning-clean clippy
 
 ## 4. 기존 Runtime Home과 데이터

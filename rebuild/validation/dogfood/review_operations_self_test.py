@@ -53,7 +53,8 @@ def collect_cli_fixture(campaign_root, output):
 def insufficient_draft(root):
     p, sha, _ = ops.load_package(root)
     value = q.template(p, sha)
-    value["observation_scope"]["inspected_evidence"] = [s["sample_id"] + "-availability" for s in p["index"]["samples"]]
+    value["observation_scope"]["inspected_evidence"] = [s["sample_id"] + "-availability"
+        for s in [*p["index"]["samples"], *p["index"]["cli_samples"]]]
     for spec, finding in zip(q.criterion_specs(p["index"], p["rubric"]), value["assessments"]):
         finding.update(assessment="insufficient_evidence", reasoning="Only the bounded evidence availability inventory was inspected.",
             evidence=[{"evidence_id": spec["sample_id"] + "-availability", "locator": {"kind": "json_pointer", "value": "/unavailable_surfaces"}}],
@@ -72,6 +73,11 @@ def assert_review_workflow(root, parent):
     assert snapshot(root) == before
     p, _, package = ops.load_package(target)
     assert len(p["index"]["samples"]) == 8
+    cli_specs = [spec for spec in q.criterion_specs(p["index"], p["rubric"]) if spec["group"] == "cli"]
+    assert len(cli_specs) == 21
+    assert {spec["sample_id"] for spec in cli_specs} == set(c.CLASSES)
+    assert not any(spec["sample_id"] in {sample["sample_id"] for sample in p["index"]["samples"]}
+                   for spec in cli_specs)
     assert len([x for x in p["index"]["evidence"].values() if x["surface"] == "documents"]) == 64
     assert not any(name.startswith("private-rollouts/") for name in package["artifacts"])
     assert any(u["surface"] == "live_viewer_observation" for u in p["unavailable_surfaces"])

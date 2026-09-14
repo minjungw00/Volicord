@@ -255,6 +255,13 @@
       "small-python",
       "polyglot-medium"
     ],
+    "cli_repository_classes": [
+      "volicord",
+      "small-python",
+      "polyglot-medium"
+    ],
+    "cli_criteria_per_repository_class": 7,
+    "cli_assessment_count": 21,
     "live_viewer_locales": [
       "en",
       "ko"
@@ -266,12 +273,14 @@
       "narrow_and_zoomed_presentation"
     ],
     "machine_accessibility_may_be_overridden": false,
-    "sampling_algorithm": "every_collected_cycle",
+    "sampling_algorithm": "cycle_scoped_with_repository_class_cli_scope",
     "every_cycle_review_surfaces": [
       "interaction",
       "generated_documents",
       "viewer_snapshot",
-      "repository_intelligence",
+      "repository_intelligence"
+    ],
+    "repository_class_review_surfaces": [
       "cli_usability"
     ],
     "interaction_behavior_criteria": [
@@ -1193,7 +1202,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-1",
+    "revision": "replacement-qualification-2",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "live_viewer/*"
@@ -1206,6 +1215,11 @@
     "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
     "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
     "cycles": 8,
-    "fresh_sessions": 16
+    "fresh_sessions": 16,
+    "cli_scope": {
+      "repository_classes": 3,
+      "criteria_per_class": 7,
+      "required_assessments": 21
+    }
   }
 }

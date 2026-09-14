@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 import re
 import secrets
-import shlex
 import shutil
 import tarfile
 import tempfile
@@ -325,25 +324,6 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                     target = source(sample_id + "-" + role, f"{prefix}/evidence/{role}.rollout.jsonl", role + "_capture", sample_id, raw=True)
                     if target:
                         aliases[role + "_capture"] = target
-                        # A supported, observed CLI invocation is a usable review
-                        # surface; success or usability is still reviewer judgment.
-                        capture = c.load_codex_capture(safe_path(root, f"{prefix}/evidence/{role}.rollout.jsonl"))
-                        review.require(capture.source_sha256 == evidence[target]["sha256"], "raw capture changed during CLI projection")
-                        commands = []
-                        for command in capture.commands:
-                            invocation = command.parsed_command.get("cmd") if isinstance(command.parsed_command, dict) else None
-                            try:
-                                argv = shlex.split(invocation) if isinstance(invocation, str) else []
-                            except ValueError:
-                                argv = []
-                            if argv and Path(argv[0]).name == "volicord":
-                                commands.append({"sequence": command.sequence, "completion_sequence": command.completion_sequence,
-                                    "command": invocation, "output": command.output, "exit_code": command.exit_code,
-                                    "evidence_state": command.evidence_state})
-                        if commands:
-                            review.require(len(commands) <= 128, "CLI observation projection exceeds bound")
-                            add(sample_id + "-" + role + "-cli", encoded({"commands": commands}), "cli_observation", sample_id,
-                                {"kind": "raw_capture_projection", "raw_sha256": capture.source_sha256})
             target = source(sample_id + "-bundle", f"{prefix}/context.bundle.json", "canonical_bundle", sample_id)
             if target:
                 aliases["canonical_bundle"] = target
@@ -382,14 +362,15 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                 "authority_obligations": [o["obligation_id"] for o in basis["obligations"]], "authority_evidence": aliases}
             samples.append(sample)
             surfaces = {e["surface"] for e in evidence.values() if e["sample_id"] == sample_id}
-            for surface in sorted({s for ss in review.SURFACES.values() for s in ss} - surfaces):
+            cycle_surfaces = {s for group, required in review.SURFACES.items() if group != "cli" for s in required}
+            for surface in sorted(cycle_surfaces - surfaces):
                 unavailable.append({"sample_id": sample_id, "surface": surface,
                     "reason": "Not present in selected immutable evidence; raw rollouts require explicit inclusion and live/CLI observations are not inferred."})
             # Availability itself is citable evidence for an insufficient assessment.
             add(sample_id + "-availability", encoded({"sample": sample, "available_surfaces": sorted(surfaces),
                 "unavailable_surfaces": [u for u in unavailable if u["sample_id"] == sample_id]}), "availability", sample_id,
                 {"kind": "evidence_set_selection"})
-    cli_classes = []
+    cli_samples = [{"sample_id": kind, "repository_class": kind} for kind in c.CLASSES]
     if cli_observation_set is not None:
         outer = {key: cli_observation_set[key] for key in
             ("kind", "schema_version", "observation_run_id", "candidate_head", "evidence_set_sha256",
@@ -403,7 +384,16 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                  "observation_run_id": cli_observation_set["observation_run_id"],
                  "repository_class": kind, "repository_revision": item["repository_revision"]})
             evidence[identity]["repository_class"] = kind
-            cli_classes.append(kind)
+    for sample in cli_samples:
+        kind = sample["repository_class"]
+        surfaces = {entry["surface"] for entry in evidence.values()
+                    if entry.get("repository_class") == kind}
+        if "cli_observation" not in surfaces:
+            unavailable.append({"sample_id": kind, "surface": "cli_observation",
+                "reason": "No candidate-bound repository-class CLI observation was supplied."})
+        add(kind + "-availability", encoded({"sample": sample, "available_surfaces": sorted(surfaces),
+            "unavailable_surfaces": [u for u in unavailable if u["sample_id"] == kind]}),
+            "availability", kind, {"kind": "repository_class_evidence_selection"})
     if evaluation is not None:
         for cycle in evaluation["cycles"]:
             sample_id = f"{cycle['repository_class']}-{cycle['cycle']}"
@@ -413,7 +403,7 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
         add("machine-findings", encoded(findings), "machine_findings", None,
             {"kind": "machine_run_projection", "run_id": evaluation["run_id"]})
     review.require(sum(map(len, files.values())) <= MAX_PACKAGE_BYTES, "review package exceeds byte bound")
-    return files, {"samples": samples, "cli_observation_classes": cli_classes,
+    return files, {"samples": samples, "cli_samples": cli_samples,
         "live_viewer_sample": "volicord-1", "evidence": evidence,
         "machine_findings": findings}, unavailable
 
@@ -564,6 +554,8 @@ def _load_package(root):
     review.require({(s["repository_class"], s["cycle"]) for s in index["samples"]}
         == {(k, n) for k in campaign_api().CLASSES for n in campaign_api().cycle_numbers(k)}
         and len(index["samples"]) == campaign_api().QUALIFICATION_CYCLE_COUNT, "review silently omitted a collected cycle")
+    review.require(index["cli_samples"] == [{"sample_id": kind, "repository_class": kind}
+        for kind in campaign_api().CLASSES], "review CLI repository-class scope changed")
     for entry in index["evidence"].values():
         review.require(entry["path"] in contents, "indexed evidence is unavailable")
         content = contents[entry["path"]]

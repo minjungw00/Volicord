@@ -1245,18 +1245,21 @@ def load_definition() -> dict[str, Any]:
         or qualitative_contract.get("common_criteria") != qualitative_review.CRITERIA
         or tuple(qualitative_contract.get("interaction_repository_classes", [])) != CLASSES
         or tuple(qualitative_contract.get("document_repository_classes", [])) != CLASSES
+        or tuple(qualitative_contract.get("cli_repository_classes", [])) != CLASSES
+        or qualitative_contract.get("cli_criteria_per_repository_class") != 7
+        or qualitative_contract.get("cli_assessment_count") != 21
         or qualitative_contract.get("live_viewer_locales") != ["en", "ko"]
         or qualitative_contract.get("machine_accessibility_may_be_overridden") is not False
         or qualitative_contract.get("sampling_algorithm")
-        != "every_collected_cycle"
+        != "cycle_scoped_with_repository_class_cli_scope"
         or tuple(qualitative_contract.get("every_cycle_review_surfaces", []))
         != (
             "interaction",
             "generated_documents",
             "viewer_snapshot",
             "repository_intelligence",
-            "cli_usability",
         )
+        or qualitative_contract.get("repository_class_review_surfaces") != ["cli_usability"]
         or tuple(qualitative_contract.get("interaction_behavior_criteria", []))
         != (
             "explicit_material_handling_quality",

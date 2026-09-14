@@ -3,6 +3,7 @@
 import copy
 import json
 from pathlib import Path
+import re
 import unittest
 
 import qualitative_review as q
@@ -16,13 +17,22 @@ def preparation(kind="agent"):
     sample = {"sample_id": "volicord-1", "repository_class": "volicord", "cycle": 1,
         "behavior_class": "explicit_user_owned_decision", "authority_obligations": ["all-material-outcomes"],
         "authority_evidence": {"work_capture": "work_capture", "canonical_bundle": "canonical_bundle"}}
-    index = {"samples": [sample], "live_viewer_sample": "volicord-1", "machine_findings": {}, "evidence": {}}
+    index = {"samples": [sample],
+        "cli_samples": [{"sample_id": repository_class, "repository_class": repository_class}
+                        for repository_class in ("volicord", "small-python", "polyglot-medium")],
+        "live_viewer_sample": "volicord-1", "machine_findings": {}, "evidence": {}}
     for surface in {s for surfaces in q.SURFACES.values() for s in surfaces}:
         for locale in (["en", "ko"] if surface == "live_viewer_observation" else [None]):
             name = surface + ("-" + locale if locale else "")
             index["evidence"][name] = {"sample_id": sample["sample_id"], "surface": surface,
                 "locale": locale, "sha256": "a" * 64, "path": name,
                 "locators": [{"kind": "json_pointer", "value": "/fact"}]}
+    index["evidence"].pop("cli_observation")
+    for repository_class in ("volicord", "small-python", "polyglot-medium"):
+        index["evidence"][repository_class + "-cli"] = {"sample_id": repository_class,
+            "repository_class": repository_class,
+            "surface": "cli_observation", "locale": None, "sha256": "a" * 64,
+            "path": repository_class + "-cli", "locators": [{"kind": "json_pointer", "value": "/fact"}]}
     for document_kind in sorted(q.DOCUMENT_KINDS):
         index["evidence"]["document-" + document_kind] = {**index["evidence"]["documents"], "document_kind": document_kind}
     return {"binding": {"state": "verified", "source": "immutable_campaign_evidence",
@@ -41,11 +51,13 @@ def completed(p):
 
 
 def fill(value, p, state="satisfied"):
+    scope = value["criterion_id"].split("/", 1)[0]
     value.update(assessment=state, reasoning="Synthetic reviewer inspected the criterion in the cited artifact.",
         uncertainty="Fixture-only judgment; no actual Product qualification.",
         counterevidence={"state": "none_found", "reasoning": "No contrary evidence in the inspected synthetic case.", "evidence": []},
         evidence=[{"evidence_id": name, "locator": entry["locators"][0]}
-            for name, entry in sorted(p["index"]["evidence"].items())])
+            for name, entry in sorted(p["index"]["evidence"].items())
+            if entry["sample_id"] in {None, scope}])
     if "/authority/" in value["criterion_id"] and not value["criterion_id"].endswith("/coverage"):
         value["authority"] = assessment()
     return value
@@ -208,6 +220,16 @@ class ContractTests(unittest.TestCase):
                 self.assertEqual(name in names, behavior in rule["applies_to"])
             seen |= names
         self.assertTrue(set(p["rubric"]["behavior_criteria"]) <= seen)
+
+    def test_cli_criteria_are_repository_class_scoped_once(self):
+        p = preparation()
+        specs = q.criterion_specs(p["index"], p["rubric"])
+        cli = [spec for spec in specs if spec["group"] == "cli"]
+        self.assertEqual(len(cli), 21)
+        self.assertEqual({spec["sample_id"] for spec in cli},
+            {"volicord", "small-python", "polyglot-medium"})
+        self.assertFalse(any(re.match(r".+-cycle-[0-9]+/cli/|.+-[0-9]+/cli/", spec["criterion_id"])
+                             for spec in cli))
 
 
 def run_contract_tests():

@@ -1242,15 +1242,18 @@ def main() -> int:
         qualitative_contract.get("artifact_kind") != "dogfood_qualitative_review"
         or qualitative_contract.get("machine_accessibility_may_be_overridden") is not False
         or qualitative_contract.get("sampling_algorithm")
-        != "every_collected_cycle"
+        != "cycle_scoped_with_repository_class_cli_scope"
         or qualitative_contract.get("every_cycle_review_surfaces")
         != [
             "interaction",
             "generated_documents",
             "viewer_snapshot",
             "repository_intelligence",
-            "cli_usability",
         ]
+        or qualitative_contract.get("repository_class_review_surfaces") != ["cli_usability"]
+        or qualitative_contract.get("cli_repository_classes") != list(harness.CLASSES)
+        or qualitative_contract.get("cli_criteria_per_repository_class") != 7
+        or qualitative_contract.get("cli_assessment_count") != 21
         or set(qualitative_contract.get("live_viewer_locales", [])) != {"en", "ko"}
         or set(qualitative_contract.get("interaction_behavior_criteria", []))
         != {

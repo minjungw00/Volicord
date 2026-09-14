@@ -9,7 +9,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-1"
+REVISION = "replacement-qualification-2"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
 HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable"}
 
@@ -23,7 +23,8 @@ def contract():
         "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
         "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
         "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
-        "cycles": 8, "fresh_sessions": 16}
+        "cycles": 8, "fresh_sessions": 16,
+        "cli_scope": {"repository_classes": 3, "criteria_per_class": 7, "required_assessments": 21}}
 
 
 def identity():

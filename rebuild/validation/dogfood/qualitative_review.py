@@ -116,6 +116,8 @@ def criterion_specs(index, policy):
     for sample in index["samples"]:
         sample_id = sample["sample_id"]
         for group in CRITERIA:
+            if group == "cli":
+                continue
             names = policy["criteria"][group]
             if group == "live_viewer" and sample_id != index["live_viewer_sample"]:
                 continue
@@ -132,6 +134,10 @@ def criterion_specs(index, policy):
                 "sample_id": sample_id, "group": "authority", "name": obligation, "locale": None})
         specs.append({"criterion_id": f"{sample_id}/authority/coverage", "sample_id": sample_id,
             "group": "authority", "name": "coverage", "locale": None})
+    for sample in index["cli_samples"]:
+        for name in policy["criteria"]["cli"]:
+            specs.append({"criterion_id": f"{sample['sample_id']}/cli/{name}",
+                "sample_id": sample["sample_id"], "group": "cli", "name": name, "locale": None})
     return specs
 
 
@@ -291,7 +297,8 @@ def _validate_value(preparation, preparation_sha256, value):
     ids = {s["criterion_id"] for s in specs}
     for item in additional:
         require(isinstance(item, dict) and set(item) == {"sample_id", "finding"}, "invalid additional outcome")
-        require(item["sample_id"] in {s["sample_id"] for s in specs}, "additional outcome belongs to unknown sample")
+        require(item["sample_id"] in {s["sample_id"] for s in preparation["index"]["samples"]},
+                "additional outcome belongs to unknown naturalistic sample")
         finding = item["finding"]
         require(isinstance(finding, dict) and isinstance(finding.get("criterion_id"), str)
             and re.fullmatch(re.escape(item["sample_id"]) + r"/authority/additional-[a-z0-9-]{1,64}", finding["criterion_id"])

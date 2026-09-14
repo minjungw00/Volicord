@@ -571,6 +571,11 @@ rebuild/scripts/dogfood-campaign prepare-qualitative-review \
   --cli-observations /absolute/private/cli-observation-run
 ```
 
+Cycle-specific criteria continue to cover all eight naturalistic cycles. CLI criteria are
+generated once per repository class, producing 21 required assessments rather than 56
+cycle-level duplicates. Missing one class observation leaves only that class's seven criteria
+unresolved; it is never converted to `not_applicable`.
+
 ```sh
 rebuild/scripts/dogfood-campaign qualify \
   --campaign-root /absolute/private/campaign \

@@ -1238,11 +1238,12 @@ clean install
 - Common qualitative review와 필수 human escalation이 미완료면 qualification은 `unresolved`다.
   Exact-candidate gate와 hard integrity를 포함한 policy 충족 뒤 explicit operator approval만 Phase 9를 연다.
 - Replacement usability review는 reviewer kind를 명시하고 모든 collected cycle을 대상으로 source-vs-interpretation
-  comprehension, repository-analysis usefulness, polyglot comprehension, CLI usability,
+  comprehension, repository-analysis usefulness와 polyglot comprehension을 평가하고, 별도
+  candidate-bound observation으로 각 repository class의 CLI usability 일곱 criterion을 한 번씩 평가하며,
   Viewer understanding, four-document usefulness, Question necessity/Decision comprehension과
   interruption cost를 평가한다. Static Viewer readability와 `en`/`ko` live Viewer
-  accessibility도 유지하며 lowest-numbered cycle 하나만으로 repository class를 대표하지
-  않는다.
+  accessibility도 유지한다. Cycle-specific criterion은 lowest-numbered cycle 하나만으로
+  repository class를 대표하지 않는다.
 - Agent/human qualitative review는 hard machine failure를 override하지 않으며 immutable evidence
   set과 optional machine run에 binding할 때 naturalistic session을 다시 실행하지 않는다.
 - Guarded effect만 action-scoped confirmation을 요구한다.

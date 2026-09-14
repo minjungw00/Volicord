@@ -23,12 +23,14 @@ The following mapping preserves the former human rubric without another engine:
 | `document_reviews` | `documents` | Four-document fidelity, usefulness, grounding, remaining work and requested-language body quality |
 | `viewer_snapshot_reviews` | `viewer_snapshot` | Completed/current/remaining work, next step, rationale, architecture/component/flow, code behavior, fact/interpretation and useful grounded diagrams |
 | `repository_intelligence_reviews` | `repository_intelligence` | Structural navigation, semantic value, capability honesty and polyglot comprehension |
-| `cli_usability_reviews` | `cli` | Help discovery and status/analyze/Recall/documents/export/doctor without opaque Project IDs |
+| `cli_usability_reviews` | `cli` | Per-repository-class help discovery and status/analyze/Recall/documents/export/doctor without opaque Project IDs |
 | `live_viewer_accessibility` | `live_viewer` | `en`/`ko` keyboard reachability, visible focus, color-independent meaning, narrow/zoom presentation for the deterministic first Volicord cycle |
 | `authority_obligation_reviews` | `authority` | Every initial material challenge, all other actual outcomes, additional outcomes and complete implementation/coupled-artifact coverage |
 | Context recovery usability criterion | `context_recovery` | Goal, Decision/rationale, work state and open-question recovery across work/resume |
 
-All non-accessibility collections cover every cycle. A static HTML snapshot does
+Interaction, documents, Viewer snapshot, Repository Intelligence, context recovery, and
+authority collections cover every cycle. CLI covers each maintained repository class exactly
+once: `3 classes × 7 criteria = 21 assessments`. A static HTML snapshot does
 not establish actual live keyboard/focus/zoom behavior; missing observation yields
 insufficient evidence. Missing CLI captures similarly cannot establish usability.
 No language or repository class is excluded because the implementation uses Rust.
@@ -45,7 +47,7 @@ is never such a reason; polyglot campaign scope cannot be declared single-langua
 Each reviewed assessment retains bounded reasoning, uncertainty, evidence
 references, and cited counterevidence or an explicit account of its absence.
 References resolve an indexed evidence identity and typed locator in the same
-cycle/evidence set. Reviewers explicitly list inspected evidence and observation
+scoped sample/evidence set. Reviewers explicitly list inspected evidence and observation
 limits. Available evidence is not automatically inspected evidence. Hash checks
 and locator existence do not prove the semantic adequacy of a citation or verdict.
 
@@ -114,6 +116,9 @@ rebuild/scripts/dogfood-campaign collect-cli-observations \
 Preparation accepts the resulting directory through `--cli-observations`. It verifies the
 receipt and all candidate/evidence/repository/process bindings, then copies only bounded
 reviewer-safe per-class projections. It never reconstructs an invocation from prose.
+If one class observation is absent, exactly that class's seven required assessments remain
+`insufficient_evidence`; duplicated cycle-level CLI assessments and `not_applicable` fillers
+are not part of the current rubric.
 
 ## Current reviewer workflow
 
@@ -226,7 +231,8 @@ errors roll back staged files; preflight never repairs or rewrites evidence.
 
 ## Qualification, targeted escalation and human observations
 
-`qualification_policy.py` consumes recorded runs using this rubric. All criteria except
+`qualification_policy.py` consumes recorded runs using this rubric, including all 21 required
+repository-class CLI assessments. All criteria except
 live accessibility and actual user Decision comprehension permit agent review with the
 required evidence. Missing surfaces remain insufficient, and a static HTML proxy never
 establishes human-observed usability. Human review may resolve only the remaining criteria.

@@ -1435,7 +1435,9 @@ valid admission을 허용하지 않는다. `finding_state = hard_blocked|review_
 `dogfood-campaign qualify`는 immutable machine evaluation과 recorded common reviews를
 소비하며 해당 Product candidate의 기존 gate capsule/archive를 독립 검증한다. Naturalistic
 qualification을 위해 final/provider/V11 또는 deterministic technical rehearsal을 반복하지 않는다.
-Unique Phase 8 observations와 8-cycle/16-session requirement는 그대로 유지한다.
+Unique naturalistic Phase 8 observations와 8-cycle/16-session requirement는 그대로 유지한다.
+CLI usability는 별도 evidence-bound observation에서 repository class별 일곱 criterion을 한 번씩,
+총 21개 assessment로 요구한다. Cycle별 CLI criterion 복제는 요구하지 않는다.
 
 Technical candidate gate와 maintained final admission/gate/V11 owner는 별도 경계로 유지한다.
 이 분리는 technical gate를 실행하거나 통과했다고 주장하지 않는다.
@@ -1740,6 +1742,9 @@ comprehension은 human observation을 요구하고 나머지 semantic criteria�
 review로 해결할 수 있다. Conflict 또는 high-impact authority/context-recovery insufficiency는
 해당 criterion만 human에게 escalate한다. Human은 `resolves_review_runs`로 충돌한 review ID를
 명시하며 무관한 criterion을 재검토할 필요가 없다. 어떤 hard violation도 override하지 못한다.
+Cycle-specific criterion은 모든 8개 cycle에 남고, CLI group만 `volicord`, `small-python`,
+`polyglot-medium` repository class별 일곱 criterion으로 생성된다. Dedicated observation이 없는
+class는 일곱 bounded unresolved gap을 남기며 `not_applicable`로 숨기지 않는다.
 
 ### Append-only evaluation identity
 
