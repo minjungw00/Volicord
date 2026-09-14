@@ -459,6 +459,129 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
 }
 
 #[test]
+fn small_python_current_work_flow_renders_real_unresolved_relation_evidence() {
+    let (temporary, viewer, project) = setup();
+    fs::create_dir(temporary.path().join("src")).expect("create Python source directory");
+    let source = (0..96)
+        .map(|index| {
+            format!("def flow_{index:03}(value: str) -> str:\n    return value.strip()\n\n")
+        })
+        .collect::<String>();
+    fs::write(temporary.path().join("src/flow.py"), source).expect("write Python fixture");
+
+    let mut store = Store::open(viewer.operations().layout().canonical_store()).expect("store");
+    let revision = store.get_project(project).expect("Project").revision;
+    let user_turn = store
+        .record_source(
+            OperationId::from_bytes([81; 16]),
+            project,
+            SourceDraft {
+                expected_project_revision: revision,
+                payload: SourcePayload::CurrentHostUserTurn {
+                    host: "viewer-test".into(),
+                    session: "python-current-work".into(),
+                    turn: "Continue the grounded Python flow work in src/flow.py".into(),
+                },
+                actor: Principal {
+                    kind: PrincipalKind::User,
+                    identity: "owner".into(),
+                },
+                observer: None,
+                availability: Availability::Available,
+            },
+        )
+        .expect("user Source")
+        .value;
+    store
+        .record_context_item(
+            OperationId::from_bytes([82; 16]),
+            project,
+            ContextItemDraft {
+                expected_project_revision: revision,
+                role: ContextItemRole::Goal,
+                statement: "Keep the Python current-work flow visible".into(),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author: Principal {
+                    kind: PrincipalKind::User,
+                    identity: "owner".into(),
+                },
+                source_basis: vec![user_turn.id],
+                applicability: ApplicabilityScope {
+                    paths: vec!["src/flow.py".into()],
+                    components: Vec::new(),
+                    work_contexts: vec!["viewer-current-work".into()],
+                },
+            },
+        )
+        .expect("Goal context");
+    store
+        .record_checkpoint(
+            OperationId::from_bytes([83; 16]),
+            project,
+            CheckpointDraft {
+                expected_project_revision: revision,
+                kind: CheckpointKind::Handoff,
+                goal: "Keep the Python current-work flow visible".into(),
+                work_state: WorkState::Paused,
+                state_change: Some("Python flow fixture is ready for inspection".into()),
+                source_basis: vec![user_turn.id],
+                changed_source_basis: Vec::new(),
+                changed_paths: vec!["src/flow.py".into()],
+                applied_decisions: Vec::new(),
+                verification: Vec::new(),
+                user_review: UserReviewFact {
+                    state: UserReviewState::NotRequested,
+                    source_id: None,
+                },
+                user_acceptance: UserAcceptanceFact {
+                    state: UserAcceptanceState::NotRequested,
+                    source_id: None,
+                },
+                known_limits: vec![
+                    "Python structural calls retain unresolved target spelling".into()
+                ],
+                non_goals: Vec::new(),
+                open_questions: Vec::new(),
+                next_step: "Inspect one real CallsSyntactically relation".into(),
+                handoff_to: Some("next agent".into()),
+            },
+        )
+        .expect("Checkpoint");
+    drop(store);
+
+    viewer
+        .operations()
+        .analyze(project, Vec::new())
+        .expect("analyze Python fixture");
+    let projection = viewer
+        .operations()
+        .project_projection(project)
+        .expect("Project projection");
+    let selected_call = projection
+        .current_work_topology
+        .relations
+        .iter()
+        .find(|relation| relation.kind == "CallsSyntactically")
+        .expect("grounded Python call relation");
+    assert!(selected_call.target_entity.is_none());
+    assert!(selected_call.unresolved_target.is_some());
+    let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+    let rendered_call = understanding
+        .evidence
+        .unresolved_relationships
+        .iter()
+        .find(|relation| relation.kind == "CallsSyntactically")
+        .expect("bounded Viewer understanding keeps a Python call");
+
+    let html = render_deep(&viewer, project);
+    assert!(html.contains("data-diagram=\"flow-topology\""));
+    assert!(html.contains("data-explanation-kind=\"flow\""));
+    assert!(html.contains(&rendered_call.identity));
+    assert!(html.contains("target is unresolved"));
+    assert!(!html.contains("data-entity-id=\"name.strip\""));
+}
+
+#[test]
 fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
     let (_temporary, viewer, project) = setup();
     let mut store = Store::open(viewer.operations().layout().canonical_store()).expect("store");

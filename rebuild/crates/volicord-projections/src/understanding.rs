@@ -253,13 +253,13 @@ pub fn build_project_understanding(
         select_current_work_architecture(projection, &active_decisions, limit);
     let topology = architecture_selection.topology;
     let all_entities = projection
-        .repository_map
+        .current_work_topology
         .entities
         .iter()
         .map(|entity| entity.identity.as_str())
         .collect::<std::collections::BTreeSet<_>>();
     let resolved_relation_count = projection
-        .repository_map
+        .current_work_topology
         .relations
         .iter()
         .filter(|relation| {
@@ -270,14 +270,20 @@ pub fn build_project_understanding(
                     .is_some_and(|target| all_entities.contains(target))
         })
         .count();
-    if topology.omitted_entity_count > 0 {
+    let omitted_current_work_entities = projection
+        .current_work_topology
+        .omitted_entity_count
+        .saturating_add(topology.omitted_entity_count);
+    if omitted_current_work_entities > 0 {
         omissions.push(UnderstandingOmission {
             section: "architecture.components".to_owned(),
-            omitted_count: topology.omitted_entity_count,
+            omitted_count: omitted_current_work_entities,
         });
     }
-    let omitted_resolved_relations =
-        resolved_relation_count.saturating_sub(topology.relations.len());
+    let omitted_resolved_relations = projection
+        .current_work_topology
+        .omitted_relation_count
+        .saturating_add(resolved_relation_count.saturating_sub(topology.relations.len()));
     if omitted_resolved_relations > 0 {
         omissions.push(UnderstandingOmission {
             section: "architecture.relationships".to_owned(),
@@ -292,13 +298,13 @@ pub fn build_project_understanding(
         .map(|entity| entity.identity.as_str())
         .collect::<std::collections::BTreeSet<_>>();
     let unresolved_relation_count = projection
-        .repository_map
+        .current_work_topology
         .relations
         .iter()
         .filter(|relation| relation.target_entity.is_none() && relation.unresolved_target.is_some())
         .count();
     let mut unresolved_relationships = projection
-        .repository_map
+        .current_work_topology
         .relations
         .iter()
         .filter(|relation| {
@@ -401,7 +407,7 @@ fn select_current_work_architecture(
 ) -> CurrentWorkArchitectureSelection {
     let limit = limit.max(1);
     let entities = projection
-        .repository_map
+        .current_work_topology
         .entities
         .iter()
         .map(|entity| (entity.identity.as_str(), entity))
@@ -456,15 +462,14 @@ fn select_current_work_architecture(
     let seed_ids = select_seed_entities(&basis, active_decisions, &entities, limit);
     let mut selected_ids = seed_ids.iter().cloned().collect::<BTreeSet<_>>();
     let mut relation_candidates = projection
-        .repository_map
+        .current_work_topology
         .relations
         .iter()
         .filter(|relation| {
             relation.target_entity.as_deref().is_some_and(|target| {
                 entities.contains_key(relation.source_entity.as_str())
                     && entities.contains_key(target)
-                    && (selected_ids.contains(&relation.source_entity)
-                        || selected_ids.contains(target))
+                    && (basis.contains_key(&relation.source_entity) || basis.contains_key(target))
             })
         })
         .collect::<Vec<_>>();
@@ -473,9 +478,18 @@ fn select_current_work_architecture(
             .target_entity
             .as_deref()
             .is_some_and(|target| selected_ids.contains(target));
+        let target_is_grounded = relation
+            .target_entity
+            .as_deref()
+            .is_some_and(|target| basis.contains_key(target));
         (
             Reverse(selected_ids.contains(&relation.source_entity) && target_is_seed),
+            Reverse(selected_ids.contains(&relation.source_entity) || target_is_seed),
             Reverse(is_flow_relation(relation)),
+            Reverse(
+                usize::from(basis.contains_key(&relation.source_entity))
+                    + usize::from(target_is_grounded),
+            ),
             relation.identity.as_str(),
         )
     });
@@ -488,29 +502,34 @@ fn select_current_work_architecture(
         let Some(target) = relation.target_entity.as_deref() else {
             continue;
         };
-        let neighbor = if selected_ids.contains(&relation.source_entity) {
-            target
-        } else {
-            relation.source_entity.as_str()
-        };
-        if !selected_ids.contains(neighbor) && selected_ids.len() == limit {
+        let new_endpoint_count = [&relation.source_entity, target]
+            .into_iter()
+            .filter(|identity| !selected_ids.contains(*identity))
+            .count();
+        if selected_ids.len() + new_endpoint_count > limit {
             continue;
         }
-        if !selected_ids.contains(neighbor) {
-            let seed_entity = if neighbor == target {
-                relation.source_entity.clone()
-            } else {
-                target.to_owned()
-            };
-            selected_ids.insert(neighbor.to_owned());
-            basis.entry(neighbor.to_owned()).or_default().insert(
-                UnderstandingArchitectureSelectionBasis::GroundedOneHop {
-                    relation_id: relation.identity.clone(),
-                    seed_entity,
-                },
-            );
+        for (endpoint, other) in [
+            (relation.source_entity.as_str(), target),
+            (target, relation.source_entity.as_str()),
+        ] {
+            if selected_ids.insert(endpoint.to_owned()) && !basis.contains_key(endpoint) {
+                basis.entry(endpoint.to_owned()).or_default().insert(
+                    UnderstandingArchitectureSelectionBasis::GroundedOneHop {
+                        relation_id: relation.identity.clone(),
+                        seed_entity: other.to_owned(),
+                    },
+                );
+            }
         }
         selected_relations.push(relation.clone());
+    }
+
+    for identity in ranked_seed_entities(&basis, &entities) {
+        if selected_ids.len() == limit {
+            break;
+        }
+        selected_ids.insert(identity);
     }
 
     let mut selected_entities = selected_ids
@@ -541,12 +560,12 @@ fn select_current_work_architecture(
     CurrentWorkArchitectureSelection {
         topology: BoundedTopology {
             omitted_entity_count: projection
-                .repository_map
+                .current_work_topology
                 .entities
                 .len()
                 .saturating_sub(selected_entities.len()),
             omitted_relation_count: projection
-                .repository_map
+                .current_work_topology
                 .relations
                 .len()
                 .saturating_sub(selected_relations.len()),
@@ -613,8 +632,15 @@ fn select_seed_entities(
         )
     });
 
-    let mut remaining = basis.keys().cloned().collect::<Vec<_>>();
-    remaining.sort_by_key(|identity| {
+    selected
+}
+
+fn ranked_seed_entities(
+    basis: &BTreeMap<String, BTreeSet<UnderstandingArchitectureSelectionBasis>>,
+    entities: &BTreeMap<&str, &MapEntity>,
+) -> Vec<String> {
+    let mut ranked = basis.keys().cloned().collect::<Vec<_>>();
+    ranked.sort_by_key(|identity| {
         let reasons = basis
             .get(identity)
             .into_iter()
@@ -642,15 +668,7 @@ fn select_seed_entities(
             identity.clone(),
         )
     });
-    for identity in remaining {
-        if selected.len() == limit {
-            break;
-        }
-        if !selected.contains(&identity) {
-            selected.push(identity);
-        }
-    }
-    selected
+    ranked
 }
 
 const fn architecture_entity_kind_rank(kind: &CodeEntityKind) -> usize {
@@ -1487,8 +1505,9 @@ mod tests {
     };
     use crate::{
         BriefDecision, CandidateDependencyState, CheckpointTimelineEntry, CurrentWorkCodeLink,
-        DecisionContextCodeLink, MapEntity, MapRelation, MapRelationClass, ProjectOverview,
-        ProjectProjection, ProjectionHealth, RepositoryMap, ResumeBrief, SourceStatusSummary,
+        CurrentWorkTopology, DecisionContextCodeLink, MapEntity, MapRelation, MapRelationClass,
+        ProjectOverview, ProjectProjection, ProjectionHealth, RepositoryMap, ResumeBrief,
+        SourceStatusSummary,
     };
     use volicord_context::{
         Checkpoint, CheckpointId, CheckpointKind, ContextItemId, DecisionChoice, DecisionId,
@@ -1806,6 +1825,12 @@ mod tests {
                 omissions: Vec::new(),
                 omitted_count: 0,
                 proposals: Vec::new(),
+            },
+            current_work_topology: CurrentWorkTopology {
+                entities: entities.clone(),
+                relations: relations.clone(),
+                omitted_entity_count: 0,
+                omitted_relation_count: 0,
             },
             repository_map: RepositoryMap {
                 entities,

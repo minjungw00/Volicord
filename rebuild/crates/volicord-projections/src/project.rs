@@ -450,6 +450,114 @@ fn select_topology<E: EntityView + Clone, R: RelationView + Clone>(
     }
 }
 
+/// Selects only real one-hop relations touching a grounded current-work seed.
+/// Unlike the generic Repository Map selector, relation endpoints consume the
+/// current-work budget before disconnected seed entities do.
+fn select_grounded_current_work_topology<E: EntityView + Clone, R: RelationView + Clone>(
+    entities: &[E],
+    relations: &[R],
+    grounded_seeds: &BTreeSet<String>,
+    entity_limit: usize,
+    relation_limit: usize,
+) -> BoundedTopology<E, R> {
+    let entity_limit = entity_limit.max(1);
+    let relation_limit = relation_limit.max(1);
+    let entity_by_id = entities
+        .iter()
+        .map(|entity| (entity.identity(), entity))
+        .collect::<BTreeMap<_, _>>();
+    let mut relation_candidates = relations
+        .iter()
+        .filter(|relation| {
+            entity_by_id.contains_key(relation.source())
+                && match relation.target() {
+                    Some(target) => {
+                        entity_by_id.contains_key(target)
+                            && (grounded_seeds.contains(relation.source())
+                                || grounded_seeds.contains(target))
+                    }
+                    None => relation.unresolved() && grounded_seeds.contains(relation.source()),
+                }
+        })
+        .collect::<Vec<_>>();
+    let mut degree = BTreeMap::<&str, usize>::new();
+    for relation in &relation_candidates {
+        *degree.entry(relation.source()).or_default() += 1;
+        if let Some(target) = relation.target() {
+            *degree.entry(target).or_default() += 1;
+        }
+    }
+    relation_candidates.sort_by_cached_key(|relation| {
+        let important_endpoint_count = relation_endpoints(*relation)
+            .filter(|identity| grounded_seeds.contains(*identity))
+            .count();
+        let connection_degree = relation_endpoints(*relation)
+            .map(|identity| degree.get(identity).copied().unwrap_or_default())
+            .sum::<usize>();
+        (
+            relation.rank(),
+            usize::from(relation.target().is_none()),
+            Reverse(important_endpoint_count),
+            Reverse(connection_degree),
+            relation.identity(),
+        )
+    });
+
+    let mut relevant_entities = grounded_seeds.clone();
+    for relation in &relation_candidates {
+        relevant_entities.insert(relation.source().to_owned());
+        if let Some(target) = relation.target() {
+            relevant_entities.insert(target.to_owned());
+        }
+    }
+    let relevant_relation_count = relation_candidates.len();
+    let mut selected_ids = BTreeSet::<String>::new();
+    let mut selected_relations = Vec::<R>::new();
+    for relation in relation_candidates {
+        if selected_relations.len() == relation_limit {
+            break;
+        }
+        let endpoints = relation_endpoints(relation).collect::<Vec<_>>();
+        let new_endpoint_count = endpoints
+            .iter()
+            .filter(|identity| !selected_ids.contains(**identity))
+            .count();
+        if selected_ids.len() + new_endpoint_count > entity_limit {
+            continue;
+        }
+        selected_ids.extend(endpoints.into_iter().map(str::to_owned));
+        selected_relations.push((*relation).clone());
+    }
+
+    let mut remaining_seeds = grounded_seeds
+        .iter()
+        .filter_map(|identity| entity_by_id.get(identity.as_str()).copied())
+        .collect::<Vec<_>>();
+    remaining_seeds
+        .sort_by_cached_key(|entity| entity_selection_key(*entity, grounded_seeds, &degree));
+    for entity in remaining_seeds {
+        if selected_ids.len() == entity_limit {
+            break;
+        }
+        selected_ids.insert(entity.identity().to_owned());
+    }
+
+    let mut selected_entities = selected_ids
+        .iter()
+        .filter_map(|identity| entity_by_id.get(identity.as_str()).copied().cloned())
+        .collect::<Vec<_>>();
+    selected_entities.sort_by(|left, right| left.identity().cmp(right.identity()));
+    selected_relations.sort_by(|left, right| left.identity().cmp(right.identity()));
+    BoundedTopology {
+        omitted_entity_count: relevant_entities
+            .len()
+            .saturating_sub(selected_entities.len()),
+        omitted_relation_count: relevant_relation_count.saturating_sub(selected_relations.len()),
+        entities: selected_entities,
+        relations: selected_relations,
+    }
+}
+
 fn relation_endpoints<R: RelationView>(relation: &R) -> impl Iterator<Item = &str> + Clone {
     let source = relation.source();
     std::iter::once(source).chain(relation.target().filter(|target| *target != source))
@@ -584,13 +692,26 @@ pub struct CurrentWorkCodeLink {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CurrentWorkTopology {
+    /// Grounded current-work seeds and real relation endpoints selected from
+    /// Analysis Snapshots before the generic Repository Map presentation bound.
+    pub entities: Vec<MapEntity>,
+    pub relations: Vec<MapRelation>,
+    pub omitted_entity_count: usize,
+    pub omitted_relation_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
     pub overview: ProjectOverview,
     pub resume: ResumeBrief,
     pub repository_map: RepositoryMap,
+    /// A distinct bounded view of actual Repository Intelligence topology for
+    /// current work. It does not synthesize relations or replace Repository Map.
+    pub current_work_topology: CurrentWorkTopology,
     /// Bounded current Goal/Checkpoint-to-code seed evidence. This is not a
     /// second repository map; Project Understanding uses it to select a
-    /// current-work neighborhood from `repository_map`.
+    /// current-work neighborhood from `current_work_topology`.
     pub current_work_code: Vec<CurrentWorkCodeLink>,
     pub decision_context_code: Vec<DecisionContextCodeLink>,
     pub checkpoint_timeline: Vec<CheckpointTimelineEntry>,
@@ -617,14 +738,21 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
     });
     let mut issues = source_issues(inputs.canonical);
     issues.extend_from_slice(inputs.analysis_issues);
+    let current_work_topology =
+        build_current_work_topology(inputs.canonical, inputs.analyses, limit, &mut issues);
     let repository_map =
         build_repository_map(inputs.canonical, inputs.analyses, limit, &mut issues);
-    let current_work_code =
-        build_current_work_code_links(inputs.canonical, &repository_map, limit, &mut issues);
+    let current_work_code = build_current_work_code_links(
+        inputs.canonical,
+        &current_work_topology.entities,
+        limit,
+        &mut issues,
+    );
     let decision_context_code = build_decision_links(
         inputs.canonical,
         &resume,
-        &repository_map,
+        &current_work_topology.entities,
+        &repository_map.entities,
         limit,
         &mut issues,
     );
@@ -738,6 +866,7 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         overview,
         resume,
         repository_map,
+        current_work_topology,
         current_work_code,
         decision_context_code,
         checkpoint_timeline,
@@ -865,6 +994,77 @@ fn materialize_relation(reference: RelationRef<'_>) -> MapRelation {
             uncertainty: relation.uncertainty.clone(),
             diagnostics: relation.diagnostics.clone(),
         },
+    }
+}
+
+fn build_current_work_topology(
+    canonical: &CanonicalReadBasis,
+    analyses: &[&AnalysisSnapshot],
+    limit: usize,
+    issues: &mut Vec<ProjectionIssue>,
+) -> CurrentWorkTopology {
+    let mut entities = Vec::new();
+    let mut relations = Vec::new();
+    for analysis in analyses
+        .iter()
+        .copied()
+        .filter(|analysis| analysis.project.identity() == canonical.project.id)
+    {
+        for fact in &analysis.structural_facts {
+            entities.push(&fact.entity);
+            relations.extend(
+                fact.relations.iter().map(|relation| {
+                    RelationRef::Structural(relation, fact.entity.source.identity())
+                }),
+            );
+        }
+        relations.extend(analysis.semantic_results.iter().map(|result| {
+            let source_id = result
+                .relation
+                .supporting_range
+                .as_ref()
+                .map_or(analysis.repository_source.identity(), |range| {
+                    range.source.identity()
+                });
+            RelationRef::Semantic(&result.relation, source_id)
+        }));
+    }
+    entities.sort_by(|left, right| left.identity.cmp(&right.identity));
+    entities.dedup_by(|left, right| left.identity == right.identity);
+    relations.sort_by(|left, right| left.identity().cmp(right.identity()));
+    relations.dedup_by(|left, right| left.identity() == right.identity());
+    let grounded_seeds = entities
+        .iter()
+        .filter(|entity| entity_matches_current_work(entity, canonical))
+        .map(|entity| entity.identity.clone())
+        .collect::<BTreeSet<_>>();
+    let selected =
+        select_grounded_current_work_topology(&entities, &relations, &grounded_seeds, limit, limit);
+    if selected.omitted_entity_count > 0 {
+        issues.push(bound_issue(
+            "current_work_topology.entity",
+            selected.omitted_entity_count,
+        ));
+    }
+    if selected.omitted_relation_count > 0 {
+        issues.push(bound_issue(
+            "current_work_topology.relation",
+            selected.omitted_relation_count,
+        ));
+    }
+    CurrentWorkTopology {
+        omitted_entity_count: selected.omitted_entity_count,
+        omitted_relation_count: selected.omitted_relation_count,
+        entities: selected
+            .entities
+            .into_iter()
+            .map(materialize_entity)
+            .collect(),
+        relations: selected
+            .relations
+            .into_iter()
+            .map(materialize_relation)
+            .collect(),
     }
 }
 
@@ -1041,7 +1241,8 @@ fn build_repository_map(
 fn build_decision_links(
     canonical: &CanonicalReadBasis,
     resume: &ResumeBrief,
-    repository_map: &RepositoryMap,
+    current_work_entities: &[MapEntity],
+    repository_entities: &[MapEntity],
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> Vec<DecisionContextCodeLink> {
@@ -1053,8 +1254,10 @@ fn build_decision_links(
     let mut values = canonical
         .active_decisions
         .iter()
-        .chain(&canonical.superseded_decisions)
-        .map(|lifecycle| decision_link(canonical, lifecycle, repository_map, &brief_states))
+        .map(|lifecycle| decision_link(canonical, lifecycle, current_work_entities, &brief_states))
+        .chain(canonical.superseded_decisions.iter().map(|lifecycle| {
+            decision_link(canonical, lifecycle, repository_entities, &brief_states)
+        }))
         .collect::<Vec<_>>();
     values.sort_by_key(|value| value.decision_id);
     bound(&mut values, limit, "decision_context_code", issues);
@@ -1063,7 +1266,7 @@ fn build_decision_links(
 
 fn build_current_work_code_links(
     canonical: &CanonicalReadBasis,
-    repository_map: &RepositoryMap,
+    entities: &[MapEntity],
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> Vec<CurrentWorkCodeLink> {
@@ -1073,8 +1276,7 @@ fn build_current_work_code_links(
         .iter()
         .filter(|context| context.role == ContextItemRole::Goal)
         .collect::<Vec<_>>();
-    let mut links = repository_map
-        .entities
+    let mut links = entities
         .iter()
         .filter_map(|entity| {
             let locator = entity
@@ -1132,8 +1334,7 @@ fn build_current_work_code_links(
         (
             Reverse(!link.changed_paths.is_empty()),
             Reverse(!link.goal_context_basis.is_empty()),
-            repository_map
-                .entities
+            entities
                 .iter()
                 .find(|entity| entity.identity == link.entity_identity)
                 .map_or(usize::MAX, |entity| entity_kind_rank(&entity.kind)),
@@ -1159,7 +1360,7 @@ fn map_entity_matches_scope(entity: &MapEntity, paths: &[String], components: &[
 fn decision_link(
     canonical: &CanonicalReadBasis,
     lifecycle: &DecisionLifecycle,
-    repository_map: &RepositoryMap,
+    entities: &[MapEntity],
     brief_states: &BTreeMap<DecisionId, crate::BriefDecisionState>,
 ) -> DecisionContextCodeLink {
     let decision = &lifecycle.decision;
@@ -1183,7 +1384,7 @@ fn decision_link(
     related_context_items.dedup();
     let mut related_code_entities = Vec::new();
     let mut link_basis = Vec::new();
-    for entity in &repository_map.entities {
+    for entity in entities {
         let locator = entity
             .source_range
             .as_ref()

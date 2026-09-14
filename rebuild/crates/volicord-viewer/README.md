@@ -46,7 +46,10 @@ why, completed/current/remaining work, next steps, Decision rationale and code
 impact, material Questions, architecture, generated interpretations, evidence,
 freshness, and gaps. Inline accessible SVG component/dependency and flow
 diagrams are drawn only from inspectable entity/relation topology and require
-no JavaScript, CDN, or external renderer. `overview` and `working` lead with
+no JavaScript, CDN, or external renderer. Current-work topology is selected from
+grounded Analysis Snapshot seeds and relations before the separate generic
+Repository Map bound; unresolved flow evidence remains explicit and never
+creates a target node. `overview` and `working` lead with
 Goal, current work and verification, Decision consequence, open Questions,
 next step, and material degradation.
 Opaque identities, raw relations, canonical records, and detailed capability

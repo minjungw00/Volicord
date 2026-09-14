@@ -72,10 +72,13 @@ canonical, Candidate, analyzer, publication 또는 provider mutation capability�
 않는다.
 
 `ProjectProjection.repository_map`은 계속 repository-wide entity/relation inventory에서
-고른 일반 Repository Map topology를 소유한다. 같은 projection의 `current_work_code`는
-latest meaningful Checkpoint path/identity와 Goal Context identity가 어떤 repository entity를
-seed로 삼는지만 보존하며 두 번째 map이 아니다. `ProjectUnderstanding.architecture`가 이
-seed와 active Decision의 inspectable code link를 사용해 현재 작업 설명 surface를 소유한다.
+고른 일반 Repository Map topology를 소유한다. 별도 `current_work_topology`는 같은 Analysis
+Snapshot의 실제 entity/relation 중 latest meaningful Checkpoint path/identity, Goal Context와
+active Decision scope에 grounded된 seed 및 bounded one-hop relation을 일반 Repository Map
+presentation bound보다 먼저 선택한다. 이는 repository-wide 두 번째 map이나 새 topology
+authority가 아니라 current-work 전용 bounded selection evidence다. `current_work_code`는 이
+선택 결과의 entity locator와 canonical seed basis를 연결하고, `ProjectUnderstanding.architecture`가
+이를 사용해 현재 작업 설명 surface를 소유한다.
 실제 Repository Intelligence relation이 그 seed끼리 연결하거나 seed에서 한 홉 떨어진
 endpoint를 설명할 때만 관계와 이웃 component를 포함한다. Current-work seed가 하나도 없으면
 generic Repository Map node를 대신 채우지 않고 bounded empty/gap 결과를 제공한다.

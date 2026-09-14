@@ -27,9 +27,12 @@ documents.
   remaining work; grounded next steps; active Decision rationale and code
   impact; material Questions; risks and limits; evidence/freshness; and a
   deterministic current-work architecture neighborhood seeded by Checkpoint
-  changed paths and inspectable Goal/Decision/code links. Selection basis stays
-  inspectable, only grounded one-hop relations may extend the seed set, and
-  generic Repository Map nodes never fill unused current-work capacity. Agent
+  changed paths and inspectable Goal/Decision/code links. Its actual Analysis
+  Snapshot entities and one-hop relations are bounded before the separate
+  generic Repository Map presentation bound; retained resolved relations keep
+  both endpoints, while unresolved relations remain honest evidence without an
+  invented target. Selection basis stays inspectable and generic Repository Map
+  nodes never fill unused current-work capacity. Agent
   interpretations remain in a separate collection and never become canonical
   or repository facts.
 - Document generation produces Project & Architecture Guide, Decision Report,
