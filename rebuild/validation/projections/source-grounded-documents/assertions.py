@@ -124,9 +124,19 @@ def main() -> int:
 
     for source_path in PRODUCTION_SOURCES:
         text = source_path.read_text(encoding="utf-8")
-        require("std::fs" not in text, f"projection source owns filesystem I/O: {source_path}")
-        require("File::create" not in text, f"projection source creates files: {source_path}")
-        require("write_all(" not in text, f"projection source writes files: {source_path}")
+        production_text = text.rsplit("\n#[cfg(test)]\nmod tests", 1)[0]
+        require(
+            "std::fs" not in production_text,
+            f"projection source owns filesystem I/O: {source_path}",
+        )
+        require(
+            "File::create" not in production_text,
+            f"projection source creates files: {source_path}",
+        )
+        require(
+            "write_all(" not in production_text,
+            f"projection source writes files: {source_path}",
+        )
 
     run(PRODUCTION_COMMAND)
     print(

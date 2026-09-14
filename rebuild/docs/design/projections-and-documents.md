@@ -411,10 +411,13 @@ semantic-provider opt-in이나 transport를 사용하지 않는다.
 
 `NarrativePlan`은 authoritative typed projection의 크기를 transport 상한으로 바꾸지
 않는다. 반복 path/component/affected-area material은 안정적인 원래 순서에서 대표 항목을
-선택하고 exact omitted item count와 item/per-item bound를 source text에 기록한다. 그래도
-source claim이 크면 UTF-8 중간을 잘라 의미 있는 문장처럼 전달하지 않고 전체 claim을
+선택하고 exact omitted item count와 item/per-item bound를 source text에 기록한다. Checkpoint처럼
+구조가 있는 source는 goal, work/state change, verification, review/acceptance, remaining work,
+next step의 별도 grounded claim으로 먼저 나눈다. 그래도 한 source claim이 크면 가능한 마지막
+문장·줄 경계까지의 bounded semantic excerpt를 명시적으로 표시하고, 나머지는
 `exact_source_utf8_bytes`, `exact_source_character_count`, full-source digest가 있는 bounded
-source representation으로 바꾼다. 따라서 같은 크기의 다른 source claim도 같은 plan으로
+remainder로 표시한다. 의미가 일부만 전달됐음을 숨기거나 digest-only placeholder로 전체
+semantic content를 대체하지 않는다. 따라서 같은 크기의 다른 source claim도 같은 plan으로
 오인하지 않는다. Full typed claim과 Source/Decision/Analysis grounding은 그대로 남는다.
 Public realization field 4,096-byte contract를 늘리지 않고 host realization을 위한
 headroom을 남기기 위해 plan `source_text`는 3,072 UTF-8 bytes 이하다. Protected code/path
@@ -460,8 +463,9 @@ projection으로 표시한다.
 사람이 읽는 기본 경로는 문서 목적에 맞는 Goal, current Decision과 consequence,
 work/verification state, open material Question 또는 blocker, next meaningful step과 material
 gap을 먼저 제시한다. Opaque identity, hash, snapshot identity, 전체 capability inventory와
-claim별 direct basis는 Markdown의 명확히 분리된 trailing audit appendix 또는 HTML의 기본
-closed audit disclosure에 둔다. 본문 단순화는 typed grounding을 삭제하거나 failed,
+claim별 direct basis는 machine-readable `GeneratedDocument.body` grounding sidecar에 유지한다.
+Markdown의 trailing audit appendix는 bounded metadata와 aggregate grounding count만 보여 주고,
+HTML은 상세 claim basis를 기본 closed audit disclosure에 둔다. 본문 단순화는 typed grounding을 삭제하거나 failed,
 unavailable, partial, stale, known-limit와 omission을 숨기는 근거가 아니다.
 
 Current Decision으로 originating Question이 terminally answered/delegated된 경우, 그
@@ -540,17 +544,19 @@ Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/
 - Syntax metadata fallback은 generated body 언어 fallback 허가가 아니다. Body
   realization이 불가능하면 명시적 `unavailable`/`degraded` outcome을 내고
   requested-language success artifact를 생성하지 않는다.
-- Markdown/HTML renderer는 claim, diagnostic, name과 metadata의 각 동적 field에 같은
-  deterministic UTF-8 byte policy를 적용한다. 한 field가 bound를 넘으면 일부 text를
-  semantic content처럼 잘라 쓰지 않고 field 전체를 exact source byte count, field kind와
-  render bound가 있는 omission marker로 대체한다.
+- Markdown/HTML renderer는 claim, diagnostic, name과 metadata의 각 동적 field에
+  deterministic UTF-8 byte policy를 적용한다. Primary claim text가 bound를 넘으면 bounded
+  semantic excerpt와 exact source byte count, digest, render bound가 있는 remainder marker를
+  함께 표시한다. Audit-only metadata/diagnostic field는 전체 text 대신 exact omission marker를
+  사용할 수 있다.
 - Section별 claim 수, rendered metadata item 수와 per-field bound를 함께 적용해 output
   format별 deterministic total byte contract를 만든다. 이 contract는 authoritative typed
   projection이나 repository 전체 크기의 상한이 아니며, 더 깊은 inspection은 source
   projection을 다시 읽는다.
 - Markdown 본문에는 opaque claim/source/Decision/analysis identity를 claim마다 interleave하지
-  않고 trailing audit appendix에서 direct basis를 보존한다. HTML은 같은 body와 grounding을
-  사용하되 audit appendix를 closed `<details>`로 제공한다.
+  않는다. Trailing appendix는 compact grounding summary를 제공하고 상세 direct basis는 typed
+  `GeneratedDocument.body` sidecar에 보존한다. HTML은 같은 body와 grounding을 사용하되 상세
+  audit appendix를 closed `<details>`로 제공한다.
 - PDF와 DOCX는 initial required output이 아니다.
 
 Local Viewer는 같은 current Project projection, health/privacy/document data와 human-first

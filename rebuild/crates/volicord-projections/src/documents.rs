@@ -1,6 +1,6 @@
 use crate::{
-    BriefDecision, BriefDecisionState, CapabilityGap, MapRelationClass, ProjectProjection,
-    ProjectionIssue,
+    BriefDecision, BriefDecisionState, CapabilityGap, CheckpointTimelineEntry, MapRelationClass,
+    ProjectProjection, ProjectionIssue,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,6 +16,7 @@ use volicord_repository_intelligence::{
 };
 
 const RENDERED_BODY_CLAIM_LIMIT: usize = 12;
+const CHECKPOINT_SEMANTIC_CLAIM_COUNT: usize = 6;
 const RENDERED_METADATA_ITEM_LIMIT: usize = 8;
 const NARRATIVE_SOURCE_LIST_ITEM_LIMIT: usize = 8;
 const NARRATIVE_SOURCE_LIST_ITEM_BYTE_LIMIT: usize = 256;
@@ -29,7 +30,7 @@ pub const RENDERED_MARKDOWN_BYTE_LIMIT: usize = 3 * 1_024 * 1_024;
 pub const RENDERED_HTML_BYTE_LIMIT: usize = 8 * 1_024 * 1_024;
 
 pub const GENERATED_DOCUMENT_FORMAT_KIND: &str = "volicord.generated_document";
-pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 5;
+pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 6;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DocumentKind {
@@ -1118,44 +1119,114 @@ fn timeline_section(projection: &ProjectProjection, locale: FixedLocale) -> Docu
     let claims = projection
         .checkpoint_timeline
         .iter()
-        .map(|entry| GeneratedDocumentClaim {
-            identity: format!("checkpoint:{}", entry.checkpoint.id),
-            class: ClaimClass::CanonicalContext,
-            text: format!(
-                "{}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}",
-                fixed(locale, "goal", "목표"),
-                entry.checkpoint.goal,
-                fixed(locale, "work", "작업"),
-                work_state_label(entry.work_state, locale),
-                fixed(locale, "verification", "검증"),
-                entry
-                    .verification
-                    .iter()
-                    .map(|fact| verification_fact_label(fact, locale))
-                    .collect::<Vec<_>>()
-                    .join("; "),
-                fixed(locale, "user review", "사용자 검토"),
-                user_review_label(entry.user_review.state, locale),
-                fixed(locale, "user acceptance", "사용자 수락"),
-                user_acceptance_label(entry.user_acceptance.state, locale),
-                fixed(locale, "changes", "변경"),
-                display_strings(&entry.checkpoint.changed_paths, locale),
-                fixed(locale, "next", "다음 단계"),
-                entry.checkpoint.next_step,
-            ),
-            source_basis: entry.checkpoint.source_basis.clone(),
-            decision_basis: entry.checkpoint.applied_decisions.clone(),
-            analysis_basis: Vec::new(),
-            explicit_inference: false,
-            historical_uncertainty: Vec::new(),
-            uncertainty: entry.checkpoint.known_limits.clone(),
-        })
+        .flat_map(|entry| checkpoint_semantic_claims(entry, locale))
         .collect();
     section(
         "timeline",
         fixed(locale, "Checkpoint timeline", "체크포인트 타임라인"),
         claims,
     )
+}
+
+fn checkpoint_semantic_claims(
+    entry: &CheckpointTimelineEntry,
+    locale: FixedLocale,
+) -> Vec<GeneratedDocumentClaim> {
+    let checkpoint = &entry.checkpoint;
+    let identity = checkpoint.id;
+    let claim = |suffix: &str, text: String, uncertainty: Vec<String>| GeneratedDocumentClaim {
+        identity: format!("checkpoint:{identity}:{suffix}"),
+        class: ClaimClass::CanonicalContext,
+        text,
+        source_basis: checkpoint.source_basis.clone(),
+        decision_basis: checkpoint.applied_decisions.clone(),
+        analysis_basis: Vec::new(),
+        explicit_inference: false,
+        historical_uncertainty: Vec::new(),
+        uncertainty,
+    };
+    let verification = entry
+        .verification
+        .iter()
+        .map(|fact| verification_fact_label(fact, locale))
+        .collect::<Vec<_>>();
+    let open_questions = checkpoint
+        .open_questions
+        .iter()
+        .map(|question| format!("{}@{}", question.question_id, question.revision))
+        .collect::<Vec<_>>();
+    vec![
+        claim(
+            "goal",
+            format!("{}: {}", fixed(locale, "Goal", "목표"), checkpoint.goal),
+            Vec::new(),
+        ),
+        claim(
+            "work",
+            format!(
+                "{}={}; {}={}; {}={}",
+                fixed(locale, "work state", "작업 상태"),
+                work_state_label(entry.work_state, locale),
+                fixed(locale, "state change", "상태 변경"),
+                checkpoint.state_change.as_deref().unwrap_or_else(|| fixed(
+                    locale,
+                    "not recorded",
+                    "기록되지 않음"
+                )),
+                fixed(locale, "changed paths", "변경 경로"),
+                display_strings(&checkpoint.changed_paths, locale),
+            ),
+            Vec::new(),
+        ),
+        claim(
+            "verification",
+            format!(
+                "{}: {}",
+                fixed(locale, "Verification", "검증"),
+                display_strings(&verification, locale)
+            ),
+            Vec::new(),
+        ),
+        claim(
+            "review",
+            format!(
+                "{}={}; {}={}",
+                fixed(locale, "user review", "사용자 검토"),
+                user_review_label(entry.user_review.state, locale),
+                fixed(locale, "user acceptance", "사용자 수락"),
+                user_acceptance_label(entry.user_acceptance.state, locale),
+            ),
+            Vec::new(),
+        ),
+        claim(
+            "remaining-work",
+            format!(
+                "{}={}; {}={}; {}={}; {}={}",
+                fixed(locale, "known limits", "알려진 한계"),
+                display_strings(&checkpoint.known_limits, locale),
+                fixed(locale, "open Questions", "열린 질문"),
+                display_strings(&open_questions, locale),
+                fixed(locale, "non-goals", "비목표"),
+                display_strings(&checkpoint.non_goals, locale),
+                fixed(locale, "handoff", "인계"),
+                checkpoint.handoff_to.as_deref().unwrap_or_else(|| fixed(
+                    locale,
+                    "not recorded",
+                    "기록되지 않음"
+                )),
+            ),
+            checkpoint.known_limits.clone(),
+        ),
+        claim(
+            "next-step",
+            format!(
+                "{}: {}",
+                fixed(locale, "Next step", "다음 단계"),
+                checkpoint.next_step
+            ),
+            Vec::new(),
+        ),
+    ]
 }
 
 fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentSection {
@@ -1288,11 +1359,16 @@ fn section(key: &str, title: &str, claims: Vec<GeneratedDocumentClaim>) -> Docum
 
 fn bound_rendered_body(body: &mut DocumentBody, locale: FixedLocale) {
     for section in &mut body.sections {
-        if section.claims.len() <= RENDERED_BODY_CLAIM_LIMIT {
+        let limit = if section.key == "timeline" {
+            RENDERED_BODY_CLAIM_LIMIT * CHECKPOINT_SEMANTIC_CLAIM_COUNT
+        } else {
+            RENDERED_BODY_CLAIM_LIMIT
+        };
+        if section.claims.len() <= limit {
             continue;
         }
-        let omitted_count = section.claims.len() - RENDERED_BODY_CLAIM_LIMIT;
-        section.claims.truncate(RENDERED_BODY_CLAIM_LIMIT);
+        let omitted_count = section.claims.len() - limit;
+        section.claims.truncate(limit);
         section.claims.push(inference_claim(
             format!("render-bound:{}", section.key),
             format!(
@@ -1626,13 +1702,19 @@ fn narrative_plan_claim(
             } else {
                 protected_terms.join(", ")
             };
-            format!(
-                "[bounded source claim; exact source UTF-8 bytes={}; exact source characters={}; source digest={}; representative protected terms=[{}]; omitted protected terms={}; full typed claim remains available from its grounding basis]",
+            let remainder = format!(
+                "[bounded source remainder; exact source UTF-8 bytes={}; exact source characters={}; source digest={}; representative protected terms=[{}]; omitted protected terms={}; full typed claim remains available from its grounding basis]",
                 omission.exact_source_utf8_bytes,
                 omission.exact_source_character_count,
                 omission.source_sha256,
                 representative_terms,
                 omitted_protected_term_count,
+            );
+            bounded_semantic_text(
+                &claim.text,
+                NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT,
+                "[bounded semantic excerpt]\n",
+                &remainder,
             )
         },
     );
@@ -1898,39 +1980,54 @@ fn render_metadata_markdown(
         output.push('\n');
     }
     output.push('\n');
+    let claims = body
+        .sections
+        .iter()
+        .flat_map(|section| &section.claims)
+        .collect::<Vec<_>>();
+    let source_grounded = claims
+        .iter()
+        .filter(|claim| !claim.source_basis.is_empty())
+        .count();
+    let decision_grounded = claims
+        .iter()
+        .filter(|claim| !claim.decision_basis.is_empty())
+        .count();
+    let analysis_grounded = claims
+        .iter()
+        .filter(|claim| !claim.analysis_basis.is_empty())
+        .count();
+    let inferred = claims
+        .iter()
+        .filter(|claim| claim.explicit_inference)
+        .count();
+    let historical = claims
+        .iter()
+        .filter(|claim| !claim.historical_uncertainty.is_empty())
+        .count();
     output.push_str("### ");
-    output.push_str(fixed(locale, "Direct claim basis", "직접 주장 근거"));
+    output.push_str(fixed(locale, "Grounding summary", "Grounding 요약"));
     output.push_str("\n\n");
-    for claim in body.sections.iter().flat_map(|section| &section.claims) {
-        output.push_str("- **");
-        output.push_str(&escape_markdown(&bounded_rendered_field(
-            &claim.identity,
-            "claim identity",
-            locale,
-        )));
-        output.push_str(":** ");
-        output.push_str(claim_class_label(claim.class, locale));
-        output.push_str("; ");
-        output.push_str(&escape_markdown(&bounded_rendered_field(
-            &claim_basis(claim),
-            "claim basis",
-            locale,
-        )));
-        if !claim.historical_uncertainty.is_empty() {
-            output.push_str("; ");
-            output.push_str(fixed(
-                locale,
-                "resolved Question ambiguity=",
-                "해결된 Question 모호성=",
-            ));
-            output.push_str(&escape_markdown(&bounded_rendered_field(
-                &claim.historical_uncertainty.join("; "),
-                "historical claim uncertainty",
-                locale,
-            )));
-        }
-        output.push('\n');
-    }
+    output.push_str(&format!(
+        "- {}={}; {}={}; {}={}; {}={}; {}={}; {}={}\n",
+        fixed(locale, "claims", "주장"),
+        claims.len(),
+        fixed(locale, "Source-grounded", "Source 근거"),
+        source_grounded,
+        fixed(locale, "Decision-grounded", "Decision 근거"),
+        decision_grounded,
+        fixed(locale, "Analysis-grounded", "Analysis 근거"),
+        analysis_grounded,
+        fixed(locale, "explicit inferences", "명시적 추론"),
+        inferred,
+        fixed(locale, "historical ambiguity records", "과거 모호성 기록"),
+        historical,
+    ));
+    output.push_str(fixed(
+        locale,
+        "- Detailed per-claim identities, basis, and historical uncertainty remain available in the machine-readable `GeneratedDocument.body` grounding sidecar.\n",
+        "- 주장별 상세 identity, 근거 및 과거 불확실성은 기계 판독 가능한 `GeneratedDocument.body` grounding sidecar에 유지됩니다.\n",
+    ));
     output.push('\n');
 }
 
@@ -2191,6 +2288,32 @@ fn bounded_rendered_field(value: &str, field: &str, locale: FixedLocale) -> Stri
     if value.len() <= RENDERED_DOCUMENT_FIELD_BYTE_LIMIT {
         return value.to_owned();
     }
+    if field == "claim text" && !value.trim().is_empty() {
+        let remainder = format!(
+            "[{}: {}; {}={}; {}={}; source digest=sha256:{:x}]",
+            fixed(
+                locale,
+                "bounded source remainder",
+                "범위 제한 source 나머지"
+            ),
+            field,
+            fixed(locale, "exact UTF-8 bytes", "정확한 UTF-8 바이트"),
+            value.len(),
+            fixed(locale, "rendered byte limit", "렌더링 바이트 제한"),
+            RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
+            Sha256::digest(value.as_bytes()),
+        );
+        return bounded_semantic_text(
+            value,
+            RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
+            fixed(
+                locale,
+                "[bounded semantic excerpt]\n",
+                "[범위 제한 의미 발췌]\n",
+            ),
+            &remainder,
+        );
+    }
     format!(
         "[{}: {}; {}={}; {}={}]",
         fixed(locale, "omitted oversized field", "크기 초과 필드 생략"),
@@ -2200,6 +2323,48 @@ fn bounded_rendered_field(value: &str, field: &str, locale: FixedLocale) -> Stri
         fixed(locale, "rendered byte limit", "렌더링 바이트 제한"),
         RENDERED_DOCUMENT_FIELD_BYTE_LIMIT
     )
+}
+
+fn bounded_semantic_text(value: &str, limit: usize, heading: &str, remainder: &str) -> String {
+    let fixed_bytes = heading.len() + remainder.len() + 4;
+    let available = limit.saturating_sub(fixed_bytes);
+    let prefix = meaningful_utf8_prefix(value, available);
+    let ellipsis = if prefix.len() < value.len() {
+        "…\n"
+    } else {
+        "\n"
+    };
+    let rendered = format!("{heading}{prefix}{ellipsis}{remainder}");
+    debug_assert!(rendered.len() <= limit);
+    rendered
+}
+
+fn meaningful_utf8_prefix(value: &str, byte_limit: usize) -> &str {
+    if value.len() <= byte_limit {
+        return value.trim_end();
+    }
+    let mut end = byte_limit.min(value.len());
+    while !value.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    let candidate = &value[..end];
+    let minimum = candidate.len() / 3;
+    let structured_end = ["\n\n", "\n", ". ", "! ", "? ", "; "]
+        .iter()
+        .filter_map(|delimiter| {
+            candidate
+                .rfind(delimiter)
+                .map(|position| position + delimiter.trim_end().len())
+        })
+        .filter(|position| *position >= minimum)
+        .max();
+    let end = structured_end.or_else(|| {
+        candidate
+            .rfind(char::is_whitespace)
+            .filter(|position| *position >= minimum)
+    });
+    end.map_or(candidate, |position| &candidate[..position])
+        .trim_end()
 }
 
 fn normalized_html_language_tag(requested: &str, locale: FixedLocale) -> String {
@@ -2683,11 +2848,33 @@ fn display_strings(values: &[String], locale: FixedLocale) -> String {
     } else {
         let retained = values
             .iter()
-            .filter(|value| value.len() <= NARRATIVE_SOURCE_LIST_ITEM_BYTE_LIMIT)
             .take(NARRATIVE_SOURCE_LIST_ITEM_LIMIT)
-            .cloned()
+            .map(|value| {
+                if value.len() <= NARRATIVE_SOURCE_LIST_ITEM_BYTE_LIMIT {
+                    value.clone()
+                } else {
+                    let remainder = format!(
+                        "[{}={}; sha256:{:x}]",
+                        fixed(
+                            locale,
+                            "exact source UTF-8 bytes",
+                            "정확한 source UTF-8 바이트"
+                        ),
+                        value.len(),
+                        Sha256::digest(value.as_bytes()),
+                    );
+                    bounded_semantic_text(
+                        value,
+                        NARRATIVE_SOURCE_LIST_ITEM_BYTE_LIMIT,
+                        fixed(locale, "[excerpt] ", "[발췌] "),
+                        &remainder,
+                    )
+                }
+            })
             .collect::<Vec<_>>();
-        let omitted = values.len() - retained.len();
+        let omitted = values
+            .len()
+            .saturating_sub(NARRATIVE_SOURCE_LIST_ITEM_LIMIT);
         let mut rendered = retained.join(", ");
         if omitted > 0 {
             if !rendered.is_empty() {

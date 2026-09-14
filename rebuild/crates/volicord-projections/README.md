@@ -44,11 +44,15 @@ documents.
   section/claim topology and protected code/path terms; grounding is copied
   from the plan and generator/agent/model provenance is required. Without a
   realizer, metadata reports `Unavailable` rather than treating the fixed
-  English body as requested-language success.
+  English body as requested-language success. Structured Checkpoints become
+  separate goal, work, verification, review, remaining-work, and next-step
+  claims; oversized source text retains a bounded semantic excerpt plus exact
+  source size and digest instead of becoming a placeholder-only claim.
 - Markdown and self-contained HTML render from the same semantic body. Their
   ordinary reading path starts with current human meaning; versioned metadata,
-  opaque identities, and direct per-claim basis remain in a trailing Markdown
-  audit appendix or a closed HTML audit disclosure. A resolved Question's
+  opaque identities, and direct per-claim basis remain in the machine-readable
+  `GeneratedDocument.body` grounding sidecar and a closed HTML audit disclosure.
+  Markdown carries only a compact grounding summary. A resolved Question's
   former choice ambiguity remains historical audit basis rather than current
   uncertainty. The returned publication artifact may carry an explicitly
   requested destination, but this crate never writes it.

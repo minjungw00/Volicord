@@ -340,8 +340,17 @@ fn completed_project_documents_are_human_first_and_keep_resolved_ambiguity_in_au
         assert!(!markdown[..appendix].contains(&project.id.to_string()));
         assert!(!markdown[..appendix].contains("the renderer choice is unresolved"));
         assert!(markdown[..appendix].contains("manual readability review remains"));
-        assert!(markdown[appendix..].contains("the renderer choice is unresolved"));
-        assert!(markdown[appendix..].contains("claim="));
+        assert!(!markdown[appendix..].contains("the renderer choice is unresolved"));
+        assert!(markdown[appendix..].contains("Grounding summary"));
+        assert!(markdown[appendix..].contains("GeneratedDocument.body"));
+        assert!(!markdown[appendix..].contains("claim="));
+        assert!(document
+            .body
+            .sections
+            .iter()
+            .any(|section| section.claims.iter().any(|claim| claim
+                .historical_uncertainty
+                .contains(&"the renderer choice is unresolved".to_owned()))));
 
         let html = &document.html.content;
         let audit = html
@@ -973,7 +982,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
                     || !claim.analysis_basis.is_empty()
                     || claim.explicit_inference
             );
-            assert!(document
+            assert!(!document
                 .markdown
                 .content
                 .contains(&claim.identity.replace('_', "\\_")));
@@ -982,6 +991,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
                 assert!(claim.explicit_inference);
             }
         }
+        assert!(document.markdown.content.contains("GeneratedDocument.body"));
     }
 
     let plan = prepare_narrative_plan(
@@ -1379,12 +1389,31 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         "OVERSIZED-CLAIM-OVERSIZED-CLAIM-",
         "OVERSIZED-NAME-OVERSIZED-NAME-",
         "OVERSIZED-DIAGNOSTIC-OVERSIZED-DIAGNOSTIC-",
-        "OVERSIZED-METADATA-OVERSIZED-METADATA-",
     ] {
-        assert!(!pathological_document.markdown.content.contains(sentinel));
-        assert!(!pathological_document.html.content.contains(sentinel));
+        assert!(pathological_document.markdown.content.contains(sentinel));
+        assert!(pathological_document.html.content.contains(sentinel));
     }
-    for field in ["claim text", "claim uncertainty", "metadata value"] {
+    assert!(!pathological_document
+        .markdown
+        .content
+        .contains("OVERSIZED-METADATA-OVERSIZED-METADATA-"));
+    assert!(!pathological_document
+        .html
+        .content
+        .contains("OVERSIZED-METADATA-OVERSIZED-METADATA-"));
+    for full_value in [&huge_claim, &huge_name, &huge_diagnostic, &huge_metadata] {
+        assert!(!pathological_document.markdown.content.contains(full_value));
+        assert!(!pathological_document.html.content.contains(full_value));
+    }
+    assert!(pathological_document
+        .markdown
+        .content
+        .contains("bounded source remainder: claim text"));
+    assert!(pathological_document
+        .html
+        .content
+        .contains("bounded source remainder: claim text"));
+    for field in ["claim uncertainty", "metadata value"] {
         assert!(pathological_document.markdown.content.contains(&format!(
             "omitted oversized field: {field}; exact UTF-8 bytes="
         )));
@@ -1409,7 +1438,18 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     let mut large_realization_projection = projection.clone();
     large_realization_projection.repository_map.gaps[0].affected_areas = affected_paths.clone();
     large_realization_projection.decision_context_code[0].declared_paths = affected_paths.clone();
-    let oversized_goal = "Grounded project purpose remains typed. ".repeat(220);
+    let semantic_chunk = |label: &str| format!("{label}: {}", "grounded detail. ".repeat(55));
+    let checkpoint = large_realization_projection
+        .checkpoint_timeline
+        .first_mut()
+        .expect("campaign-shaped checkpoint fixture");
+    checkpoint.checkpoint.goal = semantic_chunk("Campaign checkpoint goal");
+    checkpoint.checkpoint.state_change = Some(semantic_chunk("Work completed"));
+    checkpoint.verification[0].outcome = Some(semantic_chunk("Verification passed"));
+    checkpoint.checkpoint.verification = checkpoint.verification.clone();
+    checkpoint.checkpoint.known_limits = vec![semantic_chunk("Remaining work")];
+    checkpoint.checkpoint.next_step = semantic_chunk("Next step");
+    let oversized_goal = "Grounded 프로젝트 목적은 typed 상태로 유지됩니다. ".repeat(220);
     assert!(oversized_goal.len() > RENDERED_DOCUMENT_FIELD_BYTE_LIMIT);
     large_realization_projection.resume.goals_and_why[0].statement = oversized_goal.clone();
 
@@ -1467,6 +1507,43 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         goal_omission.exact_source_character_count,
         oversized_goal.chars().count()
     );
+    assert!(goal_plan_claim
+        .source_text
+        .contains("Grounded 프로젝트 목적은 typed 상태로 유지됩니다."));
+    assert!(goal_plan_claim
+        .source_text
+        .contains("[bounded source remainder;"));
+    assert!(!goal_plan_claim
+        .source_text
+        .starts_with("[bounded source remainder;"));
+    let checkpoint_claims = large_plan
+        .sections
+        .iter()
+        .find(|section| section.key == "timeline")
+        .expect("checkpoint timeline remains present")
+        .claims
+        .iter()
+        .filter(|claim| claim.identity.starts_with("checkpoint:"))
+        .collect::<Vec<_>>();
+    assert_eq!(checkpoint_claims.len(), 6);
+    assert!(checkpoint_claims
+        .iter()
+        .all(|claim| claim.source_text_omission.is_none()));
+    for semantic in [
+        "Campaign checkpoint goal",
+        "Work completed",
+        "Verification passed",
+        "user review",
+        "Remaining work",
+        "Next step",
+    ] {
+        assert!(
+            checkpoint_claims
+                .iter()
+                .any(|claim| claim.source_text.contains(semantic)),
+            "missing checkpoint semantic {semantic}: {checkpoint_claims:#?}"
+        );
+    }
     let gap_plan_claim = large_plan
         .sections
         .iter()
