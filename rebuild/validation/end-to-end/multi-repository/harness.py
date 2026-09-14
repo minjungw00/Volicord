@@ -490,6 +490,34 @@ def viewer_project_understanding_evidence(
         and relation[2] in node_ids
         and relation[3] in node_ids
     ]
+    reduced_architecture_message = (
+        "No repository component is grounded in the current Goal, Checkpoint, or active "
+        "Decision; generic topology was not substituted."
+    )
+    reduced_gap_with_basis = re.search(
+        r'<article class="deterministic-derived explanation-item"[^>]*'
+        r'data-explanation-kind="gap"[^>]*><p>[^<]*'
+        r'no execution or data-flow path is inferred\.</p>'
+        r'<details class="explanation-evidence">.*?'
+        r'<dt>Evidence class</dt><dd>capability gap</dd>.*?</details></article>',
+        content,
+        flags=re.DOTALL,
+    )
+    explicit_reduced_architecture = (
+        not node_ids
+        and not relations
+        and content.count(f'<p class="empty-state">{reduced_architecture_message}</p>') >= 2
+        and reduced_gap_with_basis is not None
+    )
+    grounded_architecture = bool(node_ids) and bool(grounded_relations)
+    relation_explanation_basis = (
+        'class="explanation-evidence"' in content
+        and 'data-relation-id="' in content
+    )
+    reduced_explanation_basis = (
+        explicit_reduced_architecture
+        and reduced_gap_with_basis is not None
+    )
     checks = {
         "snapshot_available": True,
         "project_understanding_heading": (
@@ -511,16 +539,13 @@ def viewer_project_understanding_evidence(
                 'data-statement-role="generated-interpretation"',
             )
         ),
-        "grounded_architecture_diagram": (
+        "grounded_architecture_result": (
             'data-diagram="architecture-topology"' in content
-            and bool(node_ids)
-            and bool(grounded_relations)
+            and (grounded_architecture or explicit_reduced_architecture)
         ),
         "grounded_flow_diagram": 'data-diagram="flow-topology"' in content,
-        "inspectable_explanation_basis": (
-            'class="explanation-evidence"' in content
-            and 'data-relation-id="' in content
-        ),
+        "inspectable_explanation_basis": relation_explanation_basis
+        or reduced_explanation_basis,
     }
     return {
         "status": "passed" if all(checks.values()) else "failed",
@@ -3536,6 +3561,50 @@ def self_check() -> int:
             {"repository_map": {"entities": [{"name": "Service"}]}},
         )["status"] != "failed":
             raise AssertionError("ungrounded Viewer diagram qualified")
+        reduced_contract = Path(directory) / "project-understanding-reduced.html"
+        reduced_message = (
+            "No repository component is grounded in the current Goal, Checkpoint, or active "
+            "Decision; generic topology was not substituted."
+        )
+        reduced_contract.write_text(
+            '<!doctype html><html lang="en"><body><h1>Project Understanding</h1>'
+            '<h2>How the architecture and code connect</h2>'
+            '<span data-statement-role="verified-fact">Verified fact</span>'
+            '<span data-statement-role="deterministic-derived">Deterministic explanation</span>'
+            '<span data-statement-role="generated-interpretation">Generated interpretation</span>'
+            '<p>Service</p><div class="grounded-explanations">'
+            '<article class="deterministic-derived explanation-item" '
+            'data-explanation-kind="gap"><p>No resolved flow is available; no execution or '
+            'data-flow path is inferred.</p><details class="explanation-evidence">'
+            '<summary>Inspect evidence basis</summary><dl>'
+            '<div><dt>Evidence class</dt><dd>capability gap</dd></div>'
+            '</dl></details></article></div>'
+            '<figure class="grounded-diagram" data-diagram="architecture-topology">'
+            '<p class="empty-state">'
+            + reduced_message
+            + '</p></figure><figure class="grounded-diagram" data-diagram="flow-topology">'
+            '<p class="empty-state">'
+            + reduced_message
+            + "</p></figure></body></html>",
+            encoding="utf-8",
+        )
+        if viewer_project_understanding_evidence(
+            reduced_contract,
+            {"repository_map": {"entities": [{"name": "Service"}]}},
+        )["status"] != "passed":
+            raise AssertionError("truthful reduced Viewer architecture did not qualify")
+        reduced_contract.write_text(
+            reduced_contract.read_text(encoding="utf-8").replace(
+                "<dd>capability gap</dd>",
+                "<dd>uninspected absence</dd>",
+            ),
+            encoding="utf-8",
+        )
+        if viewer_project_understanding_evidence(
+            reduced_contract,
+            {"repository_map": {"entities": [{"name": "Service"}]}},
+        )["status"] != "failed":
+            raise AssertionError("uninspectable reduced Viewer architecture qualified")
     assert_recovery_recall_contract()
     assert_candidate_repository_source_contract()
     assert_authenticated_codex_lifecycle()
