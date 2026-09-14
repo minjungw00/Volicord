@@ -1,14 +1,14 @@
 # Phase 8 technical-entry candidate authority
 
-- Sealed Product/test candidate: `825cc620da7369c5952b004eb29881769daaac64`
+- Sealed Product/test candidate: `68e3699e77e1017896f4469ff1dd3aff11b476ce`
 - Technical Phase 8 entry: `passed`; `phase_8_ready = true` only for this HEAD
 - Admission: `eligible`; exact final: `succeeded`, four commands, zero failures
 - Required production-provider qualification: `passed`; `openai-codex`, `gpt-5.6-sol`
 - Official V11: `passed`, 54 of 54 required steps; all three authenticated targets passed
 - Credential-retention audit: `passed`, all counts zero
 - Sanitized evidence archive: creation succeeded; independent verification `passed`
-- Capsule SHA-256: `161deb53f55ce0c7f614c1dafbcbfac2cebe6a29551313f840100346b65eaf2b`
-- Archive SHA-256: `575dd2a3fdab49b8c34977be7ffdb15469dce89bc22fd38c7f11de678ab882a4`
+- Capsule SHA-256: `903b5bf33501cd646ea14e021ac78816ed1a85a0cd5f08f846ca6d8241a14d23`
+- Archive SHA-256: `31733f1be45f9dc084d99fc592a9f508de0538ca4049b17e19ed0bbfb92fed36`
 - Fresh naturalistic Dogfood: `not_run`; automated qualification: `not_run`
 - Human review: `not_provided`; replacement passage: `not_established`
 - `replacement_pass_candidate = false`; `phase_9_ready = false`
@@ -16,11 +16,11 @@
 ## Maintained conclusion
 
 The copied capsule and independently verified archive establish technical entry
-for exactly `825cc620da7369c5952b004eb29881769daaac64`. Exact final, required
+for exactly `68e3699e77e1017896f4469ff1dd3aff11b476ce`. Exact final, required
 live provider qualification, and official V11 each ran once for that candidate
 in the same maintained gate.
 The capsule and archive were copied byte-for-byte to
-`/tmp/volicord-phase8-handoff-20260913/825cc620da7369c5952b004eb29881769daaac64/` before reporting.
+`/tmp/volicord-phase8-handoff-20260914/68e3699e77e1017896f4469ff1dd3aff11b476ce/` before reporting.
 Resource measurements passed and no accepted-Decision revisit trigger was
 reported. The later documentation-only conclusion HEAD is distinct from the
 sealed candidate and receives only the maintained documentation checks.
@@ -34,6 +34,13 @@ That gate did not cover the remaining historical/learning evaluator mismatches.
 The candidate above passed its own maintained gate after those repairs.
 Historical successful gates, including `6031641c46cf014a754442dcee3137caf265882e`
 and `0af4a9e2cbcc6dfac79aabcf1dfba811f229f789`, do not qualify later HEADs.
+
+Candidate `3138713950d3388f5f44e11daf763960f0de5247` passed exact final,
+provider qualification, and credential audit, but its one official V11 invocation
+failed three Viewer source-grounded-understanding steps because the validator
+required repository topology even when the current-work seed was truthfully empty.
+That gate remains failed and separately preserved. The bounded validator correction
+created the sealed candidate above, whose own admission and one maintained gate passed.
 
 The latest terminal naturalistic campaign, `phase8-naturalistic-20260910-60ffad042346`,
 used Product/test candidate `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`.

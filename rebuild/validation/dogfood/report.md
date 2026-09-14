@@ -3,7 +3,7 @@
 ## Status
 
 Technical entry passed for exact sealed Product/test candidate
-`825cc620da7369c5952b004eb29881769daaac64` (2026-09-13, Korea). The copied sanitized
+`68e3699e77e1017896f4469ff1dd3aff11b476ce` (2026-09-14, Korea). The copied sanitized
 gate capsule records
 `phase_8_ready = true`; exact final, required provider qualification, official
 V11, archive creation, and independent verification all succeeded.
@@ -157,7 +157,7 @@ Decision path.
 ## Commands and configuration
 
 In a later session, start the new campaign from a separate clean worktree whose
-actual `HEAD` is `825cc620da7369c5952b004eb29881769daaac64`.
+actual `HEAD` is `68e3699e77e1017896f4469ff1dd3aff11b476ce`.
 Use that exact sealed identity for `<new-sealed-candidate-head>` below, not the
 documentation-only conclusion HEAD:
 
@@ -282,7 +282,7 @@ documents and does not share their adoption lifecycle.
 ## Observed results
 
 The new copied capsule and independently verified archive establish technical
-entry for `825cc620da7369c5952b004eb29881769daaac64`:
+entry for `68e3699e77e1017896f4469ff1dd3aff11b476ce`:
 
 - admission `eligible`;
 - exact final `succeeded` with four commands and zero failures;
@@ -300,6 +300,15 @@ The maintained gate ran exact final, live provider qualification, and official
 V11 once for this candidate in the same gate process/session. The later
 documentation conclusion uses the copied capsule and maintained report checks.
 It supplies no new naturalistic observations.
+
+The immediately preceding candidate
+`3138713950d3388f5f44e11daf763960f0de5247` retains a separate failed gate:
+exact final, provider qualification, and credential audit passed, while its one
+official V11 invocation failed the three Viewer source-grounded-understanding
+steps. The failure was attributed to a validator contradiction with the active
+reduced-architecture contract, not rebound as success. Candidate
+`68e3699e77e1017896f4469ff1dd3aff11b476ce` contains the bounded correction and
+passed its own admission and single gate.
 
 The latest terminal naturalistic campaign, `phase8-naturalistic-20260910-60ffad042346`,
 used Product/test candidate `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`.
@@ -505,7 +514,7 @@ reliability of the repaired continuation guidance.
 ## Coverage and failures
 
 Current technical Phase 8 entry is passed/eligible only for
-`825cc620da7369c5952b004eb29881769daaac64`.
+`68e3699e77e1017896f4469ff1dd3aff11b476ce`.
 The latest terminal campaign at `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`
 remains failed and non-reusable. Exec evidence/command-role and successor-Review
 Decision evaluator defects, duplicate Question integration, explicit resume
@@ -548,7 +557,7 @@ separate private archive for the independent review handoff.
 
 | Acceptance area | Current conclusion |
 | --- | --- |
-| Sealed production/test candidate | `825cc620da7369c5952b004eb29881769daaac64` |
+| Sealed production/test candidate | `68e3699e77e1017896f4469ff1dd3aff11b476ce` |
 | Technical Phase 8 entry | `phase_8_ready = true`; technical entry only |
 | Sanitized evidence archive | Creation succeeded; independent verification `passed` |
 | Fresh naturalistic campaign | `not_run` |
@@ -587,7 +596,7 @@ separate private archive for the independent review handoff.
 
 In a later session, use the maintained campaign helper to prepare a wholly
 fresh opaque-slot campaign in a separate clean worktree at exactly
-`825cc620da7369c5952b004eb29881769daaac64`, run all sixteen genuine sessions,
+`68e3699e77e1017896f4469ff1dd3aff11b476ce`, run all sixteen genuine sessions,
 and obtain the immutable machine evaluation. Common qualitative review is available
 independently of machine outcome when evaluating replacement. The documentation-only child commit is not a substitute
 for that exact campaign HEAD.
@@ -642,14 +651,14 @@ capsule/archive, then obtain explicit operator approval of the qualified state.
 ## Artifacts
 
 - Current technical-entry candidate:
-  `825cc620da7369c5952b004eb29881769daaac64`.
+  `68e3699e77e1017896f4469ff1dd3aff11b476ce`.
 - Current copied sanitized capsule SHA-256:
-  `161deb53f55ce0c7f614c1dafbcbfac2cebe6a29551313f840100346b65eaf2b`.
+  `903b5bf33501cd646ea14e021ac78816ed1a85a0cd5f08f846ca6d8241a14d23`.
 - Current independently verified evidence archive:
-  `validation-evidence-825cc620da73.tar.gz`, 14871 bytes, 9 members, SHA-256
-  `575dd2a3fdab49b8c34977be7ffdb15469dce89bc22fd38c7f11de678ab882a4`.
+  `validation-evidence-68e3699e77e1.tar.gz`, 14847 bytes, 9 members, SHA-256
+  `31733f1be45f9dc084d99fc592a9f508de0538ca4049b17e19ed0bbfb92fed36`.
 - The capsule and archive were copied byte-for-byte before documentation to
-  `/tmp/volicord-phase8-handoff-20260913/825cc620da7369c5952b004eb29881769daaac64/`.
+  `/tmp/volicord-phase8-handoff-20260914/68e3699e77e1017896f4469ff1dd3aff11b476ce/`.
   The documentation-only conclusion HEAD is distinct from the sealed candidate.
 - Historical copied sanitized capsule SHA-256 (not current qualification):
   `841540e55d05dcc18bece5ed40c5bdd3206a660407ab85e39e325ef39a1a2954`.
