@@ -493,7 +493,7 @@
         "draft_bytes": 8388608
       },
       "human_observations": "explicit_candidate_bound_direct_human_live_observations",
-      "cli_observations": "explicit_candidate_and_evidence_bound_repository_class_process_observations",
+      "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
       "qualification_authority": false
     }
   },

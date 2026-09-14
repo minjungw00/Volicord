@@ -21,7 +21,8 @@ def snapshot(root):
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*") if p.is_file()}
 
 
-def collect_cli_fixture(campaign_root, output):
+def collect_cli_fixture(campaign_root, output, *, emitted_private_paths=None,
+                        raw_stream_identities=None):
     def cloner(source, destination, _revision):
         assert not source.resolve().is_relative_to(campaign_root.resolve())
         assert not destination.resolve().is_relative_to(campaign_root.resolve())
@@ -31,10 +32,22 @@ def collect_cli_fixture(campaign_root, output):
         kind = repository.parent.name
         return harness.git_head(c.ROOT) if kind == "volicord" else fixtures.REVISION
 
-    def runner(_binary, _runtime, _repository, argv, _directory, order, criterion):
+    def runner(binary, runtime, repository, argv, directory, order, criterion):
         logical = ["volicord", "--runtime", "<isolated-runtime>", *argv]
         stdout = f"observed {criterion or 'setup'}\n"
         stderr = "representative nonzero result\n" if criterion == "doctor_without_project_id" else ""
+        if emitted_private_paths is not None:
+            private_paths = [binary, runtime, repository, directory.parents[2],
+                directory / "portable-context.json", campaign_root, output, c.ROOT]
+            emitted_private_paths.extend(str(path.resolve(strict=False)) for path in private_paths)
+            payload = "\n".join(str(path.resolve(strict=False)) for path in private_paths) + "\n"
+            stdout += payload
+            stderr += payload
+        if raw_stream_identities is not None:
+            for stream_name, text in (("stdout", stdout), ("stderr", stderr)):
+                raw_stream_identities.append({"order": order, "criterion": criterion,
+                    "stream": stream_name, "bytes": len(text.encode()),
+                    "sha256": cli_obs.digest(text.encode())})
         return {"order": order, "criterion": criterion,
             "command_identity": cli_obs.digest(cli_obs.encoded(logical)), "argv": logical,
             "raw_argv_sha256": "1" * 64, "working_directory": "<observation-workspace>",
@@ -195,6 +208,46 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "receipt"):
             cli_obs.load(self.root, observation_root)
 
+    def test_cli_stdout_and_stderr_private_paths_do_not_enter_review_evidence(self):
+        observation_root = self.parent / (self._testMethodName + "-observations")
+        emitted_private_paths = []
+        raw_stream_identities = []
+        collect_cli_fixture(self.root, observation_root,
+            emitted_private_paths=emitted_private_paths,
+            raw_stream_identities=raw_stream_identities)
+        observation_bytes = (observation_root / "observations.json").read_bytes()
+        self.assertTrue(emitted_private_paths)
+        for private_path in set(emitted_private_paths):
+            self.assertNotIn(private_path.encode(), observation_bytes)
+        value, _data, _receipt = cli_obs.load(self.root, observation_root)
+        retained_identities = {
+            (process["order"], process["criterion"], stream_name,
+             process[stream_name]["raw_bytes"], process[stream_name]["raw_sha256"])
+            for observation in value["repository_observations"]
+            for process in observation["invocations"]
+            for stream_name in ("stdout", "stderr")
+        }
+        self.assertEqual(retained_identities, {
+            (item["order"], item["criterion"], item["stream"], item["bytes"], item["sha256"])
+            for item in raw_stream_identities
+        })
+        self.assertTrue(all(process[stream_name]["projection"]["changed"]
+            for observation in value["repository_observations"]
+            for process in observation["invocations"]
+            for stream_name in ("stdout", "stderr")))
+        self.assertEqual(value["repository_observations"][0]["invocations"][-1]["exit_code"], 7)
+
+        review_root = self.target()
+        ops.prepare(self.root, review_root, reviewer_kind="agent", session_id="path-safe-reviewer",
+            cli_observation_root=observation_root)
+        review_bytes = b"".join(
+            path.read_bytes() for path in review_root.rglob("*") if path.is_file()
+        )
+        for private_path in set(emitted_private_paths):
+            self.assertNotIn(private_path.encode(), review_bytes)
+        self.assertTrue(all(item["sha256"].encode() in review_bytes
+            for item in raw_stream_identities))
+
     def test_cli_observation_revision_and_process_integrity_fail_closed(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
         collect_cli_fixture(self.root, observation_root)
@@ -203,6 +256,8 @@ class WorkflowTests(unittest.TestCase):
             ("revision", lambda v: v["repository_observations"][1].update(repository_revision="0" * 40), "revision"),
             ("class", lambda v: v["repository_observations"][1].update(repository_class="volicord"), "classes"),
             ("process", lambda v: v["repository_observations"][0]["invocations"][1].update(exit_code=None), "exit or termination"),
+            ("raw-stream", lambda v: v["repository_observations"][0]["invocations"][1]["stdout"].update(raw_sha256="0" * 64), "projection"),
+            ("projection", lambda v: v["repository_observations"][0]["invocations"][1]["stdout"]["projection"].update(changed=True), "projection"),
         ]:
             with self.subTest(label=label):
                 changed = copy.deepcopy(original)

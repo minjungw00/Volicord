@@ -1400,13 +1400,21 @@ Naturalistic `collect-batch`와 별도로 `collect-cli-observations`는 immutabl
 candidate/evidence hash를 묶고 세 repository class의 pinned source를 각각 별도 ephemeral
 workspace와 Runtime Home에서 candidate-local CLI로 실행한다. Help, status, analyze, Recall,
 current document preview, portable-context export와 doctor의 repository-relative argv,
-bounded stdout/stderr, numeric exit 또는 explicit termination, order/time과 executable/path
-fingerprint를 append-only artifact와 receipt에 보존한다. 이 operation은 measured cycle
+bounded reviewer-safe stdout/stderr projection, raw stream byte count/SHA-256, numeric exit 또는
+explicit termination, order/time과 executable/path fingerprint를 append-only artifact와 receipt에
+보존한다. Raw stream file은 private ephemeral execution root에서 projection 뒤 제거한다. 이 operation은 measured cycle
 workspace/Runtime Home이나 campaign metadata를 mutate하지 않고, credential/environment/source
 body와 absolute private path를 보존하지 않는다. Completed nonzero result는 review evidence이며
 process evidence 누락·hash/revision/candidate mismatch는 integrity failure다. Observation의
 executable hash는 observation 시점의 self-report가 아니라 campaign preparation에서 고정한
 `volicord` artifact hash와 동일해야 하며 각 invocation 전후에 현재 bytes를 검증한다.
+Stream schema version 2는 `raw_bytes`/`raw_sha256`와 `review_text`/`review_bytes`/
+`review_sha256`를 구분하고, `private_path_substitution`의 changed state와 placeholder별 exact
+substitution count를 기록한다. Candidate executable, source/ephemeral repository, Runtime Home,
+process/output/execution root, campaign/observation root와 Product repository의 known absolute path는
+긴 exact path부터 deterministic placeholder로 바꾼다. Projection은 exit/termination, command order,
+duration, revision 또는 invocation identity를 바꾸지 않으며 generic user-text redaction이나
+Product CLI output contract가 아니다.
 
 1. `collect-batch`: immutable evidence validity/collection. Candidate, inventory, 16개
    session/task/workspace/revision mapping, required activation와 realization binding을

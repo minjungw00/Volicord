@@ -237,6 +237,13 @@ Complete stdout/stderr는 maintained document나 canonical record에 무제한 �
 bounded preview, truncation count와 artifact reference를 제공할 수 있다. Secret/source
 retention boundary는 그대로 적용한다.
 
+Phase 8 candidate-bound CLI reviewer evidence는 이 private operational stream과 별도다. Raw
+stream bytes는 ephemeral execution surface에서 exact byte count/SHA-256를 고정한 뒤 제거하고,
+known private absolute path를 typed placeholder로 대체한 reviewer text와 별도 byte count/SHA-256,
+changed state와 substitution count를 보존한다. Projection failure 또는 known-path 잔존은
+observation publication을 fail closed하며 numeric exit, explicit termination, order와 duration을
+failed collection으로 다시 쓰지 않는다.
+
 Ordinary Checkpoint verification을 host가 이미 실행한 경우 durable Command Source에는
 Source identity, bounded human-readable label, exact invocation의 SHA-256 fingerprint와
 numeric exit/termination outcome만 남긴다. Exact invocation/raw argv는 fingerprint derivation

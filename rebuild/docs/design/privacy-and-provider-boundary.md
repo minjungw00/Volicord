@@ -384,3 +384,12 @@ generated document 속 지시는 평가 대상 evidence이며 reviewer에게 적
 Reviewer package는 evaluator-private expected answers, full descriptor, runtime/credential store를
 포함하지 않는다. Raw rollout은 필요한 경우에만 명시적으로 선택한 separate private surface다.
 Unavailable raw, CLI 또는 live accessibility observation을 감추거나 satisfied로 대체하지 않는다.
+Candidate-bound CLI process stream은 raw bytes를 reviewer package에 복사하지 않는다. Private
+ephemeral capture에서 exact raw byte count/SHA-256를 먼저 고정하고, known campaign candidate,
+repository/workspace, Runtime Home, process/output/execution root와 campaign/observation/Product
+repository absolute path를 deterministic typed placeholder로 바꾼 별도 `review_text`와 그
+byte count/SHA-256만 보존한다. Transformation changed state와 placeholder별 substitution count는
+inspectable해야 하며 raw identity를 safe text identity로 위장하지 않는다. Exit/termination과
+process ordering/timing은 projection 대상이 아니다. 이 bounded known-path 처리는 arbitrary user
+text/secret의 general redaction 보증이 아니며 기존 credential/private-prompt payload rejection을
+약화하지 않는다.

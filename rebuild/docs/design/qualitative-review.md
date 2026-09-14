@@ -100,7 +100,8 @@ preview, portable-context export, and doctor journeys without `--project` or a P
 
 The append-only observation set binds the exact Product candidate, evidence-set hash,
 repository class/revision, candidate executable hash, opaque workspace/runtime identities and
-path fingerprints, invocation identity/order, bounded stdout/stderr, timestamps, duration,
+path fingerprints, invocation identity/order, bounded reviewer-safe stdout/stderr, exact raw-stream
+byte count/SHA-256, timestamps, duration,
 and numeric exit or explicit termination. A completed nonzero invocation remains reviewable;
 missing or incomplete process evidence is rejected. Absolute paths, environment variables,
 credentials, repository source, Runtime contents, and measured naturalistic workspaces are not
@@ -109,6 +110,18 @@ change. The executable hash is the immutable `volicord` artifact hash fixed by c
 preparation, not a hash self-reported from whatever bytes occupy the path after execution.
 Every invocation verifies the current bytes before and after use; a same-path replacement
 rejects collection and cannot enter reviewer evidence.
+
+CLI observation/receipt schema version 2 names retained text `review_text`, never raw text.
+Each stream separately records `raw_bytes`/`raw_sha256` and the retained
+`review_bytes`/`review_sha256`. When the candidate prints a known private candidate executable,
+source/ephemeral repository, Runtime Home, process/output/execution root, campaign/observation
+root or Product repository path, the collector substitutes deterministic typed placeholders and
+records explicit changed state plus the count for each placeholder. Raw stream files remain only
+in the private ephemeral execution root and are removed after projection. This path projection
+does not rewrite exit/termination, order, duration, revision or invocation identity, and it is not
+general-purpose redaction of arbitrary user output. Review-package construction revalidates that
+known retained private paths are absent while applying the existing sensitive-payload checks to
+the reviewer text.
 
 ```sh
 rebuild/scripts/dogfood-campaign collect-cli-observations \

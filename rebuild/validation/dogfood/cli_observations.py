@@ -68,6 +68,59 @@ def stream_value(path: Path) -> dict[str, Any]:
     return {"encoding": "utf-8", "text": text, "bytes": len(data), "sha256": digest(data)}
 
 
+def private_path_replacements(*entries: tuple[str, Path]) -> list[tuple[str, str]]:
+    by_path: dict[str, str] = {}
+    for label, path in entries:
+        value = str(path.resolve(strict=False))
+        require(Path(value).is_absolute() and value != "/", "invalid private path projection input")
+        by_path.setdefault(value, f"<private:{label}>")
+    return sorted(by_path.items(), key=lambda item: (-len(item[0]), item[0]))
+
+
+def project_stream(stream: Any, replacements: list[tuple[str, str]]) -> dict[str, Any]:
+    require(isinstance(stream, dict) and set(stream) == {"encoding", "text", "bytes", "sha256"}
+        and stream["encoding"] == "utf-8" and isinstance(stream["text"], str),
+        "CLI raw stream identity is incomplete")
+    raw = stream["text"].encode()
+    require(stream["bytes"] == len(raw) <= MAX_STREAM_BYTES and stream["sha256"] == digest(raw),
+        "CLI raw stream bytes/hash changed")
+    review_text = stream["text"]
+    substitutions = []
+    for private_path, placeholder in replacements:
+        count = review_text.count(private_path)
+        if count:
+            review_text = review_text.replace(private_path, placeholder)
+            substitutions.append({"placeholder": placeholder, "count": count})
+    review = review_text.encode()
+    require(len(review) <= MAX_STREAM_BYTES, "CLI review stream exceeds the bounded stream limit")
+    return {"encoding": "utf-8", "raw_bytes": len(raw), "raw_sha256": digest(raw),
+        "review_text": review_text, "review_bytes": len(review), "review_sha256": digest(review),
+        "projection": {"kind": "private_path_substitution", "schema_version": 1,
+            "changed": review != raw, "substitutions": substitutions}}
+
+
+def retained_private_paths(campaign_root: Path, observation_root: Path,
+                           campaign: dict[str, Any], repository_input: Any) -> set[str]:
+    c = campaign_api()
+    paths = {campaign_root.resolve(), observation_root.resolve(), c.ROOT.resolve()}
+    if observation_root.resolve().parent != Path("/"):
+        paths.add(observation_root.resolve().parent)
+    paths.update(Path(binding["path"]).resolve()
+                 for binding in campaign["candidate_artifacts"].values())
+    paths.update(Path(spec["path"]).resolve()
+                 for spec in c.repository_spec_map(repository_input).values())
+    return {str(path) for path in paths if str(path) != "/"}
+
+
+def require_reviewer_streams_path_safe(value: dict[str, Any], forbidden_paths: set[str]) -> None:
+    for observation in value["repository_observations"]:
+        for process in observation["invocations"]:
+            for name in ("stdout", "stderr"):
+                text = process[name]["review_text"]
+                require(not any(path in text for path in forbidden_paths),
+                    "CLI reviewer stream retained a private absolute path")
+
+
 def run_process(binary: Path, runtime: Path, repository: Path, user_argv: list[str],
                 directory: Path, order: int, criterion: str | None) -> dict[str, Any]:
     directory.mkdir(parents=True)
@@ -138,10 +191,32 @@ def validate_process(value: Any, criterion: str | None, expected_argv: list[str]
         and re.fullmatch(r"[0-9a-f]{64}", str(value["raw_argv_sha256"])), "invalid CLI process identity/order")
     for name in ("stdout", "stderr"):
         stream = value[name]
-        require(isinstance(stream, dict) and set(stream) == {"encoding", "text", "bytes", "sha256"}
-            and stream["encoding"] == "utf-8" and isinstance(stream["text"], str)
-            and stream["bytes"] == len(stream["text"].encode()) <= MAX_STREAM_BYTES
-            and stream["sha256"] == digest(stream["text"].encode()), "CLI stream bytes/hash changed")
+        require(isinstance(stream, dict) and set(stream) == {"encoding", "raw_bytes", "raw_sha256",
+            "review_text", "review_bytes", "review_sha256", "projection"}
+            and stream["encoding"] == "utf-8" and isinstance(stream["review_text"], str)
+            and type(stream["raw_bytes"]) is int and 0 <= stream["raw_bytes"] <= MAX_STREAM_BYTES
+            and re.fullmatch(r"[0-9a-f]{64}", str(stream["raw_sha256"]))
+            and stream["review_bytes"] == len(stream["review_text"].encode()) <= MAX_STREAM_BYTES
+            and stream["review_sha256"] == digest(stream["review_text"].encode()),
+            "CLI stream raw/review identity changed")
+        projection = stream["projection"]
+        substitutions = projection.get("substitutions") if isinstance(projection, dict) else None
+        require(isinstance(projection, dict) and set(projection) == {"kind", "schema_version", "changed", "substitutions"}
+            and projection["kind"] == "private_path_substitution" and projection["schema_version"] == 1
+            and isinstance(projection["changed"], bool) and isinstance(substitutions, list)
+            and projection["changed"] == (stream["raw_sha256"] != stream["review_sha256"]
+                or stream["raw_bytes"] != stream["review_bytes"])
+            and projection["changed"] == bool(substitutions), "invalid CLI stream projection metadata")
+        placeholders = []
+        for substitution in substitutions:
+            require(isinstance(substitution, dict) and set(substitution) == {"placeholder", "count"}
+                and re.fullmatch(r"<private:[a-z0-9-]+>", str(substitution["placeholder"]))
+                and type(substitution["count"]) is int and substitution["count"] >= 1,
+                "invalid CLI stream path substitution metadata")
+            placeholders.append(substitution["placeholder"])
+        require(len(placeholders) == len(set(placeholders))
+            and all(stream["review_text"].count(placeholder) >= 1 for placeholder in placeholders),
+            "invalid CLI stream path substitution metadata")
     exited = value["termination"] == "exited"
     terminated = isinstance(value["termination"], dict) and value["termination"].get("kind") in {"signal", "timeout"}
     require((exited and type(value["exit_code"]) is int and 0 <= value["exit_code"] <= 255)
@@ -155,7 +230,7 @@ def validate_value(value: Any, *, candidate_head: str, evidence_sha256: str,
         "candidate_head", "evidence_set_sha256", "candidate_executable", "execution_root_identity",
         "created_at", "repository_observations", "naturalistic_campaign_mutated"},
         "invalid CLI observation artifact")
-    require(value["kind"] == "phase8_cli_observation_set" and value["schema_version"] == 1
+    require(value["kind"] == "phase8_cli_observation_set" and value["schema_version"] == 2
         and value["candidate_head"] == candidate_head and value["evidence_set_sha256"] == evidence_sha256,
         "CLI observation candidate/evidence binding mismatch")
     require(re.fullmatch(r"[0-9a-f]{32}", str(value["observation_run_id"]))
@@ -199,6 +274,8 @@ def validate_value(value: Any, *, candidate_head: str, evidence_sha256: str,
 def load(campaign_root: Path, observation_root: Path) -> tuple[dict[str, Any], bytes, bytes]:
     c = campaign_api()
     manifest = c.load_evidence_set(campaign_root)
+    campaign = c.load_campaign(campaign_root)
+    repository_input = c.read_json(campaign_root / "repository-input.json")
     bound = manifest["candidate_artifacts"]["volicord"]
     candidate_executable = {"name": "volicord", "sha256": bound["sha256"],
         "path_sha256": path_fingerprint(Path(bound["path"]))}
@@ -219,7 +296,9 @@ def load(campaign_root: Path, observation_root: Path) -> tuple[dict[str, Any], b
         revisions[kind] = found.pop()
     validate_value(value, candidate_head=manifest["candidate_head"], evidence_sha256=evidence_sha256,
                    revisions=revisions, candidate_executable=candidate_executable)
-    require(receipt == {"kind": "phase8_cli_observation_receipt", "schema_version": 1,
+    require_reviewer_streams_path_safe(value,
+        retained_private_paths(campaign_root, observation_root, campaign, repository_input))
+    require(receipt == {"kind": "phase8_cli_observation_receipt", "schema_version": 2,
         "observation_run_id": value["observation_run_id"], "candidate_head": value["candidate_head"],
         "evidence_set_sha256": evidence_sha256, "observations_sha256": digest(data)},
         "CLI observation bytes/hash receipt mismatch")
@@ -269,8 +348,24 @@ def collect(campaign_root: Path, output: Path, *,
             invocations = []
             for order, (criterion, argv) in enumerate(zip(criteria, commands), start=1):
                 with c.candidate_artifact_use(campaign, ("volicord",)):
-                    invocations.append(runner(binary, runtime, repository, list(argv),
-                        execution_root / "processes" / kind / f"{order:02d}", order, criterion))
+                    process_directory = execution_root / "processes" / kind / f"{order:02d}"
+                    process = runner(binary, runtime, repository, list(argv),
+                        process_directory, order, criterion)
+                replacements = private_path_replacements(
+                    ("observation-output", process_directory / "portable-context.json"),
+                    ("process-output", process_directory),
+                    ("workspace", repository), ("runtime-home", runtime),
+                    *(("candidate-" + name, Path(binding["path"]))
+                      for name, binding in campaign["candidate_artifacts"].items()),
+                    ("source-repository", source), ("execution-root", execution_root),
+                    ("observation-root", output), ("campaign-root", campaign_root),
+                    ("product-repository", c.ROOT),
+                    *((("observation-parent", output.parent),)
+                      if output.parent != Path("/") else ()),
+                )
+                process["stdout"] = project_stream(process.get("stdout"), replacements)
+                process["stderr"] = project_stream(process.get("stderr"), replacements)
+                invocations.append(process)
             observations.append({"repository_class": kind, "repository_revision": revision,
                 "workspace": {"identity": secrets.token_hex(16),
                     "path_basis": f"workspaces/{kind}/repository", "absolute_path_sha256": path_fingerprint(repository)},
@@ -278,7 +373,7 @@ def collect(campaign_root: Path, output: Path, *,
                     "path_basis": f"runtimes/{kind}", "absolute_path_sha256": path_fingerprint(runtime)},
                 "repository_revision_after": revision_reader(repository),
                 "repository_clean_after": clean_reader(repository), "invocations": invocations})
-        value = {"kind": "phase8_cli_observation_set", "schema_version": 1,
+        value = {"kind": "phase8_cli_observation_set", "schema_version": 2,
             "observation_run_id": observation_run_id, "candidate_head": manifest["candidate_head"],
             "evidence_set_sha256": c.harness.sha256(campaign_root / "evidence-set.json"),
             "candidate_executable": candidate_executable, "execution_root_identity": secrets.token_hex(16),
@@ -288,9 +383,12 @@ def collect(campaign_root: Path, output: Path, *,
         validate_value(value, candidate_head=manifest["candidate_head"],
             evidence_sha256=value["evidence_set_sha256"], revisions=revisions,
             candidate_executable=candidate_executable)
+        require_reviewer_streams_path_safe(value,
+            retained_private_paths(campaign_root, output, campaign,
+                c.read_json(campaign_root / "repository-input.json")))
         data = encoded(value)
         require(len(data) <= MAX_ARTIFACT_BYTES, "CLI observation artifact exceeds its bound")
-        receipt = {"kind": "phase8_cli_observation_receipt", "schema_version": 1,
+        receipt = {"kind": "phase8_cli_observation_receipt", "schema_version": 2,
             "observation_run_id": observation_run_id, "candidate_head": manifest["candidate_head"],
             "evidence_set_sha256": value["evidence_set_sha256"], "observations_sha256": digest(data)}
         for name, original in before.items():

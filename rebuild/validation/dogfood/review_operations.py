@@ -74,7 +74,7 @@ def workflow_contract():
         "artifact_limits": {"files": MAX_FILES, "file_bytes": MAX_FILE_BYTES, "raw_file_bytes": MAX_RAW_BYTES,
             "package_bytes": MAX_PACKAGE_BYTES, "draft_bytes": MAX_DRAFT_BYTES},
         "human_observations": "explicit_candidate_bound_direct_human_live_observations",
-        "cli_observations": "explicit_candidate_and_evidence_bound_repository_class_process_observations",
+        "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
         "qualification_authority": False}
 
 
