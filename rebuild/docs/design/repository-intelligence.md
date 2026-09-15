@@ -552,13 +552,28 @@ failure/recovery policy, generated-document rendering과 legacy data path도 정
 
 Local snapshot selection은 Project/format/filename identity와 observation-time ordering을
 검사하는 작은 header를 먼저 읽고, 최신 snapshot graph 하나만 decode한다. Header read는
-큰 payload를 건너뛰되 JSON syntax를 검사한다. Header cache는 file size/modified time에
+큰 graph blob을 건드리지 않고 manifest syntax를 검사한다. Header cache는 file size/modified time에
 bound된 최대 64개 항목이며 graph를 장기 보유하지 않는다. 선택된 payload는 다시 full
 schema/identity 검사를 통과해야 한다. 명시적 health/repair 진단은 historical snapshot도
 하나씩 full decode하여 corruption을 보고한다. 최신 graph를 읽는 projection과 전체
 store 진단은 다른 책임이며, 최신 payload 실패를 과거 graph의 current 판정으로 숨기지
-않는다. Snapshot publication은 JSON을 임시 파일에 stream하고 기존 atomic/no-replace 및
-sync 책임을 보존한다. Pretty-printing은 durable meaning의 일부가 아니다.
+않는다. Snapshot publication은 normalized JSON shape 조각과 value stream을 content
+identity로 먼저 no-replace 게시한 뒤 lightweight manifest를 마지막에 atomic/no-replace
+게시하고 sync 책임을 보존한다. 동일 shape blob과 complete value base는 snapshot 사이에서
+공유하고, 이후 value stream은 complete base에 대한 bounded delta가 더 작을 때만 delta로
+게시한다. Manifest는 exact Analysis Snapshot identity/history와 payload blob identity를
+보존한다. Reader는 blob content identity를 확인하고 원래 JSON token stream을 복원한 뒤
+exact current Analysis Snapshot schema를 검사한다. 이는 별도 old/new decoder가 아니다.
+Pretty-printing과 physical blob partition은 durable domain meaning의 일부가 아니다.
+
+Blob collection root는 성공적으로 게시된 모든 retained Analysis manifest가 명시한 shape,
+value 및 complete-value base다. Candidate, Checkpoint-derived work authority, provider request,
+managed derived evidence가 명시한 historical Analysis identity는 그 immutable manifest가
+retained되는 동안 계속 reachable하다. Ordinary analysis와 forced reindex는 readable history를
+삭제하지 않는다. Repair는 새 complete root를 먼저 게시하고 이미 unreadable한 manifest만
+detach한 뒤 어떤 retained manifest에서도 reachable하지 않은 crash residue blob만 삭제한다.
+불명확하거나 읽을 수 없는 manifest가 있으면 ordinary collection은 fail closed한다. 따라서
+canonical context는 blob 생존에 의존하지 않으며 orphan Derived blob은 실제 회수 가능하다.
 
 Bounded work의 Materiality Review/revision, executable scope와 Checkpoint가 이미 읽은
 baseline은 structural refresh의 previous input으로 재사용한다. 현재 inventory와 content/

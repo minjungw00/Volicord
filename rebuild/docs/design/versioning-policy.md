@@ -96,6 +96,14 @@ coverage, diagnostics, provenance와 freshness representation을 식별한다.
 Adapter-native cache/version은 이 common Analysis Snapshot version과 별개일 수 있지만
 공통 consumer에게 native version만 노출해 normalized contract check를 생략할 수 없다.
 
+Current local persistence는 exact-current Analysis Snapshot JSON token stream을 normalized
+shape/value content-addressed blob과 lightweight manifest로 분할한다. Manifest는 current
+Analysis Snapshot kind/version을 먼저 노출하고 blob integrity/binding을 검증하며, reader는
+복원 후 같은 단일 current domain decoder만 호출한다. Shape chunk, complete value base와
+value delta는 이 current representation 내부 storage strategy이지 서로 다른 숫자 version,
+legacy input 또는 parallel production decoder가 아니다. 이전 full-JSON Runtime Home을
+감지·decode·migrate하는 호환 경로는 제공하지 않는다.
+
 ## 6. Derived Index version
 
 Derived Index version은 full-text/semantic index, graph, embedding, fingerprint cache,

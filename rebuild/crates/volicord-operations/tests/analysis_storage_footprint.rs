@@ -57,13 +57,14 @@ fn reports_graph_scale_dominance_repeat_delta_and_allocated_bytes(
         repeated > 100_000,
         "fixture must expose meaningful full-copy growth: {repeated}"
     );
-    assert_eq!(
-        report.logical_bytes,
-        report
-            .snapshots
-            .iter()
-            .map(|item| item.logical_bytes)
-            .sum::<u64>()
+    assert!(
+        report.logical_bytes
+            < report
+                .snapshots
+                .iter()
+                .map(|item| item.logical_bytes)
+                .sum::<u64>(),
+        "content-addressed blobs must be counted once in the aggregate"
     );
     #[cfg(unix)]
     assert!(report.physical_bytes.is_some());
@@ -87,6 +88,15 @@ fn reports_graph_scale_dominance_repeat_delta_and_allocated_bytes(
         );
         assert!(snapshot.bytes_per_graph_item > 0);
     }
+    let full_graph_json = report.snapshots[0]
+        .sections
+        .iter()
+        .map(|section| section.logical_bytes)
+        .sum::<u64>();
+    assert!(
+        repeated * 2 < full_graph_json,
+        "repeat delta {repeated} must not approach another full snapshot {full_graph_json}"
+    );
     Ok(())
 }
 
@@ -114,5 +124,70 @@ fn reports_changed_content_overlap_separately_from_snapshot_growth(
         "unexpected overlap {overlap}"
     );
     assert_eq!(report.unchanged_repeat_delta_bytes, None);
+    Ok(())
+}
+
+#[test]
+fn shared_storage_survives_restart_retains_history_and_collects_only_orphans(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture(24)?;
+    let project = fixture
+        .operations
+        .initialize_project("Storage lifecycle", Some(&fixture.repository))?
+        .project
+        .id;
+    let first = fixture
+        .operations
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("first analysis")?;
+    let blob_directory = first
+        .stored_at
+        .parent()
+        .ok_or("analysis parent")?
+        .join("blobs");
+    let orphan = blob_directory.join(format!("{}.shape", "0".repeat(64)));
+    fs::write(&orphan, b"interrupted-unreachable-publication")?;
+
+    let restarted = LocalOperations::new(fixture.operations.layout().clone());
+    let second = restarted
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("second analysis")?;
+    assert_ne!(first.analysis.identity, second.analysis.identity);
+    assert!(
+        first.stored_at.exists(),
+        "immutable historical manifest was discarded"
+    );
+    assert!(
+        !orphan.exists(),
+        "unreachable crash residue was not reclaimed"
+    );
+    let report = restarted.analysis_storage_footprint(project)?;
+    let repeat = report.unchanged_repeat_delta_bytes.ok_or("repeat delta")?;
+    let equivalent_full = report.snapshots[0]
+        .sections
+        .iter()
+        .map(|section| section.logical_bytes)
+        .sum::<u64>();
+    assert!(repeat * 2 < equivalent_full);
+
+    fs::write(
+        fixture.repository.join("src/changed.py"),
+        "def changed():\n    return True\n",
+    )?;
+    let changed = restarted
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("changed analysis")?;
+    assert!(first.stored_at.exists());
+    assert!(second.stored_at.exists());
+    assert!(changed.stored_at.exists());
+    assert!(changed
+        .analysis
+        .inventory
+        .entries
+        .iter()
+        .any(|entry| entry.area.path == "src/changed.py"));
     Ok(())
 }

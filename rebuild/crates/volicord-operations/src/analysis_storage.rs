@@ -53,44 +53,36 @@ impl LocalOperations {
         let mut snapshots = Vec::new();
         let mut decoded = Vec::new();
         for path in self.analysis_paths(project_id)? {
-            let analysis: AnalysisSnapshot = crate::analysis_io::read_json(&path)?;
+            let analysis = crate::analysis_io::read_analysis(&path)?;
+            let manifest = crate::analysis_io::read_manifest(&path)?;
             snapshots.push(measure_file(&path, &analysis)?);
-            decoded.push(analysis);
+            decoded.push((analysis, manifest, path));
         }
         snapshots.sort_by_key(|value| value.analysis_snapshot);
-        decoded.sort_by_key(|value| value.identity);
-        let logical_bytes = snapshots.iter().map(|value| value.logical_bytes).sum();
-        let physical_bytes = snapshots
-            .iter()
-            .map(|value| value.physical_bytes)
-            .collect::<Option<Vec<_>>>()
-            .map(|values| values.into_iter().sum());
+        decoded.sort_by_key(|value| (value.0.generated_at_unix_micros, value.0.identity));
+        let (logical_bytes, physical_bytes, blob_count) =
+            allocated_tree(&self.layout().analysis_project_dir(project_id))?;
         let unchanged_repeat_delta_bytes = decoded
             .windows(2)
             .filter(|pair| {
-                inventory_overlap(&pair[0].inventory.entries, &pair[1].inventory.entries)
+                inventory_overlap(&pair[0].0.inventory.entries, &pair[1].0.inventory.entries)
                     == 1_000_000
             })
             .last()
-            .and_then(|pair| {
-                snapshots
-                    .iter()
-                    .find(|item| item.analysis_snapshot == pair[1].identity)
-            })
-            .map(|item| item.logical_bytes);
-        let reusable_content_overlap_millionths = decoded
-            .windows(2)
-            .last()
-            .map(|pair| inventory_overlap(&pair[0].inventory.entries, &pair[1].inventory.entries));
+            .map(|pair| incremental_bytes(&pair[0].1, &pair[1].1, &pair[1].2))
+            .transpose()?;
+        let reusable_content_overlap_millionths = decoded.windows(2).last().map(|pair| {
+            inventory_overlap(&pair[0].0.inventory.entries, &pair[1].0.inventory.entries)
+        });
         let identities = decoded
             .iter()
-            .map(|value| value.identity)
+            .map(|value| value.0.identity)
             .collect::<Vec<_>>();
         let reachable_from = self.analysis_reachability(project_id, &identities)?;
         Ok(AnalysisStorageFootprint {
             project_id,
             snapshot_count: snapshots.len() as u64,
-            blob_count: 0,
+            blob_count,
             logical_bytes,
             physical_bytes,
             unchanged_repeat_delta_bytes,
@@ -200,8 +192,24 @@ fn collect_named_references(
 fn measure_file(path: &Path, analysis: &AnalysisSnapshot) -> Result<AnalysisFileFootprint, Error> {
     let bytes = fs::read(path)
         .map_err(|error| Error::with_source("cannot measure Analysis Snapshot", error))?;
-    let metadata = fs::metadata(path)
-        .map_err(|error| Error::with_source("cannot inspect Analysis Snapshot", error))?;
+    let manifest = crate::analysis_io::read_manifest(path)?;
+    let blobs = crate::analysis_io::blob_dir(path)?;
+    let mut paths = vec![path.to_path_buf()];
+    paths.extend(
+        manifest
+            .shape_blobs
+            .iter()
+            .map(|hash| blobs.join(format!("{hash}.shape"))),
+    );
+    paths.push(blobs.join(format!("{}.values", manifest.values_blob)));
+    if let Some(base) = &manifest.values_base_blob {
+        paths.push(blobs.join(format!("{base}.values")));
+    }
+    let metadata = paths
+        .iter()
+        .map(fs::metadata)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| Error::with_source("cannot inspect Analysis Snapshot storage", error))?;
     let entity_count = analysis.structural_facts.len() as u64;
     let relation_count = analysis
         .structural_facts
@@ -224,18 +232,87 @@ fn measure_file(path: &Path, analysis: &AnalysisSnapshot) -> Result<AnalysisFile
     ];
     Ok(AnalysisFileFootprint {
         analysis_snapshot: analysis.identity,
-        logical_bytes: metadata.len(),
-        physical_bytes: physical_bytes(&metadata),
+        logical_bytes: metadata.iter().map(fs::Metadata::len).sum(),
+        physical_bytes: physical_supported()
+            .then(|| metadata.iter().filter_map(physical_bytes).sum()),
         entity_count,
         relation_count,
         bytes_per_graph_item: if graph_items == 0 {
             0
         } else {
-            metadata.len() / graph_items
+            manifest.logical_json_bytes / graph_items
         },
         sections,
         content_sha256: format!("{:x}", Sha256::digest(bytes)),
     })
+}
+
+fn allocated_tree(root: &Path) -> Result<(u64, Option<u64>, u64), Error> {
+    if !root.exists() {
+        return Ok((0, physical_supported().then_some(0), 0));
+    }
+    let mut logical = 0_u64;
+    let mut physical = 0_u64;
+    let mut blobs = 0_u64;
+    for entry in fs::read_dir(root)
+        .map_err(|error| Error::with_source("cannot inspect Analysis storage", error))?
+    {
+        let path = entry
+            .map_err(|error| Error::with_source("cannot inspect Analysis storage entry", error))?
+            .path();
+        if path.is_dir() {
+            for blob in fs::read_dir(path)
+                .map_err(|error| Error::with_source("cannot inspect Analysis blobs", error))?
+            {
+                let metadata = blob
+                    .map_err(|error| Error::with_source("cannot inspect Analysis blob", error))?
+                    .metadata()
+                    .map_err(|error| Error::with_source("cannot inspect Analysis blob", error))?;
+                logical += metadata.len();
+                physical += physical_bytes(&metadata).unwrap_or(0);
+                blobs += 1;
+            }
+        } else {
+            let metadata = fs::metadata(path)
+                .map_err(|error| Error::with_source("cannot inspect Analysis manifest", error))?;
+            logical += metadata.len();
+            physical += physical_bytes(&metadata).unwrap_or(0);
+        }
+    }
+    Ok((logical, physical_supported().then_some(physical), blobs))
+}
+
+fn incremental_bytes(
+    previous: &crate::analysis_io::AnalysisManifest,
+    current: &crate::analysis_io::AnalysisManifest,
+    path: &Path,
+) -> Result<u64, Error> {
+    let mut bytes = fs::metadata(path)
+        .map_err(|error| Error::with_source("cannot inspect Analysis manifest", error))?
+        .len();
+    let blobs = crate::analysis_io::blob_dir(path)?;
+    for hash in current
+        .shape_blobs
+        .iter()
+        .filter(|hash| !previous.shape_blobs.contains(hash))
+    {
+        bytes += fs::metadata(blobs.join(format!("{hash}.shape")))
+            .map_err(|error| Error::with_source("cannot inspect Analysis shape", error))?
+            .len();
+    }
+    if current.values_blob != previous.values_blob {
+        bytes += fs::metadata(blobs.join(format!("{}.values", current.values_blob)))
+            .map_err(|error| Error::with_source("cannot inspect Analysis values", error))?
+            .len();
+    }
+    if let Some(base) = &current.values_base_blob {
+        if previous.values_blob != *base && previous.values_base_blob.as_ref() != Some(base) {
+            bytes += fs::metadata(blobs.join(format!("{base}.values")))
+                .map_err(|error| Error::with_source("cannot inspect Analysis values base", error))?
+                .len();
+        }
+    }
+    Ok(bytes)
 }
 
 fn section(name: &str, value: &impl Serialize) -> Result<AnalysisSectionFootprint, Error> {
@@ -257,6 +334,16 @@ fn physical_bytes(metadata: &fs::Metadata) -> Option<u64> {
 #[cfg(not(unix))]
 fn physical_bytes(_metadata: &fs::Metadata) -> Option<u64> {
     None
+}
+
+#[cfg(unix)]
+fn physical_supported() -> bool {
+    true
+}
+
+#[cfg(not(unix))]
+fn physical_supported() -> bool {
+    false
 }
 
 fn inventory_overlap(left: &[InventoryEntry], right: &[InventoryEntry]) -> u64 {

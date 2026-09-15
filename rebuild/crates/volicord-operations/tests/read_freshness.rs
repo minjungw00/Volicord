@@ -89,6 +89,10 @@ fn public_reads_compare_source_changes_without_persisting_new_observations() {
         assert_eq!(
             fs::read_dir(operations.layout().analysis_project_dir(project))
                 .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| {
+                    entry.path().extension().and_then(|value| value.to_str()) == Some("json")
+                })
                 .count(),
             1
         );

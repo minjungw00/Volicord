@@ -334,7 +334,7 @@ pub struct AnalysisSnapshot {
 }
 
 /// A typed metadata read of an Analysis Snapshot; does not claim to validate or contain its graph.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(try_from = "AnalysisMetadataWire")]
 pub struct AnalysisMetadata {
     pub format_kind: String,

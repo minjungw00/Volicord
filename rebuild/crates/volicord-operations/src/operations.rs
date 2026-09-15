@@ -1,4 +1,4 @@
-use crate::analysis_io::{read_json, AnalysisHeader};
+use crate::analysis_io::{encode_analysis, read_analysis, AnalysisHeader};
 use crate::forgetting::{ForgettingOperationRecord, ForgettingState, ForgettingStore};
 use crate::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
@@ -29,7 +29,7 @@ use std::{
     error::Error as StdError,
     ffi::{OsStr, OsString},
     fs::{self, OpenOptions},
-    io::{BufWriter, Write},
+    io::Write,
     path::{Path, PathBuf},
     time::{Duration, Instant, SystemTime},
 };
@@ -3467,48 +3467,44 @@ impl LocalOperations {
         })?;
         let path = directory.join(format!("{}.json", analysis.identity));
         publish_analysis(&path, analysis)?;
+        collect_orphan_analysis_blobs(&directory)?;
         Ok(path)
     }
 
     fn replace_analysis(&self, analysis: &AnalysisSnapshot) -> Result<PathBuf, Error> {
         let _mutation = self.layout.acquire_mutation_lock()?;
         let project_id = analysis.project.identity();
-        let base = self.layout.analysis_dir();
-        fs::create_dir_all(&base)
-            .map_err(|error| Error::with_source("cannot create analysis directory", error))?;
         let destination = self.layout.analysis_project_dir(project_id);
-        let staging = base.join(format!(".staging-{project_id}-{}", analysis.identity));
-        let replaced = base.join(format!(".replaced-{project_id}-{}", analysis.identity));
-        volicord_local_platform::ensure_private_directory(&staging).map_err(|error| {
-            Error::with_source("cannot stage private Project analysis replacement", error)
+        volicord_local_platform::ensure_private_directory(&destination).map_err(|error| {
+            Error::with_source("cannot create private Project analysis directory", error)
         })?;
         let file_name = format!("{}.json", analysis.identity);
-        if let Err(error) = publish_analysis(&staging.join(&file_name), analysis) {
-            let _ = fs::remove_dir_all(&staging);
-            return Err(error);
-        }
-        let had_previous = destination.exists();
-        if had_previous {
-            fs::rename(&destination, &replaced).map_err(|error| {
-                Error::with_source("cannot isolate prior Project analysis", error)
-            })?;
-        }
-        if let Err(error) = fs::rename(&staging, &destination) {
-            if had_previous {
-                let _ = fs::rename(&replaced, &destination);
+        let path = destination.join(&file_name);
+        publish_analysis(&path, analysis)?;
+        // A repair publishes a complete new root first. Readable immutable history is retained;
+        // only payloads already proven unusable are then detached.
+        for entry in fs::read_dir(&destination)
+            .map_err(|error| Error::with_source("cannot inspect repaired analysis", error))?
+        {
+            let candidate = entry
+                .map_err(|error| {
+                    Error::with_source("cannot inspect repaired analysis entry", error)
+                })?
+                .path();
+            if candidate == path || candidate.extension().and_then(OsStr::to_str) != Some("json") {
+                continue;
             }
-            let _ = fs::remove_dir_all(&staging);
-            return Err(Error::with_source(
-                "cannot publish Project analysis replacement",
-                error,
-            ));
+            if AnalysisHeader::read(&candidate, project_id)
+                .and_then(|header| read_analysis(&candidate).map(|snapshot| (header, snapshot)))
+                .is_err()
+            {
+                fs::remove_file(&candidate).map_err(|error| {
+                    Error::with_source("cannot detach corrupt Analysis manifest", error)
+                })?;
+            }
         }
-        if had_previous {
-            fs::remove_dir_all(&replaced).map_err(|error| {
-                Error::with_source("cannot discard replaced Project analysis", error)
-            })?;
-        }
-        Ok(destination.join(file_name))
+        collect_orphan_analysis_blobs(&destination)?;
+        Ok(path)
     }
 
     fn project_analysis_entry_count(&self, project_id: ProjectId) -> Result<u64, Error> {
@@ -3518,7 +3514,14 @@ impl LocalOperations {
         }
         fs::read_dir(directory)
             .map_err(|error| Error::with_source("cannot inspect Project analysis directory", error))
-            .map(|entries| entries.count() as u64)
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .filter(|entry| {
+                        entry.path().extension().and_then(OsStr::to_str) == Some("json")
+                    })
+                    .count() as u64
+            })
     }
 
     fn observe_projection_repository(
@@ -3616,7 +3619,7 @@ impl LocalOperations {
         let paths = self.analysis_paths(project_id)?;
         for path in &paths {
             let header = AnalysisHeader::read(path, project_id)?;
-            let snapshot: AnalysisSnapshot = read_json(path)?;
+            let snapshot = read_analysis(path)?;
             if !header.matches(&snapshot) {
                 return Err(Error::new("Analysis Snapshot changed during validation"));
             }
@@ -3667,7 +3670,7 @@ impl LocalOperations {
         let Some((header, path)) = self.select_analysis(project_id)? else {
             return Ok(Vec::new());
         };
-        let value: AnalysisSnapshot = read_json(&path)?;
+        let value = read_analysis(&path)?;
         if !header.matches(&value) {
             return Err(Error::new("Analysis Snapshot changed during selection"));
         }
@@ -3682,7 +3685,7 @@ impl LocalOperations {
         let Some((header, path)) = self.select_analysis(project_id)? else {
             return Ok(Vec::new());
         };
-        let mut value: AnalysisMetadata = read_json(&path)?;
+        let mut value = crate::analysis_io::read_manifest(&path)?.metadata;
         if value.project.identity() != project_id
             || value.identity != header.identity
             || value.generated_at_unix_micros != header.generated_at_unix_micros
@@ -3711,7 +3714,7 @@ impl LocalOperations {
             .layout
             .analysis_project_dir(project_id)
             .join(format!("{analysis_id}.json"));
-        let value: AnalysisSnapshot = read_json(&path)?;
+        let value = read_analysis(&path)?;
         if value.identity != analysis_id || value.project.identity() != project_id {
             return Err(Error::new(
                 "baseline Analysis Snapshot identity or Project binding is incompatible",
@@ -4033,11 +4036,84 @@ fn publish_analysis(
     destination: &Path,
     analysis: &AnalysisSnapshot,
 ) -> Result<PublicationOutcome, Error> {
-    publish_with(destination, |file| {
-        let mut writer = BufWriter::new(file);
-        serde_json::to_writer(&mut writer, analysis).map_err(std::io::Error::other)?;
-        writer.flush()
-    })
+    let project_directory = destination
+        .parent()
+        .ok_or_else(|| Error::new("Analysis destination has no Project directory"))?;
+    let base_values = crate::analysis_io::reusable_base_values(project_directory)?;
+    let encoded = encode_analysis(analysis, base_values)?;
+    let blob_directory = crate::analysis_io::blob_dir(destination)?;
+    volicord_local_platform::ensure_private_directory(&blob_directory).map_err(|error| {
+        Error::with_source("cannot create private Analysis blob directory", error)
+    })?;
+    for (hash, shape) in &encoded.shapes {
+        publish_content_blob(&blob_directory.join(format!("{hash}.shape")), shape)?;
+    }
+    publish_content_blob(
+        &blob_directory.join(format!("{}.values", encoded.values_hash)),
+        &encoded.values,
+    )?;
+    publish_bytes_no_replace(destination, &encoded.manifest)
+}
+
+fn publish_content_blob(destination: &Path, bytes: &[u8]) -> Result<(), Error> {
+    if destination.exists() {
+        let existing = fs::read(destination)
+            .map_err(|error| Error::with_source("cannot verify existing Analysis blob", error))?;
+        if existing == bytes {
+            return Ok(());
+        }
+        return Err(Error::new("Analysis content-addressed blob collision"));
+    }
+    publish_bytes_no_replace(destination, bytes).map(|_| ())
+}
+
+fn collect_orphan_analysis_blobs(project_directory: &Path) -> Result<u64, Error> {
+    let mut reachable = BTreeSet::new();
+    for entry in fs::read_dir(project_directory).map_err(|error| {
+        Error::with_source("cannot inspect Analysis manifests for collection", error)
+    })? {
+        let path = entry
+            .map_err(|error| Error::with_source("cannot inspect Analysis manifest entry", error))?
+            .path();
+        if path.extension().and_then(OsStr::to_str) != Some("json") {
+            continue;
+        }
+        let manifest = match crate::analysis_io::read_manifest(&path) {
+            Ok(manifest) => manifest,
+            // An unreadable manifest may still describe blobs. Repair detaches it before GC;
+            // ordinary publication fails closed rather than guessing reachability.
+            Err(_) => return Ok(0),
+        };
+        reachable.extend(
+            manifest
+                .shape_blobs
+                .into_iter()
+                .map(|hash| format!("{hash}.shape")),
+        );
+        reachable.insert(format!("{}.values", manifest.values_blob));
+        if let Some(base) = manifest.values_base_blob {
+            reachable.insert(format!("{base}.values"));
+        }
+    }
+    let blob_directory = project_directory.join("blobs");
+    if !blob_directory.exists() {
+        return Ok(0);
+    }
+    let mut deleted = 0;
+    for entry in fs::read_dir(&blob_directory).map_err(|error| {
+        Error::with_source("cannot inspect Analysis blobs for collection", error)
+    })? {
+        let entry = entry
+            .map_err(|error| Error::with_source("cannot inspect Analysis blob entry", error))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !reachable.contains(&name) {
+            fs::remove_file(entry.path()).map_err(|error| {
+                Error::with_source("cannot collect unreachable Analysis blob", error)
+            })?;
+            deleted += 1;
+        }
+    }
+    Ok(deleted)
 }
 
 fn publish_bytes_no_replace(destination: &Path, bytes: &[u8]) -> Result<PublicationOutcome, Error> {

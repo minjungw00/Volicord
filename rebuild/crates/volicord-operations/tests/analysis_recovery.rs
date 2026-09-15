@@ -586,7 +586,7 @@ fn forced_reindex_discards_prior_snapshot_and_observes_current_repository(
         value.repository.repository_source,
         value.analysis.repository_source
     );
-    assert!(!first.stored_at.exists());
+    assert!(first.stored_at.exists());
     assert!(value.stored_at.exists());
     assert!(value
         .analysis
@@ -601,8 +601,10 @@ fn forced_reindex_discards_prior_snapshot_and_observes_current_repository(
                 .layout()
                 .analysis_project_dir(initialized.project.id)
         )?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().and_then(|value| value.to_str()) == Some("json"))
         .count(),
-        1
+        2
     );
     let after_bundle = export_bytes(
         &fixture.operations,
@@ -730,6 +732,8 @@ fn failed_repository_source_recording_does_not_publish_rebuilt_analysis(
                 .layout()
                 .analysis_project_dir(initialized.project.id)
         )?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().and_then(|value| value.to_str()) == Some("json"))
         .count(),
         1
     );
@@ -855,9 +859,15 @@ fn metadata_recall_equals_full_projection_without_decoding_graph_payloads(
     assert_eq!(fixture.operations.recall(project)?, expected);
     // Graph schema corruption is deliberately outside the metadata read: Recall
     // still reports its actual snapshot metadata, while graph consumers degrade.
-    let mut value = serde_json::to_value(&analysis.analysis)?;
-    value["semantic_results"] = serde_json::json!("invalid graph payload");
-    fs::write(&analysis.stored_at, serde_json::to_vec(&value)?)?;
+    let manifest: serde_json::Value = serde_json::from_slice(&fs::read(&analysis.stored_at)?)?;
+    let values = manifest["values_blob"].as_str().ok_or("values blob")?;
+    let values_path = analysis
+        .stored_at
+        .parent()
+        .ok_or("analysis parent")?
+        .join("blobs")
+        .join(format!("{values}.values"));
+    fs::write(values_path, b"corrupt graph values")?;
     assert_eq!(fixture.operations.recall(project)?, expected);
     assert!(fixture
         .operations
