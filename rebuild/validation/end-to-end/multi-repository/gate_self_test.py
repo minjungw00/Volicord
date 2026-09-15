@@ -313,6 +313,7 @@ class Owners:
             performance=harness.performance_module.qualify({
                 **{key: 1 for key in harness.performance_module.METRICS},
                 "mcp_call_count": 1, "mcp_sample_count": 1, "sampling_error_count": 0,
+                "analysis_snapshot_count": 1, "analysis_graph_item_count": 1,
             }, harness.performance_module.maintained_limits()),
         )
         result["raw_repository_source_body"] = SECRET_SENTINELS[3]

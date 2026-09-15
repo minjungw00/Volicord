@@ -41,6 +41,9 @@ pub(crate) struct AnalysisManifest {
     pub values_blob: String,
     pub values_base_blob: Option<String>,
     pub scalar_count: u64,
+    pub inventory_entry_count: u64,
+    pub entity_count: u64,
+    pub relation_count: u64,
     pub metadata: AnalysisMetadata,
 }
 
@@ -100,6 +103,14 @@ pub(crate) fn encode_analysis(
         values_blob: values_hash.clone(),
         values_base_blob,
         scalar_count: normalized.scalar_count,
+        inventory_entry_count: analysis.inventory.entries.len() as u64,
+        entity_count: analysis.structural_facts.len() as u64,
+        relation_count: analysis
+            .structural_facts
+            .iter()
+            .map(|fact| fact.relations.len() as u64)
+            .sum::<u64>()
+            + analysis.semantic_results.len() as u64,
         metadata: AnalysisMetadata::from(analysis),
     };
     Ok(EncodedAnalysis {

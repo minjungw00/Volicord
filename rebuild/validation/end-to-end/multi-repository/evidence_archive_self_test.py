@@ -72,9 +72,16 @@ def payloads() -> dict[str, object]:
                 "performance": {
                     "status": "passed", "measurement_complete": True, "exceeded": [],
                     "limits": {key: 100 for key in (
-                        "mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms")},
+                        "mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms",
+                        "analysis_storage_logical_bytes", "analysis_storage_physical_bytes",
+                        "post_warmup_analysis_growth_bytes", "analysis_storage_bytes_per_graph_item")},
                     "observed": {"mcp_peak_rss_bytes": 100, "max_snapshot_bytes": 100,
                         "v11_duration_ms": 100, "max_mcp_call_ms": 100,
+                        "analysis_storage_logical_bytes": 100,
+                        "analysis_storage_physical_bytes": 100,
+                        "post_warmup_analysis_growth_bytes": 100,
+                        "analysis_storage_bytes_per_graph_item": 100,
+                        "analysis_snapshot_count": 1, "analysis_graph_item_count": 1,
                         "mcp_sample_count": 1, "mcp_call_count": 1, "sampling_error_count": 0},
                 },
             },
@@ -1145,7 +1152,9 @@ def main() -> int:
                 "evidence"
             ]["retained_evidence"]
 
-        for metric in ("mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms"):
+        for metric in ("mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms",
+                       "analysis_storage_logical_bytes", "analysis_storage_physical_bytes",
+                       "post_warmup_analysis_growth_bytes", "analysis_storage_bytes_per_graph_item"):
             rejected_attestation(
                 f"falsified-performance-{metric}",
                 lambda values: values["capsule.json"]["official_v11"]["performance"]["observed"].__setitem__(metric, 101),

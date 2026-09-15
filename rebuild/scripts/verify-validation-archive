@@ -26,7 +26,11 @@ def verify_performance(capsule):
         return
     if not isinstance(report, dict):
         fail("invalid V11 performance evidence")
-    metrics = {"mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms"}
+    metrics = {
+        "mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms",
+        "analysis_storage_logical_bytes", "analysis_storage_physical_bytes",
+        "post_warmup_analysis_growth_bytes", "analysis_storage_bytes_per_graph_item",
+    }
     limits, observed = report.get("limits", {}), report.get("observed", {})
     if not isinstance(limits, dict) or not isinstance(observed, dict) or set(limits) != metrics:
         fail("invalid V11 performance metric schema")
@@ -36,6 +40,7 @@ def verify_performance(capsule):
     measured = valid and all(type(observed.get(key)) is int and observed[key] > 0
                             for key in ("mcp_sample_count", "mcp_call_count"))
     measured = measured and observed.get("sampling_error_count") == 0 and observed.get("max_snapshot_bytes", 0) > 0
+    measured = measured and observed.get("analysis_snapshot_count", 0) > 0 and observed.get("analysis_graph_item_count", 0) > 0
     exceeded = sorted(key for key in metrics if valid and observed[key] > limits[key])
     passed = bool(measured and not exceeded)
     if (report.get("measurement_complete") is not bool(measured)

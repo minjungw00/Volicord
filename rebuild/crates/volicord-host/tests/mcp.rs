@@ -4053,7 +4053,6 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
 #[test]
 fn repository_analysis_exposes_its_canonical_source_identity_without_display_parsing() {
     use volicord_context::SourcePayload;
-    use volicord_repository_intelligence::AnalysisSnapshot;
 
     let (temporary, mut adapter, project) = setup();
     let repository = temporary.path().join("repository");
@@ -4088,16 +4087,16 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
         .layout()
         .analysis_project_dir(project_id)
         .join(format!("{analysis_id}.json"));
-    let analysis: AnalysisSnapshot =
-        serde_json::from_slice(&fs::read(analysis_path).expect("published Analysis Snapshot"))
-            .expect("supported Analysis Snapshot");
-    assert_eq!(analysis.identity.to_string(), analysis_id);
+    let analysis: Value =
+        serde_json::from_slice(&fs::read(analysis_path).expect("published Analysis manifest"))
+            .expect("supported Analysis manifest");
+    assert_eq!(analysis["identity"], analysis_id);
     assert_eq!(
-        analysis.repository_snapshot.to_string(),
+        analysis["metadata"]["repository_snapshot"],
         repository_snapshot_id
     );
     assert_eq!(
-        analysis.repository_source.identity().to_string(),
+        analysis["metadata"]["repository_source"]["identity"],
         repository_source_id
     );
 
@@ -4115,7 +4114,7 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
         SourcePayload::RepositorySnapshot { .. }
     ));
 
-    let persisted_again: AnalysisSnapshot = serde_json::from_slice(
+    let persisted_again: Value = serde_json::from_slice(
         &fs::read(
             adapter
                 .operations()
@@ -4123,12 +4122,11 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
                 .analysis_project_dir(project_id)
                 .join(format!("{analysis_id}.json")),
         )
-        .expect("same published Analysis Snapshot"),
+        .expect("same published Analysis manifest"),
     )
-    .expect("same supported Analysis Snapshot");
+    .expect("same supported Analysis manifest");
     assert_eq!(
-        persisted_again.repository_source.identity().to_string(),
-        repository_source_id,
+        persisted_again["metadata"]["repository_source"]["identity"], repository_source_id,
         "the structured Source identity is stable for the returned analysis"
     );
 }
@@ -7850,7 +7848,7 @@ fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learni
             continue;
         }
         let mut analysis: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        for capability in analysis["capabilities"].as_array_mut().unwrap() {
+        for capability in analysis["metadata"]["capabilities"].as_array_mut().unwrap() {
             capability["coverage"]["included"] = json!((0..6000).map(|i| json!({"kind":"file","path":format!("packages/service-{i}/src/repository_metadata.py")})).collect::<Vec<_>>());
         }
         fs::write(path, serde_json::to_vec(&analysis).unwrap()).unwrap();

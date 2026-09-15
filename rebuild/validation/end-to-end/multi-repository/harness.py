@@ -3661,7 +3661,9 @@ def self_check() -> int:
     if active_result["phase_8_ready"] is not False or active_result["status"] != "failed":
         raise AssertionError("active Decision revisit trigger did not block Phase 8")
     limits = performance_module.maintained_limits()
-    observed = {**limits, "mcp_sample_count": 1, "mcp_call_count": 1, "sampling_error_count": 0}
+    observed = {**limits, "mcp_sample_count": 1, "mcp_call_count": 1,
+                "sampling_error_count": 0, "analysis_snapshot_count": 1,
+                "analysis_graph_item_count": 1}
     for metric in performance_module.METRICS:
         report = performance_module.qualify({**observed, metric: limits[metric] + 1}, limits)
         failed = make_v11_result(
