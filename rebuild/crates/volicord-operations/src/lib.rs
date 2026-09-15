@@ -5,6 +5,7 @@
 //! and portable-format meaning to their existing subsystem owners.
 
 mod analysis_io;
+mod analysis_storage;
 mod cli;
 mod codex;
 mod error;
@@ -17,6 +18,10 @@ mod payload;
 mod provider;
 mod recall;
 
+pub use analysis_storage::{
+    AnalysisFileFootprint, AnalysisReachabilityReference, AnalysisSectionFootprint,
+    AnalysisStorageFootprint,
+};
 pub use cli::{run_cli, run_cli_with_input, CliExit};
 pub use error::Error;
 pub use forgetting::ForgettingState;

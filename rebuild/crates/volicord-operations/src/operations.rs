@@ -3592,7 +3592,7 @@ impl LocalOperations {
         }
     }
 
-    fn analysis_paths(&self, project_id: ProjectId) -> Result<Vec<PathBuf>, Error> {
+    pub(crate) fn analysis_paths(&self, project_id: ProjectId) -> Result<Vec<PathBuf>, Error> {
         let directory = self.layout.analysis_project_dir(project_id);
         if !directory.exists() {
             return Ok(Vec::new());
