@@ -64,11 +64,10 @@ impl LocalOperations {
             allocated_tree(&self.layout().analysis_project_dir(project_id))?;
         let unchanged_repeat_delta_bytes = decoded
             .windows(2)
-            .filter(|pair| {
+            .rfind(|pair| {
                 inventory_overlap(&pair[0].0.inventory.entries, &pair[1].0.inventory.entries)
                     == 1_000_000
             })
-            .last()
             .map(|pair| incremental_bytes(&pair[0].1, &pair[1].1, &pair[1].2))
             .transpose()?;
         let reusable_content_overlap_millionths = decoded.windows(2).last().map(|pair| {
@@ -237,11 +236,10 @@ fn measure_file(path: &Path, analysis: &AnalysisSnapshot) -> Result<AnalysisFile
             .then(|| metadata.iter().filter_map(physical_bytes).sum()),
         entity_count,
         relation_count,
-        bytes_per_graph_item: if graph_items == 0 {
-            0
-        } else {
-            manifest.logical_json_bytes / graph_items
-        },
+        bytes_per_graph_item: manifest
+            .logical_json_bytes
+            .checked_div(graph_items)
+            .unwrap_or(0),
         sections,
         content_sha256: format!("{:x}", Sha256::digest(bytes)),
     })
