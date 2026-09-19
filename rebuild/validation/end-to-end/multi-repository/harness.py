@@ -932,6 +932,37 @@ def bounded_projection_matches(full: Any, projected: Any) -> bool:
 
 def read_analysis_capabilities(path: Path, analysis_id: str, project_id: str) -> dict[str, Any]:
     """Read the snapshot's metadata prefix without loading its large analysis graph."""
+    # Current normalized snapshots keep the complete typed metadata in their
+    # lightweight manifest. Read that directly so validation does not mistake
+    # the manifest for the former inline graph representation.
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        manifest = None
+    if (
+        isinstance(manifest, dict)
+        and manifest.get("storage_format") == "volicord.normalized_analysis"
+    ):
+        metadata = manifest.get("metadata")
+        if not isinstance(metadata, dict):
+            raise ValueError("Analysis Snapshot manifest metadata is missing")
+        if (
+            manifest.get("identity") != metadata.get("identity")
+            or manifest.get("project") != metadata.get("project")
+            or metadata.get("identity") != analysis_id
+            or metadata.get("project") != {"identity": project_id}
+        ):
+            raise ValueError("Analysis Snapshot capability evidence identity mismatch")
+        if not isinstance(metadata.get("repository_snapshot"), str) or not isinstance(
+            metadata.get("capabilities"), list
+        ):
+            raise ValueError("Analysis Snapshot manifest capability metadata is incomplete")
+        return {
+            "analysis_snapshot": metadata["identity"],
+            "repository_snapshot": metadata["repository_snapshot"],
+            "capabilities": metadata["capabilities"],
+        }
+
     decoder = json.JSONDecoder()
     with path.open(encoding="utf-8") as stream:
         buffer = ""
@@ -3133,6 +3164,28 @@ def assert_recovery_recall_contract() -> None:
         read = read_analysis_capabilities(path, old_analysis, before["project_id"])
         if read["capabilities"] != evidence[0]["capabilities"]:
             raise AssertionError("streamed capability metadata changed meaning")
+        normalized = {
+            "format_kind": "volicord.analysis_snapshot",
+            "format_version": 1,
+            "storage_format": "volicord.normalized_analysis",
+            "identity": old_analysis,
+            "project": {"identity": before["project_id"]},
+            "metadata": metadata,
+        }
+        path.write_text(json.dumps(normalized), encoding="utf-8")
+        read = read_analysis_capabilities(path, old_analysis, before["project_id"])
+        if read["capabilities"] != evidence[0]["capabilities"]:
+            raise AssertionError("normalized manifest capability metadata changed meaning")
+        mismatched_manifest = deepcopy(normalized)
+        mismatched_manifest["identity"] = new_analysis
+        path.write_text(json.dumps(mismatched_manifest), encoding="utf-8")
+        try:
+            read_analysis_capabilities(path, old_analysis, before["project_id"])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unbound normalized manifest capability metadata accepted")
+        path.write_text(json.dumps(normalized), encoding="utf-8")
         for expected_analysis, project in ((new_analysis, before["project_id"]), (old_analysis, "5" * 32)):
             try:
                 read_analysis_capabilities(path, expected_analysis, project)
