@@ -3474,6 +3474,8 @@ def parser() -> argparse.ArgumentParser:
     activate_every = sub.add_parser("activate-all")
     collect_b = sub.add_parser("collect-batch")
     prepare_documents = sub.add_parser("prepare-document-realizations")
+    inspect_documents = sub.add_parser("inspect-document-realizations",
+        help="Inspect published preparation and immutable realization counts without mutation")
     validate_document = sub.add_parser("validate-document-realization")
     record_document = sub.add_parser("record-document-realization")
     diagnostic = sub.add_parser("diagnose", help="Read-only historical inventory diagnostic when a collection receipt is unavailable; never qualifies")
@@ -3545,6 +3547,7 @@ def parser() -> argparse.ArgumentParser:
     batch_input.add_argument("--raw-rollout", action="append")
     batch_input.add_argument("--rollout-directory")
     prepare_documents.add_argument("--campaign-root", required=True)
+    inspect_documents.add_argument("--campaign-root", required=True)
     document_inputs = prepare_documents.add_mutually_exclusive_group(required=True)
     document_inputs.add_argument("--raw-rollout", action="append")
     document_inputs.add_argument("--rollout-directory")
@@ -3611,12 +3614,15 @@ def main() -> int:
     elif args.command in {"validate-document-realization", "record-document-realization"}:
         operation = document_realization.validate if args.command == "validate-document-realization" else document_realization.record
         value = operation(root, args.realization_id, Path(args.draft).resolve())
+    elif args.command == "inspect-document-realizations":
+        value = document_realization.inspect_state(root)
     elif args.command in {"collect-batch", "prepare-document-realizations"}:
         paths = batch_rollout_paths(
             [Path(path) for path in args.raw_rollout] if args.raw_rollout else None,
             Path(args.rollout_directory) if args.rollout_directory else None,
         )
-        value = (document_realization.prepare(root, paths) if args.command == "prepare-document-realizations"
+        value = (document_realization.prepare(root, paths, progress=document_realization.stderr_progress)
+                 if args.command == "prepare-document-realizations"
                  else collect_batch(root, paths))
     elif args.command == "diagnose":
         value = diagnose_campaign(root, Path(args.output))

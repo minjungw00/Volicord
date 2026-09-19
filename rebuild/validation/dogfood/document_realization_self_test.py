@@ -85,8 +85,21 @@ class DocumentRealizationTests(unittest.TestCase):
         root, captures, bundles = self.prepared()
         raw_before = {p: p.read_bytes() for p in captures}
         with patch.object(r, "preview", side_effect=product_preview):
-            result = r.prepare(root, list(reversed(captures)))
+            before_inspection = snapshot(root)
+            self.assertEqual(r.inspect_state(root)["state"], "not_prepared")
+            self.assertEqual(snapshot(root), before_inspection)
+            progress = []
+            result = r.prepare(root, list(reversed(captures)), progress=progress.append)
             self.assertEqual(result["qualification_state"], "not_run")
+            self.assertEqual(progress[0]["phase"], "mapping_inputs")
+            self.assertEqual(progress[-1], {"phase": "published", "completed": 1, "total": 1})
+            self.assertLessEqual(len(progress), 36)
+            published = r.inspect_state(root)
+            self.assertEqual(published["state"], "preparation_published")
+            self.assertEqual(published["recorded_realizations"], 0)
+            with self.assertRaisesRegex(c.CampaignError, "already prepared"):
+                r.prepare(root, captures)
+            self.assertEqual(r.inspect_state(root), published)
             index = c.read_json(root / result["index"])
             self.assertEqual(len(index["documents"]), 32)
             visible = "\n".join(p.read_text() for p in (root / "realizer").rglob("*.json"))
@@ -103,10 +116,24 @@ class DocumentRealizationTests(unittest.TestCase):
                 r.validate(root, entry["realization_id"], draft_path)
                 self.assertEqual(snapshot(root), before)
                 r.record(root, entry["realization_id"], draft_path)
+                if entry == index["documents"][0]:
+                    partial = r.inspect_state(root)
+                    self.assertEqual(partial["state"], "realizations_partially_recorded")
+                    self.assertEqual(partial["recorded_realizations"], 1)
                 recorded = r.artifact(root, "recorded", entry["realization_id"])
                 exact = recorded.read_bytes()
                 draft_path.write_text("changed after recording")
                 self.assertEqual(recorded.read_bytes(), exact)
+            complete = r.inspect_state(root)
+            self.assertEqual(complete["state"], "realizations_fully_recorded")
+            self.assertEqual(complete["recorded_realizations"], 32)
+            before_inspection = snapshot(root)
+            cli = subprocess.run([str(c.ROOT / "rebuild/scripts/dogfood-campaign"),
+                "inspect-document-realizations", "--campaign-root", str(root)],
+                text=True, capture_output=True)
+            self.assertEqual(cli.returncode, 0, cli.stdout + cli.stderr)
+            self.assertEqual(json.loads(cli.stdout)["state"], "realizations_fully_recorded")
+            self.assertEqual(snapshot(root), before_inspection)
             before = snapshot(root)
             with self.assertRaises(c.CampaignError):
                 r.record(root, entry["realization_id"], draft_path)

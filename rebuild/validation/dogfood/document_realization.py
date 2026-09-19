@@ -172,7 +172,70 @@ def product_generator(provenance: dict[str, Any]) -> dict[str, str]:
         for target, source in (("generator", "host"), ("agent", "agent"), ("model", "model"))}
 
 
-def prepare(root: Path, raw_paths: list[Path]) -> dict[str, Any]:
+def stderr_progress(value: dict[str, Any]) -> None:
+    """Emit bounded machine-readable progress without exposing private paths."""
+    print(json.dumps({"kind": "document_realization_preparation_progress", **value},
+                     sort_keys=True), file=sys.stderr, flush=True)
+
+
+def inspect_state(root: Path) -> dict[str, Any]:
+    """Inspect immutable preparation/recording state without candidate mutation."""
+    c = campaign_api()
+    campaign = c.load_campaign(root)
+    c.verify_inventory(root)
+    total = len(campaign["cycles"]) * len(c.DOCUMENT_KINDS)
+    common = {"kind": "document_realization_operation_state", "mutation": "none",
+        "candidate_head": campaign["candidate_head"], "expected_realizations": total,
+        "qualification_state": "not_run"}
+    if not required(campaign["document_language"], campaign["viewer_locale"]):
+        return {**common, "state": "fixed_locale_not_required", "preparation_published": False,
+            "recorded_realizations": 0, "remaining_realizations": 0,
+            "next_action": "continue_with_fixed_locale_collection"}
+    binding_path, index_path = root / "realization-bindings.json", root / "realizer/index.json"
+    prepared_paths = [binding_path.exists(), index_path.exists()]
+    realizer_files = list((root / "realizer").rglob("*.json")) if (root / "realizer").is_dir() else []
+    if not any(prepared_paths) and not realizer_files:
+        return {**common, "state": "not_prepared", "preparation_published": False,
+            "recorded_realizations": 0, "remaining_realizations": total,
+            "next_action": "run_prepare_document_realizations"}
+    if not all(prepared_paths):
+        return {**common, "state": "repair_required", "preparation_published": False,
+            "recorded_realizations": 0, "remaining_realizations": total,
+            "next_action": "preserve_interrupted_publication_for_inspection",
+            "diagnostic": "preparation publication is incomplete"}
+    bindings = json.loads(bound_bytes(root, binding_path))
+    index = json.loads(bound_bytes(root, index_path))
+    documents = index.get("documents") if isinstance(index, dict) else None
+    bound_documents = bindings.get("documents") if isinstance(bindings, dict) else None
+    if (not isinstance(documents, list) or not isinstance(bound_documents, list)
+        or len(documents) != total or len(bound_documents) != total):
+        raise c.CampaignError("published realization preparation has an invalid document inventory")
+    index_ids = [item.get("realization_id") for item in documents if isinstance(item, dict)]
+    binding_ids = [item.get("realization_id") for item in bound_documents if isinstance(item, dict)]
+    if (len(index_ids) != total or len(set(index_ids)) != total or set(index_ids) != set(binding_ids)):
+        raise c.CampaignError("published realization preparation identities are incomplete or inconsistent")
+    recorded = []
+    remaining = []
+    for item in documents:
+        identity = item["realization_id"]
+        preparation_bytes = bound_bytes(root, artifact(root, "plans", identity))
+        destination = artifact(root, "recorded", identity)
+        if destination.exists():
+            draft = json.loads(bound_bytes(root, destination))
+            validate_value(json.loads(preparation_bytes), preparation_bytes, draft)
+            recorded.append(identity)
+        else:
+            remaining.append(identity)
+    state = ("realizations_fully_recorded" if not remaining else
+             "preparation_published" if not recorded else "realizations_partially_recorded")
+    next_action = ("continue_with_collect_batch" if not remaining else
+                   "edit_validate_and_record_existing_drafts")
+    return {**common, "state": state, "preparation_published": True,
+        "recorded_realizations": len(recorded), "remaining_realizations": len(remaining),
+        "remaining_realization_ids": remaining, "next_action": next_action}
+
+
+def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, Any]:
     c = campaign_api()
     campaign = c.load_campaign_for_mutation(root)
     c.verify_inventory(root)
@@ -184,9 +247,15 @@ def prepare(root: Path, raw_paths: list[Path]) -> dict[str, Any]:
     binding_path = root / "realization-bindings.json"
     if binding_path.exists():
         raise c.CampaignError("realization plans are already prepared; edit only unfixed drafts")
+    if progress:
+        progress({"phase": "mapping_inputs", "completed": 0, "total": 1})
     mapped = c.map_batch_rollouts(root, raw_paths)
+    if progress:
+        progress({"phase": "mapping_inputs", "completed": 1, "total": 1})
     files, drafts, bindings, index = {}, {}, [], []
     binary = Path(campaign["candidate_binary"])
+    expected = len(campaign["cycles"]) * len(c.DOCUMENT_KINDS)
+    prepared = 0
     for key, state in sorted(campaign["cycles"].items()):
         kind, cycle = next((kind, cycle) for kind in c.CLASSES for cycle in c.cycle_numbers(kind)
                            if c.cycle_key(kind, cycle) == key)
@@ -224,13 +293,20 @@ def prepare(root: Path, raw_paths: list[Path]) -> dict[str, Any]:
             bindings.append({"cycle_key": key, "realization_id": identity, "document_kind": document_kind})
             index.append({"realization_id": identity, "preparation": c.relative(root, plan_path),
                           "draft": c.relative(root, artifact(root, "drafts", identity))})
+            prepared += 1
+            if progress:
+                progress({"phase": "preparing_plans", "completed": prepared, "total": expected})
     if any(harness.sha256(value.source) != value.capture.source_sha256 for value in mapped.values()):
         raise c.CampaignError("raw inputs changed during realization preparation")
     verify_route(campaign)
     files[binding_path] = c.json_bytes({"candidate_head": campaign["candidate_head"],
         "campaign_sha256": harness.sha256(c.campaign_file(root)), "raw_inputs": raw_binding(mapped), "documents": bindings})
     files[root / "realizer/index.json"] = c.json_bytes({"documents": sorted(index, key=lambda x: x["realization_id"])})
+    if progress:
+        progress({"phase": "publishing", "completed": 0, "total": 1})
     publish(root, files, drafts=drafts)
+    if progress:
+        progress({"phase": "published", "completed": 1, "total": 1})
     return {"state": "realization_required", "index": "realizer/index.json", "qualification_state": "not_run"}
 
 

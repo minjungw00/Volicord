@@ -441,6 +441,12 @@ field/language attestation 검사는 유지하며 provenance 검증이 prose qua
 `volicord-mcp` hash와 동일해야 한다. Plan preparation, immutable realization record와 final
 generation은 MCP 사용 전후에 그 binding을 다시 검증하며 같은 path의 replacement를 realized
 document evidence로 publish하지 않는다.
+Preparation은 plan별 bounded progress와 final publication 완료를 stderr의 machine-readable
+event로 보고한다. 별도 read-only state inspection은 `not_prepared`, published preparation,
+partially recorded와 fully recorded를 구분한다. Caller가 final publication 뒤 중단됐으면
+inspection 결과에서 기존 draft의 validate/record로 계속하며 immutable preparation을 다시
+publish하지 않는다. Publication 도중 불완전한 artifact 조합은 `repair_required`로 fail closed하고
+완료된 publication으로 추정하지 않는다.
 
 ## 8. Grounding metadata
 

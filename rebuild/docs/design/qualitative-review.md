@@ -236,6 +236,14 @@ Runtime Home or provider. An external reviewer-owned draft is also accepted.
 Inventory-bound evidence and recorded artifacts cannot be used as mutable drafts.
 The package remains usable after the original Campaign/source paths are unavailable.
 
+Cross-locale realization preparation is independently inspectable through
+`inspect-document-realizations`. The read-only result distinguishes not prepared,
+published preparation, partial recording and complete recording. Preparation emits
+bounded machine-readable progress while plans are obtained and when final publication
+completes. If a caller stops after publication, the supported recovery is to inspect
+state and continue editing/validating/recording the already-published drafts; immutable
+preparation is not republished or overwritten.
+
 Recording uses the same validation over the exact bytes it publishes. It requires
 at least one reviewed criterion; an explicitly incomplete or insufficient review
 effort may be recorded, with its counts and aggregate state intact. `recorded/`

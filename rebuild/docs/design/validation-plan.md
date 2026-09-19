@@ -1370,6 +1370,12 @@ global read-only mapping으로 exact cycle Project를 구하고 maintained stdio
 공유한다. Raw input, session과 campaign hash binding은 private `realization-bindings.json`에,
 opaque document identity의 plan/index와 null-text draft는 `realizer/`에 둔다. Realizer plane에는
 evaluator assignment, behavior class, expected qualification 또는 raw rollout을 투영하지 않는다.
+Preparation은 input mapping, bounded plan count와 final publication phase를 stderr progress로
+보고한다. `inspect-document-realizations`는 raw rollout이나 mutation 없이 not prepared,
+published preparation, partial recording과 complete recording을 구분한다. Caller가 final
+publication 뒤 종료되어 command result를 받지 못했더라도 inspection 뒤 기존 draft에서
+계속하며 immutable preparation publish를 재시도하지 않는다. Incomplete publication은
+`repair_required`이고 success로 추정하지 않는다.
 
 Active host/model만 draft의 requested-language title, section title와 claim text를 채운다.
 Preparation/draft schema version은 2이며 draft의 structured `provenance`는 verified

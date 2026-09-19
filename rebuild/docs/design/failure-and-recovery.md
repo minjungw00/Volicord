@@ -37,6 +37,9 @@ identity, affected scope, Source/operation basis와 함께 표현하며 system-w
 10. Checkpoint verification execution은 presentation label이 아니라 trusted operation이
     transient exact invocation에서 derive한 fingerprint와 observed exit/termination으로
     correlate하며 raw invocation을 durable process evidence로 보존하지 않는다.
+11. Immutable long-operation publication은 caller output 전달과 별개로 inspectable하다.
+    Publication 뒤 caller가 중단되면 read-only state inspection으로 completed publication과
+    remaining records를 확인하고 이미 published된 preparation을 blind retry하지 않는다.
 
 ## 2. State matrix
 
