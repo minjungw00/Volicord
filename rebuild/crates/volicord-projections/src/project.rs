@@ -284,6 +284,52 @@ enum RelationRef<'a> {
         SourceId,
     ),
 }
+
+struct ProjectionGraph<'a> {
+    entities: Vec<&'a volicord_repository_intelligence::CodeEntity>,
+    relations: Vec<RelationRef<'a>>,
+}
+
+fn projection_graph<'a>(
+    canonical: &CanonicalReadBasis,
+    analyses: &[&'a AnalysisSnapshot],
+) -> ProjectionGraph<'a> {
+    let mut entities = Vec::new();
+    let mut relations = Vec::new();
+    for analysis in analyses
+        .iter()
+        .copied()
+        .filter(|analysis| analysis.project.identity() == canonical.project.id)
+    {
+        for fact in &analysis.structural_facts {
+            entities.push(&fact.entity);
+            relations.extend(
+                fact.relations.iter().map(|relation| {
+                    RelationRef::Structural(relation, fact.entity.source.identity())
+                }),
+            );
+        }
+        relations.extend(analysis.semantic_results.iter().map(|result| {
+            let source_id = result
+                .relation
+                .supporting_range
+                .as_ref()
+                .map_or(analysis.repository_source.identity(), |range| {
+                    range.source.identity()
+                });
+            RelationRef::Semantic(&result.relation, source_id)
+        }));
+    }
+    entities.sort_by(|left, right| left.identity.cmp(&right.identity));
+    entities.dedup_by(|left, right| left.identity == right.identity);
+    relations.sort_by(|left, right| left.identity().cmp(right.identity()));
+    relations.dedup_by(|left, right| left.identity() == right.identity());
+    ProjectionGraph {
+        entities,
+        relations,
+    }
+}
+
 impl RelationView for RelationRef<'_> {
     fn identity(&self) -> &str {
         match self {
@@ -384,45 +430,64 @@ fn select_topology<E: EntityView + Clone, R: RelationView + Clone>(
         .take(entity_limit)
         .map(|(identity, _)| identity.clone())
         .collect::<BTreeSet<_>>();
+    let mut incident = BTreeMap::<&str, Vec<usize>>::new();
+    for (index, relation) in candidates.iter().enumerate() {
+        for endpoint in relation_endpoints(*relation) {
+            incident.entry(endpoint).or_default().push(index);
+        }
+    }
+    let mut connected_candidates = BTreeSet::<usize>::new();
+    for identity in &selected_entities {
+        if let Some(indices) = incident.get(identity.as_str()) {
+            connected_candidates.extend(indices);
+        }
+    }
     let mut selected_relations = Vec::<R>::new();
-    let mut selected_relation_ids = BTreeSet::<String>::new();
+    let mut selected_candidate = vec![false; candidates.len()];
+    let mut fallback_at = 0;
     while selected_relations.len() < relation_limit {
         let connected = !selected_entities.is_empty();
-        let next = candidates.iter().copied().find(|relation| {
-            if selected_relation_ids.contains(relation.identity()) {
+        let fits = |index: usize| {
+            if selected_candidate[index] {
                 return false;
             }
-            let endpoints = relation_endpoints(*relation);
+            let endpoints = relation_endpoints(candidates[index]);
             let new_endpoint_count = endpoints
                 .clone()
                 .filter(|identity| !selected_entities.contains(*identity))
                 .count();
-            if selected_entities.len() + new_endpoint_count > entity_limit {
-                return false;
-            }
-            !connected
-                || endpoints
-                    .clone()
-                    .any(|identity| selected_entities.contains(identity))
-        });
-        let next = next.or_else(|| {
-            candidates.iter().copied().find(|relation| {
-                if selected_relation_ids.contains(relation.identity()) {
-                    return false;
-                }
-                let endpoints = relation_endpoints(*relation);
-                let new_endpoint_count = endpoints
-                    .clone()
-                    .filter(|identity| !selected_entities.contains(*identity))
-                    .count();
-                selected_entities.len() + new_endpoint_count <= entity_limit
+            selected_entities.len() + new_endpoint_count <= entity_limit
+        };
+        let next = connected
+            .then(|| {
+                connected_candidates
+                    .iter()
+                    .copied()
+                    .find(|index| fits(*index))
             })
-        });
-        let Some(relation) = next else {
+            .flatten()
+            .or_else(|| {
+                while fallback_at < candidates.len() && !fits(fallback_at) {
+                    fallback_at += 1;
+                }
+                (fallback_at < candidates.len()).then_some(fallback_at)
+            });
+        let Some(index) = next else {
             break;
         };
-        selected_entities.extend(relation_endpoints(relation).map(str::to_owned));
-        selected_relation_ids.insert(relation.identity().to_owned());
+        let relation = candidates[index];
+        selected_candidate[index] = true;
+        connected_candidates.remove(&index);
+        let new_entities = relation_endpoints(relation)
+            .filter(|identity| !selected_entities.contains(*identity))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        for identity in &new_entities {
+            if let Some(indices) = incident.get(identity.as_str()) {
+                connected_candidates.extend(indices);
+            }
+        }
+        selected_entities.extend(new_entities);
         selected_relations.push(relation.clone());
     }
 
@@ -738,10 +803,16 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
     });
     let mut issues = source_issues(inputs.canonical);
     issues.extend_from_slice(inputs.analysis_issues);
+    let graph = projection_graph(inputs.canonical, inputs.analyses);
     let current_work_topology =
-        build_current_work_topology(inputs.canonical, inputs.analyses, limit, &mut issues);
-    let repository_map =
-        build_repository_map(inputs.canonical, inputs.analyses, limit, &mut issues);
+        build_current_work_topology(inputs.canonical, &graph, limit, &mut issues);
+    let repository_map = build_repository_map(
+        inputs.canonical,
+        inputs.analyses,
+        &graph,
+        limit,
+        &mut issues,
+    );
     let current_work_code = build_current_work_code_links(
         inputs.canonical,
         &current_work_topology.entities,
@@ -999,47 +1070,23 @@ fn materialize_relation(reference: RelationRef<'_>) -> MapRelation {
 
 fn build_current_work_topology(
     canonical: &CanonicalReadBasis,
-    analyses: &[&AnalysisSnapshot],
+    graph: &ProjectionGraph<'_>,
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> CurrentWorkTopology {
-    let mut entities = Vec::new();
-    let mut relations = Vec::new();
-    for analysis in analyses
-        .iter()
-        .copied()
-        .filter(|analysis| analysis.project.identity() == canonical.project.id)
-    {
-        for fact in &analysis.structural_facts {
-            entities.push(&fact.entity);
-            relations.extend(
-                fact.relations.iter().map(|relation| {
-                    RelationRef::Structural(relation, fact.entity.source.identity())
-                }),
-            );
-        }
-        relations.extend(analysis.semantic_results.iter().map(|result| {
-            let source_id = result
-                .relation
-                .supporting_range
-                .as_ref()
-                .map_or(analysis.repository_source.identity(), |range| {
-                    range.source.identity()
-                });
-            RelationRef::Semantic(&result.relation, source_id)
-        }));
-    }
-    entities.sort_by(|left, right| left.identity.cmp(&right.identity));
-    entities.dedup_by(|left, right| left.identity == right.identity);
-    relations.sort_by(|left, right| left.identity().cmp(right.identity()));
-    relations.dedup_by(|left, right| left.identity() == right.identity());
-    let grounded_seeds = entities
+    let grounded_seeds = graph
+        .entities
         .iter()
         .filter(|entity| entity_matches_current_work(entity, canonical))
         .map(|entity| entity.identity.clone())
         .collect::<BTreeSet<_>>();
-    let selected =
-        select_grounded_current_work_topology(&entities, &relations, &grounded_seeds, limit, limit);
+    let selected = select_grounded_current_work_topology(
+        &graph.entities,
+        &graph.relations,
+        &grounded_seeds,
+        limit,
+        limit,
+    );
     if selected.omitted_entity_count > 0 {
         issues.push(bound_issue(
             "current_work_topology.entity",
@@ -1071,11 +1118,12 @@ fn build_current_work_topology(
 fn build_repository_map(
     canonical: &CanonicalReadBasis,
     analyses: &[&AnalysisSnapshot],
+    graph: &ProjectionGraph<'_>,
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> RepositoryMap {
-    let mut entities = Vec::new();
-    let mut relations = Vec::new();
+    let mut entities = graph.entities.clone();
+    let mut relations = graph.relations.clone();
     let mut agent_interpretations = Vec::new();
     let mut capabilities = Vec::new();
     let mut gaps = Vec::new();
@@ -1097,24 +1145,6 @@ fn build_repository_map(
                 issues.push(capability_issue(analysis.identity, report));
             }
         }
-        for fact in &analysis.structural_facts {
-            entities.push(&fact.entity);
-            relations.extend(
-                fact.relations.iter().map(|relation| {
-                    RelationRef::Structural(relation, fact.entity.source.identity())
-                }),
-            );
-        }
-        relations.extend(analysis.semantic_results.iter().map(|result| {
-            let source_id = result
-                .relation
-                .supporting_range
-                .as_ref()
-                .map_or(analysis.repository_source.identity(), |range| {
-                    range.source.identity()
-                });
-            RelationRef::Semantic(&result.relation, source_id)
-        }));
         agent_interpretations.extend(analysis.agent_interpretations.iter().map(|interpretation| {
             MapInterpretation {
                 identity: interpretation.identity.clone(),
@@ -1131,10 +1161,6 @@ fn build_repository_map(
             }
         }));
     }
-    entities.sort_by(|left, right| left.identity.cmp(&right.identity));
-    entities.dedup_by(|left, right| left.identity == right.identity);
-    relations.sort_by(|left, right| left.identity().cmp(right.identity()));
-    relations.dedup_by(|left, right| left.identity() == right.identity());
     agent_interpretations.sort_by(|left, right| left.identity.cmp(&right.identity));
     agent_interpretations.dedup_by(|left, right| left.identity == right.identity);
     capabilities.sort_by(|left, right| {
@@ -2035,7 +2061,9 @@ mod tests {
             StructuralAnalysisRequest::new(InventoryRequest::new(&root, &grounding, source.id, 1)?),
         ))?;
         let mut issues = Vec::new();
-        let full = super::build_repository_map(&canonical, &[&analysis], usize::MAX, &mut issues);
+        let graph = super::projection_graph(&canonical, &[&analysis]);
+        let full =
+            super::build_repository_map(&canonical, &[&analysis], &graph, usize::MAX, &mut issues);
         let important = full
             .entities
             .iter()
@@ -2046,7 +2074,7 @@ mod tests {
             select_bounded_topology(&full.entities, &full.relations, &important, 8, 8, true);
         super::MATERIALIZED.with(|count| count.set((0, 0)));
         issues.clear();
-        let actual = super::build_repository_map(&canonical, &[&analysis], 8, &mut issues);
+        let actual = super::build_repository_map(&canonical, &[&analysis], &graph, 8, &mut issues);
         assert_eq!(actual.entities, expected.entities);
         assert_eq!(actual.relations, expected.relations);
         assert!(full.entities.len() > 100 && full.relations.len() > 100);

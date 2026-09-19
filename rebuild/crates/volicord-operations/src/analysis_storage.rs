@@ -53,7 +53,7 @@ impl LocalOperations {
         let mut snapshots = Vec::new();
         let mut decoded = Vec::new();
         for path in self.analysis_paths(project_id)? {
-            let analysis = crate::analysis_io::read_analysis(&path)?;
+            let analysis = crate::analysis_io::read_analysis_durable(&path)?;
             let manifest = crate::analysis_io::read_manifest(&path)?;
             snapshots.push(measure_file(&path, &analysis)?);
             decoded.push((analysis, manifest, path));
@@ -203,6 +203,26 @@ fn measure_file(path: &Path, analysis: &AnalysisSnapshot) -> Result<AnalysisFile
     paths.push(blobs.join(format!("{}.values", manifest.values_blob)));
     if let Some(base) = &manifest.values_base_blob {
         paths.push(blobs.join(format!("{base}.values")));
+    }
+    let cache_directory = path
+        .parent()
+        .ok_or_else(|| Error::new("Analysis Snapshot has no Project directory"))?
+        .join("cache");
+    if cache_directory.exists() {
+        let prefix = format!("{}-", analysis.identity);
+        for entry in fs::read_dir(cache_directory)
+            .map_err(|error| Error::with_source("cannot inspect Analysis read caches", error))?
+        {
+            let entry = entry
+                .map_err(|error| Error::with_source("cannot inspect Analysis read cache", error))?;
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(&prefix))
+            {
+                paths.push(entry.path());
+            }
+        }
     }
     let metadata = paths
         .iter()

@@ -557,7 +557,12 @@ bound된 최대 64개 항목이며 graph를 장기 보유하지 않는다. 선�
 schema/identity 검사를 통과해야 한다. 명시적 health/repair 진단은 historical snapshot도
 하나씩 full decode하여 corruption을 보고한다. 최신 graph를 읽는 projection과 전체
 store 진단은 다른 책임이며, 최신 payload 실패를 과거 graph의 current 판정으로 숨기지
-않는다. Snapshot publication은 normalized JSON shape 조각과 value stream을 content
+않는다. Latest graph read는 manifest가 지목한 durable blob의 content identity를 먼저
+검증한 뒤 exact snapshot identity/schema로 검증된 rebuildable read cache를 사용할 수
+있다. 이 cache는 newest snapshot과 earliest retained baseline의 bounded 두 항목에만
+유지되고 canonical/Analysis history나
+corruption 판정의 근거가 아니며, 없거나 invalid하면 durable payload를 decode한다.
+Snapshot publication은 normalized JSON shape 조각과 value stream을 content
 identity로 먼저 no-replace 게시한 뒤 lightweight manifest를 마지막에 atomic/no-replace
 게시하고 sync 책임을 보존한다. 동일 shape blob과 complete value base는 snapshot 사이에서
 공유하고, 이후 value stream은 complete base에 대한 bounded delta가 더 작을 때만 delta로

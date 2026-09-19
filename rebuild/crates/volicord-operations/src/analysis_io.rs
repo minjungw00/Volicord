@@ -21,6 +21,7 @@ const VALUES_MAGIC: &[u8] = b"VOLICORD-JSON-VALUES\0";
 const VALUES_DELTA_MAGIC: &[u8] = b"VOLICORD-JSON-DELTA2\0";
 const BLOB_RAW_MAGIC: &[u8] = b"VOLICORD-BLOB-RAW1\0";
 const BLOB_ZSTD_MAGIC: &[u8] = b"VOLICORD-BLOB-ZSTD1\0";
+const ANALYSIS_CACHE_EXTENSION: &str = "snapshot";
 const CHUNK_MIN_BYTES: usize = 8 * 1024;
 const CHUNK_MAX_BYTES: usize = 32 * 1024;
 const CHUNK_WINDOW_BYTES: usize = 63;
@@ -154,6 +155,22 @@ pub(crate) fn read_manifest(path: &Path) -> Result<AnalysisManifest, Error> {
 
 pub(crate) fn read_analysis(path: &Path) -> Result<AnalysisSnapshot, Error> {
     let manifest = read_manifest(path)?;
+    verify_manifest_blobs(path, &manifest)?;
+    if let Some(snapshot) = read_cached_analysis(path, &manifest) {
+        return Ok(snapshot);
+    }
+    read_analysis_from_manifest(path, manifest)
+}
+
+pub(crate) fn read_analysis_durable(path: &Path) -> Result<AnalysisSnapshot, Error> {
+    let manifest = read_manifest(path)?;
+    read_analysis_from_manifest(path, manifest)
+}
+
+fn read_analysis_from_manifest(
+    path: &Path,
+    manifest: AnalysisManifest,
+) -> Result<AnalysisSnapshot, Error> {
     let blobs = blob_dir(path)?;
     if manifest.shape_blobs.is_empty() {
         return Err(Error::new("Analysis manifest has no shape blobs"));
@@ -177,6 +194,10 @@ pub(crate) fn read_analysis(path: &Path) -> Result<AnalysisSnapshot, Error> {
         encoded_values
     };
     let reader = DenormalizingReader::new(shape, values, manifest.scalar_count)?;
+    // serde_json's generic reader path may request very small reads while it scans
+    // tokens. Buffer the reconstructed stream so a large normalized graph does not
+    // repeatedly cross the denormalizer boundary one byte at a time.
+    let reader = BufReader::with_capacity(1024 * 1024, reader);
     let snapshot: AnalysisSnapshot = serde_json::from_reader(reader)
         .map_err(|error| Error::with_source("normalized Analysis Snapshot is corrupt", error))?;
     if snapshot.identity != manifest.identity
@@ -186,6 +207,77 @@ pub(crate) fn read_analysis(path: &Path) -> Result<AnalysisSnapshot, Error> {
         return Err(Error::new("Analysis manifest and payload bindings differ"));
     }
     Ok(snapshot)
+}
+
+pub(crate) fn encode_analysis_cache(
+    analysis: &AnalysisSnapshot,
+) -> Result<(String, Vec<u8>), Error> {
+    let bytes = rmp_serde::to_vec_named(analysis)
+        .map_err(|error| Error::with_source("cannot encode Analysis read cache", error))?;
+    let packed = pack_blob(&bytes)?;
+    let hash = digest(&packed);
+    Ok((hash, packed))
+}
+
+pub(crate) fn analysis_cache_path(
+    project_directory: &Path,
+    identity: AnalysisSnapshotId,
+    hash: &str,
+) -> PathBuf {
+    project_directory
+        .join("cache")
+        .join(format!("{identity}-{hash}.{ANALYSIS_CACHE_EXTENSION}"))
+}
+
+fn verify_manifest_blobs(path: &Path, manifest: &AnalysisManifest) -> Result<(), Error> {
+    let blobs = blob_dir(path)?;
+    for hash in &manifest.shape_blobs {
+        read_verified_blob(&blobs.join(format!("{hash}.shape")), hash)?;
+    }
+    read_verified_blob(
+        &blobs.join(format!("{}.values", manifest.values_blob)),
+        &manifest.values_blob,
+    )?;
+    if let Some(base) = &manifest.values_base_blob {
+        read_verified_blob(&blobs.join(format!("{base}.values")), base)?;
+    }
+    Ok(())
+}
+
+fn read_cached_analysis(path: &Path, manifest: &AnalysisManifest) -> Option<AnalysisSnapshot> {
+    let project_directory = path.parent()?;
+    let cache_directory = project_directory.join("cache");
+    let prefix = format!("{}-", manifest.identity);
+    let mut candidates = std::fs::read_dir(cache_directory)
+        .ok()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|candidate| {
+            candidate.extension().and_then(|value| value.to_str()) == Some(ANALYSIS_CACHE_EXTENSION)
+                && candidate
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|value| value.starts_with(&prefix))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort();
+    for candidate in candidates {
+        let stem = candidate.file_stem()?.to_str()?;
+        let expected = stem.strip_prefix(&prefix)?;
+        let packed = std::fs::read(&candidate).ok()?;
+        if digest(&packed) != expected {
+            continue;
+        }
+        let bytes = unpack_blob(&packed).ok()?;
+        let snapshot: AnalysisSnapshot = rmp_serde::from_slice(&bytes).ok()?;
+        if snapshot.identity == manifest.identity
+            && snapshot.project == manifest.project
+            && snapshot.generated_at_unix_micros == manifest.generated_at_unix_micros
+        {
+            return Some(snapshot);
+        }
+    }
+    None
 }
 
 pub(crate) fn blob_dir(manifest: &Path) -> Result<PathBuf, Error> {

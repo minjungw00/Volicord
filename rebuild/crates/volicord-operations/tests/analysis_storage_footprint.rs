@@ -195,5 +195,20 @@ fn shared_storage_survives_restart_retains_history_and_collects_only_orphans(
         .entries
         .iter()
         .any(|entry| entry.area.path == "src/changed.py"));
+    let cache_directory = changed
+        .stored_at
+        .parent()
+        .ok_or("analysis parent")?
+        .join("cache");
+    let cache_names = fs::read_dir(cache_directory)?
+        .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(cache_names.len(), 2, "read cache must remain bounded");
+    assert!(cache_names
+        .iter()
+        .any(|name| name.starts_with(&first.analysis.identity.to_string())));
+    assert!(cache_names
+        .iter()
+        .any(|name| name.starts_with(&changed.analysis.identity.to_string())));
     Ok(())
 }

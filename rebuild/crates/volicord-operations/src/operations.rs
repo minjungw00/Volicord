@@ -1,4 +1,7 @@
-use crate::analysis_io::{encode_analysis, read_analysis, AnalysisHeader};
+use crate::analysis_io::{
+    analysis_cache_path, encode_analysis, encode_analysis_cache, read_analysis,
+    read_analysis_durable, AnalysisHeader,
+};
 use crate::forgetting::{ForgettingOperationRecord, ForgettingState, ForgettingStore};
 use crate::{
     AnalysisOutcome, BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
@@ -443,6 +446,7 @@ impl LocalOperations {
             prepared.repository_worktree,
             excluded_paths,
             false,
+            None,
             previous,
         )
     }
@@ -572,6 +576,7 @@ impl LocalOperations {
         repository_worktree: RepositoryWorktreeObservation,
         excluded_paths: Vec<String>,
         replace_existing: bool,
+        known_corrupt_manifests: Option<&[PathBuf]>,
         previous: Option<&AnalysisSnapshot>,
     ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
         let grounding = CanonicalGrounding::from_read_basis(&basis).map_err(|error| {
@@ -594,7 +599,7 @@ impl LocalOperations {
             analyze_repository_semantics(SemanticAnalysisRequest::new(structural))
                 .map_err(|error| Error::with_source("repository analysis failed", error))?;
         let stored_at = if replace_existing {
-            self.replace_analysis(&analysis)?
+            self.replace_analysis(&analysis, known_corrupt_manifests)?
         } else {
             self.store_analysis(&analysis)?
         };
@@ -677,6 +682,15 @@ impl LocalOperations {
         project_id: ProjectId,
         excluded_paths: Vec<String>,
     ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
+        self.rebuild_analysis_after_inspection(project_id, excluded_paths, None)
+    }
+
+    fn rebuild_analysis_after_inspection(
+        &self,
+        project_id: ProjectId,
+        excluded_paths: Vec<String>,
+        known_corrupt_manifests: Option<&[PathBuf]>,
+    ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
         let operation_id = new_operation_id()?;
         let started_at = now_micros()?;
         let monotonic = Instant::now();
@@ -692,6 +706,7 @@ impl LocalOperations {
             prepared.repository_worktree,
             excluded_paths,
             true,
+            known_corrupt_manifests,
             None,
         )
     }
@@ -708,15 +723,24 @@ impl LocalOperations {
                 "unsupported repair scope {scope:?}; supported scope: derived-analysis"
             )));
         }
-        let diagnosis = match self.check_analyses(project_id) {
-            Ok(0) => "derived analysis is missing".to_owned(),
-            Ok(_) => {
+        let (analysis_count, corrupt_manifests) = self.inspect_analyses(project_id)?;
+        let diagnosis = match corrupt_manifests.first() {
+            Some((_, error)) => format!("derived analysis is corrupt: {error}"),
+            None if analysis_count == 0 => "derived analysis is missing".to_owned(),
+            None => {
                 "derived analysis is readable; forced verification rebuild requested".to_owned()
             }
-            Err(error) => format!("derived analysis is corrupt: {error}"),
         };
         let discarded_entries = self.project_analysis_entry_count(project_id)?;
-        let operation = self.rebuild_analysis(project_id, excluded_paths)?;
+        let corrupt_paths = corrupt_manifests
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>();
+        let operation = self.rebuild_analysis_after_inspection(
+            project_id,
+            excluded_paths,
+            Some(&corrupt_paths),
+        )?;
         Ok(RepairOutcome {
             kind: RepairKind::DerivedAnalysisRepair,
             affected_scope: format!("project:{project_id}:derived-analysis"),
@@ -3471,7 +3495,11 @@ impl LocalOperations {
         Ok(path)
     }
 
-    fn replace_analysis(&self, analysis: &AnalysisSnapshot) -> Result<PathBuf, Error> {
+    fn replace_analysis(
+        &self,
+        analysis: &AnalysisSnapshot,
+        known_corrupt_manifests: Option<&[PathBuf]>,
+    ) -> Result<PathBuf, Error> {
         let _mutation = self.layout.acquire_mutation_lock()?;
         let project_id = analysis.project.identity();
         let destination = self.layout.analysis_project_dir(project_id);
@@ -3483,19 +3511,25 @@ impl LocalOperations {
         publish_analysis(&path, analysis)?;
         // A repair publishes a complete new root first. Readable immutable history is retained;
         // only payloads already proven unusable are then detached.
-        for entry in fs::read_dir(&destination)
-            .map_err(|error| Error::with_source("cannot inspect repaired analysis", error))?
-        {
-            let candidate = entry
-                .map_err(|error| {
-                    Error::with_source("cannot inspect repaired analysis entry", error)
-                })?
-                .path();
+        let candidates = match known_corrupt_manifests {
+            Some(candidates) => candidates.to_vec(),
+            None => fs::read_dir(&destination)
+                .map_err(|error| Error::with_source("cannot inspect repaired analysis", error))?
+                .map(|entry| {
+                    entry.map(|entry| entry.path()).map_err(|error| {
+                        Error::with_source("cannot inspect repaired analysis entry", error)
+                    })
+                })
+                .collect::<Result<Vec<_>, Error>>()?,
+        };
+        for candidate in candidates {
             if candidate == path || candidate.extension().and_then(OsStr::to_str) != Some("json") {
                 continue;
             }
             if AnalysisHeader::read(&candidate, project_id)
-                .and_then(|header| read_analysis(&candidate).map(|snapshot| (header, snapshot)))
+                .and_then(|header| {
+                    read_analysis_durable(&candidate).map(|snapshot| (header, snapshot))
+                })
                 .is_err()
             {
                 fs::remove_file(&candidate).map_err(|error| {
@@ -3616,15 +3650,33 @@ impl LocalOperations {
     }
 
     fn check_analyses(&self, project_id: ProjectId) -> Result<usize, Error> {
+        let (count, corrupt) = self.inspect_analyses(project_id)?;
+        if let Some((_, error)) = corrupt.into_iter().next() {
+            return Err(Error::new(error));
+        }
+        Ok(count)
+    }
+
+    fn inspect_analyses(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<(usize, Vec<(PathBuf, String)>), Error> {
         let paths = self.analysis_paths(project_id)?;
+        let mut corrupt = Vec::new();
         for path in &paths {
-            let header = AnalysisHeader::read(path, project_id)?;
-            let snapshot = read_analysis(path)?;
-            if !header.matches(&snapshot) {
-                return Err(Error::new("Analysis Snapshot changed during validation"));
+            let result = AnalysisHeader::read(path, project_id).and_then(|header| {
+                let snapshot = read_analysis_durable(path)?;
+                if header.matches(&snapshot) {
+                    Ok(())
+                } else {
+                    Err(Error::new("Analysis Snapshot changed during validation"))
+                }
+            });
+            if let Err(error) = result {
+                corrupt.push((path.clone(), error.to_string()));
             }
         }
-        Ok(paths.len())
+        Ok((paths.len(), corrupt))
     }
 
     fn select_analysis(
@@ -4052,7 +4104,18 @@ fn publish_analysis(
         &blob_directory.join(format!("{}.values", encoded.values_hash)),
         &encoded.values,
     )?;
-    publish_bytes_no_replace(destination, &encoded.manifest)
+    let manifest = encoded.manifest.clone();
+    drop(encoded);
+    let (cache_hash, cache) = encode_analysis_cache(analysis)?;
+    let cache_path = analysis_cache_path(project_directory, analysis.identity, &cache_hash);
+    let cache_directory = cache_path
+        .parent()
+        .ok_or_else(|| Error::new("Analysis cache destination has no parent"))?;
+    volicord_local_platform::ensure_private_directory(cache_directory).map_err(|error| {
+        Error::with_source("cannot create private Analysis cache directory", error)
+    })?;
+    publish_content_blob(&cache_path, &cache)?;
+    publish_bytes_no_replace(destination, &manifest)
 }
 
 fn publish_content_blob(destination: &Path, bytes: &[u8]) -> Result<(), Error> {
@@ -4069,6 +4132,8 @@ fn publish_content_blob(destination: &Path, bytes: &[u8]) -> Result<(), Error> {
 
 fn collect_orphan_analysis_blobs(project_directory: &Path) -> Result<u64, Error> {
     let mut reachable = BTreeSet::new();
+    let mut newest: Option<(i64, AnalysisSnapshotId)> = None;
+    let mut oldest: Option<(i64, AnalysisSnapshotId)> = None;
     for entry in fs::read_dir(project_directory).map_err(|error| {
         Error::with_source("cannot inspect Analysis manifests for collection", error)
     })? {
@@ -4084,6 +4149,13 @@ fn collect_orphan_analysis_blobs(project_directory: &Path) -> Result<u64, Error>
             // ordinary publication fails closed rather than guessing reachability.
             Err(_) => return Ok(0),
         };
+        let candidate = (manifest.generated_at_unix_micros, manifest.identity);
+        if newest.is_none_or(|current| candidate > current) {
+            newest = Some(candidate);
+        }
+        if oldest.is_none_or(|current| candidate < current) {
+            oldest = Some(candidate);
+        }
         reachable.extend(
             manifest
                 .shape_blobs
@@ -4111,6 +4183,31 @@ fn collect_orphan_analysis_blobs(project_directory: &Path) -> Result<u64, Error>
                 Error::with_source("cannot collect unreachable Analysis blob", error)
             })?;
             deleted += 1;
+        }
+    }
+    let cache_directory = project_directory.join("cache");
+    if cache_directory.exists() {
+        let retained_prefixes = newest
+            .into_iter()
+            .chain(oldest)
+            .map(|(_, identity)| format!("{identity}-"))
+            .collect::<BTreeSet<_>>();
+        for entry in fs::read_dir(&cache_directory)
+            .map_err(|error| Error::with_source("cannot inspect Analysis read caches", error))?
+        {
+            let entry = entry
+                .map_err(|error| Error::with_source("cannot inspect Analysis read cache", error))?;
+            let retain = entry.file_name().to_str().is_some_and(|name| {
+                retained_prefixes
+                    .iter()
+                    .any(|prefix| name.starts_with(prefix))
+            });
+            if !retain {
+                fs::remove_file(entry.path()).map_err(|error| {
+                    Error::with_source("cannot collect stale Analysis read cache", error)
+                })?;
+                deleted += 1;
+            }
         }
     }
     Ok(deleted)
