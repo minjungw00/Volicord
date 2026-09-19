@@ -67,10 +67,18 @@ class Collector:
                 manifests = list(analysis_root.glob("*/*.json"))
                 project_totals = {}
                 graph_items = 0
+                valid_manifest_count = 0
                 for path in manifests:
                     stat = path.stat()
                     self.max_snapshot_bytes = max(self.max_snapshot_bytes, stat.st_size)
-                    value = json.loads(path.read_text())
+                    try:
+                        value = json.loads(path.read_text())
+                    except json.JSONDecodeError:
+                        # V11 deliberately corrupts one derived snapshot before exercising
+                        # repair. Its bytes still count below, but it is not a completed
+                        # snapshot and must not abort or invalidate resource sampling.
+                        continue
+                    valid_manifest_count += 1
                     graph_items += sum(value.get(key, 0) for key in (
                         "inventory_entry_count", "entity_count", "relation_count"))
                 logical = physical = 0
@@ -88,7 +96,8 @@ class Collector:
                     project_totals[str(project)] = project_bytes
                 self.analysis_storage_logical_bytes = max(self.analysis_storage_logical_bytes, logical)
                 self.analysis_storage_physical_bytes = max(self.analysis_storage_physical_bytes, physical)
-                self.analysis_snapshot_count = max(self.analysis_snapshot_count, len(manifests))
+                self.analysis_snapshot_count = max(
+                    self.analysis_snapshot_count, valid_manifest_count)
                 self.analysis_graph_item_count = max(self.analysis_graph_item_count, graph_items)
                 for project, total in project_totals.items():
                     baseline = self.project_warmup_bytes.setdefault(project, total)
@@ -202,6 +211,10 @@ def self_check():
         assert storage.analysis_storage_logical_bytes > baseline
         assert storage.analysis_storage_physical_bytes >= storage.analysis_storage_logical_bytes
         assert storage.post_warmup_analysis_growth_bytes == storage.analysis_storage_logical_bytes - baseline
+        (project / "corrupt.json").write_text("{ controlled corruption")
+        storage.snapshots({"VOLICORD_RUNTIME_DIR": str(runtime)})
+        assert storage.analysis_snapshot_count == 2
+        assert storage.snapshot_errors == 0
     collector = Collector()
     collector.enabled = True
     with collector.measurement(os.getpid(), "self_check", {}):
