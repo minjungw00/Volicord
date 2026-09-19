@@ -1,6 +1,5 @@
 //! Current-only, structurally shared Analysis Snapshot persistence.
 use crate::Error;
-use flate2::{read::DeflateDecoder, write::DeflateEncoder, Compression};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -21,7 +20,7 @@ const SHAPE_MAGIC: &[u8] = b"VOLICORD-JSON-SHAPE\0";
 const VALUES_MAGIC: &[u8] = b"VOLICORD-JSON-VALUES\0";
 const VALUES_DELTA_MAGIC: &[u8] = b"VOLICORD-JSON-DELTA2\0";
 const BLOB_RAW_MAGIC: &[u8] = b"VOLICORD-BLOB-RAW1\0";
-const BLOB_DEFLATE_MAGIC: &[u8] = b"VOLICORD-BLOB-DEFLATE1\0";
+const BLOB_ZSTD_MAGIC: &[u8] = b"VOLICORD-BLOB-ZSTD1\0";
 const CHUNK_MIN_BYTES: usize = 8 * 1024;
 const CHUNK_MAX_BYTES: usize = 32 * 1024;
 const CHUNK_WINDOW_BYTES: usize = 63;
@@ -254,15 +253,10 @@ pub(crate) fn reusable_base_values(
 }
 
 fn pack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::fast());
-    encoder
-        .write_all(input)
+    let compressed = zstd::stream::encode_all(input, 1)
         .map_err(|error| Error::with_source("cannot compress Analysis blob", error))?;
-    let compressed = encoder
-        .finish()
-        .map_err(|error| Error::with_source("cannot finish Analysis blob compression", error))?;
-    let mut packed = Vec::with_capacity(BLOB_DEFLATE_MAGIC.len() + 8 + compressed.len());
-    packed.extend_from_slice(BLOB_DEFLATE_MAGIC);
+    let mut packed = Vec::with_capacity(BLOB_ZSTD_MAGIC.len() + 8 + compressed.len());
+    packed.extend_from_slice(BLOB_ZSTD_MAGIC);
     put_u64(&mut packed, input.len() as u64);
     packed.extend_from_slice(&compressed);
     let mut raw = Vec::with_capacity(BLOB_RAW_MAGIC.len() + input.len());
@@ -279,12 +273,10 @@ fn unpack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
     if let Some(raw) = input.strip_prefix(BLOB_RAW_MAGIC) {
         return Ok(raw.to_vec());
     }
-    let mut at = expect_magic(input, BLOB_DEFLATE_MAGIC)?;
+    let mut at = expect_magic(input, BLOB_ZSTD_MAGIC)?;
     let expected = usize::try_from(take_u64(input, &mut at)?)
         .map_err(|_| Error::new("Analysis packed blob length is unsupported"))?;
-    let mut output = Vec::with_capacity(expected);
-    DeflateDecoder::new(&input[at..])
-        .read_to_end(&mut output)
+    let output = zstd::stream::decode_all(&input[at..])
         .map_err(|error| Error::with_source("cannot decompress Analysis blob", error))?;
     if output.len() != expected {
         return Err(Error::new("Analysis packed blob length is corrupt"));
