@@ -742,7 +742,7 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                         "기록되지 않음"
                     )),
                     fixed(locale, "agent recommendation", "에이전트 권고"),
-                    format!(
+                    format_args!(
                         "{}; {}={}",
                         recommendation_attribution(decision, locale),
                         fixed(locale, "rationale", "근거"),
@@ -1055,7 +1055,7 @@ fn decision_summary_section(
                     "기록되지 않음"
                 )),
                 fixed(locale, "agent recommendation", "에이전트 권고"),
-                format!(
+                format_args!(
                     "{}; {}={}",
                     recommendation_attribution(decision, locale),
                     fixed(locale, "rationale", "근거"),
