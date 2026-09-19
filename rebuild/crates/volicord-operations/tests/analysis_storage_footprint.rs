@@ -45,21 +45,27 @@ fn reports_graph_scale_dominance_repeat_delta_and_allocated_bytes(
         .analyze(project, Vec::new())?
         .value
         .ok_or("second analysis")?;
+    let third = fixture
+        .operations
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("third analysis")?;
     assert_ne!(first.analysis.identity, second.analysis.identity);
+    assert_ne!(second.analysis.identity, third.analysis.identity);
 
     let report = fixture.operations.analysis_storage_footprint(project)?;
     eprintln!("{}", serde_json::to_string_pretty(&report)?);
-    assert_eq!(report.snapshot_count, 2);
-    assert_eq!(report.snapshots.len(), 2);
+    assert_eq!(report.snapshot_count, 3);
+    assert_eq!(report.snapshots.len(), 3);
     assert_eq!(report.reusable_content_overlap_millionths, Some(1_000_000));
     let repeated = report.unchanged_repeat_delta_bytes.ok_or("repeat delta")?;
     assert!(
-        repeated > 100_000,
+        repeated > 50_000,
         "fixture must expose meaningful full-copy growth: {repeated}"
     );
     assert!(
         report.logical_bytes
-            < report
+            <= report
                 .snapshots
                 .iter()
                 .map(|item| item.logical_bytes)

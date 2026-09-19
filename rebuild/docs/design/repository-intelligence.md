@@ -566,6 +566,14 @@ identity로 먼저 no-replace 게시한 뒤 lightweight manifest를 마지막에
 exact current Analysis Snapshot schema를 검사한다. 이는 별도 old/new decoder가 아니다.
 Pretty-printing과 physical blob partition은 durable domain meaning의 일부가 아니다.
 
+Shape/value blob은 content identity 게시 전에 blob별로 무손실 압축할 수 있으며 reader는
+저장 bytes의 identity를 먼저 검증한 뒤 원래 token stream을 복원한다. Value delta가 최신
+complete base의 압축 representation보다 충분히 작지 않으면 writer는 그 snapshot을 새
+complete base로 게시하고, 후속 snapshot은 가장 최신의 검증 가능한 complete base를
+선택한다. 따라서 작은 source 변화가 장기 history에서 full-value copy 누적으로 확대되지
+않으며, 압축 방식과 base 회전은 Analysis Snapshot domain schema나 identity 의미를 바꾸지
+않는다.
+
 Blob collection root는 성공적으로 게시된 모든 retained Analysis manifest가 명시한 shape,
 value 및 complete-value base다. Candidate, Checkpoint-derived work authority, provider request,
 managed derived evidence가 명시한 historical Analysis identity는 그 immutable manifest가
