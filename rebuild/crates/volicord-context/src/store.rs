@@ -30,6 +30,7 @@ pub const SCHEMA_KIND: &str = "volicord-context";
 pub const SCHEMA_VERSION: u32 = 14;
 
 pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
+const READ_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 const REQUIRED_TABLES: [&str; 32] = [
     "metadata",
@@ -113,13 +114,15 @@ impl Store {
                 format!("cannot open store {} read-only", path.display()),
             )
         })?;
-        connection.busy_timeout(Duration::ZERO).map_err(|error| {
-            Error::with_source(
-                ErrorKind::StorageUnavailable,
-                "cannot configure canonical reader timeout",
-                error,
-            )
-        })?;
+        connection
+            .busy_timeout(READ_BUSY_TIMEOUT)
+            .map_err(|error| {
+                Error::with_source(
+                    ErrorKind::StorageUnavailable,
+                    "cannot configure canonical reader timeout",
+                    error,
+                )
+            })?;
         validate_existing_schema(&connection)?;
         Ok(Self {
             connection,
@@ -6427,7 +6430,7 @@ fn sqlite_code(error: &rusqlite::Error) -> Option<rusqlite::ErrorCode> {
 
 #[cfg(test)]
 mod tests {
-    use super::{begin_write, record_operation, Store};
+    use super::{begin_write, record_operation, Store, READ_BUSY_TIMEOUT};
     use crate::{ErrorKind, OperationId, TimestampMicros};
 
     #[test]
@@ -6447,10 +6450,21 @@ mod tests {
         let secure_delete: i64 = store
             .connection
             .query_row("PRAGMA secure_delete", [], |row| row.get(0))?;
+        let writer_busy_timeout: u64 =
+            store
+                .connection
+                .query_row("PRAGMA busy_timeout", [], |row| row.get(0))?;
         assert_eq!(foreign_keys, 1);
         assert!(journal.eq_ignore_ascii_case("wal"));
         assert_eq!(synchronous, 2);
         assert_eq!(secure_delete, 1);
+        assert_eq!(writer_busy_timeout, 0);
+        let reader = Store::open_read_only(store.path())?;
+        let reader_busy_timeout: u64 =
+            reader
+                .connection
+                .query_row("PRAGMA busy_timeout", [], |row| row.get(0))?;
+        assert_eq!(reader_busy_timeout, READ_BUSY_TIMEOUT.as_millis() as u64);
         Ok(())
     }
 

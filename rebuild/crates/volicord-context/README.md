@@ -30,8 +30,12 @@ owned by `rebuild/docs/design/`.
   maintained mapping is in `INVARIANTS.md`.
 - The open path applies and verifies foreign keys, WAL journal mode,
   `synchronous=FULL`, and `secure_delete=ON`. Linux crash and filesystem residue
-  behavior still belongs to later destructive fault validation.
-- Schema metadata is `{ kind = "volicord-context", version = 13 }`. An existing
+  behavior still belongs to later destructive fault validation. Writer
+  connections fail immediately on lock contention so a canonical mutation is
+  never retried under a new operation identity. Read-only connections may wait
+  up to five seconds for an already serialized writer's SQLite lock; this wait
+  does not retry or mutate a domain operation.
+- Schema metadata is `{ kind = "volicord-context", version = 14 }`. An existing
   malformed store or any non-current version is rejected before durability
   configuration or canonical mutation; no older-schema or legacy decoder is
   present.
