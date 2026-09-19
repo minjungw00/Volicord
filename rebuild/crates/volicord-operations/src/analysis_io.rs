@@ -844,17 +844,45 @@ fn take_u64(bytes: &[u8], at: &mut usize) -> Result<u64, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::ser::SerializeSeq;
     use serde_json::json;
+    use std::{cell::Cell, rc::Rc};
 
-    #[derive(Default)]
+    struct StreamingValue {
+        count: u32,
+        serialization_active: Rc<Cell<bool>>,
+    }
+
+    impl Serialize for StreamingValue {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            self.serialization_active.set(true);
+            let mut sequence = serializer.serialize_seq(Some(self.count as usize))?;
+            for index in 0..self.count {
+                sequence.serialize_element(&format!(
+                    "repository-entity-{index:08}-{}",
+                    index.rotate_left(7)
+                ))?;
+            }
+            let result = sequence.end();
+            self.serialization_active.set(false);
+            result
+        }
+    }
+
     struct ChunkObserver {
         bytes: Vec<u8>,
         largest_write: usize,
+        serialization_active: Rc<Cell<bool>>,
+        wrote_during_serialization: bool,
     }
 
     impl Write for ChunkObserver {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
             self.largest_write = self.largest_write.max(bytes.len());
+            self.wrote_during_serialization |= self.serialization_active.get();
             self.bytes.extend_from_slice(bytes);
             Ok(bytes.len())
         }
@@ -866,13 +894,24 @@ mod tests {
 
     #[test]
     fn analysis_cache_round_trips_through_bounded_stream_writes() -> Result<(), Error> {
-        let value = (0_u32..120_000)
-            .map(|index| format!("repository-entity-{index:08}-{}", index.rotate_left(7)))
-            .collect::<Vec<_>>();
-        let logical_bytes = value.iter().map(String::len).sum::<usize>();
-        let mut output = ChunkObserver::default();
+        let serialization_active = Rc::new(Cell::new(false));
+        let value = StreamingValue {
+            count: 120_000,
+            serialization_active: Rc::clone(&serialization_active),
+        };
+        let logical_bytes = value.count as usize * "repository-entity-00000000-00000000".len();
+        let mut output = ChunkObserver {
+            bytes: Vec::new(),
+            largest_write: 0,
+            serialization_active,
+            wrote_during_serialization: false,
+        };
         write_analysis_cache_value(&mut output, &value)?;
         assert!(output.bytes.len() > 256 * 1024);
+        assert!(
+            output.wrote_during_serialization,
+            "cache publication must write while serializing instead of retaining a complete encoded snapshot"
+        );
         assert!(
             output.largest_write < output.bytes.len(),
             "cache publication must not hand one complete encoded snapshot to its writer"
@@ -882,9 +921,18 @@ mod tests {
             "cache writes must stay bounded relative to the logical snapshot"
         );
         let decoded: Vec<String> = read_analysis_cache_value(output.bytes.as_slice())?;
-        assert_eq!(decoded, value);
+        assert_eq!(decoded.len(), value.count as usize);
+        assert_eq!(
+            decoded.first().map(String::as_str),
+            Some("repository-entity-00000000-0")
+        );
+        assert_eq!(
+            decoded.last().map(String::as_str),
+            Some("repository-entity-00119999-15359872")
+        );
 
-        let legacy = pack_blob(&rmp_serde::to_vec_named(&value).map_err(|error| {
+        let legacy_value = vec!["legacy cache payload"; 32];
+        let legacy = pack_blob(&rmp_serde::to_vec_named(&legacy_value).map_err(|error| {
             Error::with_source("cannot create legacy cache test value", error)
         })?)?;
         assert!(read_analysis_cache_value::<Vec<String>>(legacy.as_slice()).is_err());
