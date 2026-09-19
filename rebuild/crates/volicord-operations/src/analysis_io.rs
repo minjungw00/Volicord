@@ -254,7 +254,7 @@ pub(crate) fn reusable_base_values(
 }
 
 fn pack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
-    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::new(6));
+    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::fast());
     encoder
         .write_all(input)
         .map_err(|error| Error::with_source("cannot compress Analysis blob", error))?;
