@@ -416,7 +416,12 @@ their commands, start a listener, mutate the repository or contact a provider.
 Do not seek evaluator-private expected answers, alternatives or full descriptors.
 The initial concerns are rebuttable and non-exhaustive; inspect other actual outcomes.
 Use exact indexed JSON pointers or 1-based line numbers in evidence references.
-Record inspected evidence, uncertainty and counterevidence/explicit absence.
+For every citation, explain its relevance to that exact criterion. Complete the
+criterion-specific semantic dimensions in preparation.json independently; do not
+inherit a group verdict. In particular, judge code behavior separately from
+architecture flow and inspect primary document content, diagrams and Decision
+attribution rather than relying on existence or hashes. Record inspected evidence,
+uncertainty and counterevidence/explicit absence.
 Unavailable CLI or live accessibility surfaces require insufficient_evidence.
 Agent identity must remain agent; do not label an agent judgment as human review.
 Validate with validate-qualitative-review; record with record-qualitative-review.

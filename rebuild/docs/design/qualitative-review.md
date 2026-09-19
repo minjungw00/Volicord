@@ -50,6 +50,17 @@ References resolve an indexed evidence identity and typed locator in the same
 scoped sample/evidence set. Reviewers explicitly list inspected evidence and observation
 limits. Available evidence is not automatically inspected evidence. Hash checks
 and locator existence do not prove the semantic adequacy of a citation or verdict.
+Every citation also identifies the exact criterion and explains why that location is
+relevant. Criteria with easily conflated properties retain a closed inspection record:
+architecture components/relationships/flow and concrete code behavior are independent;
+diagram usefulness inspects the diagram itself; document usefulness inspects primary
+semantic content rather than placeholders or audit/integrity material; and document
+fidelity separately inspects user choice, recommended alternative, their respective
+rationales, and alternative-specific consequences. A reviewed `satisfied` or `violated`
+state is structurally incomplete until these criterion-specific dimensions are recorded.
+This discipline does not derive a verdict from keywords or turn structural validation
+into a prose-quality oracle. A criterion that cannot be judged remains
+`insufficient_evidence`.
 
 Authority findings additionally retain material outcome, implementation commitment,
 commitment state, resolution path, actual authority, relation and chronology.

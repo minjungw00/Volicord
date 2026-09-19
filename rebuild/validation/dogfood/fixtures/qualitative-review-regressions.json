@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "concrete-code-behavior-with-missing-topology",
+      "assessments": {
+        "architecture_components_flow": "violated",
+        "code_behavior": "satisfied"
+      },
+      "evidence_summary": "The sanitized Viewer body explains the changed handler behavior with a source reference, while its architecture area has no grounded component relationships or request/data flow."
+    },
+    {
+      "id": "placeholder-primary-document-content",
+      "assessments": {
+        "usefulness": "violated"
+      },
+      "evidence_summary": "The generated document is hash-valid and captured, but its primary work section contains only a bounded-source digest and byte-count placeholder rather than readable semantic content."
+    },
+    {
+      "id": "ambiguous-choice-and-recommendation-attribution",
+      "assessments": {
+        "fidelity": "violated"
+      },
+      "evidence_summary": "The canonical user choice differs from the recommended alternative, while the document does not identify which rationale and consequences belong to which alternative."
+    }
+  ]
+}

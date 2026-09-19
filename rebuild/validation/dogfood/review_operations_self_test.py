@@ -70,7 +70,10 @@ def insufficient_draft(root):
         for s in [*p["index"]["samples"], *p["index"]["cli_samples"]]]
     for spec, finding in zip(q.criterion_specs(p["index"], p["rubric"]), value["assessments"]):
         finding.update(assessment="insufficient_evidence", reasoning="Only the bounded evidence availability inventory was inspected.",
-            evidence=[{"evidence_id": spec["sample_id"] + "-availability", "locator": {"kind": "json_pointer", "value": "/unavailable_surfaces"}}],
+            evidence=[{"evidence_id": spec["sample_id"] + "-availability",
+                "locator": {"kind": "json_pointer", "value": "/unavailable_surfaces"},
+                "criterion_id": spec["criterion_id"],
+                "relevance": "This availability record establishes why the exact criterion cannot be judged."}],
             uncertainty="No substantive judgment has been established from actual observations.",
             counterevidence={"state": "not_observable", "reasoning": "Missing inspection limits both positive and contrary observations.", "evidence": []})
     (root / "draft.json").write_bytes(ops.encoded(value))
@@ -193,9 +196,12 @@ class WorkflowTests(unittest.TestCase):
         foreign_id = "small-python-cli-observation"
         foreign = preparation["index"]["evidence"][foreign_id]
         with self.assertRaisesRegex(ValueError, "another cycle"):
+            spec = {"criterion_id": "volicord/cli/discover_with_cli_help",
+                "sample_id": "volicord", "group": "cli", "name": "discover_with_cli_help", "locale": None}
             ops.review.validate_references(
-                [{"evidence_id": foreign_id, "locator": foreign["locators"][0]}],
-                preparation["index"], set(preparation["index"]["evidence"]), "volicord")
+                [{"evidence_id": foreign_id, "locator": foreign["locators"][0],
+                  "criterion_id": spec["criterion_id"], "relevance": "Foreign CLI observation control."}],
+                preparation["index"], set(preparation["index"]["evidence"]), spec)
 
         original = (observation_root / "observations.json").read_bytes()
         changed = json.loads(original)

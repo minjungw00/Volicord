@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
@@ -51,7 +51,22 @@ GROUP_PROMPTS = {
     "live_viewer": "Assess actual observed keyboard reachability, visible focus, non-color-only meaning and narrow/zoom presentation in both en and ko. Static markup cannot establish live interaction; use insufficient_evidence if the needed observation is absent.",
     "context_recovery": "Compare work with fresh resume: recover goal, applicable Decisions and rationale, current/completed/remaining state and open questions accurately without repeating answered judgments. A later repair does not make an earlier false completion claim truthful.",
 }
+CRITERION_PROMPTS = {
+    "architecture_components_flow": "Inspect the actual component identities, relationships, direction and request/data flow. Judge topology independently from nearby prose about code behavior.",
+    "code_behavior": "Inspect concrete affected code behavior and its code/source basis. Missing or weak architecture topology does not by itself make code behavior absent.",
+    "diagram_usefulness": "Inspect the rendered diagram itself, its grounded nodes/edges and whether it materially explains this work. Artifact existence or adjacent prose is not diagram usefulness.",
+    "usefulness": "Inspect each document's primary user-facing semantic sections for readable project meaning and handoff value. A digest, byte count, bounded-source placeholder, audit appendix or valid artifact hash is not meaningful primary content.",
+    "fidelity": "Compare the Decision Report and other affected documents with canonical Decision meaning. Explicitly distinguish user choice, recommended alternative, user rationale, recommendation rationale and alternative-specific consequences.",
+}
+CRITERION_OBSERVATIONS = {
+    "architecture_components_flow": ["components", "relationships", "flow_direction", "separate_from_code_behavior"],
+    "code_behavior": ["affected_code", "concrete_behavior", "source_basis", "separate_from_topology"],
+    "diagram_usefulness": ["actual_diagram", "grounded_nodes_edges", "material_explanatory_value"],
+    "usefulness": ["primary_semantic_content", "readability", "handoff_value", "placeholder_or_audit_only_check"],
+    "fidelity": ["user_choice", "recommended_alternative", "user_rationale", "recommendation_rationale", "alternative_specific_consequences"],
+}
 FIELDS = {"criterion_id", "assessment", "reasoning", "evidence", "uncertainty",
+          "criterion_observations",
           "counterevidence", "applicability_reason", "machine_relationships", "authority"}
 
 
@@ -63,7 +78,10 @@ def require(condition, message):
 def rubric(definition):
     contract = definition["qualitative_review_contract"]
     return {"schema_version": SCHEMA_VERSION, "policy_revision": contract["policy_revision"],
-        "criteria": CRITERIA, "group_prompts": GROUP_PROMPTS, "required_surfaces": SURFACES,
+        "criteria": CRITERIA, "group_prompts": GROUP_PROMPTS,
+        "criterion_prompts": CRITERION_PROMPTS,
+        "criterion_observations": CRITERION_OBSERVATIONS,
+        "required_surfaces": SURFACES,
         "behavior_criteria": contract["interaction_behavior_criterion_contracts"],
         "authority_obligation_contract": authority.assessment_contract(),
         "assessment_states": STATES, "machine_relationships": RELATIONSHIPS,
@@ -143,7 +161,8 @@ def criterion_specs(index, policy):
 
 def observation(criterion_id):
     return {"criterion_id": criterion_id, "assessment": "not_reviewed", "reasoning": None,
-        "evidence": [], "uncertainty": None, "counterevidence": None, "applicability_reason": None,
+        "evidence": [], "uncertainty": None, "criterion_observations": [],
+        "counterevidence": None, "applicability_reason": None,
         "machine_relationships": [], "authority": None}
 
 
@@ -158,15 +177,17 @@ def template(preparation, preparation_sha256):
         "additional_outcomes": [], "resolves_review_runs": {}}
 
 
-def validate_references(references, index, inspected, sample_id, *, allow_empty=False):
+def validate_references(references, index, inspected, spec, *, allow_empty=False):
     require(isinstance(references, list) and len(references) <= 64 and (allow_empty or references),
             "assessment requires bounded evidence references")
     for ref in references:
-        require(isinstance(ref, dict) and set(ref) == {"evidence_id", "locator"}, "invalid evidence reference")
+        require(isinstance(ref, dict) and set(ref) == {"evidence_id", "locator", "criterion_id", "relevance"}
+            and ref["criterion_id"] == spec["criterion_id"] and authority.bounded_text(ref["relevance"]),
+            "evidence reference must explain its criterion-specific relevance")
         entry = index["evidence"].get(ref["evidence_id"]) if isinstance(ref["evidence_id"], str) else None
-        require(entry is not None and entry["sample_id"] in {None, sample_id}
+        require(entry is not None and entry["sample_id"] in {None, spec["sample_id"]}
             and (entry["surface"] != "cli_observation" or
-                 (entry["sample_id"] == sample_id and entry.get("repository_class") == sample_id))
+                 (entry["sample_id"] == spec["sample_id"] and entry.get("repository_class") == spec["sample_id"]))
             and ref["evidence_id"] in inspected, "evidence reference is missing, uninspected or belongs to another cycle")
         locator = ref["locator"]
         require(isinstance(locator, dict) and set(locator) == {"kind", "value"}
@@ -187,14 +208,23 @@ def validate_assessment(value, spec, preparation, inspected):
     require(all(authority.bounded_text(value[f]) for f in ("reasoning", "uncertainty")),
             "reviewed criterion requires bounded reasoning and explicit uncertainty")
     index = preparation["index"]
-    validate_references(value["evidence"], index, inspected, spec["sample_id"])
+    validate_references(value["evidence"], index, inspected, spec)
     counter = value["counterevidence"]
     require(isinstance(counter, dict) and set(counter) == {"state", "reasoning", "evidence"}
         and counter["state"] in {"cited", "none_found", "not_observable"}
         and authority.bounded_text(counter["reasoning"]), "explicit counterevidence or its absence is required")
-    validate_references(counter["evidence"], index, inspected, spec["sample_id"], allow_empty=counter["state"] != "cited")
+    validate_references(counter["evidence"], index, inspected, spec, allow_empty=counter["state"] != "cited")
     require(counter["state"] == "cited" or not counter["evidence"], "absence cannot contain counterevidence")
     require(state != "satisfied" or counter["state"] != "not_observable", "unobservable counterevidence cannot satisfy a criterion")
+    observations = value["criterion_observations"]
+    required_observations = preparation["rubric"]["criterion_observations"].get(spec["name"], [])
+    require(isinstance(observations, list) and len(observations) == len(set(observations))
+        and all(isinstance(item, str) for item in observations), "criterion observations must be distinct strings")
+    if state in {"satisfied", "violated"}:
+        require(observations == required_observations,
+            "criterion-specific semantic dimensions were not inspected independently")
+    else:
+        require(not observations, "incomplete or inapplicable judgment cannot claim completed semantic inspection")
     if state == "not_applicable":
         rule = preparation["rubric"]["not_applicable_rules"].get(spec["name"])
         reason = value["applicability_reason"]

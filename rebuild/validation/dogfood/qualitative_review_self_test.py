@@ -52,10 +52,15 @@ def completed(p):
 
 def fill(value, p, state="satisfied"):
     scope = value["criterion_id"].split("/", 1)[0]
-    value.update(assessment=state, reasoning="Synthetic reviewer inspected the criterion in the cited artifact.",
+    criterion = value["criterion_id"].rsplit("/", 1)[-1]
+    value.update(assessment=state, reasoning=f"Synthetic reviewer independently inspected {criterion} in the cited artifact.",
         uncertainty="Fixture-only judgment; no actual Product qualification.",
+        criterion_observations=(list(p["rubric"]["criterion_observations"].get(criterion, []))
+                                if state in {"satisfied", "violated"} else []),
         counterevidence={"state": "none_found", "reasoning": "No contrary evidence in the inspected synthetic case.", "evidence": []},
-        evidence=[{"evidence_id": name, "locator": entry["locators"][0]}
+        evidence=[{"evidence_id": name, "locator": entry["locators"][0],
+                   "criterion_id": value["criterion_id"],
+                   "relevance": f"This cited location was inspected specifically for {criterion}."}
             for name, entry in sorted(p["index"]["evidence"].items())
             if entry["sample_id"] in {None, scope}])
     if "/authority/" in value["criterion_id"] and not value["criterion_id"].endswith("/coverage"):
@@ -75,6 +80,40 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_campaign_derived_criteria_remain_independent(self):
+        fixture = json.loads((Path(__file__).with_name("fixtures") /
+                              "qualitative-review-regressions.json").read_text())
+        p = preparation()
+        for case in fixture["cases"]:
+            value = completed(p)
+            for name, state in case["assessments"].items():
+                finding = next(a for a in value["assessments"] if a["criterion_id"].endswith("/" + name))
+                fill(finding, p, state)
+                finding["reasoning"] = case["evidence_summary"]
+            result = q.validate_value(p, "d" * 64, value)
+            self.assertEqual(result["assessment_state"],
+                "violated" if "violated" in case["assessments"].values() else "satisfied", case["id"])
+        mixed = completed(p)
+        architecture = next(a for a in mixed["assessments"] if a["criterion_id"].endswith("/architecture_components_flow"))
+        code = next(a for a in mixed["assessments"] if a["criterion_id"].endswith("/code_behavior"))
+        fill(architecture, p, "violated")
+        fill(code, p, "satisfied")
+        self.assertNotEqual(architecture["reasoning"], code["reasoning"])
+        self.assertEqual(q.validate_value(p, "d" * 64, mixed)["assessment_state"], "violated")
+
+    def test_satisfaction_requires_criterion_specific_citations_and_dimensions(self):
+        p = preparation()
+        value = completed(p)
+        usefulness = next(a for a in value["assessments"] if a["criterion_id"].endswith("/documents/usefulness"))
+        usefulness["criterion_observations"] = []
+        with self.assertRaisesRegex(ValueError, "semantic dimensions"):
+            q.validate_value(p, "d" * 64, value)
+        value = completed(p)
+        usefulness = next(a for a in value["assessments"] if a["criterion_id"].endswith("/documents/usefulness"))
+        usefulness["evidence"][0].pop("relevance")
+        with self.assertRaisesRegex(ValueError, "criterion-specific relevance"):
+            q.validate_value(p, "d" * 64, value)
+
     def test_later_repair_does_not_erase_work_judgment(self):
         self.assertEqual(compatibility_review_result(), "failed")
 

@@ -1764,6 +1764,12 @@ reviewer metadata와 reviewer-safe operation 계약을 정의한다. Agent와 hu
 `satisfied`, `violated`, `insufficient_evidence`, `not_applicable`, `not_reviewed`를 구분한다.
 Missing observation은 inapplicability가 아니며 incomplete review는 만족으로 집계하지 않는다.
 Review artifact의 구조·hash·locator validation은 semantic judgment의 proof가 아니다.
+각 citation은 exact criterion과 그 locator의 relevance를 보존한다. Viewer topology,
+concrete code behavior와 actual diagram usefulness는 서로의 group-level 판정을 상속하지
+않는다. Document usefulness는 primary semantic content와 placeholder/audit-only 여부를,
+fidelity는 user choice, recommended alternative, 각 rationale와 alternative-specific
+consequence attribution을 각각 검사한다. 이 구조는 phrase별 verdict를 계산하지 않으며
+근거가 부족하면 `insufficient_evidence`를 유지한다.
 Technical result의 `qualitative_review = not_recorded`는 review publication과 독립이며 기존
 qualification은 `qualification_policy.py`가 결정한다. Live accessibility와 실제 사용자 Decision
 comprehension은 human observation을 요구하고 나머지 semantic criteria는 evidence-backed agent
