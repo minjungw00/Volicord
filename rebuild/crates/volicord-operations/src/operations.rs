@@ -1,6 +1,6 @@
 use crate::analysis_io::{
-    analysis_cache_path, encode_analysis, encode_analysis_cache, read_analysis,
-    read_analysis_durable, AnalysisHeader,
+    analysis_cache_path, digest_file, encode_analysis, read_analysis, read_analysis_durable,
+    write_analysis_cache, AnalysisHeader,
 };
 use crate::forgetting::{ForgettingOperationRecord, ForgettingState, ForgettingStore};
 use crate::{
@@ -4106,16 +4106,72 @@ fn publish_analysis(
     )?;
     let manifest = encoded.manifest.clone();
     drop(encoded);
-    let (cache_hash, cache) = encode_analysis_cache(analysis)?;
-    let cache_path = analysis_cache_path(project_directory, analysis.identity, &cache_hash);
-    let cache_directory = cache_path
-        .parent()
-        .ok_or_else(|| Error::new("Analysis cache destination has no parent"))?;
-    volicord_local_platform::ensure_private_directory(cache_directory).map_err(|error| {
+    publish_analysis_cache(project_directory, analysis)?;
+    publish_bytes_no_replace(destination, &manifest)
+}
+
+fn publish_analysis_cache(
+    project_directory: &Path,
+    analysis: &AnalysisSnapshot,
+) -> Result<(), Error> {
+    let cache_directory = project_directory.join("cache");
+    volicord_local_platform::ensure_private_directory(&cache_directory).map_err(|error| {
         Error::with_source("cannot create private Analysis cache directory", error)
     })?;
-    publish_content_blob(&cache_path, &cache)?;
-    publish_bytes_no_replace(destination, &manifest)
+    let temporary = cache_directory.join(format!(
+        ".volicord-analysis-cache-{}.tmp",
+        new_operation_id()?
+    ));
+    let mut options = OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(target_os = "linux")]
+    options.mode(0o600);
+    let mut file = options
+        .open(&temporary)
+        .map_err(|error| Error::with_source("cannot create Analysis cache temporary", error))?;
+    if let Err(error) = write_analysis_cache(&mut file, analysis).and_then(|_| {
+        file.sync_all()
+            .map_err(|error| Error::with_source("cannot sync Analysis read cache", error))
+    }) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    drop(file);
+    let hash = match digest_file(&temporary) {
+        Ok(hash) => hash,
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+    };
+    let destination = analysis_cache_path(project_directory, analysis.identity, &hash);
+    if destination.exists() {
+        let existing = digest_file(&destination);
+        let _ = fs::remove_file(&temporary);
+        return if existing? == hash {
+            Ok(())
+        } else {
+            Err(Error::new(
+                "Analysis read cache content identity is corrupt",
+            ))
+        };
+    }
+    match publish_file_no_replace(&temporary, &destination)
+        .map_err(|error| Error::with_source("cannot publish Analysis read cache", error))?
+    {
+        NoReplacePublicationOutcome::Published { .. } => Ok(()),
+        NoReplacePublicationOutcome::DestinationExists => {
+            let existing = digest_file(&destination);
+            let _ = fs::remove_file(&temporary);
+            if existing? == hash {
+                Ok(())
+            } else {
+                Err(Error::new(
+                    "Analysis read cache content identity is corrupt",
+                ))
+            }
+        }
+    }
 }
 
 fn publish_content_blob(destination: &Path, bytes: &[u8]) -> Result<(), Error> {

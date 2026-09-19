@@ -21,6 +21,7 @@ const VALUES_MAGIC: &[u8] = b"VOLICORD-JSON-VALUES\0";
 const VALUES_DELTA_MAGIC: &[u8] = b"VOLICORD-JSON-DELTA2\0";
 const BLOB_RAW_MAGIC: &[u8] = b"VOLICORD-BLOB-RAW1\0";
 const BLOB_ZSTD_MAGIC: &[u8] = b"VOLICORD-BLOB-ZSTD1\0";
+const ANALYSIS_CACHE_MAGIC: &[u8] = b"VOLICORD-ANALYSIS-CACHE1\0";
 const ANALYSIS_CACHE_EXTENSION: &str = "snapshot";
 const CHUNK_MIN_BYTES: usize = 8 * 1024;
 const CHUNK_MAX_BYTES: usize = 32 * 1024;
@@ -209,14 +210,28 @@ fn read_analysis_from_manifest(
     Ok(snapshot)
 }
 
-pub(crate) fn encode_analysis_cache(
+pub(crate) fn write_analysis_cache(
+    output: &mut impl Write,
     analysis: &AnalysisSnapshot,
-) -> Result<(String, Vec<u8>), Error> {
-    let bytes = rmp_serde::to_vec_named(analysis)
-        .map_err(|error| Error::with_source("cannot encode Analysis read cache", error))?;
-    let packed = pack_blob(&bytes)?;
-    let hash = digest(&packed);
-    Ok((hash, packed))
+) -> Result<(), Error> {
+    write_analysis_cache_value(output, analysis)
+}
+
+fn write_analysis_cache_value(
+    output: &mut impl Write,
+    value: &impl Serialize,
+) -> Result<(), Error> {
+    output
+        .write_all(ANALYSIS_CACHE_MAGIC)
+        .map_err(|error| Error::with_source("cannot write Analysis read cache header", error))?;
+    let mut encoder = zstd::stream::write::Encoder::new(output, 1)
+        .map_err(|error| Error::with_source("cannot create Analysis read cache encoder", error))?;
+    rmp_serde::encode::write_named(&mut encoder, value)
+        .map_err(|error| Error::with_source("cannot stream Analysis read cache", error))?;
+    encoder
+        .finish()
+        .map_err(|error| Error::with_source("cannot finish Analysis read cache", error))?;
+    Ok(())
 }
 
 pub(crate) fn analysis_cache_path(
@@ -264,12 +279,11 @@ fn read_cached_analysis(path: &Path, manifest: &AnalysisManifest) -> Option<Anal
     for candidate in candidates {
         let stem = candidate.file_stem()?.to_str()?;
         let expected = stem.strip_prefix(&prefix)?;
-        let packed = std::fs::read(&candidate).ok()?;
-        if digest(&packed) != expected {
+        if digest_file(&candidate).ok()?.as_str() != expected {
             continue;
         }
-        let bytes = unpack_blob(&packed).ok()?;
-        let snapshot: AnalysisSnapshot = rmp_serde::from_slice(&bytes).ok()?;
+        let snapshot: AnalysisSnapshot =
+            read_analysis_cache_value(File::open(&candidate).ok()?).ok()?;
         if snapshot.identity == manifest.identity
             && snapshot.project == manifest.project
             && snapshot.generated_at_unix_micros == manifest.generated_at_unix_micros
@@ -278,6 +292,21 @@ fn read_cached_analysis(path: &Path, manifest: &AnalysisManifest) -> Option<Anal
         }
     }
     None
+}
+
+fn read_analysis_cache_value<T: serde::de::DeserializeOwned>(input: impl Read) -> Result<T, Error> {
+    let mut reader = BufReader::with_capacity(1024 * 1024, input);
+    let mut magic = [0; ANALYSIS_CACHE_MAGIC.len()];
+    reader
+        .read_exact(&mut magic)
+        .map_err(|error| Error::with_source("cannot read Analysis cache header", error))?;
+    if magic != ANALYSIS_CACHE_MAGIC {
+        return Err(Error::new("Analysis read cache format is corrupt"));
+    }
+    let decoder = zstd::stream::read::Decoder::new(reader)
+        .map_err(|error| Error::with_source("cannot open Analysis read cache", error))?;
+    rmp_serde::from_read(decoder)
+        .map_err(|error| Error::with_source("cannot decode Analysis read cache", error))
 }
 
 pub(crate) fn blob_dir(manifest: &Path) -> Result<PathBuf, Error> {
@@ -298,6 +327,24 @@ fn read_verified_blob(path: &Path, expected: &str) -> Result<Vec<u8>, Error> {
 
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+pub(crate) fn digest_file(path: &Path) -> Result<String, Error> {
+    let file = File::open(path)
+        .map_err(|error| Error::with_source("cannot open Analysis cache for hashing", error))?;
+    let mut reader = BufReader::with_capacity(1024 * 1024, file);
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = reader
+            .read(&mut buffer)
+            .map_err(|error| Error::with_source("cannot hash Analysis cache", error))?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 pub(crate) fn reusable_base_values(
@@ -798,6 +845,51 @@ fn take_u64(bytes: &[u8], at: &mut usize) -> Result<u64, Error> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[derive(Default)]
+    struct ChunkObserver {
+        bytes: Vec<u8>,
+        largest_write: usize,
+    }
+
+    impl Write for ChunkObserver {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.largest_write = self.largest_write.max(bytes.len());
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn analysis_cache_round_trips_through_bounded_stream_writes() -> Result<(), Error> {
+        let value = (0_u32..120_000)
+            .map(|index| format!("repository-entity-{index:08}-{}", index.rotate_left(7)))
+            .collect::<Vec<_>>();
+        let logical_bytes = value.iter().map(String::len).sum::<usize>();
+        let mut output = ChunkObserver::default();
+        write_analysis_cache_value(&mut output, &value)?;
+        assert!(output.bytes.len() > 256 * 1024);
+        assert!(
+            output.largest_write < output.bytes.len(),
+            "cache publication must not hand one complete encoded snapshot to its writer"
+        );
+        assert!(
+            output.largest_write * 8 < logical_bytes,
+            "cache writes must stay bounded relative to the logical snapshot"
+        );
+        let decoded: Vec<String> = read_analysis_cache_value(output.bytes.as_slice())?;
+        assert_eq!(decoded, value);
+
+        let legacy = pack_blob(&rmp_serde::to_vec_named(&value).map_err(|error| {
+            Error::with_source("cannot create legacy cache test value", error)
+        })?)?;
+        assert!(read_analysis_cache_value::<Vec<String>>(legacy.as_slice()).is_err());
+        Ok(())
+    }
 
     #[test]
     fn content_delta_resynchronizes_after_insertions() -> Result<(), Error> {
