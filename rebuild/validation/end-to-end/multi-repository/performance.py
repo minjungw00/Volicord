@@ -15,6 +15,42 @@ METRICS = {
     "post_warmup_analysis_growth_bytes", "analysis_storage_bytes_per_graph_item",
 }
 
+RSS_BANDS_BYTES = (
+    256 * 1024 * 1024,
+    512 * 1024 * 1024,
+    1024 * 1024 * 1024,
+    2 * 1024 * 1024 * 1024,
+    3 * 1024 * 1024 * 1024,
+    4 * 1024 * 1024 * 1024,
+)
+
+
+def parse_linux_process_memory(status: str) -> dict[str, int]:
+    """Return current and lifetime-high RSS without accepting partial evidence."""
+
+    values: dict[str, int] = {}
+    for line in status.splitlines():
+        name, separator, remainder = line.partition(":")
+        if not separator or name not in {"VmRSS", "VmHWM"}:
+            continue
+        fields = remainder.split()
+        if len(fields) != 2 or fields[1] != "kB":
+            raise ValueError(f"unsupported {name} format")
+        value = int(fields[0]) * 1024
+        if value <= 0:
+            raise ValueError(f"invalid {name} value")
+        if name in values:
+            raise ValueError(f"duplicate {name} value")
+        values[name] = value
+    if set(values) != {"VmRSS", "VmHWM"}:
+        raise ValueError("Linux process memory status is incomplete")
+    if values["VmHWM"] < values["VmRSS"]:
+        raise ValueError("Linux process high-water RSS is below current RSS")
+    return {
+        "current_rss_bytes": values["VmRSS"],
+        "high_water_rss_bytes": values["VmHWM"],
+    }
+
 
 def qualify(observed: dict, limits: dict) -> dict:
     valid = set(limits) == METRICS and all(
@@ -45,7 +81,7 @@ def accepted(report):
 
 
 class Collector:
-    def __init__(self):
+    def __init__(self, *, status_reader=None, sampling_interval_seconds=0.05):
         self.enabled = False
         self.calls = []
         self.max_snapshot_bytes = 0
@@ -56,6 +92,25 @@ class Collector:
         self.project_warmup_bytes = {}
         self.post_warmup_analysis_growth_bytes = 0
         self.snapshot_errors = 0
+        self.status_reader = status_reader or self._read_status
+        self.sampling_interval_seconds = sampling_interval_seconds
+        self.processes = []
+        self._automatic_processes = {}
+        self.first_band_crossings = []
+        self._crossed_bands = set()
+
+    @staticmethod
+    def _read_status(pid):
+        return Path(f"/proc/{pid}/status").read_text()
+
+    def register_process(self, pid):
+        process = {
+            "pid": pid,
+            "process_instance": f"mcp-{len(self.processes) + 1:03d}",
+            "call_count": 0,
+        }
+        self.processes.append(process)
+        return process
 
     def snapshots(self, env):
         if not self.enabled:
@@ -106,13 +161,59 @@ class Collector:
             except OSError:
                 self.snapshot_errors += 1
 
-    def measurement(self, pid, operation, env):
-        return Measurement(self, pid, operation, env)
+    def measurement(self, process, operation, env):
+        if isinstance(process, int):
+            registered = self._automatic_processes.get(process)
+            if registered is None:
+                registered = self.register_process(process)
+                self._automatic_processes[process] = registered
+            process = registered
+        process["call_count"] += 1
+        return Measurement(
+            self,
+            process,
+            process["call_count"],
+            operation,
+            env,
+        )
+
+    def record(self, call):
+        self.calls.append(call)
+        before = call.get("high_water_rss_before_bytes")
+        after = call.get("high_water_rss_after_bytes")
+        if before is None or after is None:
+            return
+        for band in RSS_BANDS_BYTES:
+            if band not in self._crossed_bands and before < band <= after:
+                self._crossed_bands.add(band)
+                self.first_band_crossings.append({
+                    "rss_band_bytes": band,
+                    "process_instance": call["process_instance"],
+                    "call_ordinal": call["call_ordinal"],
+                    "operation": call["operation"],
+                })
+
+    def diagnostics(self):
+        return {
+            "schema_version": 1,
+            "rss_bands_bytes": list(RSS_BANDS_BYTES),
+            "processes": [
+                {
+                    "process_instance": process["process_instance"],
+                    "call_count": process["call_count"],
+                }
+                for process in self.processes
+            ],
+            "first_band_crossings": self.first_band_crossings,
+            "calls": self.calls,
+        }
 
     def report(self, duration_ms):
         limits = maintained_limits()
         observed = {
-            "mcp_peak_rss_bytes": max((x["process_peak_rss_bytes"] for x in self.calls), default=0),
+            "mcp_peak_rss_bytes": max(
+                (x["process_peak_rss_bytes"] or 0 for x in self.calls), default=0
+            ),
             "max_snapshot_bytes": self.max_snapshot_bytes,
             "v11_duration_ms": duration_ms,
             "max_mcp_call_ms": max((x["duration_ms"] for x in self.calls), default=0),
@@ -132,47 +233,87 @@ class Collector:
 
 
 class Measurement:
-    def __init__(self, collector, pid, operation, env):
-        self.collector, self.pid, self.operation, self.env = collector, pid, operation, env
-        self.peak, self.samples, self.errors = 0, 0, 0
+    def __init__(self, collector, process, call_ordinal, operation, env):
+        self.collector = collector
+        self.process = process
+        self.call_ordinal = call_ordinal
+        self.operation = operation
+        self.env = env
+        self.peak = 0
+        self.current_peak = 0
+        self.samples = 0
+        self.errors = []
+        self.before = None
+        self.after = None
         self.stop = threading.Event()
 
-    def sample(self):
+    def sample(self, phase):
         try:
-            status = Path(f"/proc/{self.pid}/status").read_text()
-            values = [int(line.split()[1]) * 1024 for line in status.splitlines() if line.startswith("VmHWM:")]
-            if values:
-                self.peak = max(self.peak, values[0])
-                self.samples += 1
-            else:
-                self.errors += 1
-        except FileNotFoundError:
-            pass  # A process that exited is handled by its RPC/exit result.
-        except (OSError, ValueError):
-            self.errors += 1
+            sample = parse_linux_process_memory(
+                self.collector.status_reader(self.process["pid"])
+            )
+            self.peak = max(self.peak, sample["high_water_rss_bytes"])
+            self.current_peak = max(
+                self.current_peak, sample["current_rss_bytes"]
+            )
+            self.samples += 1
+            return sample
+        except (OSError, ValueError) as error:
+            if len(self.errors) < 8:
+                self.errors.append({
+                    "phase": phase,
+                    "kind": type(error).__name__,
+                })
+            return None
 
     def monitor(self):
-        while not self.stop.wait(0.05):
-            self.sample()
+        while not self.stop.wait(self.collector.sampling_interval_seconds):
+            self.sample("during")
 
     def __enter__(self):
         self.started = time.monotonic_ns()
         if self.collector.enabled:
-            self.sample()
-            self.thread = threading.Thread(target=self.monitor, daemon=True)
-            self.thread.start()
+            self.before = self.sample("before")
+            if self.collector.sampling_interval_seconds is not None:
+                self.thread = threading.Thread(target=self.monitor, daemon=True)
+                self.thread.start()
         return self
 
     def __exit__(self, *_):
         if self.collector.enabled:
             self.stop.set()
-            self.thread.join()
-            self.sample()
+            if self.collector.sampling_interval_seconds is not None:
+                self.thread.join()
+            self.after = self.sample("after")
             self.collector.snapshots(self.env)
-            self.collector.calls.append({"operation": self.operation,
+            before_hwm = (
+                self.before["high_water_rss_bytes"] if self.before else None
+            )
+            after_hwm = self.after["high_water_rss_bytes"] if self.after else None
+            self.collector.record({
+                "process_instance": self.process["process_instance"],
+                "call_ordinal": self.call_ordinal,
+                "operation": self.operation,
                 "duration_ms": round((time.monotonic_ns() - self.started) / 1_000_000, 3),
-                "process_peak_rss_bytes": self.peak, "sample_count": self.samples,
-                "sampling_error_count": self.errors})
+                "current_rss_before_bytes": (
+                    self.before["current_rss_bytes"] if self.before else None
+                ),
+                "current_rss_after_bytes": (
+                    self.after["current_rss_bytes"] if self.after else None
+                ),
+                "current_rss_peak_during_call_bytes": self.current_peak or None,
+                "high_water_rss_before_bytes": before_hwm,
+                "high_water_rss_after_bytes": after_hwm,
+                "process_peak_rss_bytes": self.peak or None,
+                "established_new_high_water": (
+                    after_hwm > before_hwm
+                    if before_hwm is not None and after_hwm is not None
+                    else None
+                ),
+                "sample_count": self.samples,
+                "sampling_error_count": len(self.errors),
+                "measurement_errors": self.errors,
+            })
 
 
 def self_check():
@@ -221,4 +362,73 @@ def self_check():
         pass
     assert collector.calls[0]["process_peak_rss_bytes"] > 0
     assert collector.calls[0]["sample_count"] > 0
-    assert set(collector.calls[0]) == {"operation", "duration_ms", "process_peak_rss_bytes", "sample_count", "sampling_error_count"}
+    assert collector.calls[0]["current_rss_before_bytes"] > 0
+    assert collector.calls[0]["current_rss_after_bytes"] > 0
+    assert collector.calls[0]["high_water_rss_before_bytes"] > 0
+    assert collector.calls[0]["high_water_rss_after_bytes"] > 0
+    assert collector.calls[0]["established_new_high_water"] in (True, False)
+    assert collector.calls[0]["measurement_errors"] == []
+
+    samples = iter([
+        "VmRSS:\t262144 kB\nVmHWM:\t262144 kB\n",
+        "VmRSS:\t786432 kB\nVmHWM:\t1048576 kB\n",
+        "VmRSS:\t524288 kB\nVmHWM:\t1048576 kB\n",
+        "VmRSS:\t393216 kB\nVmHWM:\t1048576 kB\n",
+    ])
+    attributed = Collector(
+        status_reader=lambda _pid: next(samples),
+        sampling_interval_seconds=None,
+    )
+    attributed.enabled = True
+    process = attributed.register_process(4242)
+    with attributed.measurement(process, "first_growth", {}):
+        pass
+    with attributed.measurement(process, "inherited_high_water", {}):
+        pass
+    first, inherited = attributed.calls
+    assert first["process_instance"] == inherited["process_instance"] == "mcp-001"
+    assert (first["call_ordinal"], inherited["call_ordinal"]) == (1, 2)
+    assert first["current_rss_before_bytes"] == 256 * 1024 * 1024
+    assert first["current_rss_after_bytes"] == 768 * 1024 * 1024
+    assert first["established_new_high_water"] is True
+    assert inherited["current_rss_after_bytes"] == 384 * 1024 * 1024
+    assert inherited["established_new_high_water"] is False
+    assert attributed.first_band_crossings == [
+        {
+            "rss_band_bytes": 512 * 1024 * 1024,
+            "process_instance": "mcp-001",
+            "call_ordinal": 1,
+            "operation": "first_growth",
+        },
+        {
+            "rss_band_bytes": 1024 * 1024 * 1024,
+            "process_instance": "mcp-001",
+            "call_ordinal": 1,
+            "operation": "first_growth",
+        },
+    ]
+
+    failures = iter([
+        "VmRSS:\t1 kB\n",
+        "VmRSS:\tinvalid kB\nVmHWM:\t2 kB\n",
+    ])
+    unavailable = Collector(
+        status_reader=lambda _pid: next(failures),
+        sampling_interval_seconds=None,
+    )
+    unavailable.enabled = True
+    with unavailable.measurement(unavailable.register_process(4343), "broken", {}):
+        pass
+    broken = unavailable.calls[0]
+    assert broken["current_rss_before_bytes"] is None
+    assert broken["current_rss_after_bytes"] is None
+    assert broken["established_new_high_water"] is None
+    assert broken["sampling_error_count"] == 2
+    assert [error["phase"] for error in broken["measurement_errors"]] == [
+        "before", "after"
+    ]
+
+
+if __name__ == "__main__":
+    self_check()
+    print(json.dumps({"status": "passed", "checks": "memory-attribution"}))

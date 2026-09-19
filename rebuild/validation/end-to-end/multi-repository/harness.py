@@ -681,12 +681,13 @@ class Mcp:
             [str(binary)], cwd=ROOT, env=env, text=True,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
+        self.performance_process = PERFORMANCE.register_process(self.process.pid)
         self.request_id = 0
         self.env = env
 
     def rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         operation = params.get("name", method) if method == "tools/call" else method
-        with PERFORMANCE.measurement(self.process.pid, operation, self.env):
+        with PERFORMANCE.measurement(self.performance_process, operation, self.env):
             return self._rpc(method, params)
 
     def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -3816,7 +3817,7 @@ def run(args: argparse.Namespace) -> int:
         revisit_assessment = failed_decision_revisit_assessment()
     duration_ms = round((time.monotonic_ns() - started) / 1_000_000, 3)
     performance = PERFORMANCE.report(duration_ms)
-    write_json(output / "performance-calls.json", {"calls": PERFORMANCE.calls})
+    write_json(output / "performance-calls.json", PERFORMANCE.diagnostics())
     result = make_v11_result(
         validated_production_head=args.validated_head,
         final_gate_artifact=str(Path(args.final_artifact).resolve()),
