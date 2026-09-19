@@ -460,20 +460,37 @@ assignment, expected outcome, or raw session data. Never put it in tracked state
 
 The active host fills each draft's `realization` with the exact plan fingerprint,
 translated `title`, ordered `sections` (`key`, `title`, `claims`), and ordered claims
-(`identity`, `text`), preserving every protected code/path term. Draft schema version 2
+(`identity`, `text`), preserving every protected code/path term. Draft schema version 3
 has exactly `schema_version`, `preparation_sha256`, `requested_language`,
 `all_generated_prose_realized`, `provenance`, and `realization`. The realization has
 no caller-supplied `generator`. Keep the prepared hash/language and set the prose
 confirmation to `true` only after reviewing the complete body.
 
 Keep `provenance.preparation_binding` unchanged: it verifies the prepared candidate and
-local MCP executable hash, not the author or exact model. Each of `host`, `agent`, and
-`model` is either `{"state":"unknown","value":null}` or
-`{"state":"self_reported","value":"the reported identity"}`. No exact host/model
+local MCP executable hash, not the author or exact model. Without a bound runtime rollout,
+each of `host`, `agent`, and `model` is either `{"state":"unknown","value":null}` or
+`{"state":"self_reported","value":"the reported identity"}` and
+`runtime_observation.state` remains `not_provided`. No exact host/model authorship
 attestation is available on this path, so `verified` claims are rejected. The recorder
 derives Product generator metadata with explicit unverified labels, including
 `unknown (unverified)` for an unavailable model identity. The accepted structured
 provenance and its exact bytes/hash remain immutable.
+
+When the realizing Codex session's raw rollout is available, bind it before recording:
+
+```text
+rebuild/scripts/dogfood-campaign bind-document-realization-provenance \
+  --campaign-root /absolute/private/campaign \
+  --realization-id <opaque-document-id> --draft <private-draft-path> \
+  --runtime-rollout /absolute/private/realizer.rollout.jsonl
+```
+
+The helper accepts one consistent host-recorded `turn_context.model` without a
+model-name allowlist and records source/originator/model
+as `runtime_observed`, bound to rollout hash, session and CLI version. This is stronger
+than self-report but remains explicitly not an authorship attestation. Supply the same
+`--runtime-rollout` to validate and record. A conflicting weaker self-report is rejected;
+absent exact runtime metadata remains `unknown`.
 
 Python never writes translated prose. Field text is bounded to 4,096 UTF-8 bytes;
 each private preparation/draft is bounded to 2 MiB. The host then runs:

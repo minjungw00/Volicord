@@ -77,6 +77,12 @@ Active-host realization의 exact model/author identity를 independent source로 
 bounded correlation일 뿐 exact model/authorship attestation이 아니다. Campaign preparation의
 candidate HEAD와 local MCP executable hash를 verified binding으로 보존해도 host/model에
 그 verification authority를 전이하지 않는다. 이를 확인하려고 credential이나 auth file을 읽지 않는다.
+Codex host가 bounded rollout의 maintained `session_meta`와 `turn_context`에서 exact source,
+originator, session과 model을 제공하면 recorder는 raw bytes/hash와 일관성을 확인한 뒤
+`runtime_observed`로 기록할 수 있다. 이는 임의 self-report보다 강한 host-recorded
+observation이지만 realization authorship attestation이나 `verified` identity는 아니다.
+Runtime observation과 충돌하는 덜 구체적 self-report는 stronger identity로 승격하지 않으며,
+exact identity가 없으면 계속 `unknown`을 허용한다. Model 이름은 allowlist로 qualification하지 않는다.
 
 Host가 제공하지 않는 권한을 Volicord가 발명하지 않는다. Current-host interaction의
 구체적 UI나 wire representation은 이 문서의 계약이 아니다.

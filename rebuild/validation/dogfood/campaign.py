@@ -3478,6 +3478,8 @@ def parser() -> argparse.ArgumentParser:
         help="Inspect published preparation and immutable realization counts without mutation")
     validate_document = sub.add_parser("validate-document-realization")
     record_document = sub.add_parser("record-document-realization")
+    bind_document_provenance = sub.add_parser("bind-document-realization-provenance",
+        help="Bind stronger host-recorded runtime identity into a mutable realization draft")
     diagnostic = sub.add_parser("diagnose", help="Read-only historical inventory diagnostic when a collection receipt is unavailable; never qualifies")
     diagnostic.add_argument("--campaign-root", required=True)
     diagnostic.add_argument("--output", required=True)
@@ -3551,10 +3553,13 @@ def parser() -> argparse.ArgumentParser:
     document_inputs = prepare_documents.add_mutually_exclusive_group(required=True)
     document_inputs.add_argument("--raw-rollout", action="append")
     document_inputs.add_argument("--rollout-directory")
-    for command in (validate_document, record_document):
+    for command in (validate_document, record_document, bind_document_provenance):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--realization-id", required=True)
         command.add_argument("--draft", required=True)
+    bind_document_provenance.add_argument("--runtime-rollout", required=True)
+    for command in (validate_document, record_document):
+        command.add_argument("--runtime-rollout")
     finalize.add_argument("--campaign-root", required=True)
     package.add_argument("--review-root", required=True)
     package.add_argument("--output", required=True)
@@ -3613,7 +3618,11 @@ def main() -> int:
         value = activate_all(root)
     elif args.command in {"validate-document-realization", "record-document-realization"}:
         operation = document_realization.validate if args.command == "validate-document-realization" else document_realization.record
-        value = operation(root, args.realization_id, Path(args.draft).resolve())
+        value = operation(root, args.realization_id, Path(args.draft).resolve(),
+            Path(args.runtime_rollout).resolve() if args.runtime_rollout else None)
+    elif args.command == "bind-document-realization-provenance":
+        value = document_realization.bind_runtime_provenance(root, args.realization_id,
+            Path(args.draft).resolve(), Path(args.runtime_rollout).resolve())
     elif args.command == "inspect-document-realizations":
         value = document_realization.inspect_state(root)
     elif args.command in {"collect-batch", "prepare-document-realizations"}:

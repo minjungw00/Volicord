@@ -441,6 +441,13 @@ field/language attestation 검사는 유지하며 provenance 검증이 prose qua
 `volicord-mcp` hash와 동일해야 한다. Plan preparation, immutable realization record와 final
 generation은 MCP 사용 전후에 그 binding을 다시 검증하며 같은 path의 replacement를 realized
 document evidence로 publish하지 않는다.
+Codex의 maintained rollout이 `session_meta` source/originator/session과 일관된
+`turn_context.model`을 제공하면 mutable draft는 exact rollout SHA-256에 bound된
+`runtime_observed` host/agent/model claim으로 갱신할 수 있다. Recorder는 preflight와 record
+때 같은 rollout bytes를 다시 확인한다. 이 state는 host-recorded runtime observation이며
+authorship attestation이 아니므로 Product metadata도 그 한계를 표시한다. Runtime observation과
+충돌하는 self-report는 거부하고, exact metadata가 없으면 `unknown` 또는 명시적
+`self_reported`를 유지한다. Model value에는 이름 allowlist를 적용하지 않는다.
 Preparation은 plan별 bounded progress와 final publication 완료를 stderr의 machine-readable
 event로 보고한다. 별도 read-only state inspection은 `not_prepared`, published preparation,
 partially recorded와 fully recorded를 구분한다. Caller가 final publication 뒤 중단됐으면

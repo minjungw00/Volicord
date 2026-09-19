@@ -16,6 +16,7 @@ from typing import Any
 
 import harness
 import identity_provenance
+import codex_events
 
 
 def campaign_api():
@@ -140,14 +141,44 @@ def current_plan(binary: Path, runtime: Path, preparation: dict[str, Any], forma
 
 def provenance_template(binding: dict[str, Any]) -> dict[str, Any]:
     return {"preparation_binding": binding,
+        "runtime_observation": {"state": "not_provided", "source": None,
+            "rollout_sha256": None, "session_id": None, "cli_version": None},
         **{field: {"state": "unknown", "value": None} for field in ("host", "agent", "model")}}
 
 
-def validate_provenance(preparation: dict[str, Any], provenance: Any) -> None:
+def observed_runtime_provenance(binding: dict[str, Any], rollout: Path) -> dict[str, Any]:
+    """Extract host-recorded identity without claiming author attestation."""
+    c = campaign_api()
+    try:
+        capture = codex_events.load_codex_capture(rollout)
+        events = [json.loads(line) for line in rollout.read_text(encoding="utf-8").splitlines()]
+    except (codex_events.EvidenceError, OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise c.CampaignError("runtime identity rollout is unavailable or invalid") from error
+    models = []
+    for event in events:
+        payload = event.get("payload") if isinstance(event, dict) else None
+        if event.get("type") == "turn_context" and isinstance(payload, dict) and "model" in payload:
+            model = payload["model"]
+            if not isinstance(model, str) or not model.strip() or model != model.strip() or len(model.encode()) > 256:
+                raise c.CampaignError("runtime model identity is malformed or unbounded")
+            models.append(model)
+    if not models or len(set(models)) != 1:
+        raise c.CampaignError("runtime rollout does not provide one exact consistent model identity")
+    observation = {"state": "observed", "source": "codex_vscode_rollout",
+        "rollout_sha256": capture.source_sha256, "session_id": capture.session_id,
+        "cli_version": capture.cli_version}
+    return {"preparation_binding": binding, "runtime_observation": observation,
+        "host": {"state": "runtime_observed", "value": capture.source},
+        "agent": {"state": "runtime_observed", "value": capture.originator},
+        "model": {"state": "runtime_observed", "value": models[0]}}
+
+
+def validate_provenance(preparation: dict[str, Any], provenance: Any, *,
+                        runtime_rollout: Path | None = None, allow_bound_runtime=False) -> None:
     """The preparation proves a local route, never authorship or exact model identity."""
     c = campaign_api()
     binding = preparation.get("provenance_binding")
-    if (preparation.get("schema_version") != 2 or not isinstance(binding, dict)
+    if (preparation.get("schema_version") != 3 or not isinstance(binding, dict)
         or set(binding) != {"state", "source", "candidate_head", "mcp_sha256"}
         or binding.get("state") != "verified"
         or binding.get("source") != "candidate_local_document_preview"
@@ -155,20 +186,76 @@ def validate_provenance(preparation: dict[str, Any], provenance: Any) -> None:
         or not re.fullmatch(r"[0-9a-f]{40}", str(binding.get("candidate_head", "")))
         or not re.fullmatch(r"[0-9a-f]{64}", str(binding.get("mcp_sha256", "")))
         or not isinstance(provenance, dict)
-        or set(provenance) != {"preparation_binding", "host", "agent", "model"}
+        or set(provenance) != {"preparation_binding", "runtime_observation", "host", "agent", "model"}
         or provenance.get("preparation_binding") != binding):
         raise c.CampaignError("realization provenance does not match verified preparation binding")
+    observation = provenance["runtime_observation"]
+    empty_observation = {"state": "not_provided", "source": None,
+        "rollout_sha256": None, "session_id": None, "cli_version": None}
+    if observation == empty_observation:
+        allow_runtime = False
+        if runtime_rollout is not None:
+            raise c.CampaignError("runtime rollout was supplied but stronger identity was not bound into the draft")
+    elif (isinstance(observation, dict)
+          and set(observation) == {"state", "source", "rollout_sha256", "session_id", "cli_version"}
+          and observation.get("state") == "observed"
+          and observation.get("source") == "codex_vscode_rollout"
+          and re.fullmatch(r"[0-9a-f]{64}", str(observation.get("rollout_sha256", "")))
+          and isinstance(observation.get("session_id"), str) and observation["session_id"].strip()
+          and isinstance(observation.get("cli_version"), str) and observation["cli_version"].strip()):
+        allow_runtime = True
+    else:
+        raise c.CampaignError("invalid realization runtime identity observation")
     for field in ("host", "agent", "model"):
         try:
-            identity_provenance.validate_claim(provenance[field])
+            identity_provenance.validate_claim(provenance[field], allow_runtime_observed=allow_runtime)
         except ValueError as error:
             raise c.CampaignError(str(error)) from error
+    runtime_claims = all(provenance[field]["state"] == "runtime_observed"
+                         for field in ("host", "agent", "model"))
+    if allow_runtime != runtime_claims:
+        raise c.CampaignError("runtime observation and identity claim provenance disagree")
+    if allow_runtime:
+        if runtime_rollout is not None:
+            if provenance != observed_runtime_provenance(binding, runtime_rollout):
+                raise c.CampaignError("runtime-observed identity differs from the bound Codex rollout")
+        elif not allow_bound_runtime:
+            raise c.CampaignError("runtime-observed identity requires its exact rollout during preflight/record")
+
+
+def bind_runtime_provenance(root: Path, identity: str, draft_path: Path,
+                            rollout: Path) -> dict[str, Any]:
+    """Replace weaker mutable draft claims with exact host-recorded observations."""
+    c = campaign_api()
+    preparation_bytes = bound_bytes(root, artifact(root, "plans", identity))
+    preparation = json.loads(preparation_bytes)
+    if c.relative(root, draft_path) in c.load_inventory(root)["artifacts"]:
+        raise c.CampaignError("inventory-bound artifact cannot be a mutable realization draft")
+    original = draft_path.read_bytes()
+    if len(original) > 2 * 1024 * 1024:
+        raise c.CampaignError("realization draft exceeds the private artifact bound")
+    draft = json.loads(original)
+    validate_value(preparation, preparation_bytes, draft, allow_bound_runtime=True)
+    observed = observed_runtime_provenance(preparation["provenance_binding"], rollout)
+    for field in ("host", "agent", "model"):
+        claim = draft["provenance"][field]
+        if claim["state"] == "self_reported" and claim["value"] != observed[field]["value"]:
+            raise c.CampaignError(f"self-reported {field} conflicts with stronger runtime observation")
+    draft["provenance"] = observed
+    data = c.json_bytes(draft)
+    validate_value(preparation, preparation_bytes, draft, runtime_rollout=rollout)
+    c.atomic_write_bytes(draft_path, data)
+    return {"state": "runtime_provenance_bound", "realization_id": identity,
+        "draft_sha256": hashlib.sha256(data).hexdigest(), "provenance": observed,
+        "mutation": "mutable_draft_only", "qualification_state": "not_run"}
 
 
 def product_generator(provenance: dict[str, Any]) -> dict[str, str]:
     """Adapt provenance to existing Product metadata without implying verification."""
     return {target: ("unknown (unverified)" if provenance[source]["state"] == "unknown"
-            else "self_reported (unverified): " + provenance[source]["value"])
+            else "self_reported (unverified): " + provenance[source]["value"]
+            if provenance[source]["state"] == "self_reported"
+            else "runtime_observed (host-recorded, authorship unverified): " + provenance[source]["value"])
         for target, source in (("generator", "host"), ("agent", "agent"), ("model", "model"))}
 
 
@@ -222,7 +309,8 @@ def inspect_state(root: Path) -> dict[str, Any]:
         destination = artifact(root, "recorded", identity)
         if destination.exists():
             draft = json.loads(bound_bytes(root, destination))
-            validate_value(json.loads(preparation_bytes), preparation_bytes, draft)
+            validate_value(json.loads(preparation_bytes), preparation_bytes, draft,
+                           allow_bound_runtime=True)
             recorded.append(identity)
         else:
             remaining.append(identity)
@@ -265,7 +353,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
             raise c.CampaignError("raw work/resume captures do not establish one exact cycle Project")
         for document_kind in c.DOCUMENT_KINDS:
             identity = secrets.token_hex(16)
-            preparation = {"kind": "active_host_document_preparation", "schema_version": 2,
+            preparation = {"kind": "active_host_document_preparation", "schema_version": 3,
                 "realization_id": identity, "candidate_head": campaign["candidate_head"],
                 "project_id": work_ids[0], "document_kind": document_kind,
                 "language": campaign["document_language"], "locale": campaign["viewer_locale"]}
@@ -282,7 +370,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
                 raise c.CampaignError("Product plan exceeds the private preparation artifact bound")
             plan_path = artifact(root, "plans", identity)
             files[plan_path] = data
-            draft = {"schema_version": 2, "preparation_sha256": hashlib.sha256(data).hexdigest(),
+            draft = {"schema_version": 3, "preparation_sha256": hashlib.sha256(data).hexdigest(),
                 "provenance": provenance_template(preparation["provenance_binding"]),
                 "requested_language": preparation["language"], "all_generated_prose_realized": False,
                 "realization": {"plan_fingerprint": plan["plan_fingerprint"], "title": None,
@@ -310,7 +398,8 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
     return {"state": "realization_required", "index": "realizer/index.json", "qualification_state": "not_run"}
 
 
-def validate_value(preparation: dict[str, Any], preparation_bytes: bytes, value: Any) -> None:
+def validate_value(preparation: dict[str, Any], preparation_bytes: bytes, value: Any, *,
+                   runtime_rollout: Path | None = None, allow_bound_runtime=False) -> None:
     c = campaign_api()
     def require(condition, message):
         if not condition:
@@ -319,8 +408,9 @@ def validate_value(preparation: dict[str, Any], preparation_bytes: bytes, value:
         return isinstance(value, str) and bool(value.strip()) and len(value.encode("utf-8")) <= 4096
     require(isinstance(value, dict) and set(value) == {"schema_version", "provenance", "preparation_sha256", "requested_language",
         "all_generated_prose_realized", "realization"}, "invalid realization draft shape")
-    require(value["schema_version"] == 2, "unsupported realization draft version")
-    validate_provenance(preparation, value["provenance"])
+    require(value["schema_version"] == 3, "unsupported realization draft version")
+    validate_provenance(preparation, value["provenance"], runtime_rollout=runtime_rollout,
+                        allow_bound_runtime=allow_bound_runtime)
     require(value["preparation_sha256"] == hashlib.sha256(preparation_bytes).hexdigest(), "wrong preparation hash")
     require(value["requested_language"] == preparation["language"] and value["all_generated_prose_realized"] is True,
             "active host must review all generated prose in the exact requested language")
@@ -342,7 +432,8 @@ def validate_value(preparation: dict[str, Any], preparation_bytes: bytes, value:
             require(all(term in claim["text"] for term in original["protected_terms"]), "protected code/path term changed")
 
 
-def validate(root: Path, identity: str, draft_path: Path) -> dict[str, Any]:
+def validate(root: Path, identity: str, draft_path: Path,
+             runtime_rollout: Path | None = None) -> dict[str, Any]:
     """Read only realizer-visible preparation, input and inventory membership."""
     c = campaign_api()
     if c.relative(root, draft_path) in c.load_inventory(root)["artifacts"]:
@@ -351,22 +442,23 @@ def validate(root: Path, identity: str, draft_path: Path) -> dict[str, Any]:
     if draft_path.stat().st_size > 2 * 1024 * 1024:
         raise c.CampaignError("realization draft exceeds the private artifact bound")
     draft = c.read_json(draft_path)
-    validate_value(json.loads(data), data, draft)
+    validate_value(json.loads(data), data, draft, runtime_rollout=runtime_rollout)
     return {"state": "valid", "realization_id": identity, "qualification_state": "not_run"}
 
 
-def record(root: Path, identity: str, draft_path: Path) -> dict[str, Any]:
+def record(root: Path, identity: str, draft_path: Path,
+           runtime_rollout: Path | None = None) -> dict[str, Any]:
     c = campaign_api()
     campaign = c.load_campaign_for_mutation(root)
     c.verify_inventory(root)
     if campaign.get("terminal_outcome") is not None or any(s.get("state") != "sealed" for s in campaign["cycles"].values()):
         raise c.CampaignError("realization recording requires an untouched sealed campaign")
     verify_route(campaign)
-    validate(root, identity, draft_path)
+    validate(root, identity, draft_path, runtime_rollout)
     data = draft_path.read_bytes()
     preparation_bytes = bound_bytes(root, artifact(root, "plans", identity))
     preparation = json.loads(preparation_bytes)
-    validate_value(preparation, preparation_bytes, json.loads(data))
+    validate_value(preparation, preparation_bytes, json.loads(data), runtime_rollout=runtime_rollout)
     bindings = json.loads(bound_bytes(root, root / "realization-bindings.json"))
     matches = [b for b in bindings["documents"] if b["realization_id"] == identity]
     if len(matches) != 1 or preparation["candidate_head"] != campaign["candidate_head"]:
@@ -376,7 +468,7 @@ def record(root: Path, identity: str, draft_path: Path) -> dict[str, Any]:
     state = campaign["cycles"][matches[0]["cycle_key"]]
     for format_name, _ in c.DOCUMENT_FORMATS:
         consume(Path(campaign["candidate_binary"]), Path(state["runtime_home"]), preparation,
-                json.loads(data), format_name)
+                json.loads(data), format_name, runtime_rollout=runtime_rollout)
     verify_route(campaign)
     destination = artifact(root, "recorded", identity)
     publish(root, {destination: data})
@@ -385,11 +477,14 @@ def record(root: Path, identity: str, draft_path: Path) -> dict[str, Any]:
             "qualification_state": "not_run"}
 
 
-def consume(binary: Path, runtime: Path, preparation: dict[str, Any], draft: dict[str, Any], format_name: str) -> str:
+def consume(binary: Path, runtime: Path, preparation: dict[str, Any], draft: dict[str, Any],
+            format_name: str, *, runtime_rollout: Path | None = None,
+            allow_bound_runtime=False) -> str:
     c = campaign_api()
     if current_plan(binary, runtime, preparation, format_name) != preparation["plan"]:
         raise c.CampaignError("current Product plan changed after preparation")
-    validate_provenance(preparation, draft.get("provenance"))
+    validate_provenance(preparation, draft.get("provenance"), runtime_rollout=runtime_rollout,
+                        allow_bound_runtime=allow_bound_runtime)
     generator = product_generator(draft["provenance"])
     result = preview(binary, runtime, {**request(preparation, format_name),
         "realization": {**draft["realization"], "generator": generator}})
@@ -411,7 +506,7 @@ def fixed(root: Path, campaign: dict[str, Any], key: str, document_kind: str):
     preparation_bytes = bound_bytes(root, artifact(root, "plans", identity))
     preparation = json.loads(preparation_bytes)
     draft = json.loads(bound_bytes(root, artifact(root, "recorded", identity)))
-    validate_value(preparation, preparation_bytes, draft)
+    validate_value(preparation, preparation_bytes, draft, allow_bound_runtime=True)
     if (preparation["candidate_head"] != campaign["candidate_head"]
         or preparation["provenance_binding"]["mcp_sha256"] != campaign["document_realization_route"]["mcp_sha256"]
         or preparation["document_kind"] != document_kind
@@ -451,7 +546,7 @@ def generate(root: Path, kind: str, cycle: int, project_id: str, document_kind: 
         if preparation["project_id"] != project_id:
             raise c.CampaignError("fixed realization Project differs from cycle evidence")
         content = consume(Path(campaign["candidate_binary"]), Path(campaign["cycles"][key]["runtime_home"]),
-                          preparation, draft, format_name)
+                          preparation, draft, format_name, allow_bound_runtime=True)
         verify_route(campaign)
     except c.CampaignError as error:
         raise c.IntegrityError("realization_binding", error) from error

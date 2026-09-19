@@ -52,6 +52,18 @@ def snapshot(root):
             for p in root.rglob("*") if p.is_file()}
 
 
+def runtime_rollout(path, model="gpt-5.6-sol"):
+    events = [
+        {"type": "session_meta", "payload": {"id": "realizer-session",
+            "session_id": "realizer-session", "cwd": str(path.parent.resolve()),
+            "source": "vscode", "originator": "codex_vscode", "cli_version": "0.145.0",
+            "thread_source": "user", "git": {"commit_hash": "a" * 40}}},
+        {"type": "turn_context", "payload": {"model": model}},
+    ]
+    path.write_text("".join(json.dumps(event) + "\n" for event in events))
+    return path
+
+
 class DocumentRealizationTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -253,6 +265,58 @@ class DocumentRealizationTests(unittest.TestCase):
             self.assertEqual(recorded.read_bytes(), exact)
             self.assertEqual(c.read_json(recorded)["provenance"]["model"]["state"], "self_reported")
 
+    def test_runtime_observed_identity_is_stronger_but_not_authorship_attestation(self):
+        root, captures, _ = self.prepared()
+        rollout = runtime_rollout(self.parent / "realizer.rollout.jsonl", "future-model/exact-42")
+        with patch.object(r, "preview", side_effect=product_preview):
+            r.prepare(root, captures)
+            entry = c.read_json(root / "realizer/index.json")["documents"][0]
+            draft_path = root / entry["draft"]
+            value = complete_synthetic_draft(c.read_json(draft_path))
+            for field in ("host", "agent", "model"):
+                value["provenance"][field] = {"state": "unknown", "value": None}
+            c.write_json(draft_path, value)
+            result = r.bind_runtime_provenance(root, entry["realization_id"], draft_path, rollout)
+            provenance = result["provenance"]
+            self.assertEqual(provenance["preparation_binding"]["state"], "verified")
+            self.assertEqual(provenance["runtime_observation"]["state"], "observed")
+            self.assertEqual(provenance["host"], {"state": "runtime_observed", "value": "vscode"})
+            self.assertEqual(provenance["agent"], {"state": "runtime_observed", "value": "codex_vscode"})
+            self.assertEqual(provenance["model"], {"state": "runtime_observed", "value": "future-model/exact-42"})
+            with self.assertRaisesRegex(c.CampaignError, "exact rollout"):
+                r.validate(root, entry["realization_id"], draft_path)
+            self.assertEqual(r.validate(root, entry["realization_id"], draft_path, rollout)["state"], "valid")
+            observed_generators = []
+            def observe(binary, runtime, arguments):
+                if "realization" in arguments:
+                    observed_generators.append(arguments["realization"]["generator"])
+                return product_preview(binary, runtime, arguments)
+            with patch.object(r, "preview", side_effect=observe):
+                r.record(root, entry["realization_id"], draft_path, rollout)
+            self.assertTrue(all("future-model/exact-42" in item["model"]
+                                and "authorship unverified" in item["model"]
+                                for item in observed_generators))
+            recorded = c.read_json(r.artifact(root, "recorded", entry["realization_id"]))
+            self.assertEqual(recorded["provenance"], provenance)
+
+    def test_inaccurate_self_report_is_not_promoted_over_runtime_observation(self):
+        root, captures, _ = self.prepared()
+        rollout = runtime_rollout(self.parent / "inaccurate.rollout.jsonl")
+        with patch.object(r, "preview", side_effect=product_preview):
+            r.prepare(root, captures)
+            entry = c.read_json(root / "realizer/index.json")["documents"][0]
+            draft_path = root / entry["draft"]
+            value = complete_synthetic_draft(c.read_json(draft_path))
+            value["provenance"]["model"] = {"state": "self_reported", "value": "GPT-5"}
+            c.write_json(draft_path, value)
+            before = snapshot(root)
+            with self.assertRaisesRegex(c.CampaignError, "stronger identity was not bound"):
+                r.record(root, entry["realization_id"], draft_path, rollout)
+            self.assertEqual(snapshot(root), before)
+            with self.assertRaisesRegex(c.CampaignError, "conflicts with stronger runtime observation"):
+                r.bind_runtime_provenance(root, entry["realization_id"], draft_path, rollout)
+            self.assertEqual(snapshot(root), before)
+
     def test_same_locale_fixed_export_needs_no_realizer(self):
         for language, locale in (("en", "en"), ("en-US", "en"), ("ko-KR", "ko")):
             self.assertFalse(r.required(language, locale))
@@ -346,7 +410,7 @@ class DocumentRealizationTests(unittest.TestCase):
             preparation = {"project_id": project_id, "document_kind": kind, "language": "ko-KR", "locale": "en"}
             plan = r.current_plan(binary, runtime, preparation, "markdown")
             self.assertEqual(plan, r.current_plan(binary, runtime, preparation, "html"))
-            preparation.update(plan=plan, schema_version=2, candidate_head=h.git_head(c.ROOT))
+            preparation.update(plan=plan, schema_version=3, candidate_head=h.git_head(c.ROOT))
             preparation["provenance_binding"] = {"state": "verified", "source": "candidate_local_document_preview",
                 "candidate_head": preparation["candidate_head"], "mcp_sha256": r.route(binary)["mcp_sha256"]}
             # Synthetic host input tests topology/grounding transport, not language quality.
