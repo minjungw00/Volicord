@@ -966,6 +966,19 @@ escalations, operator approval, replacement qualification과 Phase 9 readiness�
 Agent/human review는 모든 collected cycle에서 가능하며 automated pass를 선행 조건으로 두지 않는다.
 Qualified evidence에도 explicit operator approval 전까지 `phase_9_ready = false`다.
 
+Naturalistic session의 MCP memory coverage는 scripted technical gate의 process-tree RSS와
+독립이다. 현재 production-owned `.codex/config.toml`은 VS Code/Codex host가 candidate-local
+`volicord-mcp`를 직접 실행하게 하며 campaign helper는 session 동안 그 프로세스의 ancestor가
+아니다. 또한 candidate-bound PID/lifecycle channel이나 observer wrapper가 없으므로 helper의
+자기 process tree RSS를 external MCP RSS로 재명명할 수 없다. Campaign preparation과 immutable
+evidence set은 candidate MCP hash에 bound된 `unsupported_current_architecture` state, null peak,
+zero samples, 측정 mechanism 부재와 exact limitation을 보존한다. 이 state는 measured pass가
+아니며 V11의 existing technical-gate RSS evidence를 대체하거나 실패시키지 않는다. 향후
+observer를 추가한다면 exact candidate process/process tree와 observer lifetime을 먼저 bind하고,
+RPC argument, Source body, provider response, credential 또는 conversation content 없이 peak,
+sample count와 bounded measurement error만 기록해야 한다. Operation/session attribution은
+기술적으로 입증된 경우에만 허용한다.
+
 각 cycle descriptor는 unique Question, alternatives, recommendation, terminal outcome,
 Decision 또는 prescribed user selection을 evaluator 정답으로 두지 않는다. 대신 pinned
 repository revision의 actual owner contract, repository facts, delegated boundaries,

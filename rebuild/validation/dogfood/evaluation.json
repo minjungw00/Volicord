@@ -138,7 +138,15 @@
       "operation_latency_ms"
     ],
     "universal_product_ceiling_applied": false,
-    "raw_evidence_retention": "ignored_local_state_only"
+    "raw_evidence_retention": "ignored_local_state_only",
+    "naturalistic_mcp_memory": {
+      "required_scope": "candidate_bound_external_vscode_mcp_process_or_process_tree",
+      "harness_descendant_measurement_may_substitute": false,
+      "unsupported_state_is_explicit": true,
+      "unsupported_state_qualifies_as_measured_pass": false,
+      "sensitive_payload_retention": false,
+      "technical_gate_rss_evidence_remains_independent": true
+    }
   },
   "accessibility_checks": [
     "keyboard_reachability",

@@ -1040,6 +1040,14 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     assert "commitment_nonce" not in serialized_state
     assert state["provisional_count"] == 0
     assert state["qualification_profile_state"] == "hidden"
+    memory = state["naturalistic_memory_evidence"]
+    assert memory["status"] == "unsupported_current_architecture"
+    assert memory["candidate_mcp_sha256"] == state["candidate_artifacts"]["volicord-mcp"]["sha256"]
+    assert memory["process_ownership"] == "vscode_codex_host_external_to_campaign_harness"
+    assert memory["measurement"]["peak_rss_bytes"] is None
+    assert memory["measurement"]["sample_count"] == 0
+    assert memory["technical_gate_rss_evidence"] == "retained_separately_not_relabelled_naturalistic"
+    assert all(value is False for value in memory["privacy"].values())
     slots = [item["review_slot_id"] for item in state["cycles"].values()]
     assert len(slots) == len(set(slots)) == campaign.QUALIFICATION_CYCLE_COUNT
     assert all(campaign.REVIEW_SLOT_ID.fullmatch(slot) for slot in slots)

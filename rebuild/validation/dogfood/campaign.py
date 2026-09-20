@@ -173,10 +173,15 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
                         "qualification_state": "not_run", "outcome": "repair_required"},
         )
     value = read_json(campaign_file(root))
-    if value.get("kind") != "phase8_dogfood_campaign" or value.get("schema_version") != 1:
+    if (value.get("kind") != "phase8_dogfood_campaign"
+            or value.get("schema_version") not in {1, 2}):
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
+    if (value.get("schema_version") == 2
+            and value.get("naturalistic_memory_evidence")
+            != naturalistic_memory_evidence(value.get("candidate_artifacts", {}))):
+        raise CampaignError("naturalistic MCP memory support classification changed")
     if validate_private:
         validate_private_qualification_profile(root, value)
     return value
@@ -203,6 +208,40 @@ def bind_candidate_artifacts(binary: Path) -> dict[str, dict[str, str]]:
             raise CampaignError(f"candidate executable is unavailable: {name}")
         bindings[name] = {"path": str(path), "sha256": harness.sha256(path)}
     return bindings
+
+
+def naturalistic_memory_evidence(
+    candidate_artifacts: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Describe the current truthful naturalistic MCP memory coverage boundary."""
+    mcp = candidate_artifacts.get("volicord-mcp", {})
+    return {
+        "kind": "dogfood_naturalistic_mcp_memory_evidence",
+        "schema_version": 1,
+        "status": "unsupported_current_architecture",
+        "candidate_mcp_sha256": mcp.get("sha256"),
+        "process_ownership": "vscode_codex_host_external_to_campaign_harness",
+        "configured_launch": "direct_candidate_local_volicord_mcp_executable",
+        "observer_lifecycle": "not_installed",
+        "measurement": {
+            "scope": "no_naturalistic_process_observed",
+            "peak_rss_bytes": None,
+            "sample_count": 0,
+            "mechanism": None,
+            "measurement_errors": [
+                "no_candidate_bound_pid_and_lifecycle_channel_for_external_vscode_mcp"
+            ],
+        },
+        "attribution": "no_operation_or_session_memory_attribution_claimed",
+        "privacy": {
+            "rpc_arguments_retained": False,
+            "source_bodies_retained": False,
+            "provider_responses_retained": False,
+            "credentials_retained": False,
+            "conversation_content_retained": False,
+        },
+        "technical_gate_rss_evidence": "retained_separately_not_relabelled_naturalistic",
+    }
 
 
 def verify_candidate_artifacts(
@@ -1117,6 +1156,10 @@ def render_operator_run_sheet(root: Path) -> Path:
         "to the steward. For cross-locale documents the steward runs `prepare-document-realizations`, "
         "has an active host complete and fix the private drafts, and then runs `collect-batch`. "
         "Same-locale evidence uses `collect-batch` directly. No per-chat control-session collection is required.\n\n"
+        "Naturalistic MCP memory is currently unmeasured: VS Code/Codex launches the configured "
+        "candidate MCP directly outside the campaign helper's process tree, and this integration has "
+        "no candidate-bound PID/lifecycle observer. Harness-tree RSS remains technical-gate evidence "
+        "only and is not naturalistic MCP RSS.\n\n"
         + ("\n\n".join(entries) if entries else "No slots are sealed for operator use yet.\n"),
         encoding="utf-8",
     )
@@ -2042,12 +2085,13 @@ def prepare_campaign(
     write_json(qualification_profile_path(root), profile)
     campaign = {
         "kind": "phase8_dogfood_campaign",
-        "schema_version": 1,
+        "schema_version": 2,
         "campaign_id": campaign_id,
         "campaign_root": str(root),
         "candidate_head": candidate_head,
         "candidate_binary": str(binary),
         "candidate_artifacts": candidate_artifacts,
+        "naturalistic_memory_evidence": naturalistic_memory_evidence(candidate_artifacts),
         "document_language": document_language,
         "viewer_locale": viewer_locale,
         "document_realization_route": realization_route,
@@ -2084,6 +2128,7 @@ def prepare_campaign(
         "cycle_count": QUALIFICATION_CYCLE_COUNT,
         "candidate_local_install": str(binary),
         "candidate_artifacts": candidate_artifacts,
+        "naturalistic_memory_evidence": naturalistic_memory_evidence(candidate_artifacts),
         "repository_trust": "user_controlled_not_automated",
     }
     write_json(root / "preparation.json", preparation)
@@ -3253,9 +3298,10 @@ def normalize_batch(
     register_artifact(root, root / "batch-intake-summary.json")
     # The manifest closes over exact artifacts, excluding mutable inventory/campaign
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
-    manifest = {"kind": "dogfood_evidence_set", "schema_version": 1,
+    manifest = {"kind": "dogfood_evidence_set", "schema_version": 2,
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
         "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
+        "naturalistic_memory_evidence": copy.deepcopy(campaign["naturalistic_memory_evidence"]),
         "raw_inputs": document_realization.raw_binding(mapped),
         "cycles": copy.deepcopy(campaign["cycles"]),
         "artifacts": copy.deepcopy(load_inventory(root)["artifacts"])}
@@ -3277,13 +3323,17 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         or reference.get("sha256") != harness.sha256(root / "evidence-set.json")):
         raise CampaignError("campaign has no intact immutable evidence set")
     manifest = read_json(root / "evidence-set.json")
-    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 1
+    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") not in {1, 2}
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
         or manifest.get("candidate_artifacts") != campaign.get("candidate_artifacts")
         or manifest.get("cycles") != campaign["cycles"]
         or len(manifest.get("raw_inputs", [])) != BATCH_CAPTURE_COUNT):
         raise CampaignError("evidence-set identity or candidate binding mismatch")
+    if (manifest.get("schema_version") == 2
+            and manifest.get("naturalistic_memory_evidence")
+            != campaign.get("naturalistic_memory_evidence")):
+        raise CampaignError("evidence-set naturalistic memory classification changed")
     for name, binding in manifest["artifacts"].items():
         path = root / name
         if relative(root, path) != name or not path.is_file() or binding != {

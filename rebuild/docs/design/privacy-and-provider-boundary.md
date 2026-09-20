@@ -330,6 +330,13 @@ inventory, local structural result, canonical judgment와 prior historical annot
 Cross-subsystem retry, process cleanup과 repair matrix는 active
 [Failure와 Recovery 계약](failure-and-recovery.md)이 소유한다.
 
+Naturalistic resource observation은 local process identity, candidate executable hash,
+bounded RSS/sample/error와 observer lifecycle만 보존할 수 있다. RPC argument, Source body,
+provider response, credential과 user conversation content는 memory measurement를 위해 수집하지
+않는다. Observer가 external host-owned MCP의 exact process/lifetime을 bind할 수 없으면
+`unsupported`를 기록하며 unrelated harness process 측정을 naturalistic MCP evidence로
+승격하지 않는다.
+
 ## 11. Later-validation hooks
 
 ### V07 — Privacy와 local-only mode

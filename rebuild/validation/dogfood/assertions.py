@@ -724,6 +724,12 @@ def main() -> int:
         != "linux_procfs_process_tree_rss_sampling"
         or resources.get("repeated_resource_repetition_count", 0) < 3
         or resources.get("universal_product_ceiling_applied") is not False
+        or resources.get("naturalistic_mcp_memory", {}).get(
+            "harness_descendant_measurement_may_substitute") is not False
+        or resources.get("naturalistic_mcp_memory", {}).get(
+            "unsupported_state_is_explicit") is not True
+        or resources.get("naturalistic_mcp_memory", {}).get(
+            "unsupported_state_qualifies_as_measured_pass") is not False
     ):
         raise AssertionError("Phase 8 resource qualification definition is incomplete")
     accessibility = definition_value.get("accessibility_machine_contract", {})

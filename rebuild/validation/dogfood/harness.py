@@ -1209,6 +1209,14 @@ def load_definition() -> dict[str, Any]:
         != RESOURCE_HEALTH_METRICS
         or resources.get("universal_product_ceiling_applied") is not False
         or resources.get("raw_evidence_retention") != "ignored_local_state_only"
+        or resources.get("naturalistic_mcp_memory") != {
+            "required_scope": "candidate_bound_external_vscode_mcp_process_or_process_tree",
+            "harness_descendant_measurement_may_substitute": False,
+            "unsupported_state_is_explicit": True,
+            "unsupported_state_qualifies_as_measured_pass": False,
+            "sensitive_payload_retention": False,
+            "technical_gate_rss_evidence_remains_independent": True,
+        }
     ):
         raise ValueError("the Phase 8 bounded resource qualification contract changed")
     accessibility = value.get("accessibility_machine_contract", {})
