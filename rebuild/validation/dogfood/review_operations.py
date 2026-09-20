@@ -517,6 +517,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
     preparation = {"kind": "dogfood_qualitative_review_preparation", "schema_version": review.SCHEMA_VERSION,
         "package_id": package_id, "binding": binding, "reviewer": reviewer, "evaluated_sessions": sessions,
         "rubric": policy, "index": index, "unavailable_surfaces": unavailable,
+        "completion_obligations": review.completion_obligations(index, policy),
         "preparer_revision": c.harness.git_head(c.ROOT),
         "preparer_files": {name: c.harness.sha256(Path(__file__).with_name(name)) for name in
             ("review_operations.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
@@ -576,6 +577,8 @@ def _load_package(root):
     review.require(binding["state"] == "verified" and binding["source"] == "immutable_campaign_evidence"
         and re.fullmatch(r"[0-9a-f]{40}", binding["candidate_head"])
         and re.fullmatch(r"[0-9a-f]{64}", binding["evidence_set"]["sha256"]), "invalid evidence binding")
+    review.require(preparation.get("completion_obligations") == review.completion_obligations(index, policy),
+        "review completion obligations changed")
     review.require(preparation["package_id"] == package["package_id"] == machine.digest({"binding": binding,
         "index": index, "unavailable_surfaces": preparation["unavailable_surfaces"]}), "review index/evidence-set identity changed")
     review.validate_reviewer(preparation["reviewer"], preparation["evaluated_sessions"])

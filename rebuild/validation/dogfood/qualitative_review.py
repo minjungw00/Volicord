@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
@@ -179,6 +179,126 @@ def criterion_specs(index, policy):
             specs.append({"criterion_id": f"{sample['sample_id']}/cli/{name}",
                 "sample_id": sample["sample_id"], "group": "cli", "name": name, "locale": None})
     return specs
+
+
+def human_only(spec):
+    return spec["group"] == "live_viewer" or (
+        spec["group"] == "interaction"
+        and spec["name"] == "decision_comprehension_when_applicable"
+    )
+
+
+def completion_obligations(index, policy):
+    """Expose mechanical review scope without making any semantic judgment."""
+    specs = criterion_specs(index, policy)
+    by_group = {}
+    for spec in specs:
+        by_group.setdefault(spec["group"], []).append(spec["criterion_id"])
+    findings = []
+    for finding_id, item in sorted(index["machine_findings"].items()):
+        finding = item["finding"]
+        findings.append({
+            "finding_id": finding_id,
+            "sample_id": item["sample_id"],
+            "status": finding["status"],
+            "disposition": finding["disposition"],
+            "permitted_review_groups": sorted(machine.review_groups(finding["check"])),
+            "qualitative_relationship_required": (
+                finding["disposition"] == "qualitative_review_required"
+            ),
+        })
+    authority_by_sample = {}
+    for sample in index["samples"]:
+        prefix = sample["sample_id"] + "/authority/"
+        authority_by_sample[sample["sample_id"]] = {
+            "initial_obligation_ids": list(sample["authority_obligations"]),
+            "required_criterion_ids": [
+                spec["criterion_id"]
+                for spec in specs
+                if spec["criterion_id"].startswith(prefix)
+            ],
+            "additional_actual_outcomes": "declare_each_as_additional_outcome_if_found",
+        }
+    cli_by_class = {
+        sample["repository_class"]: [
+            spec["criterion_id"]
+            for spec in specs
+            if spec["group"] == "cli" and spec["sample_id"] == sample["sample_id"]
+        ]
+        for sample in index["cli_samples"]
+    }
+    human_ids = sorted(spec["criterion_id"] for spec in specs if human_only(spec))
+    return {
+        "semantic_judgment_automatic": False,
+        "criterion_coverage": {
+            "required_count": len(specs),
+            "required_ids_by_group": {key: value for key, value in sorted(by_group.items())},
+        },
+        "machine_findings": findings,
+        "authority_outcomes": authority_by_sample,
+        "cli_class_coverage": cli_by_class,
+        "human_only_criteria": human_ids,
+        "targeted_escalation_rules": {
+            "machine_relationships": "qualitative_review_required findings need an evidence-backed permitted-group relationship",
+            "high_impact_insufficiency_groups": ["authority", "context_recovery"],
+            "review_conflicts": "human review must name each conflicting review run for the exact criterion",
+        },
+    }
+
+
+def completion_progress(preparation, value, specs):
+    """Report missing structure and escalation targets; never derive a verdict."""
+    assessments = {item["criterion_id"]: item for item in value["assessments"]}
+    assessments.update({item["finding"]["criterion_id"]: item["finding"]
+                        for item in value["additional_outcomes"]})
+    reviewed = {criterion_id for criterion_id, item in assessments.items()
+                if item["assessment"] != "not_reviewed"}
+    missing = [spec["criterion_id"] for spec in specs if spec["criterion_id"] not in reviewed]
+    related = set()
+    spec_by_id = {spec["criterion_id"]: spec for spec in specs}
+    for criterion_id, item in assessments.items():
+        group = spec_by_id.get(criterion_id, {"group": "authority"})["group"]
+        for relation in item["machine_relationships"]:
+            if (group in machine.review_groups(
+                    preparation["index"]["machine_findings"][relation["finding_id"]]["finding"]["check"])
+                    and relation["relationship"] in {"clarifies_indeterminate", "probable_false_positive"}):
+                related.add(relation["finding_id"])
+    required_findings = sorted(
+        finding_id for finding_id, item in preparation["index"]["machine_findings"].items()
+        if item["finding"]["disposition"] == "qualitative_review_required"
+    )
+    missing_authority = [criterion_id for criterion_id in missing if "/authority/" in criterion_id]
+    missing_cli = {
+        sample["repository_class"]: [criterion_id for criterion_id in missing
+            if criterion_id.startswith(sample["sample_id"] + "/cli/")]
+        for sample in preparation["index"]["cli_samples"]
+    }
+    human_ids = set(preparation.get("completion_obligations",
+        completion_obligations(preparation["index"], preparation["rubric"]))["human_only_criteria"])
+    human_remaining = sorted(human_ids if preparation["reviewer"]["kind"] != "human"
+                             else human_ids - reviewed)
+    high_impact = sorted(item["criterion_id"] for item in value["assessments"]
+        if item["assessment"] == "insufficient_evidence"
+        and any(marker in item["criterion_id"] for marker in ("/authority/", "/context_recovery/")))
+    return {
+        "semantic_correctness_assessed": False,
+        "required_criterion_count": len(specs),
+        "reviewed_criterion_count": len(specs) - len(missing),
+        "missing_criterion_ids": missing,
+        "machine_finding_dispositions": [
+            {key: item[key] for key in ("finding_id", "status", "disposition")}
+            for item in preparation.get("completion_obligations",
+                completion_obligations(preparation["index"], preparation["rubric"]))["machine_findings"]
+        ],
+        "unaddressed_review_required_finding_ids": sorted(set(required_findings) - related),
+        "missing_authority_criterion_ids": missing_authority,
+        "missing_cli_criterion_ids_by_class": missing_cli,
+        "human_only_criterion_ids_requiring_human_review": human_remaining,
+        "targeted_escalations": {
+            "high_impact_insufficient_criterion_ids": high_impact,
+            "declared_conflict_resolution_criterion_ids": sorted(value["resolves_review_runs"]),
+        },
+    }
 
 
 def observation(criterion_id):
@@ -376,4 +496,5 @@ def _validate_value(preparation, preparation_sha256, value):
         "counts": {s: states.count(s) for s in STATES},
         "hard_machine_findings": sorted(k for k, v in preparation["index"]["machine_findings"].items()
             if v["finding"]["disposition"] == "hard_blocking"),
+        "completion_preflight": completion_progress(preparation, value, specs),
         "semantic_judgment_verified": False, "qualification_state": "not_run", "phase_9_ready": False}

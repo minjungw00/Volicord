@@ -1532,6 +1532,13 @@ requested-language realization, production
 provider success authorization, machine accessibility, resource, regression, Decision revisit와
 candidate cleanliness를 독립 판정한다. 공통 qualitative review는 immutable evidence set에서 agent 또는 human reviewer별
 독립 run으로 생성한다. Machine evaluation은 optional binding이며 통과를 요구하지 않는다.
+Review preparation은 semantic pass를 시작하기 전에 exact criterion/group inventory, machine finding의
+status/disposition과 permitted relationship group, cycle별 authority obligation/coverage, repository class별
+21개 CLI criterion, human-only criterion과 conflict/high-impact insufficiency escalation rule을 하나의
+`completion_obligations`로 고정한다. Non-mutating preflight는 draft의 missing criterion ID,
+unaddressed review-required finding, authority/CLI gap, remaining human-only criterion과 targeted
+escalation을 그대로 보고한다. 이 기계적 completeness는 assessment를 선택하거나 reasoning/evidence의
+semantic adequacy를 판정하지 않으며 `semantic_judgment_verified = false`를 유지한다.
 Lowest-numbered 또는 automated-passed cycle로 한정하지 않고 모든 collected cycle을 검토한다. 각 cycle에서 source-vs-interpretation comprehension, repository-analysis
 usefulness, CLI usability, Viewer Project Understanding, four-document usefulness, Question
 necessity/Decision comprehension과 interruption cost를 평가한다. Interaction review는 explicit

@@ -293,6 +293,17 @@ Runtime Home or provider. An external reviewer-owned draft is also accepted.
 Inventory-bound evidence and recorded artifacts cannot be used as mutable drafts.
 The package remains usable after the original Campaign/source paths are unavailable.
 
+Preparation also fixes a machine-readable completion-obligation inventory before
+semantic review starts. It enumerates every criterion by group, each machine finding
+and disposition plus the permitted relationship groups, every per-sample authority
+criterion and actual-outcome declaration duty, all 21 CLI criteria by repository
+class, human-only criteria, and targeted escalation rules. Non-mutating preflight
+reports the exact unreviewed criterion IDs, unaddressed review-required findings,
+missing authority and per-class CLI coverage, human-only work still requiring a
+human run, high-impact insufficiency escalations, and declared conflict resolutions.
+These are structural progress facts only: neither preparation nor preflight chooses
+an assessment, decides whether evidence is persuasive, or verifies semantic truth.
+
 Cross-locale realization preparation is independently inspectable through
 `inspect-document-realizations`. The read-only result distinguishes not prepared,
 published preparation, partial recording and complete recording. Preparation emits

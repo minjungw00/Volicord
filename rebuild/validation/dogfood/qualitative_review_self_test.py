@@ -235,13 +235,20 @@ class ContractTests(unittest.TestCase):
         value["assessments"][0]["machine_relationships"] = [relation]
         result = q.validate_value(p, "d" * 64, value)
         self.assertEqual(result["hard_machine_findings"], ["f1"])
+        self.assertEqual(result["completion_preflight"]["machine_finding_dispositions"], [{
+            "finding_id": "f1", "status": "confirmed_violation", "disposition": "hard_blocking"}])
         self.assertEqual(result["qualification_state"], "not_run")
         for name in ("agrees", "clarifies_indeterminate"):
             relation["relationship"] = name
             with self.assertRaises(ValueError):
                 q.validate_value(p, "d" * 64, value)
         p["index"]["machine_findings"]["f1"]["finding"] = m.finding("source_grounded_checkpoint", "indeterminate", {"reason": "fixture"})
-        self.assertEqual(q.validate_value(p, "d" * 64, value)["hard_machine_findings"], [])
+        reviewed = q.validate_value(p, "d" * 64, value)
+        self.assertEqual(reviewed["hard_machine_findings"], [])
+        self.assertEqual(reviewed["completion_preflight"]["unaddressed_review_required_finding_ids"], [])
+        value["assessments"][0]["machine_relationships"] = []
+        self.assertEqual(q.validate_value(p, "d" * 64, value)["completion_preflight"]
+            ["unaddressed_review_required_finding_ids"], ["f1"])
         value["override_hard_findings"] = True
         with self.assertRaises(ValueError):
             q.validate_value(p, "d" * 64, value)

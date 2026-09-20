@@ -101,7 +101,21 @@ def assert_review_workflow(root, parent):
     assert len([x for x in p["index"]["evidence"].values() if x["surface"] == "documents"]) == 64
     assert not any(name.startswith("private-rollouts/") for name in package["artifacts"])
     assert any(u["surface"] == "live_viewer_observation" for u in p["unavailable_surfaces"])
-    assert ops.validate(target, target / "draft.json")["assessment_state"] == "not_reviewed"
+    obligations = p["completion_obligations"]
+    assert obligations["semantic_judgment_automatic"] is False
+    assert obligations["criterion_coverage"]["required_count"] == len(q.criterion_specs(p["index"], p["rubric"]))
+    assert set(obligations["cli_class_coverage"]) == set(c.CLASSES)
+    assert all(len(items) == 7 for items in obligations["cli_class_coverage"].values())
+    assert obligations["human_only_criteria"]
+    initial_preflight = ops.validate(target, target / "draft.json")
+    assert initial_preflight["assessment_state"] == "not_reviewed"
+    completion = initial_preflight["completion_preflight"]
+    assert completion["semantic_correctness_assessed"] is False
+    assert completion["reviewed_criterion_count"] == 0
+    assert len(completion["missing_criterion_ids"]) == obligations["criterion_coverage"]["required_count"]
+    assert set(completion["missing_cli_criterion_ids_by_class"]) == set(c.CLASSES)
+    assert completion["missing_authority_criterion_ids"]
+    assert completion["human_only_criterion_ids_requiring_human_review"] == obligations["human_only_criteria"]
     copy_target = parent / "review-safe-repeat"
     repeated = ops.prepare(root, copy_target, reviewer_kind="agent", session_id="review-session", run_id="a" * 32)
     assert repeated["package_id"] == result["package_id"]
