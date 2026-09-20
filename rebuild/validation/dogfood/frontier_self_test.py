@@ -86,6 +86,15 @@ class FrontierTests(unittest.TestCase):
         self.assertEqual(baseline["verification_executions"][-1]["attribution"],
                          "known_pre_existing_baseline_failure")
 
+        changed_baseline_outcome = self.validation_capture(
+            (100, "python3 -m ruff check src/legacy.py", 2, "legacy.py:9: E501", {}),
+            (200, "python3 -m pytest -q tests/test_feature.py", 0, "8 passed", {}),
+            (210, "python3 -m ruff check src/legacy.py", 1, "legacy.py:9: E501", {}),
+        )
+        changed = h.meaningful_resume_validation(changed_baseline_outcome, 150)
+        self.assertEqual(changed["known_baseline_failure_count"], 0)
+        self.assertEqual(changed["ambiguous_failure_count"], 1)
+
         regression = self.validation_capture(
             (100, "python3 -m ruff check .", 0, "All checks passed", {}),
             (200, "python3 -m ruff check .", 1, "src/feature.py:20: F821", {}),
@@ -118,6 +127,7 @@ class FrontierTests(unittest.TestCase):
         )
         environment_result = h.meaningful_resume_validation(environment, 150)
         self.assertTrue(environment_result["qualified"], environment_result)
+        self.assertTrue(environment_result["recovered_intermediate_failure"])
         self.assertEqual(environment_result["environment_blocked_count"], 1)
         self.assertEqual([row["attribution"] for row in environment_result["verification_executions"]],
                          ["environment_blocked", "authorized_successful_rerun"])

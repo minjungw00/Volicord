@@ -3254,6 +3254,7 @@ def validation_execution_profile(command: Any) -> dict[str, Any]:
         else "unknown"
     )
     raw = command.parsed_command if isinstance(command.parsed_command, dict) else {}
+    workdir = raw.get("workdir")
     return {
         "validator": program,
         "scope": scope,
@@ -3261,7 +3262,7 @@ def validation_execution_profile(command: Any) -> dict[str, Any]:
         "selectors": selectors,
         "invocation_fingerprint": command_invocation_fingerprint(command),
         "equivalence_key": hashlib.sha256(json.dumps(
-            [program, args], separators=(",", ":")
+            [program, args, workdir], separators=(",", ":")
         ).encode("utf-8")).hexdigest(),
         "environment_assignments": environment_assignments,
         "sandbox_permissions": raw.get("sandbox_permissions"),
@@ -3361,6 +3362,7 @@ def meaningful_resume_validation(
     hard_failures = []
     baseline_failures = []
     environment_blocked = []
+    recovered_environment = []
     recovered_failures = []
     ambiguous_failures = []
     for command in commands:
@@ -3400,7 +3402,11 @@ def meaningful_resume_validation(
             )
             relation = {"kind": "successful_equivalent_rerun", "sequence": later_success.sequence,
                 "group_index": later_success.group_index}
-            (environment_blocked if attribution == "environment_blocked" else recovered_failures).append(command)
+            if attribution == "environment_blocked":
+                environment_blocked.append(command)
+                recovered_environment.append(command)
+            else:
+                recovered_failures.append(command)
         elif (outcome == "failed" and later_validation_success is not None
               and validation_environment_failure_signal(command)):
             attribution = "environment_blocked"
@@ -3415,11 +3421,15 @@ def meaningful_resume_validation(
             hard_failures.append(command)
         elif outcome == "failed" and any(
             not succeeded(candidate)
+            and candidate.exit_code == command.exit_code
+            and candidate.termination == command.termination
             and hashlib.sha256(candidate.output.encode("utf-8")).hexdigest()
                 == hashlib.sha256(command.output.encode("utf-8")).hexdigest()
             for candidate in pre_mutation
         ):
             baseline = max((candidate for candidate in pre_mutation if not succeeded(candidate)
+                and candidate.exit_code == command.exit_code
+                and candidate.termination == command.termination
                 and hashlib.sha256(candidate.output.encode("utf-8")).hexdigest()
                     == hashlib.sha256(command.output.encode("utf-8")).hexdigest()),
                 key=lambda candidate: (candidate.sequence, candidate.group_index))
@@ -3447,7 +3457,8 @@ def meaningful_resume_validation(
             "termination": command.termination,
             "requirement_role": "diagnostic" if attribution in {
                 "ambiguous_or_unattributed", "known_pre_existing_baseline_failure",
-            } else "task_required",
+            } or isinstance(relation, dict) and relation.get("kind")
+                == "later_success_after_distinct_blocked_attempt" else "task_required",
             "scope_role": profile["scope"],
             "validator": profile["validator"],
             "invocation_fingerprint": fingerprint,
@@ -3478,7 +3489,7 @@ def meaningful_resume_validation(
         "intermediate_failure_count": len(intermediate_failures),
         "indeterminate_execution_count": len(indeterminate) + len(unknown_after_validation),
         "unclassified_after_validation_count": len(unknown_after_validation),
-        "recovered_intermediate_failure": bool(environment_blocked or recovered_failures),
+        "recovered_intermediate_failure": bool(recovered_environment or recovered_failures),
         "unresolved_terminal_failure": bool(hard_failures),
         "candidate_regression_count": len(hard_failures),
         "known_baseline_failure_count": len(baseline_failures),
@@ -21612,7 +21623,15 @@ def self_test() -> int:
         or verified_completed_result["continuation_basis"]["terminal_validation"][
             "recovered_intermediate_failure"
         ]
-        is not True
+        is not False
+        or verified_completed_result["continuation_basis"]["terminal_validation"][
+            "environment_blocked_count"
+        ]
+        != 1
+        or verified_completed_result["continuation_basis"]["terminal_validation"][
+            "verification_executions"
+        ][0]["requirement_role"]
+        != "diagnostic"
     ):
         raise AssertionError(
             "completed recalled state could not qualify through read-only inspection and verification: "
