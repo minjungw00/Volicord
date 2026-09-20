@@ -3202,14 +3202,24 @@ def validation_execution_profile(command: Any) -> dict[str, Any]:
     targets: list[str] = []
     if program == "ruff":
         args = args[1:] if args[:1] in (["check"], ["format"]) else args
-        for index, arg in enumerate(args):
+        option_value = False
+        selector_value = False
+        for arg in args:
+            if option_value:
+                if selector_value:
+                    selectors.append(arg)
+                option_value = False
+                selector_value = False
+                continue
             if arg in {"--select", "--extend-select", "--ignore", "--extend-ignore"}:
-                selectors.extend(args[index : index + 2])
+                selectors.append(arg)
+                option_value = True
+                selector_value = True
             elif arg.startswith(("--select=", "--extend-select=", "--ignore=", "--extend-ignore=")):
                 selectors.append(arg)
-            elif not arg.startswith("-") and (index == 0 or args[index - 1] not in {
-                "--config", "--output-format", "--exclude", "--per-file-ignores",
-            }):
+            elif arg in {"--config", "--output-format", "--exclude", "--per-file-ignores"}:
+                option_value = True
+            elif not arg.startswith("-"):
                 targets.append(arg)
     elif program in {"pytest", "unittest"}:
         option_value = False
@@ -3234,6 +3244,9 @@ def validation_execution_profile(command: Any) -> dict[str, Any]:
 
     repository_wide_target = not targets or any(target in {".", "./"} for target in targets)
     scope = (
+        "focused" if program == "ruff" and selectors
+        else "broader_aggregate" if program == "ruff"
+        else
         "focused"
         if selectors or targets and not repository_wide_target
         else "broader_aggregate"

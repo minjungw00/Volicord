@@ -29,6 +29,126 @@ class FrontierTests(unittest.TestCase):
         bundle = h.load_canonical_bundle(self.root / descriptor["evidence"]["canonical_bundle"]["file"])
         return descriptor, capture, bundle
 
+    def validation_capture(self, *specifications):
+        """Build numeric command evidence without depending on private campaign paths."""
+
+        _descriptor, capture, _bundle = self.fixture()
+        template = next(command for command in capture.commands
+            if h.dogfood_command_role(command.parsed_command, capture.cwd) == "validation")
+        commands = []
+        for sequence, command, exit_code, output, extra in specifications:
+            arguments = {"cmd": command, "workdir": str(capture.cwd), **extra}
+            commands.append(replace(template, sequence=sequence,
+                completion_sequence=sequence + 1, group_index=0,
+                parsed_command=arguments, exit_code=exit_code,
+                termination="exited" if exit_code is not None else None,
+                output=output, output_was_empty=not output,
+                execution_identity=f"validation:{sequence}",
+                evidence_state="completed" if exit_code is not None else "indeterminate"))
+        return replace(capture, commands=tuple(commands))
+
+    def test_mixed_validation_outcomes_preserve_scope_and_attribution(self):
+        capture = self.validation_capture(
+            (200, "python3 -m pytest -q tests/test_feature.py", 0, "8 passed", {}),
+            (210, "python3 -m pytest -q", 0, "236 passed", {}),
+            (220, "python3 -m ruff check --select E4,E7,E9,F src/feature.py", 0,
+             "All checks passed", {}),
+            (230, "python3 -m ruff check src/feature.py", 1,
+             "src/feature.py:13:1: UP029 legacy finding", {}),
+        )
+        result = h.meaningful_resume_validation(capture, 150)
+        self.assertFalse(result["unresolved_terminal_failure"], result)
+        self.assertFalse(result["qualified"], result)
+        self.assertEqual(result["ambiguous_failure_count"], 1)
+        executions = {row["sequence"]: row for row in result["verification_executions"]}
+        self.assertEqual(executions[200]["scope_role"], "focused")
+        self.assertEqual(executions[210]["scope_role"], "broader_aggregate")
+        self.assertEqual(executions[220]["scope_role"], "focused")
+        self.assertEqual(executions[230]["scope_role"], "broader_aggregate")
+        self.assertEqual(executions[230]["requirement_role"], "diagnostic")
+        self.assertEqual(executions[230]["attribution"], "ambiguous_or_unattributed")
+        finding = h.machine_findings.finding(
+            "required_validation_execution",
+            h.machine_findings.Status.INDETERMINATE,
+            result,
+        )
+        self.assertEqual(finding["disposition"], "qualitative_review_required")
+
+    def test_validation_baseline_regression_recovery_and_environment_states(self):
+        baseline_debt = self.validation_capture(
+            (100, "python3 -m ruff check src/legacy.py", 1, "legacy.py:9: E501", {}),
+            (200, "python3 -m pytest -q tests/test_feature.py", 0, "8 passed", {}),
+            (210, "python3 -m ruff check src/legacy.py", 1, "legacy.py:9: E501", {}),
+        )
+        baseline = h.meaningful_resume_validation(baseline_debt, 150)
+        self.assertTrue(baseline["qualified"], baseline)
+        self.assertEqual(baseline["known_baseline_failure_count"], 1)
+        self.assertEqual(baseline["verification_executions"][-1]["attribution"],
+                         "known_pre_existing_baseline_failure")
+
+        regression = self.validation_capture(
+            (100, "python3 -m ruff check .", 0, "All checks passed", {}),
+            (200, "python3 -m ruff check .", 1, "src/feature.py:20: F821", {}),
+        )
+        regressed = h.meaningful_resume_validation(regression, 150)
+        self.assertTrue(regressed["unresolved_terminal_failure"], regressed)
+        self.assertEqual(regressed["candidate_regression_count"], 1)
+        self.assertEqual(regressed["verification_executions"][-1]["attribution"],
+                         "candidate_attributable_regression")
+        finding = h.machine_findings.finding(
+            "required_validation_execution",
+            h.machine_findings.Status.VIOLATION,
+            regressed,
+        )
+        self.assertEqual(finding["disposition"], "hard_blocking")
+
+        recovered = self.validation_capture(
+            (200, "python3 -m pytest -q tests/test_feature.py", 1, "1 failed", {}),
+            (210, "python3 -m pytest -q tests/test_feature.py", 0, "8 passed", {}),
+        )
+        recovery = h.meaningful_resume_validation(recovered, 150)
+        self.assertTrue(recovery["qualified"], recovery)
+        self.assertTrue(recovery["recovered_intermediate_failure"])
+        self.assertEqual([row["attribution"] for row in recovery["verification_executions"]],
+                         ["superseded_or_recovered", "recovery_success"])
+
+        environment = self.validation_capture(
+            (200, "python3 -m pytest -q", 1, "Operation not permitted", {}),
+            (210, "python3 -m pytest -q", 0, "236 passed", {"sandbox_permissions": "require_escalated"}),
+        )
+        environment_result = h.meaningful_resume_validation(environment, 150)
+        self.assertTrue(environment_result["qualified"], environment_result)
+        self.assertEqual(environment_result["environment_blocked_count"], 1)
+        self.assertEqual([row["attribution"] for row in environment_result["verification_executions"]],
+                         ["environment_blocked", "authorized_successful_rerun"])
+
+    def test_unknown_validation_and_raw_canonical_conflict_never_become_success(self):
+        unknown = self.validation_capture(
+            (200, "python3 -m pytest -q", None, "236 passed", {}),
+        )
+        result = h.meaningful_resume_validation(unknown, 150)
+        self.assertFalse(result["qualified"])
+        self.assertFalse(result["unresolved_terminal_failure"])
+        self.assertTrue(result["incomplete_evidence"])
+        self.assertEqual(result["verification_executions"][0]["outcome"], "indeterminate")
+
+        _descriptor, capture, bundle = self.fixture()
+        checkpoint = h.terminal_checkpoint_call(capture)
+        self.assertIsNotNone(checkpoint)
+        claim = checkpoint.arguments["verification"][0]
+        command = next(item for item in capture.commands
+            if h.command_invocation_fingerprint(item) == "sha256:" + h.hashlib.sha256(
+                claim["command_invocation"].encode("utf-8")).hexdigest())
+        conflicted = replace(capture, commands=tuple(
+            replace(item, exit_code=1) if item is command else item
+            for item in capture.commands))
+        evidence = h.checkpoint_verification_evidence(
+            conflicted, bundle, checkpoint, checkpoint.result["checkpoint_id"])
+        self.assertFalse(evidence["valid"])
+        self.assertEqual(evidence["state"], "conflict")
+        self.assertIn("raw_canonical_outcome_conflict",
+                      {conflict["kind"] for conflict in evidence["conflicts"]})
+
     def facts(self, descriptor, capture, bundle, baseline=None):
         baseline = baseline or capture.successful_calls("repository_analyze")[0]
         first_write = min(x.sequence for x in h.meaningful_work_path_observations(capture))
