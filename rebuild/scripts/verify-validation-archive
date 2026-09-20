@@ -109,6 +109,7 @@ PORTABLE_EXECUTABLES = {
     "harness.py",
     "assertions.py",
     "campaign_self_test.py",
+    "remediation_integration.py",
     "install.sh",
     "python",
     "python3",
@@ -554,7 +555,7 @@ def verify_current_command_grammar(
                 (("executable",), "--self-test"),
             )
         )
-    elif executable in {"assertions.py", "campaign_self_test.py"}:
+    elif executable in {"assertions.py", "campaign_self_test.py", "remediation_integration.py"}:
         matched = argv_matches(argv, roles_by_index, (("executable",),))
     elif executable == "install.sh":
         matched = argv_matches(
