@@ -23,7 +23,8 @@ use volicord_projections::{
     NarrativeRealizationState, OutputFormat, ProjectProjection, ProjectUnderstanding,
     ProjectionHealth, ProjectionIssueKind, RequestedDestination,
     UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingEvidenceClass,
-    UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingWorkState,
+    UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingWork,
+    UnderstandingWorkState,
 };
 use volicord_repository_intelligence::{
     Capability, CapabilityState, CodeEntityKind, FreshnessState, Language,
@@ -489,113 +490,63 @@ fn render_project_understanding(
         html.push_str("</ul>");
     }
 
-    heading(
+    heading(html, 3, text(request.locale, "Work", "작업"));
+    render_work_group(
         html,
-        3,
-        text(request.locale, "What has happened", "무엇이 이루어졌는가"),
-    );
-    if understanding.completed_work.is_empty() {
-        empty_state(
-            html,
-            text(
-                request.locale,
-                "No completed work Checkpoint is recorded.",
-                "완료된 작업 체크포인트가 기록되지 않았습니다.",
-            ),
-        );
-    } else {
-        html.push_str("<ul class=\"understanding-list completed-work\">");
-        for work in understanding
-            .completed_work
-            .iter()
-            .take(level_limit(request.explanation_level))
-        {
-            let change = work
-                .meaningful_changes
-                .last()
-                .map(String::as_str)
-                .unwrap_or(&work.title);
-            list_item(
-                html,
-                &format!(
-                    "{} — {}: {}",
-                    work.title,
-                    text(request.locale, "meaningful change", "의미 있는 변경"),
-                    change
-                ),
-            );
-        }
-        html.push_str("</ul>");
-    }
-
-    heading(
-        html,
-        3,
+        request,
+        text(request.locale, "Current work", "현재 작업"),
+        "current-work",
+        &understanding.current_work,
         text(
             request.locale,
-            "Current state and remaining work",
-            "현재 상태와 남은 작업",
+            "No current work Checkpoint is recorded.",
+            "현재 작업 체크포인트가 기록되지 않았습니다.",
         ),
     );
-    if understanding.current_work.is_empty() {
-        empty_state(
-            html,
-            text(
-                request.locale,
-                "No current work Checkpoint is recorded.",
-                "현재 작업 체크포인트가 기록되지 않았습니다.",
-            ),
-        );
-    } else {
-        html.push_str("<ul class=\"understanding-list current-work\">");
-        for work in understanding
-            .current_work
-            .iter()
-            .take(level_limit(request.explanation_level))
-        {
-            list_item(
-                html,
-                &format!(
-                    "{} — {} ({})",
-                    work.title,
-                    understanding_work_state_label(work.state, request.locale),
-                    work.work_item_id
-                ),
-            );
-        }
-        html.push_str("</ul>");
-    }
-    if !understanding.remaining_work.is_empty() {
-        html.push_str("<ul class=\"understanding-list remaining-work\">");
-        for work in understanding
-            .remaining_work
-            .iter()
-            .take(level_limit(request.explanation_level))
-        {
-            list_item(
-                html,
-                &format!(
-                    "{} — {}",
-                    work.title,
-                    work.next_step.as_deref().unwrap_or(text(
-                        request.locale,
-                        "No checkpoint next step recorded",
-                        "체크포인트 다음 단계가 기록되지 않음"
-                    ))
-                ),
-            );
-        }
-        html.push_str("</ul>");
-    }
+    render_work_group(
+        html,
+        request,
+        text(request.locale, "Completed work", "완료한 작업"),
+        "completed-work",
+        &understanding.completed_work,
+        text(
+            request.locale,
+            "No completed work Checkpoint is recorded.",
+            "완료된 작업 체크포인트가 기록되지 않았습니다.",
+        ),
+    );
+    render_work_group(
+        html,
+        request,
+        text(
+            request.locale,
+            "Remaining or open work",
+            "남은 작업 또는 열린 작업",
+        ),
+        "remaining-work",
+        &understanding.remaining_work,
+        text(
+            request.locale,
+            "No remaining or open Work Item is recorded.",
+            "남았거나 열린 작업 항목이 기록되지 않았습니다.",
+        ),
+    );
     if !understanding.unresolved_work_grouping.is_empty() {
-        html.push_str("<ul class=\"understanding-list grouping-gaps\">");
+        html.push_str(&format!(
+            "<details class=\"work-grouping-gaps state\" data-state=\"degraded\"><summary>{}</summary><ul class=\"understanding-list grouping-gaps\">",
+            escape(text(
+                request.locale,
+                "Records with unresolved work association",
+                "작업 연결이 해결되지 않은 기록"
+            ))
+        ));
         for gap in &understanding.unresolved_work_grouping {
             list_item(
                 html,
                 &format!("{} {} — {}", gap.record_kind, gap.identity, gap.reason),
             );
         }
-        html.push_str("</ul>");
+        html.push_str("</ul></details>");
     }
     if understanding.next_steps.is_empty() {
         empty_state(
@@ -825,6 +776,121 @@ fn render_project_understanding(
 
     render_understanding_evidence(html, request, understanding);
     section_end(html);
+}
+
+fn render_work_group(
+    html: &mut String,
+    request: &ViewerRequest,
+    label: &str,
+    class_name: &str,
+    work_items: &[UnderstandingWork],
+    empty: &str,
+) {
+    heading(html, 4, label);
+    if work_items.is_empty() {
+        empty_state(html, empty);
+        return;
+    }
+    html.push_str(&format!(
+        "<div class=\"work-group {}\" data-work-group=\"{}\">",
+        escape(class_name),
+        escape(class_name)
+    ));
+    for work in work_items
+        .iter()
+        .take(level_limit(request.explanation_level))
+    {
+        render_work_card(html, request, work);
+    }
+    html.push_str("</div>");
+}
+
+fn render_work_card(html: &mut String, request: &ViewerRequest, work: &UnderstandingWork) {
+    html.push_str(&format!(
+        "<article class=\"understanding-card work-item\" data-work-state=\"{}\"><h5>{}</h5><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
+        understanding_work_state_key(work.state),
+        escape(&work.title),
+        escape(understanding_work_state_label(work.state, request.locale))
+    ));
+    if let Some(change) = work.meaningful_changes.last() {
+        html.push_str(&format!(
+            "<p><strong>{}:</strong> {}</p>",
+            escape(text(
+                request.locale,
+                "Latest meaningful change",
+                "최근 의미 있는 변경"
+            )),
+            escape(change)
+        ));
+    }
+    if let Some(next_step) = &work.next_step {
+        html.push_str(&format!(
+            "<p class=\"work-next-step\"><strong>{}:</strong> {}</p>",
+            escape(text(request.locale, "Next step", "다음 단계")),
+            escape(next_step)
+        ));
+    }
+    if !work.changed_paths.is_empty() || !work.changed_components.is_empty() {
+        html.push_str(&format!(
+            "<p class=\"work-scope\"><strong>{}:</strong> {}{}</p>",
+            escape(text(request.locale, "Affected code", "영향받는 코드")),
+            escape(&bounded_names(&work.changed_paths, 4, request.locale)),
+            if work.changed_components.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " · {}: {}",
+                    escape(text(request.locale, "components", "컴포넌트")),
+                    escape(&bounded_names(&work.changed_components, 4, request.locale))
+                )
+            }
+        ));
+    }
+    html.push_str(&format!(
+        "<p class=\"work-links\">{} {} · {} {} · {} {}</p>",
+        work.checkpoint_ids.len(),
+        escape(text(request.locale, "Checkpoints", "체크포인트")),
+        work.decision_ids.len(),
+        escape(text(request.locale, "Decisions", "결정")),
+        work.open_question_ids.len(),
+        escape(text(request.locale, "open Questions", "열린 질문"))
+    ));
+    html.push_str(&format!(
+        "<details class=\"work-audit\"><summary>{}</summary><dl class=\"explanation-basis\">",
+        escape(text(
+            request.locale,
+            "Inspect work audit identities",
+            "작업 감사 식별자 확인"
+        ))
+    ));
+    definition(html, "Work Item", &work.work_item_id.to_string());
+    definition(
+        html,
+        text(request.locale, "Checkpoints", "체크포인트"),
+        &bounded_names(
+            &work
+                .checkpoint_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            8,
+            request.locale,
+        ),
+    );
+    definition(
+        html,
+        text(request.locale, "Decisions", "결정"),
+        &bounded_names(
+            &work
+                .decision_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            8,
+            request.locale,
+        ),
+    );
+    html.push_str("</dl></details></article>");
 }
 
 fn render_deterministic_explanation(
@@ -3258,6 +3324,17 @@ const fn understanding_work_state_label(
     }
 }
 
+const fn understanding_work_state_key(state: UnderstandingWorkState) -> &'static str {
+    match state {
+        UnderstandingWorkState::Open => "open",
+        UnderstandingWorkState::InProgress => "in-progress",
+        UnderstandingWorkState::Paused => "paused",
+        UnderstandingWorkState::Completed => "completed",
+        UnderstandingWorkState::Abandoned => "abandoned",
+        UnderstandingWorkState::Superseded => "superseded",
+    }
+}
+
 const fn verification_state_label(state: VerificationState, locale: ViewerLocale) -> &'static str {
     match state {
         VerificationState::NotRun => text(locale, "not run", "실행하지 않음"),
@@ -3633,7 +3710,7 @@ fn escape(value: &str) -> String {
 }
 
 const STYLE: &str = r#"<style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.level-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.level-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.level-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable],.state[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid,.understanding-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}.fact-legend{display:flex;flex-wrap:wrap;gap:.6rem;margin:.75rem 0}.fact-legend span{padding:.25rem .55rem;border-radius:999px}.verified-fact,.verified-facts{border-color:#22c55e}.deterministic-derived{border:1px solid #38bdf8;background:#082f49;padding:.65rem;border-radius:.4rem}.generated-interpretation{border:1px dashed #c084fc;background:#2e1065;padding:.65rem;border-radius:.4rem}.fact-legend .verified-fact{border:1px solid #22c55e;background:#052e16}.fact-legend .deterministic-derived{padding:.25rem .55rem}.grounded-explanations{display:grid;gap:.65rem;margin:.8rem 0}.explanation-item p{margin-top:0}.explanation-evidence{background:#0f2940}.explanation-basis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));gap:.45rem}.explanation-basis div{min-width:0}.explanation-basis dt{font-weight:700}.explanation-basis dd{margin:0;overflow-wrap:anywhere}.grounded-diagram{margin:1rem 0;padding:.75rem;background:#0f172a;border:1px solid #475569;border-radius:.5rem;overflow:auto}.grounded-diagram figcaption{font-weight:700;margin-bottom:.5rem}.grounded-diagram svg{display:block;min-width:42rem;width:100%;height:auto}.diagram-node rect{fill:#1e3a5f;stroke:#93c5fd;stroke-width:2}.diagram-node text{fill:#f8fafc;font-size:14px;font-weight:700}.diagram-node .diagram-node-kind{fill:#cbd5e1;font-size:12px;font-weight:400}.diagram-edge line{stroke:#94a3b8;stroke-width:2}.diagram-edge[data-relation-class=semantic-result] line{stroke:#c084fc;stroke-dasharray:6 4}.diagram-edge path{fill:#94a3b8}.diagram-gap{color:#fbbf24}.understanding-evidence{margin-top:1rem}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4,h5{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.level-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.level-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.level-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable],.state[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid,.understanding-grid,.work-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.work-item{border-left:.35rem solid #60a5fa}.work-item[data-work-state=completed]{border-left-color:#22c55e}.work-item[data-work-state=open],.work-item[data-work-state=paused]{border-left-color:#f59e0b}.work-item h5{font-size:1.05rem;margin:.1rem 0}.work-item p{margin:.45rem 0}.work-audit{background:#111827}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}.fact-legend{display:flex;flex-wrap:wrap;gap:.6rem;margin:.75rem 0}.fact-legend span{padding:.25rem .55rem;border-radius:999px}.verified-fact,.verified-facts{border-color:#22c55e}.deterministic-derived{border:1px solid #38bdf8;background:#082f49;padding:.65rem;border-radius:.4rem}.generated-interpretation{border:1px dashed #c084fc;background:#2e1065;padding:.65rem;border-radius:.4rem}.fact-legend .verified-fact{border:1px solid #22c55e;background:#052e16}.fact-legend .deterministic-derived{padding:.25rem .55rem}.grounded-explanations{display:grid;gap:.65rem;margin:.8rem 0}.explanation-item p{margin-top:0}.explanation-evidence{background:#0f2940}.explanation-basis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));gap:.45rem}.explanation-basis div{min-width:0}.explanation-basis dt{font-weight:700}.explanation-basis dd{margin:0;overflow-wrap:anywhere}.grounded-diagram{margin:1rem 0;padding:.75rem;background:#0f172a;border:1px solid #475569;border-radius:.5rem;overflow:auto}.grounded-diagram figcaption{font-weight:700;margin-bottom:.5rem}.grounded-diagram svg{display:block;min-width:42rem;width:100%;height:auto}.diagram-node rect{fill:#1e3a5f;stroke:#93c5fd;stroke-width:2}.diagram-node text{fill:#f8fafc;font-size:14px;font-weight:700}.diagram-node .diagram-node-kind{fill:#cbd5e1;font-size:12px;font-weight:400}.diagram-edge line{stroke:#94a3b8;stroke-width:2}.diagram-edge[data-relation-class=semantic-result] line{stroke:#c084fc;stroke-dasharray:6 4}.diagram-edge path{fill:#94a3b8}.diagram-gap{color:#fbbf24}.understanding-evidence{margin-top:1rem}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
 @media (max-width:44rem){main{padding:1rem}.level-nav{display:grid;grid-template-columns:1fr}.level-nav a{width:100%}.metrics,.fact-states,.preview-meta,.aggregate-grid,.understanding-grid{grid-template-columns:1fr}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.65rem}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.05rem}.button-row button,button{width:100%}}
 </style>"#;
 

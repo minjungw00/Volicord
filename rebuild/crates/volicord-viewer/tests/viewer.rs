@@ -29,6 +29,215 @@ fn setup() -> (tempfile::TempDir, ViewerAdapter, ProjectId) {
 }
 
 #[test]
+fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy() {
+    let (_temporary, viewer, project) = setup();
+    let mut store = Store::open(viewer.operations().layout().canonical_store()).expect("store");
+    let revision = store.get_project(project).expect("Project").revision;
+    let user = store
+        .record_source(
+            OperationId::from_bytes([101; 16]),
+            project,
+            SourceDraft {
+                expected_project_revision: revision,
+                payload: SourcePayload::CurrentHostUserTurn {
+                    host: "viewer-test".into(),
+                    session: "multi-work-viewer".into(),
+                    turn: "Keep the project understandable while Alpha, Beta, and Gamma remain separate".into(),
+                },
+                actor: Principal {
+                    kind: PrincipalKind::User,
+                    identity: "owner".into(),
+                },
+                observer: None,
+                availability: Availability::Available,
+            },
+        )
+        .expect("user Source")
+        .value;
+    let context = |store: &mut Store, operation, role, statement: &str| {
+        store
+            .record_context_item(
+                OperationId::from_bytes([operation; 16]),
+                project,
+                ContextItemDraft {
+                    expected_project_revision: revision,
+                    role,
+                    statement: statement.into(),
+                    provenance_role: StatementProvenanceRole::UserStatement,
+                    author: Principal {
+                        kind: PrincipalKind::User,
+                        identity: "owner".into(),
+                    },
+                    source_basis: vec![user.id],
+                    applicability: ApplicabilityScope::default(),
+                },
+            )
+            .expect("Context Item")
+            .value
+    };
+    let purpose = context(
+        &mut store,
+        102,
+        ContextItemRole::ProjectPurpose,
+        "Explain and preserve the project across sessions",
+    );
+    let alpha = context(&mut store, 103, ContextItemRole::Goal, "Finish Alpha");
+    let beta = context(&mut store, 104, ContextItemRole::Goal, "Continue Beta");
+    let _gamma = context(&mut store, 105, ContextItemRole::Goal, "Explore Gamma");
+
+    let decision_for =
+        |store: &mut Store, operation: u8, goal: volicord_context::ContextItemId, label: &str| {
+            let question = store
+                .create_question(
+                    OperationId::from_bytes([operation; 16]),
+                    project,
+                    QuestionDraft {
+                        expected_project_revision: revision,
+                        prompt_basis: format!("How should {label} proceed?"),
+                        source_basis: vec![user.id],
+                        dependencies: Vec::new(),
+                        alternatives: vec![QuestionAlternative {
+                            key: "direct".into(),
+                            label: "Proceed directly".into(),
+                            consequence: format!("{label} remains bounded"),
+                        }],
+                        recommendation: AgentRecommendation {
+                            alternative_key: Some("direct".into()),
+                            rationale: "The work has an explicit scope".into(),
+                            source_basis: vec![user.id],
+                        },
+                        trade_offs: Vec::new(),
+                        uncertainty: Vec::new(),
+                        material_scope: vec![label.into()],
+                        materiality: QuestionMateriality::Material,
+                        presentation_order: u64::from(operation),
+                        why_it_matters_now: format!("{label} needs its own Decision"),
+                        established_facts: Vec::new(),
+                        assumptions: Vec::new(),
+                        known_limits: Vec::new(),
+                        what_the_answer_unlocks: vec![format!("continue {label}")],
+                        allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
+                        research_state: QuestionResearchState::ReadyToAsk,
+                    },
+                )
+                .expect("Question")
+                .value;
+            store
+                .record_question_response(
+                    OperationId::from_bytes([operation + 1; 16]),
+                    project,
+                    QuestionResponseDraft {
+                        expected_project_revision: revision,
+                        question_id: question.id,
+                        question_revision: question.revision,
+                        user_turn_source: UserTurnSource::Existing(user.id),
+                        displayed_alternative_keys: vec!["direct".into()],
+                        displayed_recommendation_key: Some("direct".into()),
+                        response: ExplicitQuestionResponse::Choice {
+                            alternative_key: "direct".into(),
+                            user_rationale: Some(format!("Keep {label} separate")),
+                        },
+                        work_scope: volicord_context::DecisionWorkScope::WorkItem(goal),
+                        applicability: ApplicabilityScope::default(),
+                        assumptions: Vec::new(),
+                        revisit_triggers: Vec::new(),
+                    },
+                )
+                .expect("Decision response")
+                .value
+                .decision
+                .expect("Decision")
+        };
+    let alpha_decision = decision_for(&mut store, 106, alpha.id, "Alpha");
+    let beta_decision = decision_for(&mut store, 108, beta.id, "Beta");
+    let checkpoint = |store: &mut Store,
+                      operation: u8,
+                      goal: &volicord_context::ContextItem,
+                      decision: volicord_context::DecisionId,
+                      state,
+                      next_step: &str| {
+        store
+            .record_checkpoint(
+                OperationId::from_bytes([operation; 16]),
+                project,
+                CheckpointDraft {
+                    expected_project_revision: revision,
+                    work_item_id: Some(goal.id),
+                    kind: if state == WorkState::Completed {
+                        CheckpointKind::Completion
+                    } else {
+                        CheckpointKind::Handoff
+                    },
+                    goal: goal.statement.clone(),
+                    work_state: state,
+                    state_change: Some(format!("{} changed", goal.statement)),
+                    source_basis: vec![user.id],
+                    changed_source_basis: Vec::new(),
+                    changed_paths: vec![format!(
+                        "src/{}.rs",
+                        goal.statement.to_lowercase().replace(' ', "-")
+                    )],
+                    applied_decisions: vec![decision],
+                    verification: Vec::new(),
+                    user_review: UserReviewFact {
+                        state: UserReviewState::NotRequested,
+                        source_id: None,
+                    },
+                    user_acceptance: UserAcceptanceFact {
+                        state: UserAcceptanceState::NotRequested,
+                        source_id: None,
+                    },
+                    known_limits: Vec::new(),
+                    non_goals: Vec::new(),
+                    open_questions: Vec::new(),
+                    next_step: next_step.into(),
+                    handoff_to: (state != WorkState::Completed).then(|| "next agent".into()),
+                },
+            )
+            .expect("Checkpoint")
+            .value
+    };
+    let alpha_checkpoint = checkpoint(
+        &mut store,
+        110,
+        &alpha,
+        alpha_decision.id,
+        WorkState::Completed,
+        "Monitor Alpha",
+    );
+    let beta_checkpoint = checkpoint(
+        &mut store,
+        111,
+        &beta,
+        beta_decision.id,
+        WorkState::InProgress,
+        "Continue Beta",
+    );
+    drop(store);
+
+    let page = render_deep(&viewer, project);
+    let understanding = section_html(&page, "project-understanding");
+    assert!(understanding.contains("Explain and preserve the project across sessions"));
+    assert!(understanding.contains("data-work-group=\"completed-work\""));
+    assert!(understanding.contains("data-work-group=\"current-work\""));
+    assert!(understanding.contains("data-work-group=\"remaining-work\""));
+    let alpha_card = work_card_html(understanding, "Finish Alpha");
+    let beta_card = work_card_html(understanding, "Continue Beta");
+    let gamma_card = work_card_html(understanding, "Explore Gamma");
+    assert!(alpha_card.contains("data-work-state=\"completed\""));
+    assert!(alpha_card.contains(&alpha_decision.id.to_string()));
+    assert!(alpha_card.contains(&alpha_checkpoint.id.to_string()));
+    assert!(!alpha_card.contains(&beta_decision.id.to_string()));
+    assert!(beta_card.contains("data-work-state=\"in-progress\""));
+    assert!(beta_card.contains(&beta_decision.id.to_string()));
+    assert!(beta_card.contains(&beta_checkpoint.id.to_string()));
+    assert!(!beta_card.contains(&alpha_decision.id.to_string()));
+    assert!(gamma_card.contains("data-work-state=\"open\""));
+    assert!(gamma_card.contains("0 Checkpoints · 0 Decisions"));
+    assert!(!work_card_html(understanding, "Finish Alpha").contains(&purpose.id.to_string()));
+}
+
+#[test]
 fn candidate_view_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies() {
     let (_healthy_root, healthy, healthy_project) = setup();
     let healthy_page = render_deep(&healthy, healthy_project);
@@ -1130,5 +1339,16 @@ fn section_html<'a>(page: &'a str, identity: &str) -> &'a str {
         .expect("section start");
     let remainder = &page[start..];
     let end = remainder.find("</section>").expect("section end");
+    &remainder[..end]
+}
+
+fn work_card_html<'a>(section: &'a str, title: &str) -> &'a str {
+    let heading = format!("<h5>{title}</h5>");
+    let heading_at = section.find(&heading).expect("work heading");
+    let start = section[..heading_at]
+        .rfind("<article class=\"understanding-card work-item\"")
+        .expect("work card start");
+    let remainder = &section[start..];
+    let end = remainder.find("</article>").expect("work card end");
     &remainder[..end]
 }
