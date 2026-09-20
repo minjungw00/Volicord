@@ -94,6 +94,12 @@ surface-backed reviewer evidence. Disagreements are preserved without modifying
 the machine run. Even a probable false-positive finding against a confirmed hard
 violation leaves that machine finding blocking. There is no hard override field or semantic prose scorer. The maintained
 qualification policy consumes reviews without changing the machine observations.
+For validation findings, review may inspect preserved scope and attribution evidence for an
+ambiguous broader or diagnostic failure, but prose that merely calls debt pre-existing cannot
+clarify it. Exact baseline execution/output, equivalent rerun, environment transition, or other
+indexed execution evidence must support the relationship. Raw/canonical outcome conflicts remain
+`cannot_resolve` until stronger exact-identity evidence exists; review never chooses the favorable
+side by label or narrative similarity.
 
 Review validity and the aggregate assessment describe only the recorded review.
 Every result retains `qualification_state = not_run` and `phase_9_ready = false`.

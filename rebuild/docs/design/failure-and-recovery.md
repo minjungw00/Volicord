@@ -40,6 +40,11 @@ identity, affected scope, Source/operation basis와 함께 표현하며 system-w
 11. Immutable long-operation publication은 caller output 전달과 별개로 inspectable하다.
     Publication 뒤 caller가 중단되면 read-only state inspection으로 completed publication과
     remaining records를 확인하고 이미 published된 preparation을 blind retry하지 않는다.
+12. 여러 verification execution은 마지막 validation-looking command 하나로 collapse하지
+    않는다. Required/focused/broader/diagnostic scope, baseline·environment·candidate attribution,
+    supersession/recovery와 ambiguity를 preserved execution별로 유지한다. Canonical Checkpoint와
+    raw command의 same-execution reconciliation은 exact fingerprint와 numeric outcome을 요구하며
+    conflict는 favorable result로 선택하지 않는다.
 
 ## 2. State matrix
 

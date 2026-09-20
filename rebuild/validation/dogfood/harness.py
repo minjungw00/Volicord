@@ -3177,6 +3177,123 @@ def dogfood_command_role(value: Any, cwd: Path) -> str:
     return command_role(value)
 
 
+def validation_execution_profile(command: Any) -> dict[str, Any]:
+    """Describe validator scope without interpreting stdout or assistant prose."""
+
+    argvs = command_argvs(command.parsed_command)
+    argv = list(argvs[0]) if len(argvs) == 1 else []
+    environment_assignments: list[str] = []
+    while argv and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=[^$`\n]*", argv[0]):
+        environment_assignments.append(argv.pop(0))
+    if argv and Path(argv[0]).name == "env":
+        argv.pop(0)
+        while argv and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=[^\n]*", argv[0]):
+            environment_assignments.append(argv.pop(0))
+    program = Path(argv[0]).name if argv else "unknown"
+    args = argv[1:] if argv else []
+    if program in {"python", "python3"} and args[:2] == ["-m", "pytest"]:
+        program, args = "pytest", args[2:]
+    elif program in {"python", "python3"} and args[:2] == ["-m", "ruff"]:
+        program, args = "ruff", args[2:]
+    elif program in {"python", "python3"} and args[:2] == ["-m", "unittest"]:
+        program, args = "unittest", args[2:]
+
+    selectors: list[str] = []
+    targets: list[str] = []
+    if program == "ruff":
+        args = args[1:] if args[:1] in (["check"], ["format"]) else args
+        for index, arg in enumerate(args):
+            if arg in {"--select", "--extend-select", "--ignore", "--extend-ignore"}:
+                selectors.extend(args[index : index + 2])
+            elif arg.startswith(("--select=", "--extend-select=", "--ignore=", "--extend-ignore=")):
+                selectors.append(arg)
+            elif not arg.startswith("-") and (index == 0 or args[index - 1] not in {
+                "--config", "--output-format", "--exclude", "--per-file-ignores",
+            }):
+                targets.append(arg)
+    elif program in {"pytest", "unittest"}:
+        option_value = False
+        for arg in args:
+            if option_value:
+                selectors.append(arg)
+                option_value = False
+            elif arg in {"-k", "-m", "--ignore", "--deselect", "--ignore-glob"}:
+                selectors.append(arg)
+                option_value = True
+            elif arg.startswith(("-k=", "-m=", "--ignore=", "--deselect=", "--ignore-glob=")):
+                selectors.append(arg)
+            elif not arg.startswith("-"):
+                targets.append(arg)
+    elif program == "cargo":
+        selectors = [arg for arg in args if arg in {
+            "-p", "--package", "--bin", "--test", "--example", "--lib",
+        } or arg.startswith(("--package=", "--bin=", "--test=", "--example="))]
+        targets = [arg for arg in args[1:] if not arg.startswith("-")]
+    else:
+        targets = [arg for arg in args if not arg.startswith("-")]
+
+    repository_wide_target = not targets or any(target in {".", "./"} for target in targets)
+    scope = (
+        "focused"
+        if selectors or targets and not repository_wide_target
+        else "broader_aggregate"
+        if program != "unknown"
+        else "unknown"
+    )
+    raw = command.parsed_command if isinstance(command.parsed_command, dict) else {}
+    return {
+        "validator": program,
+        "scope": scope,
+        "targets": targets,
+        "selectors": selectors,
+        "invocation_fingerprint": command_invocation_fingerprint(command),
+        "equivalence_key": hashlib.sha256(json.dumps(
+            [program, args], separators=(",", ":")
+        ).encode("utf-8")).hexdigest(),
+        "environment_assignments": environment_assignments,
+        "sandbox_permissions": raw.get("sandbox_permissions"),
+    }
+
+
+def validation_profile_is_broader(failed: dict[str, Any], passed: dict[str, Any]) -> bool:
+    """Return true only for an inspectable same-validator scope expansion."""
+
+    if failed["validator"] != passed["validator"] or failed["validator"] == "unknown":
+        return False
+    if failed["scope"] == "broader_aggregate" and passed["scope"] == "focused":
+        return True
+    return (
+        failed["validator"] == "ruff"
+        and failed["targets"] == passed["targets"]
+        and not failed["selectors"]
+        and bool(passed["selectors"])
+    )
+
+
+def validation_environment_blocked(command: Any, later: Any | None) -> bool:
+    """Recognize a blocked attempt only with a correlated successful rerun."""
+
+    if later is None:
+        return False
+    before = command.parsed_command if isinstance(command.parsed_command, dict) else {}
+    after = later.parsed_command if isinstance(later.parsed_command, dict) else {}
+    escalated = (
+        before.get("sandbox_permissions") != "require_escalated"
+        and after.get("sandbox_permissions") == "require_escalated"
+    )
+    profiles = (validation_execution_profile(command), validation_execution_profile(later))
+    environment_changed = profiles[0]["environment_assignments"] != profiles[1]["environment_assignments"]
+    return escalated or environment_changed and validation_environment_failure_signal(command)
+
+
+def validation_environment_failure_signal(command: Any) -> bool:
+    bounded_output = command.output[:4096].lower()
+    return command.exit_code in {126, 127} or any(marker in bounded_output for marker in (
+        "operation not permitted", "permission denied", "read-only file system",
+        "no module named", "modulenotfounderror", "command not found",
+    ))
+
+
 def meaningful_resume_validation(
     capture: CodexCapture | None, after_sequence: int | None
 ) -> dict[str, Any]:
@@ -3191,14 +3308,19 @@ def meaningful_resume_validation(
             "indeterminate_execution_count": 0,
             "recovered_intermediate_failure": False,
             "unresolved_terminal_failure": False,
+            "candidate_regression_count": 0,
+            "known_baseline_failure_count": 0,
+            "environment_blocked_count": 0,
+            "ambiguous_failure_count": 0,
+            "verification_executions": [],
             "incomplete_evidence": True,
         }
-    commands = [
+    all_commands = [
         command
         for command in capture.commands
-        if command.sequence > after_sequence
-        and dogfood_command_role(command.parsed_command, capture.cwd) == "validation"
+        if dogfood_command_role(command.parsed_command, capture.cwd) == "validation"
     ]
+    commands = [command for command in all_commands if command.sequence > after_sequence]
     terminal = (
         max(commands, key=lambda command: (command.sequence, command.group_index))
         if commands
@@ -3215,22 +3337,118 @@ def meaningful_resume_validation(
         return (command.evidence_state == "completed"
             and type(command.exit_code) is int
             and command.termination is not None)
-    qualified = bool(
-        terminal is not None
-        and completed(terminal)
-        and terminal.termination == "exited"
-        and terminal.exit_code == 0
-        and not unknown_after_validation
-    )
-    intermediate_failures = [
-        command
-        for command in commands
-        if terminal is not None
-        and (command.sequence, command.group_index)
-        < (terminal.sequence, terminal.group_index)
-        and completed(command)
-        and not (command.termination == "exited" and command.exit_code == 0)
-    ]
+    def succeeded(command: Any) -> bool:
+        return completed(command) and command.termination == "exited" and command.exit_code == 0
+
+    profiles = {
+        (command.sequence, command.group_index): validation_execution_profile(command)
+        for command in all_commands
+    }
+    executions: list[dict[str, Any]] = []
+    hard_failures = []
+    baseline_failures = []
+    environment_blocked = []
+    recovered_failures = []
+    ambiguous_failures = []
+    for command in commands:
+        key = (command.sequence, command.group_index)
+        profile = profiles[key]
+        fingerprint = profile["invocation_fingerprint"]
+        equivalence_key = profile["equivalence_key"]
+        earlier_equivalent = [candidate for candidate in all_commands
+            if (candidate.sequence, candidate.group_index) < key
+            and profiles[(candidate.sequence, candidate.group_index)]["equivalence_key"] == equivalence_key]
+        later_equivalent = [candidate for candidate in commands
+            if (candidate.sequence, candidate.group_index) > key
+            and profiles[(candidate.sequence, candidate.group_index)]["equivalence_key"] == equivalence_key]
+        later_success = next((candidate for candidate in later_equivalent if succeeded(candidate)), None)
+        pre_mutation = [candidate for candidate in earlier_equivalent
+            if candidate.sequence <= after_sequence and completed(candidate)]
+        later_validation_success = next((candidate for candidate in commands
+            if (candidate.sequence, candidate.group_index) > key and succeeded(candidate)), None)
+        outcome = "indeterminate" if not completed(command) else "passed" if succeeded(command) else "failed"
+        attribution = "not_applicable" if outcome == "passed" else "ambiguous_or_unattributed"
+        relation = None
+        if outcome == "passed":
+            prior_failed = [candidate for candidate in earlier_equivalent
+                if candidate.sequence > after_sequence and completed(candidate) and not succeeded(candidate)]
+            if prior_failed:
+                prior = max(prior_failed, key=lambda candidate: (candidate.sequence, candidate.group_index))
+                attribution = (
+                    "authorized_successful_rerun" if validation_environment_blocked(prior, command)
+                    else "recovery_success"
+                )
+                relation = {"kind": "recovers_equivalent_attempt", "sequence": prior.sequence,
+                    "group_index": prior.group_index}
+        elif outcome == "failed" and later_success is not None:
+            attribution = (
+                "environment_blocked" if validation_environment_blocked(command, later_success)
+                else "superseded_or_recovered"
+            )
+            relation = {"kind": "successful_equivalent_rerun", "sequence": later_success.sequence,
+                "group_index": later_success.group_index}
+            (environment_blocked if attribution == "environment_blocked" else recovered_failures).append(command)
+        elif (outcome == "failed" and later_validation_success is not None
+              and validation_environment_failure_signal(command)):
+            attribution = "environment_blocked"
+            relation = {"kind": "later_success_after_distinct_blocked_attempt",
+                "sequence": later_validation_success.sequence,
+                "group_index": later_validation_success.group_index}
+            environment_blocked.append(command)
+        elif outcome == "failed" and any(succeeded(candidate) for candidate in pre_mutation):
+            attribution = "candidate_attributable_regression"
+            relation = {"kind": "successful_equivalent_baseline", "sequence": max(
+                candidate.sequence for candidate in pre_mutation if succeeded(candidate))}
+            hard_failures.append(command)
+        elif outcome == "failed" and any(
+            not succeeded(candidate)
+            and hashlib.sha256(candidate.output.encode("utf-8")).hexdigest()
+                == hashlib.sha256(command.output.encode("utf-8")).hexdigest()
+            for candidate in pre_mutation
+        ):
+            baseline = max((candidate for candidate in pre_mutation if not succeeded(candidate)
+                and hashlib.sha256(candidate.output.encode("utf-8")).hexdigest()
+                    == hashlib.sha256(command.output.encode("utf-8")).hexdigest()),
+                key=lambda candidate: (candidate.sequence, candidate.group_index))
+            attribution = "known_pre_existing_baseline_failure"
+            relation = {"kind": "identical_failed_baseline", "sequence": baseline.sequence,
+                "group_index": baseline.group_index,
+                "output_sha256": hashlib.sha256(command.output.encode("utf-8")).hexdigest()}
+            baseline_failures.append(command)
+        elif outcome == "failed":
+            successful_commands = [candidate for candidate in commands if succeeded(candidate)]
+            broader_than_success = any(validation_profile_is_broader(
+                profile, profiles[(candidate.sequence, candidate.group_index)])
+                for candidate in successful_commands)
+            if broader_than_success or successful_commands:
+                ambiguous_failures.append(command)
+            else:
+                attribution = "candidate_attributable_required_failure"
+                hard_failures.append(command)
+        executions.append({
+            "sequence": command.sequence,
+            "group_index": command.group_index,
+            "execution_identity": command.execution_identity,
+            "evidence_state": command.evidence_state,
+            "exit_code": command.exit_code,
+            "termination": command.termination,
+            "requirement_role": "diagnostic" if attribution in {
+                "ambiguous_or_unattributed", "known_pre_existing_baseline_failure",
+            } else "task_required",
+            "scope_role": profile["scope"],
+            "validator": profile["validator"],
+            "invocation_fingerprint": fingerprint,
+            "equivalence_key": equivalence_key,
+            "outcome": outcome,
+            "attribution": attribution,
+            "relationship": relation,
+        })
+    successful_commands = [command for command in commands if succeeded(command)]
+    qualified = bool(successful_commands and not hard_failures and not ambiguous_failures
+        and not unknown_after_validation and all(completed(command) for command in commands))
+    intermediate_failures = [command for command in commands
+        if completed(command) and not succeeded(command)
+        and command not in hard_failures and command not in ambiguous_failures]
     indeterminate = [
         command for command in commands if not completed(command)
     ]
@@ -3247,13 +3465,15 @@ def meaningful_resume_validation(
         "intermediate_failure_count": len(intermediate_failures),
         "indeterminate_execution_count": len(indeterminate) + len(unknown_after_validation),
         "unclassified_after_validation_count": len(unknown_after_validation),
-        "recovered_intermediate_failure": bool(intermediate_failures) and qualified,
-        "unresolved_terminal_failure": bool(
-            terminal is not None
-            and completed(terminal)
-            and not (terminal.termination == "exited" and terminal.exit_code == 0)
-        ),
-        "incomplete_evidence": terminal is None or not completed(terminal) or bool(unknown_after_validation),
+        "recovered_intermediate_failure": bool(environment_blocked or recovered_failures),
+        "unresolved_terminal_failure": bool(hard_failures),
+        "candidate_regression_count": len(hard_failures),
+        "known_baseline_failure_count": len(baseline_failures),
+        "environment_blocked_count": len(environment_blocked),
+        "ambiguous_failure_count": len(ambiguous_failures),
+        "verification_executions": executions,
+        "incomplete_evidence": (terminal is None or any(not completed(command) for command in commands)
+            or bool(unknown_after_validation) or bool(ambiguous_failures)),
     }
 
 
@@ -8534,16 +8754,21 @@ def material_question_lifecycle_facts(
     }, primary[0], primary[1], primary[2]
 
 
-def checkpoint_verification_facts(
+def checkpoint_verification_evidence(
     work: CodexCapture,
     bundle: CanonicalBundle,
     call: ToolCall,
     checkpoint_id: str,
-) -> bool:
+) -> dict[str, Any]:
+    """Reconcile canonical facts to raw commands only by exact durable identity."""
+
     declared = call.arguments.get("verification")
     returned_ids = call.result.get("verification_source_ids")
+    conflicts: list[dict[str, Any]] = []
+    facts: list[dict[str, Any]] = []
     if not isinstance(declared, list) or not declared or not isinstance(returned_ids, list):
-        return False
+        return {"valid": False, "state": "missing", "facts": [],
+            "conflicts": [{"kind": "canonical_verification_shape_missing"}]}
     rows = sorted(
         (
             row
@@ -8554,21 +8779,31 @@ def checkpoint_verification_facts(
         key=lambda row: row.get("position") if isinstance(row.get("position"), int) else -1,
     )
     if len(rows) != len(declared):
-        return False
+        conflicts.append({"kind": "canonical_verification_count_conflict",
+            "declared_count": len(declared), "canonical_count": len(rows)})
     executed_ids: list[str] = []
     used_command_occurrences: set[tuple[int, int]] = set()
-    for position, (claim, row) in enumerate(zip(declared, rows, strict=True)):
+    for position, claim in enumerate(declared):
+        row = rows[position] if position < len(rows) else {}
         if not isinstance(claim, dict) or row.get("position") != position:
-            return False
+            conflicts.append({"kind": "canonical_verification_position_conflict",
+                "position": position})
+            continue
         state = claim.get("state")
         if row.get("verification_state") != state or row.get("outcome") != claim.get("outcome"):
-            return False
+            conflicts.append({"kind": "canonical_verification_value_conflict",
+                "position": position, "declared_state": state,
+                "canonical_state": row.get("verification_state")})
+            continue
         if state == "not_run":
             if set(claim) != {"state"} or row.get("source_id") is not None:
-                return False
+                conflicts.append({"kind": "not_run_source_conflict", "position": position})
+            facts.append({"position": position, "state": state, "source_id": None,
+                "reconciliation": "canonical_not_run"})
             continue
         if state not in {"partial", "passed", "failed"}:
-            return False
+            conflicts.append({"kind": "unsupported_verification_state", "position": position})
+            continue
         if set(claim) - {
             "state",
             "command_label",
@@ -8577,7 +8812,8 @@ def checkpoint_verification_facts(
             "termination",
             "outcome",
         }:
-            return False
+            conflicts.append({"kind": "unexpected_verification_field", "position": position})
+            continue
         label = claim.get("command_label")
         invocation = claim.get("command_invocation")
         exit_code = claim.get("exit_code")
@@ -8588,28 +8824,44 @@ def checkpoint_verification_facts(
             or not nonempty_string(invocation)
             or not nonempty_string(outcome)
         ):
-            return False
+            conflicts.append({"kind": "incomplete_verification_claim", "position": position})
+            continue
         invocation_fingerprint = "sha256:" + hashlib.sha256(
             invocation.encode("utf-8")
         ).hexdigest()
-        commands = [
+        raw_commands = [
             command
             for command in work.commands
             if command.completion_sequence < call.sequence
             and command.sequence > work.turn_lifecycle.last_interruption
             and (command.sequence, command.group_index) not in used_command_occurrences
             and command_invocation_fingerprint(command) == invocation_fingerprint
-            and command.exit_code == exit_code
+        ]
+        commands = [
+            command
+            for command in raw_commands
+            if command.exit_code == exit_code
             and command.termination == termination
         ]
         if not commands:
-            return False
+            conflicts.append({
+                "kind": "raw_canonical_outcome_conflict" if raw_commands else "raw_execution_missing",
+                "position": position,
+                "invocation_fingerprint": invocation_fingerprint,
+                "canonical_outcome": {"exit_code": exit_code, "termination": termination},
+                "raw_outcomes": [{"sequence": command.sequence, "group_index": command.group_index,
+                    "exit_code": command.exit_code, "termination": command.termination}
+                    for command in raw_commands],
+            })
+            continue
         command = min(commands, key=lambda value: (value.sequence, value.group_index))
         used_command_occurrences.add((command.sequence, command.group_index))
         if state == "passed" and not (termination == "exited" and exit_code == 0):
-            return False
+            conflicts.append({"kind": "passed_state_outcome_conflict", "position": position})
+            continue
         if state == "failed" and termination == "exited" and exit_code == 0:
-            return False
+            conflicts.append({"kind": "failed_state_outcome_conflict", "position": position})
+            continue
         source_id = row.get("source_id")
         source = bundle.one("sources", id=source_id, project_id=bundle.project_id)
         if (
@@ -8624,9 +8876,34 @@ def checkpoint_verification_facts(
             or source.get("actor_kind") != "command"
             or source.get("observer_kind") != "agent"
         ):
-            return False
+            conflicts.append({"kind": "canonical_source_identity_conflict", "position": position,
+                "source_id": source_id, "invocation_fingerprint": invocation_fingerprint})
+            continue
         executed_ids.append(str(source_id))
-    return returned_ids == executed_ids
+        facts.append({
+            "position": position,
+            "state": state,
+            "source_id": str(source_id),
+            "invocation_fingerprint": invocation_fingerprint,
+            "raw_execution": {"sequence": command.sequence, "group_index": command.group_index,
+                "execution_identity": command.execution_identity},
+            "outcome": {"exit_code": exit_code, "termination": termination},
+            "reconciliation": "exact_fingerprint_and_numeric_outcome",
+        })
+    if returned_ids != executed_ids:
+        conflicts.append({"kind": "returned_source_identity_conflict",
+            "returned_source_ids": returned_ids, "reconciled_source_ids": executed_ids})
+    return {"valid": not conflicts, "state": "reconciled" if not conflicts else "conflict",
+        "facts": facts, "conflicts": conflicts}
+
+
+def checkpoint_verification_facts(
+    work: CodexCapture,
+    bundle: CanonicalBundle,
+    call: ToolCall,
+    checkpoint_id: str,
+) -> bool:
+    return checkpoint_verification_evidence(work, bundle, call, checkpoint_id)["valid"]
 
 
 def command_invocation_fingerprint(command: Any) -> str | None:
@@ -8906,18 +9183,27 @@ def checkpoint_facts(
     goal_source_id: str | None,
     baseline_analysis_id: str | None,
     goal_statement: str | None,
-) -> tuple[bool, bool, bool, str | None, list[str], str | None]:
+) -> tuple[bool, bool, bool, str | None, list[str], str | None, dict[str, Any]]:
     call = terminal_checkpoint_call(work)
     if call is None or work is None or bundle is None:
-        return False, False, False, None, [], None
+        return False, False, False, None, [], None, {
+            "valid": False, "state": "missing", "facts": [],
+            "conflicts": [{"kind": "terminal_checkpoint_evidence_missing"}],
+        }
     try:
         require_completed_work(work)
     except WorkCaptureContractError:
-        return False, False, False, None, [], None
+        return False, False, False, None, [], None, {
+            "valid": False, "state": "conflict", "facts": [],
+            "conflicts": [{"kind": "work_capture_incomplete"}],
+        }
     checkpoint_id = call.result.get("checkpoint_id")
     checkpoint = bundle.one("checkpoints", id=checkpoint_id, project_id=bundle.project_id)
     if checkpoint is None or not nonempty_string(checkpoint_id):
-        return False, False, False, None, [], None
+        return False, False, False, None, [], None, {
+            "valid": False, "state": "missing", "facts": [],
+            "conflicts": [{"kind": "canonical_checkpoint_missing"}],
+        }
     exploration = exploratory_no_write_evidence(work, selected_checkpoint_baseline_call(work, call))
     changed_paths = decode_string_blob(checkpoint.get("changed_paths"))
     observed_paths = work.paths_before(call.sequence)
@@ -8969,9 +9255,10 @@ def checkpoint_facts(
         and checkpoint.get("goal") == goal_statement
     )
     applied = call.arguments.get("applied_decision_ids")
-    verification_ok = checkpoint_verification_facts(
+    verification_evidence = checkpoint_verification_evidence(
         work, bundle, call, str(checkpoint_id)
     )
+    verification_ok = verification_evidence["valid"]
     meaningful_changes = meaningful_work_path_observations(work)
     terminal_after_last_meaningful_change = (
         exploration.get("frontier_sequence") is not None or bool(meaningful_changes)
@@ -9004,6 +9291,7 @@ def checkpoint_facts(
         str(checkpoint_id) if nonempty_string(checkpoint_id) else None,
         observed_paths,
         str(next_step) if nonempty_string(next_step) else None,
+        verification_evidence,
     )
 
 
@@ -9203,6 +9491,7 @@ def real_session_evidence(
         checkpoint_id,
         changed_paths,
         next_step,
+        checkpoint_verification_evidence_basis,
     ) = checkpoint_facts(
         work_capture,
         bundle,
@@ -9785,8 +10074,13 @@ def real_session_evidence(
             if checks[check] == "failed":
                 checks[check] = "partial"
     validation = continuation_facts["change_validation"] if continuation_facts["last_change_sequence"] is not None else continuation_facts["post_inspection_validation"]
+    validation_basis = {
+        **validation,
+        "canonical_checkpoint_reconciliation": checkpoint_verification_evidence_basis,
+    }
     validation_status = (
         "confirmed_violation" if validation["unresolved_terminal_failure"]
+        else "indeterminate" if checkpoint_verification_evidence_basis["state"] == "conflict"
         else "confirmed_pass" if validation["qualified"]
         else "not_observed" if validation["terminal_sequence"] is None
         else "indeterminate")
@@ -9813,7 +10107,7 @@ def real_session_evidence(
             else "confirmed_violation", "basis": {"distinct_host_invocations": invocations_ok,
                 "work_fresh_thread": work_capture.fresh_user_thread if work_capture else None,
                 "resume_fresh_thread": resume_capture.fresh_user_thread if resume_capture else None, "activation_observed": activation_ok}},
-        "required_validation_execution": {"status": validation_status, "basis": validation},
+        "required_validation_execution": {"status": validation_status, "basis": validation_basis},
         "procedure_invocation_counts": {"status": "confirmed_pass" if resolve_call and recall_call else "confirmed_violation",
             "basis": {"resume_project_resolve_count": len(resume_capture.successful_calls("project_resolve")) if resume_capture else 0,
                 "resume_recall_count": len(resume_capture.successful_calls("recall")) if resume_capture else 0,
@@ -9930,6 +10224,7 @@ def real_session_evidence(
                 recalled_goal_retains_full_turn_source
             ),
             "checkpoint_verification_matches_observed_command": checkpoint_verification_ok,
+            "checkpoint_verification_reconciliation": checkpoint_verification_evidence_basis,
             "fresh_session_recall_goal_identity_and_statement_match": recalled_goal_ok,
         },
         "material_authority_review": authority_obligations.review_basis(
