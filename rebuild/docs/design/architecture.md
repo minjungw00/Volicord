@@ -105,6 +105,11 @@ write authority다. `Project`, `Source`, `Question`, `Decision`, `Context Item`�
 `Checkpoint` identity, provenance, relation, correction, supersession와 forgetting
 invariant를 적용한다.
 
+`Project`의 stable identity/display name과 Project가 장기적으로 존재하는 이유는 같은
+meaning이 아니다. 장기 목적은 `Project Purpose` 역할의 source-grounded Context Item으로
+보존하고, bounded work를 지시하는 `Goal` Context와 분리한다. 새 work Goal을 기록하는
+행위는 Project Purpose를 수정하거나 대체하지 않는다.
+
 이 subsystem은 다음 책임을 가진다.
 
 - canonical command의 의미와 허용 여부를 판정한다.
@@ -170,7 +175,8 @@ Projections and Documents는 정확히 다음 세 logical input class를 읽는�
 3. Recall, map, preview와 generated document에 필요한 permitted Derived State.
 
 이 read authority로 Recall, Project Understanding을 기본으로 한 viewer view와 generated
-document를 만든다. Project Understanding은 completed/current/remaining work, next step,
+document를 만든다. Project Understanding은 source-grounded Project Purpose,
+completed/current/remaining work, next step,
 Decision rationale와 affected code, component/architecture/flow, evidence/gap/freshness/uncertainty를
 Canonical Context와 Repository Intelligence에서 파생한 read-side interpretation이며
 새 canonical truth가 아니다. Low-level record/audit inspection은 더 깊은 detail로

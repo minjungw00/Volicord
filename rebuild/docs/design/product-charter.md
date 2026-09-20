@@ -97,11 +97,11 @@ Canonical Context의 최소 개념은 다음과 같다.
 
 | 개념 | 책임 |
 |---|---|
-| `Project` | 여러 clone과 환경에서 공유되는 프로젝트 정체성 |
+| `Project` | 여러 clone과 환경에서 공유되는 프로젝트 정체성과 display name; 장기 목적은 provenance가 있는 `Project Purpose` Context로 분리 |
 | `Source` | 파일, symbol, commit, 명령, URL, 대화 turn, artifact 등 근거 |
 | `Question` | 아직 해결되지 않았거나 위임·조사·prototype이 필요한 판단 지점 |
 | `Decision` | 질문에 대한 사용자 선택 또는 명시적 위임과 당시의 이유·대안·영향 |
-| `Context Item` | 목표, 사실, 가정, 제약, 선호, 위험, 학습, 알려진 한계 |
+| `Context Item` | Project Purpose, 작업 목표, 사실, 가정, 제약, 선호, 위험, 학습, 알려진 한계 |
 | `Checkpoint` | 특정 시점의 상태, 변경, 검증, 한계, 열린 질문과 다음 단계 |
 
 Task나 Workstream은 필요할 경우 정보를 묶는 view가 될 수 있지만, 모든 작업의 시작·쓰기·완료를 통제하는 필수 authority state machine이 되지 않는다.

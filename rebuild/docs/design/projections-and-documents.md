@@ -62,7 +62,7 @@ inspectable하게 유지하되 ordinary reading hierarchy 뒤의 explicit detail
 둔다. 이 hierarchy는 grounding을 삭제하거나 low-level inspection을 막지 않는다.
 
 Production read interface의 `ProjectUnderstanding`은 bounded section으로
-`goals_and_why`, `current_work`, `completed_work`, `remaining_work`, `next_steps`,
+`project_purpose`, `current_work`, `completed_work`, `remaining_work`, `next_steps`,
 `active_decisions`, `open_questions`, `risks_assumptions_and_limits`, inspectable
 architecture `components`/`relationships`, `generated_interpretations`와 `evidence`를
 분리해 제공한다. Architecture topology는 Repository Intelligence entity/relation을
@@ -70,6 +70,11 @@ architecture `components`/`relationships`, `generated_interpretations`와 `evide
 아니다. 각 section bound의 exact omitted count를 별도로 제공하며 이 read interface는
 canonical, Candidate, analyzer, publication 또는 provider mutation capability를 받지
 않는다.
+
+`project_purpose`는 `Project Purpose` 역할의 canonical Context Item과 그 Source basis만
+읽는다. Work `Goal`, latest Checkpoint goal, recent Decision text 또는 chronological latest
+record를 Project Purpose로 승격하지 않는다. Purpose가 기록되지 않았으면 빈 값과 gap을
+정직하게 표시하며 최근 work Goal을 대신 보여 주지 않는다.
 
 `ProjectProjection.repository_map`은 계속 repository-wide entity/relation inventory에서
 고른 일반 Repository Map topology를 소유한다. 별도 `current_work_topology`는 같은 Analysis
@@ -586,7 +591,7 @@ basis는 ordinary reading path를 방해하지 않는 closed audit disclosure에
 Snapshot 생성과 local publication은 background provider opt-in이나 external sharing/upload가
 아니며 자동 network transmission을 수행하지 않는다.
 
-Production Viewer의 first reading section은 `ProjectUnderstanding`의 goal/why,
+Production Viewer의 first reading section은 `ProjectUnderstanding`의 Project Purpose,
 completed/current/remaining work, next step, active Decision rationale와 affected code,
 open material Question, risk/limit, architecture, interpretation과 evidence를 이 순서의
 human explanation으로 구성한다. Verified canonical/structural/semantic layer와 generated

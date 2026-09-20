@@ -293,8 +293,12 @@ user-turn Source에 연결된다. 의미가 바뀐 선택은 기존 Decision을 
 
 ### 4.5 Context Item
 
-`Context Item`은 Project의 goal, fact, assumption, constraint, explicit preference,
-risk, learning과 known limit를 보존한다. 각 Context Item은 statement role과
+`Context Item`은 Project Purpose, bounded work goal, fact, assumption, constraint,
+explicit preference, risk, learning과 known limit를 보존한다. `Project Purpose`는
+Project가 장기적으로 무엇을 위해 존재하는지 설명하고, stable Project identity/display
+name 및 개별 `Goal`과 구분된다. 새 `Goal`을 기록해도 `Project Purpose`는 바뀌지 않는다.
+둘 모두 Source provenance가 필요하며 latest Checkpoint나 Goal text에서 Purpose를 추론하지
+않는다. 각 Context Item은 statement role과
 provenance를 유지하므로 user-stated constraint, observed fact와 generated
 interpretation을 같은 종류의 truth로 합치지 않는다.
 

@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 14;
+pub const SCHEMA_VERSION: u32 = 15;
 
 pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
 const READ_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -5256,7 +5256,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
                  revision INTEGER NOT NULL CHECK(revision >= 1),
                  role TEXT NOT NULL CHECK(role IN (
-                     'goal','fact','assumption','constraint','preference','risk','learning','known_limit'
+                     'project_purpose','goal','fact','assumption','constraint','preference','risk','learning','known_limit'
                  )),
                  statement TEXT NOT NULL CHECK(length(statement) > 0),
                  provenance_role TEXT NOT NULL CHECK(provenance_role IN (

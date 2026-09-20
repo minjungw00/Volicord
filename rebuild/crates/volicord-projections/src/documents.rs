@@ -521,13 +521,13 @@ fn build_body(
 fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> DocumentBody {
     let mut overview_claims = projection
         .resume
-        .goals_and_why
+        .project_purpose
         .iter()
-        .map(|goal| GeneratedDocumentClaim {
-            identity: format!("context:{}", goal.identity),
+        .map(|purpose| GeneratedDocumentClaim {
+            identity: format!("project-purpose:{}", purpose.identity),
             class: ClaimClass::CanonicalContext,
-            text: goal.statement.clone(),
-            source_basis: goal.source_basis.clone(),
+            text: purpose.statement.clone(),
+            source_basis: purpose.source_basis.clone(),
             decision_basis: Vec::new(),
             analysis_basis: Vec::new(),
             explicit_inference: false,
@@ -537,11 +537,11 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
         .collect::<Vec<_>>();
     if overview_claims.is_empty() {
         overview_claims.push(inference_claim(
-            "project-goal-gap",
+            "project-purpose-gap",
             fixed(
                 locale,
-                "Project goal is not recorded.",
-                "프로젝트 목표가 기록되지 않았습니다.",
+                "Project purpose is not recorded.",
+                "프로젝트 목적이 기록되지 않았습니다.",
             ),
             Vec::new(),
         ));
@@ -2723,6 +2723,7 @@ fn code_entity_kind_label(kind: &CodeEntityKind, locale: FixedLocale) -> String 
 
 const fn context_role_label(role: ContextItemRole, locale: FixedLocale) -> &'static str {
     match role {
+        ContextItemRole::ProjectPurpose => fixed(locale, "project purpose", "프로젝트 목적"),
         ContextItemRole::Goal => fixed(locale, "goal", "목표"),
         ContextItemRole::Fact => fixed(locale, "fact", "사실"),
         ContextItemRole::Assumption => fixed(locale, "assumption", "가정"),

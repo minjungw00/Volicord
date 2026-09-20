@@ -28,6 +28,7 @@ pub fn resume_brief_json(brief: &ResumeBrief) -> Value {
         }));
     let output = json!({
         "project_id":brief.project_id.to_string(), "project_name":brief.project_name,
+        "project_purpose":brief.project_purpose.iter().map(context_json).collect::<Vec<_>>(),
         "goals":brief.goals_and_why.iter().map(|item| &item.statement).collect::<Vec<_>>(),
         "goal_basis":brief.goals_and_why.iter().map(context_json).collect::<Vec<_>>(),
         "behaviorally_relevant_context":brief.behaviorally_relevant_context.iter().map(context_json).collect::<Vec<_>>(),
@@ -111,6 +112,7 @@ fn context_json(item: &BriefContextItem) -> Value {
 
 const fn context_item_role_name(role: ContextItemRole) -> &'static str {
     match role {
+        ContextItemRole::ProjectPurpose => "project_purpose",
         ContextItemRole::Goal => "goal",
         ContextItemRole::Fact => "fact",
         ContextItemRole::Assumption => "assumption",

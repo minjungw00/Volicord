@@ -2019,7 +2019,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 vec![
                     ("project_id", identity_schema("Project identity")),
                     ("user_turn", text_schema("Caller-supplied raw current-host user turn; not authenticated by MCP", 1, 16_384)),
-                    ("role", enum_schema("User-statement Context role", &["goal", "assumption", "constraint", "preference", "risk", "learning", "known_limit"])),
+                    ("role", enum_schema("User-statement Context role", &["project_purpose", "goal", "assumption", "constraint", "preference", "risk", "learning", "known_limit"])),
                     ("statement", text_schema("Verbatim bounded statement within the caller-supplied user_turn", 1, 16_384)),
                 ],
                 &["project_id", "user_turn", "role", "statement"],
@@ -4681,6 +4681,7 @@ fn question_research_state(value: &str) -> Result<QuestionResearchState, HostErr
 
 const fn context_item_role_name(role: ContextItemRole) -> &'static str {
     match role {
+        ContextItemRole::ProjectPurpose => "project_purpose",
         ContextItemRole::Goal => "goal",
         ContextItemRole::Fact => "fact",
         ContextItemRole::Assumption => "assumption",
@@ -4694,6 +4695,7 @@ const fn context_item_role_name(role: ContextItemRole) -> &'static str {
 
 fn context_item_role(value: &str) -> Result<ContextItemRole, HostError> {
     match value {
+        "project_purpose" => Ok(ContextItemRole::ProjectPurpose),
         "goal" => Ok(ContextItemRole::Goal),
         "fact" => Ok(ContextItemRole::Fact),
         "assumption" => Ok(ContextItemRole::Assumption),

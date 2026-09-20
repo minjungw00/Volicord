@@ -135,6 +135,7 @@ pub struct RecallProposal {
 pub struct ResumeBrief {
     pub project_id: ProjectId,
     pub project_name: String,
+    pub project_purpose: Vec<BriefContextItem>,
     pub goals_and_why: Vec<BriefContextItem>,
     pub behaviorally_relevant_context: Vec<BriefContextItem>,
     pub decisions: Vec<BriefDecision>,
@@ -195,6 +196,26 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
         &mut goals,
         limit,
         "context_goal",
+        |item| item.identity.to_string(),
+        &mut omissions,
+    );
+
+    let mut project_purpose = canonical
+        .context_items
+        .iter()
+        .filter(|item| item.role == ContextItemRole::ProjectPurpose)
+        .map(|item| BriefContextItem {
+            identity: item.id,
+            role: item.role,
+            statement: item.statement.clone(),
+            source_basis: item.source_basis.clone(),
+        })
+        .collect::<Vec<_>>();
+    project_purpose.sort_by_key(|item| item.identity);
+    bound_items(
+        &mut project_purpose,
+        limit,
+        "project_purpose",
         |item| item.identity.to_string(),
         &mut omissions,
     );
@@ -399,9 +420,10 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
     );
 
     let mut used_source_ids = BTreeSet::new();
-    for source in goals
+    for source in project_purpose
         .iter()
         .flat_map(|item| item.source_basis.iter())
+        .chain(goals.iter().flat_map(|item| item.source_basis.iter()))
         .chain(decisions.iter().flat_map(|item| item.source_basis.iter()))
         .chain(questions.iter().flat_map(|item| item.source_basis.iter()))
         .chain(
@@ -545,6 +567,7 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
     ResumeBrief {
         project_id: canonical.project.id,
         project_name: canonical.project.display_name.clone(),
+        project_purpose,
         goals_and_why: goals,
         behaviorally_relevant_context,
         decisions,

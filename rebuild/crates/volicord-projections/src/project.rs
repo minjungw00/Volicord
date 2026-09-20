@@ -1673,6 +1673,7 @@ const fn question_state_key(state: QuestionState) -> &'static str {
 
 const fn context_role_key(role: ContextItemRole) -> &'static str {
     match role {
+        ContextItemRole::ProjectPurpose => "project_purpose",
         ContextItemRole::Goal => "goal",
         ContextItemRole::Fact => "fact",
         ContextItemRole::Assumption => "assumption",

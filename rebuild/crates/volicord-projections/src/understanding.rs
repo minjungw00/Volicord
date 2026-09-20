@@ -157,7 +157,7 @@ pub struct ProjectUnderstanding {
     pub project_id: ProjectId,
     pub project_name: String,
     pub canonical_revision: u64,
-    pub goals_and_why: Vec<BriefContextItem>,
+    pub project_purpose: Vec<BriefContextItem>,
     pub current_work: Option<UnderstandingWork>,
     pub completed_work: Vec<UnderstandingWork>,
     pub remaining_work: Vec<UnderstandingWork>,
@@ -189,8 +189,13 @@ pub fn build_project_understanding(
     let limit = bound.max_items_per_section.max(1);
     let mut omissions = Vec::new();
 
-    let mut goals_and_why = projection.resume.goals_and_why.clone();
-    bound_section(&mut goals_and_why, limit, "goals_and_why", &mut omissions);
+    let mut project_purpose = projection.resume.project_purpose.clone();
+    bound_section(
+        &mut project_purpose,
+        limit,
+        "project_purpose",
+        &mut omissions,
+    );
 
     let mut timeline = projection.checkpoint_timeline.clone();
     timeline.sort_by_key(|entry| (entry.checkpoint.recorded_at, entry.checkpoint.id));
@@ -366,7 +371,7 @@ pub fn build_project_understanding(
         project_id: projection.overview.project_id,
         project_name: projection.overview.project_name.clone(),
         canonical_revision: projection.overview.canonical_revision,
-        goals_and_why,
+        project_purpose,
         current_work,
         completed_work,
         remaining_work,
@@ -1809,6 +1814,7 @@ mod tests {
                 health: ProjectionHealth::Complete,
             },
             resume: ResumeBrief {
+                project_purpose: Vec::new(),
                 project_id: project_id(),
                 project_name: "Current work fixture".into(),
                 goals_and_why: Vec::new(),

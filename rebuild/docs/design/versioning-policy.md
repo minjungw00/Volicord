@@ -59,6 +59,10 @@ Context Item, Checkpoint, revision, supersession와 forgetting meaning을 durabl
 Canonical data는 Derived State에서 rebuild할 수 없으므로 best-effort field dropping,
 silent downgrade 또는 fresh empty initialization으로 대체하지 않는다.
 
+현재 canonical schema version은 `15`다. `Project Purpose`와 work `Goal`을 구분하는
+Context role은 durable statement meaning이므로 이 version에서만 읽고 쓰며 이전 role
+set을 current meaning으로 추정하는 decoder를 두지 않는다.
+
 Command Source처럼 기존 durable Source payload의 correlation meaning이 바뀌면 Canonical
 schema current version을 올린다. 같은 Source manifest를 운반하는 portable bundle도 그
 새 meaning을 해석해야 하므로 applicable bundle current version을 함께 올린다. 이전
@@ -78,6 +82,9 @@ deterministic representation, lineage/common-base와 conflict basis를 해석한
   writer를 동시에 운영하지 않는다.
 - Non-current bundle rejection은 current canonical state, common-base와 merge provenance를
   변경하지 않는다.
+
+현재 portable bundle format version은 `8`이다. Source-grounded `Project Purpose` role을
+그대로 운반하며 older bundle의 Goal을 Purpose로 추론하거나 dual decode하지 않는다.
 
 ## 5. Analysis Snapshot version
 

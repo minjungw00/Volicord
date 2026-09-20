@@ -930,7 +930,7 @@ fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Err
         "project_name":understanding.project_name,
         "health":debug_name(understanding.health),
         "canonical_revision":understanding.canonical_revision,
-        "goals":understanding.goals_and_why.into_iter().map(|item| item.statement).collect::<Vec<_>>(),
+        "project_purpose":understanding.project_purpose.into_iter().map(|item| json!({"statement":item.statement,"source_ids":item.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })).collect::<Vec<_>>(),
         "current_work":understanding.current_work.map(|work| json!({"goal":work.goal,"state":debug_name(work.state),"meaningful_change":work.meaningful_change,"changed_paths":work.changed_paths,"next_step":work.next_step})),
         "completed_work":understanding.completed_work.into_iter().map(|work| json!({"goal":work.goal,"next_step":work.next_step})).collect::<Vec<_>>(),
         "remaining_work":understanding.remaining_work.into_iter().map(|work| json!({"goal":work.goal,"state":debug_name(work.state),"next_step":work.next_step})).collect::<Vec<_>>(),

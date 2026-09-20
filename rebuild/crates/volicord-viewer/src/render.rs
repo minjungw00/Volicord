@@ -468,23 +468,23 @@ fn render_project_understanding(
             "이 프로젝트의 목적",
         ),
     );
-    if understanding.goals_and_why.is_empty() {
+    if understanding.project_purpose.is_empty() {
         empty_state(
             html,
             text(
                 request.locale,
-                "No grounded Project goal is recorded.",
-                "근거가 있는 프로젝트 목표가 기록되지 않았습니다.",
+                "No source-grounded Project purpose is recorded.",
+                "source-grounded 프로젝트 목적이 기록되지 않았습니다.",
             ),
         );
     } else {
         html.push_str("<ul class=\"understanding-list verified-facts\" data-statement-role=\"verified-canonical\">");
-        for goal in understanding
-            .goals_and_why
+        for purpose in understanding
+            .project_purpose
             .iter()
             .take(level_limit(request.explanation_level))
         {
-            list_item(html, &goal.statement);
+            list_item(html, &purpose.statement);
         }
         html.push_str("</ul>");
     }

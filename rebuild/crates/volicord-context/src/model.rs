@@ -582,6 +582,7 @@ pub struct QuestionDispositionDraft {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ContextItemRole {
+    ProjectPurpose,
     Goal,
     Fact,
     Assumption,
@@ -595,6 +596,7 @@ pub enum ContextItemRole {
 impl ContextItemRole {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
+            Self::ProjectPurpose => "project_purpose",
             Self::Goal => "goal",
             Self::Fact => "fact",
             Self::Assumption => "assumption",
@@ -608,6 +610,7 @@ impl ContextItemRole {
 
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
+            "project_purpose" => Some(Self::ProjectPurpose),
             "goal" => Some(Self::Goal),
             "fact" => Some(Self::Fact),
             "assumption" => Some(Self::Assumption),

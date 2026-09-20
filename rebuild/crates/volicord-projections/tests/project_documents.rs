@@ -170,6 +170,21 @@ fn completed_project_documents_are_human_first_and_keep_resolved_ambiguity_in_au
             },
         )?
         .value;
+    let _project_purpose = store
+        .record_context_item(
+            operation(150),
+            project.id,
+            ContextItemDraft {
+                expected_project_revision: project.revision,
+                role: ContextItemRole::ProjectPurpose,
+                statement: "Help people understand and resume this project".to_owned(),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author: principal(PrincipalKind::User, "owner"),
+                source_basis: vec![user_turn.id],
+                applicability: ApplicabilityScope::default(),
+            },
+        )?
+        .value;
     store.record_context_item(
         operation(203),
         project.id,
@@ -414,6 +429,21 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
                 actor: principal(PrincipalKind::User, "owner"),
                 observer: Some(principal(PrincipalKind::Agent, "codex")),
                 availability: Availability::Available,
+            },
+        )?
+        .value;
+    let project_purpose = store
+        .record_context_item(
+            operation(150),
+            project.id,
+            ContextItemDraft {
+                expected_project_revision: project.revision,
+                role: ContextItemRole::ProjectPurpose,
+                statement: "Help people understand and resume this project".to_owned(),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author: principal(PrincipalKind::User, "owner"),
+                source_basis: vec![user_turn.id],
+                applicability: ApplicabilityScope::default(),
             },
         )?
         .value;
@@ -723,7 +753,12 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         },
     );
     assert_eq!(understanding.project_id, project.id);
-    assert_eq!(understanding.goals_and_why.len(), 1);
+    assert_eq!(understanding.project_purpose.len(), 1);
+    assert_eq!(
+        understanding.project_purpose[0].identity,
+        project_purpose.id
+    );
+    assert_ne!(understanding.project_purpose[0].identity, goal.id);
     assert_eq!(
         understanding.current_work.as_ref().map(|work| work.state),
         Some(WorkState::Completed)
@@ -1346,7 +1381,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         assert!(value.len() > RENDERED_DOCUMENT_FIELD_BYTE_LIMIT);
     }
     let mut pathological = projection.clone();
-    pathological.resume.goals_and_why[0].statement = huge_claim.clone();
+    pathological.resume.project_purpose[0].statement = huge_claim.clone();
     pathological.repository_map.entities[0].display_name = huge_name.clone();
     pathological.repository_map.gaps[0].reason = huge_diagnostic.clone();
     let pathological_request = DocumentRequest {
@@ -1451,7 +1486,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     checkpoint.checkpoint.next_step = semantic_chunk("Next step");
     let oversized_goal = "Grounded 프로젝트 목적은 typed 상태로 유지됩니다. ".repeat(220);
     assert!(oversized_goal.len() > RENDERED_DOCUMENT_FIELD_BYTE_LIMIT);
-    large_realization_projection.resume.goals_and_why[0].statement = oversized_goal.clone();
+    large_realization_projection.resume.project_purpose[0].statement = oversized_goal.clone();
 
     let spanish_request = DocumentRequest {
         requested_language: "es-ES".to_owned(),
@@ -1472,7 +1507,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         )?
     );
     let mut same_size_source_change = large_realization_projection.clone();
-    same_size_source_change.resume.goals_and_why[0]
+    same_size_source_change.resume.project_purpose[0]
         .statement
         .replace_range(0..1, "g");
     let changed_plan = prepare_narrative_plan(
@@ -1492,28 +1527,31 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             <= NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT
             && claim.source_text.contains(term)));
     }
-    let goal_plan_claim = large_plan
+    let purpose_plan_claim = large_plan
         .sections
         .iter()
         .find(|section| section.key == "overview")
         .and_then(|section| section.claims.first())
         .expect("oversized goal claim must remain in the plan");
-    let goal_omission = goal_plan_claim
+    let purpose_omission = purpose_plan_claim
         .source_text_omission
         .as_ref()
-        .expect("oversized goal must use the bounded source representation");
-    assert_eq!(goal_omission.exact_source_utf8_bytes, oversized_goal.len());
+        .expect("oversized project purpose must use the bounded source representation");
     assert_eq!(
-        goal_omission.exact_source_character_count,
+        purpose_omission.exact_source_utf8_bytes,
+        oversized_goal.len()
+    );
+    assert_eq!(
+        purpose_omission.exact_source_character_count,
         oversized_goal.chars().count()
     );
-    assert!(goal_plan_claim
+    assert!(purpose_plan_claim
         .source_text
         .contains("Grounded 프로젝트 목적은 typed 상태로 유지됩니다."));
-    assert!(goal_plan_claim
+    assert!(purpose_plan_claim
         .source_text
         .contains("[bounded source remainder;"));
-    assert!(!goal_plan_claim
+    assert!(!purpose_plan_claim
         .source_text
         .starts_with("[bounded source remainder;"));
     let checkpoint_claims = large_plan
