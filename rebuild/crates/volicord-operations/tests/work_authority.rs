@@ -342,6 +342,99 @@ fn settled_contract_accounts_for_choices(
         .collect()
 }
 
+fn material_question_draft(
+    fixture: &Fixture,
+    source: volicord_context::SourceId,
+    prompt: &str,
+    presentation_order: u64,
+) -> CandidateDraft {
+    CandidateDraft {
+        project_id: fixture.project_id,
+        kind: CandidateKind::QuestionCandidate,
+        collection_mode: CandidateCollectionMode::ExplicitUserDirected,
+        origin: CandidateOrigin {
+            actor: Principal {
+                kind: PrincipalKind::Agent,
+                identity: "codex".to_owned(),
+            },
+            subsystem: "inquiry".to_owned(),
+            session: Some("work-authority-session".to_owned()),
+            provenance_summary: "materiality dimension Question draft".to_owned(),
+        },
+        collection_scope: CandidateCollectionScope {
+            project_id: fixture.project_id,
+            session: Some("work-authority-session".to_owned()),
+            source_operation: Some("materiality-question".to_owned()),
+            candidate_kind: CandidateKind::QuestionCandidate,
+        },
+        observation_basis: CandidateObservationBasis {
+            source_basis: vec![source],
+            analysis_snapshot: Some(fixture.baseline.identity.to_string()),
+            ..CandidateObservationBasis::default()
+        },
+        observed_at: volicord_context::TimestampMicros::from_unix_micros(1),
+        retention: CandidateRetention {
+            retained_until: None,
+            basis: "retain through explicit Question lifecycle".to_owned(),
+        },
+        content: CandidateContent {
+            bounded_summary: prompt.to_owned(),
+            question: Some(QuestionCandidate {
+                prompt_basis: prompt.to_owned(),
+                known_facts: Vec::new(),
+                assumptions: Vec::new(),
+                uncertainty: Vec::new(),
+                affected_scope: vec!["src/lib.rs".to_owned()],
+                possible_prerequisites: Vec::new(),
+                source_basis: vec![source],
+                repository_basis: Vec::new(),
+                freshness: CandidateFreshness::Current,
+                duplicate_assessment: DuplicateAssessment::NoDuplicate {
+                    basis: "no applicable Decision exists".to_owned(),
+                },
+                materiality: MaterialityAssessment {
+                    status: MaterialityStatus::Material,
+                    rationale: Some("public callers observe the selected policy".to_owned()),
+                    source_basis: vec![source],
+                    assessed_by: Some(Principal {
+                        kind: PrincipalKind::Agent,
+                        identity: "codex".to_owned(),
+                    }),
+                    assessed_at: Some(volicord_context::TimestampMicros::from_unix_micros(1)),
+                },
+                presentation_order: Some(presentation_order),
+                why_it_matters_now: "implementation would otherwise choose user-owned behavior"
+                    .to_owned(),
+                alternatives: vec![
+                    QuestionAlternative {
+                        key: "strict".to_owned(),
+                        label: "Strict".to_owned(),
+                        consequence: "return an explicit error".to_owned(),
+                    },
+                    QuestionAlternative {
+                        key: "degraded".to_owned(),
+                        label: "Degraded".to_owned(),
+                        consequence: "continue with an explicit degraded result".to_owned(),
+                    },
+                ],
+                recommendation: AgentRecommendation {
+                    alternative_key: Some("strict".to_owned()),
+                    rationale: "preserves a clear failure boundary".to_owned(),
+                    source_basis: vec![source],
+                },
+                trade_offs: vec!["availability versus strictness".to_owned()],
+                known_limits: Vec::new(),
+                what_the_answer_unlocks: vec!["public API implementation".to_owned()],
+                allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
+                research_state: QuestionResearchState::ReadyToAsk,
+            }),
+            engineering_choice_discovery: None,
+            materiality_review: None,
+            learning_deliberation: None,
+        },
+    }
+}
+
 #[test]
 fn successor_review_cannot_reset_learning_value_or_participation(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -2358,6 +2451,95 @@ fn necessarily_coupled_choices_may_share_one_authority_dimension(
         readiness(&fixture, &recorded)?.disposition,
         WorkAuthorityDisposition::ReadyForWork
     );
+    Ok(())
+}
+
+#[test]
+fn independent_user_owned_outcomes_cannot_share_question_authority(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let first = dimension(
+        "failure-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+        source,
+    );
+    let second = dimension(
+        "retry-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+        source,
+    );
+    let review = review(&fixture, vec![first, second])?;
+    let review_record = fixture
+        .operations
+        .candidate_basis(fixture.project_id)?
+        .candidates
+        .into_iter()
+        .find(|candidate| candidate.id == review.review_candidate_id)
+        .ok_or("review Candidate missing")?;
+    let question = material_question_draft(
+        &fixture,
+        source,
+        "Which failure policy should callers observe?",
+        1,
+    );
+    let bound = bind_question_candidate_to_materiality(&review_record, "failure-policy", question)?;
+    let error = bind_question_candidate_to_materiality(&review_record, "retry-policy", bound)
+        .expect_err("independent material outcomes need distinct Question authority");
+    assert!(error
+        .to_string()
+        .contains("independent materiality dimensions require distinct Question authority"));
+    assert_eq!(
+        readiness(&fixture, &review)?
+            .unresolved_requirements
+            .iter()
+            .filter_map(|requirement| requirement.dimension_id.as_deref())
+            .collect::<Vec<_>>(),
+        ["failure-policy", "retry-policy"]
+    );
+    Ok(())
+}
+
+#[test]
+fn settled_choice_does_not_manufacture_a_second_user_question(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let source = fixture.baseline.repository_source.identity();
+    let user_owned = dimension(
+        "failure-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+        source,
+    );
+    let settled = dimension(
+        "wire-tag",
+        MaterialityDisposition::RepositoryOrEnvironmentFact,
+        vec![WorkAuthorityBasisKind::RepositoryOrEnvironmentFact],
+        source,
+    );
+    let review = review(&fixture, vec![user_owned, settled])?;
+    let state = readiness(&fixture, &review)?;
+    assert_eq!(state.stage, WorkAuthorityStage::QuestionRequired);
+    assert_eq!(
+        state
+            .unresolved_requirements
+            .iter()
+            .filter_map(|requirement| requirement.dimension_id.as_deref())
+            .collect::<Vec<_>>(),
+        ["failure-policy"]
+    );
+    assert!(state
+        .satisfied_requirements
+        .iter()
+        .any(|requirement| requirement.dimension_id.as_deref() == Some("wire-tag")));
     Ok(())
 }
 
