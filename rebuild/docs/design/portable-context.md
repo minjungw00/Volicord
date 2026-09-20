@@ -42,9 +42,9 @@ Portable bundle은 선택한 Project의 다음 canonical meaning을 포함한다
 | `Project identity` | path/remote와 독립적인 stable identity, portable Project 설정과 origin basis |
 | `Source manifest` | Source identity, kind, portable locator/snapshot basis, availability를 재평가할 정보; Command Source는 presentation label, Volicord-derived invocation fingerprint와 exit/termination을 포함하지만 raw invocation/body 전체는 아님 |
 | `Question` | identity, displayed revision, dependency, materiality basis와 terminal outcome |
-| `Decision` | exact Question linkage, choice/delegation, provenance, applicability, rationale basis와 revisit state |
+| `Decision` | exact Question linkage, choice/delegation, provenance, typed Project-wide/Work Item/unresolved scope, applicability, rationale basis와 revisit state |
 | `Context Item` | Project Purpose와 work Goal을 포함한 statement role, provenance, applicability와 lifecycle state |
-| `Checkpoint` | source-grounded state basis, work/verification/review/acceptance의 독립 상태 |
+| `Checkpoint` | source-grounded state basis, optional exact Goal-backed Work Item identity, work/verification/review/acceptance의 독립 상태 |
 | `revision` | 같은 identity의 non-semantic correction history와 ordering/basis |
 | `supersession` | semantic replacement identity와 relation, active/history 구분 |
 | minimum tombstone metadata | referential integrity와 forgetting propagation에 필요한 최소 non-content identity/basis |

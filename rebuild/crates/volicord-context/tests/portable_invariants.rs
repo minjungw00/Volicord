@@ -136,6 +136,7 @@ fn fixture(root: &Path) -> Result<Fixture, Box<dyn std::error::Error>> {
                     alternative_key: "central".to_owned(),
                     user_rationale: Some("Keep independently owned rationale".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope {
                     paths: vec!["rebuild/".to_owned()],
                     components: vec!["context".to_owned()],
@@ -234,6 +235,7 @@ fn semantic_fixture(root: &Path) -> Result<Fixture, Box<dyn std::error::Error>> 
         fixture.project_id,
         CheckpointDraft {
             expected_project_revision: 1,
+            work_item_id: None,
             kind: CheckpointKind::Completion,
             goal: "Close portable semantic parity".to_owned(),
             work_state: WorkState::Completed,
@@ -380,6 +382,7 @@ fn checkpoint_forgetting_fixture(
             project.id,
             CheckpointDraft {
                 expected_project_revision: 1,
+                work_item_id: None,
                 kind: CheckpointKind::Completion,
                 goal: "Preserve independent Checkpoint facts".to_owned(),
                 work_state: WorkState::Completed,
@@ -1153,6 +1156,7 @@ fn direct_decision_admission_rejects_the_same_representative_semantics(
             alternative_key: alternative.to_owned(),
             user_rationale: Some("Explicit choice".to_owned()),
         },
+        work_scope: volicord_context::DecisionWorkScope::Unresolved,
         applicability: ApplicabilityScope::default(),
         assumptions: vec![],
         revisit_triggers: vec![],
@@ -2841,6 +2845,7 @@ fn generated_and_explicit_merges_preserve_valid_checkpoint_source_witnesses(
             fixture.portable.project_id,
             CheckpointDraft {
                 expected_project_revision: 1,
+                work_item_id: None,
                 kind: CheckpointKind::Pause,
                 goal: "Preserve a locally added Checkpoint".to_owned(),
                 work_state: WorkState::Paused,

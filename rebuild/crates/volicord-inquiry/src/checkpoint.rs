@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
-    Availability, CanonicalReadBasis, Checkpoint, CheckpointDraft, CheckpointKind, DecisionId,
-    OperationId, PrincipalKind, ProjectId, QuestionReference, SourceFreshness, SourceId,
-    SourcePayload, SourceReadBasis, Store, UserAcceptanceFact, UserAcceptanceState, UserReviewFact,
-    UserReviewState, VerificationFact, VerificationState, WorkState,
+    Availability, CanonicalReadBasis, Checkpoint, CheckpointDraft, CheckpointKind, ContextItemId,
+    DecisionId, OperationId, PrincipalKind, ProjectId, QuestionReference, SourceFreshness,
+    SourceId, SourcePayload, SourceReadBasis, Store, UserAcceptanceFact, UserAcceptanceState,
+    UserReviewFact, UserReviewState, VerificationFact, VerificationState, WorkState,
 };
 use volicord_repository_intelligence::{
     AnalysisSnapshot, CanonicalSourceBasis, EntryKind, FreshnessState, InventoryClassification,
@@ -202,6 +202,7 @@ fn inventory_fingerprints(snapshot: &AnalysisSnapshot) -> BTreeMap<String, Optio
 #[derive(Clone, Debug)]
 pub struct CheckpointCandidate<'a> {
     pub project_id: ProjectId,
+    pub work_item_id: Option<ContextItemId>,
     pub kind: CheckpointKind,
     pub goal: String,
     pub work_state: WorkState,
@@ -423,6 +424,7 @@ pub fn evaluate_checkpoint_candidate(
     CheckpointEvaluation::Ready {
         draft: Box::new(CheckpointDraft {
             expected_project_revision: canonical.project.revision,
+            work_item_id: candidate.work_item_id,
             kind: candidate.kind,
             goal: candidate.goal,
             work_state: candidate.work_state,

@@ -158,6 +158,7 @@ fn create_base(store: &mut Store) -> Result<Base, Box<dyn std::error::Error>> {
                     alternative_key: "a".to_owned(),
                     user_rationale: Some("base rationale".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: vec!["base assumption".to_owned()],
                 revisit_triggers: vec![],

@@ -1,5 +1,7 @@
 use serde_json::{json, Value};
-use volicord_context::{CheckpointKind, ContextItemRole, VerificationState, WorkState};
+use volicord_context::{
+    CheckpointKind, ContextItemRole, DecisionWorkScope, VerificationState, WorkState,
+};
 use volicord_projections::{BriefContextItem, BriefDecisionState, OmissionReason, ResumeBrief};
 
 /// Shared CLI/host representation of the bounded Resume Brief. Source metadata
@@ -7,6 +9,7 @@ use volicord_projections::{BriefContextItem, BriefDecisionState, OmissionReason,
 pub fn resume_brief_json(brief: &ResumeBrief) -> Value {
     let checkpoint = brief.latest_meaningful_checkpoint.as_ref().map(|value| json!({
             "identity":value.id.to_string(),
+            "work_item_id":value.work_item_id.map(|identity| identity.to_string()),
             "revision":value.revision,
             "kind":checkpoint_kind_name(value.kind),
             "goal":value.goal,
@@ -43,6 +46,7 @@ pub fn resume_brief_json(brief: &ResumeBrief) -> Value {
                 BriefDecisionState::UnavailableBasis => "unavailable_basis",
             },
             "choice":format!("{:?}",item.choice),
+            "work_scope":decision_work_scope_json(item.work_scope),
             "chosen_alternative_key":item.chosen_alternative_key,
             "recommended_alternative_key":item.recommended_alternative_key,
             "displayed_alternatives":item.displayed_alternatives.iter().map(|alternative| json!({
@@ -102,6 +106,16 @@ pub fn resume_brief_json(brief: &ResumeBrief) -> Value {
         },
     });
     crate::bounded_read_section(output, 56 * 1024)
+}
+
+fn decision_work_scope_json(scope: DecisionWorkScope) -> Value {
+    match scope {
+        DecisionWorkScope::Unresolved => json!({"kind":"unresolved"}),
+        DecisionWorkScope::ProjectWide => json!({"kind":"project_wide"}),
+        DecisionWorkScope::WorkItem(identity) => {
+            json!({"kind":"work_item","work_item_id":identity.to_string()})
+        }
+    }
 }
 
 fn context_json(item: &BriefContextItem) -> Value {

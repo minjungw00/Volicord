@@ -172,6 +172,7 @@ fn add_user_owned_meaning(
                     alternative_key: "keep".into(),
                     user_rationale: Some("Repository observations must remain attributable".into()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: Vec::new(),
                 revisit_triggers: Vec::new(),
@@ -226,6 +227,7 @@ fn add_user_owned_meaning(
         project,
         CheckpointDraft {
             expected_project_revision: project_revision,
+            work_item_id: None,
             kind: CheckpointKind::Pause,
             goal: "Protect analysis recovery".into(),
             work_state: WorkState::Paused,

@@ -504,6 +504,27 @@ pub struct ApplicabilityScope {
     pub work_contexts: Vec<String>,
 }
 
+/// The explicit work grouping to which a Decision applies. A Work Item uses
+/// the canonical identity of its source-grounded Goal Context Item; text,
+/// paths, and record chronology are never grouping identities.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum DecisionWorkScope {
+    #[default]
+    Unresolved,
+    ProjectWide,
+    WorkItem(ContextItemId),
+}
+
+impl DecisionWorkScope {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unresolved => "unresolved",
+            Self::ProjectWide => "project_wide",
+            Self::WorkItem(_) => "work_item",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DecisionChoice {
     Alternative { alternative_key: String },
@@ -522,6 +543,7 @@ pub struct Decision {
     pub user_rationale: Option<String>,
     pub displayed_alternatives: Vec<QuestionAlternative>,
     pub displayed_recommendation: AgentRecommendation,
+    pub work_scope: DecisionWorkScope,
     pub applicability: ApplicabilityScope,
     pub assumptions: Vec<String>,
     pub revisit_triggers: Vec<String>,
@@ -555,6 +577,7 @@ pub struct QuestionResponseDraft {
     pub displayed_alternative_keys: Vec<String>,
     pub displayed_recommendation_key: Option<String>,
     pub response: ExplicitQuestionResponse,
+    pub work_scope: DecisionWorkScope,
     pub applicability: ApplicabilityScope,
     pub assumptions: Vec<String>,
     pub revisit_triggers: Vec<String>,
@@ -1062,6 +1085,7 @@ pub struct QuestionReference {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CheckpointDraft {
     pub expected_project_revision: u64,
+    pub work_item_id: Option<ContextItemId>,
     pub kind: CheckpointKind,
     pub goal: String,
     pub work_state: WorkState,
@@ -1085,6 +1109,7 @@ pub struct Checkpoint {
     pub id: CheckpointId,
     pub project_id: ProjectId,
     pub revision: u64,
+    pub work_item_id: Option<ContextItemId>,
     pub kind: CheckpointKind,
     pub goal: String,
     pub work_state: WorkState,

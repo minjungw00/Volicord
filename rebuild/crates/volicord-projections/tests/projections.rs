@@ -461,6 +461,7 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
                 alternative_key: key.to_owned(),
                 user_rationale: user_rationale.map(str::to_owned),
             },
+            work_scope: volicord_context::DecisionWorkScope::Unresolved,
             applicability: ApplicabilityScope {
                 paths: Vec::new(),
                 components: vec!["storage".to_owned()],
@@ -523,6 +524,7 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
         project.id,
         CheckpointDraft {
             expected_project_revision: project.revision,
+            work_item_id: None,
             kind: CheckpointKind::Pause,
             goal: "ship reliable resumption".to_owned(),
             work_state: WorkState::Paused,
@@ -867,6 +869,7 @@ fn historical_checkpoint_remains_readable_with_non_current_source_basis(
             project.id,
             CheckpointDraft {
                 expected_project_revision: project.revision,
+                work_item_id: None,
                 kind: CheckpointKind::Pause,
                 goal: "preserve historical work context".to_owned(),
                 work_state: WorkState::Paused,

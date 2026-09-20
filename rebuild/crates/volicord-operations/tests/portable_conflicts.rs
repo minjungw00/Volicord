@@ -281,6 +281,7 @@ fn create_base(store: &mut Store) -> Result<Base, Box<dyn std::error::Error>> {
                     alternative_key: "a".into(),
                     user_rationale: Some("base choice".into()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: Vec::new(),
                 revisit_triggers: Vec::new(),

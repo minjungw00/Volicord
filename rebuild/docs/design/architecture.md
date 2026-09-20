@@ -494,6 +494,10 @@ Analysis Snapshot에 대한 timely Materiality Review와 exact Learning Delibera
 general-purpose file/command permission system이 아니다.
 검사가 통과하면 Kernel이 Checkpoint를 canonical로 기록한다. Work,
 verification, user review와 user acceptance는 서로 독립적으로 남는다.
+Canonical Goal Context identity가 stable Work Item identity이며 Checkpoint는 이를 직접
+참조한다. Decision은 project-wide, exact Work Item 또는 unresolved work scope를 typed하게
+보존한다. Projection은 이 identity로만 여러 Checkpoint와 Decision을 묶고 text, path overlap,
+record chronology를 grouping key로 사용하지 않는다.
 
 ### 6. Portable export/import와 conflict resolution
 

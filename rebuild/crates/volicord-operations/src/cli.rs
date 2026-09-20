@@ -16,9 +16,10 @@ use std::{
 use volicord_context::{
     BundleComparison, BundleConflictClass, BundleMergeStatus, CanonicalRecordId, CheckpointDraft,
     CheckpointKind, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
-    DecisionCorrectionDraft, DecisionId, MergeResolution, MergeResolutionMode, OperationId,
-    Principal, PrincipalKind, ProjectId, SourceId, UserAcceptanceFact, UserAcceptanceState,
-    UserReviewFact, UserReviewState, VerificationFact, VerificationState, WorkState,
+    DecisionCorrectionDraft, DecisionId, DecisionWorkScope, MergeResolution, MergeResolutionMode,
+    OperationId, Principal, PrincipalKind, ProjectId, SourceId, UserAcceptanceFact,
+    UserAcceptanceState, UserReviewFact, UserReviewState, VerificationFact, VerificationState,
+    WorkState,
 };
 use volicord_privacy::{
     ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy, SecretFilteringPolicy,
@@ -441,7 +442,7 @@ fn advanced_command() -> Command {
                     "handoff",
                 ]))
                 .arg(Arg::new("source").long("source").required(true))
-                .arg(Arg::new("goal").long("goal").required(true))
+                .arg(Arg::new("work_item").long("work-item").required(true))
                 .arg(Arg::new("next_step").long("next-step").required(true))
                 .arg(Arg::new("handoff_to").long("handoff-to")),
         )
@@ -785,7 +786,7 @@ fn dispatch_advanced(
                 project.to_string(),
                 kind.to_owned(),
                 required(args, "source")?.to_owned(),
-                required(args, "goal")?.to_owned(),
+                required(args, "work_item")?.to_owned(),
                 required(args, "next_step")?.to_owned(),
             ];
             if let Some(target) = args.get_one::<String>("handoff_to") {
@@ -931,17 +932,46 @@ fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Err
         "health":debug_name(understanding.health),
         "canonical_revision":understanding.canonical_revision,
         "project_purpose":understanding.project_purpose.into_iter().map(|item| json!({"statement":item.statement,"source_ids":item.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })).collect::<Vec<_>>(),
-        "current_work":understanding.current_work.map(|work| json!({"goal":work.goal,"state":debug_name(work.state),"meaningful_change":work.meaningful_change,"changed_paths":work.changed_paths,"next_step":work.next_step})),
-        "completed_work":understanding.completed_work.into_iter().map(|work| json!({"goal":work.goal,"next_step":work.next_step})).collect::<Vec<_>>(),
-        "remaining_work":understanding.remaining_work.into_iter().map(|work| json!({"goal":work.goal,"state":debug_name(work.state),"next_step":work.next_step})).collect::<Vec<_>>(),
+        "current_work":understanding.current_work.iter().map(work_json).collect::<Vec<_>>(),
+        "completed_work":understanding.completed_work.iter().map(work_json).collect::<Vec<_>>(),
+        "remaining_work":understanding.remaining_work.iter().map(work_json).collect::<Vec<_>>(),
+        "work_history":understanding.work_history.iter().map(work_json).collect::<Vec<_>>(),
+        "unresolved_work_grouping":understanding.unresolved_work_grouping.iter().map(|gap| json!({"record_kind":gap.record_kind,"identity":gap.identity,"reason":gap.reason})).collect::<Vec<_>>(),
         "next_steps":understanding.next_steps.into_iter().map(|step| step.text).collect::<Vec<_>>(),
-        "active_decisions":understanding.active_decisions.into_iter().map(|item| json!({"identity":item.decision.decision_id.to_string(),"revision":item.decision.revision,"choice":format!("{:?}",item.decision.choice),"chosen_alternative_key":item.decision.chosen_alternative_key,"recommended_alternative_key":item.decision.recommended_alternative_key,"displayed_alternatives":item.decision.displayed_alternatives.into_iter().map(|alternative| json!({"alternative_key":alternative.key,"label":alternative.label,"expected_consequence":alternative.consequence})).collect::<Vec<_>>(),"user_rationale":item.decision.user_rationale,"recommendation_rationale":item.decision.recommendation_rationale,"affected_code":item.affected_code_entities,"known_link_gaps":item.known_link_gaps})).collect::<Vec<_>>(),
+        "active_decisions":understanding.active_decisions.into_iter().map(|item| json!({"identity":item.decision.decision_id.to_string(),"revision":item.decision.revision,"work_scope":decision_work_scope_json(item.decision.work_scope),"choice":format!("{:?}",item.decision.choice),"chosen_alternative_key":item.decision.chosen_alternative_key,"recommended_alternative_key":item.decision.recommended_alternative_key,"displayed_alternatives":item.decision.displayed_alternatives.into_iter().map(|alternative| json!({"alternative_key":alternative.key,"label":alternative.label,"expected_consequence":alternative.consequence})).collect::<Vec<_>>(),"user_rationale":item.decision.user_rationale,"recommendation_rationale":item.decision.recommendation_rationale,"affected_code":item.affected_code_entities,"known_link_gaps":item.known_link_gaps})).collect::<Vec<_>>(),
         "open_questions":understanding.open_questions.into_iter().map(|item| json!({"identity":item.question_id.to_string(),"revision":item.revision,"prompt":item.prompt,"on_frontier":item.on_current_frontier})).collect::<Vec<_>>(),
         "risks_assumptions_and_limits":understanding.risks_assumptions_and_limits.into_iter().map(|item| item.statement).chain(understanding.known_limits).collect::<Vec<_>>(),
         "architecture": {"components":understanding.architecture.components.len(),"relationships":understanding.architecture.relationships.len(),"gaps":understanding.architecture.gaps.into_iter().map(|gap| gap.reason).collect::<Vec<_>>()},
         "evidence": {"sources":understanding.evidence.sources.len(),"snapshots":understanding.evidence.snapshots.len(),"issues":understanding.evidence.issues.into_iter().map(|issue| issue.reason).collect::<Vec<_>>()},
         "omissions":understanding.omissions.into_iter().map(|item| json!({"section":item.section,"count":item.omitted_count})).collect::<Vec<_>>()
     }))
+}
+
+fn work_json(work: &volicord_projections::UnderstandingWork) -> Value {
+    json!({
+        "work_item_id":work.work_item_id.to_string(),
+        "title":work.title,
+        "state":debug_name(work.state),
+        "checkpoint_ids":work.checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "decision_ids":work.decision_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "meaningful_changes":work.meaningful_changes,
+        "changed_paths":work.changed_paths,
+        "changed_components":work.changed_components,
+        "verification":work.verification.iter().map(|fact| json!({"state":debug_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
+        "next_step":work.next_step,
+        "open_question_ids":work.open_question_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "source_ids":work.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+    })
+}
+
+fn decision_work_scope_json(scope: DecisionWorkScope) -> Value {
+    match scope {
+        DecisionWorkScope::Unresolved => json!({"kind":"unresolved"}),
+        DecisionWorkScope::ProjectWide => json!({"kind":"project_wide"}),
+        DecisionWorkScope::WorkItem(identity) => {
+            json!({"kind":"work_item","work_item_id":identity.to_string()})
+        }
+    }
 }
 
 fn decisions(operations: &LocalOperations, project: ProjectId) -> Result<Value, Error> {
@@ -953,6 +983,7 @@ fn decisions(operations: &LocalOperations, project: ProjectId) -> Result<Value, 
         "decisions":brief.decisions.into_iter().map(|decision| json!({
             "identity":decision.decision_id.to_string(),
             "revision":decision.revision,
+            "work_scope":decision_work_scope_json(decision.work_scope),
             "state":debug_name(decision.state),
             "choice":format!("{:?}", decision.choice),
             "chosen_alternative_key":decision.chosen_alternative_key,
@@ -1860,7 +1891,7 @@ fn inquiry(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
 fn checkpoint(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
     if cursor.next("checkpoint command")? != "record" {
         return Err(usage(
-            "checkpoint currently supports: checkpoint record PROJECT KIND SOURCE GOAL NEXT_STEP [HANDOFF_TARGET]",
+            "checkpoint currently supports: checkpoint record PROJECT KIND SOURCE WORK_ITEM NEXT_STEP [HANDOFF_TARGET]",
         ));
     }
     let project = project_id(&cursor.next("Project ID")?)?;
@@ -1875,7 +1906,14 @@ fn checkpoint(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value
         }
     };
     let source = source_id(&cursor.next("grounding Source ID")?)?;
-    let goal = cursor.next("goal")?;
+    let work_item_id = context_item_id(&cursor.next("Work Item ID")?)?;
+    let goal = operations
+        .canonical_basis(project)?
+        .context_items
+        .into_iter()
+        .find(|item| item.id == work_item_id)
+        .map(|item| item.statement)
+        .ok_or_else(|| Error::new("Work Item Goal Context was not found"))?;
     let next_step = cursor.next("next step")?;
     let handoff_to = if kind == CheckpointKind::Handoff {
         Some(cursor.next("explicit handoff target")?)
@@ -1896,6 +1934,7 @@ fn checkpoint(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value
         project,
         CheckpointDraft {
             expected_project_revision: project_revision,
+            work_item_id: Some(work_item_id),
             kind,
             goal,
             work_state,
@@ -2074,6 +2113,9 @@ fn confirmation_request_id(value: &str) -> Result<ConfirmationRequestId, Error> 
 }
 fn source_id(value: &str) -> Result<SourceId, Error> {
     Ok(SourceId::from_bytes(parse_identity(value)?))
+}
+fn context_item_id(value: &str) -> Result<ContextItemId, Error> {
+    Ok(ContextItemId::from_bytes(parse_identity(value)?))
 }
 fn number(value: &str) -> Result<u64, Error> {
     value

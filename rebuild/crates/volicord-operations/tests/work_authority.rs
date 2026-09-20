@@ -4480,6 +4480,7 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
                         "choose within the displayed failure-policy scope".to_owned(),
                     ),
                 },
+                work_scope: volicord_context::DecisionWorkScope::WorkItem(fixture.goal_id),
                 applicability: ApplicabilityScope {
                     paths: vec!["src/lib.rs".to_owned()],
                     components: Vec::new(),

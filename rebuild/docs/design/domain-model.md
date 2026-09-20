@@ -291,6 +291,11 @@ user-turn Source에 연결된다. 의미가 바뀐 선택은 기존 Decision을 
 그 결과는 Source/Context가 될 수 있지만 user choice가 없으면 Decision으로
 위조하지 않는다.
 
+Decision은 work association을 별도 typed scope로 보존한다. Scope는 `project_wide`,
+canonical Goal Context identity를 사용하는 `work_item`, 또는 근거가 아직 없는
+`unresolved` 중 하나다. Goal text, path overlap, record chronology로 Work Item을 추론하지
+않으며 unresolved scope를 특정 work에 자동 배치하지 않는다.
+
 ### 4.5 Context Item
 
 `Context Item`은 Project Purpose, bounded work goal, fact, assumption, constraint,
@@ -301,6 +306,11 @@ name 및 개별 `Goal`과 구분된다. 새 `Goal`을 기록해도 `Project Purp
 않는다. 각 Context Item은 statement role과
 provenance를 유지하므로 user-stated constraint, observed fact와 generated
 interpretation을 같은 종류의 truth로 합치지 않는다.
+
+각 canonical `Goal` Context Item identity는 그 bounded goal을 수행하는 `Work Item`의
+stable identity다. Work Item은 새 core entity나 legacy Task state machine이 아니라 Goal,
+그 identity를 명시적으로 참조하는 Checkpoint와 Decision을 묶는 current-only domain view다.
+동일한 Goal text, 시간상 인접함 또는 changed path 중첩은 identity equality가 아니다.
 
 하나의 current-host turn은 role이 다른 여러 bounded verbatim Context Item을 만들 수 있다.
 Fresh Recall에서 statement가 사라졌을 때 authority, Question behavior, learning interruption 또는
@@ -318,6 +328,11 @@ rewrite하지 않고 contradiction/review semantics를 따른다.
 source-grounded Project state observation이다. 현재 목표, 의미 있는 변화, 적용한
 Decision, verification, known limits, open Question과 next step을 함께 복구하는
 기준을 제공한다.
+
+Checkpoint의 `work_item_id`는 해당 Goal Context identity를 직접 보존한다. 여러 Checkpoint가
+같은 identity를 참조하면 한 Work Item의 history이며, 가장 나중에 기록된 그 그룹의
+Checkpoint가 derived current state를 정한다. 직접 grouping evidence가 없는 낮은 수준의
+Checkpoint는 unresolved로 남고 text/path/chronology로 보정하지 않는다.
 
 Checkpoint는 work를 시작하거나 완료하도록 허가하는 state machine이 아니며
 Inquiry frontier의 두 번째 authority도 아니다. 단순 조회, 변경 없는 설명,

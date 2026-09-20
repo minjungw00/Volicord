@@ -789,6 +789,7 @@ fn record_host_question_decision(
                             delegate_to: "implementation-owner".into(),
                             user_rationale: Some("Choose within the displayed scope".into()),
                         },
+                        work_scope: volicord_context::DecisionWorkScope::Unresolved,
                         applicability: ApplicabilityScope {
                             paths: Vec::new(),
                             components: Vec::new(),
@@ -811,6 +812,7 @@ fn record_host_question_decision(
                 "question_revision":revision,
                 "presentation_receipt_id":presentation_receipt_id,
                 "alternative_key":"first",
+                "work_scope":"unresolved",
                 "user_turn":"Use the first displayed bounded approach"
             }),
         );
@@ -1267,6 +1269,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "question_revision":revision,
             "presentation_receipt_id":presentation_receipt_id,
             "alternative_key":"structured",
+            "work_scope":"unresolved",
             "user_turn":"Use the structured error",
         }),
     );
@@ -2693,7 +2696,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         "decision_record",
         json!({
             "project_id":project, "question_id":promoted["question_id"], "question_revision":displayed["revision"],
-            "presentation_receipt_id":displayed["presentation_receipt_id"], "alternative_key":"local", "user_turn":"For learning I select local"
+            "presentation_receipt_id":displayed["presentation_receipt_id"], "alternative_key":"local", "work_scope":"unresolved", "user_turn":"For learning I select local"
         }),
     );
     assert_eq!(refused["result"]["isError"], true, "{refused}");
@@ -5339,6 +5342,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "question_revision": question.revision,
             "presentation_receipt_id": presentation_receipt_id,
             "alternative_key": "local",
+            "work_scope":"unresolved",
             "user_turn": "Use the local storage boundary",
             "user_rationale": "Canonical project memory remains local"
         }),
@@ -6365,6 +6369,7 @@ fn supported_candidate_research_is_source_grounded_and_separate_from_promotion_a
             "question_revision":frontier["questions"][0]["revision"],
             "presentation_receipt_id":frontier["questions"][0]["presentation_receipt_id"],
             "alternative_key":"local",
+            "work_scope":"unresolved",
             "user_turn":"Choose the local repository policy",
             "user_rationale":"Keep this Project local-first"
         }),
@@ -6493,6 +6498,7 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
             "question_revision":1,
             "presentation_receipt_id":"00000000000000000000000000000000",
             "alternative_key":"local",
+            "work_scope":"unresolved",
             "user_turn":"Choose the local Candidate alternative"
         }),
     );
@@ -6525,6 +6531,7 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
                 .expect("Question revision") + 1,
             "presentation_receipt_id":frontier["questions"][0]["presentation_receipt_id"],
             "alternative_key":"local",
+            "work_scope":"unresolved",
             "user_turn":"Choose the local Candidate alternative"
         }),
     );
@@ -6551,6 +6558,7 @@ fn supported_candidate_path_requires_explicit_promotion_and_current_host_decisio
             "question_revision":frontier["questions"][0]["revision"],
             "presentation_receipt_id":frontier["questions"][0]["presentation_receipt_id"],
             "alternative_key":"local",
+            "work_scope":"unresolved",
             "user_turn":"Choose the local Candidate alternative",
             "user_rationale":"Keep canonical state local"
         }),
@@ -7287,6 +7295,8 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "question_revision",
                 "presentation_receipt_id",
                 "alternative_key",
+                "work_item_id",
+                "work_scope",
                 "user_turn",
                 "user_rationale",
             ],
@@ -7296,6 +7306,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "question_revision",
                 "presentation_receipt_id",
                 "alternative_key",
+                "work_scope",
                 "user_turn",
             ],
         )],

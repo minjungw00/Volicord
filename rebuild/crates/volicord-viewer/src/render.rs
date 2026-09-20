@@ -23,7 +23,7 @@ use volicord_projections::{
     NarrativeRealizationState, OutputFormat, ProjectProjection, ProjectUnderstanding,
     ProjectionHealth, ProjectionIssueKind, RequestedDestination,
     UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingEvidenceClass,
-    UnderstandingExplanation, UnderstandingExplanationKind,
+    UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingWorkState,
 };
 use volicord_repository_intelligence::{
     Capability, CapabilityState, CodeEntityKind, FreshnessState, Language,
@@ -510,12 +510,16 @@ fn render_project_understanding(
             .iter()
             .take(level_limit(request.explanation_level))
         {
-            let change = work.meaningful_change.as_deref().unwrap_or(&work.goal);
+            let change = work
+                .meaningful_changes
+                .last()
+                .map(String::as_str)
+                .unwrap_or(&work.title);
             list_item(
                 html,
                 &format!(
                     "{} — {}: {}",
-                    work.goal,
+                    work.title,
                     text(request.locale, "meaningful change", "의미 있는 변경"),
                     change
                 ),
@@ -533,15 +537,7 @@ fn render_project_understanding(
             "현재 상태와 남은 작업",
         ),
     );
-    if let Some(work) = &understanding.current_work {
-        html.push_str(&format!(
-            "<p class=\"work-state\" data-work-state=\"{}\"><strong>{}:</strong> {} — {}</p>",
-            work_state_key(work.state),
-            escape(text(request.locale, "Current work", "현재 작업")),
-            escape(work_state_label(work.state, request.locale)),
-            escape(&work.goal)
-        ));
-    } else {
+    if understanding.current_work.is_empty() {
         empty_state(
             html,
             text(
@@ -550,6 +546,24 @@ fn render_project_understanding(
                 "현재 작업 체크포인트가 기록되지 않았습니다.",
             ),
         );
+    } else {
+        html.push_str("<ul class=\"understanding-list current-work\">");
+        for work in understanding
+            .current_work
+            .iter()
+            .take(level_limit(request.explanation_level))
+        {
+            list_item(
+                html,
+                &format!(
+                    "{} — {} ({})",
+                    work.title,
+                    understanding_work_state_label(work.state, request.locale),
+                    work.work_item_id
+                ),
+            );
+        }
+        html.push_str("</ul>");
     }
     if !understanding.remaining_work.is_empty() {
         html.push_str("<ul class=\"understanding-list remaining-work\">");
@@ -558,7 +572,28 @@ fn render_project_understanding(
             .iter()
             .take(level_limit(request.explanation_level))
         {
-            list_item(html, &format!("{} — {}", work.goal, work.next_step));
+            list_item(
+                html,
+                &format!(
+                    "{} — {}",
+                    work.title,
+                    work.next_step.as_deref().unwrap_or(text(
+                        request.locale,
+                        "No checkpoint next step recorded",
+                        "체크포인트 다음 단계가 기록되지 않음"
+                    ))
+                ),
+            );
+        }
+        html.push_str("</ul>");
+    }
+    if !understanding.unresolved_work_grouping.is_empty() {
+        html.push_str("<ul class=\"understanding-list grouping-gaps\">");
+        for gap in &understanding.unresolved_work_grouping {
+            list_item(
+                html,
+                &format!("{} {} — {}", gap.record_kind, gap.identity, gap.reason),
+            );
         }
         html.push_str("</ul>");
     }
@@ -1307,16 +1342,6 @@ const fn map_relation_class_key(class: MapRelationClass) -> &'static str {
     match class {
         MapRelationClass::StructuralFact => "structural-fact",
         MapRelationClass::SemanticResult => "semantic-result",
-    }
-}
-
-const fn work_state_key(state: WorkState) -> &'static str {
-    match state {
-        WorkState::InProgress => "in-progress",
-        WorkState::Paused => "paused",
-        WorkState::Completed => "completed",
-        WorkState::Abandoned => "abandoned",
-        WorkState::Superseded => "superseded",
     }
 }
 
@@ -3216,6 +3241,20 @@ const fn work_state_label(state: WorkState, locale: ViewerLocale) -> &'static st
         WorkState::Completed => text(locale, "completed", "완료"),
         WorkState::Abandoned => text(locale, "abandoned", "중단"),
         WorkState::Superseded => text(locale, "superseded", "대체됨"),
+    }
+}
+
+const fn understanding_work_state_label(
+    state: UnderstandingWorkState,
+    locale: ViewerLocale,
+) -> &'static str {
+    match state {
+        UnderstandingWorkState::Open => text(locale, "open", "열림"),
+        UnderstandingWorkState::InProgress => text(locale, "in progress", "진행 중"),
+        UnderstandingWorkState::Paused => text(locale, "paused", "일시 중지"),
+        UnderstandingWorkState::Completed => text(locale, "completed", "완료"),
+        UnderstandingWorkState::Abandoned => text(locale, "abandoned", "중단"),
+        UnderstandingWorkState::Superseded => text(locale, "superseded", "대체됨"),
     }
 }
 

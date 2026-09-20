@@ -325,6 +325,7 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
                     alternative_key: "app-file".into(),
                     user_rationale: Some("keep the entry point easy to find".into()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope {
                     paths: vec!["src/app.ts".into()],
                     components: Vec::new(),
@@ -520,6 +521,7 @@ fn small_python_current_work_flow_renders_real_unresolved_relation_evidence() {
             project,
             CheckpointDraft {
                 expected_project_revision: revision,
+                work_item_id: None,
                 kind: CheckpointKind::Handoff,
                 goal: "Keep the Python current-work flow visible".into(),
                 work_state: WorkState::Paused,
@@ -683,6 +685,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
                     alternative_key: "audit-first".into(),
                     user_rationale: Some("inspectable detail is the immediate priority".into()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: Vec::new(),
                 revisit_triggers: Vec::new(),
@@ -722,6 +725,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
             project,
             CheckpointDraft {
                 expected_project_revision: revision,
+                work_item_id: None,
                 kind: CheckpointKind::Completion,
                 goal: "Make the Viewer operator-readable".into(),
                 work_state: WorkState::Completed,

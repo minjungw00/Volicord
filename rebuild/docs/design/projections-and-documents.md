@@ -62,7 +62,8 @@ inspectable하게 유지하되 ordinary reading hierarchy 뒤의 explicit detail
 둔다. 이 hierarchy는 grounding을 삭제하거나 low-level inspection을 막지 않는다.
 
 Production read interface의 `ProjectUnderstanding`은 bounded section으로
-`project_purpose`, `current_work`, `completed_work`, `remaining_work`, `next_steps`,
+`project_purpose`, `current_work`, `completed_work`, `remaining_work`, `work_history`,
+`unresolved_work_grouping`, `next_steps`,
 `active_decisions`, `open_questions`, `risks_assumptions_and_limits`, inspectable
 architecture `components`/`relationships`, `generated_interpretations`와 `evidence`를
 분리해 제공한다. Architecture topology는 Repository Intelligence entity/relation을
@@ -75,6 +76,14 @@ canonical, Candidate, analyzer, publication 또는 provider mutation capability�
 읽는다. Work `Goal`, latest Checkpoint goal, recent Decision text 또는 chronological latest
 record를 Project Purpose로 승격하지 않는다. Purpose가 기록되지 않았으면 빈 값과 gap을
 정직하게 표시하며 최근 work Goal을 대신 보여 주지 않는다.
+
+Work projection은 Goal Context identity를 `work_item_id`로 사용한다. 같은 identity의
+Checkpoint를 하나의 history로 aggregate하고 그 그룹 안의 latest Checkpoint에서 state를
+계산하며, explicitly work-scoped Decision과 Checkpoint-applied Decision을 연결한다. Work마다
+title, state, Checkpoint/Decision identity, changed path/component, verification, next step과
+open Question을 제공한다. Goal만 있고 Checkpoint가 없으면 `open`이다. Work association이
+없는 Decision/Checkpoint는 `unresolved_work_grouping`에 record identity와 이유를 표시하며
+chronology, equal text 또는 path overlap으로 임의 배치하지 않는다.
 
 `ProjectProjection.repository_map`은 계속 repository-wide entity/relation inventory에서
 고른 일반 Repository Map topology를 소유한다. 별도 `current_work_topology`는 같은 Analysis

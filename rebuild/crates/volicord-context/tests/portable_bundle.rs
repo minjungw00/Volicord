@@ -163,6 +163,7 @@ fn populate(
                     alternative_key: "json".to_owned(),
                     user_rationale: Some("Readable and deterministic".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: vec![],
                 revisit_triggers: vec![],
@@ -176,6 +177,7 @@ fn populate(
             project.id,
             CheckpointDraft {
                 expected_project_revision: 1,
+                work_item_id: None,
                 kind: CheckpointKind::Completion,
                 goal: "Portable context implemented".to_owned(),
                 work_state: WorkState::Completed,

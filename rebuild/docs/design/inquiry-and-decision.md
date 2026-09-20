@@ -759,6 +759,8 @@ User response가 canonical `Decision`을 만들려면 다음을 모두 만족한
 - 당시 displayed alternatives, canonical Agent Recommendation, uncertainty와 Source basis를
   추적할 수 있음
 - resulting Decision applicability와 Question outcome이 일치함
+- Decision의 work scope가 `project_wide`, exact current Goal Context identity의
+  `work_item`, 또는 명시적 `unresolved`로 기록됨
 
 Explicit choice는 Question outcome `answered`와 `answers` relation을 만든다. Explicit
 delegation은 delegation Decision과 `delegated` outcome을 만들 수 있다. Research,
@@ -867,6 +869,7 @@ Inquiry는 `domain-model.md`의 Decision identity와 validity를 사용하며 �
 함께 평가한다.
 
 - Project
+- explicit Decision work scope; `work_item`이면 exact Goal Context identity
 - path, component 또는 work context scope
 - explicit assumptions
 - Source basis와 freshness/availability
@@ -906,6 +909,7 @@ Checkpoint는 pause/handoff에서 다음을 관찰해 기록할 수 있다.
 - 해당 시점의 open Question identities/revisions
 - 당시 계산된 frontier와 blocked dependency summary
 - applied Decisions, research/prototype branch와 next meaningful step
+- exact Work Item identity가 있는 경우 그 Goal Context identity
 
 이 목록은 `records_state_of` observation이며 Inquiry frontier의 두 번째 authority가
 아니다. Resume은 Checkpoint의 frontier를 그대로 활성화하지 않고 canonical

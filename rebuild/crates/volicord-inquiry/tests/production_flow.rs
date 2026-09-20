@@ -162,6 +162,7 @@ fn response(
                 .collect(),
         },
         mapping,
+        work_scope: volicord_context::DecisionWorkScope::Unresolved,
         applicability: ApplicabilityScope {
             paths: vec!["src".to_owned()],
             components: vec!["context".to_owned()],
@@ -178,6 +179,7 @@ fn pause_candidate<'a>(
 ) -> CheckpointCandidate<'a> {
     CheckpointCandidate {
         project_id,
+        work_item_id: None,
         kind: CheckpointKind::Pause,
         goal: "pause with grounded context".to_owned(),
         work_state: WorkState::Paused,
@@ -209,6 +211,7 @@ fn repository_checkpoint_candidate<'a>(
 ) -> CheckpointCandidate<'a> {
     CheckpointCandidate {
         project_id,
+        work_item_id: None,
         kind: CheckpointKind::Completion,
         goal: "record attributable repository work".to_owned(),
         work_state: WorkState::Completed,
@@ -588,6 +591,7 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
         &canonical,
         CheckpointCandidate {
             project_id: project.id,
+            work_item_id: None,
             kind: CheckpointKind::Completion,
             goal: "implement bounded work".to_owned(),
             work_state: WorkState::Completed,
@@ -629,6 +633,7 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
         &current_basis,
         CheckpointCandidate {
             project_id: project.id,
+            work_item_id: None,
             kind: CheckpointKind::Pause,
             goal: "read status".to_owned(),
             work_state: WorkState::Paused,

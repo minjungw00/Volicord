@@ -64,6 +64,7 @@ pub struct BriefDecision {
     pub recommended_alternative_key: Option<String>,
     /// Displayed alternatives retain their own expected consequence.
     pub displayed_alternatives: Vec<QuestionAlternative>,
+    pub work_scope: volicord_context::DecisionWorkScope,
     pub user_rationale: Option<String>,
     pub recommendation_rationale: String,
     pub assumptions: Vec<String>,
@@ -297,6 +298,7 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
                     .alternative_key
                     .clone(),
                 displayed_alternatives,
+                work_scope: lifecycle.decision.work_scope,
                 user_rationale: lifecycle.decision.user_rationale.clone(),
                 recommendation_rationale: lifecycle
                     .decision

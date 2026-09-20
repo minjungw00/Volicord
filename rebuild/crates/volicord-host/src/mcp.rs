@@ -9,8 +9,8 @@ use std::{
 use volicord_context::{
     AgentRecommendation, ApplicabilityScope, CanonicalRecordId, CheckpointId, CheckpointKind,
     Clock, CommandTermination, ContextItemCorrectionDraft, ContextItemId, ContextItemRole,
-    CorrectionKind, DecisionCorrectionDraft, DecisionId, NonUserQuestionOutcome, OperationId,
-    Principal, PrincipalKind, ProjectId, QuestionAlternative, QuestionEstablishedFact,
+    CorrectionKind, DecisionCorrectionDraft, DecisionId, DecisionWorkScope, NonUserQuestionOutcome,
+    OperationId, Principal, PrincipalKind, ProjectId, QuestionAlternative, QuestionEstablishedFact,
     QuestionEvidenceFreshness, QuestionId, QuestionResearchState, SourceId, SystemClock,
     TimestampMicros, VerificationState, WorkState,
 };
@@ -929,6 +929,19 @@ impl HostAdapter {
         let revision = required_u64(args, "question_revision")?;
         let presentation_receipt_id = required_str(args, "presentation_receipt_id")?;
         let alternative = required_str(args, "alternative_key")?.to_owned();
+        let work_scope = match required_str(args, "work_scope")? {
+            "unresolved" => DecisionWorkScope::Unresolved,
+            "project_wide" => DecisionWorkScope::ProjectWide,
+            "work_item" => DecisionWorkScope::WorkItem(parse_context_item(required_str(
+                args,
+                "work_item_id",
+            )?)?),
+            _ => {
+                return Err(HostError::new(
+                    "work_scope must be unresolved, project_wide, or work_item",
+                ))
+            }
+        };
         let turn = required_str(args, "user_turn")?.to_owned();
         let presented = self
             .presented_questions
@@ -988,6 +1001,7 @@ impl HostAdapter {
                                 .and_then(Value::as_str)
                                 .map(ToOwned::to_owned),
                         },
+                        work_scope,
                         applicability: ApplicabilityScope {
                             paths: Vec::new(),
                             components: Vec::new(),
@@ -2006,10 +2020,12 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                     ("question_revision", unsigned_schema("Displayed Question revision", 1)),
                     ("presentation_receipt_id", identity_schema("Session-local Inquiry presentation receipt")),
                     ("alternative_key", text_schema("Displayed alternative key", 1, 1024)),
+                    ("work_scope", enum_schema("Explicit Decision work grouping", &["unresolved", "project_wide", "work_item"])),
+                    ("work_item_id", identity_schema("Goal Context identity required when work_scope is work_item")),
                     ("user_turn", user_turn_schema()),
                     ("user_rationale", text_schema("Optional user rationale", 1, 16_384)),
                 ],
-                &["project_id", "question_id", "question_revision", "presentation_receipt_id", "alternative_key", "user_turn"],
+                &["project_id", "question_id", "question_revision", "presentation_receipt_id", "alternative_key", "work_scope", "user_turn"],
             ),
             ToolBehavior::AdditiveClosed,
         ),

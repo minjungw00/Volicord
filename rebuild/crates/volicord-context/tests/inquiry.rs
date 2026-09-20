@@ -132,6 +132,7 @@ fn response(
             .collect(),
         displayed_recommendation_key: question.recommendation.alternative_key.clone(),
         response: explicit,
+        work_scope: volicord_context::DecisionWorkScope::Unresolved,
         applicability: ApplicabilityScope {
             paths: vec!["rebuild/".to_owned()],
             components: vec!["Canonical Context Kernel".to_owned()],

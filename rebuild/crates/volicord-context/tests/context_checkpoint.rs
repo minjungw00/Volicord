@@ -321,6 +321,7 @@ fn checkpoint_draft(
 ) -> CheckpointDraft {
     CheckpointDraft {
         expected_project_revision: 1,
+        work_item_id: None,
         kind,
         goal: "Implement durable context".to_owned(),
         work_state,
@@ -382,6 +383,7 @@ fn records_completion_with_independent_states_and_explicit_relations(
                     alternative_key: "yes".to_owned(),
                     user_rationale: Some("Apply now".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: vec![],
                 revisit_triggers: vec![],

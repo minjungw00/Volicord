@@ -709,6 +709,19 @@ fn validate_checkpoints(
     let decisions = ordered_decision_ids(payload)?;
     let questions = ordered_question_refs(payload)?;
     let verification = ordered_verification(payload)?;
+    let decision_work_items = required_table(payload, "decisions")?
+        .rows
+        .iter()
+        .map(|row| {
+            let decision_id = DecisionId::from_slice(&value_bytes(&row[0])?)?;
+            let work_item_id = if value_text(&row[14])? == "work_item" {
+                Some(ContextItemId::from_slice(&value_bytes(&row[15])?)?)
+            } else {
+                None
+            };
+            Ok((decision_id, work_item_id))
+        })
+        .collect::<Result<BTreeMap<_, _>, Error>>()?;
     let active_questions = required_table(payload, "questions")?
         .rows
         .iter()
@@ -720,26 +733,49 @@ fn validate_checkpoints(
         .map(|row| Ok((value_key(&row[0]), value_integer(&row[1])?)))
         .collect::<Result<BTreeSet<_>, Error>>()?;
     let no_forgotten_sources = CheckpointForgottenSources::default();
+    let context_items = required_table(payload, "context_items")?
+        .rows
+        .iter()
+        .map(|row| (value_key(&row[0]), row))
+        .collect::<BTreeMap<_, _>>();
 
     for row in &required_table(payload, "checkpoints")?.rows {
         let _ = CheckpointId::from_slice(&value_bytes(&row[0])?)?;
-        let _ = value_integer(&row[16])?;
+        let _ = value_integer(&row[17])?;
         if value_integer(&row[2])? != 1 {
             return corrupt("Checkpoint revision must be exactly one");
         }
         let identity = value_key(&row[0]);
+        let work_item_id = match &row[3] {
+            PortableValue::Null => None,
+            PortableValue::Bytes(_) => {
+                let identity = ContextItemId::from_slice(&value_bytes(&row[3])?)?;
+                let work_item = context_items.get(&value_key(&row[3])).ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::CorruptState,
+                        "Checkpoint Work Item references no active Context Item",
+                    )
+                })?;
+                if value_text(&work_item[3])? != "goal" {
+                    return corrupt("Checkpoint Work Item does not reference a Goal Context Item");
+                }
+                Some(identity)
+            }
+            _ => return corrupt("Checkpoint Work Item identity is invalid"),
+        };
         let missing = forgotten.get(&identity).unwrap_or(&no_forgotten_sources);
-        let review_source = optional_source_id(&row[9])?;
-        let acceptance_source = optional_source_id(&row[11])?;
+        let review_source = optional_source_id(&row[10])?;
+        let acceptance_source = optional_source_id(&row[12])?;
         let draft = CheckpointDraft {
             expected_project_revision: 0,
-            kind: CheckpointKind::parse(value_text(&row[3])?)
+            work_item_id,
+            kind: CheckpointKind::parse(value_text(&row[4])?)
                 .ok_or_else(|| Error::new(ErrorKind::CorruptState, "Checkpoint kind is invalid"))?,
-            goal: value_text(&row[4])?.to_owned(),
-            work_state: WorkState::parse(value_text(&row[5])?).ok_or_else(|| {
+            goal: value_text(&row[5])?.to_owned(),
+            work_state: WorkState::parse(value_text(&row[6])?).ok_or_else(|| {
                 Error::new(ErrorKind::CorruptState, "Checkpoint work state is invalid")
             })?,
-            state_change: owned_optional_text(&row[6])?,
+            state_change: owned_optional_text(&row[7])?,
             source_basis: checkpoint_source_values(
                 supported.get(&identity),
                 &missing.supporting_basis,
@@ -750,11 +786,11 @@ fn validate_checkpoints(
                 &missing.changed_basis,
                 "changed basis",
             )?,
-            changed_paths: decode_strings(&value_bytes(&row[7])?)?,
+            changed_paths: decode_strings(&value_bytes(&row[8])?)?,
             applied_decisions: decisions.get(&identity).cloned().unwrap_or_default(),
             verification: verification.get(&identity).cloned().unwrap_or_default(),
             user_review: UserReviewFact {
-                state: UserReviewState::parse(value_text(&row[8])?).ok_or_else(|| {
+                state: UserReviewState::parse(value_text(&row[9])?).ok_or_else(|| {
                     Error::new(
                         ErrorKind::CorruptState,
                         "Checkpoint user review state is invalid",
@@ -763,7 +799,7 @@ fn validate_checkpoints(
                 source_id: review_source,
             },
             user_acceptance: UserAcceptanceFact {
-                state: UserAcceptanceState::parse(value_text(&row[10])?).ok_or_else(|| {
+                state: UserAcceptanceState::parse(value_text(&row[11])?).ok_or_else(|| {
                     Error::new(
                         ErrorKind::CorruptState,
                         "Checkpoint user acceptance state is invalid",
@@ -771,15 +807,24 @@ fn validate_checkpoints(
                 })?,
                 source_id: acceptance_source,
             },
-            known_limits: decode_strings(&value_bytes(&row[12])?)?,
-            non_goals: decode_strings(&value_bytes(&row[13])?)?,
+            known_limits: decode_strings(&value_bytes(&row[13])?)?,
+            non_goals: decode_strings(&value_bytes(&row[14])?)?,
             open_questions: questions.get(&identity).cloned().unwrap_or_default(),
-            next_step: value_text(&row[14])?.to_owned(),
-            handoff_to: owned_optional_text(&row[15])?,
+            next_step: value_text(&row[15])?.to_owned(),
+            handoff_to: owned_optional_text(&row[16])?,
         };
         validate_checkpoint_observation_witnesses(&draft, missing)?;
         validate_checkpoint_draft_with_missing(&draft, missing)
             .map_err(|error| semantic_corruption("Checkpoint", error))?;
+        for decision_id in &draft.applied_decisions {
+            if let Some(Some(decision_work_item)) = decision_work_items.get(decision_id) {
+                if draft.work_item_id != Some(*decision_work_item) {
+                    return corrupt(
+                        "Checkpoint applies a Decision scoped to a different Work Item",
+                    );
+                }
+            }
+        }
         for fact in &draft.verification {
             if let Some(source_id) = fact.source_id {
                 let source = sources.get(&source_id).ok_or_else(|| {

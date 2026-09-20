@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 pub const BUNDLE_KIND: &str = "volicord-context-bundle";
-pub const BUNDLE_FORMAT_VERSION: u32 = 8;
+pub const BUNDLE_FORMAT_VERSION: u32 = 9;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleExport {
@@ -254,6 +254,8 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "recommendation_key",
             "recommendation_rationale",
             "recommendation_sources",
+            "work_scope",
+            "work_item_id",
             "applicability_paths",
             "applicability_components",
             "applicability_work_contexts",
@@ -282,6 +284,8 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "recommendation_key",
             "recommendation_rationale",
             "recommendation_sources",
+            "work_scope",
+            "work_item_id",
             "applicability_paths",
             "applicability_components",
             "applicability_work_contexts",
@@ -352,6 +356,7 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "id",
             "project_id",
             "revision",
+            "work_item_id",
             "checkpoint_kind",
             "goal",
             "work_state",
@@ -1012,6 +1017,23 @@ pub(crate) fn validate_portable_canonical_invariants(
                             "Decision references neither active nor tombstoned canonical identity",
                         ));
                     }
+                    if value_text(&row[14])? == "work_item"
+                        && !active_record("context_item", &row[15])
+                    {
+                        return Err(Error::new(
+                            ErrorKind::CorruptState,
+                            "Decision Work Item scope references a missing active Goal Context Item",
+                        ));
+                    }
+                }
+                "checkpoints"
+                    if !matches!(row[3], PortableValue::Null)
+                        && !active_record("context_item", &row[3]) =>
+                {
+                    return Err(Error::new(
+                        ErrorKind::CorruptState,
+                        "Checkpoint Work Item references a missing active Goal Context Item",
+                    ));
                 }
                 "context_item_sources" if !active_record("source", &row[2]) => {
                     return Err(Error::new(
@@ -1183,6 +1205,11 @@ fn validate_decision_semantics(
         .iter()
         .map(|row| (value_key(&row[0]), row))
         .collect::<BTreeMap<_, _>>();
+    let context_items = required_table(payload, "context_items")?
+        .rows
+        .iter()
+        .map(|row| (value_key(&row[0]), row))
+        .collect::<BTreeMap<_, _>>();
     let mut revisions = BTreeMap::<String, BTreeMap<i64, &Vec<PortableValue>>>::new();
     for row in &required_table(payload, "decision_revisions")?.rows {
         revisions
@@ -1221,6 +1248,7 @@ fn validate_decision_semantics(
 
     for (decision_id, row) in &decisions {
         validate_decision_authority(row, &sources, tombstones)?;
+        validate_decision_work_scope(row, &context_items)?;
         validate_decision_revision_history(
             decision_id,
             row,
@@ -1238,6 +1266,7 @@ fn validate_decision_semantics(
         )?;
         if let Some(history) = revisions.get(decision_id) {
             for revision in history.values() {
+                validate_decision_work_scope(revision, &context_items)?;
                 validate_decision_question_basis(
                     revision,
                     &questions,
@@ -1305,6 +1334,35 @@ fn validate_decision_authority(
     validate_authority_source(&row[5], sources, tombstones)
 }
 
+fn validate_decision_work_scope(
+    row: &[PortableValue],
+    context_items: &BTreeMap<String, &Vec<PortableValue>>,
+) -> Result<(), Error> {
+    match (value_text(&row[14])?, &row[15]) {
+        ("unresolved" | "project_wide", PortableValue::Null) => Ok(()),
+        ("work_item", PortableValue::Bytes(_)) => {
+            let identity = value_key(&row[15]);
+            let item = context_items.get(&identity).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::CorruptState,
+                    "Decision Work Item scope references no active Context Item",
+                )
+            })?;
+            if value_text(&item[3])? != "goal" {
+                return Err(Error::new(
+                    ErrorKind::CorruptState,
+                    "Decision Work Item scope does not reference a Goal Context Item",
+                ));
+            }
+            Ok(())
+        }
+        _ => Err(Error::new(
+            ErrorKind::CorruptState,
+            "Decision work scope is inconsistent",
+        )),
+    }
+}
+
 fn validate_authority_source(
     source_id: &PortableValue,
     sources: &BTreeMap<String, &Vec<PortableValue>>,
@@ -1363,7 +1421,7 @@ fn validate_decision_revision_history(
             "Decision current revision snapshot is missing",
         )
     })?;
-    if active[3..=18] != current_row[3..=18] {
+    if active[3..=20] != current_row[3..=20] {
         return Err(Error::new(
             ErrorKind::CorruptState,
             "Decision current row differs from its current revision snapshot",
@@ -1386,9 +1444,9 @@ fn validate_decision_revision_history(
         }
         validate_decision_authority(row, sources, tombstones)?;
         if revision_number == 1 {
-            if !matches!(row[19], PortableValue::Null)
-                || !matches!(row[20], PortableValue::Null)
-                || !matches!(row[21], PortableValue::Null)
+            if !matches!(row[21], PortableValue::Null)
+                || !matches!(row[22], PortableValue::Null)
+                || !matches!(row[23], PortableValue::Null)
             {
                 return Err(Error::new(
                     ErrorKind::CorruptState,
@@ -1396,9 +1454,9 @@ fn validate_decision_revision_history(
                 ));
             }
         } else {
-            let kind = value_text(&row[19])?;
-            let authorization = match &row[20] {
-                PortableValue::Bytes(_) => &row[20],
+            let kind = value_text(&row[21])?;
+            let authorization = match &row[22] {
+                PortableValue::Bytes(_) => &row[22],
                 _ => {
                     return Err(Error::new(
                         ErrorKind::CorruptState,
@@ -1406,7 +1464,7 @@ fn validate_decision_revision_history(
                     ))
                 }
             };
-            if value_text(&row[21])? != CURRENT_HOST_USER_AUTHORITY {
+            if value_text(&row[23])? != CURRENT_HOST_USER_AUTHORITY {
                 return Err(Error::new(
                     ErrorKind::CorruptState,
                     "Decision correction lacks its user authority witness",
@@ -1419,7 +1477,7 @@ fn validate_decision_revision_history(
                     "Decision correction basis is missing",
                 )
             })?;
-            for index in (3..=8).chain(10..=18) {
+            for index in (3..=8).chain(10..=20) {
                 if prior[index] != row[index] {
                     return Err(Error::new(
                         ErrorKind::CorruptState,
@@ -2210,6 +2268,6 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(BUNDLE_KIND, "volicord-context-bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 8);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 9);
     }
 }

@@ -47,5 +47,5 @@ pub use understanding::{
     UnderstandingArchitectureSelection, UnderstandingArchitectureSelectionBasis,
     UnderstandingBound, UnderstandingDecision, UnderstandingEvidence, UnderstandingEvidenceClass,
     UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingNextStep,
-    UnderstandingOmission, UnderstandingWork,
+    UnderstandingOmission, UnderstandingWork, UnderstandingWorkState, UnresolvedWorkGrouping,
 };

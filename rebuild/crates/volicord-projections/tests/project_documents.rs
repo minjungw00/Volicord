@@ -224,6 +224,7 @@ fn completed_project_documents_are_human_first_and_keep_resolved_ambiguity_in_au
                     alternative_key: "local".to_owned(),
                     user_rationale: Some("the result must remain local and shareable".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: vec!["local-first".to_owned()],
                 revisit_triggers: vec!["local output becomes unusable".to_owned()],
@@ -257,6 +258,7 @@ fn completed_project_documents_are_human_first_and_keep_resolved_ambiguity_in_au
         project.id,
         CheckpointDraft {
             expected_project_revision: project.revision,
+            work_item_id: None,
             kind: CheckpointKind::Completion,
             goal: "Ship a readable local project summary".to_owned(),
             work_state: WorkState::Completed,
@@ -488,6 +490,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
                     alternative_key: "local".to_owned(),
                     user_rationale: None,
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope {
                     paths: vec!["src".to_owned()],
                     components: vec!["MarkdownGuide".to_owned()],
@@ -550,6 +553,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         project.id,
         CheckpointDraft {
             expected_project_revision: project.revision,
+            work_item_id: Some(goal.id),
             kind: CheckpointKind::Handoff,
             goal: "Generate four grounded documents".to_owned(),
             work_state: WorkState::Completed,
@@ -759,11 +763,12 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         project_purpose.id
     );
     assert_ne!(understanding.project_purpose[0].identity, goal.id);
-    assert_eq!(
-        understanding.current_work.as_ref().map(|work| work.state),
-        Some(WorkState::Completed)
-    );
+    assert!(understanding.current_work.is_empty());
     assert_eq!(understanding.completed_work.len(), 1);
+    assert_eq!(
+        understanding.completed_work[0].state,
+        volicord_projections::UnderstandingWorkState::Completed
+    );
     assert!(understanding.remaining_work.is_empty());
     assert!(understanding
         .next_steps

@@ -190,6 +190,7 @@ fn create_fixture(value: &mut Store) -> Result<Fixture, Box<dyn std::error::Erro
                     alternative_key: "local".to_owned(),
                     user_rationale: Some("DECISION-SECRET-2bd4 rationale".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: vec!["DECISION-ASSUMPTION-SECRET-2bd4".to_owned()],
                 revisit_triggers: vec!["DECISION-TRIGGER-SECRET-2bd4".to_owned()],
@@ -219,6 +220,7 @@ fn create_fixture(value: &mut Store) -> Result<Fixture, Box<dyn std::error::Erro
             project.id,
             CheckpointDraft {
                 expected_project_revision: 1,
+                work_item_id: None,
                 kind: CheckpointKind::Handoff,
                 goal: "CHECKPOINT-SECRET-e5a2 goal".to_owned(),
                 work_state: WorkState::Paused,

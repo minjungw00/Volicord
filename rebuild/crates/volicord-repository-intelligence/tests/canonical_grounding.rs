@@ -169,6 +169,7 @@ fn canonical_fixture() -> Result<(tempfile::TempDir, CanonicalFixture), Box<dyn 
                     alternative_key: "exact".to_owned(),
                     user_rationale: Some("Keep historical grounding".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: vec!["Canonical revision history remains inspectable".to_owned()],
                 revisit_triggers: vec!["Canonical read contract changes".to_owned()],
@@ -198,6 +199,7 @@ fn canonical_fixture() -> Result<(tempfile::TempDir, CanonicalFixture), Box<dyn 
             project.id,
             CheckpointDraft {
                 expected_project_revision: project.revision,
+                work_item_id: None,
                 kind: CheckpointKind::Handoff,
                 goal: "Test canonical grounding".to_owned(),
                 work_state: WorkState::Completed,

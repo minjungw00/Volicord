@@ -147,6 +147,7 @@ fn create_decision(
                     alternative_key: "local".to_owned(),
                     user_rationale: Some("Keep data local".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope::default(),
                 assumptions: vec!["local disk available".to_owned()],
                 revisit_triggers: vec!["disk unavailable".to_owned()],

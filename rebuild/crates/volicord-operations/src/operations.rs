@@ -3305,6 +3305,7 @@ impl LocalOperations {
             &canonical,
             CheckpointCandidate {
                 project_id: draft.project_id,
+                work_item_id: Some(draft.goal_context_id),
                 kind: draft.kind,
                 goal: goal.statement,
                 work_state: draft.work_state,

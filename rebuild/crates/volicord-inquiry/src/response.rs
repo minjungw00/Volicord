@@ -1,6 +1,6 @@
 use crate::{ErrorKind, QuestionPresentation};
 use volicord_context::{
-    ApplicabilityScope, Availability, CanonicalReadBasis, CanonicalReadOptions,
+    ApplicabilityScope, Availability, CanonicalReadBasis, CanonicalReadOptions, DecisionWorkScope,
     ExplicitQuestionResponse, OperationId, PrincipalKind, ProjectId, QuestionId,
     QuestionResponseDraft, QuestionResponseResult, SourceId, SourcePayload, Store, UserTurnSource,
 };
@@ -49,6 +49,7 @@ pub struct CurrentHostResponse {
     pub turn: String,
     pub displayed: DisplayedQuestion,
     pub mapping: ResponseMapping,
+    pub work_scope: DecisionWorkScope,
     pub applicability: ApplicabilityScope,
     pub assumptions: Vec<String>,
     pub revisit_triggers: Vec<String>,
@@ -65,6 +66,7 @@ pub enum ResponseRejection {
     AmbiguousResponse,
     RecommendationWithoutUserChoice,
     InvalidExplicitMapping,
+    InvalidWorkScope,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -158,6 +160,17 @@ pub fn interpret_current_host_response(
             "response requires verified host, session, user-turn, and observer provenance",
         );
     }
+    if let DecisionWorkScope::WorkItem(identity) = response.work_scope {
+        let valid_goal = canonical.context_items.iter().any(|item| {
+            item.id == identity && item.role == volicord_context::ContextItemRole::Goal
+        });
+        if !valid_goal {
+            return rejected(
+                ResponseRejection::InvalidWorkScope,
+                "Decision Work Item scope must reference a current Goal Context Item in this Project",
+            );
+        }
+    }
     let explicit = match &response.mapping {
         ResponseMapping::ExplicitAlternative {
             alternative_key,
@@ -200,6 +213,7 @@ pub fn interpret_current_host_response(
         displayed_alternative_keys: alternative_keys,
         displayed_recommendation_key: question.recommendation.alternative_key.clone(),
         response: explicit,
+        work_scope: response.work_scope,
         applicability: response.applicability.clone(),
         assumptions: response.assumptions.clone(),
         revisit_triggers: response.revisit_triggers.clone(),

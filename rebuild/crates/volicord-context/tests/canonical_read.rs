@@ -157,6 +157,7 @@ fn populate(store: &mut Store) -> Result<Fixture, Box<dyn std::error::Error>> {
                     alternative_key: "identity".to_owned(),
                     user_rationale: Some("Keep authority deterministic".to_owned()),
                 },
+                work_scope: volicord_context::DecisionWorkScope::Unresolved,
                 applicability: ApplicabilityScope {
                     paths: vec!["rebuild/".to_owned()],
                     components: vec!["context".to_owned()],
@@ -175,6 +176,7 @@ fn populate(store: &mut Store) -> Result<Fixture, Box<dyn std::error::Error>> {
             project.id,
             CheckpointDraft {
                 expected_project_revision: 1,
+                work_item_id: None,
                 kind: CheckpointKind::Handoff,
                 goal: "Expose canonical read input".to_owned(),
                 work_state: WorkState::Completed,

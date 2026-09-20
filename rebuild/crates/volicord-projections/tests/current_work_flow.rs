@@ -110,6 +110,7 @@ fn build_projection(
         project.id,
         CheckpointDraft {
             expected_project_revision: project.revision,
+            work_item_id: None,
             kind: CheckpointKind::Handoff,
             goal: "Keep the current work flow inspectable".into(),
             work_state: WorkState::Paused,

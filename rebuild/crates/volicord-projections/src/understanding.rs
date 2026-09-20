@@ -6,8 +6,8 @@ use crate::{
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
-    CheckpointId, ContextItemId, DecisionId, ProjectId, SourceId, SourceReadBasis,
-    VerificationFact, WorkState,
+    CheckpointId, ContextItemId, DecisionId, DecisionWorkScope, ProjectId, QuestionId, SourceId,
+    SourceReadBasis, VerificationFact, WorkState,
 };
 use volicord_repository_intelligence::{AnalysisSnapshotId, CodeEntityKind, RepositorySnapshotId};
 
@@ -26,14 +26,47 @@ impl Default for UnderstandingBound {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnderstandingWork {
-    pub checkpoint_id: CheckpointId,
-    pub goal: String,
-    pub state: WorkState,
-    pub meaningful_change: Option<String>,
+    pub work_item_id: ContextItemId,
+    pub title: String,
+    pub state: UnderstandingWorkState,
+    pub checkpoint_ids: Vec<CheckpointId>,
+    pub decision_ids: Vec<DecisionId>,
+    pub meaningful_changes: Vec<String>,
     pub changed_paths: Vec<String>,
+    pub changed_components: Vec<String>,
     pub verification: Vec<VerificationFact>,
-    pub next_step: String,
+    pub next_step: Option<String>,
+    pub open_question_ids: Vec<QuestionId>,
     pub source_basis: Vec<SourceId>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UnderstandingWorkState {
+    Open,
+    InProgress,
+    Paused,
+    Completed,
+    Abandoned,
+    Superseded,
+}
+
+impl From<WorkState> for UnderstandingWorkState {
+    fn from(value: WorkState) -> Self {
+        match value {
+            WorkState::InProgress => Self::InProgress,
+            WorkState::Paused => Self::Paused,
+            WorkState::Completed => Self::Completed,
+            WorkState::Abandoned => Self::Abandoned,
+            WorkState::Superseded => Self::Superseded,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnresolvedWorkGrouping {
+    pub record_kind: &'static str,
+    pub identity: String,
+    pub reason: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -158,9 +191,11 @@ pub struct ProjectUnderstanding {
     pub project_name: String,
     pub canonical_revision: u64,
     pub project_purpose: Vec<BriefContextItem>,
-    pub current_work: Option<UnderstandingWork>,
+    pub current_work: Vec<UnderstandingWork>,
     pub completed_work: Vec<UnderstandingWork>,
     pub remaining_work: Vec<UnderstandingWork>,
+    pub work_history: Vec<UnderstandingWork>,
+    pub unresolved_work_grouping: Vec<UnresolvedWorkGrouping>,
     pub next_steps: Vec<UnderstandingNextStep>,
     pub active_decisions: Vec<UnderstandingDecision>,
     pub open_questions: Vec<BriefQuestion>,
@@ -199,22 +234,6 @@ pub fn build_project_understanding(
 
     let mut timeline = projection.checkpoint_timeline.clone();
     timeline.sort_by_key(|entry| (entry.checkpoint.recorded_at, entry.checkpoint.id));
-    let current_work = timeline.last().map(work_from_checkpoint);
-    let mut completed_work = timeline
-        .iter()
-        .filter(|entry| entry.work_state == WorkState::Completed)
-        .map(work_from_checkpoint)
-        .collect::<Vec<_>>();
-    completed_work.reverse();
-    bound_section(&mut completed_work, limit, "completed_work", &mut omissions);
-    let mut remaining_work = timeline
-        .iter()
-        .filter(|entry| matches!(entry.work_state, WorkState::InProgress | WorkState::Paused))
-        .map(work_from_checkpoint)
-        .collect::<Vec<_>>();
-    remaining_work.reverse();
-    bound_section(&mut remaining_work, limit, "remaining_work", &mut omissions);
-
     let links = projection
         .decision_context_code
         .iter()
@@ -232,6 +251,63 @@ pub fn build_project_understanding(
         &mut active_decisions,
         limit,
         "active_decisions",
+        &mut omissions,
+    );
+
+    let mut work_history = grouped_work(projection, &timeline, &links);
+    work_history.sort_by_key(|work| work.work_item_id);
+    let mut current_work = work_history
+        .iter()
+        .filter(|work| work.state == UnderstandingWorkState::InProgress)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut completed_work = work_history
+        .iter()
+        .filter(|work| work.state == UnderstandingWorkState::Completed)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut remaining_work = work_history
+        .iter()
+        .filter(|work| {
+            matches!(
+                work.state,
+                UnderstandingWorkState::Open | UnderstandingWorkState::Paused
+            )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    bound_section(&mut current_work, limit, "current_work", &mut omissions);
+    bound_section(&mut completed_work, limit, "completed_work", &mut omissions);
+    bound_section(&mut remaining_work, limit, "remaining_work", &mut omissions);
+    bound_section(&mut work_history, limit, "work_history", &mut omissions);
+    let mut unresolved_work_grouping = projection
+        .resume
+        .decisions
+        .iter()
+        .filter(|decision| decision.work_scope == DecisionWorkScope::Unresolved)
+        .map(|decision| UnresolvedWorkGrouping {
+            record_kind: "decision",
+            identity: decision.decision_id.to_string(),
+            reason: "Decision has no explicit Project-wide or Work Item scope".to_owned(),
+        })
+        .collect::<Vec<_>>();
+    unresolved_work_grouping.extend(
+        timeline
+            .iter()
+            .filter(|entry| entry.checkpoint.work_item_id.is_none())
+            .map(|entry| UnresolvedWorkGrouping {
+                record_kind: "checkpoint",
+                identity: entry.checkpoint.id.to_string(),
+                reason: "Checkpoint has no explicit Work Item identity".to_owned(),
+            }),
+    );
+    unresolved_work_grouping.sort_by(|left, right| {
+        (left.record_kind, &left.identity).cmp(&(right.record_kind, &right.identity))
+    });
+    bound_section(
+        &mut unresolved_work_grouping,
+        limit,
+        "unresolved_work_grouping",
         &mut omissions,
     );
 
@@ -375,6 +451,8 @@ pub fn build_project_understanding(
         current_work,
         completed_work,
         remaining_work,
+        work_history,
+        unresolved_work_grouping,
         next_steps,
         active_decisions,
         open_questions,
@@ -1429,17 +1507,92 @@ fn entity_kind_label(kind: &CodeEntityKind, korean: bool) -> String {
     }
 }
 
-fn work_from_checkpoint(entry: &CheckpointTimelineEntry) -> UnderstandingWork {
-    UnderstandingWork {
-        checkpoint_id: entry.checkpoint.id,
-        goal: entry.checkpoint.goal.clone(),
-        state: entry.work_state,
-        meaningful_change: entry.checkpoint.state_change.clone(),
-        changed_paths: entry.checkpoint.changed_paths.clone(),
-        verification: entry.verification.clone(),
-        next_step: entry.checkpoint.next_step.clone(),
-        source_basis: entry.checkpoint.source_basis.clone(),
+fn grouped_work(
+    projection: &ProjectProjection,
+    timeline: &[CheckpointTimelineEntry],
+    links: &BTreeMap<DecisionId, &DecisionContextCodeLink>,
+) -> Vec<UnderstandingWork> {
+    let mut titles = projection
+        .resume
+        .goals_and_why
+        .iter()
+        .map(|goal| {
+            (
+                goal.identity,
+                (goal.statement.clone(), goal.source_basis.clone()),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    for entry in timeline {
+        if let Some(work_item_id) = entry.checkpoint.work_item_id {
+            titles.entry(work_item_id).or_insert_with(|| {
+                (
+                    entry.checkpoint.goal.clone(),
+                    entry.checkpoint.source_basis.clone(),
+                )
+            });
+        }
     }
+
+    titles
+        .into_iter()
+        .map(|(work_item_id, (title, goal_sources))| {
+            let checkpoints = timeline
+                .iter()
+                .filter(|entry| entry.checkpoint.work_item_id == Some(work_item_id))
+                .collect::<Vec<_>>();
+            let latest = checkpoints.last().copied();
+            let mut checkpoint_ids = Vec::new();
+            let mut decision_ids = BTreeSet::new();
+            let mut meaningful_changes = Vec::new();
+            let mut changed_paths = BTreeSet::new();
+            let mut changed_components = BTreeSet::new();
+            let mut verification = Vec::new();
+            let mut open_question_ids = BTreeSet::new();
+            let mut source_basis = goal_sources.into_iter().collect::<BTreeSet<_>>();
+            for entry in &checkpoints {
+                checkpoint_ids.push(entry.checkpoint.id);
+                decision_ids.extend(entry.checkpoint.applied_decisions.iter().copied());
+                meaningful_changes.extend(entry.checkpoint.state_change.iter().cloned());
+                changed_paths.extend(entry.checkpoint.changed_paths.iter().cloned());
+                verification.extend(entry.verification.iter().cloned());
+                open_question_ids.extend(
+                    entry
+                        .checkpoint
+                        .open_questions
+                        .iter()
+                        .map(|question| question.question_id),
+                );
+                source_basis.extend(entry.checkpoint.source_basis.iter().copied());
+            }
+            for decision in &projection.resume.decisions {
+                if decision.work_scope == DecisionWorkScope::WorkItem(work_item_id) {
+                    decision_ids.insert(decision.decision_id);
+                }
+            }
+            for decision_id in &decision_ids {
+                if let Some(link) = links.get(decision_id) {
+                    changed_components.extend(link.declared_components.iter().cloned());
+                }
+            }
+            UnderstandingWork {
+                work_item_id,
+                title,
+                state: latest.map_or(UnderstandingWorkState::Open, |entry| {
+                    UnderstandingWorkState::from(entry.work_state)
+                }),
+                checkpoint_ids,
+                decision_ids: decision_ids.into_iter().collect(),
+                meaningful_changes,
+                changed_paths: changed_paths.into_iter().collect(),
+                changed_components: changed_components.into_iter().collect(),
+                verification,
+                next_step: latest.map(|entry| entry.checkpoint.next_step.clone()),
+                open_question_ids: open_question_ids.into_iter().collect(),
+                source_basis: source_basis.into_iter().collect(),
+            }
+        })
+        .collect()
 }
 
 fn decision_understanding(
@@ -1516,8 +1669,8 @@ mod tests {
     };
     use volicord_context::{
         Checkpoint, CheckpointId, CheckpointKind, ContextItemId, DecisionChoice, DecisionId,
-        ProjectId, SourceId, TimestampMicros, UserAcceptanceFact, UserAcceptanceState,
-        UserReviewFact, UserReviewState, WorkState,
+        DecisionWorkScope, ProjectId, SourceId, TimestampMicros, UserAcceptanceFact,
+        UserAcceptanceState, UserReviewFact, UserReviewState, WorkState,
     };
     use volicord_repository_intelligence::{
         AnalysisSnapshotId, CodeEntityKind, FreshnessBasis, FreshnessState, Language,
@@ -1764,6 +1917,7 @@ mod tests {
                     label: "Keep current work grounded".into(),
                     consequence: "The current-work component remains source-grounded".into(),
                 }],
+                work_scope: DecisionWorkScope::Unresolved,
                 user_rationale: Some("keep the current work explainable".into()),
                 recommendation_rationale: "retain grounded code".into(),
                 assumptions: Vec::new(),
@@ -1867,6 +2021,7 @@ mod tests {
             id,
             project_id: project_id(),
             revision: 1,
+            work_item_id: Some(ContextItemId::from_bytes([6; 16])),
             kind: CheckpointKind::Pause,
             goal: "Explain the current task architecture".into(),
             work_state: WorkState::Paused,

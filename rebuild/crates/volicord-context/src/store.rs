@@ -4,13 +4,13 @@ use crate::model::{
     CanonicalRecordId, CanonicalRecordKind, CanonicalRelation, CanonicalRelationKind, Checkpoint,
     CheckpointDraft, CheckpointKind, ContextItem, ContextItemCorrectionDraft, ContextItemDraft,
     ContextItemRole, CorrectionKind, Decision, DecisionChoice, DecisionCorrectionDraft,
-    DecisionLifecycle, DecisionSupersessionDraft, ExplicitQuestionResponse, ForgetResult,
-    LocalBinding, NonUserQuestionOutcome, OperationResult, Principal, PrincipalKind, Project,
-    Question, QuestionAlternative, QuestionDependency, QuestionDispositionDraft, QuestionDraft,
-    QuestionEstablishedFact, QuestionEvidenceFreshness, QuestionMateriality, QuestionReference,
-    QuestionResearchState, QuestionResponseDraft, QuestionResponseResult, QuestionState,
-    QuestionTerminalDisposition, QuestionTerminalOutcome, ReviewDue, ReviewDueDraft, ReviewDueKind,
-    Source, SourceDraft, SourcePayload, SourceRelation, SourceRelationKind,
+    DecisionLifecycle, DecisionSupersessionDraft, DecisionWorkScope, ExplicitQuestionResponse,
+    ForgetResult, LocalBinding, NonUserQuestionOutcome, OperationResult, Principal, PrincipalKind,
+    Project, Question, QuestionAlternative, QuestionDependency, QuestionDispositionDraft,
+    QuestionDraft, QuestionEstablishedFact, QuestionEvidenceFreshness, QuestionMateriality,
+    QuestionReference, QuestionResearchState, QuestionResponseDraft, QuestionResponseResult,
+    QuestionState, QuestionTerminalDisposition, QuestionTerminalOutcome, ReviewDue, ReviewDueDraft,
+    ReviewDueKind, Source, SourceDraft, SourcePayload, SourceRelation, SourceRelationKind,
     StatementProvenanceRole, Tombstone, UserAcceptanceFact, UserAcceptanceState, UserReviewFact,
     UserReviewState, UserTurnSource, VerificationFact, VerificationState, WorkState,
 };
@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 15;
+pub const SCHEMA_VERSION: u32 = 16;
 
 pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
 const READ_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -893,6 +893,7 @@ impl Store {
 
         let project = load_project(&transaction, project_id)?;
         ensure_revision(draft.expected_project_revision, project.revision, "Project")?;
+        ensure_decision_work_scope(&transaction, project_id, draft.work_scope)?;
         let question = load_question(&transaction, project_id, draft.question_id)?;
         ensure_revision(draft.question_revision, question.revision, "Question")?;
         if question.state != QuestionState::Open {
@@ -973,11 +974,12 @@ impl Store {
                          id, project_id, revision, question_id, question_revision, user_turn_source_id,
                          user_authority, choice_kind, choice_value, user_rationale, displayed_alternatives,
                          recommendation_key, recommendation_rationale, recommendation_sources,
+                         work_scope, work_item_id,
                          applicability_paths, applicability_components, applicability_work_contexts,
                          assumptions, revisit_triggers, recorded_at
                      ) VALUES (
                          ?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                         ?14, ?15, ?16, ?17, ?18, ?19
+                         ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
                      )",
                     params![
                         decision_id.as_bytes().as_slice(),
@@ -993,6 +995,8 @@ impl Store {
                         question.recommendation.alternative_key,
                         question.recommendation.rationale,
                         encode_source_ids(&question.recommendation.source_basis),
+                        draft.work_scope.as_str(),
+                        decision_work_item_bytes(draft.work_scope),
                         encode_strings(&draft.applicability.paths),
                         encode_strings(&draft.applicability.components),
                         encode_strings(&draft.applicability.work_contexts),
@@ -1017,6 +1021,7 @@ impl Store {
                 rationale,
                 &question.alternatives,
                 &question.recommendation,
+                draft.work_scope,
                 &draft.applicability,
                 &draft.assumptions,
                 &draft.revisit_triggers,
@@ -1055,6 +1060,7 @@ impl Store {
                 user_rationale: rationale.map(str::to_owned),
                 displayed_alternatives: question.alternatives.clone(),
                 displayed_recommendation: question.recommendation.clone(),
+                work_scope: draft.work_scope,
                 applicability: draft.applicability.clone(),
                 assumptions: draft.assumptions.clone(),
                 revisit_triggers: draft.revisit_triggers.clone(),
@@ -1406,6 +1412,15 @@ impl Store {
         }
         let project = load_project(&transaction, project_id)?;
         ensure_revision(draft.expected_project_revision, project.revision, "Project")?;
+        if let Some(work_item_id) = draft.work_item_id {
+            let work_item = load_context_item(&transaction, project_id, work_item_id)?;
+            if work_item.role != ContextItemRole::Goal {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "Checkpoint Work Item must reference a Goal Context Item",
+                ));
+            }
+        }
         for source_id in draft
             .source_basis
             .iter()
@@ -1414,7 +1429,15 @@ impl Store {
             ensure_source_project(&transaction, *source_id, project_id)?;
         }
         for decision_id in &draft.applied_decisions {
-            load_decision(&transaction, project_id, *decision_id)?;
+            let decision = load_decision(&transaction, project_id, *decision_id)?;
+            if let DecisionWorkScope::WorkItem(decision_work_item) = decision.work_scope {
+                if draft.work_item_id != Some(decision_work_item) {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "Checkpoint cannot apply a Decision scoped to a different Work Item",
+                    ));
+                }
+            }
         }
         for question in &draft.open_questions {
             load_question(&transaction, project_id, question.question_id)?;
@@ -1451,16 +1474,19 @@ impl Store {
         transaction
             .execute(
                 "INSERT INTO checkpoints(
-                     id, project_id, revision, checkpoint_kind, goal, work_state, state_change,
+                     id, project_id, revision, work_item_id, checkpoint_kind, goal, work_state, state_change,
                      changed_paths, user_review, user_review_source_id, user_acceptance,
                      user_acceptance_source_id, known_limits, non_goals, next_step,
                      handoff_to, recorded_at
                  ) VALUES (
-                     ?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+                     ?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17
                  )",
                 params![
                     checkpoint_id.as_bytes().as_slice(),
                     project_id.as_bytes().as_slice(),
+                    draft
+                        .work_item_id
+                        .map(|identity| identity.as_bytes().to_vec()),
                     draft.kind.as_str(),
                     draft.goal,
                     draft.work_state.as_str(),
@@ -1566,6 +1592,7 @@ impl Store {
                 id: checkpoint_id,
                 project_id,
                 revision: 1,
+                work_item_id: draft.work_item_id,
                 kind: draft.kind,
                 goal: draft.goal,
                 work_state: draft.work_state,
@@ -1680,6 +1707,7 @@ fn insert_decision_revision(
     user_rationale: Option<&str>,
     displayed_alternatives: &[QuestionAlternative],
     recommendation: &AgentRecommendation,
+    work_scope: DecisionWorkScope,
     applicability: &ApplicabilityScope,
     assumptions: &[String],
     revisit_triggers: &[String],
@@ -1693,11 +1721,12 @@ fn insert_decision_revision(
              decision_id, revision, project_id, question_id, question_revision,
              user_turn_source_id, user_authority, choice_kind, choice_value, user_rationale,
              displayed_alternatives, recommendation_key, recommendation_rationale,
-             recommendation_sources, applicability_paths, applicability_components,
+             recommendation_sources, work_scope, work_item_id,
+             applicability_paths, applicability_components,
              applicability_work_contexts, assumptions, revisit_triggers, correction_kind,
              authorization_source_id, authorization_authority, recorded_at
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                   ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
+                   ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
             params![
                 decision_id.as_bytes().as_slice(),
                 revision_i64(revision)?,
@@ -1713,6 +1742,8 @@ fn insert_decision_revision(
                 recommendation.alternative_key,
                 recommendation.rationale,
                 encode_source_ids(&recommendation.source_basis),
+                work_scope.as_str(),
+                decision_work_item_bytes(work_scope),
                 encode_strings(&applicability.paths),
                 encode_strings(&applicability.components),
                 encode_strings(&applicability.work_contexts),
@@ -1749,6 +1780,7 @@ fn insert_decision_snapshot(
         decision.user_rationale.as_deref(),
         &decision.displayed_alternatives,
         &decision.displayed_recommendation,
+        decision.work_scope,
         &decision.applicability,
         &decision.assumptions,
         &decision.revisit_triggers,
@@ -1763,6 +1795,44 @@ fn decision_choice_parts(choice: &DecisionChoice) -> (&str, &str) {
         DecisionChoice::Alternative { alternative_key } => ("alternative", alternative_key),
         DecisionChoice::Delegation { delegate_to } => ("delegation", delegate_to),
     }
+}
+
+fn decision_work_item_bytes(scope: DecisionWorkScope) -> Option<Vec<u8>> {
+    match scope {
+        DecisionWorkScope::WorkItem(identity) => Some(identity.as_bytes().to_vec()),
+        DecisionWorkScope::Unresolved | DecisionWorkScope::ProjectWide => None,
+    }
+}
+
+fn parse_decision_work_scope(
+    kind: &str,
+    work_item: Option<&[u8]>,
+) -> Result<DecisionWorkScope, Error> {
+    match (kind, work_item) {
+        ("unresolved", None) => Ok(DecisionWorkScope::Unresolved),
+        ("project_wide", None) => Ok(DecisionWorkScope::ProjectWide),
+        ("work_item", Some(identity)) => Ok(DecisionWorkScope::WorkItem(
+            ContextItemId::from_slice(identity)?,
+        )),
+        _ => Err(invalid_stored("Decision work scope")),
+    }
+}
+
+fn ensure_decision_work_scope(
+    connection: &Connection,
+    project_id: ProjectId,
+    scope: DecisionWorkScope,
+) -> Result<(), Error> {
+    if let DecisionWorkScope::WorkItem(identity) = scope {
+        let item = load_context_item(connection, project_id, identity)?;
+        if item.role != ContextItemRole::Goal {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Decision Work Item scope must reference a Goal Context Item",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn load_context_item_revision(
@@ -1830,6 +1900,8 @@ fn load_decision_revision(
         Option<String>,
         String,
         Vec<u8>,
+        String,
+        Option<Vec<u8>>,
         Vec<u8>,
         Vec<u8>,
         Vec<u8>,
@@ -1840,11 +1912,12 @@ fn load_decision_revision(
     let row: Row = connection.query_row(
         "SELECT question_id, question_revision, user_turn_source_id, choice_kind, choice_value,
                 user_rationale, displayed_alternatives, recommendation_key, recommendation_rationale,
-                recommendation_sources, applicability_paths, applicability_components,
+                recommendation_sources, work_scope, work_item_id,
+                applicability_paths, applicability_components,
                 applicability_work_contexts, assumptions, revisit_triggers, recorded_at
          FROM decision_revisions WHERE project_id = ?1 AND decision_id = ?2 AND revision = ?3",
         params![project_id.as_bytes().as_slice(), decision_id.as_bytes().as_slice(), revision_i64(revision)?],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?, row.get(13)?, row.get(14)?, row.get(15)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?, row.get(11)?, row.get(12)?, row.get(13)?, row.get(14)?, row.get(15)?, row.get(16)?, row.get(17)?)),
     ).optional().map_err(read_error)?.ok_or_else(|| Error::new(ErrorKind::NotFound, "Decision revision was not found"))?;
     let choice = match row.3.as_str() {
         "alternative" => DecisionChoice::Alternative {
@@ -1868,14 +1941,15 @@ fn load_decision_revision(
             rationale: row.8,
             source_basis: decode_source_ids(&row.9)?,
         },
+        work_scope: parse_decision_work_scope(&row.10, row.11.as_deref())?,
         applicability: ApplicabilityScope {
-            paths: decode_strings(&row.10)?,
-            components: decode_strings(&row.11)?,
-            work_contexts: decode_strings(&row.12)?,
+            paths: decode_strings(&row.12)?,
+            components: decode_strings(&row.13)?,
+            work_contexts: decode_strings(&row.14)?,
         },
-        assumptions: decode_strings(&row.13)?,
-        revisit_triggers: decode_strings(&row.14)?,
-        recorded_at: TimestampMicros::from_unix_micros(row.15),
+        assumptions: decode_strings(&row.15)?,
+        revisit_triggers: decode_strings(&row.16)?,
+        recorded_at: TimestampMicros::from_unix_micros(row.17),
     })
 }
 
@@ -2646,10 +2720,11 @@ impl Store {
                      id, project_id, revision, question_id, question_revision, user_turn_source_id,
                      user_authority, choice_kind, choice_value, user_rationale, displayed_alternatives,
                      recommendation_key, recommendation_rationale, recommendation_sources,
+                     work_scope, work_item_id,
                      applicability_paths, applicability_components, applicability_work_contexts,
                      assumptions, revisit_triggers, recorded_at
                 ) VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-                           ?14, ?15, ?16, ?17, ?18, ?19)",
+                           ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
                 params![
                     decision_id.as_bytes().as_slice(),
                     project_id.as_bytes().as_slice(),
@@ -2664,6 +2739,8 @@ impl Store {
                     previous.displayed_recommendation.alternative_key,
                     previous.displayed_recommendation.rationale,
                     encode_source_ids(&previous.displayed_recommendation.source_basis),
+                    previous.work_scope.as_str(),
+                    decision_work_item_bytes(previous.work_scope),
                     encode_strings(&draft.applicability.paths),
                     encode_strings(&draft.applicability.components),
                     encode_strings(&draft.applicability.work_contexts),
@@ -2684,6 +2761,7 @@ impl Store {
             user_rationale: draft.user_rationale,
             displayed_alternatives: previous.displayed_alternatives,
             displayed_recommendation: previous.displayed_recommendation,
+            work_scope: previous.work_scope,
             applicability: draft.applicability,
             assumptions: draft.assumptions,
             revisit_triggers: draft.revisit_triggers,
@@ -3236,6 +3314,26 @@ impl Store {
                     })?;
             }
             CanonicalRecordId::ContextItem(item_id) => {
+                let referenced: i64 = transaction
+                    .query_row(
+                        "SELECT EXISTS(
+                             SELECT 1 FROM decisions WHERE project_id = ?1 AND work_item_id = ?2
+                             UNION ALL
+                             SELECT 1 FROM checkpoints WHERE project_id = ?1 AND work_item_id = ?2
+                         )",
+                        params![
+                            project_id.as_bytes().as_slice(),
+                            item_id.as_bytes().as_slice()
+                        ],
+                        |row| row.get(0),
+                    )
+                    .map_err(read_error)?;
+                if referenced != 0 {
+                    return Err(Error::new(
+                        ErrorKind::DomainConflict,
+                        "Context Item is retained by a Decision or Checkpoint Work Item reference",
+                    ));
+                }
                 transaction.execute("DELETE FROM context_item_sources WHERE project_id = ?1 AND context_item_id = ?2", params![project_id.as_bytes().as_slice(), item_id.as_bytes().as_slice()]).map_err(write_error)?;
                 transaction.execute("DELETE FROM context_item_revisions WHERE project_id = ?1 AND context_item_id = ?2", params![project_id.as_bytes().as_slice(), item_id.as_bytes().as_slice()]).map_err(write_error)?;
                 transaction
@@ -3491,6 +3589,15 @@ fn checkpoint_basis(project_id: ProjectId, draft: &CheckpointDraft) -> Vec<u8> {
     let mut basis = Basis::new("record_checkpoint")
         .bytes(project_id.as_bytes())
         .number(draft.expected_project_revision)
+        .string(if draft.work_item_id.is_some() {
+            "some"
+        } else {
+            "none"
+        });
+    if let Some(work_item_id) = draft.work_item_id {
+        basis = basis.bytes(work_item_id.as_bytes());
+    }
+    basis = basis
         .string(draft.kind.as_str())
         .string(&draft.goal)
         .string(draft.work_state.as_str())
@@ -3571,6 +3678,7 @@ fn load_checkpoint(
     type CheckpointRow = (
         Vec<u8>,
         i64,
+        Option<Vec<u8>>,
         String,
         String,
         String,
@@ -3588,7 +3696,7 @@ fn load_checkpoint(
     );
     let row: CheckpointRow = connection
         .query_row(
-            "SELECT project_id, revision, checkpoint_kind, goal, work_state, state_change,
+            "SELECT project_id, revision, work_item_id, checkpoint_kind, goal, work_state, state_change,
                     changed_paths, user_review, user_review_source_id, user_acceptance,
                     user_acceptance_source_id, known_limits, non_goals, next_step,
                     handoff_to, recorded_at
@@ -3612,6 +3720,7 @@ fn load_checkpoint(
                     row.get(13)?,
                     row.get(14)?,
                     row.get(15)?,
+                    row.get(16)?,
                 ))
             },
         )
@@ -3635,32 +3744,37 @@ fn load_checkpoint(
         id: checkpoint_id,
         project_id,
         revision: stored_revision(row.1)?,
-        kind: CheckpointKind::parse(&row.2).ok_or_else(|| invalid_stored("Checkpoint kind"))?,
-        goal: row.3,
-        work_state: WorkState::parse(&row.4)
+        work_item_id: row
+            .2
+            .as_deref()
+            .map(ContextItemId::from_slice)
+            .transpose()?,
+        kind: CheckpointKind::parse(&row.3).ok_or_else(|| invalid_stored("Checkpoint kind"))?,
+        goal: row.4,
+        work_state: WorkState::parse(&row.5)
             .ok_or_else(|| invalid_stored("Checkpoint work state"))?,
-        state_change: row.5,
+        state_change: row.6,
         source_basis,
         changed_source_basis,
-        changed_paths: decode_strings(&row.6)?,
+        changed_paths: decode_strings(&row.7)?,
         applied_decisions,
         verification,
         user_review: UserReviewFact {
-            state: UserReviewState::parse(&row.7)
+            state: UserReviewState::parse(&row.8)
                 .ok_or_else(|| invalid_stored("Checkpoint user review state"))?,
-            source_id: row.8.as_deref().map(SourceId::from_slice).transpose()?,
+            source_id: row.9.as_deref().map(SourceId::from_slice).transpose()?,
         },
         user_acceptance: UserAcceptanceFact {
-            state: UserAcceptanceState::parse(&row.9)
+            state: UserAcceptanceState::parse(&row.10)
                 .ok_or_else(|| invalid_stored("Checkpoint user acceptance state"))?,
-            source_id: row.10.as_deref().map(SourceId::from_slice).transpose()?,
+            source_id: row.11.as_deref().map(SourceId::from_slice).transpose()?,
         },
-        known_limits: decode_strings(&row.11)?,
-        non_goals: decode_strings(&row.12)?,
+        known_limits: decode_strings(&row.12)?,
+        non_goals: decode_strings(&row.13)?,
         open_questions,
-        next_step: row.13,
-        handoff_to: row.14,
-        recorded_at: TimestampMicros::from_unix_micros(row.15),
+        next_step: row.14,
+        handoff_to: row.15,
+        recorded_at: TimestampMicros::from_unix_micros(row.16),
     })
 }
 
@@ -4122,6 +4236,10 @@ fn response_basis(project_id: ProjectId, draft: &QuestionResponseDraft) -> Resul
             .string(delegate_to)
             .optional_string(user_rationale.as_deref()),
     };
+    basis = basis.string(draft.work_scope.as_str());
+    if let DecisionWorkScope::WorkItem(identity) = draft.work_scope {
+        basis = basis.bytes(identity.as_bytes());
+    }
     Ok(basis
         .bytes(&encode_strings(&draft.applicability.paths))
         .bytes(&encode_strings(&draft.applicability.components))
@@ -4652,6 +4770,8 @@ fn load_decision(
         Option<String>,
         String,
         Vec<u8>,
+        String,
+        Option<Vec<u8>>,
         Vec<u8>,
         Vec<u8>,
         Vec<u8>,
@@ -4664,6 +4784,7 @@ fn load_decision(
             "SELECT project_id, revision, question_id, question_revision, user_turn_source_id,
                     choice_kind, choice_value, user_rationale, displayed_alternatives,
                     recommendation_key, recommendation_rationale, recommendation_sources,
+                    work_scope, work_item_id,
                     applicability_paths, applicability_components, applicability_work_contexts,
                     assumptions, revisit_triggers, recorded_at
              FROM decisions WHERE id = ?1",
@@ -4688,6 +4809,8 @@ fn load_decision(
                     row.get(15)?,
                     row.get(16)?,
                     row.get(17)?,
+                    row.get(18)?,
+                    row.get(19)?,
                 ))
             },
         )
@@ -4728,14 +4851,15 @@ fn load_decision(
             rationale: row.10,
             source_basis: decode_source_ids(&row.11)?,
         },
+        work_scope: parse_decision_work_scope(&row.12, row.13.as_deref())?,
         applicability: ApplicabilityScope {
-            paths: decode_strings(&row.12)?,
-            components: decode_strings(&row.13)?,
-            work_contexts: decode_strings(&row.14)?,
+            paths: decode_strings(&row.14)?,
+            components: decode_strings(&row.15)?,
+            work_contexts: decode_strings(&row.16)?,
         },
-        assumptions: decode_strings(&row.15)?,
-        revisit_triggers: decode_strings(&row.16)?,
-        recorded_at: TimestampMicros::from_unix_micros(row.17),
+        assumptions: decode_strings(&row.17)?,
+        revisit_triggers: decode_strings(&row.18)?,
+        recorded_at: TimestampMicros::from_unix_micros(row.19),
     })
 }
 
@@ -5242,6 +5366,8 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  recommendation_key TEXT,
                  recommendation_rationale TEXT NOT NULL,
                  recommendation_sources BLOB NOT NULL,
+                 work_scope TEXT NOT NULL CHECK(work_scope IN ('unresolved','project_wide','work_item')),
+                 work_item_id BLOB CHECK(work_item_id IS NULL OR length(work_item_id) = 16),
                  applicability_paths BLOB NOT NULL,
                  applicability_components BLOB NOT NULL,
                  applicability_work_contexts BLOB NOT NULL,
@@ -5249,6 +5375,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  revisit_triggers BLOB NOT NULL,
                  recorded_at INTEGER NOT NULL,
                  UNIQUE(project_id, id),
+                 CHECK((work_scope = 'work_item') = (work_item_id IS NOT NULL)),
                  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT
              );
              CREATE TABLE context_items(
@@ -5314,6 +5441,8 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  recommendation_key TEXT,
                  recommendation_rationale TEXT NOT NULL,
                  recommendation_sources BLOB NOT NULL,
+                 work_scope TEXT NOT NULL CHECK(work_scope IN ('unresolved','project_wide','work_item')),
+                 work_item_id BLOB CHECK(work_item_id IS NULL OR length(work_item_id) = 16),
                  applicability_paths BLOB NOT NULL,
                  applicability_components BLOB NOT NULL,
                  applicability_work_contexts BLOB NOT NULL,
@@ -5325,6 +5454,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                      authorization_authority IS NULL OR authorization_authority = 'current_host_user_turn'
                  ),
                  recorded_at INTEGER NOT NULL,
+                 CHECK((work_scope = 'work_item') = (work_item_id IS NOT NULL)),
                  PRIMARY KEY(decision_id, revision)
              ) WITHOUT ROWID;
              CREATE TABLE canonical_relations(
@@ -5395,6 +5525,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  id BLOB PRIMARY KEY NOT NULL CHECK(length(id) = 16),
                  project_id BLOB NOT NULL CHECK(length(project_id) = 16),
                  revision INTEGER NOT NULL CHECK(revision = 1),
+                 work_item_id BLOB CHECK(work_item_id IS NULL OR length(work_item_id) = 16),
                  checkpoint_kind TEXT NOT NULL CHECK(checkpoint_kind IN ('completion','pause','handoff')),
                  goal TEXT NOT NULL CHECK(length(goal) > 0),
                  work_state TEXT NOT NULL CHECK(work_state IN (
@@ -5415,6 +5546,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  recorded_at INTEGER NOT NULL,
                  UNIQUE(project_id, id),
                  FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE RESTRICT,
+                 FOREIGN KEY(project_id, work_item_id) REFERENCES context_items(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, user_review_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, user_acceptance_source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT
              );
