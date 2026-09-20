@@ -451,7 +451,7 @@ term도 deterministic representative set만 plan에 포함하며 term/item bound
 Phase 8 recorder는 preparation의 candidate/local MCP executable binding과 realizer의
 identity claim을 구분한다. Verified preparation은 exact plan/route의 local evidence일 뿐
 active-host authorship 또는 exact model identity의 attestation이 아니다. 현재 control path가
-독립 검증하지 못하는 host/agent/model은 `self_reported` 또는 `unknown`으로 immutable하게
+독립 검증하지 못하는 host/agent/model/session/runtime은 `self_reported` 또는 `unknown`으로 immutable하게
 기록하고, 기존 Product generator metadata에도 unverified 상태를 명시한다. Arbitrary
 non-empty model string이나 환경의 session ID만으로 verified model provenance를 만들지 않는다.
 Unknown exact identity는 language failure가 아니다. Fingerprint, topology, protected-term,
@@ -462,7 +462,9 @@ generation은 MCP 사용 전후에 그 binding을 다시 검증하며 같은 pat
 document evidence로 publish하지 않는다.
 Codex의 maintained rollout이 `session_meta` source/originator/session과 일관된
 `turn_context.model`을 제공하면 mutable draft는 exact rollout SHA-256에 bound된
-`runtime_observed` host/agent/model claim으로 갱신할 수 있다. Recorder는 preflight와 record
+`runtime_observed` host/agent/model/session/runtime claim으로 갱신할 수 있다. Session은 rollout의
+session identity를, runtime은 host-recorded Codex CLI version을 보존하며 generic model string과
+합쳐 쓰지 않는다. Recorder는 preflight와 record
 때 같은 rollout bytes를 다시 확인한다. 이 state는 host-recorded runtime observation이며
 authorship attestation이 아니므로 Product metadata도 그 한계를 표시한다. Runtime observation과
 충돌하는 self-report는 거부하고, exact metadata가 없으면 `unknown` 또는 명시적

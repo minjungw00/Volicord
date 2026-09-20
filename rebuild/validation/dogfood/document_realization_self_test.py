@@ -227,7 +227,7 @@ class DocumentRealizationTests(unittest.TestCase):
             draft_path = root / entry["draft"]
             value = complete_synthetic_draft(c.read_json(draft_path))
             self.assertEqual(value["provenance"]["model"], {"state": "unknown", "value": None})
-            for field in ("host", "agent", "model"):
+            for field in ("host", "agent", "model", "session", "runtime"):
                 invalid = deepcopy(value)
                 invalid["provenance"][field] = {"state": "verified", "value": "arbitrary-exact-identity"}
                 c.write_json(draft_path, invalid)
@@ -273,7 +273,7 @@ class DocumentRealizationTests(unittest.TestCase):
             entry = c.read_json(root / "realizer/index.json")["documents"][0]
             draft_path = root / entry["draft"]
             value = complete_synthetic_draft(c.read_json(draft_path))
-            for field in ("host", "agent", "model"):
+            for field in ("host", "agent", "model", "session", "runtime"):
                 value["provenance"][field] = {"state": "unknown", "value": None}
             c.write_json(draft_path, value)
             result = r.bind_runtime_provenance(root, entry["realization_id"], draft_path, rollout)
@@ -283,6 +283,11 @@ class DocumentRealizationTests(unittest.TestCase):
             self.assertEqual(provenance["host"], {"state": "runtime_observed", "value": "vscode"})
             self.assertEqual(provenance["agent"], {"state": "runtime_observed", "value": "codex_vscode"})
             self.assertEqual(provenance["model"], {"state": "runtime_observed", "value": "future-model/exact-42"})
+            self.assertEqual(provenance["session"], {"state": "runtime_observed", "value": "realizer-session"})
+            self.assertEqual(provenance["runtime"], {"state": "runtime_observed", "value": "codex-cli/0.145.0"})
+            self.assertEqual(provenance["runtime_observation"], {
+                "state": "observed", "source": "codex_vscode_rollout",
+                "rollout_sha256": h.sha256(rollout)})
             with self.assertRaisesRegex(c.CampaignError, "exact rollout"):
                 r.validate(root, entry["realization_id"], draft_path)
             self.assertEqual(r.validate(root, entry["realization_id"], draft_path, rollout)["state"], "valid")
@@ -410,7 +415,7 @@ class DocumentRealizationTests(unittest.TestCase):
             preparation = {"project_id": project_id, "document_kind": kind, "language": "ko-KR", "locale": "en"}
             plan = r.current_plan(binary, runtime, preparation, "markdown")
             self.assertEqual(plan, r.current_plan(binary, runtime, preparation, "html"))
-            preparation.update(plan=plan, schema_version=3, candidate_head=h.git_head(c.ROOT))
+            preparation.update(plan=plan, schema_version=4, candidate_head=h.git_head(c.ROOT))
             preparation["provenance_binding"] = {"state": "verified", "source": "candidate_local_document_preview",
                 "candidate_head": preparation["candidate_head"], "mcp_sha256": r.route(binary)["mcp_sha256"]}
             # Synthetic host input tests topology/grounding transport, not language quality.

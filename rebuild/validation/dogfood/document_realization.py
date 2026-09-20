@@ -142,8 +142,9 @@ def current_plan(binary: Path, runtime: Path, preparation: dict[str, Any], forma
 def provenance_template(binding: dict[str, Any]) -> dict[str, Any]:
     return {"preparation_binding": binding,
         "runtime_observation": {"state": "not_provided", "source": None,
-            "rollout_sha256": None, "session_id": None, "cli_version": None},
-        **{field: {"state": "unknown", "value": None} for field in ("host", "agent", "model")}}
+            "rollout_sha256": None},
+        **{field: {"state": "unknown", "value": None}
+           for field in ("host", "agent", "model", "session", "runtime")}}
 
 
 def observed_runtime_provenance(binding: dict[str, Any], rollout: Path) -> dict[str, Any]:
@@ -165,12 +166,13 @@ def observed_runtime_provenance(binding: dict[str, Any], rollout: Path) -> dict[
     if not models or len(set(models)) != 1:
         raise c.CampaignError("runtime rollout does not provide one exact consistent model identity")
     observation = {"state": "observed", "source": "codex_vscode_rollout",
-        "rollout_sha256": capture.source_sha256, "session_id": capture.session_id,
-        "cli_version": capture.cli_version}
+        "rollout_sha256": capture.source_sha256}
     return {"preparation_binding": binding, "runtime_observation": observation,
         "host": {"state": "runtime_observed", "value": capture.source},
         "agent": {"state": "runtime_observed", "value": capture.originator},
-        "model": {"state": "runtime_observed", "value": models[0]}}
+        "model": {"state": "runtime_observed", "value": models[0]},
+        "session": {"state": "runtime_observed", "value": capture.session_id},
+        "runtime": {"state": "runtime_observed", "value": f"codex-cli/{capture.cli_version}"}}
 
 
 def validate_provenance(preparation: dict[str, Any], provenance: Any, *,
@@ -178,7 +180,7 @@ def validate_provenance(preparation: dict[str, Any], provenance: Any, *,
     """The preparation proves a local route, never authorship or exact model identity."""
     c = campaign_api()
     binding = preparation.get("provenance_binding")
-    if (preparation.get("schema_version") != 3 or not isinstance(binding, dict)
+    if (preparation.get("schema_version") != 4 or not isinstance(binding, dict)
         or set(binding) != {"state", "source", "candidate_head", "mcp_sha256"}
         or binding.get("state") != "verified"
         or binding.get("source") != "candidate_local_document_preview"
@@ -186,33 +188,31 @@ def validate_provenance(preparation: dict[str, Any], provenance: Any, *,
         or not re.fullmatch(r"[0-9a-f]{40}", str(binding.get("candidate_head", "")))
         or not re.fullmatch(r"[0-9a-f]{64}", str(binding.get("mcp_sha256", "")))
         or not isinstance(provenance, dict)
-        or set(provenance) != {"preparation_binding", "runtime_observation", "host", "agent", "model"}
+        or set(provenance) != {"preparation_binding", "runtime_observation", "host", "agent", "model",
+                              "session", "runtime"}
         or provenance.get("preparation_binding") != binding):
         raise c.CampaignError("realization provenance does not match verified preparation binding")
     observation = provenance["runtime_observation"]
-    empty_observation = {"state": "not_provided", "source": None,
-        "rollout_sha256": None, "session_id": None, "cli_version": None}
+    empty_observation = {"state": "not_provided", "source": None, "rollout_sha256": None}
     if observation == empty_observation:
         allow_runtime = False
         if runtime_rollout is not None:
             raise c.CampaignError("runtime rollout was supplied but stronger identity was not bound into the draft")
     elif (isinstance(observation, dict)
-          and set(observation) == {"state", "source", "rollout_sha256", "session_id", "cli_version"}
+          and set(observation) == {"state", "source", "rollout_sha256"}
           and observation.get("state") == "observed"
           and observation.get("source") == "codex_vscode_rollout"
-          and re.fullmatch(r"[0-9a-f]{64}", str(observation.get("rollout_sha256", "")))
-          and isinstance(observation.get("session_id"), str) and observation["session_id"].strip()
-          and isinstance(observation.get("cli_version"), str) and observation["cli_version"].strip()):
+          and re.fullmatch(r"[0-9a-f]{64}", str(observation.get("rollout_sha256", "")))):
         allow_runtime = True
     else:
         raise c.CampaignError("invalid realization runtime identity observation")
-    for field in ("host", "agent", "model"):
+    for field in ("host", "agent", "model", "session", "runtime"):
         try:
             identity_provenance.validate_claim(provenance[field], allow_runtime_observed=allow_runtime)
         except ValueError as error:
             raise c.CampaignError(str(error)) from error
     runtime_claims = all(provenance[field]["state"] == "runtime_observed"
-                         for field in ("host", "agent", "model"))
+                         for field in ("host", "agent", "model", "session", "runtime"))
     if allow_runtime != runtime_claims:
         raise c.CampaignError("runtime observation and identity claim provenance disagree")
     if allow_runtime:
@@ -237,7 +237,7 @@ def bind_runtime_provenance(root: Path, identity: str, draft_path: Path,
     draft = json.loads(original)
     validate_value(preparation, preparation_bytes, draft, allow_bound_runtime=True)
     observed = observed_runtime_provenance(preparation["provenance_binding"], rollout)
-    for field in ("host", "agent", "model"):
+    for field in ("host", "agent", "model", "session", "runtime"):
         claim = draft["provenance"][field]
         if claim["state"] == "self_reported" and claim["value"] != observed[field]["value"]:
             raise c.CampaignError(f"self-reported {field} conflicts with stronger runtime observation")
@@ -353,7 +353,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
             raise c.CampaignError("raw work/resume captures do not establish one exact cycle Project")
         for document_kind in c.DOCUMENT_KINDS:
             identity = secrets.token_hex(16)
-            preparation = {"kind": "active_host_document_preparation", "schema_version": 3,
+            preparation = {"kind": "active_host_document_preparation", "schema_version": 4,
                 "realization_id": identity, "candidate_head": campaign["candidate_head"],
                 "project_id": work_ids[0], "document_kind": document_kind,
                 "language": campaign["document_language"], "locale": campaign["viewer_locale"]}
@@ -370,7 +370,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
                 raise c.CampaignError("Product plan exceeds the private preparation artifact bound")
             plan_path = artifact(root, "plans", identity)
             files[plan_path] = data
-            draft = {"schema_version": 3, "preparation_sha256": hashlib.sha256(data).hexdigest(),
+            draft = {"schema_version": 4, "preparation_sha256": hashlib.sha256(data).hexdigest(),
                 "provenance": provenance_template(preparation["provenance_binding"]),
                 "requested_language": preparation["language"], "all_generated_prose_realized": False,
                 "realization": {"plan_fingerprint": plan["plan_fingerprint"], "title": None,
@@ -408,7 +408,7 @@ def validate_value(preparation: dict[str, Any], preparation_bytes: bytes, value:
         return isinstance(value, str) and bool(value.strip()) and len(value.encode("utf-8")) <= 4096
     require(isinstance(value, dict) and set(value) == {"schema_version", "provenance", "preparation_sha256", "requested_language",
         "all_generated_prose_realized", "realization"}, "invalid realization draft shape")
-    require(value["schema_version"] == 3, "unsupported realization draft version")
+    require(value["schema_version"] == 4, "unsupported realization draft version")
     validate_provenance(preparation, value["provenance"], runtime_rollout=runtime_rollout,
                         allow_bound_runtime=allow_bound_runtime)
     require(value["preparation_sha256"] == hashlib.sha256(preparation_bytes).hexdigest(), "wrong preparation hash")

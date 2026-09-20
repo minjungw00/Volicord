@@ -1378,19 +1378,20 @@ publication 뒤 종료되어 command result를 받지 못했더라도 inspection
 `repair_required`이고 success로 추정하지 않는다.
 
 Active host/model만 draft의 requested-language title, section title와 claim text를 채운다.
-Preparation/draft schema version은 3이며 draft의 structured `provenance`는 verified
-`preparation_binding`과 독립 `host`, `agent`, `model` identity claim을 가진다. Verified binding은
+Preparation/draft schema version은 4이며 draft의 structured `provenance`는 verified
+`preparation_binding`과 독립 `host`, `agent`, `model`, `session`, `runtime` identity claim을 가진다. Verified binding은
 preparation이 확인한 candidate HEAD와 local `document_preview` MCP executable SHA-256만
 증명한다. Environment의 session ID 존재는 exact model이나 realization authorship 증명이
-아니다. 현재 repository/control path는 exact host/agent/model을 독립 attest할 수 없으므로
-이 세 claim은 `unknown` + null 또는 `self_reported` + bounded text만 허용한다. `verified`
+아니다. 현재 repository/control path는 이 identity를 독립 attest할 수 없으므로
+각 claim은 `unknown` + null 또는 `self_reported` + bounded text만 허용한다. `verified`
 claim, unknown state의 non-null identity와 preparation binding mismatch는 reject한다.
 Caller는 `realization.generator`를 제출하지 않는다. Recorder는 structured provenance에서
 Product metadata를 derive하고 모든 host/agent/model 값에 `unverified`를 명시한다. Unknown
 model은 `unknown (unverified)`이며 arbitrary exact model을 verified identity로 표시하지 않는다.
 Maintained Codex rollout의 bounded `session_meta`와 일관된 `turn_context.model`이 제공되면
-별도 draft-binding operation은 exact rollout SHA-256/session/CLI version과 source/originator/model을
-`runtime_observed`로 기록한다. Preflight와 record는 같은 raw bytes를 재검사한다. 이 state는
+별도 draft-binding operation은 exact rollout SHA-256과 source/originator/model/session/CLI runtime을
+각각 `runtime_observed`로 기록한다. Session과 runtime identity는 generic host/model 문자열과
+합치지 않으며 preflight와 record는 같은 raw bytes를 재검사한다. 이 state는
 self-report보다 강하지만 authorship attestation은 아니며 `verified`로 승격되지 않는다.
 충돌하는 덜 구체적 self-report는 거부하고, runtime metadata가 없으면 unknown이 representable하다.
 Arbitrary model-name allowlist는 qualification 조건이 아니다.
