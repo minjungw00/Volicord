@@ -13,8 +13,9 @@ use volicord_projections::{
     UnderstandingBound, UnderstandingExplanationKind,
 };
 use volicord_repository_intelligence::{
-    analyze_repository_semantics, CanonicalGrounding, InventoryRequest, Language,
-    SemanticAnalysisRequest, StructuralAnalysisRequest, StructuralRelationKind,
+    analyze_repository_semantics, AnalysisSnapshot, CanonicalGrounding, CodeEntityKind,
+    InventoryRequest, Language, RelationTarget, SemanticAnalysisRequest, StructuralAnalysisRequest,
+    StructuralRelation, StructuralRelationKind,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -32,6 +33,21 @@ fn build_projection(
     ),
     Box<dyn std::error::Error>,
 > {
+    build_projection_scenario(files, &[changed_path], &[vec![changed_path]], limit, |_| {
+        Ok(())
+    })
+}
+
+fn build_projection_scenario<F>(
+    files: &[(&str, &str)],
+    goal_paths: &[&str],
+    checkpoint_paths: &[Vec<&str>],
+    limit: usize,
+    enrich_analysis: F,
+) -> Result<(ProjectProjection, AnalysisSnapshot), Box<dyn std::error::Error>>
+where
+    F: FnOnce(&mut AnalysisSnapshot) -> Result<(), Box<dyn std::error::Error>>,
+{
     let temporary = tempdir()?;
     let repository = temporary.path().join("repository");
     fs::create_dir_all(&repository)?;
@@ -74,7 +90,7 @@ fn build_projection(
                 payload: SourcePayload::CurrentHostUserTurn {
                     host: "projection-test".into(),
                     session: "current-work-flow".into(),
-                    turn: format!("Continue work in {changed_path}"),
+                    turn: format!("Continue work in {}", goal_paths.join(", ")),
                 },
                 actor: Principal {
                     kind: PrincipalKind::User,
@@ -85,56 +101,64 @@ fn build_projection(
             },
         )?
         .value;
-    store.record_context_item(
-        operation(4),
-        project.id,
-        ContextItemDraft {
-            expected_project_revision: project.revision,
-            role: ContextItemRole::Goal,
-            statement: "Keep the current work flow inspectable".into(),
-            provenance_role: StatementProvenanceRole::UserStatement,
-            author: Principal {
-                kind: PrincipalKind::User,
-                identity: "owner".into(),
+    let goal = store
+        .record_context_item(
+            operation(4),
+            project.id,
+            ContextItemDraft {
+                expected_project_revision: project.revision,
+                role: ContextItemRole::Goal,
+                statement: "Keep the current work flow inspectable".into(),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author: Principal {
+                    kind: PrincipalKind::User,
+                    identity: "owner".into(),
+                },
+                source_basis: vec![user_turn.id],
+                applicability: ApplicabilityScope {
+                    paths: goal_paths.iter().map(|path| (*path).into()).collect(),
+                    components: Vec::new(),
+                    work_contexts: vec!["viewer-current-work".into()],
+                },
             },
-            source_basis: vec![user_turn.id],
-            applicability: ApplicabilityScope {
-                paths: vec![changed_path.into()],
-                components: Vec::new(),
-                work_contexts: vec!["viewer-current-work".into()],
+        )?
+        .value;
+    for (index, paths) in checkpoint_paths.iter().enumerate() {
+        store.record_checkpoint(
+            operation(5 + u8::try_from(index)?),
+            project.id,
+            CheckpointDraft {
+                expected_project_revision: project.revision,
+                work_item_id: Some(goal.id),
+                kind: CheckpointKind::Handoff,
+                goal: "Keep the current work flow inspectable".into(),
+                work_state: WorkState::Paused,
+                state_change: Some(if paths.is_empty() {
+                    "Verification completed without additional source changes".into()
+                } else {
+                    "Repository Intelligence analysis is available".into()
+                }),
+                source_basis: vec![repository_source.id, user_turn.id],
+                changed_source_basis: vec![repository_source.id],
+                changed_paths: paths.iter().map(|path| (*path).into()).collect(),
+                applied_decisions: Vec::new(),
+                verification: Vec::new(),
+                user_review: UserReviewFact {
+                    state: UserReviewState::NotRequested,
+                    source_id: None,
+                },
+                user_acceptance: UserAcceptanceFact {
+                    state: UserAcceptanceState::NotRequested,
+                    source_id: None,
+                },
+                known_limits: Vec::new(),
+                non_goals: Vec::new(),
+                open_questions: Vec::new(),
+                next_step: "Inspect the grounded current-work relation".into(),
+                handoff_to: Some("next agent".into()),
             },
-        },
-    )?;
-    store.record_checkpoint(
-        operation(5),
-        project.id,
-        CheckpointDraft {
-            expected_project_revision: project.revision,
-            work_item_id: None,
-            kind: CheckpointKind::Handoff,
-            goal: "Keep the current work flow inspectable".into(),
-            work_state: WorkState::Paused,
-            state_change: Some("Repository Intelligence analysis is available".into()),
-            source_basis: vec![repository_source.id, user_turn.id],
-            changed_source_basis: vec![repository_source.id],
-            changed_paths: vec![changed_path.into()],
-            applied_decisions: Vec::new(),
-            verification: Vec::new(),
-            user_review: UserReviewFact {
-                state: UserReviewState::NotRequested,
-                source_id: None,
-            },
-            user_acceptance: UserAcceptanceFact {
-                state: UserAcceptanceState::NotRequested,
-                source_id: None,
-            },
-            known_limits: Vec::new(),
-            non_goals: Vec::new(),
-            open_questions: Vec::new(),
-            next_step: "Inspect the grounded current-work relation".into(),
-            handoff_to: Some("next agent".into()),
-        },
-    )?;
+        )?;
+    }
     let canonical = store.read_canonical_basis(
         project.id,
         CanonicalReadOptions {
@@ -142,7 +166,7 @@ fn build_projection(
         },
     )?;
     let grounding = CanonicalGrounding::from_read_basis(&canonical)?;
-    let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+    let (_, mut analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
         StructuralAnalysisRequest::new(InventoryRequest::new(
             &repository,
             &grounding,
@@ -150,6 +174,7 @@ fn build_projection(
             1,
         )?),
     ))?;
+    enrich_analysis(&mut analysis)?;
     let candidates = CandidateStore::open(temporary.path().join("candidates.sqlite3"))?
         .read_basis(project.id)?;
     let projection = build_project_projection(ProjectProjectionInputs {
@@ -158,7 +183,7 @@ fn build_projection(
         analyses: &[&analysis],
         applicability: volicord_inquiry::ApplicabilityQuery {
             project_id: project.id,
-            paths: vec![changed_path.into()],
+            paths: goal_paths.iter().map(|path| (*path).into()).collect(),
             components: Vec::new(),
             work_contexts: vec!["viewer-current-work".into()],
             current_assumptions: Vec::new(),
@@ -172,6 +197,44 @@ fn build_projection(
         },
     });
     Ok((projection, analysis))
+}
+
+fn add_fixture_flow_relation(
+    analysis: &mut AnalysisSnapshot,
+    identity: &str,
+    source_path: &str,
+    target_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source_index = analysis
+        .structural_facts
+        .iter()
+        .position(|fact| {
+            fact.entity.area.path == source_path && fact.entity.kind == CodeEntityKind::File
+        })
+        .ok_or_else(|| format!("fixture file entity missing: {source_path}"))?;
+    let target_identity = analysis
+        .structural_facts
+        .iter()
+        .find(|fact| {
+            fact.entity.area.path == target_path && fact.entity.kind == CodeEntityKind::File
+        })
+        .map(|fact| fact.entity.identity.clone())
+        .ok_or_else(|| format!("fixture file entity missing: {target_path}"))?;
+    let source = &mut analysis.structural_facts[source_index];
+    source.relations.push(StructuralRelation {
+        identity: identity.into(),
+        repository_snapshot: analysis.repository_snapshot,
+        analysis_snapshot: analysis.identity,
+        source_entity: source.entity.identity.clone(),
+        target: RelationTarget::ResolvedEntity(target_identity),
+        kind: StructuralRelationKind::LanguageSpecific("binding_data_flow".into()),
+        supporting_range: source.entity.source_range.clone(),
+        diagnostics: Vec::new(),
+        uncertainty: source.entity.uncertainty.clone(),
+        freshness: source.entity.freshness.clone(),
+        extensions: Vec::new(),
+    });
+    Ok(())
 }
 
 #[test]
@@ -392,5 +455,105 @@ fn polyglot_keeps_real_local_flow_without_fabricating_a_cross_language_edge(
         .known_gaps
         .iter()
         .any(|gap| gap.contains("unresolved") && gap.contains("not a Code Entity")));
+    Ok(())
+}
+
+#[test]
+fn polyglot_current_work_keeps_same_work_history_flow_grounding(
+) -> Result<(), Box<dyn std::error::Error>> {
+    const NATIVE_TO_BOUNDARY: &str = "fixture-flow:native-to-runtime-boundary";
+    const BOUNDARY_TO_CONSUMER: &str = "fixture-flow:runtime-boundary-to-consumer";
+    let work_paths = [
+        "native/query.c",
+        "runtime/query_boundary.ts",
+        "typescript/query.ts",
+    ];
+    let (projection, analysis) = build_projection_scenario(
+        &[
+            (
+                work_paths[0],
+                "void collect_query_properties(void *query) { /* native directive maps */ }\n",
+            ),
+            (
+                work_paths[1],
+                "export function readPropertyMaps(nativeResult: unknown) { return nativeResult; }\n",
+            ),
+            (
+                work_paths[2],
+                "import { readPropertyMaps } from '../runtime/query_boundary';\nexport function matches(nativeResult: unknown) { return readPropertyMaps(nativeResult); }\n",
+            ),
+        ],
+        &[],
+        &[work_paths.to_vec(), Vec::new()],
+        8,
+        |analysis| {
+            // The fixture Snapshot explicitly supplies the cross-language
+            // relations. The projection must preserve these records; it must
+            // never infer equivalent edges merely from adjacent file names.
+            add_fixture_flow_relation(
+                analysis,
+                NATIVE_TO_BOUNDARY,
+                work_paths[0],
+                work_paths[1],
+            )?;
+            add_fixture_flow_relation(
+                analysis,
+                BOUNDARY_TO_CONSUMER,
+                work_paths[1],
+                work_paths[2],
+            )
+        },
+    )?;
+
+    let raw_relations = analysis
+        .structural_facts
+        .iter()
+        .flat_map(|fact| &fact.relations)
+        .filter(|relation| {
+            matches!(
+                relation.identity.as_str(),
+                NATIVE_TO_BOUNDARY | BOUNDARY_TO_CONSUMER
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(raw_relations.len(), 2);
+    assert!(raw_relations.iter().all(|relation| {
+        relation.analysis_snapshot == analysis.identity
+            && relation.repository_snapshot == analysis.repository_snapshot
+            && matches!(relation.target, RelationTarget::ResolvedEntity(_))
+    }));
+
+    // The latest Checkpoint intentionally records verification with no new
+    // paths. Earlier paths belong to the same stable Work Item and remain the
+    // meaningful grounding basis for this current-work source flow.
+    let projected_relations = projection
+        .current_work_topology
+        .relations
+        .iter()
+        .map(|relation| relation.identity.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(projected_relations.contains(NATIVE_TO_BOUNDARY));
+    assert!(projected_relations.contains(BOUNDARY_TO_CONSUMER));
+    assert!(work_paths.iter().all(|path| {
+        projection
+            .current_work_code
+            .iter()
+            .any(|link| link.changed_paths.iter().any(|changed| changed == path))
+    }));
+
+    let understanding = build_project_understanding(
+        &projection,
+        UnderstandingBound {
+            max_items_per_section: 8,
+        },
+    );
+    let explained_relations = understanding
+        .deterministic_explanations
+        .iter()
+        .filter(|explanation| explanation.kind == UnderstandingExplanationKind::Flow)
+        .flat_map(|explanation| explanation.relation_basis.iter().map(String::as_str))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(explained_relations.contains(NATIVE_TO_BOUNDARY));
+    assert!(explained_relations.contains(BOUNDARY_TO_CONSUMER));
     Ok(())
 }
