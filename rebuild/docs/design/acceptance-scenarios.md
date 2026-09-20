@@ -924,6 +924,9 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   읽는다.
 - 완료한 work, current state, 남은 work/blocker, next meaningful step, Decision과 rationale,
   affected code, component/architecture/request·data flow를 함께 이해한다.
+- 장기 Project에 서로 다른 Goal이 시간차를 두고 추가되면 Project purpose와 current Work Item을
+  구분하고, completed/current/remaining Work Item의 stable identity, 각 Decision·Checkpoint와
+  changed path를 다른 work와 섞지 않고 탐색한다.
 - 각 핵심 설명에서 evidence basis, capability/coverage, freshness, gap와 uncertainty를
   확인하고 verified fact와 generated interpretation을 구분한다.
 - 관계가 본질적인 component/architecture/flow는 유용한 도식으로 보되, 각
@@ -974,6 +977,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 - requested user-language generated content를 allowlist로 거부하지 않음
 - requested-language body realization 확인 또는 explicit unavailable/degraded outcome
 - Project Understanding required meaning과 fact/interpretation visual distinction
+- one-Project/multiple-Work fixture의 restart, portable bundle, CLI status, document와 Viewer
+  projection에서 Work Item identity·state·Decision·Checkpoint 경계 보존
 - diagram node/edge의 repository/Decision relation grounding
 - Viewer snapshot의 explicit-destination atomic publication, no-listener exit, read-only surface,
   self-contained asset, basis/freshness/degradation visibility와 Runtime-independent read
@@ -982,6 +987,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
 
 - 사용자가 raw JSON/UUID/audit field 없이 완료·현재·남은 work, 구조,
   Decision rationale, affected code와 다음 단계를 이해할 수 있는가
+- Project purpose와 현재 work를 혼동하지 않고 여러 Work Item을 구별해 각각의 상태와 근거를
+  설명할 수 있는가
 - 사용자가 확인된 source fact와 generated interpretation을 다시 설명하고
   diagram relation의 basis를 찾을 수 있는가
 - 네 문서가 다른 agent의 실제 handoff와 사용자의 이해·판단에 충분한가

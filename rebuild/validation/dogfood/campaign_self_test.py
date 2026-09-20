@@ -3315,7 +3315,9 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
 def main() -> int:
     from resume_self_test import check_resume_regressions
     from document_realization_self_test import check_document_realization_regressions
+    from long_lived_project_self_test import check_long_lived_project_regressions
     check_resume_regressions()
+    check_long_lived_project_regressions()
     check_document_realization_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
@@ -3438,6 +3440,7 @@ def main() -> int:
             "document_evidence_project_candidate_cycle_binding",
             "missing_corrupt_and_wrong_format_document_evidence_rejected",
             "static_viewer_snapshot_evidence",
+            "long_lived_one_project_multiple_work_viewer_and_review_boundaries",
             "failed_document_kind_is_machine_failure",
             "bounded_runtime_summary",
             "deterministic_manifest",

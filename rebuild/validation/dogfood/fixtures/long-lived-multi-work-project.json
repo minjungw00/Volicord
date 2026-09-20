@@ -1,0 +1,68 @@
+{
+  "kind": "dogfood_long_lived_project_fixture",
+  "schema_version": 1,
+  "project": {
+    "identity": "one-stable-project",
+    "purpose": "Help maintainers understand and resume the project"
+  },
+  "timeline": [
+    {
+      "sequence": 1,
+      "work_item": "alpha",
+      "goal": "Complete Alpha",
+      "event": "pause_checkpoint",
+      "decision": "alpha-decision",
+      "checkpoint": "alpha-pause",
+      "changed_path": "src/alpha.rs"
+    },
+    {
+      "sequence": 2,
+      "work_item": "alpha",
+      "goal": "Complete Alpha",
+      "event": "completion_checkpoint",
+      "decision": "alpha-decision",
+      "checkpoint": "alpha-complete",
+      "changed_path": "src/alpha.rs"
+    },
+    {
+      "sequence": 3,
+      "work_item": "beta",
+      "goal": "Continue Beta",
+      "event": "handoff_checkpoint",
+      "decision": "beta-decision",
+      "checkpoint": "beta-handoff",
+      "changed_path": "src/beta.rs"
+    },
+    {
+      "sequence": 4,
+      "work_item": "gamma",
+      "goal": "Explore Gamma",
+      "event": "goal_opened",
+      "decision": null,
+      "checkpoint": null,
+      "changed_path": null
+    }
+  ],
+  "expected_viewer_groups": {
+    "completed-work": ["alpha"],
+    "current-work": ["beta"],
+    "remaining-work": ["gamma"]
+  },
+  "expected_review_criteria": [
+    "project_purpose_vs_current_work_clarity",
+    "multiple_work_organization",
+    "completed_current_remaining_work",
+    "evidence_explanation_comprehensibility",
+    "information_hierarchy_and_cognitive_burden"
+  ],
+  "production_routes": [
+    {
+      "package": "volicord-operations",
+      "test": "multi_work_identity_survives_restart_portability_and_read_consumers"
+    },
+    {
+      "package": "volicord-viewer",
+      "test": "project_understanding_renders_three_stable_work_items_as_separate_hierarchy"
+    }
+  ]
+}
