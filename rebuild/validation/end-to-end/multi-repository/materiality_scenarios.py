@@ -209,6 +209,7 @@ def qualify(api: Any, binary: Path, env: dict[str, str], root: Path) -> dict[str
                 assert len(displayed["alternatives"]) == len(alternatives)
                 response = {"project_id": project, "question_id": promoted["question_id"],
                     "question_revision": displayed["revision"], "alternative_key": alternatives[0][0],
+                    "work_scope": "project_wide",
                     "user_turn": f"Choose {alternatives[0][0]} for this displayed public inspection contract."}
                 call("decision_record", response, accepted=False)
                 assert not work.exists()

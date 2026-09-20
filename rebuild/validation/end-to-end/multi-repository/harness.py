@@ -1812,6 +1812,7 @@ def rehearse_target(
                 "question_revision": displayed.get("revision") if displayed else 0,
                 "presentation_receipt_id": displayed.get("presentation_receipt_id") if displayed else "",
                 "alternative_key": "local",
+                "work_scope": "project_wide",
                 "user_turn": "Choose the local Project context boundary",
                 "user_rationale": "Keep canonical Project context local and authorize providers separately",
             }) if displayed else (None, False)
@@ -3549,6 +3550,7 @@ def self_check() -> int:
         '"local_canonical": local_canonical',
         '"action": "submit_question_from_materiality"',
         '"presentation_receipt_id": displayed.get("presentation_receipt_id")',
+        '"work_scope": "project_wide"',
         'discovery, discovery_ok = host.tool("engineering_choice_discovery"',
         '"material_boundary_review": material_boundary_review(',
         '"role": "learning"',
@@ -3572,6 +3574,9 @@ def self_check() -> int:
     ):
         if current not in source:
             raise AssertionError(f"V11 lost a current public-journey contract: {current}")
+    materiality_source = (HERE / "materiality_scenarios.py").read_text(encoding="utf-8")
+    if '"work_scope": "project_wide"' not in materiality_source:
+        raise AssertionError("V11 materiality scenarios lost explicit Decision work scope")
     if source.count('"delegated_scope": ["internal-state"],') != 1:
         raise AssertionError("V11 retained a delegation narrower than the reviewed work scope")
     with tempfile.TemporaryDirectory(prefix="volicord-v11-viewer-contract-") as directory:
