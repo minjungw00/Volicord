@@ -32,6 +32,7 @@ TRACKED_EVIDENCE_PATHS = (
     "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
     "rebuild/validation/dogfood/harness.py",
     "rebuild/validation/dogfood/campaign_self_test.py",
+    "rebuild/validation/dogfood/remediation_integration.py",
     "rebuild/validation/privacy/background-provider-qualification/harness.py",
 )
 V11_TARGETS = {"volicord", "small-python", "polyglot-medium"}
@@ -46,6 +47,7 @@ KNOWN_EXECUTABLES = {
     "harness.py",
     "assertions.py",
     "campaign_self_test.py",
+    "remediation_integration.py",
     "install.sh",
     "python",
     "python3",
@@ -481,7 +483,7 @@ def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
             structural(1, "subcommand")
         return roles
 
-    if executable in {"assertions.py", "campaign_self_test.py"}:
+    if executable in {"assertions.py", "campaign_self_test.py", "remediation_integration.py"}:
         return roles
 
     if executable == "install.sh":

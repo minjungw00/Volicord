@@ -283,6 +283,7 @@ All admission and target outcomes from the capsule are retained below:
 - `admission_check.repository_intelligence_realistic_qualification.status = passed`
 - `admission_check.dogfood_harness_self_test.status = passed`
 - `admission_check.dogfood_campaign_self_test.status = passed`
+- `admission_check.dogfood_remediation_integration.status = passed`
 - `admission_check.provider_qualification_self_test.status = passed`
 - `admission_check.required_fixture_identities.status = passed`
 - `admission_check.fixture_manifest_integrity.status = passed`

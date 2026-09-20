@@ -31,6 +31,7 @@ CONTRACT_COVERAGE = REBUILD_ROOT / "validation/shared/contract_coverage.py"
 REALISTIC_QUALIFICATION = REBUILD_ROOT / "validation/repository-intelligence/realistic-qualification/assertions.py"
 DOGFOOD_HARNESS = REBUILD_ROOT / "validation/dogfood/harness.py"
 DOGFOOD_CAMPAIGN_SELF_TEST = REBUILD_ROOT / "validation/dogfood/campaign_self_test.py"
+DOGFOOD_REMEDIATION_INTEGRATION = REBUILD_ROOT / "validation/dogfood/remediation_integration.py"
 PROVIDER_QUALIFICATION = REBUILD_ROOT / "validation/privacy/background-provider-qualification/harness.py"
 FIXTURE_MANIFEST = REBUILD_ROOT / "validation/shared/fixture-manifest.json"
 FIXTURE_CHECKER = REBUILD_ROOT / "scripts/check-fixture-manifest"
@@ -490,6 +491,7 @@ def evaluate_admission(
         ("repository_intelligence_realistic_qualification", (sys.executable, str(REALISTIC_QUALIFICATION))),
         ("dogfood_harness_self_test", (sys.executable, str(DOGFOOD_HARNESS), "self-test")),
         ("dogfood_campaign_self_test", (sys.executable, str(DOGFOOD_CAMPAIGN_SELF_TEST))),
+        ("dogfood_remediation_integration", (sys.executable, str(DOGFOOD_REMEDIATION_INTEGRATION))),
         ("provider_qualification_self_test", (sys.executable, str(PROVIDER_QUALIFICATION), "--self-test")),
     )
     for name, argv in maintained_self_checks:

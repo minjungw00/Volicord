@@ -64,6 +64,7 @@ def admission_overrides() -> dict[str, dict[str, Any]]:
                 "repository_intelligence_realistic_qualification",
                 "dogfood_harness_self_test",
                 "dogfood_campaign_self_test",
+                "dogfood_remediation_integration",
                 "provider_qualification_self_test",
             )
         },

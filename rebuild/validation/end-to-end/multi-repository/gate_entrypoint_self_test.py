@@ -110,6 +110,7 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
         "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
         "rebuild/validation/dogfood/harness.py",
         "rebuild/validation/dogfood/campaign_self_test.py",
+        "rebuild/validation/dogfood/remediation_integration.py",
         "rebuild/validation/privacy/background-provider-qualification/harness.py",
     ):
         write_executable(

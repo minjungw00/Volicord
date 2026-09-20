@@ -1539,6 +1539,12 @@ status/disposition과 permitted relationship group, cycle별 authority obligatio
 unaddressed review-required finding, authority/CLI gap, remaining human-only criterion과 targeted
 escalation을 그대로 보고한다. 이 기계적 completeness는 assessment를 선택하거나 reasoning/evidence의
 semantic adequacy를 판정하지 않으며 `semantic_judgment_verified = false`를 유지한다.
+`validation/dogfood/remediation_integration.py`는 Sessions 1–5 remediation의 이미 유지되는
+production/acceptance 경계 테스트 중 대표 경로만 선택해 mixed validation, Project purpose와 Work
+분리, multiple Work, polyglot current-work grounding, Viewer hierarchy/evidence/profile, multi-decision
+Inquiry, conversational human review와 current UX rubric을 한 번에 실행한다. 각 child command의
+numeric exit와 duration을 보존하고 한 실패가 다른 독립 경로 실행을 생략하지 않는다. 이 set은
+각 subsystem의 전체 unit suite를 복제하지 않는다.
 Lowest-numbered 또는 automated-passed cycle로 한정하지 않고 모든 collected cycle을 검토한다. 각 cycle에서 source-vs-interpretation comprehension, repository-analysis
 usefulness, CLI usability, Viewer Project Understanding, four-document usefulness, Question
 necessity/Decision comprehension과 interruption cost를 평가한다. Interaction review는 explicit

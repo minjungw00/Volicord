@@ -635,6 +635,11 @@ def command_grammar_cases(root: Path, gate: Path) -> list[tuple[str, list[str], 
                 ROOT,
             ),
             (
+                "dogfood_remediation_integration",
+                [str(ROOT / "rebuild/validation/dogfood/remediation_integration.py")],
+                ROOT,
+            ),
+            (
                 "installer",
                 [str(ROOT / "rebuild/install.sh"), "--prefix", path, "--runtime-dir", str(gate / "runtime")],
                 ROOT,
