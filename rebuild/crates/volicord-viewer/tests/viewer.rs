@@ -344,15 +344,27 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
         .expect("Project Understanding");
     let decisions = page.html.find("id=\"decisions\"").expect("decisions");
     let health = page.html.find("id=\"health\"").expect("health");
+    let inspection = page
+        .html
+        .find("<details class=\"record-inspection\"")
+        .expect("record inspection disclosure");
     let checkpoints = page.html.find("id=\"checkpoints\"").expect("checkpoints");
     let repository = page.html.find("id=\"repository-map\"").expect("repository");
     assert!(
-        understanding < overview
-            && overview < health
-            && health < decisions
+        understanding < health
+            && health < inspection
+            && inspection < overview
+            && overview < decisions
             && decisions < checkpoints
             && checkpoints < repository
     );
+    assert!(page
+        .html
+        .contains("Inspect Project records and repository audit detail"));
+    assert!(page
+        .html
+        .find(&project.to_string())
+        .is_some_and(|identity| identity > inspection));
     for empty in [
         "No current Project goal is recorded.",
         "No open Questions.",
@@ -1084,7 +1096,7 @@ fn degraded_working_view_keeps_material_gap_visible_before_audit_detail() {
     let health = page.find("id=\"health\"").expect("health");
     let decisions = page.find("id=\"decisions\"").expect("decisions");
     let repository = page.find("id=\"repository-map\"").expect("repository");
-    assert!(overview < health && health < decisions && decisions < repository);
+    assert!(health < overview && overview < decisions && decisions < repository);
     assert!(page.contains("Affected capability and scope"), "{page}");
     assert!(
         page.contains("unavailable") || page.contains("partial") || page.contains("unsupported"),
@@ -1155,7 +1167,7 @@ fn static_snapshot_is_deterministic_self_contained_and_read_only() {
     let health = first.html.find("id=\"health\"").expect("health");
     let decisions = first.html.find("id=\"decisions\"").expect("decisions");
     let checkpoints = first.html.find("id=\"checkpoints\"").expect("checkpoints");
-    assert!(overview < health && health < decisions && decisions < checkpoints);
+    assert!(health < overview && overview < decisions && decisions < checkpoints);
 }
 
 #[test]

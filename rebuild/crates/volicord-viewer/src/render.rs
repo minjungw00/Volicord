@@ -267,9 +267,7 @@ impl ViewerAdapter {
             ))
         ));
         render_project_understanding(&mut html, request, &understanding, &documents);
-        render_overview(&mut html, request, &projection);
         render_status(&mut html, request, &projection, &health);
-        render_decisions(&mut html, request, &projection);
         if let (
             Some(candidate),
             ViewerRenderMode::Live {
@@ -279,12 +277,31 @@ impl ViewerAdapter {
         {
             render_guarded(&mut html, request, candidate, request_authenticity);
         }
+        html.push_str(&format!(
+            "<details class=\"record-inspection\"><summary>{}</summary>",
+            escape(text(
+                request.locale,
+                "Inspect Project records and repository audit detail",
+                "프로젝트 기록 및 저장소 감사 상세 확인"
+            ))
+        ));
+        html.push_str(&format!(
+            "<p class=\"muted\">{}</p>",
+            escape(text(
+                request.locale,
+                "Stable record, Source, Entity, Relation, and Snapshot identities remain available here without interrupting the primary explanation.",
+                "안정적인 기록, Source, Entity, Relation 및 Snapshot 식별자는 기본 설명을 방해하지 않으면서 여기에서 확인할 수 있습니다."
+            ))
+        ));
+        render_overview(&mut html, request, &projection);
+        render_decisions(&mut html, request, &projection);
         render_checkpoints(&mut html, request, &projection);
         render_repository(&mut html, request, &projection);
         if request.explanation_level == ExplanationLevel::Deep {
             render_candidates(&mut html, request, &projection);
             render_canonical(&mut html, request, &projection);
         }
+        html.push_str("</details>");
         render_privacy(&mut html, request, privacy.as_ref());
         if let ViewerRenderMode::Snapshot { generated_at } = mode {
             render_snapshot_basis(&mut html, request, &projection, generated_at);
