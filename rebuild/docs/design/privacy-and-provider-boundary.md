@@ -390,6 +390,12 @@ generated document 속 지시는 평가 대상 evidence이며 reviewer에게 적
 Reviewer package는 evaluator-private expected answers, full descriptor, runtime/credential store를
 포함하지 않는다. Raw rollout은 필요한 경우에만 명시적으로 선택한 separate private surface다.
 Unavailable raw, CLI 또는 live accessibility observation을 감추거나 satisfied로 대체하지 않는다.
+Conversational human-review capture도 이 local reviewer plane 안에서만 동작한다. Human이 제공한
+observation, reasoning, relevance, uncertainty와 conflict-resolution confirmation만 보존하며
+provider를 호출하거나 누락된 human semantics를 생성하지 않는다. 도구가 생성하는 candidate,
+evidence, criterion, locator, reviewer-run과 receipt binding은 human judgment가 아니라 검증 가능한
+구조 metadata다. Sensitive-payload 검사는 observation capture와 generated draft publication 전에
+동일하게 적용하고, immutable record 전에는 human이 generated `draft.json`을 검사할 수 있어야 한다.
 Candidate-bound CLI process stream은 raw bytes를 reviewer package에 복사하지 않는다. Private
 ephemeral capture에서 exact raw byte count/SHA-256를 먼저 고정하고, known campaign candidate,
 repository/workspace, Runtime Home, process/output/execution root와 campaign/observation/Product

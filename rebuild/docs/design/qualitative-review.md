@@ -190,6 +190,51 @@ agent/model/session. Preparation returns the fixed reviewer run ID and exact
 preparation hash; retain that hash with the handoff. Identity verification remains
 unsupported, even if a model name or session ID looks plausible.
 
+The maintained conversational path removes schema authoring from the human task while
+preserving the same preparation and immutable-record contract. A direct live Viewer
+observation is captured first when applicable:
+
+```sh
+rebuild/scripts/dogfood-campaign capture-human-viewer-observations \
+  --campaign-root /absolute/private/campaign \
+  --output /absolute/private/human-observations
+
+rebuild/scripts/dogfood-campaign prepare-qualitative-review \
+  --campaign-root /absolute/private/campaign \
+  --output /absolute/private/review-run \
+  --reviewer-kind human \
+  --human-observations /absolute/private/human-observations
+```
+
+The capture presents one locale observation and its limits at a time. Tooling derives the
+candidate/evidence hashes, human observer shape, run identity, schema and receipt. The human
+supplies the observation text; the tool cannot infer an accessibility outcome from static
+markup or fill an omitted observation.
+
+After preparation, `converse-qualitative-review` presents one criterion at a time. Evidence
+is selected by displayed ordinal, and an exact quoted phrase (or explicit first-location
+selection) lets the tool derive evidence identity and locator. The human supplies the
+assessment, reasoning, relevance, uncertainty, counterevidence state and any authority
+meaning. Required semantic dimensions are explicitly confirmed one by one. The generated
+`draft.json` retains the exact prompt/answer trace for each reviewed human criterion and is
+not recorded automatically:
+
+```sh
+rebuild/scripts/dogfood-campaign converse-qualitative-review \
+  --review-root /absolute/private/review-run
+
+rebuild/scripts/dogfood-campaign validate-qualitative-review \
+  --review-root /absolute/private/review-run \
+  --draft /absolute/private/review-run/draft.json
+```
+
+Repeat the conversational command to advance to the next unreviewed criterion, inspect the
+draft, then use the existing explicit record operation. `--criterion-number` selects a
+displayed prepared criterion without requiring its opaque identity. When a human judgment
+resolves a prior recorded review, pass its path with `--resolve-review-root`; the tool derives
+the run ID and asks for criterion-specific confirmation instead of requiring the person to
+copy `resolves_review_runs` identifiers. Corrections after recording still require a new run.
+
 Give the reviewer `REVIEW.md`, `preparation.json` and the indexed evidence files.
 Preparation contains the maintained rubric and its revision/hash, bounded initial
 concerns and their original descriptor-field hashes, pinned owner bytes when
@@ -282,8 +327,9 @@ explicit human assessment whose `resolves_review_runs` maps the criterion ID to 
 review run IDs addressed. Agent reviews must leave that map empty. This is evidence-bound
 judgment, not voting or statistical independence.
 
-For direct live observations, human preparation additionally accepts `--human-observations
-<json>`. The object has kind `dogfood_human_observations`, original `candidate_head`,
+For direct live observations, human preparation additionally accepts `--human-observations`
+pointing to the conversational capture directory. The lower-level JSON-file input remains
+available for automation. The object has kind `dogfood_human_observations`, original `candidate_head`,
 `evidence_set_sha256`, an `observer` using the common human reviewer identity shape, and
 exactly two `observations`: `{sample_id: "volicord-1", locale: "en"|"ko", observation:
 <bounded actual observation>, limits: <bounded limits>}`. Preparation copies and hashes

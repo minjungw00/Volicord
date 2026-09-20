@@ -58,6 +58,9 @@ def fill(value, p, state="satisfied"):
         criterion_observations=(list(p["rubric"]["criterion_observations"].get(criterion, []))
                                 if state in {"satisfied", "violated"} else []),
         counterevidence={"state": "none_found", "reasoning": "No contrary evidence in the inspected synthetic case.", "evidence": []},
+        human_answer_trace=([{"prompt": "What is your bounded judgment?",
+            "answer": f"The human reviewer selected {state} for {criterion}."}]
+            if p["reviewer"]["kind"] == "human" else None),
         evidence=[{"evidence_id": name, "locator": entry["locators"][0],
                    "criterion_id": value["criterion_id"],
                    "relevance": f"This cited location was inspected specifically for {criterion}."}

@@ -66,7 +66,9 @@ PLACEHOLDER_VALUES = {
     "your-api-key", "your_token", "your-token",
 }
 def workflow_contract():
-    return {"operations": ["prepare-qualitative-review", "validate-qualitative-review", "record-qualitative-review", "package-review"],
+    return {"operations": ["capture-human-viewer-observations", "prepare-qualitative-review",
+        "converse-qualitative-review", "validate-qualitative-review",
+        "record-qualitative-review", "package-review"],
         "input": "immutable_evidence_set_and_optional_machine_run", "campaign_mutation": False,
         "review_root": "separate_from_campaign", "draft": "draft.json", "recorded": "recorded/review.json",
         "preflight_mutation": "none", "publication": "exclusive_atomic_directory",
@@ -462,7 +464,9 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
     files, index, unavailable = select_evidence(root, manifest, evaluation, include_raw=include_raw,
         cli_observation_set=cli_observation_set)
     if human_observations is not None:
+        import human_review
         review.require(reviewer_kind == "human", "agent preparation cannot supply human-observed accessibility")
+        human_observations = human_review.load_viewer_observations(human_observations)
         data = bounded_read(human_observations)
         require_review_artifact_safe(data, "human observations contain sensitive payload")
         observed = json.loads(data)

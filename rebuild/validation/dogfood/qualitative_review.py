@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
@@ -67,7 +67,8 @@ CRITERION_OBSERVATIONS = {
 }
 FIELDS = {"criterion_id", "assessment", "reasoning", "evidence", "uncertainty",
           "criterion_observations",
-          "counterevidence", "applicability_reason", "machine_relationships", "authority"}
+          "counterevidence", "applicability_reason", "machine_relationships", "authority",
+          "human_answer_trace"}
 
 
 def require(condition, message):
@@ -163,7 +164,7 @@ def observation(criterion_id):
     return {"criterion_id": criterion_id, "assessment": "not_reviewed", "reasoning": None,
         "evidence": [], "uncertainty": None, "criterion_observations": [],
         "counterevidence": None, "applicability_reason": None,
-        "machine_relationships": [], "authority": None}
+        "machine_relationships": [], "authority": None, "human_answer_trace": None}
 
 
 def template(preparation, preparation_sha256):
@@ -205,6 +206,16 @@ def validate_assessment(value, spec, preparation, inspected):
     if state == "not_reviewed":
         require(value == observation(spec["criterion_id"]), "not_reviewed cannot conceal findings")
         return state
+    trace = value["human_answer_trace"]
+    if preparation["reviewer"]["kind"] == "human":
+        require(isinstance(trace, list) and trace and len(trace) <= 128,
+            "reviewed human criterion requires its conversational answer trace")
+        for turn in trace:
+            require(isinstance(turn, dict) and set(turn) == {"prompt", "answer"}
+                and authority.bounded_text(turn["prompt"]) and authority.bounded_text(turn["answer"]),
+                "human answer trace must preserve bounded prompt/answer text")
+    else:
+        require(trace is None, "agent review cannot claim a human answer trace")
     require(all(authority.bounded_text(value[f]) for f in ("reasoning", "uncertainty")),
             "reviewed criterion requires bounded reasoning and explicit uncertainty")
     index = preparation["index"]

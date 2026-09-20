@@ -13,6 +13,7 @@ import campaign as c
 import campaign_self_test as fixtures
 import cli_observations as cli_obs
 import harness
+import human_review
 import qualitative_review as q
 import review_operations as ops
 
@@ -75,7 +76,10 @@ def insufficient_draft(root):
                 "criterion_id": spec["criterion_id"],
                 "relevance": "This availability record establishes why the exact criterion cannot be judged."}],
             uncertainty="No substantive judgment has been established from actual observations.",
-            counterevidence={"state": "not_observable", "reasoning": "Missing inspection limits both positive and contrary observations.", "evidence": []})
+            counterevidence={"state": "not_observable", "reasoning": "Missing inspection limits both positive and contrary observations.", "evidence": []},
+            human_answer_trace=([{"prompt": "What is your bounded judgment?",
+                "answer": "Insufficient evidence; only the availability inventory was inspected."}]
+                if p["reviewer"]["kind"] == "human" else None))
     (root / "draft.json").write_bytes(ops.encoded(value))
     return value
 
@@ -354,6 +358,54 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "human observations contain sensitive payload"):
             ops.prepare(self.root, rejected, reviewer_kind="human", human_observations=sensitive)
         self.assertFalse(rejected.exists())
+
+    def test_conversational_human_observations_bind_candidate_and_receipt(self):
+        observation_root = self.parent / (self._testMethodName + "-observations")
+        answers = iter([
+            "Keyboard focus and narrow layout were personally inspected in the English Viewer.",
+            "Screen reader output and other pages were not inspected.",
+            "한국어 Viewer에서 키보드 초점과 좁은 화면 배치를 직접 확인했다.",
+            "스크린 리더 출력과 다른 페이지는 확인하지 않았다.",
+        ])
+        result = human_review.capture_viewer_observations(
+            self.root, observation_root, input_fn=answers.__next__, output_fn=lambda _text: None,
+            run_id="c" * 32)
+        self.assertEqual(result["state"], "captured")
+        self.assertTrue((observation_root / "observations.json").is_file())
+        self.assertTrue((observation_root / "receipt.json").is_file())
+        prepared = self.target()
+        ops.prepare(self.root, prepared, reviewer_kind="human",
+            human_observations=observation_root)
+        preparation, _, _ = ops.load_package(prepared)
+        live = [entry for entry in preparation["index"]["evidence"].values()
+                if entry["surface"] == "live_viewer_observation"]
+        self.assertEqual({entry["locale"] for entry in live}, {"en", "ko"})
+        self.assertEqual(preparation["binding"]["candidate_head"], result["candidate_head"])
+
+    def test_conversational_human_judgment_generates_reviewable_draft(self):
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="human", include_raw=True)
+        answers = iter([
+            "1",
+            "The question was necessary for the material user-owned outcome shown in the work capture.",
+            "1",
+            "START",
+            "The work capture is the direct interaction evidence for question necessity.",
+            "No uncertainty remains within the inspected interaction.",
+            "2",
+            "No contrary interaction was found in the inspected capture.",
+        ])
+        result = human_review.converse_one(
+            target, input_fn=answers.__next__, output_fn=lambda _text: None)
+        self.assertEqual(result["state"], "draft_updated")
+        self.assertEqual(result["assessment"], "satisfied")
+        validated = ops.validate(target, target / "draft.json")
+        self.assertEqual(validated["counts"]["satisfied"], 1)
+        value = json.loads((target / "draft.json").read_bytes())
+        finding = value["assessments"][result["criterion_number"] - 1]
+        self.assertTrue(finding["human_answer_trace"])
+        self.assertEqual(finding["criterion_id"], result["criterion_id"])
+        self.assertEqual(result["candidate_head"], value["binding"]["candidate_head"])
 
     def test_evaluator_private_answers_are_not_selected(self):
         manifest = copy.deepcopy(c.load_evidence_set(self.root))

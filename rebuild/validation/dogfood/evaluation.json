@@ -414,7 +414,7 @@
       "purpose": "Ground the bounded reviewer completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
     },
     "qualification_authority": false,
-    "policy_revision": 3,
+    "policy_revision": 4,
     "reviewer_kinds": [
       "agent",
       "human"

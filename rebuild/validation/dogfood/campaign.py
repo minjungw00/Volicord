@@ -31,6 +31,7 @@ import cli_observations
 import document_realization
 import machine_findings
 import review_operations
+import human_review
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -3508,6 +3509,10 @@ def parser() -> argparse.ArgumentParser:
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
+    capture_human = sub.add_parser("capture-human-viewer-observations",
+        help="Conversationally capture candidate-bound live Viewer observations")
+    converse_human = sub.add_parser("converse-qualitative-review",
+        help="Capture one human-owned criterion without hand-authoring review JSON")
     collect_cli = sub.add_parser("collect-cli-observations", help="Collect isolated repository-class CLI usability evidence")
     validate_qualitative = sub.add_parser("validate-qualitative-review")
     record_qualitative = sub.add_parser("record-qualitative-review")
@@ -3520,6 +3525,11 @@ def parser() -> argparse.ArgumentParser:
     prepare_qualitative.add_argument("--include-raw-rollouts", action="store_true")
     prepare_qualitative.add_argument("--human-observations", help="Candidate/evidence-bound direct human en/ko live accessibility observations")
     prepare_qualitative.add_argument("--cli-observations", help="Candidate/evidence-bound repository-class CLI observation directory")
+    capture_human.add_argument("--campaign-root", required=True)
+    capture_human.add_argument("--output", required=True)
+    converse_human.add_argument("--review-root", required=True)
+    converse_human.add_argument("--criterion-number", type=int)
+    converse_human.add_argument("--resolve-review-root", action="append", default=[])
     collect_cli.add_argument("--campaign-root", required=True)
     collect_cli.add_argument("--output", required=True)
     for operation in (validate_qualitative, record_qualitative):
@@ -3654,6 +3664,11 @@ def main() -> int:
             include_raw=args.include_raw_rollouts,
             human_observations=Path(args.human_observations) if args.human_observations else None,
             cli_observation_root=Path(args.cli_observations) if args.cli_observations else None)
+    elif args.command == "capture-human-viewer-observations":
+        value = human_review.capture_viewer_observations(root, Path(args.output))
+    elif args.command == "converse-qualitative-review":
+        value = human_review.converse_one(root, criterion_number=args.criterion_number,
+            resolve_review_roots=[Path(path).resolve() for path in args.resolve_review_root])
     elif args.command == "collect-cli-observations":
         value = cli_observations.collect(root, Path(args.output))
     elif args.command in {"validate-qualitative-review", "record-qualitative-review"}:
