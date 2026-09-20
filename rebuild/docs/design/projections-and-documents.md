@@ -93,6 +93,11 @@ presentation bound보다 먼저 선택한다. 이는 repository-wide 두 번째 
 authority가 아니라 current-work 전용 bounded selection evidence다. `current_work_code`는 이
 선택 결과의 entity locator와 canonical seed basis를 연결하고, `ProjectUnderstanding.architecture`가
 이를 사용해 현재 작업 설명 surface를 소유한다.
+Latest Checkpoint가 stable `work_item_id`를 가지면 latest meaningful Checkpoint basis는 같은
+Work Item history 전체에서 읽는다. 따라서 later verification/resume Checkpoint에 새 changed
+path가 없어도 earlier same-work Checkpoint의 path와 exact Checkpoint identity는 grounding에서
+사라지지 않는다. Work association이 없는 latest Checkpoint는 그 record 하나만 사용하며
+chronology나 path overlap으로 다른 Checkpoint를 합치지 않는다.
 실제 Repository Intelligence relation이 그 seed끼리 연결하거나 seed에서 한 홉 떨어진
 endpoint를 설명할 때만 관계와 이웃 component를 포함한다. Current-work seed가 하나도 없으면
 generic Repository Map node를 대신 채우지 않고 bounded empty/gap 결과를 제공한다.

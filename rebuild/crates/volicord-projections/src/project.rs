@@ -1296,7 +1296,7 @@ fn build_current_work_code_links(
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> Vec<CurrentWorkCodeLink> {
-    let checkpoint = canonical.latest_checkpoint.as_ref();
+    let checkpoints = current_work_checkpoints(canonical);
     let goals = canonical
         .context_items
         .iter()
@@ -1310,21 +1310,26 @@ fn build_current_work_code_links(
                 .as_ref()
                 .map(|range| range.locator.as_str())
                 .unwrap_or(entity.locator.as_str());
-            let mut changed_paths = checkpoint
-                .into_iter()
+            let mut changed_paths = checkpoints
+                .iter()
+                .copied()
                 .flat_map(|checkpoint| checkpoint.changed_paths.iter())
                 .filter(|path| path_matches(path, locator))
                 .cloned()
                 .collect::<Vec<_>>();
-            let mut checkpoint_basis = checkpoint
+            let mut checkpoint_basis = checkpoints
+                .iter()
+                .copied()
                 .filter(|checkpoint| {
-                    !changed_paths.is_empty()
+                    checkpoint
+                        .changed_paths
+                        .iter()
+                        .any(|path| path_matches(path, locator))
                         || entity.canonical_links.iter().any(|link| {
                             matches!(link, CanonicalReference::Checkpoint(reference) if reference.identity() == checkpoint.id)
                         })
                 })
                 .map(|checkpoint| checkpoint.id)
-                .into_iter()
                 .collect::<Vec<_>>();
             let mut goal_context_basis = goals
                 .iter()
@@ -1893,7 +1898,7 @@ fn entity_matches_current_work(
                 .any(|component| locator.contains(component) || display_name.contains(component))
     };
 
-    if canonical.latest_checkpoint.as_ref().is_some_and(|checkpoint| {
+    if current_work_checkpoints(canonical).iter().any(|checkpoint| {
         checkpoint
             .changed_paths
             .iter()
@@ -1924,6 +1929,31 @@ fn entity_matches_current_work(
                     matches!(link, CanonicalReference::ContextItem(reference) if reference.identity() == context.id)
                 })
         })
+}
+
+/// Returns the Checkpoint basis for the latest Work Item without allowing a
+/// later verification/handoff record to erase meaningful paths recorded by an
+/// earlier Checkpoint in that same stable work history.
+fn current_work_checkpoints(canonical: &CanonicalReadBasis) -> Vec<&Checkpoint> {
+    let Some(latest) = canonical.latest_checkpoint.as_ref() else {
+        return Vec::new();
+    };
+    let Some(work_item_id) = latest.work_item_id else {
+        return vec![latest];
+    };
+    let mut checkpoints = canonical
+        .checkpoint_history
+        .iter()
+        .filter(|checkpoint| checkpoint.work_item_id == Some(work_item_id))
+        .collect::<Vec<_>>();
+    if !checkpoints
+        .iter()
+        .any(|checkpoint| checkpoint.id == latest.id)
+    {
+        checkpoints.push(latest);
+    }
+    checkpoints.sort_by_key(|checkpoint| (checkpoint.recorded_at, checkpoint.id));
+    checkpoints
 }
 
 fn revision_for(canonical: &CanonicalReadBasis, kind: &str, identity: &str) -> u64 {

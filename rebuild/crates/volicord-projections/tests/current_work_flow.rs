@@ -13,9 +13,10 @@ use volicord_projections::{
     UnderstandingBound, UnderstandingExplanationKind,
 };
 use volicord_repository_intelligence::{
-    analyze_repository_semantics, AnalysisSnapshot, CanonicalGrounding, CodeEntityKind,
-    InventoryRequest, Language, RelationTarget, SemanticAnalysisRequest, StructuralAnalysisRequest,
-    StructuralRelation, StructuralRelationKind,
+    analyze_repository_semantics, AnalysisProvenance, AnalysisSnapshot, AnalyzerIdentity,
+    CanonicalGrounding, CodeEntityKind, InventoryRequest, Language, ProvenanceClass,
+    RelationTarget, SemanticAnalysisRequest, SemanticAnalysisResult, SemanticProvenance,
+    SemanticRelation, SemanticRelationKind, StructuralAnalysisRequest, StructuralRelationKind,
 };
 
 fn operation(value: u8) -> OperationId {
@@ -205,12 +206,13 @@ fn add_fixture_flow_relation(
     source_path: &str,
     target_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let source_index = analysis
+    let source = analysis
         .structural_facts
         .iter()
-        .position(|fact| {
+        .find(|fact| {
             fact.entity.area.path == source_path && fact.entity.kind == CodeEntityKind::File
         })
+        .map(|fact| fact.entity.clone())
         .ok_or_else(|| format!("fixture file entity missing: {source_path}"))?;
     let target_identity = analysis
         .structural_facts
@@ -220,19 +222,44 @@ fn add_fixture_flow_relation(
         })
         .map(|fact| fact.entity.identity.clone())
         .ok_or_else(|| format!("fixture file entity missing: {target_path}"))?;
-    let source = &mut analysis.structural_facts[source_index];
-    source.relations.push(StructuralRelation {
-        identity: identity.into(),
-        repository_snapshot: analysis.repository_snapshot,
-        analysis_snapshot: analysis.identity,
-        source_entity: source.entity.identity.clone(),
-        target: RelationTarget::ResolvedEntity(target_identity),
-        kind: StructuralRelationKind::LanguageSpecific("binding_data_flow".into()),
-        supporting_range: source.entity.source_range.clone(),
-        diagnostics: Vec::new(),
-        uncertainty: source.entity.uncertainty.clone(),
-        freshness: source.entity.freshness.clone(),
-        extensions: Vec::new(),
+    let adapter = source
+        .source_range
+        .as_ref()
+        .map(|range| range.adapter.clone())
+        .ok_or_else(|| format!("fixture file Source range missing: {source_path}"))?;
+    let analyzer = AnalyzerIdentity {
+        name: "current-work-flow-fixture".into(),
+        version: "1".into(),
+    };
+    analysis.semantic_results.push(SemanticAnalysisResult {
+        relation: SemanticRelation {
+            identity: identity.into(),
+            repository_snapshot: analysis.repository_snapshot,
+            analysis_snapshot: analysis.identity,
+            source_entity: source.identity,
+            target: RelationTarget::ResolvedEntity(target_identity),
+            kind: SemanticRelationKind::References,
+            supporting_range: source.source_range,
+            diagnostics: Vec::new(),
+            uncertainty: source.uncertainty,
+            freshness: source.freshness,
+            extensions: Vec::new(),
+        },
+        provenance: SemanticProvenance {
+            adapter: adapter.clone(),
+            analyzer: analyzer.clone(),
+            build_context: Some("explicit polyglot binding-flow fixture".into()),
+            resolution_basis: "fixture-supplied resolved endpoint identities".into(),
+            analysis: AnalysisProvenance {
+                class: ProvenanceClass::SemanticResult,
+                repository_snapshot: analysis.repository_snapshot,
+                analysis_snapshot: analysis.identity,
+                adapter: Some(adapter),
+                analyzer: Some(analyzer),
+                source_basis: vec![source.source],
+                observed_or_generated_at_unix_micros: analysis.generated_at_unix_micros,
+            },
+        },
     });
     Ok(())
 }
@@ -485,7 +512,7 @@ fn polyglot_current_work_keeps_same_work_history_flow_grounding(
         ],
         &[],
         &[work_paths.to_vec(), Vec::new()],
-        8,
+        64,
         |analysis| {
             // The fixture Snapshot explicitly supplies the cross-language
             // relations. The projection must preserve these records; it must
@@ -505,23 +532,54 @@ fn polyglot_current_work_keeps_same_work_history_flow_grounding(
         },
     )?;
 
-    let raw_relations = analysis
-        .structural_facts
+    let raw_results = analysis
+        .semantic_results
         .iter()
-        .flat_map(|fact| &fact.relations)
         .filter(|relation| {
             matches!(
-                relation.identity.as_str(),
+                relation.relation.identity.as_str(),
                 NATIVE_TO_BOUNDARY | BOUNDARY_TO_CONSUMER
             )
         })
         .collect::<Vec<_>>();
-    assert_eq!(raw_relations.len(), 2);
-    assert!(raw_relations.iter().all(|relation| {
-        relation.analysis_snapshot == analysis.identity
-            && relation.repository_snapshot == analysis.repository_snapshot
-            && matches!(relation.target, RelationTarget::ResolvedEntity(_))
+    assert_eq!(raw_results.len(), 2);
+    assert!(raw_results.iter().all(|result| {
+        result.provenance.analysis.class == ProvenanceClass::SemanticResult
+            && result.relation.analysis_snapshot == analysis.identity
+            && result.relation.repository_snapshot == analysis.repository_snapshot
+            && matches!(result.relation.target, RelationTarget::ResolvedEntity(_))
     }));
+    let entity_paths = analysis
+        .structural_facts
+        .iter()
+        .map(|fact| {
+            (
+                fact.entity.identity.as_str(),
+                fact.entity.area.path.as_str(),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let directed_paths = raw_results
+        .iter()
+        .filter_map(|result| {
+            let RelationTarget::ResolvedEntity(target) = &result.relation.target else {
+                return None;
+            };
+            Some((
+                *entity_paths.get(result.relation.source_entity.as_str())?,
+                *entity_paths.get(target.as_str())?,
+            ))
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        directed_paths,
+        [
+            (work_paths[0], work_paths[1]),
+            (work_paths[1], work_paths[2]),
+        ]
+        .into_iter()
+        .collect()
+    );
 
     // The latest Checkpoint intentionally records verification with no new
     // paths. Earlier paths belong to the same stable Work Item and remain the
@@ -532,8 +590,14 @@ fn polyglot_current_work_keeps_same_work_history_flow_grounding(
         .iter()
         .map(|relation| relation.identity.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    assert!(projected_relations.contains(NATIVE_TO_BOUNDARY));
-    assert!(projected_relations.contains(BOUNDARY_TO_CONSUMER));
+    assert!(
+        projected_relations.contains(NATIVE_TO_BOUNDARY),
+        "native boundary relation missing from {projected_relations:?}"
+    );
+    assert!(
+        projected_relations.contains(BOUNDARY_TO_CONSUMER),
+        "consumer relation missing from {projected_relations:?}"
+    );
     assert!(work_paths.iter().all(|path| {
         projection
             .current_work_code
@@ -544,7 +608,7 @@ fn polyglot_current_work_keeps_same_work_history_flow_grounding(
     let understanding = build_project_understanding(
         &projection,
         UnderstandingBound {
-            max_items_per_section: 8,
+            max_items_per_section: 64,
         },
     );
     let explained_relations = understanding
