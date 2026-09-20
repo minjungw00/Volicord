@@ -1,4 +1,6 @@
-use super::{select_diagram_topology, MapEntity, MapRelation, MapRelationClass};
+use super::{
+    layout_diagram_topology, select_diagram_topology, MapEntity, MapRelation, MapRelationClass,
+};
 use volicord_context::SourceId;
 use volicord_repository_intelligence::{
     AnalysisSnapshotId, CodeEntityKind, FreshnessBasis, FreshnessState, Language,
@@ -78,6 +80,61 @@ fn flow_diagram_does_not_fill_capacity_with_disconnected_components() {
         select_diagram_topology(&components, &relationships, 8, |_| false, false);
     assert!(gap_nodes.is_empty());
     assert!(gap_relationships.is_empty());
+}
+
+#[test]
+fn directed_chain_is_laid_out_in_flow_order_independent_of_input_order() {
+    let mut components = vec![
+        map_entity("middle".into()),
+        map_entity("target".into()),
+        map_entity("source".into()),
+        map_entity("isolated".into()),
+    ];
+    let mut relationships = vec![
+        map_relation("edge:second".into(), "middle".into(), "target".into()),
+        map_relation("edge:first".into(), "source".into(), "middle".into()),
+    ];
+    let component_refs = components.iter().collect::<Vec<_>>();
+    let relationship_refs = relationships.iter().collect::<Vec<_>>();
+    let first = layout_diagram_topology(&component_refs, &relationship_refs);
+    assert!(first.positions["source"].x < first.positions["middle"].x);
+    assert!(first.positions["middle"].x < first.positions["target"].x);
+    assert_eq!(first.positions["source"].layer, 0);
+    assert_eq!(first.positions["middle"].layer, 1);
+    assert_eq!(first.positions["target"].layer, 2);
+
+    components.reverse();
+    relationships.reverse();
+    let component_refs = components.iter().collect::<Vec<_>>();
+    let relationship_refs = relationships.iter().collect::<Vec<_>>();
+    assert_eq!(
+        first,
+        layout_diagram_topology(&component_refs, &relationship_refs)
+    );
+}
+
+#[test]
+fn directed_cycle_shares_a_layer_without_inventing_an_order() {
+    let components = vec![
+        map_entity("cycle-a".into()),
+        map_entity("cycle-b".into()),
+        map_entity("after-cycle".into()),
+    ];
+    let relationships = vec![
+        map_relation("cycle:a-b".into(), "cycle-a".into(), "cycle-b".into()),
+        map_relation("cycle:b-a".into(), "cycle-b".into(), "cycle-a".into()),
+        map_relation("cycle:out".into(), "cycle-b".into(), "after-cycle".into()),
+    ];
+    let layout = layout_diagram_topology(
+        &components.iter().collect::<Vec<_>>(),
+        &relationships.iter().collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        layout.positions["cycle-a"].layer,
+        layout.positions["cycle-b"].layer
+    );
+    assert!(layout.positions["cycle-b"].x < layout.positions["after-cycle"].x);
+    assert_ne!(layout.positions["cycle-a"].y, layout.positions["cycle-b"].y);
 }
 
 fn map_entity(identity: String) -> MapEntity {
