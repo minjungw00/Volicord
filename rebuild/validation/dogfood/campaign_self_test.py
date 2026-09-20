@@ -2882,6 +2882,10 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         }
         snapshot = campaign.read_json(cycle_path / "viewer-snapshot-summary.json")
         assert snapshot["status"] == "passed"
+        assert snapshot["schema_version"] == 2
+        assert snapshot["navigation_responsiveness"]["duration_ms"] >= 0
+        assert snapshot["navigation_responsiveness"]["request_completed"] is True
+        assert "not browser" in snapshot["navigation_responsiveness"]["scope"]
         assert snapshot["project_id"] == "01" * 16
         assert snapshot["candidate_head"] == harness.git_head(campaign.ROOT)
         raw_source = next(

@@ -330,6 +330,25 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             if target:
                 aliases["canonical_bundle"] = target
             source(sample_id + "-viewer", f"{prefix}/evidence/viewer-snapshot.html", "viewer_snapshot", sample_id)
+            navigation_id = source(sample_id + "-viewer-navigation",
+                f"{prefix}/viewer-snapshot-summary.json", "viewer_navigation_machine", sample_id)
+            if navigation_id:
+                navigation_entry = evidence[navigation_id]
+                navigation = json.loads(files[navigation_entry["path"]])
+                if navigation.get("schema_version") == 1:
+                    # Historical snapshots remain reviewable, but did not retain
+                    # machine timing and cannot satisfy responsiveness.
+                    navigation_entry["surface"] = "viewer_navigation_legacy"
+                else:
+                    timing = navigation.get("navigation_responsiveness")
+                    review.require(navigation.get("schema_version") == 2
+                        and isinstance(timing, dict)
+                        and set(timing) == {"duration_ms", "timing_source", "request_completed", "scope"}
+                        and isinstance(timing["duration_ms"], (int, float)) and timing["duration_ms"] >= 0
+                        and timing["timing_source"] == "monotonic_candidate_bound_snapshot_export_request"
+                        and isinstance(timing["request_completed"], bool)
+                        and timing["scope"] == "Viewer snapshot export request; not browser input or paint latency",
+                        "Viewer navigation machine evidence is malformed or overclaims its scope")
             for document_kind in c.DOCUMENT_KINDS:
                 for format_name, suffix in c.DOCUMENT_FORMATS:
                     target = source(sample_id + "-" + document_kind + "-" + format_name,

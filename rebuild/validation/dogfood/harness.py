@@ -1257,6 +1257,7 @@ def load_definition() -> dict[str, Any]:
             "interaction",
             "generated_documents",
             "viewer_snapshot",
+            "viewer_navigation_machine",
             "repository_intelligence",
         )
         or qualitative_contract.get("repository_class_review_surfaces") != ["cli_usability"]

@@ -83,6 +83,29 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_viewer_usability_dimensions_and_machine_timing_remain_independent(self):
+        p = preparation()
+        expected = {
+            "project_purpose_vs_current_work_clarity",
+            "multiple_work_organization",
+            "evidence_explanation_comprehensibility",
+            "ordinary_reading_audit_detail_exposure",
+            "diagram_structural_readability",
+            "information_hierarchy_and_cognitive_burden",
+        }
+        self.assertTrue(expected <= set(p["rubric"]["criteria"]["viewer_snapshot"]))
+        self.assertEqual(p["rubric"]["criteria"]["viewer_navigation"],
+            ["navigation_responsiveness"])
+        self.assertEqual(p["rubric"]["required_surfaces"]["viewer_navigation"],
+            ["viewer_navigation_machine"])
+        self.assertIn("browser input latency",
+            p["rubric"]["criterion_prompts"]["navigation_responsiveness"])
+        self.assertNotEqual(
+            p["rubric"]["criterion_observations"]["diagram_usefulness"],
+            p["rubric"]["criterion_observations"]["diagram_structural_readability"])
+        self.assertEqual(len(p["rubric"]["criterion_observations"][
+            "information_hierarchy_and_cognitive_burden"]), 4)
+
     def test_campaign_derived_criteria_remain_independent(self):
         fixture = json.loads((Path(__file__).with_name("fixtures") /
                               "qualitative-review-regressions.json").read_text())

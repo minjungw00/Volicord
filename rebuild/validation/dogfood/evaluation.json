@@ -278,6 +278,7 @@
       "interaction",
       "generated_documents",
       "viewer_snapshot",
+      "viewer_navigation_machine",
       "repository_intelligence"
     ],
     "repository_class_review_surfaces": [
@@ -414,7 +415,7 @@
       "purpose": "Ground the bounded reviewer completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
     },
     "qualification_authority": false,
-    "policy_revision": 4,
+    "policy_revision": 5,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -439,10 +440,19 @@
         "completed_current_remaining_work",
         "next_step",
         "decision_rationale",
+        "project_purpose_vs_current_work_clarity",
+        "multiple_work_organization",
         "architecture_components_flow",
         "code_behavior",
         "fact_versus_interpretation",
-        "diagram_usefulness"
+        "evidence_explanation_comprehensibility",
+        "ordinary_reading_audit_detail_exposure",
+        "diagram_usefulness",
+        "diagram_structural_readability",
+        "information_hierarchy_and_cognitive_burden"
+      ],
+      "viewer_navigation": [
+        "navigation_responsiveness"
       ],
       "repository_intelligence": [
         "structural_navigation_usefulness",
@@ -471,7 +481,9 @@
     },
     "workflow": {
       "operations": [
+        "capture-human-viewer-observations",
         "prepare-qualitative-review",
+        "converse-qualitative-review",
         "validate-qualitative-review",
         "record-qualitative-review",
         "package-review"

@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import tomllib
 from typing import Any, Callable
 
@@ -2446,6 +2447,7 @@ def collect_viewer_snapshot_evidence(
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Path]]:
     destination = cycle_root(root, kind, cycle) / "evidence/viewer-snapshot.html"
+    started = time.monotonic_ns()
     try:
         result = snapshotter(
             binary,
@@ -2460,9 +2462,10 @@ def collect_viewer_snapshot_evidence(
             "status": "failed",
             "basis": f"Viewer snapshot evidence adapter failed: {type(error).__name__}",
         }
+    duration_ms = round((time.monotonic_ns() - started) / 1_000_000, 3)
     evidence: dict[str, Any] = {
         "kind": "phase8_viewer_snapshot_evidence_summary",
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "failed",
         "project_id": project_id,
         "candidate_head": candidate_head,
@@ -2470,6 +2473,12 @@ def collect_viewer_snapshot_evidence(
         "cycle": cycle,
         "locale": locale,
         "requested_language": language,
+        "navigation_responsiveness": {
+            "duration_ms": duration_ms,
+            "timing_source": "monotonic_candidate_bound_snapshot_export_request",
+            "request_completed": result.get("status") in {"passed", "failed"},
+            "scope": "Viewer snapshot export request; not browser input or paint latency",
+        },
     }
     produced: list[Path] = []
     if result.get("status") == "passed" and destination.is_file():

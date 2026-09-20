@@ -21,14 +21,15 @@ The following mapping preserves the former human rubric without another engine:
 | `interaction_reviews` common fields | `interaction` | Question necessity/relevance, user ownership, source grounding, Decision comprehension, repetition, correct no-question behavior |
 | behavior-specific interaction fields | `interaction` | Explicit material handling, hidden discovery, unnecessary interruption; learning fork value, alternatives/trade-offs, recommendation anchoring, feedback, fidelity, routine omission and proportional cost; exact maintained applicability and prompts |
 | `document_reviews` | `documents` | Four-document fidelity, usefulness, grounding, remaining work and requested-language body quality |
-| `viewer_snapshot_reviews` | `viewer_snapshot` | Completed/current/remaining work, next step, rationale, architecture/component/flow, code behavior, fact/interpretation and useful grounded diagrams |
+| `viewer_snapshot_reviews` | `viewer_snapshot` | Completed/current/remaining work, next step, rationale, Project-purpose/current-work distinction, multi-work organization, architecture/component/flow, code behavior, fact/interpretation, evidence explanation, ordinary-reading audit-detail exposure, grounded diagram usefulness and structural readability, and bounded hierarchy/cognitive burden |
+| Viewer request responsiveness | `viewer_navigation` | Candidate-bound monotonic snapshot-export request completion/duration and explicit proxy limit; not human stopwatch prose or a claim of browser input latency |
 | `repository_intelligence_reviews` | `repository_intelligence` | Structural navigation, semantic value, capability honesty and polyglot comprehension |
 | `cli_usability_reviews` | `cli` | Per-repository-class help discovery and status/analyze/Recall/documents/export/doctor without opaque Project IDs |
 | `live_viewer_accessibility` | `live_viewer` | `en`/`ko` keyboard reachability, visible focus, color-independent meaning, narrow/zoom presentation for the deterministic first Volicord cycle |
 | `authority_obligation_reviews` | `authority` | Every initial material challenge, all other actual outcomes, additional outcomes and complete implementation/coupled-artifact coverage |
 | Context recovery usability criterion | `context_recovery` | Goal, Decision/rationale, work state and open-question recovery across work/resume |
 
-Interaction, documents, Viewer snapshot, Repository Intelligence, context recovery, and
+Interaction, documents, Viewer snapshot, Viewer navigation, Repository Intelligence, context recovery, and
 authority collections cover every cycle. CLI covers each maintained repository class exactly
 once: `3 classes × 7 criteria = 21 assessments`. A static HTML snapshot does
 not establish actual live keyboard/focus/zoom behavior; missing observation yields
@@ -53,7 +54,12 @@ and locator existence do not prove the semantic adequacy of a citation or verdic
 Every citation also identifies the exact criterion and explains why that location is
 relevant. Criteria with easily conflated properties retain a closed inspection record:
 architecture components/relationships/flow and concrete code behavior are independent;
-diagram usefulness inspects the diagram itself; document usefulness inspects primary
+diagram usefulness and diagram structural readability are independent; Project purpose and
+current Work Item meaning, multiple-Work organization, evidence explanation, ordinary-reading
+audit-detail exposure, and bounded information hierarchy/cognitive burden are inspected as
+separate dimensions rather than one global score. Viewer navigation uses retained monotonic
+machine evidence when available; qualitative stopwatch prose does not become timing evidence,
+and snapshot-export duration does not establish browser input/paint latency. Document usefulness inspects primary
 semantic content rather than placeholders or audit/integrity material; and document
 fidelity separately inspects user choice, recommended alternative, their respective
 rationales, and alternative-specific consequences. A reviewed `satisfied` or `violated`
