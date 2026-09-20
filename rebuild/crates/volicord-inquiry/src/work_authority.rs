@@ -151,6 +151,16 @@ pub fn bind_question_candidate_to_materiality(
             "Question content is missing",
         )
     })?;
+    if question
+        .affected_scope
+        .iter()
+        .any(|scope| scope.starts_with("work-authority:"))
+    {
+        return Err(crate::Error::new(
+            crate::ErrorKind::DomainConflict,
+            "independent materiality dimensions require distinct Question authority; necessarily coupled outcomes belong to one reviewed dimension",
+        ));
+    }
     question
         .affected_scope
         .push(materiality_scope_token(dimension_id));

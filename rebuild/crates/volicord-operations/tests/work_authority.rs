@@ -4517,93 +4517,12 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
         .into_iter()
         .find(|candidate| candidate.id == review_outcome.review_candidate_id)
         .ok_or("review Candidate missing")?;
-    let question_draft = CandidateDraft {
-        project_id: fixture.project_id,
-        kind: CandidateKind::QuestionCandidate,
-        collection_mode: CandidateCollectionMode::ExplicitUserDirected,
-        origin: CandidateOrigin {
-            actor: Principal {
-                kind: PrincipalKind::Agent,
-                identity: "codex".to_owned(),
-            },
-            subsystem: "inquiry".to_owned(),
-            session: Some("work-authority-session".to_owned()),
-            provenance_summary: "materiality dimension Question draft".to_owned(),
-        },
-        collection_scope: CandidateCollectionScope {
-            project_id: fixture.project_id,
-            session: Some("work-authority-session".to_owned()),
-            source_operation: Some("materiality-question".to_owned()),
-            candidate_kind: CandidateKind::QuestionCandidate,
-        },
-        observation_basis: CandidateObservationBasis {
-            source_basis: vec![source],
-            analysis_snapshot: Some(fixture.baseline.identity.to_string()),
-            ..CandidateObservationBasis::default()
-        },
-        observed_at: volicord_context::TimestampMicros::from_unix_micros(1),
-        retention: CandidateRetention {
-            retained_until: None,
-            basis: "retain through explicit Question lifecycle".to_owned(),
-        },
-        content: CandidateContent {
-            bounded_summary: "choose the externally observable failure policy".to_owned(),
-            question: Some(QuestionCandidate {
-                prompt_basis: "Which failure policy should the public API use?".to_owned(),
-                known_facts: Vec::new(),
-                assumptions: Vec::new(),
-                uncertainty: Vec::new(),
-                affected_scope: vec!["src/lib.rs".to_owned()],
-                possible_prerequisites: Vec::new(),
-                source_basis: vec![source],
-                repository_basis: Vec::new(),
-                freshness: CandidateFreshness::Current,
-                duplicate_assessment: DuplicateAssessment::NoDuplicate {
-                    basis: "no applicable Decision exists".to_owned(),
-                },
-                materiality: MaterialityAssessment {
-                    status: MaterialityStatus::Material,
-                    rationale: Some(
-                        "public callers observe the selected failure policy".to_owned(),
-                    ),
-                    source_basis: vec![source],
-                    assessed_by: Some(Principal {
-                        kind: PrincipalKind::Agent,
-                        identity: "codex".to_owned(),
-                    }),
-                    assessed_at: Some(volicord_context::TimestampMicros::from_unix_micros(1)),
-                },
-                presentation_order: Some(1),
-                why_it_matters_now: "implementation would otherwise choose user-owned behavior"
-                    .to_owned(),
-                alternatives: vec![
-                    QuestionAlternative {
-                        key: "strict".to_owned(),
-                        label: "Strict".to_owned(),
-                        consequence: "return an explicit error".to_owned(),
-                    },
-                    QuestionAlternative {
-                        key: "degraded".to_owned(),
-                        label: "Degraded".to_owned(),
-                        consequence: "continue with an explicit degraded result".to_owned(),
-                    },
-                ],
-                recommendation: AgentRecommendation {
-                    alternative_key: Some("strict".to_owned()),
-                    rationale: "preserves a clear failure boundary".to_owned(),
-                    source_basis: vec![source],
-                },
-                trade_offs: vec!["availability versus strictness".to_owned()],
-                known_limits: Vec::new(),
-                what_the_answer_unlocks: vec!["public API implementation".to_owned()],
-                allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
-                research_state: QuestionResearchState::ReadyToAsk,
-            }),
-            engineering_choice_discovery: None,
-            materiality_review: None,
-            learning_deliberation: None,
-        },
-    };
+    let question_draft = material_question_draft(
+        &fixture,
+        source,
+        "Which failure policy should the public API use?",
+        1,
+    );
     if mixed {
         assert!(bind_question_candidate_to_materiality(
             &review_record,
@@ -4612,28 +4531,48 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
         )
         .is_err());
     }
-    let bound =
+    let failure_bound =
         bind_question_candidate_to_materiality(&review_record, "failure-policy", question_draft)?;
-    let bound = bind_question_candidate_to_materiality(&review_record, "cli-exit-policy", bound)?;
-    let coupled_scope = bound
-        .content
-        .question
-        .as_ref()
-        .ok_or("bound Question content missing")?
-        .affected_scope
-        .clone();
-    assert!(coupled_scope.contains(&"work-authority:failure-policy".to_owned()));
-    assert!(coupled_scope.contains(&"work-authority:cli-exit-policy".to_owned()));
-    let question_candidate_id = match fixture.operations.submit_candidate(bound)? {
+    let failure_candidate_id = match fixture.operations.submit_candidate(failure_bound)? {
         SubmissionOutcome::Stored(candidate) => candidate.id,
         SubmissionOutcome::CollectionDisabled { .. } => {
             return Err("explicit Question Candidate was disabled".into())
         }
     };
-    let promoted = fixture
+    let failure_question = fixture
         .operations
-        .promote_question_candidate(fixture.project_id, question_candidate_id)?;
-    let user_response = fixture.operations.record_current_host_user_context(
+        .promote_question_candidate(fixture.project_id, failure_candidate_id)?;
+    let retry_bound = bind_question_candidate_to_materiality(
+        &review_record,
+        "cli-exit-policy",
+        material_question_draft(
+            &fixture,
+            source,
+            "Which CLI exit policy should callers observe?",
+            2,
+        ),
+    )?;
+    let retry_candidate_id = match fixture.operations.submit_candidate(retry_bound)? {
+        SubmissionOutcome::Stored(candidate) => candidate.id,
+        SubmissionOutcome::CollectionDisabled { .. } => {
+            return Err("explicit Question Candidate was disabled".into())
+        }
+    };
+    let retry_question = fixture
+        .operations
+        .promote_question_candidate(fixture.project_id, retry_candidate_id)?;
+    let initial_frontier = fixture
+        .operations
+        .inquiry_frontier(fixture.project_id, vec!["src/lib.rs".to_owned()])?;
+    assert_eq!(
+        initial_frontier
+            .questions
+            .iter()
+            .map(|question| question.question_id)
+            .collect::<Vec<_>>(),
+        [failure_question.question_id, retry_question.question_id]
+    );
+    let failure_response = fixture.operations.record_current_host_user_context(
         fixture.project_id,
         "codex".to_owned(),
         "work-authority-session".to_owned(),
@@ -4647,12 +4586,12 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
             operation_id: OperationId::from_bytes([91; 16]),
             response: CurrentHostResponse {
                 project_id: fixture.project_id,
-                source_id: user_response.source_id,
+                source_id: failure_response.source_id,
                 host: "codex".to_owned(),
                 session: "work-authority-session".to_owned(),
                 turn: "Choose strict for the public failure policy.".to_owned(),
                 displayed: DisplayedQuestion {
-                    question_id: promoted.question_id,
+                    question_id: failure_question.question_id,
                     revision: 1,
                     alternative_keys: vec!["strict".to_owned(), "degraded".to_owned()],
                 },
@@ -4674,10 +4613,74 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
         }],
     )?;
     assert!(response.all_succeeded());
-    let decision_id = fixture
+    let failure_decision_id = fixture
         .operations
         .canonical_basis(fixture.project_id)?
-        .active_decisions[0]
+        .active_decisions
+        .iter()
+        .find(|lifecycle| lifecycle.decision.question_id == failure_question.question_id)
+        .ok_or("failure Decision missing")?
+        .decision
+        .id;
+    let remaining_frontier = fixture
+        .operations
+        .inquiry_frontier(fixture.project_id, vec!["src/lib.rs".to_owned()])?;
+    assert_eq!(
+        remaining_frontier
+            .questions
+            .iter()
+            .map(|question| question.question_id)
+            .collect::<Vec<_>>(),
+        [retry_question.question_id]
+    );
+    let retry_response = fixture.operations.record_current_host_user_context(
+        fixture.project_id,
+        "codex".to_owned(),
+        "work-authority-session".to_owned(),
+        "Choose degraded for the CLI exit policy.".to_owned(),
+        ContextItemRole::Preference,
+        "Choose degraded".to_owned(),
+    )?;
+    let response = fixture.operations.record_inquiry_responses(
+        fixture.project_id,
+        vec![BatchResponseItem {
+            operation_id: OperationId::from_bytes([92; 16]),
+            response: CurrentHostResponse {
+                project_id: fixture.project_id,
+                source_id: retry_response.source_id,
+                host: "codex".to_owned(),
+                session: "work-authority-session".to_owned(),
+                turn: "Choose degraded for the CLI exit policy.".to_owned(),
+                displayed: DisplayedQuestion {
+                    question_id: retry_question.question_id,
+                    revision: 1,
+                    alternative_keys: vec!["strict".to_owned(), "degraded".to_owned()],
+                },
+                mapping: ResponseMapping::ExplicitDelegation {
+                    delegate_to: "implementation-owner".to_owned(),
+                    user_rationale: Some(
+                        "choose within the displayed CLI exit-policy scope".to_owned(),
+                    ),
+                },
+                work_scope: volicord_context::DecisionWorkScope::WorkItem(fixture.goal_id),
+                applicability: ApplicabilityScope {
+                    paths: vec!["src/lib.rs".to_owned()],
+                    components: Vec::new(),
+                    work_contexts: Vec::new(),
+                },
+                assumptions: Vec::new(),
+                revisit_triggers: Vec::new(),
+            },
+        }],
+    )?;
+    assert!(response.all_succeeded());
+    let retry_decision_id = fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .active_decisions
+        .iter()
+        .find(|lifecycle| lifecycle.decision.question_id == retry_question.question_id)
+        .ok_or("retry Decision missing")?
         .decision
         .id;
     let mut resolved = user_owned;
@@ -4686,14 +4689,17 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
         .basis
         .kinds
         .push(WorkAuthorityBasisKind::ExplicitDelegation);
-    resolved.basis.decision_basis.push(decision_id);
+    resolved.basis.decision_basis.push(failure_decision_id);
     let mut resolved_coupled = coupled;
     resolved_coupled.disposition = MaterialityDisposition::DelegatedImplementationChoice;
     resolved_coupled
         .basis
         .kinds
         .push(WorkAuthorityBasisKind::ExplicitDelegation);
-    resolved_coupled.basis.decision_basis.push(decision_id);
+    resolved_coupled
+        .basis
+        .decision_basis
+        .push(retry_decision_id);
     let mut revised_dimensions = vec![resolved, resolved_coupled];
     if mixed {
         for dimension in &mut revised_dimensions {
@@ -4722,13 +4728,14 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
         ready.satisfied_requirements.len(),
         if mixed { 4 } else { 2 }
     );
-    assert!(ready
-        .satisfied_requirements
-        .iter()
-        .filter(
-            |requirement| requirement.dimension_id.as_deref() != Some("provenance-representation")
-        )
-        .all(|requirement| requirement.decision_basis == [decision_id]));
+    assert!(ready.satisfied_requirements.iter().any(|requirement| {
+        requirement.dimension_id.as_deref() == Some("failure-policy")
+            && requirement.decision_basis == [failure_decision_id]
+    }));
+    assert!(ready.satisfied_requirements.iter().any(|requirement| {
+        requirement.dimension_id.as_deref() == Some("cli-exit-policy")
+            && requirement.decision_basis == [retry_decision_id]
+    }));
     assert!(fixture
         .operations
         .canonical_basis(fixture.project_id)?
@@ -4745,9 +4752,14 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
     assert!(missing_decision
         .message()
         .contains("must name every Decision"));
-    let checkpoint =
-        reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, vec![decision_id]))?;
-    assert_eq!(checkpoint.applied_decisions, [decision_id]);
+    let checkpoint = reopened.record_grounded_checkpoint(checkpoint_draft(
+        &fixture,
+        vec![failure_decision_id, retry_decision_id],
+    ))?;
+    assert_eq!(
+        checkpoint.applied_decisions,
+        [failure_decision_id, retry_decision_id]
+    );
     assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
     Ok(())
 }
