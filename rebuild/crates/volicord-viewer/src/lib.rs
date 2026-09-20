@@ -10,5 +10,6 @@ mod render;
 
 pub use http::ViewerServer;
 pub use render::{
-    ExplanationLevel, ViewerAdapter, ViewerError, ViewerLocale, ViewerPage, ViewerRequest,
+    ExplanationLevel, ViewerAdapter, ViewerError, ViewerLocale, ViewerPage, ViewerRenderProfile,
+    ViewerRequest,
 };

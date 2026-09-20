@@ -84,13 +84,13 @@ fn flow_diagram_does_not_fill_capacity_with_disconnected_components() {
 
 #[test]
 fn directed_chain_is_laid_out_in_flow_order_independent_of_input_order() {
-    let mut components = vec![
+    let mut components = [
         map_entity("middle".into()),
         map_entity("target".into()),
         map_entity("source".into()),
         map_entity("isolated".into()),
     ];
-    let mut relationships = vec![
+    let mut relationships = [
         map_relation("edge:second".into(), "middle".into(), "target".into()),
         map_relation("edge:first".into(), "source".into(), "middle".into()),
     ];
@@ -115,12 +115,12 @@ fn directed_chain_is_laid_out_in_flow_order_independent_of_input_order() {
 
 #[test]
 fn directed_cycle_shares_a_layer_without_inventing_an_order() {
-    let components = vec![
+    let components = [
         map_entity("cycle-a".into()),
         map_entity("cycle-b".into()),
         map_entity("after-cycle".into()),
     ];
-    let relationships = vec![
+    let relationships = [
         map_relation("cycle:a-b".into(), "cycle-a".into(), "cycle-b".into()),
         map_relation("cycle:b-a".into(), "cycle-b".into(), "cycle-a".into()),
         map_relation("cycle:out".into(), "cycle-b".into(), "after-cycle".into()),

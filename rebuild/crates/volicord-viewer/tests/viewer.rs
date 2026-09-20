@@ -15,7 +15,9 @@ use volicord_operations::{
     RequestingProvenance, RuntimeLayout,
 };
 use volicord_projections::{build_project_understanding, UnderstandingBound};
-use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerRequest};
+use volicord_viewer::{
+    ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerRenderProfile, ViewerRequest,
+};
 
 fn setup() -> (tempfile::TempDir, ViewerAdapter, ProjectId) {
     let temporary = tempdir().expect("temporary directory");
@@ -26,6 +28,25 @@ fn setup() -> (tempfile::TempDir, ViewerAdapter, ProjectId) {
         .expect("initialize Project");
     let project = initialized.project.id;
     (temporary, ViewerAdapter::new(operations), project)
+}
+
+fn print_viewer_profile(sample: &str, profile: ViewerRenderProfile) {
+    println!(
+        "VIEWER_PROFILE sample={sample} total_us={} projection_passes={} projection_total_us={} canonical_read_us={} repository_analysis_read_us={} candidate_read_us={} projection_build_us={} understanding_us={} health_read_us={} privacy_read_us={} document_preview_us={} guarded_read_us={} html_render_us={}",
+        profile.total.as_micros(),
+        profile.project_projection_passes,
+        profile.projection.total.as_micros(),
+        profile.projection.canonical_read.as_micros(),
+        profile.projection.repository_analysis_read.as_micros(),
+        profile.projection.candidate_read.as_micros(),
+        profile.projection.projection_build.as_micros(),
+        profile.understanding.as_micros(),
+        profile.health_read.as_micros(),
+        profile.privacy_read.as_micros(),
+        profile.document_preview.as_micros(),
+        profile.guarded_read.as_micros(),
+        profile.html_render.as_micros(),
+    );
 }
 
 #[test]
@@ -1225,12 +1246,21 @@ fn representative_large_repository_page_is_deterministically_bounded() {
         requested_language: "en".into(),
         guarded_request: None,
     };
-    let first = viewer
-        .render(&request, "test-request-authenticity")
+    let (first, cold_profile) = viewer
+        .render_profiled(&request, "test-request-authenticity")
         .expect("first large render");
-    let second = viewer
-        .render(&request, "test-request-authenticity")
-        .expect("second large render");
+    print_viewer_profile("cold", cold_profile);
+    assert_eq!(cold_profile.project_projection_passes, 1);
+    let mut warm_pages = Vec::new();
+    for sample in 1..=8 {
+        let (page, profile) = viewer
+            .render_profiled(&request, "test-request-authenticity")
+            .expect("warm large render");
+        print_viewer_profile(&format!("warm-{sample}"), profile);
+        assert_eq!(profile.project_projection_passes, 1);
+        warm_pages.push(page);
+    }
+    let second = warm_pages.last().expect("warm render page");
     assert_eq!(first.html.len(), second.html.len());
     assert!(first
         .html

@@ -3,6 +3,7 @@ use std::{
     error::Error as StdError,
     fmt,
     path::Path,
+    time::{Duration, Instant},
 };
 use volicord_context::{
     CanonicalRecordId, CheckpointKind, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
@@ -13,7 +14,7 @@ use volicord_inquiry::{CandidateDisposition, CandidateKind};
 use volicord_operations::{
     CanonicalMutationOutcome, ConfirmationDecision, ConfirmationRequestId, ConfirmationResponse,
     ForgettingOutcome, GuardedEffectCategory, HealthIssueKind, HealthState, LocalOperations,
-    PublicationOutcome,
+    ProjectProjectionProfile, PublicationOutcome,
 };
 use volicord_privacy::{ProviderConfigurationState, ProviderOptInState};
 use volicord_projections::{
@@ -69,6 +70,22 @@ pub struct ViewerPage {
     pub html: String,
 }
 
+/// Monotonic stage timings from the same path used to render a Viewer page.
+///
+/// The values are request-local diagnostics rather than a latency contract.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ViewerRenderProfile {
+    pub projection: ProjectProjectionProfile,
+    pub project_projection_passes: usize,
+    pub understanding: Duration,
+    pub health_read: Duration,
+    pub privacy_read: Duration,
+    pub document_preview: Duration,
+    pub guarded_read: Duration,
+    pub html_render: Duration,
+    pub total: Duration,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ViewerRenderMode<'a> {
     Live { request_authenticity: &'a str },
@@ -122,6 +139,19 @@ impl ViewerAdapter {
         )
     }
 
+    pub fn render_profiled(
+        &self,
+        request: &ViewerRequest,
+        request_authenticity: &str,
+    ) -> Result<(ViewerPage, ViewerRenderProfile), ViewerError> {
+        self.render_with_mode_profiled(
+            request,
+            ViewerRenderMode::Live {
+                request_authenticity,
+            },
+        )
+    }
+
     /// Renders the same Project projection as the live Viewer without any
     /// mutation transport, authenticity material, or live-server dependency.
     pub fn render_snapshot(
@@ -162,18 +192,35 @@ impl ViewerAdapter {
         request: &ViewerRequest,
         mode: ViewerRenderMode<'_>,
     ) -> Result<ViewerPage, ViewerError> {
-        let projection = self
+        self.render_with_mode_profiled(request, mode)
+            .map(|(page, _profile)| page)
+    }
+
+    fn render_with_mode_profiled(
+        &self,
+        request: &ViewerRequest,
+        mode: ViewerRenderMode<'_>,
+    ) -> Result<(ViewerPage, ViewerRenderProfile), ViewerError> {
+        let total_started = Instant::now();
+        let (projection, projection_profile) = self
             .operations
-            .project_projection(request.project_id)
+            .project_projection_profiled(request.project_id)
             .map_err(|error| ViewerError::new(format!("cannot build Project view: {error}")))?;
+        let understanding_started = Instant::now();
         let understanding = build_project_understanding(
             &projection,
             UnderstandingBound {
                 max_items_per_section: 32,
             },
         );
+        let understanding_duration = understanding_started.elapsed();
+        let health_started = Instant::now();
         let health = self.operations.health(Some(request.project_id));
+        let health_read = health_started.elapsed();
+        let privacy_started = Instant::now();
         let privacy = self.operations.privacy_status(request.project_id).ok();
+        let privacy_read = privacy_started.elapsed();
+        let document_started = Instant::now();
         let document_request = DocumentRequest {
             requested_language: request.requested_language.clone(),
             fixed_locale: request.locale.fixed(),
@@ -190,10 +237,12 @@ impl ViewerAdapter {
         };
         let documents = self
             .operations
-            .documents(request.project_id, &document_request)
+            .documents_from_projection(&projection, &document_request)
             .map_err(|error| {
                 ViewerError::new(format!("cannot generate document preview: {error}"))
             })?;
+        let document_preview = document_started.elapsed();
+        let guarded_started = Instant::now();
         let guarded = match mode {
             ViewerRenderMode::Live { .. } => request
                 .guarded_request
@@ -204,7 +253,9 @@ impl ViewerAdapter {
                 })?,
             ViewerRenderMode::Snapshot { .. } => None,
         };
+        let guarded_read = guarded_started.elapsed();
 
+        let render_started = Instant::now();
         let mut html = String::new();
         html.push_str("<!doctype html><html lang=\"");
         html.push_str(locale_key(request.locale));
@@ -317,10 +368,24 @@ impl ViewerAdapter {
             render_mutation_controls(&mut html, request, &projection, request_authenticity);
         }
         html.push_str("</main></body></html>");
-        Ok(ViewerPage {
-            project_id: request.project_id,
-            html,
-        })
+        let html_render = render_started.elapsed();
+        Ok((
+            ViewerPage {
+                project_id: request.project_id,
+                html,
+            },
+            ViewerRenderProfile {
+                projection: projection_profile,
+                project_projection_passes: 1,
+                understanding: understanding_duration,
+                health_read,
+                privacy_read,
+                document_preview,
+                guarded_read,
+                html_render,
+                total: total_started.elapsed(),
+            },
+        ))
     }
 
     pub fn correct_context(

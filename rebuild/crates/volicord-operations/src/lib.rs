@@ -48,7 +48,7 @@ pub use model::{
     WorkflowBasisIdentity, WorkflowDirective, WorkflowDisposition, WorkflowRequirement,
     WorkflowStage,
 };
-pub use operations::LocalOperations;
+pub use operations::{LocalOperations, ProjectProjectionProfile};
 pub use payload::{
     bounded_read_section, HOST_READ_RESULT_BYTE_BUDGET, HOST_READ_STRUCTURED_BYTE_BUDGET,
 };

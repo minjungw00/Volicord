@@ -99,6 +99,19 @@ struct PreparedAnalysisBasis {
     repository_worktree: RepositoryWorktreeObservation,
 }
 
+/// Monotonic stage timings for one construction of a Project projection.
+///
+/// These measurements describe local request work only. They are diagnostic
+/// observations, not a maintained latency budget.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProjectProjectionProfile {
+    pub canonical_read: Duration,
+    pub repository_analysis_read: Duration,
+    pub candidate_read: Duration,
+    pub projection_build: Duration,
+    pub total: Duration,
+}
+
 impl LocalOperations {
     pub fn new(layout: RuntimeLayout) -> Self {
         Self {
@@ -2357,11 +2370,25 @@ impl LocalOperations {
     }
 
     pub fn project_projection(&self, project_id: ProjectId) -> Result<ProjectProjection, Error> {
+        self.project_projection_profiled(project_id)
+            .map(|(projection, _profile)| projection)
+    }
+
+    pub fn project_projection_profiled(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        let total_started = Instant::now();
+        let canonical_started = Instant::now();
         let canonical = self.canonical_basis(project_id)?;
+        let canonical_read = canonical_started.elapsed();
+        let analysis_started = Instant::now();
         let (analyses, analysis_issues) = self.load_projection_analyses(project_id, &canonical);
+        let repository_analysis_read = analysis_started.elapsed();
         let analysis_refs = analyses.iter().collect::<Vec<_>>();
         let mut candidate_basis = None;
         let candidate_failure;
+        let candidate_started = Instant::now();
         match self.incomplete_committed_invalidations(project_id) {
             Ok(invalidations) => {
                 match CandidateStore::open(self.layout.candidate_store()).and_then(|store| {
@@ -2397,6 +2424,7 @@ impl LocalOperations {
                 });
             }
         }
+        let candidate_read = candidate_started.elapsed();
         let candidates = match (candidate_basis.as_ref(), candidate_failure) {
             (basis, Some(failure)) => CandidateProjectionInput::Degraded {
                 usable_basis: basis,
@@ -2412,7 +2440,8 @@ impl LocalOperations {
                 },
             },
         };
-        Ok(build_project_projection(ProjectProjectionInputs {
+        let projection_started = Instant::now();
+        let projection = build_project_projection(ProjectProjectionInputs {
             analysis_issues: &analysis_issues,
             canonical: &canonical,
             analyses: &analysis_refs,
@@ -2421,7 +2450,18 @@ impl LocalOperations {
             candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
             observed_at: now_micros()?,
             bound: ProjectionBound::default(),
-        }))
+        });
+        let projection_build = projection_started.elapsed();
+        Ok((
+            projection,
+            ProjectProjectionProfile {
+                canonical_read,
+                repository_analysis_read,
+                candidate_read,
+                projection_build,
+                total: total_started.elapsed(),
+            },
+        ))
     }
 
     pub fn recall(&self, project_id: ProjectId) -> Result<ResumeBrief, Error> {
@@ -2452,7 +2492,15 @@ impl LocalOperations {
         request: &DocumentRequest,
     ) -> Result<DocumentSet, Error> {
         let projection = self.project_projection(project_id)?;
-        generate_documents(&projection, request)
+        self.documents_from_projection(&projection, request)
+    }
+
+    pub fn documents_from_projection(
+        &self,
+        projection: &ProjectProjection,
+        request: &DocumentRequest,
+    ) -> Result<DocumentSet, Error> {
+        generate_documents(projection, request)
             .map_err(|error| Error::with_source("document generation failed", error))
     }
 
