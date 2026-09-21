@@ -1881,20 +1881,29 @@ and permitted semantic review groups. `machine_findings.py` validates complete c
   hard. An evidence-attributable numeric failed required validation after the last material
   mutation also remains hard. Evaluation preserves each verification execution instead of
   selecting the last validation-looking command: task-required/diagnostic role, focused or
-  broader aggregate scope, numeric outcome, baseline/environment attribution and evidenced
-  supersession/recovery are independent fields. An equivalent pre-mutation success followed
-  by failure is candidate-attributable; an identical failed pre-mutation execution/output can
-  establish known baseline failure. Failed then passed is recovered only through the same
-  invocation fingerprint, and environment-blocked/authorized-successful attempts remain two
-  records. A different later success does not silently erase a failure.
+  broader aggregate scope, numeric outcome, baseline/setup-environment/candidate attribution
+  and evidenced supersession/recovery are independent fields. An equivalent pre-mutation
+  success followed by failure is candidate-attributable; an identical failed pre-mutation
+  execution/output can establish known baseline failure. A later numeric success recovers a
+  failed validation only when its same-validator semantic profile covers the failed scope in
+  the same working directory. Exact reruns retain an equivalence relationship; changed
+  environment and inspectable broader-scope reruns retain distinct invocations and a covering
+  relationship. A narrower rerun, scratch/prototype success, unknown command or different
+  validator does not erase a failure. Exit 126/127, missing module and permission/setup
+  failures remain preserved setup-environment executions: correlated covering success marks
+  recovery, while no such success leaves incomplete review-required evidence rather than a
+  candidate-attributable hard failure.
 - Raw execution and canonical Checkpoint verification reconcile only through the persisted
   invocation fingerprint plus numeric exit/termination and ordered Source identity. Labels,
-  outcome prose and textual similarity are not correlation keys. An exact-identity outcome
-  disagreement remains an explicit conflict. Missing/ambiguous command classification or
-  attribution is reviewable, never success; an echoed success cannot establish a numeric
-  outcome. A later broader diagnostic/aggregate failure does not replace a successful required
-  functional verification unless inspectable baseline or equivalent-execution evidence
-  attributes that failure to the current candidate.
+  outcome prose and textual similarity are not correlation keys. Canonical outcome comparison
+  reconstructs only the Product's typed behavior-preserving compatibility-note enrichment;
+  matching declared/canonical passed evidence therefore reconciles without discarding the
+  enriched value. Any other exact-identity outcome disagreement remains an explicit conflict.
+  Missing/ambiguous command classification or attribution is reviewable, never success; an
+  echoed success cannot establish a numeric outcome. A later broader diagnostic/aggregate
+  failure does not replace a successful required functional verification unless inspectable
+  baseline or correlated same-validator evidence attributes that failure to the current
+  candidate.
 - Hard facts are extracted independently of broad procedural checks, so a redundant
   Recall cannot erase an identity conflict, and a positive review cannot waive a failed
   required validation. Review-required findings need explicit evidence-backed relationships

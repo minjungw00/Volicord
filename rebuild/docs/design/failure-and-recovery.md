@@ -41,10 +41,14 @@ identity, affected scope, Source/operation basis와 함께 표현하며 system-w
     Publication 뒤 caller가 중단되면 read-only state inspection으로 completed publication과
     remaining records를 확인하고 이미 published된 preparation을 blind retry하지 않는다.
 12. 여러 verification execution은 마지막 validation-looking command 하나로 collapse하지
-    않는다. Required/focused/broader/diagnostic scope, baseline·environment·candidate attribution,
-    supersession/recovery와 ambiguity를 preserved execution별로 유지한다. Canonical Checkpoint와
-    raw command의 same-execution reconciliation은 exact fingerprint와 numeric outcome을 요구하며
-    conflict는 favorable result로 선택하지 않는다.
+    않는다. Required/focused/broader/diagnostic scope, setup-environment·exploration·intermediate·
+    final validation role, baseline·environment·candidate attribution, supersession/recovery와
+    ambiguity를 preserved execution별로 유지한다. Recovery는 same-validator의 inspectable
+    covering numeric success를 요구하며 scratch/unknown 성공은 validator 실패를 지우지 않는다.
+    Canonical Checkpoint와 raw command의 same-execution reconciliation은 exact fingerprint,
+    numeric outcome과 Source identity를 요구한다. Product가 typed behavior-preserving basis에서
+    결정적으로 붙인 canonical outcome note만 재구성해 비교하며 그 밖의 conflict는 favorable
+    result로 선택하지 않는다.
 
 ## 2. State matrix
 

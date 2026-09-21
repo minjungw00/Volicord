@@ -102,10 +102,12 @@ violation leaves that machine finding blocking. There is no hard override field 
 qualification policy consumes reviews without changing the machine observations.
 For validation findings, review may inspect preserved scope and attribution evidence for an
 ambiguous broader or diagnostic failure, but prose that merely calls debt pre-existing cannot
-clarify it. Exact baseline execution/output, equivalent rerun, environment transition, or other
-indexed execution evidence must support the relationship. Raw/canonical outcome conflicts remain
-`cannot_resolve` until stronger exact-identity evidence exists; review never chooses the favorable
-side by label or narrative similarity.
+clarify it. Exact baseline execution/output, a same-validator covering rerun, an environment
+transition, or other indexed execution evidence must support the relationship. An unresolved
+setup/environment execution remains review-required and is not a validation success; scratch,
+prototype and unknown commands cannot supply the missing validator evidence. Raw/canonical outcome
+conflicts remain `cannot_resolve` until stronger exact-identity evidence exists; review never
+chooses the favorable side by label or narrative similarity.
 
 Review validity and the aggregate assessment describe only the recorded review.
 Every result retains `qualification_state = not_run` and `phase_9_ready = false`.

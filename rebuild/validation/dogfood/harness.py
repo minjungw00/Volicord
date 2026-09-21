@@ -3602,6 +3602,22 @@ def meaningful_resume_validation(
     }
 
 
+def required_validation_machine_status(
+    validation: dict[str, Any], checkpoint_reconciliation: dict[str, Any]
+) -> str:
+    """Keep confirmed validator failure distinct from incomplete evidence."""
+
+    if validation["unresolved_terminal_failure"]:
+        return "confirmed_violation"
+    if checkpoint_reconciliation["state"] == "conflict":
+        return "indeterminate"
+    if validation["qualified"]:
+        return "confirmed_pass"
+    if validation["terminal_sequence"] is None:
+        return "not_observed"
+    return "indeterminate"
+
+
 @dataclass(frozen=True)
 class MeaningfulWriteEvent:
     sequence: int
@@ -10280,12 +10296,9 @@ def real_session_evidence(
         **validation,
         "canonical_checkpoint_reconciliation": checkpoint_verification_evidence_basis,
     }
-    validation_status = (
-        "confirmed_violation" if validation["unresolved_terminal_failure"]
-        else "indeterminate" if checkpoint_verification_evidence_basis["state"] == "conflict"
-        else "confirmed_pass" if validation["qualified"]
-        else "not_observed" if validation["terminal_sequence"] is None
-        else "indeterminate")
+    validation_status = required_validation_machine_status(
+        validation, checkpoint_verification_evidence_basis
+    )
     recorded_decisions = work_capture.successful_calls("decision_record") if work_capture else []
     observed_ids = {call.result.get("project_id") for capture in (work_capture, resume_capture) if capture
         for op in ("project_initialize", "project_resolve", "recall") for call in capture.successful_calls(op)

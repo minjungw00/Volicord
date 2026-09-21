@@ -75,6 +75,56 @@ class MachineFindingTests(unittest.TestCase):
         value["continuation_basis"]["failure_basis"] = "terminal_validation_failed"
         self.assertEqual(m.from_observation(value)[0]["status"], "confirmed_violation")
 
+    def test_required_validation_hard_blocker_requires_confirmed_attribution(self):
+        validation = {
+            "qualified": False,
+            "terminal_sequence": 42,
+            "unresolved_terminal_failure": False,
+            "unresolved_environment_failure_count": 1,
+        }
+        status = harness.required_validation_machine_status(
+            validation, {"state": "reconciled"}
+        )
+        self.assertEqual(status, m.Status.INDETERMINATE)
+        self.assertEqual(
+            m.finding("required_validation_execution", status, validation)[
+                "disposition"
+            ],
+            m.Disposition.REVIEW,
+        )
+
+        confirmed = {
+            **validation,
+            "unresolved_terminal_failure": True,
+            "candidate_regression_count": 1,
+        }
+        status = harness.required_validation_machine_status(
+            confirmed, {"state": "reconciled"}
+        )
+        self.assertEqual(status, m.Status.VIOLATION)
+        self.assertEqual(
+            m.finding("required_validation_execution", status, confirmed)[
+                "disposition"
+            ],
+            m.Disposition.HARD,
+        )
+
+        passed = {
+            **validation,
+            "qualified": True,
+            "unresolved_environment_failure_count": 0,
+        }
+        self.assertEqual(
+            harness.required_validation_machine_status(
+                passed, {"state": "reconciled"}
+            ),
+            m.Status.PASS,
+        )
+        self.assertEqual(
+            harness.required_validation_machine_status(passed, {"state": "conflict"}),
+            m.Status.INDETERMINATE,
+        )
+
     def test_append_only_evaluation_reads_exact_evidence_set(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(harness, "git_clean", return_value=True):
             parent = Path(directory)
