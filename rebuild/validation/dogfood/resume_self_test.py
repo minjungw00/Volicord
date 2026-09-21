@@ -220,6 +220,30 @@ class ResumeTests(unittest.TestCase):
             command = replace(self.verification, parsed_command={"cmd": cmd})
             self.assertFalse(h.meaningful_resume_validation(replace(self.capture, commands=(command,)), 0)["qualified"])
 
+    def test_python_execution_role_requires_an_actual_validator(self):
+        cases = (
+            ("python prototype.py", "unknown", "not_applicable"),
+            ("python3 scripts/prototype.py", "unknown", "not_applicable"),
+            ("python3 /tmp/prototype.py", "exploration", "not_applicable"),
+            ("python -m pytest", "validation", "pytest"),
+            ("python3 -B -m pytest -q", "validation", "pytest"),
+            ("python3 focused_self_test.py", "validation", "python3"),
+            ("unknown-validator", "unknown", "not_applicable"),
+        )
+        for cmd, role, validator in cases:
+            with self.subTest(cmd=cmd):
+                command = replace(
+                    self.verification,
+                    parsed_command={"cmd": cmd, "workdir": str(self.capture.cwd)},
+                )
+                self.assertEqual(
+                    h.dogfood_command_role(command.parsed_command, self.capture.cwd),
+                    role,
+                )
+                profile = h.validation_execution_profile(command, self.capture.cwd)
+                self.assertEqual(profile["execution_role"], role)
+                self.assertEqual(profile["validator"], validator)
+
     def test_unknown_compound_cannot_recover_failure_or_certify_success(self):
         for exit_code in (0, 101):
             validation = replace(self.verification, exit_code=exit_code)

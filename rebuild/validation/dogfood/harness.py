@@ -3186,11 +3186,18 @@ def dogfood_command_role(value: Any, cwd: Path) -> str:
     return command_role(value)
 
 
-def validation_execution_profile(command: Any) -> dict[str, Any]:
-    """Describe validator scope without interpreting stdout or assistant prose."""
+def validation_execution_profile(
+    command: Any, cwd: Path | None = None
+) -> dict[str, Any]:
+    """Describe an execution role and validator scope without guessing intent."""
 
     argvs = command_argvs(command.parsed_command)
     argv = list(argvs[0]) if len(argvs) == 1 else []
+    execution_role = (
+        dogfood_command_role(command.parsed_command, cwd)
+        if cwd is not None
+        else command_role(command.parsed_command)
+    )
     environment_assignments: list[str] = []
     while argv and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=[^$`\n]*", argv[0]):
         environment_assignments.append(argv.pop(0))
@@ -3200,6 +3207,8 @@ def validation_execution_profile(command: Any) -> dict[str, Any]:
             environment_assignments.append(argv.pop(0))
     program = Path(argv[0]).name if argv else "unknown"
     args = argv[1:] if argv else []
+    if program in {"python", "python3"} and args[:1] == ["-B"]:
+        args = args[1:]
     if program in {"python", "python3"} and args[:2] == ["-m", "pytest"]:
         program, args = "pytest", args[2:]
     elif program in {"python", "python3"} and args[:2] == ["-m", "ruff"]:
@@ -3264,7 +3273,13 @@ def validation_execution_profile(command: Any) -> dict[str, Any]:
     )
     raw = command.parsed_command if isinstance(command.parsed_command, dict) else {}
     workdir = raw.get("workdir")
+    if execution_role != "validation":
+        program = "not_applicable"
+        scope = "not_applicable"
+        targets = []
+        selectors = []
     return {
+        "execution_role": execution_role,
         "validator": program,
         "scope": scope,
         "targets": targets,
@@ -3293,7 +3308,9 @@ def validation_profile_is_broader(failed: dict[str, Any], passed: dict[str, Any]
     )
 
 
-def validation_environment_blocked(command: Any, later: Any | None) -> bool:
+def validation_environment_blocked(
+    command: Any, later: Any | None, cwd: Path | None = None
+) -> bool:
     """Recognize a blocked attempt only with a correlated successful rerun."""
 
     if later is None:
@@ -3304,7 +3321,10 @@ def validation_environment_blocked(command: Any, later: Any | None) -> bool:
         before.get("sandbox_permissions") != "require_escalated"
         and after.get("sandbox_permissions") == "require_escalated"
     )
-    profiles = (validation_execution_profile(command), validation_execution_profile(later))
+    profiles = (
+        validation_execution_profile(command, cwd),
+        validation_execution_profile(later, cwd),
+    )
     environment_changed = profiles[0]["environment_assignments"] != profiles[1]["environment_assignments"]
     return escalated or environment_changed and validation_environment_failure_signal(command)
 
@@ -3364,7 +3384,9 @@ def meaningful_resume_validation(
         return completed(command) and command.termination == "exited" and command.exit_code == 0
 
     profiles = {
-        (command.sequence, command.group_index): validation_execution_profile(command)
+        (command.sequence, command.group_index): validation_execution_profile(
+            command, capture.cwd
+        )
         for command in all_commands
     }
     executions: list[dict[str, Any]] = []
@@ -3399,14 +3421,18 @@ def meaningful_resume_validation(
             if prior_failed:
                 prior = max(prior_failed, key=lambda candidate: (candidate.sequence, candidate.group_index))
                 attribution = (
-                    "authorized_successful_rerun" if validation_environment_blocked(prior, command)
+                    "authorized_successful_rerun" if validation_environment_blocked(
+                        prior, command, capture.cwd
+                    )
                     else "recovery_success"
                 )
                 relation = {"kind": "recovers_equivalent_attempt", "sequence": prior.sequence,
                     "group_index": prior.group_index}
         elif outcome == "failed" and later_success is not None:
             attribution = (
-                "environment_blocked" if validation_environment_blocked(command, later_success)
+                "environment_blocked" if validation_environment_blocked(
+                    command, later_success, capture.cwd
+                )
                 else "superseded_or_recovered"
             )
             relation = {"kind": "successful_equivalent_rerun", "sequence": later_success.sequence,
