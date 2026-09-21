@@ -4,6 +4,11 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
+Current identities are qualitative review schema 7 / policy revision 6, machine evaluation
+policy `evidence-evaluation-2`, human observation/receipt schema 2, qualification policy
+`replacement-qualification-3`, and result-lineage schema 1. Historical runs retain their old
+identities and are comparison inputs only; they are not silently upgraded.
+
 ## One rubric, explicit reviewers
 
 `evaluation.json.qualitative_review_contract` and `qualitative_review.rubric`

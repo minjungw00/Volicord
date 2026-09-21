@@ -423,7 +423,7 @@
       "purpose": "Ground the bounded reviewer completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
     },
     "qualification_authority": false,
-    "policy_revision": 5,
+    "policy_revision": 6,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -1222,7 +1222,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-2",
+    "revision": "replacement-qualification-3",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "live_viewer/*"

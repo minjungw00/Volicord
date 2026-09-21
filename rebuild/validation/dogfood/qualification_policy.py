@@ -9,7 +9,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-2"
+REVISION = "replacement-qualification-3"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
 HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable"}
 
