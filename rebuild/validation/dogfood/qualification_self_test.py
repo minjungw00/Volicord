@@ -2,6 +2,7 @@
 import copy
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -191,6 +192,23 @@ class FileBoundaryTests(unittest.TestCase):
                 policy.approve(output / 'qualification.json', self.parent / 'approval', operator='operator', statement='approve-phase-9')
             with self.assertRaisesRegex(ValueError, 'candidate mismatch'):
                 policy.qualify(self.root, self.evaluation, self.parent / 'wrong-candidate', candidate='0' * 40)
+        import result_lineage
+        published = result_lineage.publish(self.root, self.evaluation, [target],
+            output / 'qualification.json')
+        lineage_root = Path(published['lineage_root'])
+        self.assertEqual(lineage_root, self.parent / 'results' / value['run_id'])
+        copied = self.parent / 'copied-result-lineage'
+        shutil.copytree(lineage_root, copied)
+        self.assertNotIn(str(self.parent), (copied / 'index.json').read_text())
+        with patch.object(campaign, 'load_evidence_set', side_effect=AssertionError('original campaign access')):
+            verified = result_lineage.verify(copied)
+        self.assertEqual(verified['qualification_run_id'], value['run_id'])
+        self.assertFalse(verified['external_staging_paths_used'])
+        evaluation_copy = copied / 'evaluation/evaluation.json'
+        evaluation_copy.chmod(0o600)
+        evaluation_copy.write_bytes(evaluation_copy.read_bytes() + b' ')
+        with self.assertRaisesRegex(ValueError, 'artifact changed'):
+            result_lineage.verify(copied)
         self.assertEqual(snapshot(self.root), before)
         changed = copy.deepcopy(value)
         changed['qualitative_review']['unresolved_criteria'] = []

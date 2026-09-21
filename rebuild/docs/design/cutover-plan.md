@@ -300,6 +300,13 @@ work/resume을 포함하는 8-cycle/16-fresh-session campaign과
 모든 collected cycle의 qualitative review와 current production background semantic-provider의
 별도로 authorized real success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
+최종 evaluation/review/qualification과 optional approval은 immutable Campaign 안을 고치지 않고
+`<campaign-parent>/results/<qualification-run-id>`의 create-only result lineage로 publish한다.
+Lineage index/receipt는 exact Product candidate, evidence-set bytes, evaluator revision/policy,
+review run, qualification과 approval identity를 relative copied artifacts에 bind한다. 복사된
+package의 독립 verifier가 원래 staging path 없이 통과해야 하며 `/tmp` 경로는 cutover evidence의
+authoritative discovery dependency가 될 수 없다. Later run은 새 lineage이며 historical execution을
+재작성하거나 relabel하지 않는다.
 
 ### Phase 9 — Cutover
 
@@ -506,3 +513,5 @@ Only an explicit `approve-phase-9` operator action over the fully qualified stat
 Phase 9. Approval cannot substitute for evidence or waive hard facts. Cutover remains
 out of scope until this complete state exists. The 8-cycle/16-fresh-session requirement
 and pre-campaign blind provisional boundary remain unchanged.
+The approved qualification must also have a verified durable result lineage; an approval
+reachable only through an ephemeral staging path is not a discoverable cutover record.

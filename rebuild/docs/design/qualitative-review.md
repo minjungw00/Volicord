@@ -396,6 +396,31 @@ facts, resolved semantic findings, common review completion and targeted human e
 Approval rechecks the exact original inputs; it cannot replace missing evidence or review.
 The common review result itself always retains `phase_9_ready = false`.
 
+After qualification (and after approval when present), publish the durable result lineage:
+
+```sh
+rebuild/scripts/dogfood-campaign publish-result-lineage \
+  --campaign-root /durable/campaign \
+  --machine-evaluation /staging/evaluation/evaluation.json \
+  --review-root /staging/agent-review \
+  --review-root /staging/human-review \
+  --qualification /staging/qualification/qualification.json \
+  --approval /staging/approval/approval.json
+
+rebuild/scripts/dogfood-campaign verify-result-lineage \
+  --lineage-root /durable/results/<qualification-run-id>
+```
+
+Without `--output`, publication uses the discoverable campaign-associated location
+`<campaign-parent>/results/<qualification-run-id>`. It never writes into the immutable Campaign.
+The create-only package copies the exact evidence-set identity, evaluation and receipt, complete
+recorded review packages, qualification, and optional approval. `index.json` binds Product
+candidate, evidence-set hash, evaluator revision/policy, review run IDs/hashes, qualification
+run/policy/state and approval identity through relative paths; `receipt.json` binds every copied
+byte. Verification uses only that copied package, so `/tmp` and arbitrary original staging paths
+are neither serialized dependencies nor required for discovery. Publishing a later result creates
+a new lineage directory and never rewrites or relabels historical evidence.
+
 A valid `not_applicable` assessment for Decision comprehension when no user Decision is
 in scope may be established by an agent from the permitted evidence; it does not require
 a human to experience a nonexistent Decision. Applicable comprehension remains human-only.

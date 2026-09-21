@@ -33,6 +33,7 @@ import document_realization
 import machine_findings
 import review_operations
 import human_review
+import result_lineage
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -3565,6 +3566,17 @@ def parser() -> argparse.ArgumentParser:
     validate_approval = sub.add_parser("validate-approval", help="Verify immutable operator approval and all bound qualification inputs")
     validate_approval.add_argument("--approval", required=True)
     validate_approval.add_argument("--qualification", required=True)
+    publish_lineage = sub.add_parser("publish-result-lineage",
+        help="Publish a durable self-contained evaluation/review/qualification lineage")
+    publish_lineage.add_argument("--campaign-root", required=True)
+    publish_lineage.add_argument("--machine-evaluation", required=True)
+    publish_lineage.add_argument("--review-root", action="append", default=[])
+    publish_lineage.add_argument("--qualification", required=True)
+    publish_lineage.add_argument("--approval")
+    publish_lineage.add_argument("--output")
+    verify_lineage = sub.add_parser("verify-result-lineage",
+        help="Verify a copied result lineage without original staging paths")
+    verify_lineage.add_argument("--lineage-root", required=True)
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
@@ -3641,6 +3653,9 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    if args.command == "verify-result-lineage":
+        print(json.dumps(result_lineage.verify(Path(args.lineage_root)), indent=2, sort_keys=True))
+        return 0
     if args.command == "validate-approval":
         import qualification_policy
         print(json.dumps(qualification_policy.verify_approval(Path(args.approval), Path(args.qualification)), indent=2, sort_keys=True))
@@ -3717,6 +3732,11 @@ def main() -> int:
             candidate=args.candidate_head, review_roots=[Path(p) for p in args.review_root],
             capsule_path=Path(args.gate_capsule) if args.gate_capsule else None,
             archive_path=Path(args.gate_archive) if args.gate_archive else None)
+    elif args.command == "publish-result-lineage":
+        value = result_lineage.publish(root, Path(args.machine_evaluation),
+            [Path(path) for path in args.review_root], Path(args.qualification),
+            Path(args.output) if args.output else None,
+            Path(args.approval) if args.approval else None)
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
     elif args.command == "prepare-qualitative-review":

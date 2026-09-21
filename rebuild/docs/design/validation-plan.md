@@ -1868,6 +1868,17 @@ qualification state and binds the original qualification bytes/hash. Operator id
 is declared, not authenticated; the cooperative filesystem does not provide signatures.
 The engineering agent must not exercise this operator action without explicit authorization.
 
+Completed result discovery uses `publish-result-lineage`. Its default create-only location is
+`<campaign-parent>/results/<qualification-run-id>`; an explicit durable `--output` may be used
+instead. `index.json` and its receipt bind the exact Product candidate, `evidence-set.json` bytes,
+evaluation run/evaluator revision/policy, every recorded qualitative review, qualification run and
+optional approval. The package copies the immutable artifacts with relative paths and excludes the
+qualification input file's absolute staging paths. `verify-result-lineage` performs independent
+hash/identity/policy/receipt verification using only copied contents. Therefore `/tmp` is allowed
+for transient preparation but is never the sole authoritative discovery path. A later evaluation,
+review, qualification or approval publishes a new lineage; it cannot mutate Campaign evidence or
+claim that a later run belonged to the original candidate execution.
+
 The maintained candidate technical gate remains authoritative and unchanged. Qualification
 requires a capsule matching the independently verified archive's completion transition for
 the exact Product candidate. Policy changes never trigger expensive technical execution.
