@@ -532,16 +532,32 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         data = bounded_read(human_observations)
         require_review_artifact_safe(data, "human observations contain sensitive payload")
         observed = json.loads(data)
-        review.require(isinstance(observed, dict) and set(observed) == {"kind", "candidate_head", "evidence_set_sha256", "observer", "observations"}
-            and observed["kind"] == "dogfood_human_observations" and observed["candidate_head"] == manifest["candidate_head"]
+        review.require(isinstance(observed, dict) and set(observed) == {"kind", "schema_version", "candidate_head", "evidence_set_sha256", "observer", "observations"}
+            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 2
+            and observed["candidate_head"] == manifest["candidate_head"]
             and observed["evidence_set_sha256"] == evidence_hash, "human observation candidate/evidence binding mismatch")
         review.validate_reviewer(observed["observer"], sessions)
         review.require(observed["observer"]["kind"] == "human", "agent authorship cannot claim direct human observation")
         review.require(isinstance(observed["observations"], list) and len(observed["observations"]) == 2, "both live accessibility locales require observations")
         for item in observed["observations"]:
-            review.require(isinstance(item, dict) and set(item) == {"sample_id", "locale", "observation", "limits"}
-                and item["sample_id"] == "volicord-1" and item["locale"] in {"en", "ko"}
-                and all(authority.bounded_text(item[k]) for k in ("observation", "limits")), "invalid direct human observation")
+            review.require(isinstance(item, dict) and set(item) == {"sample_id", "locale", "control", "response"}
+                and item["sample_id"] == "volicord-1" and item["locale"] in {"en", "ko"},
+                "invalid direct human observation")
+            control = item["control"]
+            review.require(isinstance(control, dict) and set(control) == {"action", "reference_locale"}
+                and control["action"] in {"direct", "same_as_locale"}, "invalid human observation control")
+            if control["action"] == "direct":
+                response = item["response"]
+                review.require(control["reference_locale"] is None and isinstance(response, dict)
+                    and set(response) == {"observation", "limits"}
+                    and all(authority.bounded_text(response[k]) for k in ("observation", "limits")),
+                    "invalid grouped human observation")
+            else:
+                review.require(item["locale"] == "ko" and control["reference_locale"] == "en"
+                    and item["response"] is None
+                    and any(previous["locale"] == "en" and previous["control"]["action"] == "direct"
+                            for previous in observed["observations"]),
+                    "human locale reference requires a direct English observation")
             identity_key = "volicord-1-live-" + item["locale"]
             review.require(identity_key not in index["evidence"], "duplicate human observation locale")
             body = encoded({"binding": {k: observed[k] for k in ("candidate_head", "evidence_set_sha256", "observer")}, **item})

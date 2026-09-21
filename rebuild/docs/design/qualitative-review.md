@@ -231,12 +231,17 @@ rebuild/scripts/dogfood-campaign prepare-qualitative-review \
   --human-observations /absolute/private/human-observations
 ```
 
-The capture presents one locale observation and its limits at a time. Tooling derives the
+The capture presents one locale at a time and accepts a bounded multi-line/multi-paragraph
+answer with explicit `OBSERVATION:` and `LIMITS:` sections, so one natural response covers both.
+For Korean, `SAME AS ENGLISH` records a typed `same_as_locale` reference to the English
+observation; that phrase is retained only in immutable answer provenance, not as semantic
+observation prose. Tooling derives the
 candidate/evidence hashes, human observer shape, run identity, schema and receipt. The human
 supplies the observation text; the tool cannot infer an accessibility outcome from static
 markup or fill an omitted observation.
 
-After preparation, `converse-qualitative-review` presents one criterion at a time. Evidence
+After preparation, `converse-qualitative-review` presents one criterion at a time and accepts
+multi-line observation/reasoning without exposing the internal review schema. Evidence
 is selected by displayed ordinal, and an exact quoted phrase (or explicit first-location
 selection) lets the tool derive evidence identity and locator. The human supplies the
 assessment, reasoning, relevance, uncertainty, counterevidence state and any authority
@@ -259,6 +264,17 @@ displayed prepared criterion without requiring its opaque identity. When a human
 resolves a prior recorded review, pass its path with `--resolve-review-root`; the tool derives
 the run ID and asks for criterion-specific confirmation instead of requiring the person to
 copy `resolves_review_runs` identifiers. Corrections after recording still require a new run.
+
+Exact conversational controls are typed semantics: `SKIP` keeps the criterion `not_reviewed`;
+`NOT SURE` or `CANNOT ASSESS` records `insufficient_evidence`; `NOT APPLICABLE` is accepted only
+where the rubric permits it; and `ALREADY COVERED`, `SAME AS PREVIOUS`, or `SAME AS ENGLISH`
+records a compatible prior-criterion reference. The literal control remains in the immutable
+answer trace, while `human_controls` stores its action/reference and the assessment does not use
+the phrase as observation prose. A reference may only stay within the same sample/group, and the
+locale form must bind the matching English criterion. `insufficient_evidence` may have no
+citation: it preserves the per-criterion inspected-evidence set (possibly empty) and a bounded
+account of what is missing. Only satisfied/violated judgments receive follow-up for still-required
+semantic dimensions, grouped in one confirmation rather than repetitive per-dimension prompts.
 
 Give the reviewer `REVIEW.md`, `preparation.json` and the indexed evidence files.
 Preparation contains the maintained rubric and its revision/hash, bounded initial
@@ -367,8 +383,9 @@ For direct live observations, human preparation additionally accepts `--human-ob
 pointing to the conversational capture directory. The lower-level JSON-file input remains
 available for automation. The object has kind `dogfood_human_observations`, original `candidate_head`,
 `evidence_set_sha256`, an `observer` using the common human reviewer identity shape, and
-exactly two `observations`: `{sample_id: "volicord-1", locale: "en"|"ko", observation:
-<bounded actual observation>, limits: <bounded limits>}`. Preparation copies and hashes
+exactly two `observations`. Each has `sample_id`, `locale`, a typed `control`, and either a
+grouped `{observation, limits}` response or a Korean-to-English locale reference with no
+duplicated semantic prose. Preparation copies and hashes
 these declared observations into immutable review evidence. Agent authorship is rejected.
 These are additional direct human observations, not reconstructed historical rollout bytes.
 Identity remains self-reported; do not use agent-generated claims of a human experience.

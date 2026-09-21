@@ -67,6 +67,8 @@ def fill(value, p, state="satisfied"):
             for name, entry in sorted(p["index"]["evidence"].items())
             if entry["sample_id"] in {None, scope}])
     value["inspected_evidence"] = sorted({reference["evidence_id"] for reference in value["evidence"]})
+    if state == "insufficient_evidence":
+        value["evidence"] = []
     if "/authority/" in value["criterion_id"] and not value["criterion_id"].endswith("/coverage"):
         value["authority"] = assessment()
     return value
@@ -174,6 +176,7 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "not_reviewed")
         value = completed(p)
         value["assessments"][0]["assessment"] = "insufficient_evidence"
+        value["assessments"][0]["evidence"] = []
         result = q.validate_value(p, "d" * 64, value)
         self.assertEqual(result["assessment_state"], "insufficient_evidence")
         self.assertFalse(result["phase_9_ready"])
@@ -297,10 +300,13 @@ class ContractTests(unittest.TestCase):
         p = preparation()
         value = completed(p)
         finding = next(a for a in value["assessments"] if a["authority"] is not None)
+        references = copy.deepcopy(finding["evidence"])
         finding["authority"]["authority_relation_to_outcome"] = "uncertain"
         finding["assessment"] = "insufficient_evidence"
+        finding["evidence"] = []
         self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "insufficient_evidence")
         finding["assessment"] = "satisfied"
+        finding["evidence"] = references
         with self.assertRaisesRegex(ValueError, "authority disposition"):
             q.validate_value(p, "d" * 64, value)
         finding["authority"]["chronology"] = "late"

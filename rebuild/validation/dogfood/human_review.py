@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import copy
 from pathlib import Path
 import secrets
 import tempfile
@@ -32,6 +33,35 @@ def _ask(prompt, input_fn, output_fn, trace):
     review.require(authority.bounded_text(answer), "human answer must be non-empty and bounded")
     trace.append({"prompt": prompt, "answer": answer})
     return answer
+
+
+def _ask_multiline(prompt, input_fn, output_fn, trace):
+    """Accept a natural bounded block; interactive input ends with a line containing END."""
+    output_fn(prompt + " (multiple paragraphs are allowed; finish with END on its own line)")
+    first = input_fn()
+    if input_fn is not input:
+        answer = first.strip()
+    else:
+        lines = []
+        current = first
+        while current != "END":
+            lines.append(current)
+            current = input_fn()
+        answer = "\n".join(lines).strip()
+    review.require(authority.bounded_text(answer), "human answer must be non-empty and bounded")
+    trace.append({"prompt": prompt, "answer": answer})
+    return answer
+
+
+def _split_observation_and_limits(answer):
+    """Split explicit human-authored sections without interpreting their meaning."""
+    marker = "\nLIMITS:\n"
+    review.require(answer.startswith("OBSERVATION:\n") and marker in answer,
+        "grouped observation must contain OBSERVATION: and LIMITS: sections")
+    observation, limits = answer[len("OBSERVATION:\n"):].split(marker, 1)
+    review.require(authority.bounded_text(observation.strip()) and authority.bounded_text(limits.strip()),
+        "grouped observation and limits must both be non-empty and bounded")
+    return observation.strip(), limits.strip()
 
 
 def _choice(prompt, choices, input_fn, output_fn, trace):
@@ -75,21 +105,27 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
     observations, answer_trace = [], []
     for locale in ("en", "ko"):
         trace = []
-        observation = _ask(
-            f"Describe only what you personally observed in the live Viewer for locale {locale}.",
+        answer = _ask_multiline(
+            f"For locale {locale}, describe what you personally observed and its limits using "
+            "OBSERVATION: and LIMITS: sections. Type SAME AS ENGLISH for an exact locale reference.",
             input_fn, output_fn, trace)
-        limits = _ask(
-            f"State the limits of that {locale} observation (what you did not inspect or could not establish).",
-            input_fn, output_fn, trace)
-        observations.append({"sample_id": "volicord-1", "locale": locale,
-            "observation": observation, "limits": limits})
+        if locale == "ko" and answer.casefold() == "same as english":
+            observations.append({"sample_id": "volicord-1", "locale": locale,
+                "control": {"action": "same_as_locale", "reference_locale": "en"},
+                "response": None})
+        else:
+            observation, limits = _split_observation_and_limits(answer)
+            observations.append({"sample_id": "volicord-1", "locale": locale,
+                "control": {"action": "direct", "reference_locale": None},
+                "response": {"observation": observation, "limits": limits}})
         answer_trace.append({"locale": locale, "turns": trace})
     value = {"kind": "dogfood_human_observations",
+        "schema_version": 2,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer": observer, "observations": observations}
     data = ops.encoded(value)
     ops.require_review_artifact_safe(data, "human observations contain sensitive payload")
-    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 1,
+    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 2,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer_run_id": observer["run_id"], "observations_sha256": ops.digest(data),
         "answer_trace": answer_trace}
@@ -105,7 +141,7 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
 
 
 def load_viewer_observations(path):
-    """Load either the conversational receipt directory or the older JSON input."""
+    """Load a conversational observation directory or direct current-schema JSON."""
     ops = _ops()
     if path.is_file():
         return path
@@ -116,12 +152,13 @@ def load_viewer_observations(path):
     for item in value.get("observations", []):
         locale = item.get("locale")
         expected_trace.append({"locale": locale, "turns": [
-            {"prompt": f"Describe only what you personally observed in the live Viewer for locale {locale}.",
-             "answer": item.get("observation")},
-            {"prompt": f"State the limits of that {locale} observation (what you did not inspect or could not establish).",
-             "answer": item.get("limits")},
+            {"prompt": f"For locale {locale}, describe what you personally observed and its limits using "
+             "OBSERVATION: and LIMITS: sections. Type SAME AS ENGLISH for an exact locale reference.",
+             "answer": ("SAME AS ENGLISH" if item.get("control", {}).get("action") == "same_as_locale"
+                else "OBSERVATION:\n" + item.get("response", {}).get("observation", "")
+                + "\nLIMITS:\n" + item.get("response", {}).get("limits", ""))},
         ]})
-    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 1,
+    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 2,
         "candidate_head": value.get("candidate_head"),
         "evidence_set_sha256": value.get("evidence_set_sha256"),
         "observer_run_id": value.get("observer", {}).get("run_id"),
@@ -232,6 +269,51 @@ def _resolution_runs(review_roots, criterion_id):
     return runs
 
 
+def _control_reference(answer, position, specs, draft):
+    normalized = " ".join(answer.casefold().split())
+    action = None
+    if normalized in {"same as previous", "same-as-previous"}:
+        action = "same_as_prior"
+    elif normalized in {"already covered", "already-covered"}:
+        action = "already_covered"
+    elif normalized in {"same as english", "same-as-english"}:
+        action = "same_as_other_locale"
+    if action is None:
+        return None
+    current = specs[position]
+    candidates = []
+    for prior_position in range(position):
+        prior = specs[prior_position]
+        finding = draft["assessments"][prior_position]
+        if finding["assessment"] == "not_reviewed" or prior["sample_id"] != current["sample_id"] \
+                or prior["group"] != current["group"] or current["group"] == "authority":
+            continue
+        if action == "same_as_other_locale":
+            if prior["name"] == current["name"] and prior["locale"] == "en" and current["locale"] == "ko":
+                candidates.append(prior_position)
+        else:
+            candidates.append(prior_position)
+    review.require(candidates, "the requested control has no compatible prior reviewed criterion")
+    return action, candidates[-1]
+
+
+def _store_draft(root, draft_path, draft):
+    ops = _ops()
+    data = ops.encoded(draft)
+    ops.require_review_artifact_safe(data, "conversational review draft contains sensitive payload")
+    descriptor, temporary = tempfile.mkstemp(prefix=".draft-", dir=root)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, draft_path)
+        draft_path.chmod(0o600)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return data
+
+
 def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
                  input_fn=input, output_fn=print):
     """Capture exactly one human criterion and update only the mutable draft."""
@@ -259,9 +341,73 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
     output_fn(preparation["rubric"]["group_prompts"].get(spec["group"], "Inspect this bounded criterion."))
     if spec["name"] in preparation["rubric"]["criterion_prompts"]:
         output_fn(preparation["rubric"]["criterion_prompts"][spec["name"]])
-    state = _choice("What is your judgment?", review.STATES[:-1], input_fn, output_fn, trace)
-    reasoning = _ask("State the reasoning for that judgment in your own words.", input_fn, output_fn, trace)
-    references = _references(root, preparation, spec, input_fn, output_fn, trace, purpose="the judgment")
+    observation = _ask_multiline(
+        "Describe your observation and reasoning. You may instead enter SKIP, ALREADY COVERED, "
+        "SAME AS PREVIOUS, SAME AS ENGLISH, NOT SURE, CANNOT ASSESS, or NOT APPLICABLE.",
+        input_fn, output_fn, trace)
+    normalized = " ".join(observation.casefold().split())
+    control_reference = _control_reference(observation, position, specs, draft)
+    if normalized == "skip":
+        draft["human_controls"][spec["criterion_id"]] = {"action": "skip",
+            "reference_criterion_id": None, "answer_trace": trace}
+        result = review.validate_value(preparation, sha, draft)
+        data = _store_draft(root, draft_path, draft)
+        return {"state": "draft_updated", "criterion_number": position + 1,
+            "criterion_id": spec["criterion_id"], "assessment": "not_reviewed",
+            "control": "skip", "draft_sha256": ops.digest(data),
+            "review_run_id": preparation["reviewer"]["run_id"],
+            "candidate_head": preparation["binding"]["candidate_head"],
+            "evidence_set_sha256": preparation["binding"]["evidence_set"]["sha256"],
+            "review_result": result}
+    if control_reference is not None:
+        action, prior_position = control_reference
+        prior = copy.deepcopy(draft["assessments"][prior_position])
+        prior_id = prior["criterion_id"]
+        prior["criterion_id"] = spec["criterion_id"]
+        for reference in [*prior["evidence"], *prior["counterevidence"]["evidence"]]:
+            reference["criterion_id"] = spec["criterion_id"]
+            reference["relevance"] = f"Referenced human observation from {prior_id}; no duplicate observation text was entered."
+        prior["machine_relationships"] = []
+        prior["human_answer_trace"] = trace
+        draft["assessments"][position] = prior
+        draft["human_controls"][spec["criterion_id"]] = {"action": action,
+            "reference_criterion_id": prior_id, "answer_trace": trace}
+        result = review.validate_value(preparation, sha, draft)
+        data = _store_draft(root, draft_path, draft)
+        return {"state": "draft_updated", "criterion_number": position + 1,
+            "criterion_id": spec["criterion_id"], "assessment": prior["assessment"],
+            "control": action, "reference_criterion_id": prior_id,
+            "draft_sha256": ops.digest(data), "review_run_id": preparation["reviewer"]["run_id"],
+            "candidate_head": preparation["binding"]["candidate_head"],
+            "evidence_set_sha256": preparation["binding"]["evidence_set"]["sha256"],
+            "review_result": result}
+    if normalized in {"not sure", "cannot assess", "cannot-assess"}:
+        reasoning = _ask_multiline("Explain what you inspected and what evidence is missing.",
+            input_fn, output_fn, trace)
+        finding = {**review.observation(spec["criterion_id"]),
+            "assessment": "insufficient_evidence", "reasoning": reasoning,
+            "uncertainty": reasoning,
+            "counterevidence": {"state": "not_observable", "reasoning": reasoning, "evidence": []},
+            "human_answer_trace": trace}
+        draft["assessments"][position] = finding
+        draft["human_controls"][spec["criterion_id"]] = {"action": "cannot_assess",
+            "reference_criterion_id": None, "answer_trace": trace}
+        result = review.validate_value(preparation, sha, draft)
+        data = _store_draft(root, draft_path, draft)
+        return {"state": "draft_updated", "criterion_number": position + 1,
+            "criterion_id": spec["criterion_id"], "assessment": "insufficient_evidence",
+            "control": "cannot_assess", "draft_sha256": ops.digest(data),
+            "review_run_id": preparation["reviewer"]["run_id"],
+            "candidate_head": preparation["binding"]["candidate_head"],
+            "evidence_set_sha256": preparation["binding"]["evidence_set"]["sha256"],
+            "review_result": result}
+    forced_not_applicable = normalized in {"not applicable", "not-applicable"}
+    state = ("not_applicable" if forced_not_applicable else
+        _choice("What is your judgment?", review.STATES[:-1], input_fn, output_fn, trace))
+    reasoning = (observation if not forced_not_applicable else
+        _ask_multiline("Explain why the maintained applicability rule applies.", input_fn, output_fn, trace))
+    references = ([] if state == "insufficient_evidence" else
+        _references(root, preparation, spec, input_fn, output_fn, trace, purpose="the judgment"))
     uncertainty = _ask("State the remaining uncertainty or explicitly say that none remains.", input_fn, output_fn, trace)
     counter_state = _choice("What counterevidence did you find?",
         ["cited", "none_found", "not_observable"], input_fn, output_fn, trace)
@@ -272,15 +418,17 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
     if state == "not_applicable":
         rule = preparation["rubric"]["not_applicable_rules"].get(spec["name"])
         review.require(rule is not None, "this criterion cannot be marked not applicable")
-        applicability = {"code": rule, "reasoning": _ask(
-            "Explain why the maintained applicability rule applies.", input_fn, output_fn, trace)}
+        applicability = {"code": rule, "reasoning": reasoning}
     observations = []
     if state in {"satisfied", "violated"}:
-        for dimension in preparation["rubric"]["criterion_observations"].get(spec["name"], []):
-            review.require(_yes_no(f"Did you independently inspect '{dimension}'?",
-                input_fn, output_fn, trace),
-                "satisfied/violated requires every criterion-specific dimension; choose a nonterminal evidence state instead")
-            observations.append(dimension)
+        dimensions = preparation["rubric"]["criterion_observations"].get(spec["name"], [])
+        if dimensions:
+            answer = _ask("Confirm the independently inspected dimensions by entering their comma-separated names: "
+                + ", ".join(dimensions), input_fn, output_fn, trace)
+            supplied = [item.strip() for item in answer.split(",")]
+            review.require(supplied == dimensions,
+                "satisfied/violated requires every unresolved criterion-specific dimension")
+            observations.extend(dimensions)
     detail = None
     if spec["group"] == "authority" and spec["name"] != "coverage" \
             and state in {"satisfied", "violated"}:
@@ -294,6 +442,9 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
             "evidence": counter_refs}, "applicability_reason": applicability,
         "machine_relationships": [], "authority": detail, "human_answer_trace": trace}
     draft["assessments"][position] = finding
+    draft["human_controls"][spec["criterion_id"]] = {"action": (
+        "not_applicable" if forced_not_applicable else "direct"),
+        "reference_criterion_id": None, "answer_trace": trace}
     inspected = set(draft["observation_scope"]["inspected_evidence"])
     inspected.update(reference["evidence_id"] for reference in [*references, *counter_refs])
     draft["observation_scope"]["inspected_evidence"] = sorted(inspected)
@@ -303,18 +454,7 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
             draft["resolves_review_runs"].setdefault(spec["criterion_id"], []).append(run_id)
     finding["human_answer_trace"] = trace
     result = review.validate_value(preparation, sha, draft)
-    data = ops.encoded(draft)
-    ops.require_review_artifact_safe(data, "conversational review draft contains sensitive payload")
-    descriptor, temporary = tempfile.mkstemp(prefix=".draft-", dir=root)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, draft_path)
-        draft_path.chmod(0o600)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
+    data = _store_draft(root, draft_path, draft)
     return {"state": "draft_updated", "criterion_number": position + 1,
         "criterion_id": spec["criterion_id"], "assessment": state,
         "draft_sha256": ops.digest(data), "review_run_id": preparation["reviewer"]["run_id"],

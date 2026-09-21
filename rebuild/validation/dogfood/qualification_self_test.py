@@ -61,12 +61,14 @@ class PolicyTests(unittest.TestCase):
         review.validate_value(self.prep, "d" * 64, self.agent)
         self.assertEqual(self.result()["replacement_qualification"], "qualified")
         a["assessment"] = "insufficient_evidence"
+        a["evidence"] = []
         a["machine_relationships"] = []
         self.assertEqual(self.result()["replacement_qualification"], "unresolved")
 
     def test_insufficient_and_missing_technical_gate_cannot_pass(self):
         for a in self.agent["assessments"]:
             a["assessment"] = "insufficient_evidence"
+            a["evidence"] = []
         self.assertEqual(self.result([self.agent])["replacement_qualification"], "unresolved")
         self.assertEqual(self.result([self.human], {"state": "not_provided"})["replacement_qualification"], "unresolved")
         self.assertEqual(self.result([self.human], {"state": "failed"})["replacement_qualification"], "blocked")
@@ -76,6 +78,7 @@ class PolicyTests(unittest.TestCase):
         for assessment in missing["assessments"]:
             if assessment["criterion_id"].startswith("polyglot-medium/cli/"):
                 assessment["assessment"] = "insufficient_evidence"
+                assessment["evidence"] = []
         human = copy.deepcopy(self.human)
         for index, assessment in enumerate(human["assessments"]):
             if "/cli/" in assessment["criterion_id"]:

@@ -72,10 +72,7 @@ def insufficient_draft(root):
     for spec, finding in zip(q.criterion_specs(p["index"], p["rubric"]), value["assessments"]):
         finding.update(assessment="insufficient_evidence", reasoning="Only the bounded evidence availability inventory was inspected.",
             inspected_evidence=[spec["sample_id"] + "-availability"],
-            evidence=[{"evidence_id": spec["sample_id"] + "-availability",
-                "locator": {"kind": "json_pointer", "value": "/unavailable_surfaces"},
-                "criterion_id": spec["criterion_id"],
-                "relevance": "This availability record establishes why the exact criterion cannot be judged."}],
+            evidence=[],
             uncertainty="No substantive judgment has been established from actual observations.",
             counterevidence={"state": "not_observable", "reasoning": "Missing inspection limits both positive and contrary observations.", "evidence": []},
             human_answer_trace=([{"prompt": "What is your bounded judgment?",
@@ -352,16 +349,19 @@ class WorkflowTests(unittest.TestCase):
         evidence_hash = ops.digest((self.root / "evidence-set.json").read_bytes())
         observation = {
             "kind": "dogfood_human_observations",
+            "schema_version": 2,
             "candidate_head": c.load_evidence_set(self.root)["candidate_head"],
             "evidence_set_sha256": evidence_hash,
             "observer": q.reviewer("human", "b" * 32),
             "observations": [
                 {"sample_id": "volicord-1", "locale": "en",
-                 "observation": "The view states that auth.json content is not retained.",
-                 "limits": "Private prompt bodies were excluded from inspection."},
+                 "control": {"action": "direct", "reference_locale": None},
+                 "response": {"observation": "The view states that auth.json content is not retained.",
+                    "limits": "Private prompt bodies were excluded from inspection."}},
                 {"sample_id": "volicord-1", "locale": "ko",
-                 "observation": "Bearer token terminology is visible as security guidance.",
-                 "limits": "The api_key field name is documentation, not a retained value."},
+                 "control": {"action": "direct", "reference_locale": None},
+                 "response": {"observation": "Bearer token terminology is visible as security guidance.",
+                    "limits": "The api_key field name is documentation, not a retained value."}},
             ],
         }
         source = self.parent / (self._testMethodName + "-benign.json")
@@ -369,7 +369,7 @@ class WorkflowTests(unittest.TestCase):
         result = ops.prepare(self.root, self.target(), reviewer_kind="human", human_observations=source)
         self.assertEqual(result["state"], "prepared")
 
-        observation["observations"][0]["observation"] = (
+        observation["observations"][0]["response"]["observation"] = (
             "Authorization: Bearer retained-human-observation-token-1234567890")
         sensitive = self.parent / (self._testMethodName + "-sensitive.json")
         sensitive.write_bytes(ops.encoded(observation))
@@ -381,10 +381,8 @@ class WorkflowTests(unittest.TestCase):
     def test_conversational_human_observations_bind_candidate_and_receipt(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
         answers = iter([
-            "Keyboard focus and narrow layout were personally inspected in the English Viewer.",
-            "Screen reader output and other pages were not inspected.",
-            "한국어 Viewer에서 키보드 초점과 좁은 화면 배치를 직접 확인했다.",
-            "스크린 리더 출력과 다른 페이지는 확인하지 않았다.",
+            "OBSERVATION:\nKeyboard focus and narrow layout were personally inspected in the English Viewer.\n\nA second paragraph remains one answer.\nLIMITS:\nScreen reader output and other pages were not inspected.",
+            "SAME AS ENGLISH",
         ])
         result = human_review.capture_viewer_observations(
             self.root, observation_root, input_fn=answers.__next__, output_fn=lambda _text: None,
@@ -400,13 +398,16 @@ class WorkflowTests(unittest.TestCase):
                 if entry["surface"] == "live_viewer_observation"]
         self.assertEqual({entry["locale"] for entry in live}, {"en", "ko"})
         self.assertEqual(preparation["binding"]["candidate_head"], result["candidate_head"])
+        captured = json.loads((observation_root / "observations.json").read_bytes())
+        self.assertEqual(captured["observations"][1]["control"],
+            {"action": "same_as_locale", "reference_locale": "en"})
 
     def test_conversational_human_judgment_generates_reviewable_draft(self):
         target = self.target()
         ops.prepare(self.root, target, reviewer_kind="human", include_raw=True)
         answers = iter([
-            "1",
             "The question was necessary for the material user-owned outcome shown in the work capture.",
+            "1",
             "1",
             "START",
             "The work capture is the direct interaction evidence for question necessity.",
@@ -425,6 +426,40 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(finding["human_answer_trace"])
         self.assertEqual(finding["criterion_id"], result["criterion_id"])
         self.assertEqual(result["candidate_head"], value["binding"]["candidate_head"])
+
+    def test_human_controls_preserve_partial_reference_and_insufficient_semantics(self):
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="human", include_raw=True)
+        direct = iter([
+            "The inspected interaction supports the first criterion.", "1", "1", "START",
+            "The work capture is relevant to the first criterion.",
+            "No further uncertainty in this bounded observation.", "2",
+            "No contrary evidence was found in the inspected capture.",
+        ])
+        human_review.converse_one(target, input_fn=direct.__next__, output_fn=lambda _text: None)
+        referenced = human_review.converse_one(target,
+            input_fn=iter(["SAME AS PREVIOUS"]).__next__, output_fn=lambda _text: None)
+        self.assertEqual(referenced["control"], "same_as_prior")
+        value = json.loads((target / "draft.json").read_bytes())
+        reference_id = referenced["reference_criterion_id"]
+        finding = value["assessments"][referenced["criterion_number"] - 1]
+        self.assertNotEqual(finding["reasoning"].casefold(), "same as previous")
+        self.assertEqual(value["human_controls"][finding["criterion_id"]]["reference_criterion_id"], reference_id)
+
+        skipped = human_review.converse_one(target,
+            input_fn=iter(["SKIP"]).__next__, output_fn=lambda _text: None)
+        self.assertEqual(skipped["assessment"], "not_reviewed")
+        insufficient = human_review.converse_one(target,
+            input_fn=iter(["CANNOT ASSESS", "I inspected the listed inventory, but the required live observation is missing."]).__next__,
+            output_fn=lambda _text: None)
+        self.assertEqual(insufficient["assessment"], "insufficient_evidence")
+        value = json.loads((target / "draft.json").read_bytes())
+        gap = value["assessments"][insufficient["criterion_number"] - 1]
+        self.assertEqual(gap["evidence"], [])
+        self.assertEqual(gap["inspected_evidence"], [])
+        self.assertEqual(value["human_controls"][gap["criterion_id"]]["action"], "cannot_assess")
+        self.assertEqual(ops.validate(target, target / "draft.json")["counts"]["not_reviewed"],
+            len(value["assessments"]) - 3)
 
     def test_evaluator_private_answers_are_not_selected(self):
         manifest = copy.deepcopy(c.load_evidence_set(self.root))
@@ -464,8 +499,8 @@ class WorkflowTests(unittest.TestCase):
         value = insufficient_draft(target)
         for edit in (lambda v: v["reviewer"].update(kind="human"),
                      lambda v: v["binding"]["evidence_set"].update(sha256="0" * 64),
-                     lambda v: v["assessments"][0]["evidence"][0].update(evidence_id="absent"),
-                     lambda v: v["assessments"][0]["evidence"][0].update(locator={"kind": "line", "value": 99999999})):
+                     lambda v: v["assessments"][0]["inspected_evidence"].__setitem__(0, "absent"),
+                     lambda v: v["assessments"][0]["evidence"].append({"evidence_id": "absent"})):
             invalid = copy.deepcopy(value)
             edit(invalid)
             (target / "draft.json").write_bytes(ops.encoded(invalid))

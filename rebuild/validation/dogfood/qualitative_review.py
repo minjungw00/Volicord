@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
@@ -316,7 +316,7 @@ def template(preparation, preparation_sha256):
             "inspected_evidence": [], "unavailable_surfaces": copy.deepcopy(preparation["unavailable_surfaces"]),
             "limits": ["Review is limited to indexed artifacts; unobserved behavior is not established."]},
         "assessments": [observation(spec["criterion_id"]) for spec in criterion_specs(preparation["index"], preparation["rubric"])],
-        "additional_outcomes": [], "resolves_review_runs": {}}
+        "additional_outcomes": [], "resolves_review_runs": {}, "human_controls": {}}
 
 
 def validate_references(references, index, inspected, spec, *, allow_empty=False):
@@ -361,7 +361,8 @@ def validate_assessment(value, spec, preparation, inspected):
             "reviewed criterion requires bounded reasoning and explicit uncertainty")
     index = preparation["index"]
     criterion_inspected = value["inspected_evidence"]
-    require(isinstance(criterion_inspected, list) and criterion_inspected
+    require(isinstance(criterion_inspected, list)
+        and (criterion_inspected or state == "insufficient_evidence")
         and len(criterion_inspected) == len(set(criterion_inspected))
         and all(isinstance(identity, str) and identity in inspected
                 for identity in criterion_inspected),
@@ -370,13 +371,16 @@ def validate_assessment(value, spec, preparation, inspected):
         entry = index["evidence"].get(identity)
         require(entry is not None and entry["sample_id"] in {None, spec["sample_id"]},
             "per-criterion inspected evidence belongs to another sample")
-    validate_references(value["evidence"], index, criterion_inspected, spec)
+    validate_references(value["evidence"], index, criterion_inspected, spec,
+        allow_empty=state == "insufficient_evidence")
     counter = value["counterevidence"]
     require(isinstance(counter, dict) and set(counter) == {"state", "reasoning", "evidence"}
         and counter["state"] in {"cited", "none_found", "not_observable"}
         and authority.bounded_text(counter["reasoning"]), "explicit counterevidence or its absence is required")
     validate_references(counter["evidence"], index, criterion_inspected, spec, allow_empty=counter["state"] != "cited")
     require(counter["state"] == "cited" or not counter["evidence"], "absence cannot contain counterevidence")
+    require(state != "insufficient_evidence" or not value["evidence"],
+        "insufficient evidence records inspection and missing information without fabricated citations")
     require(state != "satisfied" or counter["state"] != "not_observable", "unobservable counterevidence cannot satisfy a criterion")
     observations = value["criterion_observations"]
     required_observations = preparation["rubric"]["criterion_observations"].get(spec["name"], [])
@@ -417,7 +421,10 @@ def validate_assessment(value, spec, preparation, inspected):
             result = authority.assess(detail, local_index)
             for reference in detail["evidence"]:
                 target = sample["authority_evidence"][reference["evidence_id"]]
-                require(target in {r["evidence_id"] for r in value["evidence"]}, "authority evidence must also have resolvable common references")
+                common = ({r["evidence_id"] for r in value["evidence"]}
+                    if state in {"satisfied", "violated"} else set(criterion_inspected))
+                require(target in common,
+                    "authority evidence must also be present in inspected evidence")
             expected = {"passed": "satisfied", "failed": "violated", "insufficient_evidence": "insufficient_evidence"}[result]
             require(state == expected, "authority disposition contradicts criterion assessment")
     else:
@@ -468,6 +475,11 @@ def _validate_value(preparation, preparation_sha256, value):
     resolutions = value["resolves_review_runs"]
     require(isinstance(resolutions, dict) and len(resolutions) <= 512, "invalid review conflict resolutions")
     require(not resolutions or value["reviewer"]["kind"] == "human", "only human review may resolve escalated review conflicts")
+    controls = value["human_controls"]
+    require(isinstance(controls, dict) and len(controls) <= 1024,
+        "invalid human review controls")
+    require(not controls or value["reviewer"]["kind"] == "human",
+        "agent review cannot claim conversational human controls")
     scope = value["observation_scope"]
     require(isinstance(scope, dict) and set(scope) == set(expected["observation_scope"]), "invalid observation scope")
     for field in ("available_evidence", "unavailable_surfaces"):
@@ -480,6 +492,43 @@ def _validate_value(preparation, preparation_sha256, value):
     specs = criterion_specs(preparation["index"], preparation["rubric"])
     require(specs and len({s["criterion_id"] for s in specs}) == len(specs), "review requires distinct, nonempty criterion identities")
     require(isinstance(value["assessments"], list) and len(value["assessments"]) == len(specs), "required criteria cannot be omitted")
+    spec_by_id = {spec["criterion_id"]: spec for spec in specs}
+    assessment_by_id = {item["criterion_id"]: item for item in value["assessments"]}
+    for criterion_id, control in controls.items():
+        require(criterion_id in spec_by_id and isinstance(control, dict)
+            and set(control) == {"action", "reference_criterion_id", "answer_trace"}
+            and control["action"] in {"direct", "skip", "already_covered", "same_as_prior",
+                "same_as_other_locale", "cannot_assess", "not_applicable"}
+            and isinstance(control["answer_trace"], list) and control["answer_trace"],
+            "invalid structured human control")
+        reference = control["reference_criterion_id"]
+        if control["action"] in {"already_covered", "same_as_prior", "same_as_other_locale"}:
+            require(reference in spec_by_id and reference != criterion_id,
+                "human reference control requires another prepared criterion")
+            current, prior = spec_by_id[criterion_id], spec_by_id[reference]
+            require(current["sample_id"] == prior["sample_id"] and current["group"] == prior["group"],
+                "human reference control crosses an unrelated sample or group")
+            if control["action"] == "same_as_other_locale":
+                require(current["name"] == prior["name"] and current["locale"] != prior["locale"],
+                    "same-locale reference must bind the matching other-locale criterion")
+            require(assessment_by_id[reference]["assessment"] != "not_reviewed",
+                "human reference control targets an unresolved criterion")
+        else:
+            require(reference is None, "non-reference human control cannot name a criterion")
+        assessment = assessment_by_id[criterion_id]
+        if control["action"] == "skip":
+            require(assessment == observation(criterion_id), "skip must remain not_reviewed")
+        elif control["action"] == "cannot_assess":
+            require(assessment["assessment"] == "insufficient_evidence",
+                "cannot-assess must remain insufficient evidence")
+        elif control["action"] == "not_applicable":
+            require(assessment["assessment"] == "not_applicable",
+                "not-applicable control contradicts assessment")
+        elif control["action"] == "direct":
+            require(assessment["assessment"] != "not_reviewed", "direct control requires an assessment")
+        else:
+            require(assessment["assessment"] == assessment_by_id[reference]["assessment"],
+                "reference control must preserve the referenced assessment state")
     states = [validate_assessment(a, s, preparation, inspected) for a, s in zip(value["assessments"], specs)]
     additional = value["additional_outcomes"]
     require(isinstance(additional, list) and len(additional) <= 64, "additional material outcomes must be bounded")

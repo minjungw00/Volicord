@@ -1821,6 +1821,13 @@ comprehension은 human observation을 요구하고 나머지 semantic criteria�
 review로 해결할 수 있다. Conflict 또는 high-impact authority/context-recovery insufficiency는
 해당 criterion만 human에게 escalate한다. Human은 `resolves_review_runs`로 충돌한 review ID를
 명시하며 무관한 criterion을 재검토할 필요가 없다. 어떤 hard violation도 override하지 못한다.
+Human conversational capture는 multi-line observation과 limit을 한 response로 보존하고,
+`skip`, `already_covered`, `same_as_prior`, `same_as_other_locale`, `cannot_assess`,
+`not_applicable`을 prose observation이 아닌 typed `human_controls`로 기록한다. Locale/criterion
+reference는 compatible prior assessment를 가리키며 literal answer는 provenance trace에만 남는다.
+`insufficient_evidence`는 fabricated locator를 요구하지 않고 inspected set과 missing-evidence
+설명을 보존한다. Partial review의 `not_reviewed`/`insufficient_evidence`는 semantic failure나
+qualification success로 재분류하지 않는다.
 Cycle-specific criterion은 모든 8개 cycle에 남고, CLI group만 `volicord`, `small-python`,
 `polyglot-medium` repository class별 일곱 criterion으로 생성된다. Dedicated observation이 없는
 class는 일곱 bounded unresolved gap을 남기며 `not_applicable`로 숨기지 않는다.
