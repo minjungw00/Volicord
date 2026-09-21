@@ -21739,7 +21739,7 @@ def self_test() -> int:
         call_id = "recovered-environment-diagnostic"
         arguments = json.dumps(
             {
-                "cmd": "python3 -m unittest tests.restricted_environment",
+                "cmd": "python3 -m unittest tests.test_resume",
                 "workdir": "/phase8/repository",
                 "yield_time_ms": 30000,
             },
@@ -21814,7 +21814,7 @@ def self_test() -> int:
         or verified_completed_result["continuation_basis"]["terminal_validation"][
             "recovered_intermediate_failure"
         ]
-        is not False
+        is not True
         or verified_completed_result["continuation_basis"]["terminal_validation"][
             "environment_blocked_count"
         ]
@@ -21822,7 +21822,7 @@ def self_test() -> int:
         or verified_completed_result["continuation_basis"]["terminal_validation"][
             "verification_executions"
         ][0]["requirement_role"]
-        != "diagnostic"
+        != "environment_setup"
     ):
         raise AssertionError(
             "completed recalled state could not qualify through read-only inspection and verification: "
