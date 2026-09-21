@@ -132,6 +132,137 @@ class FrontierTests(unittest.TestCase):
         self.assertEqual([row["attribution"] for row in environment_result["verification_executions"]],
                          ["environment_blocked", "authorized_successful_rerun"])
 
+        missing_interpreter = self.validation_capture(
+            (200, "python -m pytest -q tests/test_feature.py", 127,
+             "env: python: No such file or directory", {}),
+            (210, "python3 -m pytest -q tests/test_feature.py", 0, "8 passed", {}),
+        )
+        interpreter_result = h.meaningful_resume_validation(missing_interpreter, 150)
+        self.assertTrue(interpreter_result["qualified"], interpreter_result)
+        self.assertEqual(interpreter_result["candidate_regression_count"], 0)
+        self.assertEqual(interpreter_result["unresolved_environment_failure_count"], 0)
+        self.assertEqual(
+            interpreter_result["verification_executions"][0]["failure_class"],
+            "setup_environment",
+        )
+
+        missing_dependency = self.validation_capture(
+            (200, "python3 -m pytest -q tests/test_feature.py", 1,
+             "/usr/bin/python3: No module named pytest", {}),
+            (210, "PYTHONPATH=/tmp/test-deps python3 -m pytest -q tests/test_feature.py",
+             0, "8 passed", {}),
+        )
+        dependency_result = h.meaningful_resume_validation(missing_dependency, 150)
+        self.assertTrue(dependency_result["qualified"], dependency_result)
+        self.assertEqual(dependency_result["environment_blocked_count"], 1)
+        self.assertEqual(dependency_result["candidate_regression_count"], 0)
+
+    def test_scope_changes_and_scratch_do_not_hide_validator_failures(self):
+        covered = self.validation_capture(
+            (200, "python3 -m pytest -q tests/test_feature.py", 1, "1 failed", {}),
+            (210, "python3 -m pytest -q", 0, "236 passed", {}),
+        )
+        covered_result = h.meaningful_resume_validation(covered, 150)
+        self.assertTrue(covered_result["qualified"], covered_result)
+        self.assertEqual(
+            covered_result["verification_executions"][0]["relationship"]["kind"],
+            "successful_covering_rerun",
+        )
+
+        narrowed = self.validation_capture(
+            (200, "python3 -m pytest -q", 1, "1 failed", {}),
+            (210, "python3 -m pytest -q tests/test_feature.py", 0, "8 passed", {}),
+        )
+        narrowed_result = h.meaningful_resume_validation(narrowed, 150)
+        self.assertFalse(narrowed_result["qualified"])
+        self.assertFalse(narrowed_result["unresolved_terminal_failure"])
+        self.assertEqual(narrowed_result["ambiguous_failure_count"], 1)
+
+        failed = self.validation_capture(
+            (200, "python3 -m pytest -q tests/test_feature.py", 1, "1 failed", {}),
+        )
+        template = failed.commands[0]
+        scratch = replace(
+            template,
+            sequence=210,
+            completion_sequence=211,
+            parsed_command={
+                "cmd": "python3 /tmp/prototype.py",
+                "workdir": str(failed.cwd),
+            },
+            exit_code=0,
+            output="prototype passed",
+            execution_identity="exploration:210",
+        )
+        scratch_result = h.meaningful_resume_validation(
+            replace(failed, commands=(*failed.commands, scratch)), 150
+        )
+        self.assertTrue(scratch_result["unresolved_terminal_failure"])
+        self.assertEqual(scratch_result["candidate_regression_count"], 1)
+        self.assertEqual(scratch_result["exploration_execution_count"], 1)
+
+    def test_prior_small_python_setup_sequence_recovers_only_with_validator_evidence(self):
+        capture = self.validation_capture(
+            (200, "env PYTHONDONTWRITEBYTECODE=1 python -m pytest -p no:cacheprovider tests/main_test.py",
+             127, "env: python: No such file or directory", {}),
+            (210, "env PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -p no:cacheprovider tests/main_test.py",
+             1, "/usr/bin/python3: No module named pytest", {}),
+        )
+        scratch = replace(
+            capture.commands[-1],
+            sequence=220,
+            completion_sequence=221,
+            parsed_command={
+                "cmd": "env PYTHONDONTWRITEBYTECODE=1 python3 /tmp/pyupgrade_concurrency_probe.py",
+                "workdir": str(capture.cwd),
+            },
+            exit_code=0,
+            output="parity: PASS",
+            execution_identity="exploration:220",
+        )
+        blocked = h.meaningful_resume_validation(
+            replace(capture, commands=(*capture.commands, scratch)), 150
+        )
+        self.assertFalse(blocked["unresolved_terminal_failure"], blocked)
+        self.assertEqual(blocked["candidate_regression_count"], 0)
+        self.assertEqual(blocked["unresolved_environment_failure_count"], 2)
+        self.assertEqual(blocked["exploration_execution_count"], 1)
+        self.assertFalse(blocked["qualified"])
+        self.assertTrue(blocked["incomplete_evidence"])
+
+        corrected = replace(
+            capture.commands[-1],
+            sequence=230,
+            completion_sequence=231,
+            parsed_command={
+                "cmd": (
+                    "env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/tmp/test-deps "
+                    "python3 -m pytest -p no:cacheprovider tests/main_test.py"
+                ),
+                "workdir": str(capture.cwd),
+            },
+            exit_code=0,
+            output="1 passed",
+            execution_identity="validation:230",
+        )
+        result = h.meaningful_resume_validation(
+            replace(capture, commands=(*capture.commands, scratch, corrected)), 150
+        )
+        self.assertTrue(result["qualified"], result)
+        self.assertTrue(result["recovered_intermediate_failure"])
+        self.assertFalse(result["unresolved_terminal_failure"])
+        self.assertEqual(result["candidate_regression_count"], 0)
+        self.assertEqual(result["unresolved_environment_failure_count"], 0)
+        self.assertEqual(result["exploration_execution_count"], 1)
+        self.assertEqual(
+            [row["validator"] for row in result["verification_executions"]],
+            ["pytest", "pytest", "pytest"],
+        )
+        self.assertTrue(all(
+            row["failure_class"] == "setup_environment"
+            for row in result["verification_executions"][:2]
+        ))
+
     def test_unknown_validation_and_raw_canonical_conflict_never_become_success(self):
         unknown = self.validation_capture(
             (200, "python3 -m pytest -q", None, "236 passed", {}),
@@ -158,6 +289,64 @@ class FrontierTests(unittest.TestCase):
         self.assertEqual(evidence["state"], "conflict")
         self.assertIn("raw_canonical_outcome_conflict",
                       {conflict["kind"] for conflict in evidence["conflicts"]})
+
+    def test_behavior_preserving_canonical_outcome_reconciles_exact_enrichment(self):
+        _descriptor, capture, bundle = self.fixture()
+        checkpoint = h.terminal_checkpoint_call(capture)
+        self.assertIsNotNone(checkpoint)
+        claim = checkpoint.arguments["verification"][0]
+        basis = {
+            "state": "behavior_preserving",
+            "preservation_rationale": "The behavior remains unchanged.",
+            "surfaces": [{
+                "surface_id": "public_result",
+                "inspected_paths": ["src/work.rs"],
+                "preserved_contract": "The public result is unchanged.",
+                "verification_indices": [0],
+                "coverage_rationale": "The focused command exercises the result.",
+            }],
+        }
+        checkpoint = replace(
+            checkpoint,
+            arguments={**checkpoint.arguments, "verification_basis": basis},
+        )
+        expected = h.expected_canonical_verification_outcome(checkpoint, 0, claim)
+        rows = tuple(
+            {**row, "outcome": expected} if row.get("position") == 0 else row
+            for row in bundle.rows("checkpoint_verifications")
+        )
+        enriched_bundle = replace(
+            bundle,
+            tables={**bundle.tables, "checkpoint_verifications": rows},
+        )
+        evidence = h.checkpoint_verification_evidence(
+            capture,
+            enriched_bundle,
+            checkpoint,
+            checkpoint.result["checkpoint_id"],
+        )
+        self.assertTrue(evidence["valid"], evidence)
+        self.assertEqual(evidence["state"], "reconciled")
+
+        mismatched_rows = tuple(
+            {**row, "outcome": str(row.get("outcome")) + " changed"}
+            if row.get("position") == 0 else row
+            for row in rows
+        )
+        mismatch = h.checkpoint_verification_evidence(
+            capture,
+            replace(enriched_bundle, tables={
+                **enriched_bundle.tables,
+                "checkpoint_verifications": mismatched_rows,
+            }),
+            checkpoint,
+            checkpoint.result["checkpoint_id"],
+        )
+        self.assertFalse(mismatch["valid"])
+        self.assertIn(
+            "canonical_verification_value_conflict",
+            {conflict["kind"] for conflict in mismatch["conflicts"]},
+        )
 
     def facts(self, descriptor, capture, bundle, baseline=None):
         baseline = baseline or capture.successful_calls("repository_analyze")[0]

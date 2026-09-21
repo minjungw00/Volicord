@@ -3240,16 +3240,27 @@ def validation_execution_profile(
             elif not arg.startswith("-"):
                 targets.append(arg)
     elif program in {"pytest", "unittest"}:
-        option_value = False
+        option_value: str | None = None
         for arg in args:
-            if option_value:
-                selectors.append(arg)
-                option_value = False
+            if option_value is not None:
+                if option_value == "selector":
+                    selectors.append(arg)
+                option_value = None
             elif arg in {"-k", "-m", "--ignore", "--deselect", "--ignore-glob"}:
                 selectors.append(arg)
-                option_value = True
+                option_value = "selector"
             elif arg.startswith(("-k=", "-m=", "--ignore=", "--deselect=", "--ignore-glob=")):
                 selectors.append(arg)
+            elif arg in {
+                "-p", "--rootdir", "--confcutdir", "--basetemp", "--capture",
+                "--tb", "--color", "--code-highlight", "--junitxml",
+            }:
+                option_value = "configuration"
+            elif arg.startswith((
+                "--rootdir=", "--confcutdir=", "--basetemp=", "--capture=",
+                "--tb=", "--color=", "--code-highlight=", "--junitxml=",
+            )):
+                continue
             elif not arg.startswith("-"):
                 targets.append(arg)
     elif program == "cargo":
@@ -3290,21 +3301,32 @@ def validation_execution_profile(
         ).encode("utf-8")).hexdigest(),
         "environment_assignments": environment_assignments,
         "sandbox_permissions": raw.get("sandbox_permissions"),
+        "workdir": workdir,
     }
 
 
-def validation_profile_is_broader(failed: dict[str, Any], passed: dict[str, Any]) -> bool:
-    """Return true only for an inspectable same-validator scope expansion."""
+def validation_profile_covers(
+    failed: dict[str, Any], passed: dict[str, Any]
+) -> bool:
+    """Return true only when a later success covers the failed validator scope."""
 
-    if failed["validator"] != passed["validator"] or failed["validator"] == "unknown":
+    if (
+        failed["execution_role"] != "validation"
+        or passed["execution_role"] != "validation"
+        or failed["validator"] != passed["validator"]
+        or failed["validator"] in {"unknown", "not_applicable"}
+        or failed["workdir"] != passed["workdir"]
+    ):
         return False
-    if failed["scope"] == "broader_aggregate" and passed["scope"] == "focused":
+    if failed["equivalence_key"] == passed["equivalence_key"]:
         return True
+    if passed["scope"] == "broader_aggregate":
+        return True
+    if failed["scope"] == "broader_aggregate":
+        return False
     return (
-        failed["validator"] == "ruff"
-        and failed["targets"] == passed["targets"]
-        and not failed["selectors"]
-        and bool(passed["selectors"])
+        failed["targets"] == passed["targets"]
+        and set(passed["selectors"]).issubset(failed["selectors"])
     )
 
 
@@ -3317,16 +3339,22 @@ def validation_environment_blocked(
         return False
     before = command.parsed_command if isinstance(command.parsed_command, dict) else {}
     after = later.parsed_command if isinstance(later.parsed_command, dict) else {}
-    escalated = (
-        before.get("sandbox_permissions") != "require_escalated"
-        and after.get("sandbox_permissions") == "require_escalated"
-    )
     profiles = (
         validation_execution_profile(command, cwd),
         validation_execution_profile(later, cwd),
     )
+    if not validation_profile_covers(profiles[0], profiles[1]):
+        return False
+    escalated = (
+        before.get("sandbox_permissions") != "require_escalated"
+        and after.get("sandbox_permissions") == "require_escalated"
+    )
     environment_changed = profiles[0]["environment_assignments"] != profiles[1]["environment_assignments"]
-    return escalated or environment_changed and validation_environment_failure_signal(command)
+    return validation_environment_failure_signal(command) and (
+        escalated
+        or environment_changed
+        or profiles[0]["equivalence_key"] == profiles[1]["equivalence_key"]
+    )
 
 
 def validation_environment_failure_signal(command: Any) -> bool:
@@ -3354,7 +3382,9 @@ def meaningful_resume_validation(
             "candidate_regression_count": 0,
             "known_baseline_failure_count": 0,
             "environment_blocked_count": 0,
+            "unresolved_environment_failure_count": 0,
             "ambiguous_failure_count": 0,
+            "exploration_execution_count": 0,
             "verification_executions": [],
             "incomplete_evidence": True,
         }
@@ -3374,7 +3404,12 @@ def meaningful_resume_validation(
         if command.sequence > after_sequence
         and (terminal is None or (command.sequence, command.group_index)
             > (terminal.sequence, terminal.group_index))
-        and dogfood_command_role(command.parsed_command, capture.cwd) in {"unknown", "exploration"}
+        and dogfood_command_role(command.parsed_command, capture.cwd) == "unknown"
+    ]
+    explorations = [
+        command for command in capture.commands
+        if command.sequence > after_sequence
+        and dogfood_command_role(command.parsed_command, capture.cwd) == "exploration"
     ]
     def completed(command: Any) -> bool:
         return (command.evidence_state == "completed"
@@ -3393,6 +3428,7 @@ def meaningful_resume_validation(
     hard_failures = []
     baseline_failures = []
     environment_blocked = []
+    unresolved_environment = []
     recovered_environment = []
     recovered_failures = []
     ambiguous_failures = []
@@ -3404,10 +3440,14 @@ def meaningful_resume_validation(
         earlier_equivalent = [candidate for candidate in all_commands
             if (candidate.sequence, candidate.group_index) < key
             and profiles[(candidate.sequence, candidate.group_index)]["equivalence_key"] == equivalence_key]
-        later_equivalent = [candidate for candidate in commands
+        later_covering = [candidate for candidate in commands
             if (candidate.sequence, candidate.group_index) > key
-            and profiles[(candidate.sequence, candidate.group_index)]["equivalence_key"] == equivalence_key]
-        later_success = next((candidate for candidate in later_equivalent if succeeded(candidate)), None)
+            and validation_profile_covers(
+                profile, profiles[(candidate.sequence, candidate.group_index)]
+            )]
+        later_success = next(
+            (candidate for candidate in later_covering if succeeded(candidate)), None
+        )
         pre_mutation = [candidate for candidate in earlier_equivalent
             if candidate.sequence <= after_sequence and completed(candidate)]
         later_validation_success = next((candidate for candidate in commands
@@ -3415,9 +3455,14 @@ def meaningful_resume_validation(
         outcome = "indeterminate" if not completed(command) else "passed" if succeeded(command) else "failed"
         attribution = "not_applicable" if outcome == "passed" else "ambiguous_or_unattributed"
         relation = None
+        failure_class = "none" if outcome == "passed" else "indeterminate"
         if outcome == "passed":
-            prior_failed = [candidate for candidate in earlier_equivalent
-                if candidate.sequence > after_sequence and completed(candidate) and not succeeded(candidate)]
+            prior_failed = [candidate for candidate in commands
+                if (candidate.sequence, candidate.group_index) < key
+                and completed(candidate) and not succeeded(candidate)
+                and validation_profile_covers(
+                    profiles[(candidate.sequence, candidate.group_index)], profile
+                )]
             if prior_failed:
                 prior = max(prior_failed, key=lambda candidate: (candidate.sequence, candidate.group_index))
                 attribution = (
@@ -3426,7 +3471,12 @@ def meaningful_resume_validation(
                     )
                     else "recovery_success"
                 )
-                relation = {"kind": "recovers_equivalent_attempt", "sequence": prior.sequence,
+                relation = {"kind": (
+                    "recovers_equivalent_attempt"
+                    if profiles[(prior.sequence, prior.group_index)]["equivalence_key"]
+                        == equivalence_key
+                    else "recovers_covered_scope"
+                ), "sequence": prior.sequence,
                     "group_index": prior.group_index}
         elif outcome == "failed" and later_success is not None:
             attribution = (
@@ -3435,22 +3485,28 @@ def meaningful_resume_validation(
                 )
                 else "superseded_or_recovered"
             )
-            relation = {"kind": "successful_equivalent_rerun", "sequence": later_success.sequence,
+            later_profile = profiles[(later_success.sequence, later_success.group_index)]
+            relation = {"kind": (
+                "successful_equivalent_rerun"
+                if later_profile["equivalence_key"] == equivalence_key
+                else "successful_covering_rerun"
+            ), "sequence": later_success.sequence,
                 "group_index": later_success.group_index}
             if attribution == "environment_blocked":
+                failure_class = "setup_environment"
                 environment_blocked.append(command)
                 recovered_environment.append(command)
             else:
+                failure_class = "intermediate_validation"
                 recovered_failures.append(command)
-        elif (outcome == "failed" and later_validation_success is not None
-              and validation_environment_failure_signal(command)):
-            attribution = "environment_blocked"
-            relation = {"kind": "later_success_after_distinct_blocked_attempt",
-                "sequence": later_validation_success.sequence,
-                "group_index": later_validation_success.group_index}
+        elif outcome == "failed" and validation_environment_failure_signal(command):
+            attribution = "environment_blocked_unresolved"
+            failure_class = "setup_environment"
             environment_blocked.append(command)
+            unresolved_environment.append(command)
         elif outcome == "failed" and any(succeeded(candidate) for candidate in pre_mutation):
             attribution = "candidate_attributable_regression"
+            failure_class = "confirmed_candidate_regression"
             relation = {"kind": "successful_equivalent_baseline", "sequence": max(
                 candidate.sequence for candidate in pre_mutation if succeeded(candidate))}
             hard_failures.append(command)
@@ -3469,19 +3525,23 @@ def meaningful_resume_validation(
                     == hashlib.sha256(command.output.encode("utf-8")).hexdigest()),
                 key=lambda candidate: (candidate.sequence, candidate.group_index))
             attribution = "known_pre_existing_baseline_failure"
+            failure_class = "known_baseline"
             relation = {"kind": "identical_failed_baseline", "sequence": baseline.sequence,
                 "group_index": baseline.group_index,
                 "output_sha256": hashlib.sha256(command.output.encode("utf-8")).hexdigest()}
             baseline_failures.append(command)
         elif outcome == "failed":
-            successful_commands = [candidate for candidate in commands if succeeded(candidate)]
-            broader_than_success = any(validation_profile_is_broader(
-                profile, profiles[(candidate.sequence, candidate.group_index)])
-                for candidate in successful_commands)
-            if broader_than_success or successful_commands:
+            same_validator_success = [candidate for candidate in commands
+                if succeeded(candidate)
+                and profiles[(candidate.sequence, candidate.group_index)]["validator"]
+                    == profile["validator"]]
+            changed_baseline = bool(pre_mutation)
+            if changed_baseline or same_validator_success or later_validation_success is not None:
+                failure_class = "ambiguous_attribution"
                 ambiguous_failures.append(command)
             else:
                 attribution = "candidate_attributable_required_failure"
+                failure_class = "final_required_validation"
                 hard_failures.append(command)
         executions.append({
             "sequence": command.sequence,
@@ -3490,21 +3550,24 @@ def meaningful_resume_validation(
             "evidence_state": command.evidence_state,
             "exit_code": command.exit_code,
             "termination": command.termination,
-            "requirement_role": "diagnostic" if attribution in {
+            "requirement_role": "environment_setup" if failure_class == "setup_environment"
+            else "diagnostic" if attribution in {
                 "ambiguous_or_unattributed", "known_pre_existing_baseline_failure",
-            } or isinstance(relation, dict) and relation.get("kind")
-                == "later_success_after_distinct_blocked_attempt" else "task_required",
+            } else "intermediate" if failure_class == "intermediate_validation"
+            else "task_required",
             "scope_role": profile["scope"],
             "validator": profile["validator"],
             "invocation_fingerprint": fingerprint,
             "equivalence_key": equivalence_key,
             "outcome": outcome,
             "attribution": attribution,
+            "failure_class": failure_class,
             "relationship": relation,
         })
     successful_commands = [command for command in commands if succeeded(command)]
     qualified = bool(successful_commands and not hard_failures and not ambiguous_failures
-        and not unknown_after_validation and all(completed(command) for command in commands))
+        and not unresolved_environment and not unknown_after_validation
+        and all(completed(command) for command in commands))
     intermediate_failures = [command for command in commands
         if completed(command) and not succeeded(command)
         and command not in hard_failures and command not in ambiguous_failures]
@@ -3529,10 +3592,13 @@ def meaningful_resume_validation(
         "candidate_regression_count": len(hard_failures),
         "known_baseline_failure_count": len(baseline_failures),
         "environment_blocked_count": len(environment_blocked),
+        "unresolved_environment_failure_count": len(unresolved_environment),
         "ambiguous_failure_count": len(ambiguous_failures),
+        "exploration_execution_count": len(explorations),
         "verification_executions": executions,
         "incomplete_evidence": (terminal is None or any(not completed(command) for command in commands)
-            or bool(unknown_after_validation) or bool(ambiguous_failures)),
+            or bool(unknown_after_validation) or bool(ambiguous_failures)
+            or bool(unresolved_environment)),
     }
 
 
@@ -8813,6 +8879,51 @@ def material_question_lifecycle_facts(
     }, primary[0], primary[1], primary[2]
 
 
+def expected_canonical_verification_outcome(
+    call: ToolCall, position: int, claim: dict[str, Any]
+) -> str | None:
+    """Reproduce the Product's typed compatibility-note augmentation exactly."""
+
+    outcome = claim.get("outcome")
+    if not isinstance(outcome, str):
+        return None
+    basis = call.arguments.get("verification_basis")
+    if basis is None or basis == {"state": "ordinary_change"}:
+        return outcome
+    if not isinstance(basis, dict) or basis.get("state") != "behavior_preserving":
+        return None
+    rationale = basis.get("preservation_rationale")
+    surfaces = basis.get("surfaces")
+    if not isinstance(rationale, str) or not isinstance(surfaces, list):
+        return None
+    notes: list[str] = []
+    for surface in surfaces:
+        if not isinstance(surface, dict):
+            return None
+        indices = surface.get("verification_indices")
+        paths = surface.get("inspected_paths")
+        if not isinstance(indices, list) or not isinstance(paths, list):
+            return None
+        if position not in indices:
+            continue
+        values = (
+            surface.get("surface_id"),
+            surface.get("preserved_contract"),
+            surface.get("coverage_rationale"),
+        )
+        if not all(isinstance(value, str) for value in values) or not all(
+            isinstance(path, str) for path in paths
+        ):
+            return None
+        notes.append(
+            "Compatibility surface {}: {}; inspected paths: {}; coverage: {}; "
+            "preservation basis: {}".format(
+                values[0], values[1], ", ".join(paths), values[2], rationale
+            )
+        )
+    return outcome if not notes else f"{outcome}\n" + "\n".join(notes)
+
+
 def checkpoint_verification_evidence(
     work: CodexCapture,
     bundle: CanonicalBundle,
@@ -8849,13 +8960,17 @@ def checkpoint_verification_evidence(
                 "position": position})
             continue
         state = claim.get("state")
-        if row.get("verification_state") != state or row.get("outcome") != claim.get("outcome"):
+        if row.get("verification_state") != state:
             conflicts.append({"kind": "canonical_verification_value_conflict",
                 "position": position, "declared_state": state,
                 "canonical_state": row.get("verification_state")})
             continue
         if state == "not_run":
-            if set(claim) != {"state"} or row.get("source_id") is not None:
+            if (
+                set(claim) != {"state"}
+                or row.get("source_id") is not None
+                or row.get("outcome") is not None
+            ):
                 conflicts.append({"kind": "not_run_source_conflict", "position": position})
             facts.append({"position": position, "state": state, "source_id": None,
                 "reconciliation": "canonical_not_run"})
@@ -8884,6 +8999,34 @@ def checkpoint_verification_evidence(
             or not nonempty_string(outcome)
         ):
             conflicts.append({"kind": "incomplete_verification_claim", "position": position})
+            continue
+        expected_outcome = expected_canonical_verification_outcome(
+            call, position, claim
+        )
+        if expected_outcome is None:
+            conflicts.append({
+                "kind": "canonical_verification_basis_unrecognized",
+                "position": position,
+            })
+            continue
+        if row.get("outcome") != expected_outcome:
+            conflicts.append({
+                "kind": "canonical_verification_value_conflict",
+                "position": position,
+                "declared_state": state,
+                "canonical_state": row.get("verification_state"),
+                "declared_outcome_sha256": hashlib.sha256(
+                    outcome.encode("utf-8")
+                ).hexdigest(),
+                "expected_canonical_outcome_sha256": hashlib.sha256(
+                    expected_outcome.encode("utf-8")
+                ).hexdigest(),
+                "canonical_outcome_sha256": (
+                    hashlib.sha256(row["outcome"].encode("utf-8")).hexdigest()
+                    if isinstance(row.get("outcome"), str)
+                    else None
+                ),
+            })
             continue
         invocation_fingerprint = "sha256:" + hashlib.sha256(
             invocation.encode("utf-8")
