@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
@@ -86,7 +86,7 @@ CRITERION_OBSERVATIONS = {
     "usefulness": ["primary_semantic_content", "readability", "handoff_value", "placeholder_or_audit_only_check"],
     "fidelity": ["user_choice", "recommended_alternative", "user_rationale", "recommendation_rationale", "alternative_specific_consequences"],
 }
-FIELDS = {"criterion_id", "assessment", "reasoning", "evidence", "uncertainty",
+FIELDS = {"criterion_id", "assessment", "reasoning", "inspected_evidence", "evidence", "uncertainty",
           "criterion_observations",
           "counterevidence", "applicability_reason", "machine_relationships", "authority",
           "human_answer_trace"}
@@ -303,7 +303,7 @@ def completion_progress(preparation, value, specs):
 
 def observation(criterion_id):
     return {"criterion_id": criterion_id, "assessment": "not_reviewed", "reasoning": None,
-        "evidence": [], "uncertainty": None, "criterion_observations": [],
+        "inspected_evidence": [], "evidence": [], "uncertainty": None, "criterion_observations": [],
         "counterevidence": None, "applicability_reason": None,
         "machine_relationships": [], "authority": None, "human_answer_trace": None}
 
@@ -360,12 +360,22 @@ def validate_assessment(value, spec, preparation, inspected):
     require(all(authority.bounded_text(value[f]) for f in ("reasoning", "uncertainty")),
             "reviewed criterion requires bounded reasoning and explicit uncertainty")
     index = preparation["index"]
-    validate_references(value["evidence"], index, inspected, spec)
+    criterion_inspected = value["inspected_evidence"]
+    require(isinstance(criterion_inspected, list) and criterion_inspected
+        and len(criterion_inspected) == len(set(criterion_inspected))
+        and all(isinstance(identity, str) and identity in inspected
+                for identity in criterion_inspected),
+        "reviewed criterion requires distinct per-criterion inspected evidence")
+    for identity in criterion_inspected:
+        entry = index["evidence"].get(identity)
+        require(entry is not None and entry["sample_id"] in {None, spec["sample_id"]},
+            "per-criterion inspected evidence belongs to another sample")
+    validate_references(value["evidence"], index, criterion_inspected, spec)
     counter = value["counterevidence"]
     require(isinstance(counter, dict) and set(counter) == {"state", "reasoning", "evidence"}
         and counter["state"] in {"cited", "none_found", "not_observable"}
         and authority.bounded_text(counter["reasoning"]), "explicit counterevidence or its absence is required")
-    validate_references(counter["evidence"], index, inspected, spec, allow_empty=counter["state"] != "cited")
+    validate_references(counter["evidence"], index, criterion_inspected, spec, allow_empty=counter["state"] != "cited")
     require(counter["state"] == "cited" or not counter["evidence"], "absence cannot contain counterevidence")
     require(state != "satisfied" or counter["state"] != "not_observable", "unobservable counterevidence cannot satisfy a criterion")
     observations = value["criterion_observations"]

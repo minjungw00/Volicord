@@ -66,6 +66,7 @@ def fill(value, p, state="satisfied"):
                    "relevance": f"This cited location was inspected specifically for {criterion}."}
             for name, entry in sorted(p["index"]["evidence"].items())
             if entry["sample_id"] in {None, scope}])
+    value["inspected_evidence"] = sorted({reference["evidence_id"] for reference in value["evidence"]})
     if "/authority/" in value["criterion_id"] and not value["criterion_id"].endswith("/coverage"):
         value["authority"] = assessment()
     return value

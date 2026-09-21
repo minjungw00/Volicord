@@ -1800,6 +1800,12 @@ still valid historical evidence.
 `qualitative-review.md`와 `evaluation.json.qualitative_review_contract`가 공통 rubric,
 reviewer metadata와 reviewer-safe operation 계약을 정의한다. Agent와 human은 같은 criterion을
 사용하지만 immutable `reviewer.kind`를 공유하거나 prose로 추론하지 않는다. Criterion assessment는
+maintained `inspect-agent-review`가 먼저 제시하는 exact evidence identity, hash, path와 locator를
+reviewer가 실제로 검사한 뒤 작성한다. 각 assessment는 run-wide union과 별도로
+`inspected_evidence`를 보존한다. 이 operation은 criterion/sample/repository class 또는 machine
+status에서 verdict를 생성하거나 추천하지 않으며, structural preflight는 semantic judgment의
+진실을 검증했다고 주장하지 않는다. Reviewer는 explicit relationship으로 machine finding과
+불일치할 수 있지만 immutable machine disposition을 변경하지 않는다.
 `satisfied`, `violated`, `insufficient_evidence`, `not_applicable`, `not_reviewed`를 구분한다.
 Missing observation은 inapplicability가 아니며 incomplete review는 만족으로 집계하지 않는다.
 Review artifact의 구조·hash·locator validation은 semantic judgment의 proof가 아니다.

@@ -183,6 +183,23 @@ rebuild/scripts/dogfood-campaign prepare-qualitative-review \
   --include-raw-rollouts
 ```
 
+An agent review begins each criterion with the maintained read-only presentation:
+
+```sh
+rebuild/scripts/dogfood-campaign inspect-agent-review \
+  --review-root /absolute/private/review-run \
+  --criterion-number 1
+```
+
+The result names the criterion, prompts, required surfaces and semantic dimensions, exact
+evidence identities/hashes/paths and available locators. It deliberately contains no proposed
+assessment. The reviewer must open the relevant artifacts before choosing a state and records a
+per-criterion `inspected_evidence` list in addition to the run-wide union. A criterion/sample ID,
+repository class or machine status is never an input to a maintained verdict generator. Reviewers
+may disagree with machine findings through the explicit relationship vocabulary; the machine
+finding and disposition remain immutable. Validation proves only shape, hashes, scope and locator
+membership, never that the reviewer's reasoning or conclusion is semantically true.
+
 Omit `--machine-evaluation` for an unevaluated evidence set. Omit
 `--include-raw-rollouts` for a bounded package without raw conversation contents;
 work/resume observations then remain unavailable. With the flag, exact raw bytes
@@ -260,7 +277,7 @@ before publication. This bounded check is not a claim of arbitrary-secret detect
 and does not weaken the stricter sanitization used by distributable gate artifacts.
 
 `draft.json` is the only mutable package artifact. Mark what was actually
-inspected and use indexed evidence IDs with either a listed JSON pointer or a
+inspected both for each criterion and for the run-wide union, and use indexed evidence IDs with either a listed JSON pointer or a
 1-based line locator, for example:
 
 ```json

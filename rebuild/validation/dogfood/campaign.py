@@ -3568,6 +3568,8 @@ def parser() -> argparse.ArgumentParser:
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
+    inspect_agent = sub.add_parser("inspect-agent-review",
+        help="Present one agent criterion and its bound evidence without suggesting a verdict")
     capture_human = sub.add_parser("capture-human-viewer-observations",
         help="Conversationally capture candidate-bound live Viewer observations")
     converse_human = sub.add_parser("converse-qualitative-review",
@@ -3584,6 +3586,8 @@ def parser() -> argparse.ArgumentParser:
     prepare_qualitative.add_argument("--include-raw-rollouts", action="store_true")
     prepare_qualitative.add_argument("--human-observations", help="Candidate/evidence-bound direct human en/ko live accessibility observations")
     prepare_qualitative.add_argument("--cli-observations", help="Candidate/evidence-bound repository-class CLI observation directory")
+    inspect_agent.add_argument("--review-root", required=True)
+    inspect_agent.add_argument("--criterion-number", type=int, required=True)
     capture_human.add_argument("--campaign-root", required=True)
     capture_human.add_argument("--output", required=True)
     converse_human.add_argument("--review-root", required=True)
@@ -3723,6 +3727,8 @@ def main() -> int:
             include_raw=args.include_raw_rollouts,
             human_observations=Path(args.human_observations) if args.human_observations else None,
             cli_observation_root=Path(args.cli_observations) if args.cli_observations else None)
+    elif args.command == "inspect-agent-review":
+        value = review_operations.inspect_agent_criterion(root, args.criterion_number)
     elif args.command == "capture-human-viewer-observations":
         value = human_review.capture_viewer_observations(root, Path(args.output))
     elif args.command == "converse-qualitative-review":

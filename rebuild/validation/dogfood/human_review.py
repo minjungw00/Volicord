@@ -286,7 +286,9 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
             and state in {"satisfied", "violated"}:
         detail = _authority_detail(preparation, spec, references, input_fn, output_fn, trace)
     finding = {"criterion_id": spec["criterion_id"], "assessment": state,
-        "reasoning": reasoning, "evidence": references, "uncertainty": uncertainty,
+        "reasoning": reasoning,
+        "inspected_evidence": sorted({reference["evidence_id"] for reference in [*references, *counter_refs]}),
+        "evidence": references, "uncertainty": uncertainty,
         "criterion_observations": observations,
         "counterevidence": {"state": counter_state, "reasoning": counter_reasoning,
             "evidence": counter_refs}, "applicability_reason": applicability,

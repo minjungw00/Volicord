@@ -71,6 +71,7 @@ def insufficient_draft(root):
         for s in [*p["index"]["samples"], *p["index"]["cli_samples"]]]
     for spec, finding in zip(q.criterion_specs(p["index"], p["rubric"]), value["assessments"]):
         finding.update(assessment="insufficient_evidence", reasoning="Only the bounded evidence availability inventory was inspected.",
+            inspected_evidence=[spec["sample_id"] + "-availability"],
             evidence=[{"evidence_id": spec["sample_id"] + "-availability",
                 "locator": {"kind": "json_pointer", "value": "/unavailable_surfaces"},
                 "criterion_id": spec["criterion_id"],
@@ -92,6 +93,10 @@ def assert_review_workflow(root, parent):
     assert result["state"] == "prepared"
     assert snapshot(root) == before
     p, _, package = ops.load_package(target)
+    brief = ops.inspect_agent_criterion(target, 1)
+    assert brief["semantic_judgment_suggested"] is False
+    assert brief["criterion"]["criterion_id"] == q.criterion_specs(p["index"], p["rubric"])[0]["criterion_id"]
+    assert brief["evidence"] and brief["mutation"] == "none"
     assert len(p["index"]["samples"]) == 8
     cli_specs = [spec for spec in q.criterion_specs(p["index"], p["rubric"]) if spec["group"] == "cli"]
     assert len(cli_specs) == 21
