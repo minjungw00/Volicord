@@ -186,6 +186,11 @@ inherit or replace the capsule's candidate authority.
 
 ## Remaining Phase 8 risks
 
+- Campaign schema 4 collection now publishes the journey/Work/session structure, but
+  `machine_findings.py`, qualitative review-package sampling, and final qualification-policy
+  aggregation still consume the predecessor cycle-shaped evaluation. Running `evaluate` for a
+  current journey campaign is therefore unsupported until the next downstream-consumption session;
+  no collection evidence should be rewritten to bridge that boundary.
 - Naturalistic selection of the appropriate Question/no-question, research,
   delegated-choice, prototype, or defer outcome, plus explicit user-owned
   Decision provenance only when required.

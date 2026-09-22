@@ -582,6 +582,10 @@ separate private archive for the independent review handoff.
 
 ## Known limits
 
+- Current schema-4 journey collection is implemented and structurally tested, but machine
+  evaluation, qualitative review-package sampling, and final qualification aggregation still
+  consume the predecessor cycle-shaped aggregate. Those append-only consumers are the next
+  session's responsibility; this campaign refactor does not claim they can yet qualify a new batch.
 - Official V11 proves scripted installed-product conformance, not independent
   agent discovery in ordinary user sessions.
 - The current evidence says nothing yet about naturalistic reliability of the
@@ -599,8 +603,9 @@ separate private archive for the independent review handoff.
 In a later session, use the maintained campaign helper to prepare a wholly
 fresh opaque-slot campaign in a separate clean worktree at exactly
 `68e3699e77e1017896f4469ff1dd3aff11b476ce`, run all eight genuine sessions,
-and obtain the immutable machine evaluation. Common qualitative review is available
-independently of machine outcome when evaluating replacement. The documentation-only child commit is not a substitute
+publish the immutable evidence set, and only then use the downstream evaluation path after its
+journey-manifest consumer migration. Common qualitative review remains independently owned.
+The documentation-only child commit is not a substitute
 for that exact campaign HEAD.
 
 ## Rejected alternatives and reasons
