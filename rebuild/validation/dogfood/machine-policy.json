@@ -1,5 +1,5 @@
 {
-  "revision": 3,
+  "revision": 4,
   "rules": {
     "activation_identity": {
       "authority": "hard_blocking",
@@ -43,6 +43,48 @@
       "rationale": "Cross-session canonical Project identity cannot change.",
       "review_groups": []
     },
+    "journey_project_identity": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/journey continuity",
+      "rationale": "Every Work in a repository journey must retain one immutable Project identity.",
+      "review_groups": []
+    },
+    "journey_work_identity": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/journey continuity",
+      "rationale": "The five declared Work slots require distinct Work identities within their journey.",
+      "review_groups": []
+    },
+    "journey_work_history": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/journey continuity",
+      "rationale": "Journey-final canonical evidence must retain chronological state and Checkpoint history for every Work.",
+      "review_groups": []
+    },
+    "journey_relation_consistency": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "domain-model.md/canonical relations",
+      "rationale": "Project, Work, Decision and Checkpoint identities must remain consistently bound in journey evidence.",
+      "review_groups": []
+    },
+    "journey_resume_continuity": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/fresh-session continuity",
+      "rationale": "Each repository journey requires exactly one fresh resume pair for the same Project and Work.",
+      "review_groups": []
+    },
+    "journey_isolation": {
+      "authority": "hard_blocking",
+      "uncertainty": "hard_blocking",
+      "owner": "validation-plan.md/journey isolation",
+      "rationale": "Repository journeys may not share Project, workspace or Runtime identity.",
+      "review_groups": []
+    },
     "raw_hash": {
       "authority": "hard_blocking",
       "uncertainty": "hard_blocking",
@@ -61,7 +103,7 @@
       "authority": "hard_blocking",
       "uncertainty": "hard_blocking",
       "owner": "validation-plan.md/evidence integrity",
-      "rationale": "Sixteen globally distinct fresh measured sessions must map to exact frozen tasks and workspaces.",
+      "rationale": "Eight globally distinct fresh measured sessions must map to the five exact Work starts and three declared resumes.",
       "review_groups": []
     },
     "repository_scoped_activation": {

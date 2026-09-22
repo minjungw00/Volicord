@@ -4,8 +4,8 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 9 / policy revision 8, machine evaluation
-policy `evidence-evaluation-3`, human observation/receipt schema 3, qualification policy
+Current identities are qualitative review schema 10 / policy revision 9, machine evaluation
+policy `evidence-evaluation-4`, human observation/receipt schema 3, qualification policy
 `replacement-qualification-4`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
@@ -37,17 +37,21 @@ The following mapping preserves the former human rubric without another engine:
 | `cli_usability_reviews` | `cli` | Per-repository-class help discovery and status/analyze/Recall/documents/export/doctor without opaque Project IDs |
 | `live_viewer_accessibility` | `live_viewer` | `en`/`ko` keyboard reachability, visible focus, color-independent meaning, narrow/zoom presentation for the Volicord journey-final Viewer |
 | Live browser responsiveness | `live_viewer` | Direct human observation of input response and resulting paint in `en`/`ko`; snapshot-export request timing is not a substitute |
-| Long-lived Project continuity | `long_lived_project` | The Volicord journey's four raw sessions, one Project, three distinct Work identities, checkpoints and final bundle; deterministic fixtures are support only |
 | `authority_obligation_reviews` | `authority` | Every initial material challenge, all other actual outcomes, additional outcomes and complete implementation/coupled-artifact coverage |
 | Context recovery usability criterion | `context_recovery` | Goal, Decision/rationale, work state and open-question recovery across work/resume |
 
-Interaction, context recovery, and authority collections cover every Work. Documents, Viewer snapshot,
+Interaction and authority collections cover every Work. Context recovery covers the three Work A
+resume pairs. Documents, Viewer snapshot,
 Viewer navigation, and Repository Intelligence use the three journey-final projections while retaining
 the represented Work identities. CLI covers each maintained repository class exactly
 once: `3 classes × 7 criteria = 21 assessments`. A static HTML snapshot does
 not establish actual live keyboard/focus/zoom behavior; missing observation yields
 insufficient evidence. Missing CLI captures similarly cannot establish usability.
 No language or repository class is excluded because the implementation uses Rust.
+The Volicord journey's one-Project/three-Work continuity is a structural machine
+finding. Human comprehension of that organization is the Volicord journey-final
+Viewer `multiple_work_organization` criterion; there is no parallel long-lived
+observation group.
 
 ## Assessment and evidence discipline
 

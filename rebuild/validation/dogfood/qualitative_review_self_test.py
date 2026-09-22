@@ -14,22 +14,33 @@ from authority_obligations_self_test import assessment, interaction_assessment, 
 def preparation(kind="agent"):
     definition = json.loads(Path(__file__).with_name("evaluation.json").read_text())
     policy = q.rubric(definition)
-    sample = {"sample_id": "volicord-1", "repository_class": "volicord", "cycle": 1,
-        "behavior_class": "explicit_user_owned_decision", "authority_obligations": ["all-material-outcomes"],
+    sample = {"sample_id": "volicord-1", "journey_id": "journey-volicord",
+        "repository_class": "volicord", "work": "A", "resume_pair": True,
+        "materiality_obligations": ["explicit_user_owned_decision"],
+        "authority_obligations": ["all-material-outcomes"],
         "authority_evidence": {"work_capture": "work_capture", "canonical_bundle": "canonical_bundle"}}
-    index = {"samples": [sample],
+    journey = {"sample_id": "journey-volicord", "journey_id": "journey-volicord",
+        "repository_class": "volicord", "represented_work_sample_ids": [sample["sample_id"]]}
+    index = {"samples": [sample], "journey_samples": [journey],
         "cli_samples": [{"sample_id": repository_class, "repository_class": repository_class}
                         for repository_class in ("volicord", "small-python", "polyglot-medium")],
-        "live_viewer_sample": "volicord-1", "machine_findings": {}, "evidence": {}}
+        "live_viewer_sample": "journey-volicord", "machine_findings": {}, "evidence": {}}
     for surface in {s for surfaces in q.SURFACES.values() for s in surfaces}:
         for locale in (["en", "ko"] if surface == "live_viewer_observation" else [None]):
             name = surface + ("-" + locale if locale else "")
-            index["evidence"][name] = {"sample_id": sample["sample_id"], "surface": surface,
+            journey_surface = surface in {"documents", "viewer_snapshot", "viewer_navigation_machine",
+                "live_viewer_observation"}
+            sample_id = journey["sample_id"] if journey_surface else sample["sample_id"]
+            sample_ids = [sample["sample_id"], journey["sample_id"]] if surface in {
+                "work_capture", "canonical_bundle"} else [sample_id]
+            index["evidence"][name] = {"sample_id": sample_id, "sample_ids": sample_ids,
+                "surface": surface,
                 "locale": locale, "sha256": "a" * 64, "path": name,
                 "locators": [{"kind": "json_pointer", "value": "/fact"}]}
     index["evidence"].pop("cli_observation")
     for repository_class in ("volicord", "small-python", "polyglot-medium"):
         index["evidence"][repository_class + "-cli"] = {"sample_id": repository_class,
+            "sample_ids": [repository_class],
             "repository_class": repository_class,
             "surface": "cli_observation", "locale": None, "sha256": "a" * 64,
             "path": repository_class + "-cli", "locators": [{"kind": "json_pointer", "value": "/fact"}]}
@@ -65,7 +76,7 @@ def fill(value, p, state="satisfied"):
                    "criterion_id": value["criterion_id"],
                    "relevance": f"This cited location was inspected specifically for {criterion}."}
             for name, entry in sorted(p["index"]["evidence"].items())
-            if entry["sample_id"] in {None, scope}])
+            if q.evidence_applies(entry, scope)])
     value["inspected_evidence"] = sorted({reference["evidence_id"] for reference in value["evidence"]})
     if state == "insufficient_evidence":
         value["evidence"] = []
@@ -113,10 +124,9 @@ class ContractTests(unittest.TestCase):
             p["rubric"]["criterion_prompts"]["navigation_responsiveness"])
         self.assertIn("browser_input_and_paint_responsiveness",
             p["rubric"]["criteria"]["live_viewer"])
-        self.assertEqual(p["rubric"]["criteria"]["long_lived_project"],
-            ["one_project_multiple_work_across_fresh_sessions"])
-        self.assertEqual(p["rubric"]["required_surfaces"]["long_lived_project"],
-            ["long_lived_project_observation"])
+        self.assertNotIn("long_lived_project", p["rubric"]["criteria"])
+        self.assertTrue(q.human_only({"sample_id": "journey-volicord",
+            "group": "viewer_snapshot", "name": "multiple_work_organization"}))
         self.assertNotEqual(
             p["rubric"]["criterion_observations"]["diagram_usefulness"],
             p["rubric"]["criterion_observations"]["diagram_structural_readability"])
@@ -240,7 +250,7 @@ class ContractTests(unittest.TestCase):
         v = next(a for a in value["assessments"] if a["criterion_id"].endswith("polyglot_comprehension_when_applicable"))
         v.update(assessment="not_applicable", applicability_reason={"code": "single_language_scope", "reasoning": "Inspected one language in this fixture."})
         self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "satisfied")
-        p["index"]["samples"][0]["repository_class"] = "polyglot-medium"
+        p["index"]["journey_samples"][0]["repository_class"] = "polyglot-medium"
         with self.assertRaisesRegex(ValueError, "polyglot"):
             q.validate_value(p, "d" * 64, value)
 
@@ -331,7 +341,7 @@ class ContractTests(unittest.TestCase):
         p = preparation()
         seen = set()
         for behavior in {b for rule in p["rubric"]["behavior_criteria"].values() for b in rule["applies_to"]}:
-            p["index"]["samples"][0]["behavior_class"] = behavior
+            p["index"]["samples"][0]["materiality_obligations"] = [behavior]
             names = {s["name"] for s in q.criterion_specs(p["index"], p["rubric"])}
             for name, rule in p["rubric"]["behavior_criteria"].items():
                 self.assertEqual(name in names, behavior in rule["applies_to"])

@@ -106,21 +106,12 @@ def _live_observation_requests():
             ),
         }
         for locale in ("en", "ko")
-    ] + [{
-        "surface": "long_lived_project_observation",
-        "locale": None,
-        "prompt": (
-            "For one real candidate-bound Project used across fresh sessions, describe the stable Project "
-            "identity, at least two distinct Work identities, their retained state/history, and the limits "
-            "of what you personally observed, using OBSERVATION: and LIMITS: sections. A deterministic "
-            "fixture is not this observation."
-        ),
-    }]
+    ]
 
 
 def capture_viewer_observations(campaign_root, output, *, input_fn=input, output_fn=print,
                                 run_id=None):
-    """Capture required direct live Viewer and long-lived Project observations."""
+    """Capture required direct live Viewer observations."""
     ops, campaign = _ops(), _campaign()
     root, output = campaign_root.resolve(), output.absolute()
     manifest = campaign.load_evidence_set(root)
@@ -133,13 +124,13 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
         answer = _ask_multiline(request["prompt"], input_fn, output_fn, trace)
         if surface == "live_viewer_observation" and locale == "ko" \
                 and answer.casefold() == "same as english":
-            observations.append({"sample_id": "volicord-1", "surface": surface,
+            observations.append({"sample_id": "journey-volicord", "surface": surface,
                 "locale": locale,
                 "control": {"action": "same_as_locale", "reference_locale": "en"},
                 "response": None})
         else:
             observation, limits = _split_observation_and_limits(answer)
-            observations.append({"sample_id": "volicord-1", "surface": surface,
+            observations.append({"sample_id": "journey-volicord", "surface": surface,
                 "locale": locale,
                 "control": {"action": "direct", "reference_locale": None},
                 "response": {"observation": observation, "limits": limits}})

@@ -1878,11 +1878,13 @@ re-evaluation; `--previous-evaluation <file>` retains the original run ID and by
 hash for comparison without interpreting historical policy as current authority.
 Missing historical evidence is never synthesized or upgraded.
 
-Machine schema 2 separates Product `candidate_head`, evidence-set SHA-256,
+Machine schema 3 separates Product `candidate_head`, evidence-set SHA-256,
 `evaluator_revision` and implementation file hashes, policy revision/hash, random
 run nonce/content-derived run ID, and consumed qualitative review IDs (empty for
 machine-only evaluation). A later evaluator HEAD may inspect an older candidate;
 only fresh evidence can establish the behavior of a different Product candidate.
+It retains five Work observations and three repository-journey observations, with
+the exact `3 journey / 5 Work / 3 resume-pair / 8 session` coverage projection.
 Review packaging consumes the external immutable evaluation receipt rather than
 requiring registration by mutating the Campaign. One evaluator serves collection
 and re-evaluation; historical run bytes remain addressable, never rewritten.

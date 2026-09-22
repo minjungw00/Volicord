@@ -9749,7 +9749,13 @@ def real_session_evidence(
     work_path = verified_evidence_path(work_reference, evidence_directory)
     resume_path = verified_evidence_path(resume_reference, evidence_directory)
     bundle_path = verified_evidence_path(bundle_reference, evidence_directory)
-    references_present = all(isinstance(value, dict) for value in (work_reference, resume_reference, bundle_reference))
+    work_label = normalized_work_label(kind, cycle)
+    resume_required = "resume" in session_roles(kind, work_label)
+    references_present = (
+        isinstance(work_reference, dict)
+        and isinstance(bundle_reference, dict)
+        and (not resume_required or isinstance(resume_reference, dict))
+    )
 
     work_capture: CodexCapture | None = None
     resume_capture: CodexCapture | None = None
@@ -9916,11 +9922,12 @@ def real_session_evidence(
         )
     )
     behavior_classification_ok = (
-        materiality_obligations in MATERIALITY_OBLIGATIONS
+        bool(obligation_set(materiality_obligations))
+        and obligation_set(materiality_obligations) <= set(MATERIALITY_OBLIGATIONS)
         and isinstance(evaluation_basis, dict)
-        and evaluation_basis.get("materiality_obligations") == materiality_obligations
+        and obligation_set(evaluation_basis.get("materiality_obligations")) == obligation_set(materiality_obligations)
         and isinstance(behavior_review, dict)
-        and behavior_review.get("classification") == materiality_obligations
+        and obligation_set(behavior_review.get("classification")) == obligation_set(materiality_obligations)
     )
     declared_user_owned = bool(materiality_basis.get("user_owned_dimension_ids"))
     appropriate_inquiry_outcome = (
@@ -9981,27 +9988,30 @@ def real_session_evidence(
         and valid_capture_sha256(raw.get("_evidence_file_sha256"))
         and raw.get("repository_class") == kind
         and raw.get("journey_id") == journey_id(kind)
-        and raw.get("work_label") == normalized_work_label(kind, cycle)
+        and raw.get("work_label") == work_label
         and raw.get("work_slot_id")
-        == work_slot_id(kind, normalized_work_label(kind, cycle))
+        == work_slot_id(kind, work_label)
         and raw.get("repository_revision") == repository_revision
         and work_capture is not None
         and work_capture.git_revision == repository_revision
     )
     task_turns_ok = (
         work_capture is not None
-        and resume_capture is not None
         and nonempty_string(work_user_task)
-        and nonempty_string(resume_user_task)
         and bool(work_capture.user_turns)
-        and bool(resume_capture.user_turns)
         and codex_user_turn_transport_identity_matches(
             work_capture.user_turns[0].text,
             work_user_task,
         )
-        and codex_user_turn_transport_identity_matches(
-            resume_capture.user_turns[0].text,
-            resume_user_task,
+        and (
+            not resume_required
+            or resume_capture is not None
+            and nonempty_string(resume_user_task)
+            and bool(resume_capture.user_turns)
+            and codex_user_turn_transport_identity_matches(
+                resume_capture.user_turns[0].text,
+                resume_user_task,
+            )
         )
     )
     prompt_integrity_ok = (
@@ -10052,20 +10062,26 @@ def real_session_evidence(
 
     invocations_ok = (
         work_capture is not None
-        and resume_capture is not None
-        and work_capture.session_id != resume_capture.session_id
         and work_capture.source == "vscode"
-        and resume_capture.source == "vscode"
         and work_capture.originator == "codex_vscode"
-        and resume_capture.originator == "codex_vscode"
         and nonempty_string(work_capture.cli_version)
-        and nonempty_string(resume_capture.cli_version)
+        and (
+            not resume_required
+            or resume_capture is not None
+            and work_capture.session_id != resume_capture.session_id
+            and resume_capture.source == "vscode"
+            and resume_capture.originator == "codex_vscode"
+            and nonempty_string(resume_capture.cli_version)
+        )
     )
     activation_ok = (
         work_capture is not None
-        and resume_capture is not None
         and work_capture.repository_scoped_activation_observed
-        and resume_capture.repository_scoped_activation_observed
+        and (
+            not resume_required
+            or resume_capture is not None
+            and resume_capture.repository_scoped_activation_observed
+        )
     )
     resolve_call = unique_call(resume_capture, "project_resolve")
     recall_call = unique_call(resume_capture, "recall")
@@ -10307,9 +10323,7 @@ def real_session_evidence(
         and checkpoint_ok
         and checkpoint_goal_ok
         and invocations_ok
-        and fresh_ok
-        and recall_match_ok
-        and recalled_goal_ok
+        and (not resume_required or fresh_ok and recall_match_ok and recalled_goal_ok)
     )
     checkpoint_work_state = (
         recalled_checkpoint_row.get("work_state")
@@ -10472,13 +10486,17 @@ def real_session_evidence(
             "not_observed" if not observed_ids or bundle is None
             else "confirmed_pass" if observed_ids == {bundle.project_id} else "confirmed_violation"),
             "basis": {"observed_project_ids": sorted(observed_ids), "canonical_project_id": bundle.project_id if bundle else None}},
-        "measured_session_provenance": {"status": "not_observed" if not work_capture or not resume_capture
-            else "confirmed_pass" if invocations_ok and work_capture.fresh_user_thread and resume_capture.fresh_user_thread and activation_ok
+        "measured_session_provenance": {"status": "not_observed" if not work_capture or (resume_required and not resume_capture)
+            else "confirmed_pass" if invocations_ok and work_capture.fresh_user_thread
+                and (not resume_required or resume_capture.fresh_user_thread) and activation_ok
             else "confirmed_violation", "basis": {"distinct_host_invocations": invocations_ok,
                 "work_fresh_thread": work_capture.fresh_user_thread if work_capture else None,
+                "resume_required": resume_required,
                 "resume_fresh_thread": resume_capture.fresh_user_thread if resume_capture else None, "activation_observed": activation_ok}},
         "required_validation_execution": {"status": validation_status, "basis": validation_basis},
-        "procedure_invocation_counts": {"status": "confirmed_pass" if resolve_call and recall_call else "confirmed_violation",
+        "procedure_invocation_counts": {"status": (
+            "not_applicable" if not resume_required
+            else "confirmed_pass" if resolve_call and recall_call else "confirmed_violation"),
             "basis": {"resume_project_resolve_count": len(resume_capture.successful_calls("project_resolve")) if resume_capture else 0,
                 "resume_recall_count": len(resume_capture.successful_calls("recall")) if resume_capture else 0,
                 "work_tool_call_count": len(work_capture.tool_calls) if work_capture else 0,

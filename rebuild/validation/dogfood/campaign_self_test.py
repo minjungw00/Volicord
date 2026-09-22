@@ -1143,12 +1143,7 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     assert memory["technical_gate_rss_evidence"] == "retained_separately_not_relabelled_naturalistic"
     assert all(value is False for value in memory["privacy"].values())
     obligations = state["live_evidence_obligations"]
-    assert obligations["long_lived_project"] == {
-        "status": "required_live_observation",
-        "scope": "one_candidate_bound_project_multiple_distinct_work_items_across_fresh_sessions",
-        "deterministic_fixture": "supporting_regression_only_not_qualification_evidence",
-        "required_surface": "long_lived_project_observation",
-    }
+    assert "long_lived_project" not in obligations
     assert obligations["viewer_performance"]["browser_input_and_paint"] \
         == "unmeasured_until_direct_live_observation"
     assert obligations["viewer_performance"]["proxy_may_be_relabelled_browser_latency"] is False

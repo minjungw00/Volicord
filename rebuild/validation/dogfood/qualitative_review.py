@@ -13,14 +13,14 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
 DOCUMENT_KINDS = {"project-architecture-guide", "decision-report", "implementation-plan", "handoff-resume"}
 CRITERION_GROUPS = (
     "interaction", "documents", "viewer_snapshot", "viewer_navigation",
-    "repository_intelligence", "cli", "live_viewer", "long_lived_project",
+    "repository_intelligence", "cli", "live_viewer",
     "context_recovery",
 )
 SURFACES = {
@@ -28,7 +28,6 @@ SURFACES = {
     "viewer_snapshot": ["viewer_snapshot"], "repository_intelligence": ["work_capture"],
     "viewer_navigation": ["viewer_navigation_machine"],
     "cli": ["cli_observation"], "live_viewer": ["live_viewer_observation"],
-    "long_lived_project": ["long_lived_project_observation"],
     "context_recovery": ["work_capture", "resume_capture", "canonical_bundle"],
     "authority": ["work_capture"],
 }
@@ -40,7 +39,6 @@ GROUP_PROMPTS = {
     "repository_intelligence": "Assess useful navigation and analysis for actual work, honest source snapshot/coverage/freshness/uncertainty, semantic value beyond structure, and language/component boundaries and flows in polyglot work. Unsupported or unavailable capabilities must remain visible.",
     "cli": "Inspect observed help discovery and representative repository-relative tasks without opaque Project IDs. Assess readable outcomes and next actions. Captured invocation is evidence of a surface, not proof that every CLI task was usable.",
     "live_viewer": "Assess actual observed keyboard reachability, visible focus, non-color-only meaning, narrow/zoom presentation and browser input/paint responsiveness in both en and ko. Static markup and snapshot-export timing cannot establish live interaction; use insufficient_evidence if the needed observation is absent.",
-    "long_lived_project": "Assess a real candidate-bound journey in which one Project retains multiple distinct Work Items across fresh sessions. The deterministic multi-Work fixture proves only implementation mechanics and cannot satisfy this naturalistic criterion.",
     "context_recovery": "Compare work with fresh resume: recover goal, applicable Decisions and rationale, current/completed/remaining state and open questions accurately without repeating answered judgments. A later repair does not make an earlier false completion claim truthful.",
 }
 CRITERION_PROMPTS = {
@@ -55,7 +53,6 @@ CRITERION_PROMPTS = {
     "information_hierarchy_and_cognitive_burden": "Inspect one bounded reading path: prioritization, grouping, progressive disclosure and the effort required to identify purpose, current work, state and next action. Do not replace these dimensions with a global aesthetic score.",
     "navigation_responsiveness": "Inspect the candidate-bound monotonic Viewer request duration, completion state and measurement scope. Treat missing timing as insufficient evidence and snapshot-export timing as a limited proxy, never as measured browser input latency.",
     "browser_input_and_paint_responsiveness": "Inspect direct live-browser observation of input response and resulting paint in the named locale. Snapshot generation, request completion and server/export duration are not browser input or paint measurements.",
-    "one_project_multiple_work_across_fresh_sessions": "Inspect one real Project across fresh sessions and verify that at least two distinct Work Items retain stable identity, state and history. A static or deterministic fixture is supporting regression coverage only.",
     "usefulness": "Inspect each document's primary user-facing semantic sections for readable project meaning and handoff value. A digest, byte count, bounded-source placeholder, audit appendix or valid artifact hash is not meaningful primary content.",
     "fidelity": "Compare the Decision Report and other affected documents with canonical Decision meaning. Explicitly distinguish user choice, recommended alternative, user rationale, recommendation rationale and alternative-specific consequences.",
 }
@@ -71,7 +68,6 @@ CRITERION_OBSERVATIONS = {
     "information_hierarchy_and_cognitive_burden": ["purpose_and_current_work_priority", "scan_path", "progressive_disclosure", "bounded_cognitive_burden"],
     "navigation_responsiveness": ["candidate_bound_machine_timing", "request_completion", "measurement_scope", "proxy_limit"],
     "browser_input_and_paint_responsiveness": ["live_browser_input", "resulting_paint", "locale", "observation_limits"],
-    "one_project_multiple_work_across_fresh_sessions": ["one_project_identity", "distinct_work_identities", "fresh_sessions", "retained_work_state_and_history"],
     "usefulness": ["primary_semantic_content", "readability", "handoff_value", "placeholder_or_audit_only_check"],
     "fidelity": ["user_choice", "recommended_alternative", "user_rationale", "recommendation_rationale", "alternative_specific_consequences"],
 }
@@ -157,27 +153,31 @@ def criterion_specs(index, policy):
     specs = []
     for sample in index["samples"]:
         sample_id = sample["sample_id"]
-        # Serialized review packages sort object keys, so criterion order comes
-        # from the stable group contract rather than mapping insertion order.
-        for group in CRITERION_GROUPS:
-            if group == "cli":
+        for group in ("interaction", "context_recovery"):
+            if group == "context_recovery" and not sample["resume_pair"]:
                 continue
             names = policy["criteria"][group]
-            if group in {"live_viewer", "long_lived_project"} and sample_id != index["live_viewer_sample"]:
-                continue
             names = list(names)
             if group == "interaction":
                 names += [name for name, rule in sorted(policy["behavior_criteria"].items())
-                          if sample["behavior_class"] in rule["applies_to"]]
-            for locale in (["en", "ko"] if group == "live_viewer" else [None]):
-                for name in names:
-                    specs.append({"criterion_id": "/".join(filter(None, [sample_id, group, locale, name])),
-                        "sample_id": sample_id, "group": group, "name": name, "locale": locale})
+                          if set(sample["materiality_obligations"]).intersection(rule["applies_to"])]
+            for name in names:
+                specs.append({"criterion_id": f"{sample_id}/{group}/{name}",
+                    "sample_id": sample_id, "group": group, "name": name, "locale": None})
         for obligation in sample["authority_obligations"]:
             specs.append({"criterion_id": f"{sample_id}/authority/{obligation}",
                 "sample_id": sample_id, "group": "authority", "name": obligation, "locale": None})
         specs.append({"criterion_id": f"{sample_id}/authority/coverage", "sample_id": sample_id,
             "group": "authority", "name": "coverage", "locale": None})
+    for sample in index["journey_samples"]:
+        sample_id = sample["sample_id"]
+        for group in ("documents", "viewer_snapshot", "viewer_navigation", "repository_intelligence", "live_viewer"):
+            if group == "live_viewer" and sample_id != index["live_viewer_sample"]:
+                continue
+            for locale in (["en", "ko"] if group == "live_viewer" else [None]):
+                for name in policy["criteria"][group]:
+                    specs.append({"criterion_id": "/".join(filter(None, [sample_id, group, locale, name])),
+                        "sample_id": sample_id, "group": group, "name": name, "locale": locale})
     for sample in index["cli_samples"]:
         for name in policy["criteria"]["cli"]:
             specs.append({"criterion_id": f"{sample['sample_id']}/cli/{name}",
@@ -186,10 +186,12 @@ def criterion_specs(index, policy):
 
 
 def human_only(spec):
-    return spec["group"] in {"live_viewer", "long_lived_project"} or (
+    return spec["group"] == "live_viewer" or (
         spec["group"] == "interaction"
         and spec["name"] == "decision_comprehension_when_applicable"
-    )
+    ) or (spec["group"] == "viewer_snapshot"
+        and spec["name"] == "multiple_work_organization"
+        and spec["sample_id"] == "journey-volicord")
 
 
 def completion_obligations(index, policy):
@@ -323,6 +325,10 @@ def template(preparation, preparation_sha256):
         "additional_outcomes": [], "resolves_review_runs": {}, "human_controls": {}}
 
 
+def evidence_applies(entry, sample_id):
+    return sample_id is None or sample_id in entry.get("sample_ids", [entry.get("sample_id")])
+
+
 def validate_references(references, index, inspected, spec, *, allow_empty=False):
     require(isinstance(references, list) and len(references) <= 64 and (allow_empty or references),
             "assessment requires bounded evidence references")
@@ -331,10 +337,10 @@ def validate_references(references, index, inspected, spec, *, allow_empty=False
             and ref["criterion_id"] == spec["criterion_id"] and authority.bounded_text(ref["relevance"]),
             "evidence reference must explain its criterion-specific relevance")
         entry = index["evidence"].get(ref["evidence_id"]) if isinstance(ref["evidence_id"], str) else None
-        require(entry is not None and entry["sample_id"] in {None, spec["sample_id"]}
+        require(entry is not None and evidence_applies(entry, spec["sample_id"])
             and (entry["surface"] != "cli_observation" or
                  (entry["sample_id"] == spec["sample_id"] and entry.get("repository_class") == spec["sample_id"]))
-            and ref["evidence_id"] in inspected, "evidence reference is missing, uninspected or belongs to another cycle")
+            and ref["evidence_id"] in inspected, "evidence reference is missing, uninspected or belongs to another sample")
         locator = ref["locator"]
         require(isinstance(locator, dict) and set(locator) == {"kind", "value"}
             and (locator in entry["locators"] or (
@@ -373,7 +379,7 @@ def validate_assessment(value, spec, preparation, inspected):
         "reviewed criterion requires distinct per-criterion inspected evidence")
     for identity in criterion_inspected:
         entry = index["evidence"].get(identity)
-        require(entry is not None and entry["sample_id"] in {None, spec["sample_id"]},
+        require(entry is not None and evidence_applies(entry, spec["sample_id"]),
             "per-criterion inspected evidence belongs to another sample")
     validate_references(value["evidence"], index, criterion_inspected, spec,
         allow_empty=state == "insufficient_evidence")
@@ -402,14 +408,21 @@ def validate_assessment(value, spec, preparation, inspected):
             and reason["code"] == rule and authority.bounded_text(reason["reasoning"]),
             "not_applicable requires a criterion-permitted applicability reason")
         if rule == "single_language_scope":
-            sample = next(s for s in index["samples"] if s["sample_id"] == spec["sample_id"])
+            sample = next(s for s in [*index["samples"], *index["journey_samples"]]
+                if s["sample_id"] == spec["sample_id"])
             require(sample["repository_class"] != "polyglot-medium", "polyglot scope cannot be declared single-language")
     else:
         require(value["applicability_reason"] is None, "applicability reason only belongs to not_applicable")
     if state in {"satisfied", "violated"}:
         surfaces = {index["evidence"][r["evidence_id"]]["surface"] for r in value["evidence"]
             if spec["locale"] is None or index["evidence"][r["evidence_id"]].get("locale") == spec["locale"]}
-        require(set(SURFACES[spec["group"]]) <= surfaces, "criterion lacks its required observation surface; use insufficient_evidence")
+        required_surfaces = set(SURFACES[spec["group"]])
+        if (spec["sample_id"] == "journey-volicord"
+                and spec["group"] == "viewer_snapshot"
+                and spec["name"] == "multiple_work_organization"
+                and preparation["reviewer"]["kind"] == "human"):
+            required_surfaces.add("live_viewer_observation")
+        require(required_surfaces <= surfaces, "criterion lacks its required observation surface; use insufficient_evidence")
         if state == "satisfied" and spec["group"] == "documents":
             document_kinds = {index["evidence"][r["evidence_id"]].get("document_kind") for r in value["evidence"]}
             require(DOCUMENT_KINDS <= document_kinds, "document satisfaction must inspect all four required documents")
@@ -445,7 +458,7 @@ def validate_assessment(value, spec, preparation, inspected):
                 "missing or duplicate machine finding")
         seen.add(finding_id)
         finding = index["machine_findings"][finding_id]
-        require(finding["sample_id"] == spec["sample_id"], "machine finding belongs to another cycle")
+        require(finding["sample_id"] == spec["sample_id"], "machine finding belongs to another sample")
         machine.validate_finding(finding["finding"])
         f = finding["finding"]
         # Disagreement is retained as disagreement; it never changes disposition.

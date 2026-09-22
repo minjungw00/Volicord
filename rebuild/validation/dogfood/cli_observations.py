@@ -290,7 +290,7 @@ def load(campaign_root: Path, observation_root: Path) -> tuple[dict[str, Any], b
     value = json.loads(data)
     revisions = {}
     for kind in c.CLASSES:
-        found = {state["repository_revision"] for state in manifest["cycles"].values()
+        found = {state["repository_revision"] for state in manifest["works"].values()
                  if state["repository_class"] == kind}
         require(len(found) == 1, "campaign repository class has inconsistent pinned revisions")
         revisions[kind] = found.pop()
@@ -334,7 +334,7 @@ def collect(campaign_root: Path, output: Path, *,
         for kind in c.CLASSES:
             source = Path(specs[kind]["path"]).resolve()
             require(not source.is_relative_to(campaign_root), "measured campaign workspaces cannot be CLI observation sources")
-            revisions = {state["repository_revision"] for state in manifest["cycles"].values()
+            revisions = {state["repository_revision"] for state in manifest["works"].values()
                          if state["repository_class"] == kind}
             require(len(revisions) == 1, "campaign repository class has inconsistent pinned revisions")
             revision = revisions.pop()

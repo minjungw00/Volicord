@@ -68,7 +68,7 @@ def insufficient_draft(root):
     p, sha, _ = ops.load_package(root)
     value = q.template(p, sha)
     value["observation_scope"]["inspected_evidence"] = [s["sample_id"] + "-availability"
-        for s in [*p["index"]["samples"], *p["index"]["cli_samples"]]]
+        for s in [*p["index"]["samples"], *p["index"]["journey_samples"], *p["index"]["cli_samples"]]]
     for spec, finding in zip(q.criterion_specs(p["index"], p["rubric"]), value["assessments"]):
         finding.update(assessment="insufficient_evidence", reasoning="Only the bounded evidence availability inventory was inspected.",
             inspected_evidence=[spec["sample_id"] + "-availability"],
@@ -94,13 +94,14 @@ def assert_review_workflow(root, parent):
     assert brief["semantic_judgment_suggested"] is False
     assert brief["criterion"]["criterion_id"] == q.criterion_specs(p["index"], p["rubric"])[0]["criterion_id"]
     assert brief["evidence"] and brief["mutation"] == "none"
-    assert len(p["index"]["samples"]) == 8
+    assert len(p["index"]["samples"]) == 5
+    assert len(p["index"]["journey_samples"]) == 3
     cli_specs = [spec for spec in q.criterion_specs(p["index"], p["rubric"]) if spec["group"] == "cli"]
     assert len(cli_specs) == 21
     assert {spec["sample_id"] for spec in cli_specs} == set(c.CLASSES)
     assert not any(spec["sample_id"] in {sample["sample_id"] for sample in p["index"]["samples"]}
                    for spec in cli_specs)
-    assert len([x for x in p["index"]["evidence"].values() if x["surface"] == "documents"]) == 64
+    assert len([x for x in p["index"]["evidence"].values() if x["surface"] == "documents"]) == 24
     assert not any(name.startswith("private-rollouts/") for name in package["artifacts"])
     assert any(u["surface"] == "live_viewer_observation" for u in p["unavailable_surfaces"])
     obligations = p["completion_obligations"]
@@ -185,8 +186,10 @@ class WorkflowTests(unittest.TestCase):
         ops.prepare(self.root, target, reviewer_kind="agent", session_id="reviewer", evaluation_path=self.evaluation, include_raw=True)
         p, _, package = ops.load_package(target)
         self.assertEqual(p["binding"]["machine_evaluation"]["run_id"], self.evaluation_result["run_id"])
-        self.assertEqual(len([n for n in package["artifacts"] if n.startswith("private-rollouts/")]), 16)
-        self.assertEqual(len(p["index"]["machine_findings"]), 8 * (len(harness.REAL_SESSION_CHECKS) + len(ops.machine.FACT_RULES)))
+        self.assertEqual(len([n for n in package["artifacts"] if n.startswith("private-rollouts/")]), 8)
+        evaluation = c.read_json(self.evaluation)
+        self.assertEqual(len(p["index"]["machine_findings"]),
+            sum(len(item["findings"]) for item in [*evaluation["works"], *evaluation["journeys"]]))
         self.assertEqual(snapshot(self.root), before)
         for entry in p["index"]["evidence"].values():
             if entry["surface"] == "work_capture":
@@ -215,7 +218,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual({entry["sample_id"] for entry in cli_evidence}, set(c.CLASSES))
         foreign_id = "small-python-cli-observation"
         foreign = preparation["index"]["evidence"][foreign_id]
-        with self.assertRaisesRegex(ValueError, "another cycle"):
+        with self.assertRaisesRegex(ValueError, "another sample"):
             spec = {"criterion_id": "volicord/cli/discover_with_cli_help",
                 "sample_id": "volicord", "group": "cli", "name": "discover_with_cli_help", "locale": None}
             ops.review.validate_references(
@@ -354,18 +357,14 @@ class WorkflowTests(unittest.TestCase):
             "evidence_set_sha256": evidence_hash,
             "observer": q.reviewer("human", "b" * 32),
             "observations": [
-                {"sample_id": "volicord-1", "surface": "live_viewer_observation", "locale": "en",
+                {"sample_id": "journey-volicord", "surface": "live_viewer_observation", "locale": "en",
                  "control": {"action": "direct", "reference_locale": None},
                  "response": {"observation": "The view states that auth.json content is not retained.",
                     "limits": "Private prompt bodies were excluded from inspection."}},
-                {"sample_id": "volicord-1", "surface": "live_viewer_observation", "locale": "ko",
+                {"sample_id": "journey-volicord", "surface": "live_viewer_observation", "locale": "ko",
                  "control": {"action": "direct", "reference_locale": None},
                  "response": {"observation": "Bearer token terminology is visible as security guidance.",
                     "limits": "The api_key field name is documentation, not a retained value."}},
-                {"sample_id": "volicord-1", "surface": "long_lived_project_observation", "locale": None,
-                 "control": {"action": "direct", "reference_locale": None},
-                 "response": {"observation": "One Project retained two distinct Work Items across fresh sessions.",
-                    "limits": "Only the directly observed candidate journey is covered."}},
             ],
         }
         source = self.parent / (self._testMethodName + "-benign.json")
@@ -387,7 +386,6 @@ class WorkflowTests(unittest.TestCase):
         answers = iter([
             "OBSERVATION:\nKeyboard focus, narrow layout, input response and resulting paint were personally inspected in the English Viewer.\n\nA second paragraph remains one answer.\nLIMITS:\nScreen reader output and other pages were not inspected.",
             "SAME AS ENGLISH",
-            "OBSERVATION:\nThe same Project retained distinct Alpha and Beta Work identities across fresh sessions, including their separate state and history.\nLIMITS:\nOnly the observed candidate Project and sessions were inspected.",
         ])
         result = human_review.capture_viewer_observations(
             self.root, observation_root, input_fn=answers.__next__, output_fn=lambda _text: None,
@@ -402,9 +400,8 @@ class WorkflowTests(unittest.TestCase):
         live = [entry for entry in preparation["index"]["evidence"].values()
                 if entry["surface"] == "live_viewer_observation"]
         self.assertEqual({entry["locale"] for entry in live}, {"en", "ko"})
-        long_lived = [entry for entry in preparation["index"]["evidence"].values()
-                      if entry["surface"] == "long_lived_project_observation"]
-        self.assertEqual(len(long_lived), 1)
+        self.assertFalse(any(entry["surface"] == "long_lived_project_observation"
+            for entry in preparation["index"]["evidence"].values()))
         self.assertEqual(preparation["binding"]["candidate_head"], result["candidate_head"])
         captured = json.loads((observation_root / "observations.json").read_bytes())
         self.assertEqual(captured["observations"][1]["control"],
@@ -564,7 +561,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_evaluator_private_answers_are_not_selected(self):
         manifest = copy.deepcopy(c.load_evidence_set(self.root))
-        slot = next(iter(manifest["cycles"].values()))["review_slot_id"]
+        slot = next(iter(manifest["works"].values()))["review_slot_id"]
         name = f"evaluator/descriptors/{slot}.json"
         path = self.root / name
         descriptor = c.read_json(path)
@@ -684,17 +681,18 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "machine run evidence-set/candidate mismatch"):
             ops.prepare(self.root, self.target(), reviewer_kind="human", evaluation_path=evaluation)
 
-    def test_hard_and_indeterminate_machine_cycles_are_reviewable(self):
+    def test_hard_and_indeterminate_machine_works_are_reviewable(self):
         invalid = c.read_json(self.evaluation)
-        observation = invalid["cycles"][0]["observation"]
+        observation = invalid["works"][0]["observation"]
         observation["checks"]["canonical_bundle_and_provenance"] = "failed"
         observation["checks"]["appropriate_inquiry_outcome"] = "partial"
-        invalid["cycles"][0]["findings"] = ops.machine.from_observation(observation)
-        invalid["finding_state"] = ops.machine.evaluation_state([f for cycle in invalid["cycles"] for f in cycle["findings"]])
+        invalid["works"][0]["findings"] = ops.machine.from_observation(observation)
+        invalid["finding_state"] = ops.machine.evaluation_state(
+            [f for item in [*invalid["works"], *invalid["journeys"]] for f in item["findings"]])
         invalid["run_id"] = ops.machine.digest({k: v for k, v in invalid.items() if k != "run_id"})
         ops.machine.validate_run(invalid)
         files, index, _ = ops.select_evidence(self.root, c.load_evidence_set(self.root), invalid, include_raw=False)
-        self.assertEqual(len(index["samples"]), 8)
+        self.assertEqual(len(index["samples"]), 5)
         self.assertTrue(any(v["finding"]["disposition"] == "hard_blocking" for v in index["machine_findings"].values()))
         self.assertTrue(any(v["finding"]["disposition"] == "qualitative_review_required" for v in index["machine_findings"].values()))
         self.assertIn("evidence/machine-findings.json", files)

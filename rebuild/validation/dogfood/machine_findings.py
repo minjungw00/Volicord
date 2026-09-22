@@ -29,6 +29,8 @@ INTEGRITY_RULES = frozenset({
     "candidate_binding", "campaign_inventory", "session_mapping", "activation_identity",
     "raw_hash", "destination_collision", "realization_binding", "project_binding",
     "privacy_credential_integrity",
+    "journey_project_identity", "journey_work_identity", "journey_work_history",
+    "journey_relation_consistency", "journey_resume_continuity", "journey_isolation",
 })
 BEHAVIOR_RULES = frozenset({
     "repository_scoped_activation", "naturalistic_prompt_integrity", "plain_task_goal_linkage",
@@ -46,6 +48,21 @@ BEHAVIOR_RULES = frozenset({
     "generated_document_outputs", "static_viewer_snapshot", "bounded_runtime_and_activation_evidence",
     "work_turn_lifecycle", "resume_contract", "evaluation_execution",
 })
+RESUME_RULES = frozenset({
+    "distinct_work_and_resume_invocations", "fresh_resume_without_prior_context",
+    "repository_bound_project_resolution", "recall_precedes_inspection_and_continuation",
+    "resume_pre_work_repository_baseline", "resume_materiality_work_authority",
+    "recall_matches_checkpoint_decision_and_context", "learning_recall_continuity",
+    "resolved_material_question_not_reasked", "meaningful_recalled_continuation",
+})
+WORK_OBSERVATION_RULES = BEHAVIOR_RULES - {
+    "work_turn_lifecycle", "resume_contract", "evaluation_execution"
+}
+EXPECTED_WORKS = {
+    ("volicord", "A"), ("volicord", "B"), ("volicord", "C"),
+    ("small-python", "A"), ("polyglot-medium", "A"),
+}
+EXPECTED_JOURNEYS = {"volicord", "small-python", "polyglot-medium"}
 
 
 def disposition(rule, status):
@@ -102,8 +119,10 @@ def from_observation(observation):
             status, reason = Status.INDETERMINATE, "terminal_validation_indeterminate"
         elif check == "engineering_choice_discovery" and observed == "failed":
             status, reason = Status.NOT_OBSERVED, "discovery_identity_not_observed"
-        if check.startswith("learning_") and observation.get("behavior_class") not in {
-            "learning_deliberation", "learning_routine_control"} and observed == "passed":
+        if (check.startswith("learning_")
+                and not set(observation.get("materiality_obligations", ()))
+                    .intersection({"learning_deliberation", "learning_routine_control"})
+                and observed == "passed"):
             status, reason = Status.NOT_APPLICABLE, "learning_not_required_for_behavior_class"
         findings.append(finding(check, status, {"observed_check_status": observed,
             "reason": reason, "observation_pointer": "/observation"}))
@@ -111,6 +130,19 @@ def from_observation(observation):
         if rule not in FACT_RULES:
             raise ValueError("unknown audited fact rule")
         findings.append(finding(rule, fact["status"], fact["basis"]))
+    return findings
+
+
+def from_journey_observation(observation):
+    findings = []
+    for rule in sorted(INTEGRITY_RULES & {
+        "journey_project_identity", "journey_work_identity", "journey_work_history",
+        "journey_relation_consistency", "journey_resume_continuity", "journey_isolation",
+    }):
+        item = observation.get("checks", {}).get(rule)
+        if not isinstance(item, dict) or set(item) != {"status", "basis"}:
+            raise ValueError("journey observation omitted structural continuity evidence")
+        findings.append(finding(rule, item["status"], item["basis"]))
     return findings
 
 
@@ -132,14 +164,15 @@ def validate_run(value):
     if not isinstance(value, dict) or set(value) != {"kind", "schema_version", "candidate_head", "evidence_set",
         "evaluator_revision", "policy_version", "evaluator_files", "policy", "qualitative_review_runs",
         "previous_evaluation", "run_nonce", "collection_state", "evaluation_state", "qualification_state",
-        "cycles", "finding_state", "run_id"}:
+        "works", "journeys", "coverage", "finding_state", "run_id"}:
         raise ValueError("invalid machine evaluation shape")
-    if (value.get("kind") != "dogfood_machine_evaluation" or value.get("schema_version") != 2
+    if (value.get("kind") != "dogfood_machine_evaluation" or value.get("schema_version") != 3
         or value.get("qualification_state") != "not_run"
         or value.get("collection_state") != "collected"
         or value.get("policy_version") != POLICY_VERSION
         or value.get("evaluation_state") != "produced"
-        or not isinstance(value.get("cycles"), list) or len(value["cycles"]) != 8):
+        or not isinstance(value.get("works"), list) or len(value["works"]) != 5
+        or not isinstance(value.get("journeys"), list) or len(value["journeys"]) != 3):
         raise ValueError("invalid evaluation lifecycle")
     reference = value.get("evidence_set", {})
     if (reference.get("path") != "evidence-set.json"
@@ -156,20 +189,34 @@ def validate_run(value):
     if prior is not None and (not isinstance(prior, dict) or set(prior) != {"run_id", "sha256"}
         or any(not re.fullmatch(r"[0-9a-f]{64}", str(v)) for v in prior.values())):
         raise ValueError("invalid prior evaluation identity")
-    expected_cycles = {(kind, cycle) for kind, count in
-        (("volicord", 3), ("small-python", 3), ("polyglot-medium", 2)) for cycle in range(1, count + 1)}
-    if {(c.get("repository_class"), c.get("cycle")) for c in value["cycles"]} != expected_cycles:
-        raise ValueError("evaluation cycle coverage changed")
+    if {(w.get("repository_class"), w.get("work")) for w in value["works"]} != EXPECTED_WORKS:
+        raise ValueError("evaluation Work coverage changed")
+    if {j.get("repository_class") for j in value["journeys"]} != EXPECTED_JOURNEYS:
+        raise ValueError("evaluation journey coverage changed")
+    coverage = value.get("coverage")
+    if not isinstance(coverage, dict) or coverage != {
+        "repository_journeys": 3,
+        "work_items": 5,
+        "resume_pairs": 3,
+        "fresh_sessions": 8,
+        "work_distribution": {"volicord": 3, "small-python": 1, "polyglot-medium": 1},
+        "resume_repository_classes": ["polyglot-medium", "small-python", "volicord"],
+    }:
+        raise ValueError("evaluation topology coverage changed")
     findings = []
-    for cycle in value["cycles"]:
-        if set(cycle["observation"].get("checks", {})) != BEHAVIOR_RULES - {
-            "work_turn_lifecycle", "resume_contract", "evaluation_execution"}:
+    for work in value["works"]:
+        expected_checks = WORK_OBSERVATION_RULES if work.get("resume_pair") else WORK_OBSERVATION_RULES - RESUME_RULES
+        if set(work["observation"].get("checks", {})) != expected_checks:
             raise ValueError("evaluation silently omitted required checks")
-        if set(cycle["observation"].get("machine_facts", {})) != FACT_RULES:
+        if set(work["observation"].get("machine_facts", {})) != FACT_RULES:
             raise ValueError("evaluation omitted audited integrity/execution facts")
-        if cycle["findings"] != from_observation(cycle["observation"]):
+        if work["findings"] != from_observation(work["observation"]):
             raise ValueError("findings do not preserve observed certainty/basis")
-        findings.extend(cycle["findings"])
+        findings.extend(work["findings"])
+    for journey in value["journeys"]:
+        if journey["findings"] != from_journey_observation(journey["observation"]):
+            raise ValueError("journey findings do not preserve structural evidence")
+        findings.extend(journey["findings"])
     if value.get("finding_state") != evaluation_state(findings):
         raise ValueError("evaluation disposition disagrees with findings")
     if value.get("run_id") != digest({k: v for k, v in value.items() if k != "run_id"}):

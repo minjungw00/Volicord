@@ -254,12 +254,6 @@ def live_evidence_obligations(
     return {
         "kind": "dogfood_live_evidence_obligations",
         "schema_version": 1,
-        "long_lived_project": {
-            "status": "required_live_observation",
-            "scope": "one_candidate_bound_project_multiple_distinct_work_items_across_fresh_sessions",
-            "deterministic_fixture": "supporting_regression_only_not_qualification_evidence",
-            "required_surface": "long_lived_project_observation",
-        },
         "live_viewer": {
             "status": "required_human_observation",
             "locales": ["en", "ko"],
@@ -3714,11 +3708,124 @@ def evaluate_works(root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]
             observation = harness.real_session_evidence(descriptor, kind=kind, cycle=work,
                 repository_revision=state["repository_revision"], candidate_revision=manifest["candidate_head"],
                 target_repository=Path(state["repository_path"]))
+            resume_pair = "resume" in session_roles(kind, work)
+            if not resume_pair:
+                for check in machine_findings.RESUME_RULES:
+                    observation["checks"].pop(check, None)
             # The enclosing immutable observation retains every existing check/basis.
             observation.pop("machine_findings", None)
-            works.append({"repository_class": kind, "work": work, "observation": observation,
+            works.append({"journey_id": journey_id(kind), "repository_class": kind,
+                "work_slot_id": work_key(kind, work), "work": work, "resume_pair": resume_pair,
+                "materiality_obligations": list(descriptor["materiality_obligations"]), "observation": observation,
                 "findings": machine_findings.from_observation(observation)})
     return works
+
+
+def evaluate_journeys(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    """Derive structural continuity only from the immutable main-campaign manifest."""
+    work_evidence = {item["work_slot_id"]: item for item in manifest["work_evidence"]}
+    final_evidence = {item["journey_id"]: item for item in manifest["journey_final_evidence"]}
+    project_ids = [manifest["journeys"][journey_id(kind)].get("project_id") for kind in CLASSES]
+    workspace_ids = [manifest["journeys"][journey_id(kind)].get("repository_path") for kind in CLASSES]
+    runtime_ids = [manifest["journeys"][journey_id(kind)].get("runtime_home") for kind in CLASSES]
+    isolated = (
+        len(set(project_ids)) == len(CLASSES)
+        and len(set(workspace_ids)) == len(CLASSES)
+        and len(set(runtime_ids)) == len(CLASSES)
+        and all(project_ids)
+    )
+
+    def checked(passed: bool, basis: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "status": (
+                machine_findings.Status.PASS.value
+                if passed
+                else machine_findings.Status.VIOLATION.value
+            ),
+            "basis": basis,
+        }
+
+    result = []
+    for kind in CLASSES:
+        identity = journey_id(kind)
+        journey = manifest["journeys"][identity]
+        slots = [work_key(kind, label) for label in work_labels(kind)]
+        entries = [work_evidence.get(slot) for slot in slots]
+        final = final_evidence.get(identity, {})
+        expected_project = journey.get("project_id")
+        ordered_work_ids = [entry.get("work_item_id") if isinstance(entry, dict) else None for entry in entries]
+        project_identity_ok = bool(expected_project) and final.get("project_id") == expected_project and all(
+            isinstance(entry, dict) and entry.get("project_id") == expected_project for entry in entries
+        )
+        work_identity_ok = (
+            all(isinstance(value, str) and value for value in ordered_work_ids)
+            and len(set(ordered_work_ids)) == len(slots)
+            and final.get("ordered_work_item_ids") == ordered_work_ids
+            and final.get("represented_work_slot_ids") == slots
+        )
+        history_ok = all(
+            isinstance(entry, dict)
+            and entry.get("collection_state") == "collected"
+            and isinstance(entry.get("canonical_evidence", {}).get("checkpoint_ids"), list)
+            and bool(entry["canonical_evidence"]["checkpoint_ids"])
+            and entry["canonical_evidence"].get("journey_final_shared_projection") is True
+            for entry in entries
+        )
+        canonical_files = {
+            entry.get("canonical_evidence", {}).get("file")
+            for entry in entries if isinstance(entry, dict)
+        }
+        relation_ok = (
+            project_identity_ok and work_identity_ok and history_ok
+            and len(canonical_files) == 1 and None not in canonical_files
+            and all(
+                entry["canonical_evidence"].get("sha256")
+                == entries[0]["canonical_evidence"].get("sha256")
+                for entry in entries if isinstance(entry, dict)
+            )
+        )
+        resume_slots = [entry for entry in entries if isinstance(entry, dict) and "resume" in entry.get("sessions", {})]
+        resume_ok = (
+            len(resume_slots) == 1
+            and resume_slots[0].get("work_label") == harness.RESUME_WORK_SLOT_BY_REPOSITORY[kind]
+            and set(resume_slots[0]["sessions"]) == {"start", "resume"}
+            and resume_slots[0]["sessions"]["start"].get("session_id")
+                != resume_slots[0]["sessions"]["resume"].get("session_id")
+        )
+        observation = {"evidence_class": "immutable_main_campaign_journey_structure", "checks": {
+            "journey_project_identity": checked(project_identity_ok, {
+                "journey_id": identity, "expected_project_id": expected_project,
+                "work_project_ids": [entry.get("project_id") if isinstance(entry, dict) else None for entry in entries],
+            }),
+            "journey_work_identity": checked(work_identity_ok, {
+                "journey_id": identity, "expected_work_slot_ids": slots,
+                "ordered_work_item_ids": ordered_work_ids,
+            }),
+            "journey_work_history": checked(history_ok, {
+                "journey_id": identity,
+                "checkpoint_ids_by_work_slot": {
+                    slot: (entry or {}).get("canonical_evidence", {}).get("checkpoint_ids", [])
+                    for slot, entry in zip(slots, entries, strict=True)
+                },
+            }),
+            "journey_relation_consistency": checked(relation_ok, {
+                "journey_id": identity, "project_id": expected_project,
+                "work_item_ids": ordered_work_ids, "shared_canonical_files": sorted(str(v) for v in canonical_files),
+            }),
+            "journey_resume_continuity": checked(resume_ok, {
+                "journey_id": identity, "required_resume_work_slot_id": work_key(kind, "A"),
+                "observed_resume_work_slot_ids": [entry["work_slot_id"] for entry in resume_slots],
+            }),
+            "journey_isolation": checked(isolated, {
+                "project_ids": project_ids, "workspace_identities": workspace_ids,
+                "runtime_identities": runtime_ids,
+            }),
+        }}
+        result.append({"journey_id": identity, "repository_class": kind,
+            "work_slot_ids": slots, "resume_work_slot_id": work_key(kind, "A"),
+            "observation": observation,
+            "findings": machine_findings.from_journey_observation(observation)})
+    return result
 
 
 def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | None = None) -> dict[str, Any]:
@@ -3728,7 +3835,8 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
     from evaluation_runs import policy_identity, historical_reference
     prior = historical_reference(previous, manifest["candidate_head"], campaign["evidence_set"]) if previous else None
     works = evaluate_works(root, manifest)
-    result = {"kind": "dogfood_machine_evaluation", "schema_version": 2,
+    journeys = evaluate_journeys(manifest)
+    result = {"kind": "dogfood_machine_evaluation", "schema_version": 3,
         "candidate_head": manifest["candidate_head"], "evidence_set": campaign["evidence_set"],
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
         "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
@@ -3737,7 +3845,13 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "works": works,
-        "finding_state": machine_findings.evaluation_state([f for c in works for f in c["findings"]])}
+        "journeys": journeys,
+        "coverage": {"repository_journeys": 3, "work_items": 5, "resume_pairs": 3,
+            "fresh_sessions": 8,
+            "work_distribution": {"volicord": 3, "small-python": 1, "polyglot-medium": 1},
+            "resume_repository_classes": sorted(CLASSES)},
+        "finding_state": machine_findings.evaluation_state(
+            [f for item in works + journeys for f in item["findings"]])}
     result["run_id"] = machine_findings.digest(result)
     machine_findings.validate_run(result)
     # Recheck input hashes after evaluation and before the controlled publication.

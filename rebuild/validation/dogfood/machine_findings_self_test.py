@@ -140,7 +140,20 @@ class MachineFindingTests(unittest.TestCase):
             first_bytes = (root / first["evaluation"]).read_bytes()
             result = c.read_json(root / first["evaluation"])
             m.validate_run(result)
-            self.assertEqual(len(result["cycles"]), 8)
+            self.assertEqual(len(result["works"]), 5)
+            self.assertEqual(len(result["journeys"]), 3)
+            self.assertEqual(sum(item["resume_pair"] for item in result["works"]), 3)
+            self.assertEqual(result["coverage"], {
+                "repository_journeys": 3, "work_items": 5, "resume_pairs": 3,
+                "fresh_sessions": 8,
+                "work_distribution": {"volicord": 3, "small-python": 1, "polyglot-medium": 1},
+                "resume_repository_classes": ["polyglot-medium", "small-python", "volicord"],
+            })
+            self.assertTrue(all(item["findings"] for item in result["journeys"]))
+            self.assertEqual(
+                {item["work_slot_id"] for item in result["works"]},
+                {harness.work_slot_id(kind, work) for kind, work in harness.current_work_slots()},
+            )
             self.assertEqual(result["evidence_set"]["sha256"], harness.sha256(root / "evidence-set.json"))
             before_campaign = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
             with patch.object(harness, "git_head", return_value="c" * 40):
@@ -178,7 +191,7 @@ class MachineFindingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 m.validate_run(invalid)
             # Even updating the mutable inventory cannot legitimize changed frozen bytes.
-            name = next(name for name in frozen if name.endswith("work.rollout.jsonl"))
+            name = next(name for name in frozen if name.endswith("start.rollout.jsonl"))
             (root / name).write_bytes(frozen[name] + b"\n")
             c.register_artifact(root, root / name, replace=True)
             with self.assertRaises(c.CampaignError):
