@@ -370,8 +370,8 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
         "Privacy and provider",
         "Document preview / export",
         "Health and usable capability",
-        "Narrative language",
-        "fixed locale realized",
+        "Viewer explanation",
+        "Shown in English using the bundled interface wording",
     ] {
         assert!(page.html.contains(expected), "missing {expected}");
     }
@@ -389,16 +389,16 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
     let checkpoints = page.html.find("id=\"checkpoints\"").expect("checkpoints");
     let repository = page.html.find("id=\"repository-map\"").expect("repository");
     assert!(
-        understanding < health
-            && health < inspection
-            && inspection < overview
+        understanding < inspection
+            && inspection < health
+            && health < overview
             && overview < decisions
             && decisions < checkpoints
             && checkpoints < repository
     );
     assert!(page
         .html
-        .contains("Inspect Project records and repository audit detail"));
+        .contains("Inspect health, capability, Project records, and audit detail"));
     assert!(page
         .html
         .find(&project.to_string())
@@ -440,7 +440,7 @@ fn korean_fixed_text_and_all_explanation_levels_are_available() {
                     project_id: project,
                     locale: ViewerLocale::Korean,
                     explanation_level: level,
-                    requested_language: "한국어".into(),
+                    requested_language: "ko".into(),
                     guarded_request: None,
                 },
                 "test-request-authenticity",
@@ -453,6 +453,10 @@ fn korean_fixed_text_and_all_explanation_levels_are_available() {
         assert!(page.html.contains("HTML 언어 태그"));
         assert!(page.html.contains("<dd>ko</dd>"));
         assert!(page.html.contains("사용 가능한 기능"));
+        assert!(page
+            .html
+            .contains("기본 제공 한국어 화면 문구로 표시됩니다"));
+        assert!(!page.html.contains("고정 locale로 실현됨"));
         assert!(!page.html.contains("NeverEnabled"));
         assert!(!page.html.contains("Projection: <strong>Complete"));
     }
@@ -1049,6 +1053,13 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         "Audit-first console [audit-first]: audit records remain the primary reading path"
     ));
     assert!(page.html.contains(&decision.id.to_string()));
+    let administration = page
+        .html
+        .find("<details class=\"memory-administration\"")
+        .expect("collapsed memory administration");
+    let first_memory_form = page.html.find("action=\"/memory/").expect("memory form");
+    assert!(administration < first_memory_form);
+    assert!(page.html.contains("data-administration=\"memory\""));
     assert!(page.html.contains("action=\"/memory/decision/supersede\""));
     assert!(page.html.contains("cargo test -p volicord-viewer"));
     assert!(page.html.contains("viewer tests passed"));

@@ -319,7 +319,6 @@ impl ViewerAdapter {
             ))
         ));
         render_project_understanding(&mut html, request, &understanding, &documents);
-        render_status(&mut html, request, &projection, &health);
         if let (
             Some(candidate),
             ViewerRenderMode::Live {
@@ -330,11 +329,12 @@ impl ViewerAdapter {
             render_guarded(&mut html, request, candidate, request_authenticity);
         }
         html.push_str(&format!(
-            "<details class=\"record-inspection\"><summary>{}</summary>",
+            "<details class=\"record-inspection\" data-audit-state=\"{}\"><summary>{}</summary>",
+            health_state_key(health.state),
             escape(text(
                 request.locale,
-                "Inspect Project records and repository audit detail",
-                "프로젝트 기록 및 저장소 감사 상세 확인"
+                "Inspect health, capability, Project records, and audit detail",
+                "상태, 기능, 프로젝트 기록 및 감사 상세 확인"
             ))
         ));
         html.push_str(&format!(
@@ -345,6 +345,7 @@ impl ViewerAdapter {
                 "안정적인 기록, Source, Entity, Relation 및 Snapshot 식별자는 기본 설명을 방해하지 않으면서 여기에서 확인할 수 있습니다."
             ))
         ));
+        render_status(&mut html, request, &projection, &health);
         render_overview(&mut html, request, &projection);
         render_decisions(&mut html, request, &projection);
         render_checkpoints(&mut html, request, &projection);
@@ -353,11 +354,11 @@ impl ViewerAdapter {
             render_candidates(&mut html, request, &projection);
             render_canonical(&mut html, request, &projection);
         }
-        html.push_str("</details>");
         render_privacy(&mut html, request, privacy.as_ref());
         if let ViewerRenderMode::Snapshot { generated_at } = mode {
             render_snapshot_basis(&mut html, request, &projection, generated_at);
         }
+        html.push_str("</details>");
         let request_authenticity = match mode {
             ViewerRenderMode::Live {
                 request_authenticity,
@@ -1203,8 +1204,12 @@ fn render_narrative_availability(
     match state {
         NarrativeRealizationState::FixedLocale => html.push_str(&format!(
             "<p class=\"narrative-state state\" data-state=\"complete\"><strong>{}:</strong> {}</p>",
-            escape(text(request.locale, "Narrative language", "서술 언어")),
-            escape(text(request.locale, "fixed locale realized", "고정 locale로 실현됨"))
+            escape(text(request.locale, "Viewer explanation", "뷰어 설명")),
+            escape(text(
+                request.locale,
+                "Shown in English using the bundled interface wording",
+                "기본 제공 한국어 화면 문구로 표시됩니다"
+            ))
         )),
         NarrativeRealizationState::Unavailable { reason } => html.push_str(&format!(
             "<p class=\"narrative-state state\" data-state=\"unavailable\"><strong>{}:</strong> {} — {}. {}</p>",
@@ -1215,8 +1220,12 @@ fn render_narrative_availability(
         )),
         NarrativeRealizationState::HostRealized { .. } => html.push_str(&format!(
             "<p class=\"narrative-state state\" data-state=\"complete\"><strong>{}:</strong> {}</p>",
-            escape(text(request.locale, "Narrative language", "서술 언어")),
-            escape(text(request.locale, "active-host realized", "현재 host가 실현함"))
+            escape(text(request.locale, "Requested-language explanation", "요청 언어 설명")),
+            escape(text(
+                request.locale,
+                "Provided by the active host",
+                "현재 호스트가 제공했습니다"
+            ))
         )),
     }
 }
@@ -2992,10 +3001,18 @@ fn render_mutation_controls(
     projection: &ProjectProjection,
     request_authenticity: &str,
 ) {
+    html.push_str(&format!(
+        "<details class=\"memory-administration\" data-administration=\"memory\"><summary>{}</summary>",
+        escape(text(
+            request.locale,
+            "Memory administration — correct, supersede, or forget records",
+            "기억 관리 — 기록 수정, 대체 또는 삭제"
+        ))
+    ));
     section_start(
         html,
         "memory-actions",
-        text(request.locale, "Memory actions", "기억 작업"),
+        text(request.locale, "Memory administration", "기억 관리"),
     );
     empty_state(html, text(request.locale, "Correction, supersession, and forgetting are submitted to Local Operations with explicit current-host user input. The Viewer does not own canonical mutation authority.", "수정, 대체 및 삭제는 명시적인 현재 호스트 사용자 입력과 함께 로컬 작업 계층에 제출됩니다. 뷰어는 정식 변경 권한을 소유하지 않습니다."));
     let mut action_count = 0_usize;
@@ -3062,6 +3079,7 @@ fn render_mutation_controls(
         );
     }
     section_end(html);
+    html.push_str("</details>");
 }
 
 fn render_guarded(
