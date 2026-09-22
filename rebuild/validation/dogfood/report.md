@@ -1,41 +1,18 @@
 # V12 — Phase 8 naturalistic Dogfood operating state
 
-## Status
+## Current operating authority
 
-Technical entry passed for exact sealed Product/test candidate
-`68e3699e77e1017896f4469ff1dd3aff11b476ce` (2026-09-14, Korea). The copied sanitized
-gate capsule records
-`phase_8_ready = true`; exact final, required provider qualification, official
-V11, archive creation, and independent verification all succeeded.
-
-The later documentation-only conclusion HEAD is distinct from this sealed
-candidate. A future campaign must run in a separate clean worktree whose
-actual HEAD matches the capsule's exact candidate, with wholly fresh campaign
-identity, Runtime Homes, workspaces, descriptors, rollouts, and sessions.
-
-The latest terminal campaign remains failed and non-reusable diagnostic evidence.
-Its exec/command-role, successor-Review Decision, duplicate Question,
-resume-verification and cross-locale orchestration findings are separately
-recorded below. Earlier learning-continuity failures remain historical diagnostics.
-Historical activation-evidence intake
-at candidate `bbb64b4274c3f726fbeffae2389089819972b9ff` and hidden materiality
-discovery failure at `537bd0cadf40bedaf0719b658a860ac369d3faa6` remain separate
-older diagnostics; neither is qualification evidence for this candidate.
-
-- `phase_8_ready = true` only for the sealed technical-entry candidate
-- Fresh naturalistic campaign: `not_run`
-- `automated_qualification = not_run` for the new candidate
-- `human_review = not_provided`
-- `replacement_gate = not_run` for the new campaign; replacement remains pending
-- `replacement_pass_candidate = false`
-- `phase_9_ready = false`
-
-Technical entry does not establish naturalistic Dogfood, human review,
-replacement qualification, or Phase 9 passage.
+<!-- phase8-active-operations:start -->
+A new campaign uses the current clean Git `HEAD` only when an independently
+verified exact-candidate technical-gate capsule and archive name that same
+commit. No candidate, capsule, or archive hash printed in this report is a
+current-campaign instruction. Every campaign uses fresh identity, Runtime
+Homes, journey workspaces, five Work descriptors, eight rollouts, and eight
+session identities.
 
 ## Goal
 
-Run and review a completely fresh naturalistic campaign for the sealed
+Run and review a completely fresh naturalistic campaign for that exact
 candidate across the three maintained repository classes. The campaign must
 show whether real VS Code Codex sessions choose the appropriate inquiry outcome
 across explicit user-owned, hidden user-owned, research/no-question, delegated,
@@ -157,16 +134,15 @@ Decision path.
 
 ## Commands and configuration
 
-In a later session, start the new campaign from a separate clean worktree whose
-actual `HEAD` is `68e3699e77e1017896f4469ff1dd3aff11b476ce`.
-Use that exact sealed identity for `<new-sealed-candidate-head>` below, not the
-documentation-only conclusion HEAD:
+Start the new campaign from a separate clean worktree. Verify its current clean
+`HEAD` against that same candidate's independently verified gate capsule and
+archive, then use the verified value for `<exact-current-clean-head>`:
 
 ```text
 rebuild/scripts/dogfood-campaign prepare \
   --campaign-root /absolute/private/campaign \
   --campaign-id <new-campaign-identity> \
-  --candidate-head <new-sealed-candidate-head> \
+  --candidate-head <exact-current-clean-head> \
   --repositories <three-repository-input.json>
 ```
 
@@ -281,7 +257,16 @@ self-contained, read-only share/review artifact that works without a Runtime
 or listener; it is not interchangeable with any of the four generated
 documents and does not share their adoption lifecycle.
 
-## Observed results
+After immutable collection, run append-only `evaluate`, prepare and record the
+common qualitative reviews for all five Works and the three journey-final
+projections, run `qualify` with the exact-candidate gate capsule/archive, and
+publish a durable result lineage. Human Viewer comprehension of the Volicord
+same-Project/three-Work organization remains a separate review judgment from
+the machine-owned structural continuity finding. Only a fully qualified result
+can proceed to the explicit optional `approve-phase-9` action.
+<!-- phase8-active-operations:end -->
+
+## Historical observed results (2026-09-14 and earlier)
 
 The new copied capsule and independently verified archive establish technical
 entry for `68e3699e77e1017896f4469ff1dd3aff11b476ce`:
@@ -513,9 +498,9 @@ Neither infrastructure repairs nor technical-gate passage can retroactively
 qualify it. A wholly fresh campaign is still required to establish naturalistic
 reliability of the repaired continuation guidance.
 
-## Coverage and failures
+## Historical coverage and failures
 
-Current technical Phase 8 entry is passed/eligible only for
+The 2026-09-14 technical Phase 8 entry was passed/eligible only for
 `68e3699e77e1017896f4469ff1dd3aff11b476ce`.
 The latest terminal campaign at `de4c6d1bea16947616ed6fb78baa8f8c321ef4ff`
 remains failed and non-reusable. Exec evidence/command-role and successor-Review
@@ -555,11 +540,11 @@ directories, installations, source repositories, credentials, prompts, source
 bodies, or provider payloads for ordinary review. Preserve raw rollouts in a
 separate private archive for the independent review handoff.
 
-## Acceptance results
+## Historical acceptance results
 
-| Acceptance area | Current conclusion |
+| Acceptance area | Historical conclusion |
 | --- | --- |
-| Sealed production/test candidate | `68e3699e77e1017896f4469ff1dd3aff11b476ce` |
+| Historical sealed production/test candidate | `68e3699e77e1017896f4469ff1dd3aff11b476ce` |
 | Technical Phase 8 entry | `phase_8_ready = true`; technical entry only |
 | Sanitized evidence archive | Creation succeeded; independent verification `passed` |
 | Fresh naturalistic campaign | `not_run` |
@@ -598,16 +583,16 @@ separate private archive for the independent review handoff.
 - No campaign-level human usability/accessibility or sustained resource
   conclusion exists for this candidate.
 
-## Recommended implementation choice
+## Current next-campaign rule
 
-In a later session, use the maintained campaign helper to prepare a wholly
-fresh opaque-slot campaign in a separate clean worktree at exactly
-`68e3699e77e1017896f4469ff1dd3aff11b476ce`, run all eight genuine sessions,
+Use the maintained campaign helper to prepare a wholly fresh opaque-slot
+campaign in a separate clean worktree at the current clean `HEAD`, after an
+independently verified exact-candidate technical-gate capsule/archive names
+that same HEAD. Run all eight genuine sessions,
 publish the immutable evidence set, and then use the maintained Work/journey machine evaluation,
 journey-final review sampling, and exact-topology qualification path. Common qualitative review
 remains independently owned.
-The documentation-only child commit is not a substitute
-for that exact campaign HEAD.
+No tracked historical hash is a substitute for that executable rule.
 
 ## Rejected alternatives and reasons
 
@@ -642,11 +627,10 @@ separate historical diagnostics.
 Repairs have not established fresh naturalistic passage and do not change the
 accepted Candidate/Inquiry/Decision model.
 
-## Follow-up work
+## Current follow-up work
 
-The answered-Question and explicit resume-verification guidance now have a
-successful technical entry for the exact sealed candidate. In a later session,
-prepare one completely fresh opaque-slot helper-owned campaign at the sealed candidate,
+Prepare one completely fresh opaque-slot helper-owned campaign at the current
+clean HEAD after independently verifying its exact-candidate gate evidence,
 have the control agent research and seal the five evaluator descriptors, grant
 trust manually, activate all three repository journeys, run the eight
 required start/resume chats with only the frozen tasks, answer the actual
@@ -656,13 +640,13 @@ review package. If replacement qualification is requested, complete the
 common evidence-bound reviews and targeted human escalations, verify the candidate gate
 capsule/archive, then obtain explicit operator approval of the qualified state.
 
-## Artifacts
+## Historical artifacts (not current campaign inputs)
 
-- Current technical-entry candidate:
+- Historical technical-entry candidate:
   `68e3699e77e1017896f4469ff1dd3aff11b476ce`.
-- Current copied sanitized capsule SHA-256:
+- Historical copied sanitized capsule SHA-256:
   `903b5bf33501cd646ea14e021ac78816ed1a85a0cd5f08f846ca6d8241a14d23`.
-- Current independently verified evidence archive:
+- Historical independently verified evidence archive:
   `validation-evidence-68e3699e77e1.tar.gz`, 14847 bytes, 9 members, SHA-256
   `31733f1be45f9dc084d99fc592a9f508de0538ca4049b17e19ed0bbfb92fed36`.
 - The capsule and archive were copied byte-for-byte before documentation to

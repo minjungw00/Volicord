@@ -169,9 +169,11 @@ proves the installed product path and remains the reusable Phase 8 regression;
 it is not evidence that an agent independently discovered and used the accepted
 experience in a real repository session.
 
-Phase 8 real sessions are naturalistic behavioral dogfood. Each cycle
-descriptor carries the exact plain work user task, the exact plain fresh-resume
-user task, repository/cycle/revision identity, hidden evaluation material, and
+<!-- phase8-active-operations:start -->
+Phase 8 real sessions are naturalistic behavioral dogfood. Each Work
+descriptor carries the exact plain work user task and, for Work A in each
+journey, the exact plain fresh-resume user task. It also carries
+repository/journey/Work/revision identity, hidden evaluation material, and
 the bounded capture and canonical-bundle references used for qualification.
 The user tasks state a real repository outcome and ordinary safety or scope
 constraints. They do not prescribe the material Question, alternatives,
@@ -193,7 +195,7 @@ document locations. The reviewer records a provisional classification and
 materiality conclusion; only then may the evaluator basis and counterfactual
 analysis be compared. Typed provenance can bind content hashes either to one of
 the nine current active architecture owners at the candidate revision or to a
-safe path in the cycle's exact pinned target revision. Qualification re-reads
+safe path in the Work's exact pinned target revision. Qualification re-reads
 those Git objects and rejects inactive owner documents, traversal, missing
 files, wrong revisions, and stale hashes. Any assigned class in the maintained
 behavior vocabulary requires accepted independent review; typed provenance does
@@ -316,7 +318,7 @@ first user task. Campaign intake separately checks candidate, workspace,
 revision, fresh session and sealed role identity. MCP use only corroborates it.
 Human guidance wording is independent; stale prose is not a supported identity.
 `campaign_self_test.py::assert_production_session_start` builds the current CLI,
-generates sixteen disposable work/resume hook outputs, and exercises the same
+generates the eight disposable start/resume hook outputs, and exercises the same
 `load_codex_capture`, mapping and `collect_batch` paths used for real intake.
 Activation failures retain bounded evidence state and attribution: absent or
 late context is an `environment` setup failure; malformed/unsupported identity
@@ -326,7 +328,7 @@ is `validation_internal`. The latter two remain `evidence_failed`, never a pass
 or an operator setup failure. Batch summaries keep these diagnostics in
 `activation_invalid_diagnostics`, separate from `environment_invalid_diagnostics`.
 Candidate/revision/workspace/role mismatches remain pre-mutation mapping errors.
-`assert_activation_failure_attribution` exercises all sixteen work/resume slots
+`assert_activation_failure_attribution` exercises all eight session slots
 for each failure class, including an injected validator false negative over
 unmodified production-generated evidence.
 
@@ -348,8 +350,9 @@ rebuild/scripts/dogfood-campaign prepare \
 
 `prepare` verifies the clean candidate and source identities, performs a
 candidate-local install, privately commits the realized qualification profile
-and assignments, and creates eight revision-pinned disposable repository
-workspaces with fresh Runtime Homes. Evaluator descriptor/review inputs live
+and assignments, and creates three revision-pinned journey workspaces with
+fresh Runtime Homes. The three Volicord Works share that journey's workspace,
+Runtime Home, and Project; the other journeys each contain Work A. Evaluator descriptor/review inputs live
 under the private evaluator plane; the run sheet and separate campaign-level
 human-review artifact live under the operator plane. A preparation/control
 agent completes an evaluator input and invokes `prepare-review`. The
@@ -388,10 +391,11 @@ schema/self-consistency from the reviewer's own classification without reading a
 evaluator descriptor or comparing evaluator truth, then atomically fixes the private
 artifact, hash inventory and `provisional_recorded` state. Correct and evaluator-wrong
 well-formed classifications have the same successful non-oracle result shape.
-After all eight successful recordings, the control agent invokes
+After all five successful recordings, the control agent invokes
 `reveal-qualification-profile`; partial completion is rejected. The reveal verifies
-`provisional_count = 8`, all provisional hashes, and the private campaign profile.
-Only then may the control agent invoke `seal-cycle --descriptor <path>`. Sealing reads only that
+`provisional_count = 5`, all provisional hashes, and the private campaign profile.
+Only then may the control agent invoke `seal-work --repository-class <class>
+--work <A|B|C> --descriptor <path>`. Sealing reads only that
 immutable recorded review and, after evaluator reveal, verifies the class, pinned
 revision, active-owner or target-repository provenance and content hashes. Its
 structured classification comparison must report exact classification/materiality/
@@ -400,7 +404,8 @@ blocking `unresolved_conflict`; disagreement cannot masquerade as agreement or r
 the provisional review. Sealing then
 stores the authoritative hidden descriptor, freezes its semantic hash, and
 regenerates the run sheet from only the exact work/resume tasks and operational
-paths. `activate-cycle`, `activate-all`, and rollout collection reject unsealed cycles. The run-sheet
+paths. `activate-journey`, `activate-all`, and rollout collection reject an
+incompletely sealed campaign. The run-sheet
 leak check rejects exact hidden evaluation/review material and deliberately marked
 evaluator-only sentinels. This is workflow/evidence isolation, not an OS
 security boundary against deliberately opening evaluator files. The helper
@@ -418,7 +423,7 @@ The roles remain separate throughout a campaign:
   explicitly approves the SessionStart hook, opens every required fresh VS
   Code Codex session, and sends only the frozen work/resume tasks from the run
   sheet. The operator supplies answers only to genuine material Questions,
-  preserves all sixteen raw rollouts, and provides them once after the sessions finish.
+  preserves all eight raw rollouts, and provides them once after the sessions finish.
 - The helper owns campaign setup, sealed-descriptor validation, operator
   run-sheet generation, byte-exact rollout intake and hashing,
   activation/setup classification, early blocker gating, Project-ID
@@ -427,22 +432,24 @@ The roles remain separate throughout a campaign:
   evidence completion, repository-manifest assembly, deterministic
   campaign-level review sampling, and bounded review packaging.
 
-After all eight descriptors are sealed, `activate-all` may enable the eight
-repository-scoped integrations before the chats begin. It never grants
+After all five Work descriptors are sealed, `activate-all` may enable the three
+journey-scoped repository integrations before the chats begin. `activate-journey
+--repository-class <class>` is the corresponding single-journey operation. Neither grants
 repository or hook trust. It re-reads the owned manifest, MCP entry, SessionStart
 hook, and exact candidate-local executable/Runtime binding after each enable;
 any static inconsistency blocks activation completion. This does not prove VS
 Code executed SessionStart. If trust or activation setup is uncertain, inspect
 it before sending a frozen task. Every raw work/resume capture must still contain
-real SessionStart evidence. `collect-batch` accepts either sixteen explicit paths
-or one directory containing exactly sixteen files. Before changing campaign
+real SessionStart evidence. `collect-batch` accepts either eight explicit
+`--raw-rollout` paths or one `--rollout-directory` containing exactly eight files.
+Before changing campaign
 state it maps the unordered captures to the sealed work/resume slots using the
 frozen first task, exact workspace and revision, VS Code source/originator,
 fresh session identity, and SessionStart activation. Ambiguous, missing,
 duplicate, mismatched, or session-reused input is rejected globally.
 
 For requested-language documents outside the fixed viewer locale (`en`/`en-*` or
-`ko`/`ko-*`), prepare and fix active-host realizations after all sixteen raw rollouts
+`ko`/`ko-*`), prepare and fix active-host realizations after all eight raw rollouts
 exist and before any intake. The candidate's `volicord-mcp` executable is required
 and hash-bound during campaign preparation. The steward runs:
 
@@ -510,7 +517,7 @@ Fix errors in the mutable draft and rerun preflight. Recording asks Product to
 validate both formats against the current plan, then fixes the exact bytes/hash;
 later draft edits cannot change that record. Fixed records cannot be overwritten.
 All required records must be fixed before `collect-batch` can create staging or
-publish immutable evidence. The preparation also binds all sixteen raw hashes and the
+publish immutable evidence. The preparation also binds all eight raw hashes and the
 campaign hash. Missing realizer evidence is a preparation blocker, not a Product
 crash. The single `collect-batch` collection path cannot bypass this step.
 Product checks structure, grounding, protected terms and provenance; the active
@@ -519,8 +526,8 @@ host confirmation and existing human review still own semantic language quality.
 After mapping and required realization checks succeed, `collect-batch` copies and hashes every rollout
 byte-for-byte and publishes a candidate-bound `evidence-set.json`. Semantic work/resume
 checks do not run during collection. Invalid activation and deterministic identity/hash
-violations block publication. For each safely identifiable cycle it derives
-the Project ID, invokes the installed candidate's repository-selected
+violations block publication. For each journey it derives the Project ID,
+invokes the installed candidate's repository-selected
 `context export --output`, completes descriptor evidence references and hashes,
 and invokes the supported same-locale `document export`
 path for `project-architecture-guide`, `decision-report`,
@@ -529,8 +536,9 @@ self-contained HTML. Cross-locale documents instead re-derive the current MCP
 NarrativePlan and submit the exact fixed realization to Product `document_preview`.
 The same realization serves both formats only after their plans compare equal;
 the Product fingerprint is format-independent. Only Product-returned content is
-saved as document evidence. A deterministic per-cycle summary records every
-kind/format status, bounded failure basis or relative evidence path, bytes, and
+saved as document evidence. Deterministic Work summaries retain raw and
+Checkpoint evidence; each journey-final summary records every kind/format
+status, bounded failure basis or relative evidence path, bytes, and
 SHA-256; export failure remains explicitly failed. The public
 `volicord-viewer --snapshot` capability also produces one self-contained,
 read-only HTML snapshot with its Project/candidate basis, relative path, bytes,
@@ -539,7 +547,7 @@ index lists the produced paths without evaluator material. The helper also
 writes a bounded Runtime Home summary containing managed logical names and sizes,
 derived-analysis size, configuration presence, and activation booleans; it
 never reads or copies store, derived-analysis, credential, provider-payload,
-prompt, or source-body contents. Production collection uses only `collect-batch`; per-cycle extraction helpers are
+prompt, or source-body contents. Production collection uses only `collect-batch`; per-Work extraction helpers are
 limited to synthetic fixtures.
 
 The generated documents and Viewer serve different review needs. Each document
@@ -566,7 +574,7 @@ metadata and earlier results are never rewritten.
 
 Prepare, validate, record and package common agent/human reviews using
 [`qualitative-review.md`](../docs/design/qualitative-review.md). Every collected
-cycle is reviewable, including hard-blocked and indeterminate runs. The bounded
+Work is reviewable, including hard-blocked and indeterminate runs. The bounded
 review package excludes evaluator answers, private profile, runtime and source
 copies. Raw work/resume rollouts enter only with `--include-raw-rollouts` and remain
 private. Schema-valid review is not Product passage.
@@ -589,9 +597,10 @@ rebuild/scripts/dogfood-campaign prepare-qualitative-review \
   --cli-observations /absolute/private/cli-observation-run
 ```
 
-Cycle-specific criteria continue to cover all eight naturalistic cycles. CLI criteria are
-generated once per repository class, producing 21 required assessments rather than 56
-cycle-level duplicates. Missing one class observation leaves only that class's seven criteria
+Work-specific criteria cover all five Works, and journey-final criteria cover
+all three retained projections. CLI criteria are generated once per repository
+class, producing 21 required assessments rather than Work-level duplicates.
+Missing one class observation leaves only that class's seven criteria
 unresolved; it is never converted to `not_applicable`.
 
 ```sh
@@ -625,13 +634,17 @@ rechecks the maintained policy and exact inputs without publishing a new run.
 This distinction does not change admission, exact final, official V11, gate
 ownership, or the capsule lifecycle described below.
 
-The maintained Phase 8 candidate-authority summary is
-`phase-8-summary.md`. The current sealed Product/test candidate is
-`68e3699e77e1017896f4469ff1dd3aff11b476ce`: admission, exact final, separately authorized
-production-provider qualification (`openai-codex` / `gpt-5.6-sol`), all 54 official
-V11 steps, credential audit, and archive creation/independent verification passed.
-`phase_8_ready = true` applies only to that exact HEAD. The later documentation-only
-conclusion does not inherit qualification and must not be used as the campaign HEAD.
+For a new campaign, the candidate is the current clean Git `HEAD`, and it is
+valid only when an independently verified exact-candidate technical-gate
+capsule and archive identify that same commit.
+
+<!-- phase8-active-operations:end -->
+
+## Historical Phase 8 result record
+
+The maintained Phase 8 candidate-authority summary is `phase-8-summary.md`.
+The values below record prior results only and do not select a new campaign
+candidate.
 
 The sealed candidate retains current Codex exec/command-role evidence normalization,
 exact successor-Review Decision lineage, separate redundant-Question detection,
@@ -649,25 +662,25 @@ separate diagnostics. No fresh naturalistic campaign has run for the new candida
 human review is `not_provided`, replacement qualification remains pending,
 `replacement_pass_candidate = false`, and `phase_9_ready = false`.
 
-Automated Dogfood has not run for the redesigned campaign and campaign-level human
-review is `not_provided`. The operator workflow is batch-first: after hidden
+The operator workflow is batch-first: after hidden
 evaluator material is independently reviewed and sealed, the user approves
-repository/hook trust, completes all sixteen fresh naturalistic chats without
+repository/hook trust, completes all eight fresh naturalistic chats without
 per-session evidence processing, and supplies the raw rollouts once to
-`collect-batch`. The helper derives cycle mapping, bundles, bounded Runtime and
-activation summaries, four document kinds, and static Viewer snapshots.
+`collect-batch`. The helper derives journey/Work/session mapping, three
+journey-final bundles, bounded Runtime and activation summaries, four document
+kinds per journey, and static Viewer snapshots.
 Evaluation may complete without qualitative review; unresolved criteria stay
 unresolved and confirmed hard violations cannot be waived by any reviewer.
 
 Predecessor Dogfood descriptors, captures, Runtime Homes, workspaces, bundles,
 observations, and session identities remain non-reusable for a future candidate.
-Any predecessor Small Python cycle is diagnostic only and is not qualifying
+Any predecessor Small Python cycle is historical diagnostic evidence only and is not qualifying
 evidence for the redesigned campaign.
 Replacement passage remains not established, and Phase 9 may not begin.
 Qualifying Dogfood must run from a separate clean worktree whose actual Git
-`HEAD` exactly matches the newly sealed candidate identified by its own
+`HEAD` exactly matches the candidate identified by its own
 successful maintained gate and verified capsule/evidence archive. Historical
-candidate `6031641c46cf014a754442dcee3137caf265882e` and any later documentation
+historical candidate `6031641c46cf014a754442dcee3137caf265882e` and any later documentation
 HEAD remain distinct; neither can qualify a different HEAD through a helper
 argument.
 

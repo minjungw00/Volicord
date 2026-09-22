@@ -1,4 +1,21 @@
-# Phase 8 technical-entry candidate authority
+# Phase 8 operating authority and historical technical-entry record
+
+## Current campaign authority
+
+<!-- phase8-active-operations:start -->
+A new campaign uses the current clean Git `HEAD` only when an independently
+verified exact-candidate technical-gate capsule and archive name that same
+commit. No hash recorded in this tracked document selects a current candidate.
+The maintained campaign is exactly three repository journeys, five Works,
+three Work A resume pairs, eight fresh sessions, and five opaque provisional
+Work reviews before reveal. The operator uses `seal-work`, then
+`activate-journey` or `activate-all`, supplies eight raw rollouts once to
+`collect-batch`, and continues through append-only evaluation, five-Work and
+three-journey qualitative review, qualification, optional approval, and durable
+result-lineage publication.
+<!-- phase8-active-operations:end -->
+
+## Historical technical-entry result (2026-09-14)
 
 - Sealed Product/test candidate: `68e3699e77e1017896f4469ff1dd3aff11b476ce`
 - Technical Phase 8 entry: `passed`; `phase_8_ready = true` only for this HEAD
@@ -106,11 +123,11 @@ same human-first hierarchy. A static Viewer snapshot is a distinct,
 self-contained, read-only share and review artifact; it is not interchangeable
 with the four generated documents or their adoption lifecycle.
 
-## Candidate-bound entry boundary
+## Current candidate-bound entry procedure
 
 Any future campaign must begin from zero in a separate clean worktree whose
-actual Git `HEAD` exactly matches the newly sealed candidate identified by its
-own successful maintained gate and verified capsule. Supplying the historical
+actual Git `HEAD` exactly matches the candidate identified by its own successful
+maintained gate and independently verified capsule/archive. Supplying the historical
 candidate `6031641c46cf014a754442dcee3137caf265882e`, or any other candidate
 argument, cannot qualify a different worktree HEAD. The fresh campaign must
 retain the maintained three-journey/five-Work/eight-session reviewer-blind obligation profile, distinct session-slot, automated,
@@ -186,11 +203,10 @@ inherit or replace the capsule's candidate authority.
 
 ## Remaining Phase 8 risks
 
-- Campaign schema 4 collection now publishes the journey/Work/session structure, but
-  `machine_findings.py`, qualitative review-package sampling, and final qualification-policy
-  aggregation still consume the predecessor cycle-shaped evaluation. Running `evaluate` for a
-  current journey campaign is therefore unsupported until the next downstream-consumption session;
-  no collection evidence should be rewritten to bridge that boundary.
+- Campaign schema 4 collection, machine evaluation, qualitative review-package
+  sampling, and qualification all consume the same journey/Work/session
+  structure. A fresh naturalistic campaign is still required; historical
+  evidence must not be rewritten or rebound to supply it.
 - Naturalistic selection of the appropriate Question/no-question, research,
   delegated-choice, prototype, or defer outcome, plus explicit user-owned
   Decision provenance only when required.
