@@ -2434,11 +2434,33 @@ fn narrative_realization_schema() -> Value {
                 "plan_fingerprint",
                 text_schema("Exact prepared narrative plan fingerprint", 71, 71),
             ),
+            (
+                "requested_language",
+                text_schema(
+                    "Exact requested generated-content language attested for this body",
+                    1,
+                    128,
+                ),
+            ),
+            (
+                "all_generated_prose_realized",
+                json!({
+                    "type":"boolean",
+                    "description":"Active-host attestation that the title, every section title, and every claim body are realized in requested_language"
+                }),
+            ),
             ("title", text_schema("Realized document title", 1, 4096)),
             ("sections", sections),
             ("generator", generator),
         ],
-        &["plan_fingerprint", "title", "sections", "generator"],
+        &[
+            "plan_fingerprint",
+            "requested_language",
+            "all_generated_prose_realized",
+            "title",
+            "sections",
+            "generator",
+        ],
     );
     realization["description"] =
         json!("Active-host natural-language realization of one prepared grounded plan");
@@ -7229,6 +7251,13 @@ fn narrative_realization(value: &Value) -> Result<NarrativeRealization, HostErro
         .ok_or_else(|| HostError::new("realization generator is required"))?;
     Ok(NarrativeRealization {
         plan_fingerprint: required_str(value, "plan_fingerprint")?.to_owned(),
+        requested_language: required_str(value, "requested_language")?.to_owned(),
+        all_generated_prose_realized: value
+            .get("all_generated_prose_realized")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| {
+                HostError::new("realization all_generated_prose_realized is required")
+            })?,
         title: required_str(value, "title")?.to_owned(),
         sections,
         generator: GeneratorIdentity {

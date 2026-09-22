@@ -427,6 +427,8 @@ class DocumentRealizationTests(unittest.TestCase):
             for format_name, _ in c.DOCUMENT_FORMATS:
                 content = r.consume(binary, runtime, preparation,
                     {"realization": {k: v for k, v in realization.items() if k != "generator"},
+                     "requested_language": preparation["language"],
+                     "all_generated_prose_realized": True,
                      "provenance": r.provenance_template(preparation["provenance_binding"])}, format_name)
                 self.assertIn("unknown (unverified)", content)
                 self.assertIn("프로젝트 설명", content)

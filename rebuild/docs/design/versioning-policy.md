@@ -148,6 +148,9 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
   meaning이 분리되거나 rendered-field omission contract가 추가되면 current writer
   metadata shape/version에서만 함께 기록한다. 이전 shape decoder, dual metadata
   representation 또는 compatibility write를 추가하지 않는다.
+- Current writer version `7`은 active-host realization의 exact requested-language attestation,
+  all-generated-prose attestation과 realized-body fingerprint를 plan fingerprint와 함께 기록한다.
+  이 durable meaning이 없는 이전 metadata를 host-realized requested-language success로 읽지 않는다.
 
 ### Session Candidate store format
 

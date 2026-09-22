@@ -4897,6 +4897,8 @@ fn recall_documents_and_inspection_are_read_only_host_calls() {
 fn spanish_realization(plan: &Value) -> Value {
     json!({
         "plan_fingerprint":plan["plan_fingerprint"],
+        "requested_language":plan["requested_language"],
+        "all_generated_prose_realized":true,
         "title":"Comprensión del proyecto",
         "generator":{
             "generator":"volicord-codex-host",

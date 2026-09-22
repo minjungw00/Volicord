@@ -430,6 +430,13 @@ affected generated section을 `unavailable` 또는 `degraded` actionable outcome
 표시한다. Requested language 메타데이터, HTML `lang` 또는 fixed-string locale만
 맞춘 영어 본문을 requested-language success로 표시하지 않는다.
 
+Active-host realization은 `requested_language`가 plan의 exact request와 같고
+`all_generated_prose_realized`가 true라는 host attestation을 요구한다. Projection은 이
+attestation만으로 prose 품질이나 언어를 추측하지 않고, 검증된 section/claim text 전체에서
+계산한 body fingerprint와 plan fingerprint를 `host_realized` state에 함께 보존한다. 따라서
+attestation은 다른 body나 language request에 재사용할 수 없다. False/missing attestation은
+heading이나 metadata가 번역돼 있어도 requested-language success가 아니다.
+
 Production host interface는 이 경계를 두 단계로 표현한다. 첫 단계의
 `NarrativePlan`은 requested language, exact document/section/claim identity와 순서,
 Source/Decision/Analysis grounding, source body와 번역하면 안 되는 code/path term을
@@ -514,6 +521,15 @@ claim별 direct basis는 machine-readable `GeneratedDocument.body` grounding sid
 Markdown의 trailing audit appendix는 bounded metadata와 aggregate grounding count만 보여 주고,
 HTML은 상세 claim basis를 기본 closed audit disclosure에 둔다. 본문 단순화는 typed grounding을 삭제하거나 failed,
 unavailable, partial, stale, known-limit와 omission을 숨기는 근거가 아니다.
+
+네 initial document는 stable Work identity에 연결된 bounded work summary를 공통으로
+제공한다. Current/open/paused Work를 completed Work보다 먼저 두고 state, latest change,
+next step, affected code와 verification을 사람이 읽을 수 있는 문장으로 설명한다.
+Project & Architecture Guide의 current-work architecture 본문은 arbitrary repository inventory를
+나열하지 않고 `ProjectUnderstanding`의 source-grounded deterministic explanation을 사용하며,
+optional generated interpretation은 별도 claim class로 유지한다. Capability gap 본문은 coverage
+요약과 우선순위가 높은 gap/issue 및 exact omission을 bounded하게 보여 주고, 전체 capability별
+상태와 provenance는 typed grounding sidecar에 남긴다.
 
 Current Decision으로 originating Question이 terminally answered/delegated된 경우, 그
 Question을 열어 두었던 choice ambiguity는 current unresolved uncertainty로 표시하지 않는다.

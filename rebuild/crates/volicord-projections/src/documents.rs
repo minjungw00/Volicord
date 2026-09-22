@@ -1,6 +1,7 @@
 use crate::{
-    BriefDecision, BriefDecisionState, CapabilityGap, CheckpointTimelineEntry, MapRelationClass,
-    ProjectProjection, ProjectionIssue,
+    build_project_understanding, BriefDecision, BriefDecisionState, CapabilityGap,
+    CheckpointTimelineEntry, ProjectProjection, ProjectionIssue, UnderstandingBound,
+    UnderstandingWork, UnderstandingWorkState,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -11,7 +12,7 @@ use volicord_context::{
     TimestampMicros, UserAcceptanceState, UserReviewState, VerificationState, WorkState,
 };
 use volicord_repository_intelligence::{
-    AnalysisSnapshotId, Capability, CapabilityReport, CapabilityState, CodeEntityKind, Language,
+    AnalysisSnapshotId, Capability, CapabilityReport, CapabilityState, Language,
     RepositorySnapshotId,
 };
 
@@ -30,7 +31,7 @@ pub const RENDERED_MARKDOWN_BYTE_LIMIT: usize = 3 * 1_024 * 1_024;
 pub const RENDERED_HTML_BYTE_LIMIT: usize = 8 * 1_024 * 1_024;
 
 pub const GENERATED_DOCUMENT_FORMAT_KIND: &str = "volicord.generated_document";
-pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 6;
+pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 7;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DocumentKind {
@@ -101,6 +102,7 @@ pub enum ClaimClass {
     RepositoryObservation,
     StructuralFact,
     SemanticResult,
+    DeterministicDerived,
     AgentInterpretation,
 }
 
@@ -174,8 +176,14 @@ pub struct DocumentMetadata {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NarrativeRealizationState {
     FixedLocale,
-    Unavailable { reason: String },
-    HostRealized { plan_fingerprint: String },
+    Unavailable {
+        reason: String,
+    },
+    HostRealized {
+        plan_fingerprint: String,
+        body_fingerprint: String,
+        requested_language: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -231,6 +239,12 @@ pub struct RealizedNarrativeSection {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NarrativeRealization {
     pub plan_fingerprint: String,
+    /// Exact generated-content language instruction attested by the active
+    /// host for this realized body, not merely syntax metadata.
+    pub requested_language: String,
+    /// Active-host attestation that title, every section title, and every
+    /// claim body were reviewed as realized in `requested_language`.
+    pub all_generated_prose_realized: bool,
     pub title: String,
     pub sections: Vec<RealizedNarrativeSection>,
     pub generator: GeneratorIdentity,
@@ -379,6 +393,16 @@ pub fn realize_narrative(
             "narrative realization does not match the current grounded plan",
         ));
     }
+    if realization.requested_language != request.requested_language {
+        return Err(DocumentError::new(
+            "narrative realization language attestation does not match the requested language",
+        ));
+    }
+    if !realization.all_generated_prose_realized {
+        return Err(DocumentError::new(
+            "narrative realization did not attest every generated body field in the requested language",
+        ));
+    }
     validate_realized_text("document title", &realization.title)?;
     if realization.generator.generator.trim().is_empty()
         || realization
@@ -460,8 +484,24 @@ pub fn realize_narrative(
     let mut metadata = build_metadata(kind, projection, &realized_request, &body);
     metadata.narrative_realization = NarrativeRealizationState::HostRealized {
         plan_fingerprint: plan.plan_fingerprint,
+        body_fingerprint: narrative_body_fingerprint(&body),
+        requested_language: realization.requested_language.clone(),
     };
     generated_document(kind, request, metadata, body)
+}
+
+fn narrative_body_fingerprint(body: &DocumentBody) -> String {
+    let mut digest = Sha256::new();
+    hash_plan_field(&mut digest, &body.title);
+    for section in &body.sections {
+        hash_plan_field(&mut digest, &section.key);
+        hash_plan_field(&mut digest, &section.title);
+        for claim in &section.claims {
+            hash_plan_field(&mut digest, &claim.identity);
+            hash_plan_field(&mut digest, &claim.text);
+        }
+    }
+    format!("sha256:{:x}", digest.finalize())
 }
 
 fn validate_request(request: &DocumentRequest) -> Result<(), DocumentError> {
@@ -547,58 +587,28 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
         ));
     }
 
-    let mut architecture_claims = projection
-        .repository_map
-        .entities
+    let understanding = build_project_understanding(projection, UnderstandingBound::default());
+    let mut architecture_claims = understanding
+        .deterministic_explanations
         .iter()
-        .map(|entity| GeneratedDocumentClaim {
-            identity: format!("entity:{}", entity.identity),
-            class: ClaimClass::StructuralFact,
-            text: format!(
-                "{} ({}, {})",
-                entity.display_name,
-                code_entity_kind_label(&entity.kind, locale),
-                language_label(&entity.language, locale)
-            ),
-            source_basis: vec![entity.source_id],
-            decision_basis: Vec::new(),
-            analysis_basis: vec![entity.analysis_snapshot],
-            explicit_inference: false,
+        .map(|explanation| GeneratedDocumentClaim {
+            identity: format!("architecture-explanation:{}", explanation.identity),
+            class: ClaimClass::DeterministicDerived,
+            text: match locale {
+                FixedLocale::English => explanation.english.clone(),
+                FixedLocale::Korean => explanation.korean.clone(),
+            },
+            source_basis: explanation.source_basis.clone(),
+            decision_basis: explanation.decision_basis.clone(),
+            analysis_basis: explanation.analysis_snapshot_basis.clone(),
+            explicit_inference: explanation.source_basis.is_empty()
+                && explanation.decision_basis.is_empty()
+                && explanation.analysis_snapshot_basis.is_empty(),
             historical_uncertainty: Vec::new(),
-            uncertainty: entity.uncertainty.reasons.clone(),
+            uncertainty: explanation.known_gaps.clone(),
         })
         .collect::<Vec<_>>();
-    architecture_claims.extend(projection.repository_map.relations.iter().map(|relation| {
-        let target = relation
-            .target_entity
-            .clone()
-            .or_else(|| relation.unresolved_target.clone())
-            .unwrap_or_else(|| "unresolved target".to_owned());
-        GeneratedDocumentClaim {
-            identity: format!("relation:{}", relation.identity),
-            class: match relation.class {
-                MapRelationClass::StructuralFact => ClaimClass::StructuralFact,
-                MapRelationClass::SemanticResult => ClaimClass::SemanticResult,
-            },
-            text: format!(
-                "{} --{}--> {}",
-                relation.source_entity, relation.kind, target
-            ),
-            source_basis: vec![relation.source_id],
-            decision_basis: Vec::new(),
-            analysis_basis: vec![relation.analysis_snapshot],
-            explicit_inference: false,
-            historical_uncertainty: Vec::new(),
-            uncertainty: relation
-                .uncertainty
-                .reasons
-                .iter()
-                .chain(&relation.diagnostics)
-                .cloned()
-                .collect(),
-        }
-    }));
-    architecture_claims.extend(projection.repository_map.agent_interpretations.iter().map(
+    architecture_claims.extend(understanding.generated_interpretations.iter().map(
         |interpretation| {
             GeneratedDocumentClaim {
                 identity: format!("interpretation:{}", interpretation.identity),
@@ -696,6 +706,7 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
                 fixed(locale, "Project overview", "프로젝트 개요"),
                 overview_claims,
             ),
+            work_summary_section(projection, locale),
             section(
                 "decisions",
                 fixed(locale, "Architecture decisions", "아키텍처 결정"),
@@ -796,6 +807,7 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
         title: fixed(locale, "Decision Report", "결정 보고서").to_owned(),
         sections: vec![
             goal_section(projection, locale),
+            work_summary_section(projection, locale),
             section(
                 "decisions",
                 fixed(
@@ -879,6 +891,7 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
         title: fixed(locale, "Implementation Plan", "구현 계획").to_owned(),
         sections: vec![
             goal_section(projection, locale),
+            work_summary_section(projection, locale),
             decision_summary_section(projection, locale),
             section("plan", fixed(locale, "Ordered work", "작업 순서"), plan),
             timeline_section(projection, locale),
@@ -958,6 +971,7 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
                 fixed(locale, "Goal and context", "목표와 맥락"),
                 context,
             ),
+            work_summary_section(projection, locale),
             decision_summary_section(projection, locale),
             timeline_section(projection, locale),
             section(
@@ -998,6 +1012,148 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
             ),
             gap_section(projection, locale),
         ],
+    }
+}
+
+fn work_summary_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentSection {
+    let understanding = build_project_understanding(projection, UnderstandingBound::default());
+    let mut work = understanding
+        .current_work
+        .iter()
+        .chain(&understanding.remaining_work)
+        .chain(&understanding.completed_work)
+        .collect::<Vec<_>>();
+    work.sort_by_key(|item| (work_state_priority(item.state), item.work_item_id));
+    let mut claims = work
+        .into_iter()
+        .map(|work| work_summary_claim(work, locale))
+        .collect::<Vec<_>>();
+    if claims.is_empty() {
+        claims.push(inference_claim(
+            "work-summary-gap",
+            fixed(
+                locale,
+                "No stable Work Item is recorded, so current, completed, and remaining work cannot yet be separated.",
+                "안정적인 Work Item이 기록되지 않아 현재, 완료 및 남은 작업을 아직 구분할 수 없습니다.",
+            ),
+            Vec::new(),
+        ));
+    }
+    section(
+        "work-summary",
+        fixed(
+            locale,
+            "Work state and handoff value",
+            "작업 상태와 인계 가치",
+        ),
+        claims,
+    )
+}
+
+const fn work_state_priority(state: UnderstandingWorkState) -> usize {
+    match state {
+        UnderstandingWorkState::InProgress => 0,
+        UnderstandingWorkState::Open | UnderstandingWorkState::Paused => 1,
+        UnderstandingWorkState::Completed => 2,
+        UnderstandingWorkState::Abandoned | UnderstandingWorkState::Superseded => 3,
+    }
+}
+
+fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> GeneratedDocumentClaim {
+    let latest_change = work.meaningful_changes.last().map_or_else(
+        || {
+            fixed(
+                locale,
+                "No meaningful change is recorded",
+                "의미 있는 변경이 기록되지 않음",
+            )
+            .to_owned()
+        },
+        Clone::clone,
+    );
+    let next_step = work.next_step.as_deref().unwrap_or_else(|| {
+        fixed(
+            locale,
+            "No further step is recorded",
+            "추가 단계가 기록되지 않음",
+        )
+    });
+    let verification = work
+        .verification
+        .iter()
+        .map(|fact| verification_fact_label(fact, locale))
+        .collect::<Vec<_>>();
+    let state = work_state_label_from_understanding(work.state, locale);
+    let text = match locale {
+        FixedLocale::English => format!(
+            "`{}` is {}. Latest meaningful change: {}. Next: {}. Affected code: {}. Verification: {}.",
+            work.title,
+            state,
+            latest_change,
+            next_step,
+            display_strings(
+                &work
+                    .changed_paths
+                    .iter()
+                    .chain(&work.changed_components)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                locale,
+            ),
+            display_strings(&verification, locale),
+        ),
+        FixedLocale::Korean => format!(
+            "`{}` 작업은 {} 상태입니다. 최근 의미 있는 변경: {}. 다음 단계: {}. 영향받는 코드: {}. 검증: {}.",
+            work.title,
+            state,
+            latest_change,
+            next_step,
+            display_strings(
+                &work
+                    .changed_paths
+                    .iter()
+                    .chain(&work.changed_components)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                locale,
+            ),
+            display_strings(&verification, locale),
+        ),
+    };
+    GeneratedDocumentClaim {
+        identity: format!("work-summary:{}", work.work_item_id),
+        class: ClaimClass::CanonicalContext,
+        text,
+        source_basis: work.source_basis.clone(),
+        decision_basis: work.decision_ids.clone(),
+        analysis_basis: Vec::new(),
+        explicit_inference: work.source_basis.is_empty() && work.decision_ids.is_empty(),
+        historical_uncertainty: Vec::new(),
+        uncertainty: work
+            .open_question_ids
+            .iter()
+            .map(|question| format!("open Question {question}"))
+            .collect(),
+    }
+}
+
+const fn work_state_label_from_understanding(
+    state: UnderstandingWorkState,
+    locale: FixedLocale,
+) -> &'static str {
+    match (state, locale) {
+        (UnderstandingWorkState::Open, FixedLocale::English) => "open",
+        (UnderstandingWorkState::Open, FixedLocale::Korean) => "열림",
+        (UnderstandingWorkState::InProgress, FixedLocale::English) => "in progress",
+        (UnderstandingWorkState::InProgress, FixedLocale::Korean) => "진행 중",
+        (UnderstandingWorkState::Paused, FixedLocale::English) => "paused",
+        (UnderstandingWorkState::Paused, FixedLocale::Korean) => "일시 중지",
+        (UnderstandingWorkState::Completed, FixedLocale::English) => "completed",
+        (UnderstandingWorkState::Completed, FixedLocale::Korean) => "완료",
+        (UnderstandingWorkState::Abandoned, FixedLocale::English) => "abandoned",
+        (UnderstandingWorkState::Abandoned, FixedLocale::Korean) => "중단",
+        (UnderstandingWorkState::Superseded, FixedLocale::English) => "superseded",
+        (UnderstandingWorkState::Superseded, FixedLocale::Korean) => "대체됨",
     }
 }
 
@@ -1230,11 +1386,57 @@ fn checkpoint_semantic_claims(
 }
 
 fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentSection {
-    let mut claims = projection
-        .repository_map
-        .gaps
+    const PRIMARY_GAP_LIMIT: usize = 3;
+    const PRIMARY_ISSUE_LIMIT: usize = 3;
+    let mut gaps = projection.repository_map.gaps.iter().collect::<Vec<_>>();
+    gaps.sort_by_key(|gap| (capability_gap_priority(gap.state), &gap.area, &gap.reason));
+    let mut issues = projection.issues.iter().collect::<Vec<_>>();
+    issues.sort_by_key(|issue| {
+        (
+            usize::from(!issue.affected_scope.contains("candidate")),
+            &issue.affected_scope,
+            &issue.identity,
+        )
+    });
+    let source_basis = projection
+        .source_catalog
         .iter()
-        .map(|gap| GeneratedDocumentClaim {
+        .filter(|source| source.snapshot_basis.is_some())
+        .map(|source| source.source.id)
+        .take(1)
+        .collect::<Vec<_>>();
+    let mut analysis_basis = gaps
+        .iter()
+        .map(|gap| gap.analysis_snapshot)
+        .collect::<Vec<_>>();
+    analysis_basis.sort();
+    analysis_basis.dedup();
+    let mut claims = vec![GeneratedDocumentClaim {
+        identity: "coverage-summary".to_owned(),
+        class: ClaimClass::DeterministicDerived,
+        text: match locale {
+            FixedLocale::English => format!(
+                "Repository analysis reports {} capability gaps and {} projection issues. The most consequential items are summarized below; complete coverage and provenance remain in the audit metadata.",
+                gaps.len(),
+                issues.len(),
+            ),
+            FixedLocale::Korean => format!(
+                "저장소 분석에서 기능 공백 {}개와 projection 문제 {}개를 보고했습니다. 영향이 큰 항목을 아래에 요약하며 전체 coverage와 provenance는 감사 metadata에 유지됩니다.",
+                gaps.len(),
+                issues.len(),
+            ),
+        },
+        source_basis: source_basis.clone(),
+        decision_basis: Vec::new(),
+        analysis_basis: analysis_basis.clone(),
+        explicit_inference: source_basis.is_empty() && analysis_basis.is_empty(),
+        historical_uncertainty: Vec::new(),
+        uncertainty: Vec::new(),
+    }];
+    claims.extend(
+        gaps.iter()
+            .take(PRIMARY_GAP_LIMIT)
+            .map(|gap| GeneratedDocumentClaim {
             identity: format!(
                 "gap:{}:{}:{}:{}",
                 gap.analysis_snapshot,
@@ -1245,54 +1447,56 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
                 gap.area
             ),
             class: ClaimClass::RepositoryObservation,
-            text: format!(
-                "{}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}",
-                fixed(locale, "state", "상태"),
-                capability_state_label(gap.state, locale),
-                fixed(locale, "capability", "기능"),
-                capability_label(gap.capability, locale),
-                fixed(locale, "language", "언어"),
-                optional_language_label(gap.language.as_ref(), locale),
-                fixed(locale, "area", "영역"),
-                gap.area,
-                fixed(locale, "reason", "이유"),
-                gap.reason,
-                fixed(locale, "affected", "영향 범위"),
-                display_strings(&gap.affected_areas, locale),
-                fixed(locale, "usable remainder", "사용 가능한 나머지"),
-                gap.usable_remainder.as_deref().unwrap_or_else(|| fixed(
-                    locale,
-                    "not reported",
-                    "보고되지 않음"
-                ))
-            ),
-            source_basis: projection
-                .source_catalog
-                .iter()
-                .filter(|source| source.snapshot_basis.is_some())
-                .map(|source| source.source.id)
-                .take(1)
-                .collect(),
+            text: match locale {
+                FixedLocale::English => format!(
+                    "{} analysis for {} in {} is {} because {}. Affected scope: {}. Usable remainder: {}.",
+                    capability_label(gap.capability, locale),
+                    optional_language_label(gap.language.as_ref(), locale),
+                    gap.area,
+                    capability_state_label(gap.state, locale),
+                    gap.reason,
+                    display_strings(&gap.affected_areas, locale),
+                    gap.usable_remainder.as_deref().unwrap_or("not reported"),
+                ),
+                FixedLocale::Korean => format!(
+                    "{}의 {} {} 분석은 {} 상태입니다. 이유: {}. 영향 범위: {}. 사용 가능한 나머지: {}.",
+                    gap.area,
+                    optional_language_label(gap.language.as_ref(), locale),
+                    capability_label(gap.capability, locale),
+                    capability_state_label(gap.state, locale),
+                    gap.reason,
+                    display_strings(&gap.affected_areas, locale),
+                    gap.usable_remainder.as_deref().unwrap_or("보고되지 않음"),
+                ),
+            },
+            source_basis: source_basis.clone(),
             decision_basis: Vec::new(),
             analysis_basis: vec![gap.analysis_snapshot],
             explicit_inference: false,
             historical_uncertainty: Vec::new(),
             uncertainty: vec![gap.reason.clone()],
-        })
-        .collect::<Vec<_>>();
-    claims.extend(projection.issues.iter().map(|issue| {
+        }),
+    );
+    claims.extend(issues.iter().take(PRIMARY_ISSUE_LIMIT).map(|issue| {
         GeneratedDocumentClaim {
             identity: format!("omission:{}:{}", issue.affected_scope, issue.identity),
             class: ClaimClass::RepositoryObservation,
-            text: format!(
-                "{}: {} ({}={}; {}={})",
-                issue.affected_scope,
-                issue.reason,
-                fixed(locale, "kind", "종류"),
-                projection_issue_kind_label(issue.kind, locale),
-                fixed(locale, "omitted count", "생략 수"),
-                issue.omitted_count
-            ),
+            text: match locale {
+                FixedLocale::English => format!(
+                    "{} is affected by {}: {}. Exact omitted count: {}.",
+                    issue.affected_scope,
+                    projection_issue_kind_label(issue.kind, locale),
+                    issue.reason,
+                    issue.omitted_count,
+                ),
+                FixedLocale::Korean => format!(
+                    "{}에는 {} 문제가 있습니다. {}. 정확한 생략 수: {}.",
+                    issue.affected_scope,
+                    projection_issue_kind_label(issue.kind, locale),
+                    issue.reason,
+                    issue.omitted_count,
+                ),
+            },
             source_basis: projection
                 .source_catalog
                 .iter()
@@ -1306,20 +1510,29 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
             uncertainty: vec![issue.reason.clone()],
         }
     }));
-    claims.sort_by(|left, right| {
-        let left_priority = usize::from(
-            !left
-                .identity
-                .starts_with("omission:candidate_inspection:candidate_dependency:"),
-        );
-        let right_priority = usize::from(
-            !right
-                .identity
-                .starts_with("omission:candidate_inspection:candidate_dependency:"),
-        );
-        (left_priority, &left.identity).cmp(&(right_priority, &right.identity))
-    });
-    claims.dedup_by(|left, right| left.identity == right.identity);
+    let omitted = gaps.len().saturating_sub(PRIMARY_GAP_LIMIT)
+        + issues.len().saturating_sub(PRIMARY_ISSUE_LIMIT);
+    if omitted > 0 {
+        claims.push(GeneratedDocumentClaim {
+            identity: "coverage-primary-omission".to_owned(),
+            class: ClaimClass::DeterministicDerived,
+            text: format!(
+                "{} {}.",
+                omitted,
+                fixed(
+                    locale,
+                    "additional coverage or omission details remain inspectable in the audit metadata",
+                    "개의 추가 coverage 또는 누락 상세가 감사 metadata에서 계속 검사 가능합니다",
+                ),
+            ),
+            source_basis,
+            decision_basis: Vec::new(),
+            analysis_basis,
+            explicit_inference: false,
+            historical_uncertainty: Vec::new(),
+            uncertainty: Vec::new(),
+        });
+    }
     section(
         "gaps",
         fixed(
@@ -1329,6 +1542,17 @@ fn gap_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentS
         ),
         claims,
     )
+}
+
+const fn capability_gap_priority(state: CapabilityState) -> usize {
+    match state {
+        CapabilityState::Failed => 0,
+        CapabilityState::Stale => 1,
+        CapabilityState::Partial => 2,
+        CapabilityState::Unavailable => 3,
+        CapabilityState::Unsupported => 4,
+        CapabilityState::Available => 5,
+    }
 }
 
 fn inference_claim(
@@ -2229,8 +2453,12 @@ fn narrative_realization_label(state: &NarrativeRealizationState, locale: FixedL
         NarrativeRealizationState::Unavailable { reason } => {
             format!("{}: {reason}", fixed(locale, "unavailable", "사용 불가"))
         }
-        NarrativeRealizationState::HostRealized { plan_fingerprint } => format!(
-            "{}: {plan_fingerprint}",
+        NarrativeRealizationState::HostRealized {
+            plan_fingerprint,
+            body_fingerprint,
+            requested_language,
+        } => format!(
+            "{}: language={requested_language}; plan={plan_fingerprint}; body={body_fingerprint}",
             fixed(locale, "active-host realized", "현재 host 실현")
         ),
     }
@@ -2514,6 +2742,9 @@ const fn claim_class_label(class: ClaimClass, locale: FixedLocale) -> &'static s
         ClaimClass::RepositoryObservation => fixed(locale, "Repository Observation", "저장소 관찰"),
         ClaimClass::StructuralFact => fixed(locale, "Structural Fact", "구조 사실"),
         ClaimClass::SemanticResult => fixed(locale, "Semantic Result", "의미 분석 결과"),
+        ClaimClass::DeterministicDerived => {
+            fixed(locale, "Deterministic Explanation", "결정적 설명")
+        }
         ClaimClass::AgentInterpretation => fixed(locale, "Agent Interpretation", "에이전트 해석"),
     }
 }
@@ -2695,29 +2926,6 @@ fn language_key(language: &Language) -> String {
         Language::Go => "go".to_owned(),
         Language::OtherText(value) => format!("other:{value}"),
         Language::UnknownText => "unknown_text".to_owned(),
-    }
-}
-
-fn code_entity_kind_label(kind: &CodeEntityKind, locale: FixedLocale) -> String {
-    match kind {
-        CodeEntityKind::Repository => fixed(locale, "repository", "저장소").to_owned(),
-        CodeEntityKind::Package => fixed(locale, "package", "패키지").to_owned(),
-        CodeEntityKind::Module => fixed(locale, "module", "모듈").to_owned(),
-        CodeEntityKind::Namespace => fixed(locale, "namespace", "네임스페이스").to_owned(),
-        CodeEntityKind::File => fixed(locale, "file", "파일").to_owned(),
-        CodeEntityKind::Class => fixed(locale, "class", "클래스").to_owned(),
-        CodeEntityKind::Interface => fixed(locale, "interface", "인터페이스").to_owned(),
-        CodeEntityKind::Trait => "trait".to_owned(),
-        CodeEntityKind::Struct => "struct".to_owned(),
-        CodeEntityKind::Enum => "enum".to_owned(),
-        CodeEntityKind::Type => fixed(locale, "type", "타입").to_owned(),
-        CodeEntityKind::Function => fixed(locale, "function", "함수").to_owned(),
-        CodeEntityKind::Method => fixed(locale, "method", "메서드").to_owned(),
-        CodeEntityKind::Field => fixed(locale, "field", "필드").to_owned(),
-        CodeEntityKind::Test => fixed(locale, "test", "테스트").to_owned(),
-        CodeEntityKind::Configuration => fixed(locale, "configuration", "설정").to_owned(),
-        CodeEntityKind::Document => fixed(locale, "document", "문서").to_owned(),
-        CodeEntityKind::LanguageSpecific(name) => name.clone(),
     }
 }
 

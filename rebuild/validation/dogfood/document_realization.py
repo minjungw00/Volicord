@@ -487,7 +487,10 @@ def consume(binary: Path, runtime: Path, preparation: dict[str, Any], draft: dic
                         allow_bound_runtime=allow_bound_runtime)
     generator = product_generator(draft["provenance"])
     result = preview(binary, runtime, {**request(preparation, format_name),
-        "realization": {**draft["realization"], "generator": generator}})
+        "realization": {**draft["realization"],
+            "requested_language": draft["requested_language"],
+            "all_generated_prose_realized": draft["all_generated_prose_realized"],
+            "generator": generator}})
     if (result.get("outcome") != "realized" or result.get("kind") != preparation["document_kind"]
         or result.get("format") != format_name or result.get("requested_language") != preparation["language"]
         or result.get("generator") != generator

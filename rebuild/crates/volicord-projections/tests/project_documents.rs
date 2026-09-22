@@ -989,8 +989,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .flat_map(|section| &section.claims)
         .map(|claim| claim.class)
         .collect::<BTreeSet<_>>();
-    assert!(architecture_classes.contains(&ClaimClass::StructuralFact));
-    assert!(architecture_classes.contains(&ClaimClass::SemanticResult));
+    assert!(architecture_classes.contains(&ClaimClass::DeterministicDerived));
     assert!(architecture_classes.contains(&ClaimClass::AgentInterpretation));
     for document in all {
         assert_eq!(document.metadata.requested_language, "fr-CA");
@@ -1010,6 +1009,23 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         assert!(!document.html.content.contains("<script"));
         assert!(!document.html.content.contains(" href="));
         assert!(!document.html.content.contains(" src="));
+        let work_summary = document
+            .body
+            .sections
+            .iter()
+            .find(|section| section.key == "work-summary")
+            .expect("every primary document carries stable Work meaning");
+        assert!(!work_summary.claims.is_empty());
+        assert!(work_summary
+            .claims
+            .iter()
+            .any(|claim| claim.identity.starts_with("work-summary:")));
+        assert!(document
+            .body
+            .sections
+            .iter()
+            .find(|section| section.key == "gaps")
+            .is_some_and(|section| section.claims.len() <= 8));
         for claim in document
             .body
             .sections
@@ -1041,6 +1057,8 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     )?;
     let realization = NarrativeRealization {
         plan_fingerprint: plan.plan_fingerprint.clone(),
+        requested_language: request.requested_language.clone(),
+        all_generated_prose_realized: true,
         title: "Comprendre le projet et son architecture".to_owned(),
         sections: plan
             .sections
@@ -1086,7 +1104,11 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     );
     assert!(matches!(
         realized.metadata.narrative_realization,
-        NarrativeRealizationState::HostRealized { .. }
+        NarrativeRealizationState::HostRealized {
+            ref requested_language,
+            ref body_fingerprint,
+            ..
+        } if requested_language == "fr-CA" && body_fingerprint.starts_with("sha256:")
     ));
     for (realized_claim, plan_claim) in realized
         .body
@@ -1099,6 +1121,30 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         assert_eq!(realized_claim.decision_basis, plan_claim.decision_basis);
         assert_eq!(realized_claim.analysis_basis, plan_claim.analysis_basis);
     }
+
+    let mut headings_only = realization.clone();
+    headings_only.all_generated_prose_realized = false;
+    for (section, source) in headings_only.sections.iter_mut().zip(&plan.sections) {
+        for (claim, source_claim) in section.claims.iter_mut().zip(&source.claims) {
+            claim.text.clone_from(&source_claim.source_text);
+        }
+    }
+    assert!(realize_narrative(
+        &projection,
+        &request,
+        DocumentKind::ProjectArchitectureGuide,
+        &headings_only,
+    )
+    .is_err());
+    let mut wrong_language_attestation = realization.clone();
+    wrong_language_attestation.requested_language = "en".to_owned();
+    assert!(realize_narrative(
+        &projection,
+        &request,
+        DocumentKind::ProjectArchitectureGuide,
+        &wrong_language_attestation,
+    )
+    .is_err());
 
     let mut ungrounded = realization.clone();
     ungrounded.sections[0].claims[0].identity = "invented-claim".to_owned();
@@ -1310,7 +1356,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .is_some_and(|section| section
             .claims
             .iter()
-            .any(|claim| claim.identity == "render-bound:gaps")));
+            .any(|claim| claim.identity == "coverage-primary-omission")));
     // Fixture-specific output regression: typed grounding may grow without
     // turning the portable rendering into a hardware or product ceiling.
     assert!(rendered.markdown.content.len() < 80_000);
@@ -1388,7 +1434,9 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     let mut pathological = projection.clone();
     pathological.resume.project_purpose[0].statement = huge_claim.clone();
     pathological.repository_map.entities[0].display_name = huge_name.clone();
+    pathological.current_work_topology.entities[0].display_name = huge_name.clone();
     pathological.repository_map.gaps[0].reason = huge_diagnostic.clone();
+    pathological.repository_map.gaps[0].state = CapabilityState::Failed;
     let pathological_request = DocumentRequest {
         requested_language: "Klingon in Latin script".to_owned(),
         fixed_locale: FixedLocale::English,
@@ -1591,17 +1639,28 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .sections
         .iter()
         .find(|section| section.key == "gaps")
-        .and_then(|section| section.claims.first())
+        .and_then(|section| {
+            section
+                .claims
+                .iter()
+                .find(|claim| claim.source_text.contains(&affected_paths[0]))
+        })
         .expect("large affected-path gap must remain in the plan");
-    assert!(gap_plan_claim
-        .source_text
-        .contains("exact omitted item count=632"));
+    assert!(
+        gap_plan_claim
+            .source_text
+            .contains("exact omitted item count=632"),
+        "{}",
+        gap_plan_claim.source_text
+    );
     assert!(gap_plan_claim.source_text.contains(&affected_paths[0]));
     assert!(gap_plan_claim.source_text.contains(&affected_paths[7]));
     assert!(!gap_plan_claim.source_text.contains(&affected_paths[8]));
 
     let spanish_realization = NarrativeRealization {
         plan_fingerprint: large_plan.plan_fingerprint.clone(),
+        requested_language: spanish_request.requested_language.clone(),
+        all_generated_prose_realized: true,
         title: "Guía del proyecto y de la arquitectura".to_owned(),
         sections: large_plan
             .sections

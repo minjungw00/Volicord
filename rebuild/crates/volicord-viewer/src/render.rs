@@ -3850,6 +3850,9 @@ const fn claim_class_label(class: ClaimClass, locale: ViewerLocale) -> &'static 
         ClaimClass::RepositoryObservation => text(locale, "Repository Observation", "저장소 관찰"),
         ClaimClass::StructuralFact => text(locale, "Structural Fact", "구조 사실"),
         ClaimClass::SemanticResult => text(locale, "Semantic Result", "의미 분석 결과"),
+        ClaimClass::DeterministicDerived => {
+            text(locale, "Deterministic Explanation", "결정적 설명")
+        }
         ClaimClass::AgentInterpretation => text(locale, "Agent Interpretation", "에이전트 해석"),
     }
 }
