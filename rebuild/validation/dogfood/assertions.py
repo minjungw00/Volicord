@@ -18,6 +18,10 @@ HARNESS = HERE / "harness.py"
 CAMPAIGN = HERE / "campaign.py"
 CODEX_EVENTS = HERE / "codex_events.py"
 DEFINITION = HERE / "evaluation.json"
+MACHINE_FINDINGS = HERE / "machine_findings.py"
+REVIEW_OPERATIONS = HERE / "review_operations.py"
+QUALITATIVE_REVIEW = HERE / "qualitative_review.py"
+QUALIFICATION_POLICY = HERE / "qualification_policy.py"
 CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
 HOST_MCP = ROOT / "rebuild/crates/volicord-host/src/mcp.rs"
 OPERATIONS = ROOT / "rebuild/crates/volicord-operations/src/operations.rs"
@@ -427,6 +431,10 @@ def assert_public_campaign_contract_regressions(expected: dict[str, str]) -> Non
 def main() -> int:
     source = HARNESS.read_text(encoding="utf-8")
     campaign_source = CAMPAIGN.read_text(encoding="utf-8")
+    machine_source = MACHINE_FINDINGS.read_text(encoding="utf-8")
+    review_source = REVIEW_OPERATIONS.read_text(encoding="utf-8")
+    qualitative_source = QUALITATIVE_REVIEW.read_text(encoding="utf-8")
+    qualification_source = QUALIFICATION_POLICY.read_text(encoding="utf-8")
     event_source = CODEX_EVENTS.read_text(encoding="utf-8")
     host_source = HOST_MCP.read_text(encoding="utf-8")
     compact_host_source = re.sub(r"\s+", "", host_source)
@@ -434,6 +442,15 @@ def main() -> int:
     definition = DEFINITION.read_text(encoding="utf-8")
     definition_value = json.loads(definition)
     validate_evaluation_consumer_integration(source, campaign_source)
+    for stale_consumer, consumer_source in {
+        "machine evaluation": machine_source,
+        "review selection": review_source,
+        "qualification": qualification_source,
+    }.items():
+        if '["cycles"]' in consumer_source:
+            raise AssertionError(
+                f"{stale_consumer} still consumes the predecessor cycle aggregate"
+            )
     if "qualification_behavior_multiset" in definition_value:
         raise AssertionError("reviewer-safe evaluation definition exposes the behavior histogram")
     profile_contract = definition_value.get("qualification_profile_contract")
@@ -710,6 +727,21 @@ def main() -> int:
         or len(definition_value.get("repository_classes", {})) != 3
     ):
         raise AssertionError("Phase 8 journey/Work/session topology changed")
+    import machine_findings
+    expected_works = {
+        (repository_class, label)
+        for repository_class, labels in definition_value["campaign_topology"]["work_slots_by_repository"].items()
+        for label in labels
+    }
+    if (
+        machine_findings.EXPECTED_WORKS != expected_works
+        or machine_findings.EXPECTED_JOURNEYS
+            != set(definition_value["campaign_topology"]["journeys"])
+        or 'value.get("schema_version") != 3' not in machine_source
+        or 'evaluation["works"]' not in review_source
+        or 'evaluation["journeys"]' not in review_source
+    ):
+        raise AssertionError("journey-based machine/review consumer schema drifted")
     public_campaign_contract = expected_public_campaign_contract(definition_value)
     for path in PUBLIC_CAMPAIGN_CONTRACTS:
         validate_public_campaign_contract(
@@ -1242,6 +1274,8 @@ def main() -> int:
     import qualitative_review
     if (
         "live_viewer_criteria" in qualitative_contract
+        or "long_lived_project" in qualitative_contract.get("common_criteria", {})
+        or "long_lived_project_observation" in qualitative_source
         or qualitative_review.rubric(definition_value).get("criteria")
         != qualitative_contract.get("common_criteria")
         or "browser_input_and_paint_responsiveness"
@@ -1272,7 +1306,11 @@ def main() -> int:
         or qualitative_contract.get("sampling_algorithm")
         != "work_scoped_with_journey_final_projection_and_repository_class_cli_scope"
         or qualitative_contract.get("every_work_review_surfaces")
-        != ["interaction", "context_recovery", "authority"]
+        != ["interaction", "authority"]
+        or qualitative_contract.get("resumed_work_review_surfaces")
+        != ["context_recovery"]
+        or qualitative_contract.get("resumed_work_sample_count") != 3
+        or qualitative_contract.get("journey_final_sample_count") != 3
         or qualitative_contract.get("journey_final_review_surfaces")
         != [
             "generated_documents",
@@ -1331,6 +1369,30 @@ def main() -> int:
         or material_grounding.get("possible_material_concerns_are_exhaustive") is not False
     ):
         raise AssertionError("Phase 8 campaign-level human-review contract is incomplete")
+    import qualification_policy
+    if (
+        definition_value.get("qualification_policy") != qualification_policy.contract()
+        or qualification_policy.TOPOLOGY
+        != {
+            "repository_journeys": 3,
+            "work_items": 5,
+            "resume_pairs": 3,
+            "fresh_sessions": 8,
+            "work_distribution": {
+                "volicord": 3,
+                "small-python": 1,
+                "polyglot-medium": 1,
+            },
+            "resume_repository_classes": [
+                "polyglot-medium", "small-python", "volicord"
+            ],
+        }
+        or "long_lived_project" in qualification_source
+        or 'evaluation["works"]' not in qualification_source
+        or 'evaluation["journeys"]' not in qualification_source
+        or '"schema_version": 3' not in qualification_source
+    ):
+        raise AssertionError("journey-based replacement qualification contract drifted")
     if "rehearse_target(" in source:
         raise AssertionError("naturalistic qualification must reuse gate evidence without rerunning V11")
     fixture_source = CURRENT_MCP_FIXTURE.read_text(encoding="utf-8")

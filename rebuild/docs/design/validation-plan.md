@@ -1850,8 +1850,9 @@ fidelity는 user choice, recommended alternative, 각 rationale와 alternative-s
 consequence attribution을 각각 검사한다. 이 구조는 phrase별 verdict를 계산하지 않으며
 근거가 부족하면 `insufficient_evidence`를 유지한다.
 Technical result의 `qualitative_review = not_recorded`는 review publication과 독립이며 기존
-qualification은 `qualification_policy.py`가 결정한다. Live accessibility, browser input/paint
-responsiveness, long-lived one-Project/multiple-Work continuity와 실제 사용자 Decision comprehension은
+qualification은 `qualification_policy.py`가 결정한다. Volicord one-Project/three-Work continuity는
+main-campaign journey의 immutable structural finding이 소유한다. Live accessibility, browser input/paint
+responsiveness, 그 Viewer organization의 human comprehension과 실제 사용자 Decision comprehension은
 human observation을 요구하고 나머지 semantic criteria는 evidence-backed agent
 review로 해결할 수 있다. Conflict 또는 high-impact authority/context-recovery insufficiency는
 해당 criterion만 human에게 escalate한다. Human은 `resolves_review_runs`로 충돌한 review ID를

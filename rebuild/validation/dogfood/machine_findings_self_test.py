@@ -134,6 +134,35 @@ class MachineFindingTests(unittest.TestCase):
             c.collect_batch(root, captures, exporter=fixtures.batch_exporter(bundles),
                 documenter=fixtures.documenter, snapshotter=fixtures.snapshotter)
             evidence = c.load_evidence_set(root)
+            def status_after(mutate, rule):
+                changed = deepcopy(evidence)
+                mutate(changed)
+                journey = next(item for item in c.evaluate_journeys(changed)
+                    if item["journey_id"] == "journey-volicord")
+                return next(item["status"] for item in journey["findings"]
+                    if item["check"] == rule)
+
+            def wrong_project(value):
+                next(item for item in value["work_evidence"]
+                    if item["work_slot_id"] == "journey-volicord-work-b")["project_id"] = "wrong-project"
+
+            def duplicate_work(value):
+                works = {item["work_slot_id"]: item for item in value["work_evidence"]}
+                works["journey-volicord-work-b"]["work_item_id"] = \
+                    works["journey-volicord-work-a"]["work_item_id"]
+
+            def missing_history(value):
+                next(item for item in value["work_evidence"]
+                    if item["work_slot_id"] == "journey-volicord-work-c")["canonical_evidence"]["checkpoint_ids"] = []
+
+            def missing_resume(value):
+                next(item for item in value["work_evidence"]
+                    if item["work_slot_id"] == "journey-volicord-work-a")["sessions"].pop("resume")
+
+            self.assertEqual(status_after(wrong_project, "journey_project_identity"), "confirmed_violation")
+            self.assertEqual(status_after(duplicate_work, "journey_work_identity"), "confirmed_violation")
+            self.assertEqual(status_after(missing_history, "journey_work_history"), "confirmed_violation")
+            self.assertEqual(status_after(missing_resume, "journey_resume_continuity"), "confirmed_violation")
             frozen = {name: (root / name).read_bytes() for name in evidence["artifacts"]}
             identity = (root / "evidence-set.json").read_bytes()
             first = c.evaluate_campaign(root)

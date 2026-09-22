@@ -1353,9 +1353,12 @@ def load_definition() -> dict[str, Any]:
         or tuple(qualitative_contract.get("every_work_review_surfaces", []))
         != (
             "interaction",
-            "context_recovery",
             "authority",
         )
+        or qualitative_contract.get("resumed_work_review_surfaces")
+        != ["context_recovery"]
+        or qualitative_contract.get("resumed_work_sample_count") != 3
+        or qualitative_contract.get("journey_final_sample_count") != 3
         or tuple(qualitative_contract.get("journey_final_review_surfaces", []))
         != (
             "generated_documents",

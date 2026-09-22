@@ -393,7 +393,8 @@ errors roll back staged files; preflight never repairs or rewrites evidence.
 
 `qualification_policy.py` consumes recorded runs using this rubric, including all 21 required
 repository-class CLI assessments. All criteria except
-live accessibility, browser input/paint responsiveness and actual user Decision comprehension
+live accessibility, browser input/paint responsiveness, Volicord journey-final Viewer
+multi-Work comprehension and actual user Decision comprehension
 permit agent review with the
 required evidence. Missing surfaces remain insufficient, and a static HTML proxy never
 establishes human-observed usability. Human review may resolve only the remaining criteria.

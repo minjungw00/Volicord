@@ -304,9 +304,13 @@
     "sampling_algorithm": "work_scoped_with_journey_final_projection_and_repository_class_cli_scope",
     "every_work_review_surfaces": [
       "interaction",
-      "context_recovery",
       "authority"
     ],
+    "resumed_work_review_surfaces": [
+      "context_recovery"
+    ],
+    "resumed_work_sample_count": 3,
+    "journey_final_sample_count": 3,
     "journey_final_review_surfaces": [
       "generated_documents",
       "viewer_snapshot",

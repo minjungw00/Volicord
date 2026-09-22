@@ -1243,18 +1243,21 @@ clean install
 - Naturalistic Dogfood의 machine-observable qualification은 human review 부재와 구분되어
   독립적으로 통과할 수 있다.
 - Deterministic multi-Work fixture는 implementation support일 뿐 naturalistic evidence가 아니다.
-  하나의 candidate-bound Project가 fresh sessions에 걸쳐 multiple Work identity와 state/history를
-  유지한 direct live observation이 없으면 replacement qualification은 unresolved다.
+  Volicord main-campaign journey의 immutable machine evidence가 one Project, three distinct
+  Work identity, ordered history와 Work A resume continuity를 입증해야 한다. 별도로 live
+  Viewer를 직접 본 human review가 multiple-Work organization을 이해할 수 있다고 판정해야 한다.
+  어느 한쪽도 다른 쪽을 대신하지 못한다.
 - Common qualitative review와 필수 human escalation이 미완료면 qualification은 `unresolved`다.
   Exact-candidate gate와 hard integrity를 포함한 policy 충족 뒤 explicit operator approval만 Phase 9를 연다.
-- Replacement usability review는 reviewer kind를 명시하고 모든 collected cycle을 대상으로 source-vs-interpretation
+- Replacement usability review는 reviewer kind를 명시하고 모든 5개 collected Work을 대상으로 source-vs-interpretation
   comprehension, repository-analysis usefulness와 polyglot comprehension을 평가하고, 별도
   candidate-bound observation으로 각 repository class의 CLI usability 일곱 criterion을 한 번씩 평가하며,
   Viewer understanding, four-document usefulness, Question necessity/Decision comprehension과
   interruption cost를 평가한다. Static Viewer readability와 `en`/`ko` live Viewer
   accessibility 및 browser input/resulting-paint responsiveness도 유지한다. Snapshot-export
-  request duration은 이 live browser timing을 대신하지 않는다. Cycle-specific criterion은 lowest-numbered cycle 하나만으로
-  repository class를 대표하지 않는다.
+  request duration은 이 live browser timing을 대신하지 않는다. Work-specific criterion은 한 Work만으로
+  repository class의 다른 Work을 대신하지 않으며, journey-final projection criterion은 세 repository
+  journey에서 각각 한 번 평가한다.
 - Agent/human qualitative review는 hard machine failure를 override하지 않으며 immutable evidence
   set과 optional machine run에 binding할 때 naturalistic session을 다시 실행하지 않는다.
 - Guarded effect만 action-scoped confirmation을 요구한다.
@@ -1264,7 +1267,7 @@ clean install
 
 ### Phase 8 evidence lifecycle acceptance
 
-- Candidate-bound/hash-valid 16-session evidence는 semantic evaluation 없이 immutable
+- Candidate-bound/hash-valid 8-session evidence(5 Work starts와 Work A의 3 resumes)는 semantic evaluation 없이 immutable
   evidence-set identity로 수집할 수 있다. 수집 성공은 Product qualification이 아니다.
 - Candidate/session/task/revision/activation/realization identity 또는 raw/inventory hash
   위반은 valid publication을 차단한다. Qualitative review가 이를 override할 수 없다.
