@@ -239,13 +239,18 @@ fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy()
     let page = render_deep(&viewer, project);
     let understanding = section_html(&page, "project-understanding");
     assert!(understanding.contains("Explain and preserve the project across sessions"));
+    assert!(understanding.contains("data-primary-view=\"current-work\""));
     assert!(understanding.contains("data-work-group=\"completed-work\""));
     assert!(understanding.contains("data-work-group=\"current-work\""));
     assert!(understanding.contains("data-work-group=\"remaining-work\""));
+    assert!(understanding.contains("data-work-group=\"recent-work\""));
     let alpha_card = work_card_html(understanding, "Finish Alpha");
     let beta_card = work_card_html(understanding, "Continue Beta");
     let gamma_card = work_card_html(understanding, "Explore Gamma");
     assert!(alpha_card.contains("data-work-state=\"completed\""));
+    assert!(alpha_card.contains(&format!("data-work-id=\"{}\"", alpha.id)));
+    assert!(alpha_card.contains("data-decision-scope=\"work-item\""));
+    assert!(alpha_card.contains("Decisions for this work"));
     assert!(alpha_card.contains(&alpha_decision.id.to_string()));
     assert!(alpha_card.contains(&alpha_checkpoint.id.to_string()));
     assert!(!alpha_card.contains(&beta_decision.id.to_string()));
@@ -256,6 +261,18 @@ fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy()
     assert!(gamma_card.contains("data-work-state=\"open\""));
     assert!(gamma_card.contains("0 Checkpoints · 0 Decisions"));
     assert!(!work_card_html(understanding, "Finish Alpha").contains(&purpose.id.to_string()));
+    let primary_end = understanding
+        .find("<details class=\"work-history\"")
+        .expect("bounded history disclosure");
+    let primary = &understanding[..primary_end];
+    assert!(primary.contains("Continue Beta"));
+    assert!(primary.contains("Explore Gamma"));
+    assert!(!primary.contains("Finish Alpha"));
+    assert!(primary.find("Continue Beta").is_some_and(|current| {
+        primary
+            .find("Explore Gamma")
+            .is_some_and(|remaining| current < remaining)
+    }));
 }
 
 #[test]

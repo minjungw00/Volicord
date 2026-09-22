@@ -7,8 +7,9 @@ use std::{
 };
 use volicord_context::{
     CanonicalRecordId, CheckpointKind, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
-    DecisionChoice, DecisionCorrectionDraft, DecisionId, ProjectId, SourceId, SourcePayload,
-    TimestampMicros, UserAcceptanceState, UserReviewState, VerificationState, WorkState,
+    DecisionChoice, DecisionCorrectionDraft, DecisionId, DecisionWorkScope, ProjectId, SourceId,
+    SourcePayload, TimestampMicros, UserAcceptanceState, UserReviewState, VerificationState,
+    WorkState,
 };
 use volicord_inquiry::{CandidateDisposition, CandidateKind};
 use volicord_operations::{
@@ -572,64 +573,29 @@ fn render_project_understanding(
         html.push_str("</ul>");
     }
 
-    heading(html, 3, text(request.locale, "Work", "작업"));
+    html.push_str("<div class=\"current-focus\" data-primary-view=\"current-work\">");
+    heading(
+        html,
+        3,
+        text(
+            request.locale,
+            "Current state and next action",
+            "현재 상태와 다음 작업",
+        ),
+    );
     render_work_group(
         html,
         request,
         text(request.locale, "Current work", "현재 작업"),
         "current-work",
         &understanding.current_work,
+        &understanding.active_decisions,
         text(
             request.locale,
-            "No current work Checkpoint is recorded.",
-            "현재 작업 체크포인트가 기록되지 않았습니다.",
+            "No Work Item is marked in progress.",
+            "진행 중으로 표시된 작업 항목이 없습니다.",
         ),
     );
-    render_work_group(
-        html,
-        request,
-        text(request.locale, "Completed work", "완료한 작업"),
-        "completed-work",
-        &understanding.completed_work,
-        text(
-            request.locale,
-            "No completed work Checkpoint is recorded.",
-            "완료된 작업 체크포인트가 기록되지 않았습니다.",
-        ),
-    );
-    render_work_group(
-        html,
-        request,
-        text(
-            request.locale,
-            "Remaining or open work",
-            "남은 작업 또는 열린 작업",
-        ),
-        "remaining-work",
-        &understanding.remaining_work,
-        text(
-            request.locale,
-            "No remaining or open Work Item is recorded.",
-            "남았거나 열린 작업 항목이 기록되지 않았습니다.",
-        ),
-    );
-    if !understanding.unresolved_work_grouping.is_empty() {
-        html.push_str(&format!(
-            "<details class=\"work-grouping-gaps state\" data-state=\"degraded\"><summary>{}</summary><ul class=\"understanding-list grouping-gaps\">",
-            escape(text(
-                request.locale,
-                "Records with unresolved work association",
-                "작업 연결이 해결되지 않은 기록"
-            ))
-        ));
-        for gap in &understanding.unresolved_work_grouping {
-            list_item(
-                html,
-                &format!("{} {} — {}", gap.record_kind, gap.identity, gap.reason),
-            );
-        }
-        html.push_str("</ul></details>");
-    }
     if understanding.next_steps.is_empty() {
         empty_state(
             html,
@@ -650,35 +616,108 @@ fn render_project_understanding(
         }
         html.push_str("</ol>");
     }
+    html.push_str("</div>");
+
+    heading(
+        html,
+        3,
+        text(request.locale, "Work by state", "상태별 작업"),
+    );
+    render_work_group(
+        html,
+        request,
+        text(
+            request.locale,
+            "Remaining or paused work",
+            "남았거나 일시 중지된 작업",
+        ),
+        "remaining-work",
+        &understanding.remaining_work,
+        &understanding.active_decisions,
+        text(
+            request.locale,
+            "No remaining or paused Work Item is recorded.",
+            "남았거나 일시 중지된 작업 항목이 기록되지 않았습니다.",
+        ),
+    );
+    html.push_str(&format!(
+        "<details class=\"work-history\" data-work-group=\"recent-work\"><summary>{}</summary>",
+        escape(text(
+            request.locale,
+            "Recent and completed work",
+            "최근 및 완료한 작업"
+        ))
+    ));
+    render_work_group(
+        html,
+        request,
+        text(request.locale, "Completed work", "완료한 작업"),
+        "completed-work",
+        &understanding.completed_work,
+        &understanding.active_decisions,
+        text(
+            request.locale,
+            "No completed Work Item is recorded.",
+            "완료된 작업 항목이 기록되지 않았습니다.",
+        ),
+    );
+    html.push_str("</details>");
+    if !understanding.unresolved_work_grouping.is_empty() {
+        html.push_str(&format!(
+            "<details class=\"work-grouping-gaps state\" data-state=\"degraded\"><summary>{}</summary><ul class=\"understanding-list grouping-gaps\">",
+            escape(text(
+                request.locale,
+                "Records whose Work Item is not yet known",
+                "작업 항목이 아직 정해지지 않은 기록"
+            ))
+        ));
+        for gap in &understanding.unresolved_work_grouping {
+            list_item(
+                html,
+                &format!("{} {} — {}", gap.record_kind, gap.identity, gap.reason),
+            );
+        }
+        html.push_str("</ul></details>");
+    }
 
     heading(
         html,
         3,
         text(
             request.locale,
-            "Major Decisions and why",
-            "주요 결정과 이유",
+            "Project-wide and unassigned Decisions",
+            "프로젝트 전체 및 미지정 결정",
         ),
     );
-    if understanding.active_decisions.is_empty() {
+    let project_decisions = understanding
+        .active_decisions
+        .iter()
+        .filter(|decision| {
+            matches!(
+                decision.decision.work_scope,
+                DecisionWorkScope::ProjectWide | DecisionWorkScope::Unresolved
+            )
+        })
+        .take(level_limit(request.explanation_level))
+        .collect::<Vec<_>>();
+    if project_decisions.is_empty() {
         empty_state(
             html,
             text(
                 request.locale,
-                "No active Decisions are recorded.",
-                "활성 결정이 기록되지 않았습니다.",
+                "No project-wide or unassigned Decision is recorded. Work-scoped Decisions appear with their Work Item.",
+                "프로젝트 전체 또는 미지정 결정이 없습니다. 작업 범위 결정은 해당 작업 항목에 표시됩니다.",
             ),
         );
     } else {
         html.push_str("<div class=\"understanding-grid decisions\">");
-        for decision in understanding
-            .active_decisions
-            .iter()
-            .take(level_limit(request.explanation_level))
-        {
+        for decision in project_decisions {
             html.push_str(&format!(
-                "<article class=\"understanding-card verified-fact\" data-statement-role=\"verified-canonical\"><h4>{}</h4><p><strong>{}:</strong> {}</p>",
+                "<article class=\"understanding-card verified-fact\" data-statement-role=\"verified-canonical\" data-decision-scope=\"{}\"><h4>{}</h4><p class=\"decision-scope\"><strong>{}:</strong> {}</p><p><strong>{}:</strong> {}</p>",
+                decision_scope_key(decision.decision.work_scope),
                 escape(&decision_choice_attribution(&decision.decision, request.locale)),
+                escape(text(request.locale, "Applies to", "적용 범위")),
+                escape(decision_scope_label(decision.decision.work_scope, request.locale)),
                 escape(text(request.locale, "User rationale", "사용자 근거")),
                 escape(decision.decision.user_rationale.as_deref().unwrap_or_else(|| text(request.locale, "Not recorded", "기록되지 않음")))
             ));
@@ -866,6 +905,7 @@ fn render_work_group(
     label: &str,
     class_name: &str,
     work_items: &[UnderstandingWork],
+    decisions: &[volicord_projections::UnderstandingDecision],
     empty: &str,
 ) {
     heading(html, 4, label);
@@ -882,14 +922,20 @@ fn render_work_group(
         .iter()
         .take(level_limit(request.explanation_level))
     {
-        render_work_card(html, request, work);
+        render_work_card(html, request, work, decisions);
     }
     html.push_str("</div>");
 }
 
-fn render_work_card(html: &mut String, request: &ViewerRequest, work: &UnderstandingWork) {
+fn render_work_card(
+    html: &mut String,
+    request: &ViewerRequest,
+    work: &UnderstandingWork,
+    decisions: &[volicord_projections::UnderstandingDecision],
+) {
     html.push_str(&format!(
-        "<article class=\"understanding-card work-item\" data-work-state=\"{}\"><h5>{}</h5><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
+        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h5>{}</h5><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
+        work.work_item_id,
         understanding_work_state_key(work.state),
         escape(&work.title),
         escape(understanding_work_state_label(work.state, request.locale))
@@ -937,6 +983,43 @@ fn render_work_card(html: &mut String, request: &ViewerRequest, work: &Understan
         work.open_question_ids.len(),
         escape(text(request.locale, "open Questions", "열린 질문"))
     ));
+    let scoped_decisions = decisions
+        .iter()
+        .filter(|decision| {
+            decision.decision.work_scope == DecisionWorkScope::WorkItem(work.work_item_id)
+        })
+        .filter(|decision| work.decision_ids.contains(&decision.decision.decision_id))
+        .take(level_limit(request.explanation_level))
+        .collect::<Vec<_>>();
+    if !scoped_decisions.is_empty() {
+        html.push_str(&format!(
+            "<div class=\"work-decisions\"><strong>{}</strong><ul>",
+            escape(text(
+                request.locale,
+                "Decisions for this work",
+                "이 작업의 결정"
+            ))
+        ));
+        for decision in scoped_decisions {
+            html.push_str(&format!(
+                "<li data-decision-id=\"{}\" data-decision-scope=\"work-item\">{} — {}: {}</li>",
+                decision.decision.decision_id,
+                escape(&decision_choice_attribution(
+                    &decision.decision,
+                    request.locale
+                )),
+                escape(text(request.locale, "why", "이유")),
+                escape(
+                    decision
+                        .decision
+                        .user_rationale
+                        .as_deref()
+                        .unwrap_or_else(|| text(request.locale, "Not recorded", "기록되지 않음"))
+                )
+            ));
+        }
+        html.push_str("</ul></div>");
+    }
     html.push_str(&format!(
         "<details class=\"work-audit\"><summary>{}</summary><dl class=\"explanation-basis\">",
         escape(text(
@@ -3547,6 +3630,26 @@ const fn brief_decision_state_label(
         BriefDecisionState::ReviewRequired => text(locale, "review required", "검토 필요"),
         BriefDecisionState::Superseded => text(locale, "superseded", "대체됨"),
         BriefDecisionState::UnavailableBasis => text(locale, "basis unavailable", "근거 사용 불가"),
+    }
+}
+
+const fn decision_scope_key(scope: DecisionWorkScope) -> &'static str {
+    match scope {
+        DecisionWorkScope::ProjectWide => "project-wide",
+        DecisionWorkScope::WorkItem(_) => "work-item",
+        DecisionWorkScope::Unresolved => "unresolved",
+    }
+}
+
+const fn decision_scope_label(scope: DecisionWorkScope, locale: ViewerLocale) -> &'static str {
+    match scope {
+        DecisionWorkScope::ProjectWide => text(locale, "the whole Project", "프로젝트 전체"),
+        DecisionWorkScope::WorkItem(_) => text(locale, "one Work Item", "특정 작업 항목"),
+        DecisionWorkScope::Unresolved => text(
+            locale,
+            "scope not yet assigned",
+            "아직 범위가 지정되지 않음",
+        ),
     }
 }
 
