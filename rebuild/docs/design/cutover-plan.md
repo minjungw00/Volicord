@@ -300,6 +300,10 @@ work/resume을 포함하는 8-cycle/16-fresh-session campaign과
 모든 collected cycle의 qualitative review와 current production background semantic-provider의
 별도로 authorized real success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
+Deterministic one-Project/multiple-Work fixture는 regression support이며 naturalistic passage가 아니다.
+하나의 candidate-bound Project가 fresh sessions에 걸쳐 multiple Work identity와 state/history를
+유지한 direct live observation, `en`/`ko` live accessibility와 browser input/resulting-paint observation이
+없으면 qualification은 unresolved다. Snapshot-export request timing은 browser latency로 재명명하지 않는다.
 최종 evaluation/review/qualification과 optional approval은 immutable Campaign 안을 고치지 않고
 `<campaign-parent>/results/<qualification-run-id>`의 create-only result lineage로 publish한다.
 Lineage index/receipt는 exact Product candidate, evidence-set bytes, evaluator revision/policy,
@@ -415,6 +419,8 @@ authoritative discovery dependency가 될 수 없다. Later run은 새 lineage�
 - [ ] 모든 qualifying cycle의 fact/interpretation, analysis/polyglot, Viewer, documents,
       Question necessity·Decision comprehension와 interruption-cost common qualitative review
 - [ ] 세 repository class별 일곱 CLI usability criterion의 candidate-bound common qualitative review
+- [ ] one candidate-bound Project의 fresh-session multiple-Work continuity direct live observation
+- [ ] `en`/`ko` live Viewer accessibility와 browser input/resulting-paint direct human observation
 - [ ] final gate의 warning-clean clippy
 
 ## 4. 기존 Runtime Home과 데이터

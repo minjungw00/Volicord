@@ -1545,6 +1545,11 @@ production/acceptance 경계 테스트 중 대표 경로만 선택해 mixed vali
 Inquiry, conversational human review와 current UX rubric을 한 번에 실행한다. 각 child command의
 numeric exit와 duration을 보존하고 한 실패가 다른 독립 경로 실행을 생략하지 않는다. 이 set은
 각 subsystem의 전체 unit suite를 복제하지 않는다.
+Deterministic multi-Work fixture와 production restart/portability test는 구현 mechanics의 regression
+support일 뿐 naturalistic passage가 아니다. Campaign은 별도 `long_lived_project_observation`을
+요구하며, 하나의 candidate-bound Project가 fresh sessions에 걸쳐 둘 이상의 stable Work identity,
+state와 history를 실제 유지했다는 direct human observation이 없으면 qualification을 unresolved로
+남긴다. Static fixture나 agent review는 이 gap을 닫을 수 없다.
 Lowest-numbered 또는 automated-passed cycle로 한정하지 않고 모든 collected cycle을 검토한다. 각 cycle에서 source-vs-interpretation comprehension, repository-analysis
 usefulness, CLI usability, Viewer Project Understanding, four-document usefulness, Question
 necessity/Decision comprehension과 interruption cost를 평가한다. Interaction review는 explicit
@@ -1604,7 +1609,10 @@ Evaluator-private concern과 counterfactual evidence는 naturalistic execution �
 grounding으로만 사용하며 frozen operator task와 work/resume session에는 노출하지 않는다.
 Polyglot cycle은 언어·component
 경계와 flow comprehension을 추가하고, static Viewer readability와 Volicord live Viewer의
-`en`/`ko` keyboard/focus/color/zoom accessibility도 campaign에서 검토한다. Reviewer violation은 immutable automated result를 바꾸지 않으며 satisfied judgment도 hard machine
+`en`/`ko` keyboard/focus/color/zoom accessibility 및 browser input/resulting-paint responsiveness도
+campaign에서 검토한다. Snapshot-export request duration은 candidate-bound monotonic proxy로
+`measured` scope를 보존하고 browser input/paint는 `unmeasured`로 남으며 direct live observation만
+후자를 검토할 수 있다. Reviewer violation은 immutable automated result를 바꾸지 않으며 satisfied judgment도 hard machine
 failure를 override할 수 없다. 종전 `prepare-human-review`, `qualify-review` 및 approval combiner는
 폐기한다. Common review artifact는 final Phase 9 approval authority를 얻지 않는다.
 
@@ -1816,8 +1824,9 @@ fidelity는 user choice, recommended alternative, 각 rationale와 alternative-s
 consequence attribution을 각각 검사한다. 이 구조는 phrase별 verdict를 계산하지 않으며
 근거가 부족하면 `insufficient_evidence`를 유지한다.
 Technical result의 `qualitative_review = not_recorded`는 review publication과 독립이며 기존
-qualification은 `qualification_policy.py`가 결정한다. Live accessibility와 실제 사용자 Decision
-comprehension은 human observation을 요구하고 나머지 semantic criteria는 evidence-backed agent
+qualification은 `qualification_policy.py`가 결정한다. Live accessibility, browser input/paint
+responsiveness, long-lived one-Project/multiple-Work continuity와 실제 사용자 Decision comprehension은
+human observation을 요구하고 나머지 semantic criteria는 evidence-backed agent
 review로 해결할 수 있다. Conflict 또는 high-impact authority/context-recovery insufficiency는
 해당 criterion만 human에게 escalate한다. Human은 `resolves_review_runs`로 충돌한 review ID를
 명시하며 무관한 criterion을 재검토할 필요가 없다. 어떤 hard violation도 override하지 못한다.

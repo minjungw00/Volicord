@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 7 / policy revision 6, machine evaluation
-policy `evidence-evaluation-2`, human observation/receipt schema 2, qualification policy
-`replacement-qualification-3`, and result-lineage schema 1. Historical runs retain their old
+Current identities are qualitative review schema 8 / policy revision 7, machine evaluation
+policy `evidence-evaluation-3`, human observation/receipt schema 3, qualification policy
+`replacement-qualification-4`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -31,6 +31,8 @@ The following mapping preserves the former human rubric without another engine:
 | `repository_intelligence_reviews` | `repository_intelligence` | Structural navigation, semantic value, capability honesty and polyglot comprehension |
 | `cli_usability_reviews` | `cli` | Per-repository-class help discovery and status/analyze/Recall/documents/export/doctor without opaque Project IDs |
 | `live_viewer_accessibility` | `live_viewer` | `en`/`ko` keyboard reachability, visible focus, color-independent meaning, narrow/zoom presentation for the deterministic first Volicord cycle |
+| Live browser responsiveness | `live_viewer` | Direct human observation of input response and resulting paint in `en`/`ko`; snapshot-export request timing is not a substitute |
+| Long-lived Project continuity | `long_lived_project` | One real candidate-bound Project retaining multiple distinct Work identities, state and history across fresh sessions; deterministic fixtures are support only |
 | `authority_obligation_reviews` | `authority` | Every initial material challenge, all other actual outcomes, additional outcomes and complete implementation/coupled-artifact coverage |
 | Context recovery usability criterion | `context_recovery` | Goal, Decision/rationale, work state and open-question recovery across work/resume |
 
@@ -376,7 +378,8 @@ errors roll back staged files; preflight never repairs or rewrites evidence.
 
 `qualification_policy.py` consumes recorded runs using this rubric, including all 21 required
 repository-class CLI assessments. All criteria except
-live accessibility and actual user Decision comprehension permit agent review with the
+live accessibility, browser input/paint responsiveness, long-lived Project continuity and
+actual user Decision comprehension permit agent review with the
 required evidence. Missing surfaces remain insufficient, and a static HTML proxy never
 establishes human-observed usability. Human review may resolve only the remaining criteria.
 A high-impact authority/context-recovery insufficiency or conflicting review requires an
@@ -388,9 +391,10 @@ For direct live observations, human preparation additionally accepts `--human-ob
 pointing to the conversational capture directory. The lower-level JSON-file input remains
 available for automation. The object has kind `dogfood_human_observations`, original `candidate_head`,
 `evidence_set_sha256`, an `observer` using the common human reviewer identity shape, and
-exactly two `observations`. Each has `sample_id`, `locale`, a typed `control`, and either a
-grouped `{observation, limits}` response or a Korean-to-English locale reference with no
-duplicated semantic prose. Preparation copies and hashes
+exactly three `observations`: English and Korean live Viewer observations plus one long-lived
+one-Project/multiple-Work observation. Each has `sample_id`, typed `surface`, optional `locale`,
+a typed `control`, and either a grouped `{observation, limits}` response or a Korean-to-English
+locale reference with no duplicated semantic prose. Preparation copies and hashes
 these declared observations into immutable review evidence. Agent authorship is rejected.
 These are additional direct human observations, not reconstructed historical rollout bytes.
 Identity remains self-reported; do not use agent-generated claims of a human experience.

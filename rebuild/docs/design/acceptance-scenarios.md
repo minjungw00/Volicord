@@ -1242,6 +1242,9 @@ clean install
   evaluator alternative 또는 expected user choice를 성공 조건으로 삼지 않는다.
 - Naturalistic Dogfood의 machine-observable qualification은 human review 부재와 구분되어
   독립적으로 통과할 수 있다.
+- Deterministic multi-Work fixture는 implementation support일 뿐 naturalistic evidence가 아니다.
+  하나의 candidate-bound Project가 fresh sessions에 걸쳐 multiple Work identity와 state/history를
+  유지한 direct live observation이 없으면 replacement qualification은 unresolved다.
 - Common qualitative review와 필수 human escalation이 미완료면 qualification은 `unresolved`다.
   Exact-candidate gate와 hard integrity를 포함한 policy 충족 뒤 explicit operator approval만 Phase 9를 연다.
 - Replacement usability review는 reviewer kind를 명시하고 모든 collected cycle을 대상으로 source-vs-interpretation
@@ -1249,7 +1252,8 @@ clean install
   candidate-bound observation으로 각 repository class의 CLI usability 일곱 criterion을 한 번씩 평가하며,
   Viewer understanding, four-document usefulness, Question necessity/Decision comprehension과
   interruption cost를 평가한다. Static Viewer readability와 `en`/`ko` live Viewer
-  accessibility도 유지한다. Cycle-specific criterion은 lowest-numbered cycle 하나만으로
+  accessibility 및 browser input/resulting-paint responsiveness도 유지한다. Snapshot-export
+  request duration은 이 live browser timing을 대신하지 않는다. Cycle-specific criterion은 lowest-numbered cycle 하나만으로
   repository class를 대표하지 않는다.
 - Agent/human qualitative review는 hard machine failure를 override하지 않으며 immutable evidence
   set과 optional machine run에 binding할 때 naturalistic session을 다시 실행하지 않는다.
