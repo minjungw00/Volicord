@@ -29,22 +29,40 @@ TEST_ASSIGNMENTS = [
     ("polyglot-medium", "A", ("research_or_no_question", "repository_or_environment_fact")),
 ]
 
+# A = fully subsumed by the named journey regression; B = still required and
+# ported/invoked here; C = superseded by the accepted journey contract.
+PREDECESSOR_INVARIANT_COVERAGE = {
+    "production_session_start": ("B", "assert_production_session_start"),
+    "activation_failure_attribution": ("B", "assert_activation_failure_attribution"),
+    "same_path_candidate_replacement": ("B", "assert_same_path_candidate_replacement_rejected"),
+    "blind_provisional_non_oracle": ("B", "assert_blind_recording_non_oracle"),
+    "sealing_and_provenance": ("B", "assert_journey_campaign_contract"),
+    "early_blocker_without_fabricated_success": ("B", "assert_blockers"),
+    "complete_batch_workflow": ("A", "assert_journey_campaign_contract"),
+    "batch_publication_atomicity": ("B", "assert_batch_failure_atomicity"),
+    "failed_required_document": ("B", "assert_failed_document_kind_is_machine_failure"),
+    "resume_baseline_identity_and_ordering": ("B", "assert_resume_baseline_identity_and_ordering"),
+    "successful_campaign_lifecycle": ("A", "assert_journey_campaign_contract"),
+    "superseded_candidate_mutation_guard": ("B", "assert_superseded_candidate_mutation_guard"),
+    "one_behavior_per_cycle_and_work_resume_for_every_work": ("C", "retired journey contract"),
+}
+
 
 import campaign as campaign_api
 
-def collect_work_fixture(root: campaign_api.Path, kind: str, cycle: int, raw_capture: campaign_api.Path) -> dict[str, campaign_api.Any]:
+def collect_work_fixture(root: campaign_api.Path, kind: str, work: str, raw_capture: campaign_api.Path) -> dict[str, campaign_api.Any]:
     campaign = campaign_api.load_campaign_for_mutation(root)
     if campaign_api.document_realization.required(campaign['document_language'], campaign['viewer_locale']):
         raise campaign_api.CampaignError('cross-locale collection requires prepare-document-realizations and collect-batch')
     campaign_api.verify_inventory(root)
     if campaign.get('terminal_outcome') is not None:
         raise campaign_api.CampaignError('campaign already stopped; create a new campaign identity')
-    key = campaign_api.work_key(kind, cycle)
-    state = campaign['cycles'][key]
+    key = campaign_api.work_key(kind, work)
+    state = campaign['works'][key]
     if state['state'] != 'sealed':
         raise campaign_api.CampaignError('work collection requires a valid sealed evaluator descriptor')
-    descriptor_path, descriptor = campaign_api.load_sealed_descriptor(root, kind, cycle, campaign)
-    destination = campaign_api.work_root(root, kind, cycle) / 'evidence/work.rollout.jsonl'
+    descriptor_path, descriptor = campaign_api.load_sealed_descriptor(root, kind, work, campaign)
+    destination = campaign_api.work_root(root, kind, work) / 'evidence/start.rollout.jsonl'
     campaign_api.copy_exact(raw_capture.resolve(), destination)
     try:
         capture = campaign_api.load_codex_capture(destination)
@@ -57,12 +75,12 @@ def collect_work_fixture(root: campaign_api.Path, kind: str, cycle: int, raw_cap
     except campaign_api.harness.NoWorkObservation:
         if len(project_ids) != 1:
             raise campaign_api.CampaignError('qualifying work capture must expose one Project identity')
-        result = {'kind': 'phase8_dogfood_work_intake', 'outcome': 'resume_allowed', 'repository_class': kind, 'cycle': cycle, 'project_id': project_ids[0], 'work_capture_sha256': capture.source_sha256, 'repository_scoped_activation_observed': True}
+        result = {'kind': 'phase8_dogfood_work_intake', 'outcome': 'resume_allowed', 'repository_class': kind, 'work': work, 'project_id': project_ids[0], 'work_capture_sha256': capture.source_sha256, 'repository_scoped_activation_observed': True}
         state['state'] = 'work_collected'
         state['project_id'] = project_ids[0]
         state['work_session_id'] = capture.session_id
     except campaign_api.harness.WorkCaptureContractError as error:
-        result = campaign_api.work_capture_failure_result(kind, cycle, error)
+        result = campaign_api.work_capture_failure_result(kind, work, error)
         result['failure_attribution'] = campaign_api.bounded_failure_attribution('work', 'evidence', error.basis, [error.check])
         state['state'] = 'evidence_failed'
         campaign['terminal_outcome'] = 'evidence_failed'
@@ -75,32 +93,32 @@ def collect_work_fixture(root: campaign_api.Path, kind: str, cycle: int, raw_cap
         else:
             state['state'] = blocker['outcome']
             campaign['terminal_outcome'] = blocker['outcome']
-        campaign_api.write_json(campaign_api.work_root(root, kind, cycle) / 'blocker-result.json', blocker)
-        campaign_api.register_artifact(root, campaign_api.work_root(root, kind, cycle) / 'blocker-result.json')
-    campaign_api.write_json(campaign_api.work_root(root, kind, cycle) / 'work-intake.json', result)
-    activation = campaign_api.update_activation_summary(root, kind, cycle, work_session_start_activation_observed=capture.repository_scoped_activation_observed)
+        campaign_api.write_json(campaign_api.work_root(root, kind, work) / 'blocker-result.json', blocker)
+        campaign_api.register_artifact(root, campaign_api.work_root(root, kind, work) / 'blocker-result.json')
+    campaign_api.write_json(campaign_api.work_root(root, kind, work) / 'work-intake.json', result)
+    activation = campaign_api.update_activation_summary(root, kind, work, work_session_start_activation_observed=capture.repository_scoped_activation_observed)
     campaign_api.save_campaign(root, campaign)
-    for path in (destination, campaign_api.work_root(root, kind, cycle) / 'work-intake.json', activation):
+    for path in (destination, campaign_api.work_root(root, kind, work) / 'work-intake.json', activation):
         campaign_api.register_artifact(root, path)
     return result
 
-def collect_resume_fixture(root: campaign_api.Path, kind: str, cycle: int, raw_capture: campaign_api.Path, *, exporter: campaign_api.Callable[[campaign_api.Path, campaign_api.Path, campaign_api.Path, campaign_api.Path], None]=campaign_api.default_export, documenter: campaign_api.Callable[[campaign_api.Path, campaign_api.Path, campaign_api.Path, str, str, campaign_api.Path, str, str], dict[str, campaign_api.Any]]=campaign_api.generate_document, snapshotter: campaign_api.Callable[[campaign_api.Path, campaign_api.Path, str, campaign_api.Path, str, str], dict[str, campaign_api.Any]]=campaign_api.generate_viewer_snapshot) -> dict[str, campaign_api.Any]:
+def collect_resume_fixture(root: campaign_api.Path, kind: str, work: str, raw_capture: campaign_api.Path, *, exporter: campaign_api.Callable[[campaign_api.Path, campaign_api.Path, campaign_api.Path, campaign_api.Path], None]=campaign_api.default_export, documenter: campaign_api.Callable[[campaign_api.Path, campaign_api.Path, campaign_api.Path, str, str, campaign_api.Path, str, str], dict[str, campaign_api.Any]]=campaign_api.generate_document, snapshotter: campaign_api.Callable[[campaign_api.Path, campaign_api.Path, str, campaign_api.Path, str, str], dict[str, campaign_api.Any]]=campaign_api.generate_viewer_snapshot) -> dict[str, campaign_api.Any]:
     campaign = campaign_api.load_campaign_for_mutation(root)
     if campaign_api.document_realization.required(campaign['document_language'], campaign['viewer_locale']):
         raise campaign_api.CampaignError('cross-locale collection requires prepare-document-realizations and collect-batch')
     campaign_api.verify_inventory(root)
     if campaign.get('terminal_outcome') is not None:
         raise campaign_api.CampaignError('later collection is blocked; create a new campaign identity')
-    state = campaign['cycles'][campaign_api.work_key(kind, cycle)]
+    state = campaign['works'][campaign_api.work_key(kind, work)]
     if state['state'] != 'work_collected':
         raise campaign_api.CampaignError('resume collection requires a resume_allowed work intake')
-    destination = campaign_api.work_root(root, kind, cycle) / 'evidence/resume.rollout.jsonl'
+    destination = campaign_api.work_root(root, kind, work) / 'evidence/resume.rollout.jsonl'
     campaign_api.copy_exact(raw_capture.resolve(), destination)
     try:
         capture = campaign_api.load_codex_capture(destination)
     except (OSError, campaign_api.EvidenceError) as error:
         raise campaign_api.CampaignError('resume rollout is not a supported normalized Codex capture') from error
-    return campaign_api.extract_resume_evidence(root, kind, cycle, capture, destination, exporter=exporter, documenter=documenter, snapshotter=snapshotter)
+    return campaign_api.extract_resume_evidence(root, kind, work, capture, destination, exporter=exporter, documenter=documenter, snapshotter=snapshotter)
 
 def write_fake_binary(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -723,7 +741,7 @@ def assert_same_path_candidate_replacement_rejected(parent: Path, binary: Path) 
             path.chmod(0o755)
             try:
                 try:
-                    campaign.activate_cycle(root, "volicord", 1)
+                    campaign.activate_journey(root, "volicord")
                 except campaign.CampaignError as error:
                     assert f"candidate executable content mismatch: {artifact_name}" in str(error)
                 else:
@@ -958,7 +976,7 @@ def assert_production_session_start(parent: Path, binary: Path) -> None:
     assert len(mapped) == 8
     assert all(item.capture.repository_scoped_activation_observed for item in mapped.values())
     assert all(item.capture.tool_calls for item in mapped.values())
-    work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
+    work = next(path for path in captures if path.name == "volicord-A-work-events.jsonl")
     original = [json.loads(line) for line in work.read_text().splitlines()]
     context = original[1]["payload"]["content"][0]["text"]
     identity = context.splitlines()[0]
@@ -1313,10 +1331,10 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     blocker_root, blocker_captures, _blocker_bundles = prepared_batch(
         parent, "blocker-campaign", binary
     )
-    work = next(path for path in blocker_captures if path.name == "volicord-1-work-events.jsonl")
-    resume = next(path for path in blocker_captures if path.name == "volicord-1-resume-events.jsonl")
+    work = next(path for path in blocker_captures if path.name == "volicord-A-work-events.jsonl")
+    resume = next(path for path in blocker_captures if path.name == "volicord-A-resume-events.jsonl")
     broken = filtered_capture(work, parent / "missing-completions.jsonl", '"type":"mcp_tool_call_end"')
-    result = collect_work_fixture(blocker_root, "volicord", 1, broken)
+    result = collect_work_fixture(blocker_root, "volicord", "A", broken)
     assert result["outcome"] == "review_required"
     assert result["failure_attribution"] == {
         "domain": "behavior_contract",
@@ -1324,20 +1342,22 @@ def assert_blockers(parent: Path, binary: Path) -> None:
         "failed_checks": result["failed_checks"],
     }
     assert campaign.load_campaign(blocker_root)["terminal_outcome"] is None
-    assert campaign.load_campaign(blocker_root)["works"]["volicord-cycle-1"]["state"] == "work_collected"
+    assert campaign.load_campaign(blocker_root)["works"][
+        campaign.work_key("volicord", "A")
+    ]["state"] == "work_collected"
 
     activation_root, activation_captures, _activation_bundles = prepared_batch(
         parent, "activation-campaign", binary
     )
     activation_work = next(
-        path for path in activation_captures if path.name == "volicord-1-work-events.jsonl"
+        path for path in activation_captures if path.name == "volicord-A-work-events.jsonl"
     )
     missing = filtered_capture(
         activation_work,
         parent / "missing-activation.jsonl",
         harness.ACTIVATION_PREFIX,
     )
-    invalid = collect_work_fixture(activation_root, "volicord", 1, missing)
+    invalid = collect_work_fixture(activation_root, "volicord", "A", missing)
     assert invalid["outcome"] == "operator_environment_invalid"
     assert invalid["classification"] == "operator_environment_setup_failure"
     assert invalid["failure_attribution"] == {
@@ -1352,7 +1372,7 @@ def assert_blockers(parent: Path, binary: Path) -> None:
     evidence_work = next(
         path
         for path in evidence_captures
-        if path.name == "volicord-1-work-events.jsonl"
+        if path.name == "volicord-A-work-events.jsonl"
     )
     current_evidence_work = current_mcp_tool_call_capture(
         evidence_work,
@@ -1378,7 +1398,7 @@ def assert_blockers(parent: Path, binary: Path) -> None:
         encoding="utf-8",
     )
     evidence_result = collect_work_fixture(
-        evidence_root, "volicord", 1, malformed
+        evidence_root, "volicord", "A", malformed
     )
     assert evidence_result["outcome"] == "review_required"
     assert evidence_result["classification"] == "evidence_transport_failure"
@@ -1414,7 +1434,7 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
             descriptor, _work, _resume, _bundle = fixture_for(
                 parent / f"blind-recording-{label}-fixture",
                 "volicord",
-                1,
+                "A",
                 campaign_root=root,
             )
             descriptor.pop("_evidence_directory", None)
@@ -1422,7 +1442,7 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
             descriptor.pop("evidence", None)
             draft_path = parent / f"blind-recording-{label}-draft.json"
             campaign.write_json(draft_path, descriptor)
-            preparation = campaign.prepare_review(root, "volicord", 1, draft_path)
+            preparation = campaign.prepare_review(root, "volicord", "A", draft_path)
             provisional = copy.deepcopy(
                 descriptor["behavior_review"]["independent_review"]["provisional_review"]
             )
@@ -1437,10 +1457,10 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
                 preparation["review_slot_id"],
                 source,
             )
-            fixed = campaign.reviewer_provisional_path(root, "volicord", 1)
+            fixed = campaign.reviewer_provisional_path(root, "volicord", "A")
             assert fixed.read_bytes() == source.read_bytes()
             assert harness.sha256(fixed) == result["provisional_review_sha256"]
-            assert campaign.work_state(root, "volicord", 1)["state"] == "provisional_recorded"
+            assert campaign.work_state(root, "volicord", "A")["state"] == "provisional_recorded"
             results.append(result)
             recorded_paths.append(fixed)
     finally:
@@ -2384,7 +2404,7 @@ def assert_batch_failure_atomicity(parent: Path, binary: Path) -> None:
 
     # Semantic/lifecycle uncertainty is preserved as raw evidence, not rejected.
     root, captures, bundles = prepared_batch(parent, "batch-incomplete", binary)
-    work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
+    work = next(path for path in captures if path.name == "volicord-A-work-events.jsonl")
     events = [json.loads(line) for line in work.read_text().splitlines()]
     terminal = max(n for n, event in enumerate(events)
         if event.get("payload", {}).get("type") in {"task_complete", "task_completed"})
@@ -2405,7 +2425,11 @@ def assert_batch_failure_atomicity(parent: Path, binary: Path) -> None:
     assert campaign.load_campaign(root)["terminal_outcome"] is None
     manifest = campaign.load_evidence_set(root)
     assert len(manifest["raw_inputs"]) == 8
-    assert summary["works"][0]["work"]["turn_lifecycle"]["state"] == "terminal_incomplete"
+    incomplete = next(
+        item for item in summary["works"]
+        if item["work_slot_id"] == campaign.work_key("volicord", "A")
+    )
+    assert incomplete["sessions"]["start"]["turn_lifecycle"]["state"] == "terminal_incomplete"
     original = snapshot(root)
     try:
         campaign.collect_batch(root, captures, exporter=batch_exporter(bundles))
@@ -2419,7 +2443,7 @@ def assert_batch_failure_atomicity(parent: Path, binary: Path) -> None:
     original_copy = campaign.copy_exact
     def changed_copy(source, destination):
         original_copy(source, destination)
-        if destination.name == "work.rollout.jsonl":
+        if destination.name in {"work.rollout.jsonl", "start.rollout.jsonl"}:
             destination.write_bytes(destination.read_bytes() + b"\n")
     campaign.copy_exact = changed_copy
     try:
@@ -3131,18 +3155,19 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
 
 
 def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
-    descriptor, _work, resume, _bundle = fixture_for(parent, "volicord", 1)
+    descriptor, _work, resume, _bundle = fixture_for(parent, "volicord", "A")
     revision = harness.git_head(campaign.ROOT)
     assert revision is not None
+    capture = harness.load_codex_capture(resume)
+    project_id = campaign.observed_project_ids(capture)[0]
     state = {
         "repository_revision": revision,
         "repository_path": "/phase8/repository",
-        "project_id": "01" * 16,
+        "project_id": project_id,
         "work_session_id": "different-work-session",
     }
-    capture = harness.load_codex_capture(resume)
     assert len(capture.successful_calls("repository_analyze")) == 2
-    assert campaign.inspect_resume(capture, descriptor, state) == "01" * 16
+    assert campaign.inspect_resume(capture, descriptor, state) == project_id
 
     # Exercise the campaign's shared canonical observer through resume intake.
     def noncanonical_arguments(arguments: dict[str, object]) -> None:
@@ -3185,7 +3210,7 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
     )
     assert campaign.inspect_resume(
         harness.load_codex_capture(canonical_resume), descriptor, state
-    ) == "01" * 16
+    ) == project_id
 
     def rewritten(name: str, marker: str, old: str, new: str) -> Path:
         destination = parent / name
@@ -3205,7 +3230,7 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
         (
             "wrong-project-baseline.jsonl",
             "resume-baseline-call",
-            "01" * 16,
+            project_id,
             "ff" * 16,
         ),
         (
@@ -3308,7 +3333,7 @@ def assert_resume_baseline_identity_and_ordering(parent: Path) -> None:
     )
     completed_capture = harness.load_codex_capture(completed_read_only)
     assert not completed_capture.successful_calls("checkpoint_record")
-    assert campaign.inspect_resume(completed_capture, descriptor, state) == "01" * 16
+    assert campaign.inspect_resume(completed_capture, descriptor, state) == project_id
 
     for name, completed, include_verification in (
         ("completed-read-only-without-verification.jsonl", True, False),
@@ -3333,15 +3358,15 @@ def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -
     root, captures, bundles = prepared_batch(
         parent, "failed-document-campaign", binary
     )
-    work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
-    resume = next(path for path in captures if path.name == "volicord-1-resume-events.jsonl")
-    slot = campaign.work_state(root, "volicord", 1)["review_slot_id"]
+    work = next(path for path in captures if path.name == "volicord-A-work-events.jsonl")
+    resume = next(path for path in captures if path.name == "volicord-A-resume-events.jsonl")
+    slot = campaign.work_state(root, "volicord", "A")["review_slot_id"]
     bundle = bundles[slot]
-    assert collect_work_fixture(root, "volicord", 1, work)["outcome"] == "resume_allowed"
+    assert collect_work_fixture(root, "volicord", "A", work)["outcome"] == "resume_allowed"
     result = collect_resume_fixture(
         root,
         "volicord",
-        1,
+        "A",
         resume,
         exporter=exporter_from(bundle),
         documenter=failed_documenter,
@@ -3358,7 +3383,7 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
     prepare(root, parent / "superseded-sources", binary)
     campaign_state = campaign.load_campaign(root)
     current_candidate = campaign_state["candidate_head"]
-    state = campaign_state["works"]["volicord-cycle-1"]
+    state = campaign_state["works"][campaign.work_key("volicord", "A")]
     review_slot_id = state["review_slot_id"]
     missing = parent / "guard-input-does-not-exist.json"
     archive = parent / "guard-review.tar.gz"
@@ -3375,7 +3400,7 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         "prepare-document-realizations": lambda: campaign.document_realization.prepare(root, []),
         "record-document-realization": lambda: campaign.document_realization.record(root, "ab" * 16, missing),
         "prepare-review": lambda: campaign.prepare_review(
-            root, "volicord", 1, missing
+            root, "volicord", "A", missing
         ),
         "record-provisional-review": lambda: campaign.record_provisional_review(
             root, current_candidate, review_slot_id, missing
@@ -3383,11 +3408,11 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         "reveal-qualification-profile": lambda: campaign.reveal_qualification_profile(
             root, current_candidate
         ),
-        "seal-cycle": lambda: campaign.seal_work(root, "volicord", 1, missing),
-        "activate-cycle": lambda: campaign.activate_cycle(root, "volicord", 1),
+        "seal-work": lambda: campaign.seal_work(root, "volicord", "A", missing),
+        "activate-journey": lambda: campaign.activate_journey(root, "volicord"),
         "activate-all": lambda: campaign.activate_all(root),
-        "collect-work": lambda: collect_work_fixture(root, "volicord", 1, missing),
-        "collect-resume": lambda: collect_resume_fixture(root, "volicord", 1, missing),
+        "collect-work": lambda: collect_work_fixture(root, "volicord", "A", missing),
+        "collect-resume": lambda: collect_resume_fixture(root, "volicord", "A", missing),
         "collect-batch": lambda: campaign.collect_batch(root, []),
         "finalize-manifest": lambda: campaign.finalize_manifest(root),
 
@@ -3444,6 +3469,14 @@ def assert_journey_campaign_contract(parent: Path, binary: Path) -> None:
     else:
         raise AssertionError("activation accepted an incompletely frozen sequence")
     assert campaign.campaign_file(unsealed).read_bytes() == before
+    try:
+        campaign.reveal_qualification_profile(
+            unsealed, campaign.load_campaign(unsealed)["candidate_head"]
+        )
+    except campaign.CampaignError as error:
+        assert "all five provisional reviews" in str(error)
+    else:
+        raise AssertionError("qualification profile revealed before five fixed reviews")
 
     dependent, _start, _resume, _bundle = fixture_for(
         parent / "dependent-later-work-fixture",
@@ -3498,8 +3531,27 @@ def assert_journey_campaign_contract(parent: Path, binary: Path) -> None:
     run_sheet = (root / "operator/RUN-SHEET.md").read_text(encoding="utf-8")
     assert run_sheet.count("### Session `") == 8
     assert not any(item in run_sheet for item in campaign.MATERIALITY_OBLIGATIONS)
+    assert "evaluation_basis" not in run_sheet
+    fixed_review = campaign.reviewer_provisional_path(root, "volicord", "A")
+    fixed_bytes = fixed_review.read_bytes()
+    sealed_descriptor = campaign.read_json(
+        campaign.evaluator_descriptor_path(root, "volicord", "A")
+    )
+    assert sealed_descriptor["behavior_review"]["independent_review"][
+        "provisional_review"
+    ] == campaign.read_json(fixed_review)
+    fixed_review.write_bytes(fixed_bytes + b"\n")
+    try:
+        campaign.verify_inventory(root)
+    except campaign.CampaignError as error:
+        assert "hash mismatch" in str(error)
+    else:
+        raise AssertionError("fixed provisional review mutation passed inventory")
+    finally:
+        fixed_review.write_bytes(fixed_bytes)
+    campaign.verify_inventory(root)
 
-    rollback_root, rollback_captures, _rollback_bundles = prepared_batch(
+    rollback_root, rollback_captures, rollback_bundles = prepared_batch(
         parent, "journey-collection-rollback", binary
     )
     rollback_before = {
@@ -3525,6 +3577,58 @@ def assert_journey_campaign_contract(parent: Path, binary: Path) -> None:
         for path in rollback_root.rglob("*") if path.is_file()
     }
     assert not (rollback_root / "batch-publication.json").exists()
+
+    def rewrite_bundle_identity(source: Path, old: str, new: str) -> bytes:
+        original = source.read_bytes()
+        value = json.loads(original)
+        encoded = json.dumps(value, separators=(",", ":")).replace(old, new)
+        value = json.loads(encoded)
+        value["checksum"] = hashlib.sha256(
+            json.dumps(
+                value["payload"], ensure_ascii=False, separators=(",", ":")
+            ).encode()
+        ).hexdigest()
+        campaign.write_json(source, value)
+        return original
+
+    identity_mutations = (
+        (
+            "duplicate-missing-volicord-work",
+            "volicord",
+            "B",
+            hashlib.sha256(b"work:volicord:B").hexdigest()[:32],
+            hashlib.sha256(b"work:volicord:A").hexdigest()[:32],
+        ),
+        (
+            "cross-journey-project",
+            "small-python",
+            "A",
+            hashlib.sha256(b"project:small-python").hexdigest()[:32],
+            hashlib.sha256(b"project:volicord").hexdigest()[:32],
+        ),
+    )
+    for label, kind, work, old_identity, new_identity in identity_mutations:
+        slot = campaign.work_state(rollback_root, kind, work)["review_slot_id"]
+        bundle = rollback_bundles[slot]
+        original = rewrite_bundle_identity(bundle, old_identity, new_identity)
+        try:
+            campaign.collect_batch(
+                rollback_root,
+                rollback_captures,
+                exporter=batch_exporter(rollback_bundles),
+                documenter=documenter,
+                snapshotter=snapshotter,
+            )
+        except campaign.CampaignError:
+            pass
+        else:
+            raise AssertionError(f"journey collection accepted {label}")
+        finally:
+            bundle.write_bytes(original)
+        assert rollback_before == {
+            path.relative_to(rollback_root).as_posix(): path.read_bytes()
+            for path in rollback_root.rglob("*") if path.is_file()
+        }
 
     mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
     assert set(mapped) == set(harness.current_session_slots())
@@ -3646,10 +3750,23 @@ def main() -> int:
             parent = Path(temporary)
             binary = parent / "candidate/bin/volicord"
             write_fake_binary(binary)
+            assert all(
+                status in {"A", "B", "C"} and owner
+                for status, owner in PREDECESSOR_INVARIANT_COVERAGE.values()
+            )
             assert_session_start_ordering(parent)
+            assert_production_session_start(parent, binary)
+            assert_activation_failure_attribution(parent, binary)
+            assert_same_path_candidate_replacement_rejected(parent, binary)
             assert_strict_cli_contract(parent, binary)
             assert_default_document_process_evidence(parent, binary)
             assert_opaque_slot_preparation(parent, binary)
+            assert_blind_recording_non_oracle(parent, binary)
+            assert_blockers(parent, binary)
+            assert_batch_failure_atomicity(parent, binary)
+            assert_failed_document_kind_is_machine_failure(parent, binary)
+            assert_resume_baseline_identity_and_ordering(parent)
+            assert_superseded_candidate_mutation_guard(parent, binary)
             assert_journey_campaign_contract(parent, binary)
             assert_historical_campaign_is_inspection_only(parent, binary)
     finally:
@@ -3658,6 +3775,15 @@ def main() -> int:
         "status": "passed",
         "checks": [
             "three_journeys_five_works_three_resume_pairs_eight_sessions",
+            "predecessor_integrity_invariant_inventory_A_subsumed_B_ported_C_superseded",
+            "production_session_start_across_eight_current_session_slots",
+            "activation_environment_evidence_validation_internal_attribution",
+            "same_path_and_superseded_candidate_mutation_guards",
+            "blind_review_non_oracle_and_five_review_reveal_boundary",
+            "seal_work_provenance_and_fixed_review_immutability",
+            "early_blockers_preserve_truthful_non_success",
+            "failed_required_document_is_machine_failure",
+            "three_resume_pair_identity_plus_baseline_ordering_regression",
             "independent_overlapping_materiality_obligation_coverage",
             "five_opaque_reviews_and_profile_blindness",
             "complete_task_freeze_before_journey_activation",
@@ -3665,11 +3791,13 @@ def main() -> int:
             "shared_volicord_workspace_runtime_and_isolated_other_journeys",
             "eight_entry_leak_free_operator_run_sheet",
             "unordered_eight_capture_mapping_and_global_session_distinctness",
+            "wrong_project_duplicate_missing_work_and_cross_journey_contamination_rejected",
             "same_work_resume_project_and_work_identity",
             "same_project_distinct_volicord_work_identities",
             "cross_journey_project_isolation",
             "immutable_session_slot_manifest_and_raw_hash_binding",
             "collection_failure_rollback_and_post_publication_raw_immutability",
+            "batch_publication_failure_atomicity_and_read_barrier",
             "journey_final_document_realization_inventory",
             "historical_cycle_schema_identity_inventory_inspection_only",
             "resume_frontier_and_long_lived_project_regressions",

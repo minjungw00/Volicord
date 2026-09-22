@@ -39,6 +39,13 @@ PUBLIC_CAMPAIGN_CONTRACTS = (
 )
 PUBLIC_CAMPAIGN_CONTRACT_START = "<!-- phase8-public-campaign-contract:start -->"
 PUBLIC_CAMPAIGN_CONTRACT_END = "<!-- phase8-public-campaign-contract:end -->"
+ACTIVE_OPERATIONS_START = "<!-- phase8-active-operations:start -->"
+ACTIVE_OPERATIONS_END = "<!-- phase8-active-operations:end -->"
+ACTIVE_OPERATION_CONTRACTS = (
+    ROOT / "rebuild/validation/README.md",
+    ROOT / "rebuild/validation/phase-8-summary.md",
+    ROOT / "rebuild/validation/dogfood/report.md",
+)
 
 
 def require_semantic_clauses(
@@ -428,6 +435,64 @@ def assert_public_campaign_contract_regressions(expected: dict[str, str]) -> Non
     )
 
 
+def active_operations(text: str, source: str) -> str:
+    if text.count(ACTIVE_OPERATIONS_START) != 1 or text.count(ACTIVE_OPERATIONS_END) != 1:
+        raise AssertionError(f"{source} must contain one active-operation boundary")
+    start = text.index(ACTIVE_OPERATIONS_START) + len(ACTIVE_OPERATIONS_START)
+    end = text.index(ACTIVE_OPERATIONS_END, start)
+    return text[start:end]
+
+
+def validate_active_operations(text: str, source: str) -> None:
+    active = active_operations(text, source)
+    retired = {
+        "seal-cycle": r"\bseal-cycle\b",
+        "activate-cycle": r"\bactivate-cycle\b",
+        "eight provisional reviews": r"\b(?:all\s+)?(?:eight|8)\s+provisional\s+reviews\b",
+        "provisional_count = 8": r"provisional_count\s*=\s*8",
+        "sixteen raw rollouts": r"\b(?:all\s+)?(?:sixteen|16)\s+(?:raw\s+)?rollouts\b",
+        "sixteen collect-batch files": r"\bexactly\s+(?:sixteen|16)\s+files\b",
+        "3/3/2 cycle distribution": r"\b3\s*/\s*3\s*/\s*2\b",
+        "mandatory work+resume": r"\b(?:every|each|all)\s+Work.{0,80}\b(?:work\s*\+\s*resume|resume\s+session)\b",
+    }
+    for label, pattern in retired.items():
+        if re.search(pattern, active, flags=re.IGNORECASE | re.DOTALL):
+            raise AssertionError(f"{source} active operations contain retired {label}")
+    required = (
+        "five",
+        "eight",
+        "seal-work",
+        "collect-batch",
+        "current clean",
+        "exact-candidate",
+    )
+    require_semantic_terms(active, f"{source} active operations", required)
+
+
+def assert_active_operations_regressions() -> None:
+    current = active_operations(
+        ACTIVE_OPERATION_CONTRACTS[0].read_text(encoding="utf-8"), "current-control"
+    )
+    for retired in (
+        "Run seal-cycle after all eight provisional reviews.",
+        "Require provisional_count = 8.",
+        "Pass exactly sixteen files to collect-batch.",
+    ):
+        mutated = f"{ACTIVE_OPERATIONS_START}\n{current}\n{retired}\n{ACTIVE_OPERATIONS_END}"
+        try:
+            validate_active_operations(mutated, "controlled-retired-mutation")
+        except AssertionError as error:
+            if "retired" not in str(error):
+                raise
+        else:
+            raise AssertionError(f"active procedure accepted retired mutation: {retired}")
+    historical = (
+        "Historical evidence: seal-cycle used provisional_count = 8 and exactly sixteen files.\n"
+        f"{ACTIVE_OPERATIONS_START}\n{current}\n{ACTIVE_OPERATIONS_END}"
+    )
+    validate_active_operations(historical, "historical-prose-control")
+
+
 def main() -> int:
     source = HARNESS.read_text(encoding="utf-8")
     campaign_source = CAMPAIGN.read_text(encoding="utf-8")
@@ -441,6 +506,9 @@ def main() -> int:
     operations_source = OPERATIONS.read_text(encoding="utf-8")
     definition = DEFINITION.read_text(encoding="utf-8")
     definition_value = json.loads(definition)
+    for path in ACTIVE_OPERATION_CONTRACTS:
+        validate_active_operations(path.read_text(encoding="utf-8"), str(path))
+    assert_active_operations_regressions()
     validate_evaluation_consumer_integration(source, campaign_source)
     for stale_consumer, consumer_source in {
         "machine evaluation": machine_source,
