@@ -684,7 +684,7 @@
       "id": "v12-current-codex-mcp-completion",
       "validation_id": "V12",
       "path": "rebuild/validation/dogfood/fixtures",
-      "purpose": "Exercise bounded Codex Extension command, patch, turn interruption/recovery, direct and content-wrapped MCP completion evidence without evaluating JavaScript. Include sanitized independent multi-item durability authority counterfactuals and criterion-specific Viewer/document qualitative-review cases without Question, answer, or keyword-verdict oracles.",
+      "purpose": "Exercise bounded Codex Extension command, patch, turn interruption/recovery, direct and content-wrapped MCP completion evidence without evaluating JavaScript. Include sanitized independent multi-item durability authority counterfactuals, deterministic multi-Work support explicitly separated from naturalistic evidence, and criterion-specific Viewer/document qualitative-review cases without Question, answer, or keyword-verdict oracles.",
       "expected_entities": [
         "codex-session",
         "command-observation",
@@ -707,7 +707,7 @@
         "Codex-version dispatch or unsupported completion shapes",
         "JavaScript execution or wrapper-output success inference"
       ],
-      "content_sha256": "77a5214b483fe840876ff4147a91f69e23d79dad7e923b553fa86b4c8c029618",
+      "content_sha256": "5553f89faa2bc5066f21764ffd92ab304a26a671dfe22bc94ab3bd908f5327b7",
       "origin": "Sanitized self-authored representatives derived from observed current Phase 8 Codex Extension execution and completion envelopes.",
       "license": "CC0-1.0"
     },
