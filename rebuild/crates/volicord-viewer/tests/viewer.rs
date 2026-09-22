@@ -390,6 +390,12 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
         .expect("record inspection disclosure");
     let checkpoints = page.html.find("id=\"checkpoints\"").expect("checkpoints");
     let repository = page.html.find("id=\"repository-map\"").expect("repository");
+    let privacy = page.html.find("id=\"privacy\"").expect("privacy");
+    let documents = page.html.find("id=\"documents\"").expect("documents");
+    let memory = page
+        .html
+        .find("<details class=\"memory-administration\"")
+        .expect("memory administration");
     assert!(
         understanding < inspection
             && inspection < health
@@ -397,6 +403,9 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
             && overview < decisions
             && decisions < checkpoints
             && checkpoints < repository
+            && repository < privacy
+            && privacy < documents
+            && documents < memory
     );
     assert!(page
         .html
@@ -450,11 +459,17 @@ fn korean_fixed_text_and_all_explanation_levels_are_available() {
             .expect("render Korean viewer");
         assert!(page.html.starts_with("<!doctype html><html lang=\"ko\">"));
         assert!(page.html.contains("프로젝트 개요"));
+        assert!(page.html.contains("현재 상태와 다음 작업"));
+        assert!(page.html.contains("상태별 작업"));
         assert!(page.html.contains("저장소 지도"));
         assert!(page.html.contains("문서 미리보기 / 내보내기"));
         assert!(page.html.contains("HTML 언어 태그"));
         assert!(page.html.contains("<dd>ko</dd>"));
         assert!(page.html.contains("사용 가능한 기능"));
+        assert!(page
+            .html
+            .contains("상태, 기능, 프로젝트 기록 및 감사 상세 확인"));
+        assert!(page.html.contains("기억 관리 — 기록 수정, 대체 또는 삭제"));
         assert!(page
             .html
             .contains("기본 제공 한국어 화면 문구로 표시됩니다"));
@@ -1055,6 +1070,8 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         "Audit-first console [audit-first]: audit records remain the primary reading path"
     ));
     assert!(page.html.contains(&decision.id.to_string()));
+    assert!(page.html.contains("data-decision-scope=\"unresolved\""));
+    assert!(page.html.contains("scope not yet assigned"));
     let administration = page
         .html
         .find("<details class=\"memory-administration\"")
@@ -1062,7 +1079,29 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
     let first_memory_form = page.html.find("action=\"/memory/").expect("memory form");
     assert!(administration < first_memory_form);
     assert!(page.html.contains("data-administration=\"memory\""));
-    assert!(page.html.contains("action=\"/memory/decision/supersede\""));
+    let memory = section_html(&page.html, "memory-actions");
+    assert!(memory.contains("action=\"/memory/context/correct\""));
+    assert!(memory.contains("action=\"/memory/decision/correct\""));
+    assert!(memory.contains("action=\"/memory/decision/supersede\""));
+    assert!(memory.contains("action=\"/memory/forget\""));
+    assert!(memory.contains(&format!("name=\"record_id\" value=\"{}\"", context.id)));
+    assert!(memory.contains(&format!("name=\"record_id\" value=\"{}\"", decision.id)));
+    assert!(memory.contains(&format!(
+        "name=\"expected_revision\" value=\"{}\"",
+        context.revision
+    )));
+    let after_render = viewer
+        .operations()
+        .canonical_basis(project)
+        .expect("canonical basis after rendering Memory controls");
+    assert!(after_render
+        .context_items
+        .iter()
+        .any(|item| item.id == context.id));
+    assert!(after_render
+        .active_decisions
+        .iter()
+        .any(|item| item.decision.id == decision.id));
     assert!(page.html.contains("cargo test -p volicord-viewer"));
     assert!(page.html.contains("viewer tests passed"));
     assert!(page.html.contains("structured cockpit rendered"));
