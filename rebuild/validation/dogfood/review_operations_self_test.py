@@ -349,19 +349,23 @@ class WorkflowTests(unittest.TestCase):
         evidence_hash = ops.digest((self.root / "evidence-set.json").read_bytes())
         observation = {
             "kind": "dogfood_human_observations",
-            "schema_version": 2,
+            "schema_version": 3,
             "candidate_head": c.load_evidence_set(self.root)["candidate_head"],
             "evidence_set_sha256": evidence_hash,
             "observer": q.reviewer("human", "b" * 32),
             "observations": [
-                {"sample_id": "volicord-1", "locale": "en",
+                {"sample_id": "volicord-1", "surface": "live_viewer_observation", "locale": "en",
                  "control": {"action": "direct", "reference_locale": None},
                  "response": {"observation": "The view states that auth.json content is not retained.",
                     "limits": "Private prompt bodies were excluded from inspection."}},
-                {"sample_id": "volicord-1", "locale": "ko",
+                {"sample_id": "volicord-1", "surface": "live_viewer_observation", "locale": "ko",
                  "control": {"action": "direct", "reference_locale": None},
                  "response": {"observation": "Bearer token terminology is visible as security guidance.",
                     "limits": "The api_key field name is documentation, not a retained value."}},
+                {"sample_id": "volicord-1", "surface": "long_lived_project_observation", "locale": None,
+                 "control": {"action": "direct", "reference_locale": None},
+                 "response": {"observation": "One Project retained two distinct Work Items across fresh sessions.",
+                    "limits": "Only the directly observed candidate journey is covered."}},
             ],
         }
         source = self.parent / (self._testMethodName + "-benign.json")
@@ -381,8 +385,9 @@ class WorkflowTests(unittest.TestCase):
     def test_conversational_human_observations_bind_candidate_and_receipt(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
         answers = iter([
-            "OBSERVATION:\nKeyboard focus and narrow layout were personally inspected in the English Viewer.\n\nA second paragraph remains one answer.\nLIMITS:\nScreen reader output and other pages were not inspected.",
+            "OBSERVATION:\nKeyboard focus, narrow layout, input response and resulting paint were personally inspected in the English Viewer.\n\nA second paragraph remains one answer.\nLIMITS:\nScreen reader output and other pages were not inspected.",
             "SAME AS ENGLISH",
+            "OBSERVATION:\nThe same Project retained distinct Alpha and Beta Work identities across fresh sessions, including their separate state and history.\nLIMITS:\nOnly the observed candidate Project and sessions were inspected.",
         ])
         result = human_review.capture_viewer_observations(
             self.root, observation_root, input_fn=answers.__next__, output_fn=lambda _text: None,
@@ -397,6 +402,9 @@ class WorkflowTests(unittest.TestCase):
         live = [entry for entry in preparation["index"]["evidence"].values()
                 if entry["surface"] == "live_viewer_observation"]
         self.assertEqual({entry["locale"] for entry in live}, {"en", "ko"})
+        long_lived = [entry for entry in preparation["index"]["evidence"].values()
+                      if entry["surface"] == "long_lived_project_observation"]
+        self.assertEqual(len(long_lived), 1)
         self.assertEqual(preparation["binding"]["candidate_head"], result["candidate_head"])
         captured = json.loads((observation_root / "observations.json").read_bytes())
         self.assertEqual(captured["observations"][1]["control"],

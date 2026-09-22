@@ -103,6 +103,12 @@ class ContractTests(unittest.TestCase):
             ["viewer_navigation_machine"])
         self.assertIn("browser input latency",
             p["rubric"]["criterion_prompts"]["navigation_responsiveness"])
+        self.assertIn("browser_input_and_paint_responsiveness",
+            p["rubric"]["criteria"]["live_viewer"])
+        self.assertEqual(p["rubric"]["criteria"]["long_lived_project"],
+            ["one_project_multiple_work_across_fresh_sessions"])
+        self.assertEqual(p["rubric"]["required_surfaces"]["long_lived_project"],
+            ["long_lived_project_observation"])
         self.assertNotEqual(
             p["rubric"]["criterion_observations"]["diagram_usefulness"],
             p["rubric"]["criterion_observations"]["diagram_structural_readability"])

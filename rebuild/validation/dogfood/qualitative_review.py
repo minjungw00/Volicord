@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
@@ -37,7 +37,9 @@ CRITERIA = {
     "cli": ["discover_with_cli_help", "status_without_project_id", "analyze_without_project_id",
         "recall_without_project_id", "documents_without_project_id", "export_without_project_id",
         "doctor_without_project_id"],
-    "live_viewer": ["keyboard_reachability", "visible_focus", "not_color_only", "narrow_and_zoomed_presentation"],
+    "live_viewer": ["keyboard_reachability", "visible_focus", "not_color_only", "narrow_and_zoomed_presentation",
+        "browser_input_and_paint_responsiveness"],
+    "long_lived_project": ["one_project_multiple_work_across_fresh_sessions"],
     "context_recovery": ["goal_decision_rationale_state_and_open_questions"],
 }
 SURFACES = {
@@ -45,6 +47,7 @@ SURFACES = {
     "viewer_snapshot": ["viewer_snapshot"], "repository_intelligence": ["work_capture"],
     "viewer_navigation": ["viewer_navigation_machine"],
     "cli": ["cli_observation"], "live_viewer": ["live_viewer_observation"],
+    "long_lived_project": ["long_lived_project_observation"],
     "context_recovery": ["work_capture", "resume_capture", "canonical_bundle"],
     "authority": ["work_capture"],
 }
@@ -55,7 +58,8 @@ GROUP_PROMPTS = {
     "viewer_navigation": "Assess candidate-bound Viewer request responsiveness from retained monotonic machine evidence and its declared scope. Snapshot export duration is a bounded request proxy, not browser interaction latency; do not substitute human stopwatch prose or claim unmeasured live navigation timing.",
     "repository_intelligence": "Assess useful navigation and analysis for actual work, honest source snapshot/coverage/freshness/uncertainty, semantic value beyond structure, and language/component boundaries and flows in polyglot work. Unsupported or unavailable capabilities must remain visible.",
     "cli": "Inspect observed help discovery and representative repository-relative tasks without opaque Project IDs. Assess readable outcomes and next actions. Captured invocation is evidence of a surface, not proof that every CLI task was usable.",
-    "live_viewer": "Assess actual observed keyboard reachability, visible focus, non-color-only meaning and narrow/zoom presentation in both en and ko. Static markup cannot establish live interaction; use insufficient_evidence if the needed observation is absent.",
+    "live_viewer": "Assess actual observed keyboard reachability, visible focus, non-color-only meaning, narrow/zoom presentation and browser input/paint responsiveness in both en and ko. Static markup and snapshot-export timing cannot establish live interaction; use insufficient_evidence if the needed observation is absent.",
+    "long_lived_project": "Assess a real candidate-bound journey in which one Project retains multiple distinct Work Items across fresh sessions. The deterministic multi-Work fixture proves only implementation mechanics and cannot satisfy this naturalistic criterion.",
     "context_recovery": "Compare work with fresh resume: recover goal, applicable Decisions and rationale, current/completed/remaining state and open questions accurately without repeating answered judgments. A later repair does not make an earlier false completion claim truthful.",
 }
 CRITERION_PROMPTS = {
@@ -69,6 +73,8 @@ CRITERION_PROMPTS = {
     "diagram_structural_readability": "Inspect diagram node labels, edge direction, grouping, crossings and topology at the rendered size. This is separate from whether a diagram exists or is grounded.",
     "information_hierarchy_and_cognitive_burden": "Inspect one bounded reading path: prioritization, grouping, progressive disclosure and the effort required to identify purpose, current work, state and next action. Do not replace these dimensions with a global aesthetic score.",
     "navigation_responsiveness": "Inspect the candidate-bound monotonic Viewer request duration, completion state and measurement scope. Treat missing timing as insufficient evidence and snapshot-export timing as a limited proxy, never as measured browser input latency.",
+    "browser_input_and_paint_responsiveness": "Inspect direct live-browser observation of input response and resulting paint in the named locale. Snapshot generation, request completion and server/export duration are not browser input or paint measurements.",
+    "one_project_multiple_work_across_fresh_sessions": "Inspect one real Project across fresh sessions and verify that at least two distinct Work Items retain stable identity, state and history. A static or deterministic fixture is supporting regression coverage only.",
     "usefulness": "Inspect each document's primary user-facing semantic sections for readable project meaning and handoff value. A digest, byte count, bounded-source placeholder, audit appendix or valid artifact hash is not meaningful primary content.",
     "fidelity": "Compare the Decision Report and other affected documents with canonical Decision meaning. Explicitly distinguish user choice, recommended alternative, user rationale, recommendation rationale and alternative-specific consequences.",
 }
@@ -83,6 +89,8 @@ CRITERION_OBSERVATIONS = {
     "diagram_structural_readability": ["node_labels", "edge_direction", "grouping_and_topology", "rendered_legibility"],
     "information_hierarchy_and_cognitive_burden": ["purpose_and_current_work_priority", "scan_path", "progressive_disclosure", "bounded_cognitive_burden"],
     "navigation_responsiveness": ["candidate_bound_machine_timing", "request_completion", "measurement_scope", "proxy_limit"],
+    "browser_input_and_paint_responsiveness": ["live_browser_input", "resulting_paint", "locale", "observation_limits"],
+    "one_project_multiple_work_across_fresh_sessions": ["one_project_identity", "distinct_work_identities", "fresh_sessions", "retained_work_state_and_history"],
     "usefulness": ["primary_semantic_content", "readability", "handoff_value", "placeholder_or_audit_only_check"],
     "fidelity": ["user_choice", "recommended_alternative", "user_rationale", "recommendation_rationale", "alternative_specific_consequences"],
 }
@@ -159,7 +167,7 @@ def criterion_specs(index, policy):
             if group == "cli":
                 continue
             names = policy["criteria"][group]
-            if group == "live_viewer" and sample_id != index["live_viewer_sample"]:
+            if group in {"live_viewer", "long_lived_project"} and sample_id != index["live_viewer_sample"]:
                 continue
             names = list(names)
             if group == "interaction":
@@ -182,7 +190,7 @@ def criterion_specs(index, policy):
 
 
 def human_only(spec):
-    return spec["group"] == "live_viewer" or (
+    return spec["group"] in {"live_viewer", "long_lived_project"} or (
         spec["group"] == "interaction"
         and spec["name"] == "decision_comprehension_when_applicable"
     )

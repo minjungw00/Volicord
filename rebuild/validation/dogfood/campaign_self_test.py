@@ -1048,6 +1048,17 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     assert memory["measurement"]["sample_count"] == 0
     assert memory["technical_gate_rss_evidence"] == "retained_separately_not_relabelled_naturalistic"
     assert all(value is False for value in memory["privacy"].values())
+    obligations = state["live_evidence_obligations"]
+    assert obligations["long_lived_project"] == {
+        "status": "required_live_observation",
+        "scope": "one_candidate_bound_project_multiple_distinct_work_items_across_fresh_sessions",
+        "deterministic_fixture": "supporting_regression_only_not_qualification_evidence",
+        "required_surface": "long_lived_project_observation",
+    }
+    assert obligations["viewer_performance"]["browser_input_and_paint"] \
+        == "unmeasured_until_direct_live_observation"
+    assert obligations["viewer_performance"]["proxy_may_be_relabelled_browser_latency"] is False
+    assert obligations["naturalistic_resource"] == memory
     slots = [item["review_slot_id"] for item in state["cycles"].values()]
     assert len(slots) == len(set(slots)) == campaign.QUALIFICATION_CYCLE_COUNT
     assert all(campaign.REVIEW_SLOT_ID.fullmatch(slot) for slot in slots)
@@ -2890,10 +2901,14 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         }
         snapshot = campaign.read_json(cycle_path / "viewer-snapshot-summary.json")
         assert snapshot["status"] == "passed"
-        assert snapshot["schema_version"] == 2
+        assert snapshot["schema_version"] == 3
         assert snapshot["navigation_responsiveness"]["duration_ms"] >= 0
         assert snapshot["navigation_responsiveness"]["request_completed"] is True
         assert "not browser" in snapshot["navigation_responsiveness"]["scope"]
+        assert snapshot["navigation_responsiveness"]["measured"] == [
+            "snapshot_export_request_completion", "snapshot_export_request_duration"]
+        assert snapshot["navigation_responsiveness"]["unmeasured"] == [
+            "browser_input_latency", "browser_paint_latency"]
         assert snapshot["project_id"] == "01" * 16
         assert snapshot["candidate_head"] == harness.git_head(campaign.ROOT)
         raw_source = next(

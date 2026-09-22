@@ -94,38 +94,63 @@ def _write_create_only(path, data):
         Path(temporary).unlink(missing_ok=True)
 
 
+def _live_observation_requests():
+    return [
+        {
+            "surface": "live_viewer_observation",
+            "locale": locale,
+            "prompt": (
+                f"For locale {locale}, describe what you personally observed for keyboard/focus/color/zoom "
+                "and live browser input/paint responsiveness, plus its limits, using OBSERVATION: and "
+                "LIMITS: sections. Type SAME AS ENGLISH for an exact locale reference."
+            ),
+        }
+        for locale in ("en", "ko")
+    ] + [{
+        "surface": "long_lived_project_observation",
+        "locale": None,
+        "prompt": (
+            "For one real candidate-bound Project used across fresh sessions, describe the stable Project "
+            "identity, at least two distinct Work identities, their retained state/history, and the limits "
+            "of what you personally observed, using OBSERVATION: and LIMITS: sections. A deterministic "
+            "fixture is not this observation."
+        ),
+    }]
+
+
 def capture_viewer_observations(campaign_root, output, *, input_fn=input, output_fn=print,
                                 run_id=None):
-    """Capture the two current live Viewer observations without schema authoring."""
+    """Capture required direct live Viewer and long-lived Project observations."""
     ops, campaign = _ops(), _campaign()
     root, output = campaign_root.resolve(), output.absolute()
     manifest = campaign.load_evidence_set(root)
     evidence_hash = ops.digest(ops.bounded_read(root / "evidence-set.json"))
     observer = review.reviewer("human", run_id or secrets.token_hex(16))
     observations, answer_trace = [], []
-    for locale in ("en", "ko"):
+    for request in _live_observation_requests():
+        surface, locale = request["surface"], request["locale"]
         trace = []
-        answer = _ask_multiline(
-            f"For locale {locale}, describe what you personally observed and its limits using "
-            "OBSERVATION: and LIMITS: sections. Type SAME AS ENGLISH for an exact locale reference.",
-            input_fn, output_fn, trace)
-        if locale == "ko" and answer.casefold() == "same as english":
-            observations.append({"sample_id": "volicord-1", "locale": locale,
+        answer = _ask_multiline(request["prompt"], input_fn, output_fn, trace)
+        if surface == "live_viewer_observation" and locale == "ko" \
+                and answer.casefold() == "same as english":
+            observations.append({"sample_id": "volicord-1", "surface": surface,
+                "locale": locale,
                 "control": {"action": "same_as_locale", "reference_locale": "en"},
                 "response": None})
         else:
             observation, limits = _split_observation_and_limits(answer)
-            observations.append({"sample_id": "volicord-1", "locale": locale,
+            observations.append({"sample_id": "volicord-1", "surface": surface,
+                "locale": locale,
                 "control": {"action": "direct", "reference_locale": None},
                 "response": {"observation": observation, "limits": limits}})
-        answer_trace.append({"locale": locale, "turns": trace})
+        answer_trace.append({"surface": surface, "locale": locale, "turns": trace})
     value = {"kind": "dogfood_human_observations",
-        "schema_version": 2,
+        "schema_version": 3,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer": observer, "observations": observations}
     data = ops.encoded(value)
     ops.require_review_artifact_safe(data, "human observations contain sensitive payload")
-    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 2,
+    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 3,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer_run_id": observer["run_id"], "observations_sha256": ops.digest(data),
         "answer_trace": answer_trace}
@@ -148,17 +173,18 @@ def load_viewer_observations(path):
     data = ops.bounded_read(path / "observations.json")
     receipt = json.loads(ops.bounded_read(path / "receipt.json"))
     value = json.loads(data)
+    requests = {(item["surface"], item["locale"]): item for item in _live_observation_requests()}
     expected_trace = []
     for item in value.get("observations", []):
-        locale = item.get("locale")
-        expected_trace.append({"locale": locale, "turns": [
-            {"prompt": f"For locale {locale}, describe what you personally observed and its limits using "
-             "OBSERVATION: and LIMITS: sections. Type SAME AS ENGLISH for an exact locale reference.",
+        surface, locale = item.get("surface"), item.get("locale")
+        request = requests.get((surface, locale), {"prompt": ""})
+        expected_trace.append({"surface": surface, "locale": locale, "turns": [
+            {"prompt": request["prompt"],
              "answer": ("SAME AS ENGLISH" if item.get("control", {}).get("action") == "same_as_locale"
                 else "OBSERVATION:\n" + item.get("response", {}).get("observation", "")
                 + "\nLIMITS:\n" + item.get("response", {}).get("limits", ""))},
         ]})
-    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 2,
+    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 3,
         "candidate_head": value.get("candidate_head"),
         "evidence_set_sha256": value.get("evidence_set_sha256"),
         "observer_run_id": value.get("observer", {}).get("run_id"),

@@ -9,14 +9,15 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-3"
+REVISION = "replacement-qualification-4"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
-HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable"}
+HUMAN_CRITERIA = {"live_viewer/*", "long_lived_project/*",
+    "interaction/decision_comprehension_when_applicable"}
 
 
 def contract():
     return {"revision": REVISION, "human_required": sorted(HUMAN_CRITERIA),
-        "human_rationale": "Live accessibility and the user's Decision comprehension require direct human observation.",
+        "human_rationale": "Live accessibility, browser input/paint responsiveness, long-lived multi-Work continuity and the user's Decision comprehension require direct human observation.",
         "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
         "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
         "insufficient": "Unresolved; high-impact authority/context recovery insufficiency escalates to human.",
@@ -34,7 +35,7 @@ def identity():
 
 
 def human_required(spec):
-    return spec["group"] == "live_viewer" or (spec["group"] == "interaction"
+    return spec["group"] in {"live_viewer", "long_lived_project"} or (spec["group"] == "interaction"
         and spec["name"] == "decision_comprehension_when_applicable")
 
 
@@ -42,7 +43,37 @@ def finding_id(cycle, number):
     return f"{cycle['repository_class']}-{cycle['cycle']}/{cycle['findings'][number]['check']}"
 
 
-def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid"):
+def _criterion_state(result, marker):
+    qualitative = result["qualitative_review"]
+    if any(marker in value for value in qualitative["violated_criteria"]):
+        return "violated"
+    if any(marker in value for value in qualitative["resolved_criteria"]):
+        return "satisfied"
+    return "unresolved"
+
+
+def naturalistic_summary(result, memory=None):
+    resource = memory if memory is not None else {
+        "kind": "dogfood_naturalistic_mcp_memory_evidence",
+        "schema_version": 1,
+        "status": "not_provided",
+    }
+    return {
+        "long_lived_project": {
+            "state": _criterion_state(result, "/long_lived_project/"),
+            "evidence_class": "direct_human_observation_of_naturalistic_journey",
+            "deterministic_fixture": "supporting_regression_only",
+        },
+        "live_browser_input_and_paint": {
+            "state": _criterion_state(result, "/browser_input_and_paint_responsiveness"),
+            "snapshot_export_proxy_may_substitute": False,
+        },
+        "naturalistic_resource": resource,
+    }
+
+
+def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
+            naturalistic_resource=None):
     """Inputs have been identity/hash validated by the file boundary below.
 
     Every required criterion remains explicit, including those with no review.
@@ -101,13 +132,15 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid")
     complete = not unresolved and not unresolved_findings and not violated
     blocked = evidence_validity != "valid" or bool(hard) or technical["state"] in {"failed", "candidate_mismatch", "invalid"} or bool(violated)
     status = "blocked" if blocked else "qualified" if complete and technical["state"] == "passed" else "unresolved"
-    return {"evidence_validity": evidence_validity, "technical_gate": technical,
+    result = {"evidence_validity": evidence_validity, "technical_gate": technical,
         "machine_summary": {"counts": dict(sorted(Counter(f["disposition"] for f in findings.values()).items())),
             "hard_findings": hard, "unresolved_findings": sorted(unresolved_findings)},
         "qualitative_review": {"state": "complete" if complete else "incomplete", "resolved_criteria": resolved,
             "violated_criteria": violated, "unresolved_criteria": unresolved, "human_escalations": escalated},
         "operator_approval": {"state": "not_provided"}, "replacement_qualification": status,
         "replacement_pass_candidate": status == "qualified", "phase_9_ready": False}
+    result["naturalistic_evidence"] = naturalistic_summary(result, naturalistic_resource)
+    return result
 
 
 def verify_technical(candidate, capsule_path, archive_path):
@@ -178,7 +211,8 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
         "evidence_set": evaluation["evidence_set"], "evaluator_revision": campaign.harness.git_head(campaign.ROOT),
         "policy": identity(), "evaluation_run": {"run_id": evaluation["run_id"], "sha256": campaign.harness.sha256(evaluation_path)},
         "qualitative_review_runs": sorted(references, key=lambda v: v["run_id"]), "run_nonce": secrets.token_hex(16),
-        **combine(evaluation, specs, reviews, technical)}
+        **combine(evaluation, specs, reviews, technical,
+            naturalistic_resource=manifest.get("naturalistic_memory_evidence"))}
     result["run_id"] = machine.digest(result)
     validate_result(result)
     campaign.load_evidence_set(root)
@@ -201,6 +235,19 @@ def validate_result(value):
         review.require(re.fullmatch(f"[0-9a-f]{{{size}}}", str(value.get(field, ""))), "invalid qualification identity")
     review.require(value.get("run_id") == machine.digest({k: v for k, v in value.items() if k != "run_id"}), "qualification run hash changed")
     q, m, t = value["qualitative_review"], value["machine_summary"], value["technical_gate"]
+    naturalistic = value.get("naturalistic_evidence")
+    review.require(isinstance(naturalistic, dict)
+        and set(naturalistic) == {"long_lived_project", "live_browser_input_and_paint", "naturalistic_resource"}
+        and naturalistic["long_lived_project"]["state"]
+            == _criterion_state(value, "/long_lived_project/")
+        and naturalistic["live_browser_input_and_paint"]["state"]
+            == _criterion_state(value, "/browser_input_and_paint_responsiveness")
+        and naturalistic["long_lived_project"]["deterministic_fixture"]
+            == "supporting_regression_only"
+        and naturalistic["live_browser_input_and_paint"]["snapshot_export_proxy_may_substitute"] is False
+        and naturalistic["naturalistic_resource"].get("status")
+            in {"unsupported_current_architecture", "not_provided", "measured"},
+        "naturalistic evidence scope or qualification relationship changed")
     complete = not (q["unresolved_criteria"] or q["violated_criteria"] or q["human_escalations"] or m["unresolved_findings"])
     blocked = value["evidence_validity"] != "valid" or bool(m["hard_findings"]) or bool(q["violated_criteria"]) or t["state"] in {"failed", "invalid", "candidate_mismatch"}
     expected = "blocked" if blocked else "qualified" if complete and t["state"] == "passed" else "unresolved"

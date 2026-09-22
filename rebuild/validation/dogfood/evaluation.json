@@ -423,7 +423,7 @@
       "purpose": "Ground the bounded reviewer completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
     },
     "qualification_authority": false,
-    "policy_revision": 6,
+    "policy_revision": 7,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -481,7 +481,11 @@
         "keyboard_reachability",
         "visible_focus",
         "not_color_only",
-        "narrow_and_zoomed_presentation"
+        "narrow_and_zoomed_presentation",
+        "browser_input_and_paint_responsiveness"
+      ],
+      "long_lived_project": [
+        "one_project_multiple_work_across_fresh_sessions"
       ],
       "context_recovery": [
         "goal_decision_rationale_state_and_open_questions"
@@ -1222,12 +1226,13 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-3",
+    "revision": "replacement-qualification-4",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
-      "live_viewer/*"
+      "live_viewer/*",
+      "long_lived_project/*"
     ],
-    "human_rationale": "Live accessibility and the user's Decision comprehension require direct human observation.",
+    "human_rationale": "Live accessibility, browser input/paint responsiveness, long-lived multi-Work continuity and the user's Decision comprehension require direct human observation.",
     "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
     "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
     "insufficient": "Unresolved; high-impact authority/context recovery insufficiency escalates to human.",

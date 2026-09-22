@@ -175,7 +175,7 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
         )
     value = read_json(campaign_file(root))
     if (value.get("kind") != "phase8_dogfood_campaign"
-            or value.get("schema_version") not in {1, 2}):
+            or value.get("schema_version") not in {1, 2, 3}):
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
@@ -183,6 +183,10 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
             and value.get("naturalistic_memory_evidence")
             != naturalistic_memory_evidence(value.get("candidate_artifacts", {}))):
         raise CampaignError("naturalistic MCP memory support classification changed")
+    if (value.get("schema_version") == 3
+            and value.get("live_evidence_obligations")
+            != live_evidence_obligations(value.get("candidate_artifacts", {}))):
+        raise CampaignError("live evidence obligation classification changed")
     if validate_private:
         validate_private_qualification_profile(root, value)
     return value
@@ -242,6 +246,39 @@ def naturalistic_memory_evidence(
             "conversation_content_retained": False,
         },
         "technical_gate_rss_evidence": "retained_separately_not_relabelled_naturalistic",
+    }
+
+
+def live_evidence_obligations(
+    candidate_artifacts: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Keep deterministic support distinct from required live/naturalistic evidence."""
+    return {
+        "kind": "dogfood_live_evidence_obligations",
+        "schema_version": 1,
+        "long_lived_project": {
+            "status": "required_live_observation",
+            "scope": "one_candidate_bound_project_multiple_distinct_work_items_across_fresh_sessions",
+            "deterministic_fixture": "supporting_regression_only_not_qualification_evidence",
+            "required_surface": "long_lived_project_observation",
+        },
+        "live_viewer": {
+            "status": "required_human_observation",
+            "locales": ["en", "ko"],
+            "required_scope": [
+                "accessibility",
+                "decision_comprehension_when_applicable",
+                "browser_input_and_paint_responsiveness",
+            ],
+            "static_html_may_substitute": False,
+            "agent_review_may_substitute": False,
+        },
+        "viewer_performance": {
+            "snapshot_export_request": "candidate_bound_monotonic_proxy_measured_during_collection",
+            "browser_input_and_paint": "unmeasured_until_direct_live_observation",
+            "proxy_may_be_relabelled_browser_latency": False,
+        },
+        "naturalistic_resource": naturalistic_memory_evidence(candidate_artifacts),
     }
 
 
@@ -2086,13 +2123,14 @@ def prepare_campaign(
     write_json(qualification_profile_path(root), profile)
     campaign = {
         "kind": "phase8_dogfood_campaign",
-        "schema_version": 2,
+        "schema_version": 3,
         "campaign_id": campaign_id,
         "campaign_root": str(root),
         "candidate_head": candidate_head,
         "candidate_binary": str(binary),
         "candidate_artifacts": candidate_artifacts,
         "naturalistic_memory_evidence": naturalistic_memory_evidence(candidate_artifacts),
+        "live_evidence_obligations": live_evidence_obligations(candidate_artifacts),
         "document_language": document_language,
         "viewer_locale": viewer_locale,
         "document_realization_route": realization_route,
@@ -2130,6 +2168,7 @@ def prepare_campaign(
         "candidate_local_install": str(binary),
         "candidate_artifacts": candidate_artifacts,
         "naturalistic_memory_evidence": naturalistic_memory_evidence(candidate_artifacts),
+        "live_evidence_obligations": live_evidence_obligations(candidate_artifacts),
         "repository_trust": "user_controlled_not_automated",
     }
     write_json(root / "preparation.json", preparation)
@@ -2511,7 +2550,7 @@ def collect_viewer_snapshot_evidence(
     duration_ms = round((time.monotonic_ns() - started) / 1_000_000, 3)
     evidence: dict[str, Any] = {
         "kind": "phase8_viewer_snapshot_evidence_summary",
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "failed",
         "project_id": project_id,
         "candidate_head": candidate_head,
@@ -2524,6 +2563,8 @@ def collect_viewer_snapshot_evidence(
             "timing_source": "monotonic_candidate_bound_snapshot_export_request",
             "request_completed": result.get("status") in {"passed", "failed"},
             "scope": "Viewer snapshot export request; not browser input or paint latency",
+            "measured": ["snapshot_export_request_completion", "snapshot_export_request_duration"],
+            "unmeasured": ["browser_input_latency", "browser_paint_latency"],
         },
     }
     produced: list[Path] = []
@@ -3299,10 +3340,11 @@ def normalize_batch(
     register_artifact(root, root / "batch-intake-summary.json")
     # The manifest closes over exact artifacts, excluding mutable inventory/campaign
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
-    manifest = {"kind": "dogfood_evidence_set", "schema_version": 2,
+    manifest = {"kind": "dogfood_evidence_set", "schema_version": 3,
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
         "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
         "naturalistic_memory_evidence": copy.deepcopy(campaign["naturalistic_memory_evidence"]),
+        "live_evidence_obligations": copy.deepcopy(campaign["live_evidence_obligations"]),
         "raw_inputs": document_realization.raw_binding(mapped),
         "cycles": copy.deepcopy(campaign["cycles"]),
         "artifacts": copy.deepcopy(load_inventory(root)["artifacts"])}
@@ -3324,7 +3366,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         or reference.get("sha256") != harness.sha256(root / "evidence-set.json")):
         raise CampaignError("campaign has no intact immutable evidence set")
     manifest = read_json(root / "evidence-set.json")
-    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") not in {1, 2}
+    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") not in {1, 2, 3}
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
         or manifest.get("candidate_artifacts") != campaign.get("candidate_artifacts")
@@ -3335,6 +3377,12 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
             and manifest.get("naturalistic_memory_evidence")
             != campaign.get("naturalistic_memory_evidence")):
         raise CampaignError("evidence-set naturalistic memory classification changed")
+    if (manifest.get("schema_version") == 3
+            and (manifest.get("naturalistic_memory_evidence")
+                != campaign.get("naturalistic_memory_evidence")
+                or manifest.get("live_evidence_obligations")
+                != campaign.get("live_evidence_obligations"))):
+        raise CampaignError("evidence-set live evidence obligations changed")
     for name, binding in manifest["artifacts"].items():
         path = root / name
         if relative(root, path) != name or not path.is_file() or binding != {

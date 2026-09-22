@@ -341,13 +341,19 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                     navigation_entry["surface"] = "viewer_navigation_legacy"
                 else:
                     timing = navigation.get("navigation_responsiveness")
-                    review.require(navigation.get("schema_version") == 2
+                    expected_fields = {"duration_ms", "timing_source", "request_completed", "scope"}
+                    if navigation.get("schema_version") == 3:
+                        expected_fields |= {"measured", "unmeasured"}
+                    review.require(navigation.get("schema_version") in {2, 3}
                         and isinstance(timing, dict)
-                        and set(timing) == {"duration_ms", "timing_source", "request_completed", "scope"}
+                        and set(timing) == expected_fields
                         and isinstance(timing["duration_ms"], (int, float)) and timing["duration_ms"] >= 0
                         and timing["timing_source"] == "monotonic_candidate_bound_snapshot_export_request"
                         and isinstance(timing["request_completed"], bool)
-                        and timing["scope"] == "Viewer snapshot export request; not browser input or paint latency",
+                        and timing["scope"] == "Viewer snapshot export request; not browser input or paint latency"
+                        and (navigation.get("schema_version") == 2 or (
+                            timing["measured"] == ["snapshot_export_request_completion", "snapshot_export_request_duration"]
+                            and timing["unmeasured"] == ["browser_input_latency", "browser_paint_latency"])),
                         "Viewer navigation machine evidence is malformed or overclaims its scope")
             for document_kind in c.DOCUMENT_KINDS:
                 for format_name, suffix in c.DOCUMENT_FORMATS:
@@ -527,21 +533,31 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         cli_observation_set=cli_observation_set)
     if human_observations is not None:
         import human_review
-        review.require(reviewer_kind == "human", "agent preparation cannot supply human-observed accessibility")
+        review.require(reviewer_kind == "human", "agent preparation cannot supply direct human live observations")
         human_observations = human_review.load_viewer_observations(human_observations)
         data = bounded_read(human_observations)
         require_review_artifact_safe(data, "human observations contain sensitive payload")
         observed = json.loads(data)
         review.require(isinstance(observed, dict) and set(observed) == {"kind", "schema_version", "candidate_head", "evidence_set_sha256", "observer", "observations"}
-            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 2
+            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 3
             and observed["candidate_head"] == manifest["candidate_head"]
             and observed["evidence_set_sha256"] == evidence_hash, "human observation candidate/evidence binding mismatch")
         review.validate_reviewer(observed["observer"], sessions)
         review.require(observed["observer"]["kind"] == "human", "agent authorship cannot claim direct human observation")
-        review.require(isinstance(observed["observations"], list) and len(observed["observations"]) == 2, "both live accessibility locales require observations")
+        review.require(isinstance(observed["observations"], list)
+            and all(isinstance(item, dict) for item in observed["observations"])
+            and {(item.get("surface"), item.get("locale")) for item in observed["observations"]} == {
+                ("live_viewer_observation", "en"),
+                ("live_viewer_observation", "ko"),
+                ("long_lived_project_observation", None),
+            }, "both live Viewer locales and the long-lived Project journey require observations")
         for item in observed["observations"]:
-            review.require(isinstance(item, dict) and set(item) == {"sample_id", "locale", "control", "response"}
-                and item["sample_id"] == "volicord-1" and item["locale"] in {"en", "ko"},
+            review.require(isinstance(item, dict)
+                and set(item) == {"sample_id", "surface", "locale", "control", "response"}
+                and item["sample_id"] == "volicord-1"
+                and item["surface"] in {"live_viewer_observation", "long_lived_project_observation"}
+                and ((item["surface"] == "live_viewer_observation" and item["locale"] in {"en", "ko"})
+                    or (item["surface"] == "long_lived_project_observation" and item["locale"] is None)),
                 "invalid direct human observation")
             control = item["control"]
             review.require(isinstance(control, dict) and set(control) == {"action", "reference_locale"}
@@ -553,21 +569,26 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
                     and all(authority.bounded_text(response[k]) for k in ("observation", "limits")),
                     "invalid grouped human observation")
             else:
-                review.require(item["locale"] == "ko" and control["reference_locale"] == "en"
+                review.require(item["surface"] == "live_viewer_observation"
+                    and item["locale"] == "ko" and control["reference_locale"] == "en"
                     and item["response"] is None
-                    and any(previous["locale"] == "en" and previous["control"]["action"] == "direct"
+                    and any(previous["surface"] == "live_viewer_observation"
+                            and previous["locale"] == "en" and previous["control"]["action"] == "direct"
                             for previous in observed["observations"]),
                     "human locale reference requires a direct English observation")
-            identity_key = "volicord-1-live-" + item["locale"]
+            identity_key = ("volicord-1-live-" + item["locale"]
+                if item["surface"] == "live_viewer_observation"
+                else "volicord-1-long-lived-project")
             review.require(identity_key not in index["evidence"], "duplicate human observation locale")
             body = encoded({"binding": {k: observed[k] for k in ("candidate_head", "evidence_set_sha256", "observer")}, **item})
             name = "evidence/" + identity_key + ".json"
             files[name] = body
             pointers, count = locators(body)
             index["evidence"][identity_key] = {"path": name, "bytes": len(body), "sha256": digest(body),
-                "sample_id": item["sample_id"], "surface": "live_viewer_observation", "locale": item["locale"],
+                "sample_id": item["sample_id"], "surface": item["surface"], "locale": item["locale"],
                 "origin": {"kind": "declared_direct_human_observation", "sha256": digest(data)}, "locators": pointers, "line_count": count}
-        unavailable = [u for u in unavailable if not (u["sample_id"] == "volicord-1" and u["surface"] == "live_viewer_observation")]
+        unavailable = [u for u in unavailable if not (u["sample_id"] == "volicord-1"
+            and u["surface"] in {"live_viewer_observation", "long_lived_project_observation"})]
     binding = {"state": "verified", "source": "immutable_campaign_evidence",
         "candidate_head": manifest["candidate_head"], "evidence_set": {"sha256": evidence_hash},
         "machine_evaluation": machine_binding, "policy_revision": policy["policy_revision"],

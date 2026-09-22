@@ -30,8 +30,11 @@ class PolicyTests(unittest.TestCase):
     def test_agent_covers_semantics_human_only_targeted_observations(self):
         value = self.result([self.agent])
         self.assertTrue(value["qualitative_review"]["resolved_criteria"])
-        self.assertTrue(all('/live_viewer/' in c or c.endswith('/decision_comprehension_when_applicable')
+        self.assertTrue(all('/live_viewer/' in c or '/long_lived_project/' in c
+            or c.endswith('/decision_comprehension_when_applicable')
             for c in value["qualitative_review"]["human_escalations"]))
+        self.assertEqual(value["naturalistic_evidence"]["long_lived_project"]["state"],
+            "unresolved")
         self.assertEqual(value["replacement_qualification"], "unresolved")
         self.assertFalse(value["phase_9_ready"])
         required = set(value["qualitative_review"]["human_escalations"])
