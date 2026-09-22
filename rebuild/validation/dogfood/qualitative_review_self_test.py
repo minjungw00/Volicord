@@ -14,7 +14,7 @@ from authority_obligations_self_test import assessment, interaction_assessment, 
 def preparation(kind="agent"):
     definition = json.loads(Path(__file__).with_name("evaluation.json").read_text())
     policy = q.rubric(definition)
-    sample = {"sample_id": "volicord-1", "journey_id": "journey-volicord",
+    sample = {"sample_id": "journey-volicord-work-a", "journey_id": "journey-volicord",
         "repository_class": "volicord", "work": "A", "resume_pair": True,
         "materiality_obligations": ["explicit_user_owned_decision"],
         "authority_obligations": ["all-material-outcomes"],
@@ -88,7 +88,7 @@ def fill(value, p, state="satisfied"):
 def compatibility_review_result():
     p = preparation()
     value = completed(p)
-    finding = next(a for a in value["assessments"] if a["criterion_id"] == "volicord-1/interaction/source_grounding")
+    finding = next(a for a in value["assessments"] if a["criterion_id"] == "journey-volicord-work-a/interaction/source_grounding")
     finding.update(assessment="violated", reasoning="Work claimed completion after focused tests, but fresh resume proved an existing supported input was rejected and repaired it. Later repair does not establish the original completion claim.")
     result = q.validate_value(p, "d" * 64, value)
     if result["assessment_state"] != "violated" or result["phase_9_ready"]:
@@ -257,7 +257,7 @@ class ContractTests(unittest.TestCase):
     def test_machine_disagreement_and_hard_block_remain(self):
         p = preparation()
         finding = m.finding("raw_hash", "confirmed_violation", {"reason": "fixture"})
-        p["index"]["machine_findings"]["f1"] = {"sample_id": "volicord-1", "finding": finding}
+        p["index"]["machine_findings"]["f1"] = {"sample_id": "journey-volicord-work-a", "finding": finding}
         value = completed(p)
         relation = {"finding_id": "f1", "relationship": "probable_false_positive", "reasoning": "Reviewer disputes the machine basis; policy remains blocking."}
         value["assessments"][0]["machine_relationships"] = [relation]
@@ -285,10 +285,10 @@ class ContractTests(unittest.TestCase):
         p = preparation()
         for case in interaction_fixture()["cases"]:
             value = completed(p)
-            extra = fill(q.observation("volicord-1/authority/additional-durability"), p,
+            extra = fill(q.observation("journey-volicord-work-a/authority/additional-durability"), p,
                 "satisfied" if case["expected"] == "passed" else "violated")
             extra["authority"] = interaction_assessment(case)
-            value["additional_outcomes"] = [{"sample_id": "volicord-1", "finding": extra}]
+            value["additional_outcomes"] = [{"sample_id": "journey-volicord-work-a", "finding": extra}]
             result = q.validate_value(p, "d" * 64, value)
             self.assertEqual(result["assessment_state"], extra["assessment"], case["id"])
             if case["expected"] == "failed":
@@ -299,10 +299,10 @@ class ContractTests(unittest.TestCase):
     def test_human_resolution_accepts_only_a_valid_bound_additional_outcome(self):
         p = preparation("human")
         value = completed(p)
-        criterion_id = "volicord-1/authority/additional-durability"
+        criterion_id = "journey-volicord-work-a/authority/additional-durability"
         extra = fill(q.observation(criterion_id), p)
         extra["authority"] = assessment()
-        value["additional_outcomes"] = [{"sample_id": "volicord-1", "finding": extra}]
+        value["additional_outcomes"] = [{"sample_id": "journey-volicord-work-a", "finding": extra}]
         value["resolves_review_runs"] = {criterion_id: ["a" * 32]}
         self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "satisfied")
 
@@ -316,7 +316,7 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "additional outcome"):
             q.validate_value(p, "d" * 64, invalid)
         unknown = copy.deepcopy(value)
-        unknown["resolves_review_runs"] = {"volicord-1/authority/additional-unknown": ["a" * 32]}
+        unknown["resolves_review_runs"] = {"journey-volicord-work-a/authority/additional-unknown": ["a" * 32]}
         with self.assertRaisesRegex(ValueError, "invalid resolved"):
             q.validate_value(p, "d" * 64, unknown)
 

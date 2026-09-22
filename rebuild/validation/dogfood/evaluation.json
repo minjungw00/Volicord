@@ -1255,21 +1255,35 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-4",
+    "revision": "replacement-qualification-5",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
-      "live_viewer/*",
-      "long_lived_project/*"
+      "journey-volicord/viewer_snapshot/multiple_work_organization",
+      "live_viewer/*"
     ],
-    "human_rationale": "Live accessibility, browser input/paint responsiveness, long-lived multi-Work continuity and the user's Decision comprehension require direct human observation.",
+    "human_rationale": "Live accessibility, browser input/paint responsiveness, Volicord Viewer multi-Work comprehension and the user's Decision comprehension require direct human observation.",
     "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
     "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
     "insufficient": "Unresolved; high-impact authority/context recovery insufficiency escalates to human.",
     "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
     "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
     "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
-    "cycles": 8,
-    "fresh_sessions": 16,
+    "campaign_topology": {
+      "repository_journeys": 3,
+      "work_items": 5,
+      "resume_pairs": 3,
+      "fresh_sessions": 8,
+      "work_distribution": {
+        "volicord": 3,
+        "small-python": 1,
+        "polyglot-medium": 1
+      },
+      "resume_repository_classes": [
+        "polyglot-medium",
+        "small-python",
+        "volicord"
+      ]
+    },
     "cli_scope": {
       "repository_classes": 3,
       "criteria_per_class": 7,

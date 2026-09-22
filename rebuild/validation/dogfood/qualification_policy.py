@@ -9,22 +9,46 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-4"
+REVISION = "replacement-qualification-5"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
-HUMAN_CRITERIA = {"live_viewer/*", "long_lived_project/*",
-    "interaction/decision_comprehension_when_applicable"}
+HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable",
+    "journey-volicord/viewer_snapshot/multiple_work_organization"}
+TOPOLOGY = {
+    "repository_journeys": 3,
+    "work_items": 5,
+    "resume_pairs": 3,
+    "fresh_sessions": 8,
+    "work_distribution": {"volicord": 3, "small-python": 1, "polyglot-medium": 1},
+    "resume_repository_classes": ["polyglot-medium", "small-python", "volicord"],
+}
+EXPECTED_WORKS = {
+    ("volicord", "A", "journey-volicord-work-a", True),
+    ("volicord", "B", "journey-volicord-work-b", False),
+    ("volicord", "C", "journey-volicord-work-c", False),
+    ("small-python", "A", "journey-small-python-work-a", True),
+    ("polyglot-medium", "A", "journey-polyglot-medium-work-a", True),
+}
+EXPECTED_JOURNEYS = {
+    ("volicord", "journey-volicord", ("journey-volicord-work-a", "journey-volicord-work-b", "journey-volicord-work-c")),
+    ("small-python", "journey-small-python", ("journey-small-python-work-a",)),
+    ("polyglot-medium", "journey-polyglot-medium", ("journey-polyglot-medium-work-a",)),
+}
+STRUCTURAL_RULES = {
+    "journey_project_identity", "journey_work_identity", "journey_work_history",
+    "journey_relation_consistency", "journey_resume_continuity", "journey_isolation",
+}
 
 
 def contract():
     return {"revision": REVISION, "human_required": sorted(HUMAN_CRITERIA),
-        "human_rationale": "Live accessibility, browser input/paint responsiveness, long-lived multi-Work continuity and the user's Decision comprehension require direct human observation.",
+        "human_rationale": "Live accessibility, browser input/paint responsiveness, Volicord Viewer multi-Work comprehension and the user's Decision comprehension require direct human observation.",
         "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
         "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
         "insufficient": "Unresolved; high-impact authority/context recovery insufficiency escalates to human.",
         "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
         "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
         "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
-        "cycles": 8, "fresh_sessions": 16,
+        "campaign_topology": TOPOLOGY,
         "cli_scope": {"repository_classes": 3, "criteria_per_class": 7, "required_assessments": 21}}
 
 
@@ -35,12 +59,33 @@ def identity():
 
 
 def human_required(spec):
-    return spec["group"] in {"live_viewer", "long_lived_project"} or (spec["group"] == "interaction"
-        and spec["name"] == "decision_comprehension_when_applicable")
+    return review.human_only(spec)
 
 
-def finding_id(cycle, number):
-    return f"{cycle['repository_class']}-{cycle['cycle']}/{cycle['findings'][number]['check']}"
+def finding_id(scope, number):
+    return f"{scope.get('work_slot_id') or scope['journey_id']}/{scope['findings'][number]['check']}"
+
+
+def validate_topology(evaluation):
+    works = evaluation.get("works")
+    journeys = evaluation.get("journeys")
+    review.require(isinstance(works, list) and isinstance(journeys, list),
+        "qualification requires Work- and journey-scoped evaluation")
+    actual_works = {
+        (item.get("repository_class"), item.get("work"), item.get("work_slot_id"), item.get("resume_pair"))
+        for item in works
+    }
+    actual_journeys = {
+        (item.get("repository_class"), item.get("journey_id"), tuple(item.get("work_slot_ids", [])))
+        for item in journeys
+    }
+    review.require(len(works) == 5 and actual_works == EXPECTED_WORKS,
+        "qualification Work topology changed")
+    review.require(len(journeys) == 3 and actual_journeys == EXPECTED_JOURNEYS,
+        "qualification repository-journey topology changed")
+    review.require(evaluation.get("coverage") == TOPOLOGY,
+        "qualification session/resume coverage changed")
+    return dict(TOPOLOGY)
 
 
 def _criterion_state(result, marker):
@@ -52,17 +97,40 @@ def _criterion_state(result, marker):
     return "unresolved"
 
 
-def naturalistic_summary(result, memory=None):
+def structural_state(checks):
+    statuses = set(checks.values())
+    if statuses == {"confirmed_pass"}:
+        return "passed"
+    if "confirmed_violation" in statuses:
+        return "violated"
+    return "unresolved"
+
+
+def naturalistic_summary(result, evaluation, memory=None):
     resource = memory if memory is not None else {
         "kind": "dogfood_naturalistic_mcp_memory_evidence",
         "schema_version": 1,
         "status": "not_provided",
     }
+    volicord = next(item for item in evaluation["journeys"]
+        if item["journey_id"] == "journey-volicord")
+    checks = {finding["check"]: finding["status"] for finding in volicord["findings"]
+        if finding["check"] in STRUCTURAL_RULES}
+    review.require(set(checks) == STRUCTURAL_RULES,
+        "Volicord journey omitted structural continuity findings")
     return {
-        "long_lived_project": {
-            "state": _criterion_state(result, "/long_lived_project/"),
-            "evidence_class": "direct_human_observation_of_naturalistic_journey",
+        "multi_work_structural_continuity": {
+            "state": structural_state(checks),
+            "evidence_class": "immutable_main_campaign_journey_structure",
+            "journey_id": "journey-volicord",
+            "checks": dict(sorted(checks.items())),
             "deterministic_fixture": "supporting_regression_only",
+        },
+        "multi_work_viewer_comprehension": {
+            "state": _criterion_state(result,
+                "/viewer_snapshot/multiple_work_organization"),
+            "evidence_class": "direct_human_live_viewer_observation",
+            "criterion_id": "journey-volicord/viewer_snapshot/multiple_work_organization",
         },
         "live_browser_input_and_paint": {
             "state": _criterion_state(result, "/browser_input_and_paint_responsiveness"),
@@ -79,7 +147,9 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
     Every required criterion remains explicit, including those with no review.
     A machine observation is never erased by semantic adjudication.
     """
-    findings = {finding_id(c, n): f for c in evaluation["cycles"] for n, f in enumerate(c["findings"])}
+    topology = validate_topology(evaluation)
+    scopes = [*evaluation["works"], *evaluation["journeys"]]
+    findings = {finding_id(scope, n): f for scope in scopes for n, f in enumerate(scope["findings"])}
     hard = sorted(k for k, f in findings.items() if f["disposition"] == "hard_blocking")
     criteria = {s["criterion_id"]: s for s in specs}
     assessments = {}
@@ -132,14 +202,15 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
     complete = not unresolved and not unresolved_findings and not violated
     blocked = evidence_validity != "valid" or bool(hard) or technical["state"] in {"failed", "candidate_mismatch", "invalid"} or bool(violated)
     status = "blocked" if blocked else "qualified" if complete and technical["state"] == "passed" else "unresolved"
-    result = {"evidence_validity": evidence_validity, "technical_gate": technical,
+    result = {"evidence_validity": evidence_validity, "campaign_topology": topology,
+        "technical_gate": technical,
         "machine_summary": {"counts": dict(sorted(Counter(f["disposition"] for f in findings.values()).items())),
             "hard_findings": hard, "unresolved_findings": sorted(unresolved_findings)},
         "qualitative_review": {"state": "complete" if complete else "incomplete", "resolved_criteria": resolved,
             "violated_criteria": violated, "unresolved_criteria": unresolved, "human_escalations": escalated},
         "operator_approval": {"state": "not_provided"}, "replacement_qualification": status,
         "replacement_pass_candidate": status == "qualified", "phase_9_ready": False}
-    result["naturalistic_evidence"] = naturalistic_summary(result, naturalistic_resource)
+    result["naturalistic_evidence"] = naturalistic_summary(result, evaluation, naturalistic_resource)
     return result
 
 
@@ -207,7 +278,7 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
         review.require(all(set(ids) <= consumed_ids for ids in value["resolves_review_runs"].values()),
             "human resolution references an unconsumed review run")
     technical = verify_technical(candidate, capsule_path, archive_path)
-    result = {"kind": "phase8_dogfood_result", "schema_version": 2, "candidate_head": candidate,
+    result = {"kind": "phase8_dogfood_result", "schema_version": 3, "candidate_head": candidate,
         "evidence_set": evaluation["evidence_set"], "evaluator_revision": campaign.harness.git_head(campaign.ROOT),
         "policy": identity(), "evaluation_run": {"run_id": evaluation["run_id"], "sha256": campaign.harness.sha256(evaluation_path)},
         "qualitative_review_runs": sorted(references, key=lambda v: v["run_id"]), "run_nonce": secrets.token_hex(16),
@@ -229,21 +300,33 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
 
 def validate_result(value):
     import re
-    review.require(value.get("kind") == "phase8_dogfood_result" and value.get("schema_version") == 2
+    review.require(value.get("kind") == "phase8_dogfood_result" and value.get("schema_version") == 3
         and value.get("policy") == identity(), "invalid qualification policy/schema")
     for field, size in (("candidate_head", 40), ("evaluator_revision", 40), ("run_nonce", 32)):
         review.require(re.fullmatch(f"[0-9a-f]{{{size}}}", str(value.get(field, ""))), "invalid qualification identity")
     review.require(value.get("run_id") == machine.digest({k: v for k, v in value.items() if k != "run_id"}), "qualification run hash changed")
     q, m, t = value["qualitative_review"], value["machine_summary"], value["technical_gate"]
     naturalistic = value.get("naturalistic_evidence")
-    review.require(isinstance(naturalistic, dict)
-        and set(naturalistic) == {"long_lived_project", "live_browser_input_and_paint", "naturalistic_resource"}
-        and naturalistic["long_lived_project"]["state"]
-            == _criterion_state(value, "/long_lived_project/")
+    structural = naturalistic.get("multi_work_structural_continuity") if isinstance(naturalistic, dict) else None
+    comprehension = naturalistic.get("multi_work_viewer_comprehension") if isinstance(naturalistic, dict) else None
+    review.require(value.get("campaign_topology") == TOPOLOGY
+        and isinstance(naturalistic, dict)
+        and set(naturalistic) == {"multi_work_structural_continuity", "multi_work_viewer_comprehension",
+            "live_browser_input_and_paint", "naturalistic_resource"}
+        and isinstance(structural, dict) and structural.get("evidence_class")
+            == "immutable_main_campaign_journey_structure"
+        and structural.get("journey_id") == "journey-volicord"
+        and set(structural.get("checks", {})) == STRUCTURAL_RULES
+        and structural.get("state") == structural_state(structural["checks"])
+        and structural.get("deterministic_fixture") == "supporting_regression_only"
+        and isinstance(comprehension, dict)
+        and comprehension.get("state")
+            == _criterion_state(value, "/viewer_snapshot/multiple_work_organization")
+        and comprehension.get("evidence_class") == "direct_human_live_viewer_observation"
+        and comprehension.get("criterion_id")
+            == "journey-volicord/viewer_snapshot/multiple_work_organization"
         and naturalistic["live_browser_input_and_paint"]["state"]
             == _criterion_state(value, "/browser_input_and_paint_responsiveness")
-        and naturalistic["long_lived_project"]["deterministic_fixture"]
-            == "supporting_regression_only"
         and naturalistic["live_browser_input_and_paint"]["snapshot_export_proxy_may_substitute"] is False
         and naturalistic["naturalistic_resource"].get("status")
             in {"unsupported_current_architecture", "not_provided", "measured"},

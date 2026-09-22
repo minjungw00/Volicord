@@ -13,6 +13,22 @@ import qualitative_review_self_test as fixtures
 import qualification_policy as policy
 
 
+def evaluation():
+    works = [
+        {"repository_class": repository_class, "work": work,
+         "work_slot_id": work_slot_id, "resume_pair": resume_pair, "findings": []}
+        for repository_class, work, work_slot_id, resume_pair in sorted(policy.EXPECTED_WORKS)
+    ]
+    journeys = []
+    for repository_class, journey_id, work_slot_ids in sorted(policy.EXPECTED_JOURNEYS):
+        findings = [m.finding(rule, "confirmed_pass", {"journey_id": journey_id})
+                    for rule in sorted(policy.STRUCTURAL_RULES)]
+        journeys.append({"repository_class": repository_class, "journey_id": journey_id,
+            "work_slot_ids": list(work_slot_ids), "findings": findings})
+    return {"run_id": "a" * 64, "works": works, "journeys": journeys,
+        "coverage": copy.deepcopy(policy.TOPOLOGY)}
+
+
 class PolicyTests(unittest.TestCase):
     def setUp(self):
         self.prep = fixtures.preparation()
@@ -21,19 +37,25 @@ class PolicyTests(unittest.TestCase):
         self.human_prep = fixtures.preparation("human")
         self.human_prep["reviewer"]["run_id"] = "b" * 32
         self.human = fixtures.completed(self.human_prep)
-        self.evaluation = {"run_id": "a" * 64, "cycles": [{"repository_class": "volicord", "cycle": 1, "findings": []}]}
+        self.evaluation = evaluation()
         self.technical = {"state": "passed", "candidate_head": "a" * 40}
 
     def result(self, reviews=None, technical=None):
         return policy.combine(self.evaluation, self.specs, reviews if reviews is not None else [self.agent, self.human], technical or self.technical)
 
+    def test_declared_qualification_contract_matches_executable_policy(self):
+        definition = json.loads(Path(__file__).with_name("evaluation.json").read_text())
+        self.assertEqual(definition["qualification_policy"], policy.contract())
+
     def test_agent_covers_semantics_human_only_targeted_observations(self):
         value = self.result([self.agent])
         self.assertTrue(value["qualitative_review"]["resolved_criteria"])
-        self.assertTrue(all('/live_viewer/' in c or '/long_lived_project/' in c
+        self.assertTrue(all('/live_viewer/' in c or c == 'journey-volicord/viewer_snapshot/multiple_work_organization'
             or c.endswith('/decision_comprehension_when_applicable')
             for c in value["qualitative_review"]["human_escalations"]))
-        self.assertEqual(value["naturalistic_evidence"]["long_lived_project"]["state"],
+        self.assertEqual(value["naturalistic_evidence"]["multi_work_structural_continuity"]["state"],
+            "passed")
+        self.assertEqual(value["naturalistic_evidence"]["multi_work_viewer_comprehension"]["state"],
             "unresolved")
         self.assertEqual(value["replacement_qualification"], "unresolved")
         self.assertFalse(value["phase_9_ready"])
@@ -46,18 +68,19 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(self.result()["phase_9_ready"])
 
     def test_hard_integrity_neither_agent_nor_human_can_override(self):
-        self.evaluation["cycles"][0]["findings"] = [m.finding("raw_hash", "confirmed_violation", {"mismatch": True})]
+        self.evaluation["works"][0]["findings"] = [m.finding("raw_hash", "confirmed_violation", {"mismatch": True})]
         for reviews in ([self.agent], [self.human], [self.agent, self.human]):
             self.assertEqual(self.result(reviews)["replacement_qualification"], "blocked")
         self.assertEqual(policy.combine(self.evaluation, self.specs, [], self.technical, evidence_validity="invalid")["replacement_qualification"], "blocked")
 
     def test_indeterminate_is_unresolved_and_valid_agent_evidence_can_clarify(self):
         finding = m.finding("appropriate_inquiry_outcome", "indeterminate", {"observed": "ambiguous"})
-        self.evaluation["cycles"][0]["findings"] = [finding]
+        next(item for item in self.evaluation["works"]
+             if item["work_slot_id"] == "journey-volicord-work-a")["findings"] = [finding]
         value = self.result()
         self.assertEqual(value["replacement_qualification"], "unresolved")
-        cid = 'volicord-1/appropriate_inquiry_outcome'
-        self.prep["index"]["machine_findings"][cid] = {"sample_id": "volicord-1", "finding": finding}
+        cid = 'journey-volicord-work-a/appropriate_inquiry_outcome'
+        self.prep["index"]["machine_findings"][cid] = {"sample_id": "journey-volicord-work-a", "finding": finding}
         self.prep["binding"]["machine_evaluation"] = {"run_id": self.evaluation["run_id"], "sha256": "f" * 64}
         self.agent["binding"] = copy.deepcopy(self.prep["binding"])
         a = next(a for a in self.agent["assessments"] if a["criterion_id"].endswith('/correct_no_question_behavior'))
@@ -68,6 +91,40 @@ class PolicyTests(unittest.TestCase):
         a["evidence"] = []
         a["machine_relationships"] = []
         self.assertEqual(self.result()["replacement_qualification"], "unresolved")
+
+    def test_structural_continuity_and_viewer_comprehension_are_independent(self):
+        value = self.result()
+        naturalistic = value["naturalistic_evidence"]
+        self.assertEqual(naturalistic["multi_work_structural_continuity"]["state"], "passed")
+        self.assertEqual(naturalistic["multi_work_viewer_comprehension"]["state"], "satisfied")
+        journey = next(item for item in self.evaluation["journeys"]
+                       if item["journey_id"] == "journey-volicord")
+        finding = next(item for item in journey["findings"]
+                       if item["check"] == "journey_work_history")
+        journey["findings"][journey["findings"].index(finding)] = m.finding(
+            "journey_work_history", "confirmed_violation", {"missing_checkpoint": True})
+        value = self.result()
+        self.assertEqual(value["naturalistic_evidence"]["multi_work_structural_continuity"]["state"],
+            "violated")
+        self.assertEqual(value["naturalistic_evidence"]["multi_work_viewer_comprehension"]["state"],
+            "satisfied")
+        self.assertEqual(value["replacement_qualification"], "blocked")
+
+    def test_exact_journey_work_resume_and_session_topology_is_mandatory(self):
+        mutations = []
+        duplicate = copy.deepcopy(self.evaluation)
+        duplicate["works"][-1] = copy.deepcopy(duplicate["works"][0])
+        mutations.append(duplicate)
+        missing_resume = copy.deepcopy(self.evaluation)
+        next(item for item in missing_resume["works"]
+             if item["work_slot_id"] == "journey-small-python-work-a")["resume_pair"] = False
+        mutations.append(missing_resume)
+        wrong_sessions = copy.deepcopy(self.evaluation)
+        wrong_sessions["coverage"]["fresh_sessions"] = 9
+        mutations.append(wrong_sessions)
+        for changed in mutations:
+            with self.assertRaises(ValueError):
+                policy.combine(changed, self.specs, [self.agent, self.human], self.technical)
 
     def test_insufficient_and_missing_technical_gate_cannot_pass(self):
         for a in self.agent["assessments"]:
@@ -108,16 +165,16 @@ class PolicyTests(unittest.TestCase):
             review.validate_value(self.prep, "d" * 64, self.agent)
 
     def test_additional_outcome_insufficiency_requires_targeted_human_resolution(self):
-        cid = "volicord-1/authority/additional-durability"
+        cid = "journey-volicord-work-a/authority/additional-durability"
         agent_extra = fixtures.fill(review.observation(cid), self.prep, "insufficient_evidence")
         agent_extra["authority"] = fixtures.assessment()
         agent_extra["authority"]["authority_relation_to_outcome"] = "uncertain"
-        self.agent["additional_outcomes"] = [{"sample_id": "volicord-1", "finding": agent_extra}]
+        self.agent["additional_outcomes"] = [{"sample_id": "journey-volicord-work-a", "finding": agent_extra}]
         review.validate_value(self.prep, "d" * 64, self.agent)
 
         human_extra = fixtures.fill(review.observation(cid), self.human_prep)
         human_extra["authority"] = fixtures.assessment()
-        self.human["additional_outcomes"] = [{"sample_id": "volicord-1", "finding": human_extra}]
+        self.human["additional_outcomes"] = [{"sample_id": "journey-volicord-work-a", "finding": human_extra}]
         self.assertEqual(self.result()["replacement_qualification"], "unresolved")
         self.human["resolves_review_runs"] = {cid: [self.agent["reviewer"]["run_id"]]}
         review.validate_value(self.human_prep, "d" * 64, self.human)
@@ -130,7 +187,7 @@ class PolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             path = root / 'qualification.json'
-            value = {"kind": "phase8_dogfood_result", "schema_version": 2, "policy": policy.identity(),
+            value = {"kind": "phase8_dogfood_result", "schema_version": 3, "policy": policy.identity(),
                 "candidate_head": "a" * 40, "evaluator_revision": "b" * 40, "run_nonce": "c" * 32,
                 "evidence_set": {"path": "evidence-set.json", "sha256": "d" * 64},
                 "evaluation_run": {"run_id": "e" * 64, "sha256": "f" * 64}, "qualitative_review_runs": [],
