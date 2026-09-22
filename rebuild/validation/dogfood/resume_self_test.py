@@ -442,7 +442,7 @@ class LearningContinuityTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
         self.descriptor = h.real_session_fixture("volicord", 1, "0" * 40, self.root,
-            behavior_class="learning_deliberation")
+            materiality_obligations="learning_deliberation")
         captures = self.descriptor["evidence"]["captures"]
         self.work = h.load_codex_capture(self.root / captures["work"]["file"])
         self.resume = h.load_codex_capture(self.root / captures["resume"]["file"])

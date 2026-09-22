@@ -63,9 +63,9 @@ identities are non-qualifying diagnostic evidence and cannot be reused.
 
 A fresh helper input must identify one actual repository and pinned revision
 for each maintained class: `volicord`, `small-python`, and `polyglot-medium`.
-The campaign creates three fresh privately assigned cycles for `volicord`, three
-for `small-python`, and two for `polyglot-medium`. No prior campaign input
-may be reused.
+The campaign creates one journey workspace, Runtime Home, and Project for each class.
+Volicord carries Work A/B/C; small-python and polyglot-medium each carry Work A.
+Only Work A in each journey has a fresh-session resume. No prior campaign input may be reused.
 
 ## Environment and tool versions
 
@@ -85,22 +85,22 @@ passed.
 Evaluator/control owns the hidden preparation work:
 
 - research each actual repository and pin its qualifying revision;
-- create a bounded blind-first reviewer preparation, record its provisional
+- create one bounded blind-first reviewer preparation per Work, record its provisional
   classification and materiality conclusion, and only then compare the
   evaluator basis and counterfactual review;
-- seal each descriptor through the maintained helper before any operator run;
+- seal all five Work descriptors and all eight task artifacts before any operator run;
 - keep evaluator facts, contract constraints, delegated boundaries, possible
   concerns, behavior reasoning, and provenance out of operator-facing instructions and examples.
 - use the campaign-generated opaque slot and isolated pinned reviewer workspace;
-  do not expose repository class, logical cycle, behavior class, or assignment order
-  before all eight provisional reviews are fixed.
+  do not expose repository class, journey/Work identity, materiality obligations, or assignment order
+  before all five provisional reviews are fixed.
 - during Phase A, inspect the prepared source workspace and listed owner documents,
   but use only the prepared reviewer plane as campaign evidence; unrelated
   qualification-control implementation and evaluator/steward state remain outside
   that workflow-isolated plane.
 
-Campaign preparation commits the exact behavior assignment and release-qualification
-profile only in evaluator/steward-private integrity-bound state. Reviewer/operator
+Campaign preparation commits the exact independent Work-level materiality obligations and
+release-qualification profile only in evaluator/steward-private integrity-bound state. Reviewer/operator
 surfaces do not disclose its multiplicities, duplicate, coverage, or repository distribution.
 No slot ID, workspace, filename, label, or presentation order encodes the assignment.
 An independently reviewed hidden case seals only when source/owner inspection establishes
@@ -111,11 +111,11 @@ The naturalistic operator owns the actions that cannot be truthfully automated:
 
 - inspect and trust the intended repository and explicitly approve its
   SessionStart hook where required;
-- open sixteen globally distinct fresh VS Code Codex chats: work and fresh
-  resume sessions for the eight privately assigned repository cycles;
+- open eight globally distinct fresh VS Code Codex chats: five Work starts and
+  three Work-A fresh-session resumes;
 - send only the frozen work or resume task from the generated run sheet;
 - provide actual answers only to genuine material Questions or Learning Deliberations shown in those sessions;
-- preserve all sixteen raw rollouts for one batch intake.
+- preserve all eight raw rollouts for one batch intake.
 
 The operator does not inspect or edit evaluator descriptors. The helper owns
 campaign setup, sealed-descriptor validation, operator run-sheet generation,
@@ -123,7 +123,7 @@ byte-exact rollout intake and hashing, activation/setup classification, early
 blocker gating, Project-ID extraction, canonical bundle export, bounded Runtime
 summaries, all four required generated document kinds in Markdown and
 self-contained HTML, descriptor evidence completion, deterministic
-campaign-level review sampling, repository-manifest assembly, and bounded
+five-Work review sampling, repository-manifest assembly, and bounded
 review packaging.
 
 After naturalistic execution, the maintained human review treats the existing
@@ -138,8 +138,9 @@ Question. Bounded evaluator concerns and counterfactual evidence ground this
 post-execution review only and remain absent from frozen operator tasks and
 work/resume sessions.
 
-The expanded matrix retains all six prior authority controls and adds two
-learning-active controls in different repository classes. One requires a
+The private profile retains every accepted authority/control obligation as independent
+coverage rather than mutually exclusive Work types. Obligations may overlap in one Work;
+the learning-oriented Work may carry both learning obligations. One requires a
 meaningful agent-owned fork to reach ordered Learning Deliberation before work;
 the other requires routine details to remain non-interrupting despite explicit
 learning participation. Human review separately judges fork value, alternative
@@ -207,27 +208,27 @@ The command validates reviewer-visible shape and self-consistency from the
 reviewer's own classification, copies the exact accepted bytes to
 `reviewer/provisional/<opaque-review-slot-id>.json`, and fixes that private review and its
 campaign inventory/hash binding without reading an evaluator descriptor, checking
-evaluator correctness, or exposing cycle/class identity. Any maintained,
+evaluator correctness, or exposing journey/Work/class identity. Any maintained,
 well-formed classification therefore reaches the same `provisional_recorded`
 state even when it disagrees with the evaluator. The recorded provisional is immutable
 campaign evidence; later edits to the old draft cannot change it or invalidate inventory.
-Then use `seal-cycle
+Then use `seal-work
 --descriptor <evaluator-descriptor.json>` to compare the fixed review with the
 revealed evaluator basis. The structured comparison must mechanically enumerate
 classification, materiality, unavoidability, and disclosure differences;
 matching conclusions use `agreed`, evidence-backed disagreement uses
 `resolved_from_evidence`, and false agreement or `unresolved_conflict` blocks
-sealing. This comparison cannot rewrite the provisional bytes or hash. Every one of the eight
+sealing. This comparison cannot rewrite the provisional bytes or hash. Every one of the five
 provisional reviews must be recorded before `reveal-qualification-profile` can validate
-and reveal the private profile or before any `seal-cycle` comparison can run. After all
-eight descriptors are sealed, use `activate-all`; it enables the repository-scoped integration
+and reveal the private profile or before any `seal-work` comparison can run. After all
+five descriptors are sealed, use `activate-all`; it enables the three journey-scoped integrations
 but does not grant repository or hook trust. The helper re-reads the production-owned manifest,
 MCP entry, SessionStart hook and exact candidate-local executable/Runtime binding, while making no
 claim that VS Code actually executed SessionStart. If trust or activation is uncertain, inspect it
-before sending a frozen task; real SessionStart capture evidence remains mandatory. Run all sixteen chats
+before sending a frozen task; real SessionStart capture evidence remains mandatory. Run all eight chats
 without per-chat collection, preserve their raw rollouts, and then use
-`collect-batch` with sixteen explicit paths or one directory containing exactly
-sixteen files. Collection publishes immutable evidence independently of evaluation.
+`collect-batch` with eight explicit paths or one directory containing exactly
+eight files. Collection publishes immutable evidence independently of evaluation.
 Use the common agent/human rubric in
 [`qualitative-review.md`](../../docs/design/qualitative-review.md) for post-campaign
 review. The former `prepare-human-review` and `qualify-review` approval path is
@@ -248,23 +249,24 @@ reviewers share the maintained qualitative rubric while retaining distinct revie
 session identities; agent authorship cannot be submitted as human authorship.
 `qualification_policy.py` owns the maintained final combination.
 
-New campaigns use cryptographically random opaque slot IDs for qualifying
-workspace, Runtime Home, reviewer preparation/draft/provisional filenames,
-reviewer source workspaces, and operator labels. The operator sheet is ordered
-by opaque ID within repository groupings. Only the evaluator/steward-private,
-hash- and inventory-bound mapping connects a slot to repository class, logical
-cycle, expected behavior class, and authoritative descriptor. There is no
-cycle-numbered layout compatibility branch and no prior campaign is migrated.
+New campaigns use cryptographically random opaque slot IDs for reviewer
+preparation/draft/provisional filenames, reviewer source workspaces, and operator labels.
+The three journey workspaces and Runtime Homes are separate from those review slots. Only the
+evaluator/steward-private, hash- and inventory-bound mapping connects a slot to repository class,
+journey, Work, materiality obligations, and authoritative descriptor. There is no mutable
+cycle-schema compatibility branch and no prior campaign is migrated; schemas 1–3 remain available
+only for identity-and-inventory diagnosis.
 
 `collect-batch` maps all unordered inputs before mutating campaign state. It
 rejects ambiguous, missing, duplicate, wrong-task, wrong-workspace,
 wrong-revision, non-VS-Code, and session-reused evidence. Invalid activation blocks
-publication. Behavioral work/resume interpretation happens after collection. The helper
-preserves Project binding and invokes the installed candidate's
-supported repository-selected context export plus all four supported
+publication. Collection proves same-Work resume identity for three pairs, one Volicord Project
+with three distinct retained Work identities, chronological committed repository revisions, and
+cross-journey Project isolation. The helper invokes the installed candidate's one journey-final
+context export plus all four supported
 generated-document exports
 in Markdown and self-contained HTML and the public static Viewer snapshot
-export. Per-kind/per-format and Viewer-snapshot status, bounded failure basis,
+export per journey. Per-kind/per-format and Viewer-snapshot status, bounded failure basis,
 relative path, bytes, and SHA-256 are recorded in private evidence; the
 operator receives a bounded document-review index. A passed document-fidelity
 observation requires usable evidence for all four product document kinds. The
@@ -596,7 +598,7 @@ separate private archive for the independent review handoff.
 
 In a later session, use the maintained campaign helper to prepare a wholly
 fresh opaque-slot campaign in a separate clean worktree at exactly
-`68e3699e77e1017896f4469ff1dd3aff11b476ce`, run all sixteen genuine sessions,
+`68e3699e77e1017896f4469ff1dd3aff11b476ce`, run all eight genuine sessions,
 and obtain the immutable machine evaluation. Common qualitative review is available
 independently of machine outcome when evaluating replacement. The documentation-only child commit is not a substitute
 for that exact campaign HEAD.
@@ -608,7 +610,7 @@ for that exact campaign HEAD.
   the later sealed candidate.
 - Do not reuse any previous descriptor, Runtime Home, workspace, rollout,
   bundle, observation, blocker result, or session identity.
-- Treat every completed or incomplete cycle from the failed campaign only as
+- Treat every completed or incomplete cycle from the failed historical campaign only as
   non-qualifying diagnostic evidence; do not repair or reuse it.
 - The predecessor full Cartesian campaign is retired and is not
   an alternate qualification or stress mode.
@@ -639,9 +641,9 @@ accepted Candidate/Inquiry/Decision model.
 The answered-Question and explicit resume-verification guidance now have a
 successful technical entry for the exact sealed candidate. In a later session,
 prepare one completely fresh opaque-slot helper-owned campaign at the sealed candidate,
-have the control agent research and seal the eight evaluator descriptors, grant
-trust manually, activate all eight repository integrations, run the sixteen
-required work/resume chats with only the frozen tasks, answer the actual
+have the control agent research and seal the five evaluator descriptors, grant
+trust manually, activate all three repository journeys, run the eight
+required start/resume chats with only the frozen tasks, answer the actual
 material Questions and Learning Deliberations, provide all raw rollouts once to batch collection, assemble
 the manifest, and provide the raw rollout archive with the bounded default
 review package. If replacement qualification is requested, complete the

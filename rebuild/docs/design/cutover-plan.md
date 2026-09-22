@@ -272,13 +272,14 @@ clean Linux install
 <!-- phase8-public-campaign-contract:start -->
 | 공개 campaign 항목 | 현재 요구값 |
 | --- | --- |
-| `qualification_cycles` | `8` |
-| `sessions_per_cycle` | `2` |
-| `fresh_sessions` | `16` |
-| `repository_cycles` | `volicord=3, small-python=3, polyglot-medium=2` |
-| `provisional_reviews_before_reveal` | `8` |
-| `sealed_descriptors_and_reviews` | `8` |
-| `complete_batch_raw_rollouts` | `16` |
+| `repository_journeys` | `3` |
+| `work_items` | `5` |
+| `work_slots_by_repository` | `volicord=A/B/C, small-python=A, polyglot-medium=A` |
+| `fresh_resume_pairs` | `3` |
+| `fresh_sessions` | `8` |
+| `provisional_reviews_before_reveal` | `5` |
+| `sealed_descriptors_and_reviews` | `5` |
+| `complete_batch_raw_rollouts` | `8` |
 <!-- phase8-public-campaign-contract:end -->
 
 통과 조건은 `acceptance-scenarios.md`의 최종 통과 조건과 일치한다.
@@ -291,18 +292,20 @@ violation cannot be overridden. Collection and evaluation alone do not qualify a
 candidate. The technical gate remains separate. The common agent/human review
 contract is maintained in `qualitative-review.md`; final replacement policy remains
 outside that contract, and no agent review grants Phase 9 authority.
-Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않고 maintained
-behavior vocabulary로 independent classification을 수행한다. Exact campaign behavior profile과
-behavior-to-cycle assignment는 evaluator/steward-private state에 integrity-bound되고, 모든 eight blind
-provisional review가 고정된 뒤에만 reveal·validation·comparison에 사용한다. Public repository
-distribution은 `volicord = 3`, `small-python = 3`, `polyglot-medium = 2`이며, 모든 cycle의
-work/resume을 포함하는 8-cycle/16-fresh-session campaign과
-모든 collected cycle의 qualitative review와 current production background semantic-provider의
+Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않는다. Maintained
+behavior vocabulary는 mutually exclusive Work type이 아니라 Work별 독립 materiality obligation으로
+사용한다. Exact obligation profile과 Work assignment는 evaluator/steward-private state에
+integrity-bound되고, 모든 five blind provisional review가 고정된 뒤에만
+reveal·validation·comparison에 사용한다. 세 repository journey는 각각 하나의 workspace, Runtime
+Home과 Project를 사용한다. Volicord journey는 같은 Project에 세 distinct Work를 누적하고,
+각 repository class의 Work A만 fresh-session same-Work resume을 수행한다. 따라서 current campaign은
+3 journeys, 5 Works, 3 resume pairs와 8 fresh sessions를 요구한다. 모든 collected Work의
+qualitative review와 current production background semantic-provider의
 별도로 authorized real success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
 Deterministic one-Project/multiple-Work fixture는 regression support이며 naturalistic passage가 아니다.
-하나의 candidate-bound Project가 fresh sessions에 걸쳐 multiple Work identity와 state/history를
-유지한 direct live observation, `en`/`ko` live accessibility와 browser input/resulting-paint observation이
+Volicord의 four naturalistic sessions가 하나의 candidate-bound Project에서 세 distinct Work identity와
+state/history를 chronological하게 유지한 direct evidence, `en`/`ko` live accessibility와 browser input/resulting-paint observation이
 없으면 qualification은 unresolved다. Snapshot-export request timing은 browser latency로 재명명하지 않는다.
 최종 evaluation/review/qualification과 optional approval은 immutable Campaign 안을 고치지 않고
 `<campaign-parent>/results/<qualification-run-id>`의 create-only result lineage로 publish한다.
@@ -416,10 +419,10 @@ authoritative discovery dependency가 될 수 없다. Later run은 새 lineage�
 - [ ] medium polyglot repository journey
 - [ ] failure recovery rehearsal
 - [ ] 사용자가 raw protocol 없이 Project를 이해하고 판단·재개할 수 있음
-- [ ] 모든 qualifying cycle의 fact/interpretation, analysis/polyglot, Viewer, documents,
+- [ ] 모든 qualifying Work의 fact/interpretation, analysis/polyglot, Viewer, documents,
       Question necessity·Decision comprehension와 interruption-cost common qualitative review
 - [ ] 세 repository class별 일곱 CLI usability criterion의 candidate-bound common qualitative review
-- [ ] one candidate-bound Project의 fresh-session multiple-Work continuity direct live observation
+- [ ] Volicord journey raw/checkpoint/final-bundle의 one-Project/three-Work continuity evidence
 - [ ] `en`/`ko` live Viewer accessibility와 browser input/resulting-paint direct human observation
 - [ ] final gate의 warning-clean clippy
 
@@ -517,7 +520,7 @@ and evaluator HEAD are distinct from the Product candidate; old evidence never b
 new candidate. Procedural uncertainty is unresolved until supported review resolves it.
 Only an explicit `approve-phase-9` operator action over the fully qualified state opens
 Phase 9. Approval cannot substitute for evidence or waive hard facts. Cutover remains
-out of scope until this complete state exists. The 8-cycle/16-fresh-session requirement
-and pre-campaign blind provisional boundary remain unchanged.
+out of scope until this complete state exists. The 3-journey/5-Work/8-fresh-session
+requirement and five-Work pre-campaign blind provisional boundary remain unchanged.
 The approved qualification must also have a verified durable result lineage; an approval
 reachable only through an ephemeral staging path is not a discoverable cutover record.

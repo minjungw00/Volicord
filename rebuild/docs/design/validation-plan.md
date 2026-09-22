@@ -961,14 +961,25 @@ freshness를 줄여서 이 상한을 만족시키지 않는다.
 
 Phase 8 Dogfood full passage는 V11 scripted conformance와 별개의 real-session qualification
 이다. 하나의 current candidate에 대해 `volicord`, `small-python`, `polyglot-medium` 세
-actual repository class에 `volicord = 3`, `small-python = 3`, `polyglot-medium = 2` cycle을
-배분하고, 각 cycle은 globally distinct한 fresh VS Code Codex work session과 fresh resume
-session을 사용한다. 따라서 automated qualification에는 `8 cycles × 2 sessions = 16`개의 distinct real
-session이 필요하다. `qualification_policy.py`의 단일 maintained policy는 evidence validity,
+repository journey를 준비한다. 각 journey는 하나의 candidate-bound workspace, Runtime Home과
+Project를 소유한다. Volicord journey에는 Work A/B/C, 다른 두 journey에는 Work A 하나씩을 두며,
+각 journey의 Work A만 fresh-session same-Work resume을 수행한다. 따라서 current campaign은
+3 journeys, 5 distinct Works, 3 resume pairs와 8 globally distinct real sessions를 요구한다.
+`qualification_policy.py`의 단일 maintained policy는 evidence validity,
 exact-candidate technical gate, machine findings, qualitative completeness, unresolved/human
 escalations, operator approval, replacement qualification과 Phase 9 readiness를 분리한다.
-Agent/human review는 모든 collected cycle에서 가능하며 automated pass를 선행 조건으로 두지 않는다.
+Agent/human review는 모든 collected Work에서 가능하며 automated pass를 선행 조건으로 두지 않는다.
 Qualified evidence에도 explicit operator approval 전까지 `phase_9_ready = false`다.
+
+All five Work tasks and all three resume tasks are frozen before any journey activation.
+Later Volicord Work B/C tasks must remain ordinary and useful without depending on one exact
+Work A implementation outcome. The four Volicord slots share one workspace and Runtime Home;
+the other journeys are physically isolated. Every session is globally fresh. Work A start/resume
+must resolve the same Project and Work, Volicord A/B/C must resolve one Project with three distinct
+chronologically retained Work identities, and Project identity must not cross journeys. Session
+revision evidence may advance from the pinned journey revision only through committed descendants;
+collection requires each journey workspace to end clean so session-created changes are not left
+uncommitted.
 
 Naturalistic session의 MCP memory coverage는 scripted technical gate의 process-tree RSS와
 독립이다. 현재 production-owned `.codex/config.toml`은 VS Code/Codex host가 candidate-local
@@ -983,12 +994,13 @@ RPC argument, Source body, provider response, credential 또는 conversation con
 sample count와 bounded measurement error만 기록해야 한다. Operation/session attribution은
 기술적으로 입증된 경우에만 허용한다.
 
-각 cycle descriptor는 unique Question, alternatives, recommendation, terminal outcome,
+각 Work descriptor는 unique Question, alternatives, recommendation, terminal outcome,
 Decision 또는 prescribed user selection을 evaluator 정답으로 두지 않는다. 대신 pinned
 repository revision의 actual owner contract, repository facts, delegated boundaries,
 non-exhaustive material concerns와 consequences, user에게 물어서는 안 되는 facts를 담은 bounded
-evaluation basis를 보존한다. Independent control review는 해당 cycle의 inquiry behavior class와
-판정 근거를 보존한다. `explicit_user_owned_decision`과 `hidden_user_owned_decision`은 material
+evaluation basis를 보존한다. Independent control review는 해당 Work의 independent materiality
+obligations와 판정 근거를 보존한다. `explicit_user_owned_decision`과
+`hidden_user_owned_decision`은 material
 concern의 존재만으로 봉인할 수 없다.
 Independent reviewer는 exact frozen task를 user Question 없이 완수하는 counterfactual을
 repository facts, accepted Decision/contract, delegated authority와 frozen request를 완전히
@@ -1029,7 +1041,7 @@ owner-document location과 `reviewer/workspaces/<review_slot_id>/repository`의 
 source-inspection clone만 담은 reviewer-preparation artifact로 repository/owner를 조사하고
 provisional classification/materiality conclusion을 같은 opaque ID와 preparation SHA-256에
 고정한다. Reviewer-visible preparation content, filename, workspace path와 index는 repository
-class, logical cycle, behavior class와 fixed matrix position을 포함하지 않으며 opaque-ID
+class, journey/Work identity, materiality obligations와 fixed profile position을 포함하지 않으며 opaque-ID
 순서로 표시한다. 그 뒤에만 evaluator concern, alternatives, recommendation과
 counterfactual conclusion을 비교한다. Hidden descriptor는 provisional/final review가 모두
 `material_outcome_unavoidable = true`와
@@ -1049,8 +1061,10 @@ Decision ceremony를 추가하지 않는다. Evaluator와 independent reviewer�
 typed source/active-owner provenance를 인용해 `resolved_from_evidence`가 되거나 conclusions가
 `agreed`가 된 뒤에만 accepted review가 될 수 있다.
 
-Reviewer-safe contract는 다음 behavior-class vocabulary와 각 class의 의미를 제공한다.
-이 목록은 현재 campaign의 multiplicity, duplicated class, coverage requirement 또는
+Reviewer-safe contract는 다음 materiality-obligation vocabulary와 각 obligation의 의미를 제공한다.
+하나의 Work가 compatible obligation을 여러 개 가질 수 있고 learning Work에는
+`learning_deliberation`과 `learning_routine_control`이 함께 존재할 수 있다. 이 목록은 현재
+campaign의 multiplicity, overlap, coverage requirement 또는
 repository placement를 공개하지 않는다.
 
 - `explicit_user_owned_decision`: ordinary task가 unresolved material outcome을 disclosure하는
@@ -1060,6 +1074,8 @@ repository placement를 공개하지 않는다.
   current evidence에도 outcome이 unresolved이면 Question과 explicit current-host Decision을 기록해야 함
 - `research_or_no_question`: research, accepted contract 또는 repository fact로 user interruption이
   불필요하며 no-question outcome이 맞음
+- `repository_or_environment_fact`: repository/environment inspection으로 정해야 하는 독립
+  dimension이며 user에게 답을 요구하지 않음
 - `delegated_implementation_choice`: user가 이미 위임한 implementation boundary 안에서 agent가
   선택하고 Question을 만들지 않음
 - `exploratory_uncertainty`: prototype, 추가 research 또는 evidence-backed defer가 immediate user
@@ -1069,21 +1085,24 @@ repository placement를 공개하지 않는다.
 - `learning_routine_control`: explicit learning participation이 있어도 routine/trivial detail은
   Learning Deliberation이나 Question 없이 non-interrupting이어야 함
 
-Campaign preparation은 exact realized assignment와 release-qualification profile을
-evaluator/steward-private integrity-bound state에만 보존한다. Profile의 histogram, duplicate,
-coverage와 repository distribution은 모든 eight provisional review가 immutable하게 고정된 뒤에만
-reveal하고 검증한다. Logical cycle number, opaque slot ID, workspace path, reviewer filename,
-operator label과 presentation order는 behavior class를 encode하지 않는다. Question wording이나
-하나의 answer를 고정하지 않는다.
-Simple repository는 Decision count를 채우기 위해 user Decision을 제조하지 않는다. 한
-small-Python cycle은 work와 resume 사이에 user interruption이 전혀 없어도 통과할 수 있다.
+Campaign preparation은 exact realized Work assignment와 release-qualification profile을
+evaluator/steward-private integrity-bound state에만 보존한다. Profile은 campaign-wide minimum으로
+explicit user-owned >= 1 Work, hidden user-owned >= 2 Works across >= 2 repository classes,
+pure/no-question >= 1, learning participation >= 1, repository/environment fact >= 1,
+delegated implementation >= 1, exploratory/research/prototype/defer >= 1을 요구한다.
+Coverage, overlap과 repository distribution은 모든 five provisional review가 immutable하게
+고정된 뒤에만 reveal하고 검증한다. Journey/Work identity, opaque slot ID, workspace path,
+reviewer filename, operator label과 presentation order는 obligations를 encode하지 않는다.
+Question wording이나 하나의 answer를 고정하지 않는다. Simple repository는 Decision count를
+채우기 위해 user Decision을 제조하지 않는다. Small-Python Work A는 start와 resume 사이에
+user interruption이 전혀 없어도 통과할 수 있다.
 Work/resume prompt는 Volicord operation order, 물어야 할 Question, outcome, Checkpoint content,
 Recall 또는 prescribed user selection을 지시하지
 않는다.
 
 Qualifying work session은 exact first work task를 current-host Goal Context의 Source로
 보존하고, repository analysis로 baseline을 만든 뒤 ordinary work를 시작한다. Agent는
-research, active Decision/delegation와 materiality를 판단해 적절한 behavior class를 선택하고
+research, active Decision/delegation와 materiality를 판단해 각 independent dimension에 적절한 disposition을 선택하고
 evidence를 남긴다. Material Question이 필요하면 Question Candidate/research/promotion
 경계와 current-host response linkage를 모두 적용한다. Question이 필요하지 않은 경우
 Question/Decision absence와 그 evidence를 정답으로 허용한다. User Decision은 displayed
@@ -1157,7 +1176,7 @@ changed basis와 Checkpoint grounding 검증은 그대로 적용한다. 이전 t
 
 Fresh resume session의 exact first task에는 Project ID가 포함되지 않는다. Repository
 inspection 또는 continued work 전에 current repository path로 `project_resolve`가
-`found`를 성공적으로 반환하고, 그 result의 Project identity가 cycle canonical bundle의
+`found`를 성공적으로 반환하고, 그 result의 Project identity가 journey-final canonical bundle의
 Project와 같으며 current binding identity/revision을 포함해야 한다. 같은 session의
 Recall은 이 successful resolution 뒤, repository inspection/continuation 전에 발생한다.
 Resume session은 identity를 얻기 위해 `project_initialize`로 replacement Project를
@@ -1241,8 +1260,8 @@ Definitive earlier work는 late를 증명하지만 unknown
 ordering 자체는 operator fault를 증명하지 않는다. Failure propagation/retry boundary는
 `failure-and-recovery.md`를 따른다.
 Candidate/revision/workspace/role mismatch는 기존 pre-mutation mapping rejection으로 유지한다.
-Maintained campaign self-test는 current production CLI hook의 실제 JSON 출력을 16개 sanitized
-work/resume capture로 만들어 production-like ordering으로 parser와 `collect_batch`를
+Maintained campaign self-test는 current production CLI hook의 실제 JSON 출력을 8개 sanitized
+start/resume capture로 만들어 production-like ordering으로 parser와 `collect_batch`를
 통과시킨다. Minimal fixture는 `rebuild/validation/dogfood/fixtures/vscode-session-start-ordering.jsonl`,
 current/legacy negative ordering과 attribution controls는 `campaign_self_test.py`가 소유한다.
 Production evidence를 변경하지 않은 validator mismatch injection도 검증한다. Prior raw
@@ -1276,7 +1295,7 @@ body를 포함하지 않는다. Semantic review는 naturalistic evidence set의 
 
 Campaign 준비와 routine evidence collection은 maintained internal helper인
 `rebuild/scripts/dogfood-campaign`을 사용한다. 사용자는 repository/hook trust를 직접 승인하고,
-16개의 genuinely naturalistic VS Code Codex chat을 실행하며 agent가 genuine material
+8개의 genuinely naturalistic VS Code Codex chat을 실행하며 agent가 genuine material
 Question을 제시한 경우에만 실제로 답하고 raw rollout을 한 번에 제공한다. Helper는
 rollout intake, activation validation,
 blocker gating, Project identity extraction, canonical bundle export와 hash, bounded Runtime
@@ -1291,24 +1310,25 @@ trust를 자동 승인하지 않고 VS Code가 SessionStart를 실제 실행했�
 activation diagnostic은 capture/hash/session, opaque slot, work/resume role과 관찰 가능한
 Volicord MCP call 존재 여부를 보존하고 product inquiry failure와 분리한다.
 `prepare`는 모든 campaign mutation 전에 evaluator/steward-private qualification profile과
-assignment를 만들고, 8개의 unique cryptographic-random opaque slot과 qualifying
-repository/Runtime Home을 `slots/<review_slot_id>/...` 아래에 준비한다.
-Evaluator/steward-private mapping만 opaque slot을 repository class, logical cycle, expected
-behavior class와 authoritative descriptor에 연결하며 mapping은 campaign SHA-256와 evidence
-inventory에 묶인다. Numeric old/new layout branch나 prior campaign migration은 없다.
+assignment를 만들고, 5개의 unique cryptographic-random opaque review slot과 3개의 qualifying
+journey workspace/Runtime Home을 준비한다. Volicord의 세 Work는 같은 journey workspace와 Runtime
+Home을 공유하고, reviewer source clone만 Work별 opaque slot에 격리한다.
+Evaluator/steward-private mapping만 opaque slot을 repository class, journey, Work, independent
+materiality obligations와 authoritative descriptor에 연결하며 mapping은 campaign SHA-256와 evidence
+inventory에 묶인다. Mutable old/new layout branch나 prior campaign migration은 없다.
 Independent evaluator/control은 actual repository와 pinned revision을 조사하고 prescribed
-selection이 아닌 behavior-class review를 준비·독립 검토한 뒤 maintained helper로 cycle
+selection이 아닌 Work materiality review를 준비·독립 검토한 뒤 maintained helper로 Work
 descriptor를 봉인한다.
 Evaluator material은 operator instruction, example 또는 review index에 넣지 않으며 operator에게
 descriptor를 직접 열거나 수정하라고 요구하지 않는다. Naturalistic operator는 intended
 repository를 검사하고 trust하며 SessionStart hook을 명시적으로 승인하고, required fresh VS
 Code Codex session을 열어 generated run sheet의 frozen work/resume task만 보낸다. Genuine
-material Question이나 Learning Deliberation이 실제로 제시된 경우에는 본인의 답을 제공하고 16개 raw
+material Question이나 Learning Deliberation이 실제로 제시된 경우에는 본인의 답을 제공하고 8개 raw
 rollout을 session 사이의 control 접촉 없이 보존한다.
 `prepare`는 evaluator input과 operator material을 분리한다. `prepare-review`는 opaque
 `review_slot_id`, exact candidate/pinned revision, frozen work/resume tasks, work scope,
 owner-document location과 opaque reviewer workspace만 reviewer plane에 동결하고 evaluator
-repository class/logical cycle mapping, concerns, alternatives, recommendation,
+repository class/journey/Work mapping, concerns, alternatives, recommendation,
 user-owned outcome과 counterfactual conclusion은 제외한다. Phase A reviewer는 repository
 source와 listed owner document를 조사하되 qualification-control implementation이나
 evaluator/steward state가 아닌 prepared reviewer plane만 campaign evidence로 사용한다. 이는
@@ -1325,7 +1345,7 @@ proposed review와 proposed path가 inventory-bound campaign artifact인지 판�
 membership만 읽어 같은 reviewer-visible validator를 실행하고 evaluator/profile/descriptor를
 읽거나 어떤 campaign state도 변경하지 않는다. Inventory-bound campaign artifact를 mutable
 reviewer input으로 전달하면 명시적으로 거부한다. 성공과 실패 모두 `provisional_count`,
-cycle/reveal state, artifact와 inventory를 바꾸지 않는다. Independent control agent가 preflight를 통과한 provisional review를
+Work/reveal state, artifact와 inventory를 바꾸지 않는다. Independent control agent가 preflight를 통과한 provisional review를
 제출하면 `record-provisional-review`가 exact candidate,
 opaque `review_slot_id`, preparation identity와 strict reviewer-visible schema를 검증하고 immutable
 private artifact `reviewer/provisional/<review_slot_id>.json`에 accepted input의 exact bytes를
@@ -1333,12 +1353,12 @@ private artifact `reviewer/provisional/<review_slot_id>.json`에 accepted input�
 `provisional_recorded`로 성공 전환한다. 이 operation은 evaluator descriptor를 읽지 않고
 reviewer가 기록한 classification에서만 materiality와 disclosure self-consistency를 계산한다.
 Maintained vocabulary에 속하고 internally consistent한 provisional conclusion은 private evaluator
-class와 일치하지 않아도 성공하며, 결과는 repository class, logical cycle, evaluator behavior
-class 또는 match/mismatch를 노출하지 않는다. Recording 뒤 이전 draft를 더 편집해도 recorded
-provisional bytes/hash와 inventory integrity는 바뀌지 않는다. 모든 eight provisional artifact와 hash가 고정되기
-전에는 qualification-profile reveal과 `seal-cycle` evaluator reveal을 모두 거부한다.
-`reveal-qualification-profile`은 `provisional_count = 8`과 모든 immutable hash를 확인한 뒤 private
-profile을 검증하고 reveal state를 고정한다. 그 뒤 `seal-cycle`은 이미 고정된 provisional
+obligations와 일치하지 않아도 성공하며, 결과는 repository class, journey/Work, evaluator
+obligations 또는 match/mismatch를 노출하지 않는다. Recording 뒤 이전 draft를 더 편집해도 recorded
+provisional bytes/hash와 inventory integrity는 바뀌지 않는다. 모든 five provisional artifact와 hash가 고정되기
+전에는 qualification-profile reveal과 `seal-work` evaluator reveal을 모두 거부한다.
+`reveal-qualification-profile`은 `provisional_count = 5`와 모든 immutable hash를 확인한 뒤 private
+profile을 검증하고 reveal state를 고정한다. 그 뒤 `seal-work`은 이미 고정된 provisional
 artifact를 byte/hash 그대로 유지한 채 full evaluator basis와 비교한다. Structured
 `classification_comparison`은 provisional/evaluator classification과 classification, materiality,
 unavoidability, prompt-disclosure 차이를 기계적으로 열거한다. 일치한 비교는 `agreed`, 불일치는
@@ -1347,8 +1367,8 @@ inspectable provenance와 bounded basis를 가진 `resolved_from_evidence`일 �
 단계가 완료되기 전에는 activation과 rollout collection이
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
 동결하며 exact work/resume task와 opaque authoritative workspace/Runtime path만으로 operator
-run sheet를 다시 만든다. Run sheet는 repository grouping 안에서도 opaque-ID 순서를 쓰며
-logical cycle label이나 behavior class를 표시하지 않는다.
+run sheet를 다시 만든다. Run sheet는 repository grouping 안에서 frozen sequence를 표시하지만
+journey/Work identity나 materiality obligations를 표시하지 않는다.
 Operator-facing artifact의 leak check는 prescribed Question, evaluator concern, recommendation,
 prescribed selection, counterfactual approach, fact/authority agreement,
 behavior-review reasoning과 evaluator-only sentinel을 거부한다. 이 분리는 workflow/evidence
@@ -1369,19 +1389,20 @@ evidence에 실제 사용되므로 path 존재나 candidate HEAD만으로 대체
 달라지거나 executable이 사라지면 candidate-binding integrity failure로 fail closed하며 qualitative
 uncertainty로 바꾸지 않는다. Historical evidence의 read-only review는 현재 executable의 존재를
 요구하지 않지만 새 evidence를 만들거나 publish할 수 없다.
-8개 descriptor가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
-repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 16개 fresh
-chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 16개
-explicit path 또는 정확히 16개 file만 있는 directory를 받고, state mutation 전에 frozen first
-task, exact workspace/revision, work/resume role, `source=vscode`, `originator=codex_vscode`, fresh
+5개 descriptor와 8개 task가 모두 봉인되면 steward는 session 시작 전에 `activate-all`을 실행할 수 있지만
+repository/hook trust는 계속 user-controlled다. Default operator flow는 frozen task로 8개 fresh
+chat을 모두 실행하고 raw rollout을 한 번에 `collect-batch`에 제공한다. Batch operation은 8개
+explicit path 또는 정확히 8개 file만 있는 directory를 받고, state mutation 전에 frozen first
+task, exact journey workspace, pinned revision 또는 그 committed descendant, session-slot role,
+`source=vscode`, `originator=codex_vscode`, fresh
 session identity와 SessionStart activation으로 unordered input을 전역 mapping한다. Ambiguity,
 duplicate, missing capture, identity mismatch와 session reuse는 전체 mapping을 거부한다.
 
 Cross-locale document의 active-host route는 preparation 때 candidate-local `volicord-mcp`
 executable/hash에 bind한다. Fixed locale와 같은 `en`/`en-*` 또는 `ko`/`ko-*` 요청만 기존 CLI
-export를 사용한다. 그 밖의 요청은 sixteen raw rollout이 모두 존재하고 cycle이 아직 sealed인
+export를 사용한다. 그 밖의 요청은 eight raw rollout이 모두 존재하고 모든 Work가 아직 sealed인
 상태에서 `prepare-document-realizations`를 먼저 실행한다. 이 non-qualifying operation은 같은
-global read-only mapping으로 exact cycle Project를 구하고 maintained stdio MCP client로 각
+global read-only mapping으로 exact journey Project를 구하고 maintained stdio MCP client로 각 journey의
 문서의 `document_preview` NarrativePlan을 읽는다. Markdown/HTML의 plan bytes가 동일함을
 확인하며 Product fingerprint가 format과 generation time에 의존하지 않는 계약에서만 realization을
 공유한다. Raw input, session과 campaign hash binding은 private `realization-bindings.json`에,
@@ -1425,7 +1446,7 @@ arbitrary natural language의 semantic quality classifier가 아니므로 active
 기존 requested-language human review를 유지한다.
 
 `collect-batch`는 staging과 terminal mutation 전에 모든 required realization의 fixed bytes/hash,
-Project/candidate와 exact sixteen raw input binding을 요구한다. Missing route/preparation/record는
+Project/candidate와 exact eight raw input binding을 요구한다. Missing route/preparation/record는
 preparation blocker이며 Product crash가 아니다. Collection은 current plan을 다시 읽고 fixed realization을
 Product `document_preview`에 제출하며 Product-returned Markdown/HTML bytes와 SHA-256만 document
 evidence로 보존한다. Realizer plan/draft/record와 private source representation은 review archive에서
@@ -1441,7 +1462,7 @@ workspace와 Runtime Home에서 candidate-local CLI로 실행한다. Help, statu
 current document preview, portable-context export와 doctor의 repository-relative argv,
 bounded reviewer-safe stdout/stderr projection, raw stream byte count/SHA-256, numeric exit 또는
 explicit termination, order/time과 executable/path fingerprint를 append-only artifact와 receipt에
-보존한다. Raw stream file은 private ephemeral execution root에서 projection 뒤 제거한다. 이 operation은 measured cycle
+보존한다. Raw stream file은 private ephemeral execution root에서 projection 뒤 제거한다. 이 operation은 measured journey
 workspace/Runtime Home이나 campaign metadata를 mutate하지 않고, credential/environment/source
 body와 absolute private path를 보존하지 않는다. Completed nonzero result는 review evidence이며
 process evidence 누락·hash/revision/candidate mismatch는 integrity failure다. Observation의
@@ -1455,8 +1476,8 @@ process/output/execution root, campaign/observation root와 Product repository�
 duration, revision 또는 invocation identity를 바꾸지 않으며 generic user-text redaction이나
 Product CLI output contract가 아니다.
 
-1. `collect-batch`: immutable evidence validity/collection. Candidate, inventory, 16개
-   session/task/workspace/revision mapping, required activation와 realization binding을
+1. `collect-batch`: immutable evidence validity/collection. Candidate, inventory, 8개
+   session/task/journey-workspace/revision-lineage mapping, required activation와 realization binding을
    먼저 검증한다. Wrong/missing/duplicate session, work/resume reuse, raw hash change,
    destination collision와 corrupted inventory는 valid publication을 차단한다.
 2. Machine observations/findings: 저장된 evidence set만 읽는 별도 evaluation이다.
@@ -1492,7 +1513,7 @@ valid admission을 허용하지 않는다. `finding_state = hard_blocked|review_
 `dogfood-campaign qualify`는 immutable machine evaluation과 recorded common reviews를
 소비하며 해당 Product candidate의 기존 gate capsule/archive를 독립 검증한다. Naturalistic
 qualification을 위해 final/provider/V11 또는 deterministic technical rehearsal을 반복하지 않는다.
-Unique naturalistic Phase 8 observations와 8-cycle/16-session requirement는 그대로 유지한다.
+Unique naturalistic Phase 8 observations와 3-journey/5-Work/8-session requirement는 그대로 유지한다.
 CLI usability는 별도 evidence-bound observation에서 repository class별 일곱 criterion을 한 번씩,
 총 21개 assessment로 요구한다. Cycle별 CLI criterion 복제는 요구하지 않는다.
 
@@ -1508,8 +1529,9 @@ Complete immutable raw evidence의 terminal lifecycle이나 naturalistic grammar
 복사하지 않으며 existing private archive filtering을 유지한다.
 
 `evidence-set.json`은 candidate/campaign identity, prepared candidate executable artifact bindings,
-sixteen raw session/hash bindings,
-cycle mapping과 당시 artifact inventory를 닫힌 immutable manifest로 보존한다. Exact file
+eight raw session/hash bindings, five Work raw/canonical/checkpoint records, three journey-final
+artifact inventories, journey/Work/session mapping과 당시 artifact inventory를 닫힌 immutable
+manifest로 보존한다. Exact file
 SHA-256가 evidence-set identity다. Mutable campaign metadata, inventory와 미래 evaluation은
 이 hash에 포함하지 않는다. `collection_state = collected`, `evaluation_state = not_run`,
 `qualification_state = not_run`은 별도 값이며 `terminal_outcome`으로 semantic failure를
@@ -1520,7 +1542,7 @@ Publication은 기존 staging/savepoint, exact-byte rollback과 journal read bar
 Incomplete publication은 `repair_required`이며 journal이 남은 campaign을 읽거나 재시도해
 성공으로 취급하지 않는다. Collection 성공 뒤 raw evidence 교체는 금지된다.
 
-각 cycle의 document/Viewer evidence는 requested-language generated body를 실제 검사하고,
+각 journey-final document/Viewer evidence는 represented Work identities와 requested-language generated body를 실제 검사하고,
 Project Understanding required meaning, verified-fact/generated-interpretation distinction과
 diagram relation grounding을 machine-inspectable basis와 human review surface에 보존한다.
 Campaign 전체에서 current production background semantic-provider dispatcher/transport의
@@ -1530,14 +1552,14 @@ Ordinary independent review의 handoff는 byte-exact raw rollout archive와 boun
 package 두 artifact를 함께 요구한다. Raw rollout은 bounded package의 default member가 아니며
 별도 private archive로 전달한다. Full Runtime Home은 이 handoff의 일부가 아니다.
 
-Automated run은 repository/candidate identity, 16-session semantics, post-reveal private
+Automated run은 repository/candidate identity, 8-session semantics, post-reveal private
 qualification profile, bundle/provenance, document와 static snapshot 생성,
 requested-language realization, production
 provider success authorization, machine accessibility, resource, regression, Decision revisit와
 candidate cleanliness를 독립 판정한다. 공통 qualitative review는 immutable evidence set에서 agent 또는 human reviewer별
 독립 run으로 생성한다. Machine evaluation은 optional binding이며 통과를 요구하지 않는다.
 Review preparation은 semantic pass를 시작하기 전에 exact criterion/group inventory, machine finding의
-status/disposition과 permitted relationship group, cycle별 authority obligation/coverage, repository class별
+status/disposition과 permitted relationship group, Work별 authority obligation/coverage, repository class별
 21개 CLI criterion, human-only criterion과 conflict/high-impact insufficiency escalation rule을 하나의
 `completion_obligations`로 고정한다. Non-mutating preflight는 draft의 missing criterion ID,
 unaddressed review-required finding, authority/CLI gap, remaining human-only criterion과 targeted
@@ -1550,11 +1572,11 @@ Inquiry, conversational human review와 current UX rubric을 한 번에 실행�
 numeric exit와 duration을 보존하고 한 실패가 다른 독립 경로 실행을 생략하지 않는다. 이 set은
 각 subsystem의 전체 unit suite를 복제하지 않는다.
 Deterministic multi-Work fixture와 production restart/portability test는 구현 mechanics의 regression
-support일 뿐 naturalistic passage가 아니다. Campaign은 별도 `long_lived_project_observation`을
-요구하며, 하나의 candidate-bound Project가 fresh sessions에 걸쳐 둘 이상의 stable Work identity,
-state와 history를 실제 유지했다는 direct human observation이 없으면 qualification을 unresolved로
-남긴다. Static fixture나 agent review는 이 gap을 닫을 수 없다.
-Lowest-numbered 또는 automated-passed cycle로 한정하지 않고 모든 collected cycle을 검토한다. 각 cycle에서 source-vs-interpretation comprehension, repository-analysis
+support일 뿐 naturalistic passage가 아니다. 별도 `long_lived_project_observation`은 더 이상 current
+campaign requirement가 아니다. Volicord journey 자체의 four raw sessions, one Project identity,
+three distinct Work identities, ordered checkpoints와 journey-final bundle retention이 naturalistic
+continuity evidence다. 이 구조가 없으면 qualification을 unresolved로 남긴다.
+Work A 또는 automated-passed Work로 한정하지 않고 모든 collected Work을 검토한다. 각 Work에서 source-vs-interpretation comprehension, repository-analysis
 usefulness, CLI usability, Viewer Project Understanding, four-document usefulness, Question
 necessity/Decision comprehension과 interruption cost를 평가한다. Interaction review는 explicit
 material handling quality, hidden material discovery quality, normal-mode no-question interruption
@@ -1580,7 +1602,7 @@ semantic proof가 아니다. Semantic ask-user invariants는 `requires_bounded_q
 Question wording, count, keyword 또는 similarity로 자동 판정하지 않는다. Hidden repository
 investigation은 필요하지만 multiple choices 또는 coupling이라는 고정 형태를 요구하지 않는다.
 
-Mandatory common `authority/<obligation_id>` criterion은 every collected cycle에서 initial concern마다
+Mandatory common `authority/<obligation_id>` criterion은 every collected Work에서 initial concern마다
 `material_outcome`, `observable_implementation_commitment`, `commitment_state`, `resolution_path`,
 `authority_kind`, bounded `authority_basis`, `authority_relation_to_outcome`, `chronology`와
 `evidence`를 기록한다. Evidence는 immutable capture/bundle hash 또는 pinned owner provenance의
@@ -1596,7 +1618,7 @@ coupled artifacts에서 additional independent outcome을 찾기 위한 complete
 classifier나 fixed Question 수가 아니다. Sanitized `interaction-authority-obligations.json` regression은
 safe statement 뒤 unsafe statement인 input에서 targeting/rejection/activation의 valid user Decisions가
 모두 있어도 durable partial effects를 별도 authority 없이 whole-input prevalidation으로 commit하면
-cycle qualification을 fail한다. Exact current contract/prior authority/delegation이 같은 durable result를
+Work qualification을 fail한다. Exact current contract/prior authority/delegation이 같은 durable result를
 정하거나 production commitment를 avoid/defer/scratch prototype으로 남기면 redundant Question 없이
 pass할 수 있다. 이 fixture는 raw naturalistic rollout을 복사하지 않으며 새로운 HEAD의 qualification
 evidence가 아니다. Human pass는 machine/evidence failure를 override하지 못한다.
@@ -1611,7 +1633,7 @@ Silent/unresolved, late, unrelated authority 또는 production commitment를 가
 
 Evaluator-private concern과 counterfactual evidence는 naturalistic execution 뒤 bounded review
 grounding으로만 사용하며 frozen operator task와 work/resume session에는 노출하지 않는다.
-Polyglot cycle은 언어·component
+Polyglot journey는 언어·component
 경계와 flow comprehension을 추가하고, static Viewer readability와 Volicord live Viewer의
 `en`/`ko` keyboard/focus/color/zoom accessibility 및 browser input/resulting-paint responsiveness도
 campaign에서 검토한다. Snapshot-export request duration은 candidate-bound monotonic proxy로
@@ -1841,7 +1863,8 @@ reference는 compatible prior assessment를 가리키며 literal answer는 prove
 `insufficient_evidence`는 fabricated locator를 요구하지 않고 inspected set과 missing-evidence
 설명을 보존한다. Partial review의 `not_reviewed`/`insufficient_evidence`는 semantic failure나
 qualification success로 재분류하지 않는다.
-Cycle-specific criterion은 모든 8개 cycle에 남고, CLI group만 `volicord`, `small-python`,
+Work-specific criterion은 모든 5개 Work에 남고, journey-final projection criterion은 represented
+Work identity를 보존한 세 projection에 적용된다. CLI group만 `volicord`, `small-python`,
 `polyglot-medium` repository class별 일곱 criterion으로 생성된다. Dedicated observation이 없는
 class는 일곱 bounded unresolved gap을 남기며 `not_applicable`로 숨기지 않는다.
 
@@ -1947,9 +1970,10 @@ and permitted semantic review groups. `machine_findings.py` validates complete c
   in their permitted semantic group; they never automatically pass.
 
 Historical campaigns without an immutable collection receipt may use `dogfood-campaign
-diagnose --campaign-root <historical> --output <new-run>`. It runs the same cycle observation
-engine over existing descriptors and hashes the historical inventory, metadata and raw
-rollouts before/after. It does not add missing evidence links, create a collection receipt,
-rewrite rejection results or qualify any candidate. An intact collected campaign instead
+diagnose --campaign-root <historical> --output <new-run>`. Superseded schema 1–3 campaigns receive
+identity-and-inventory-only inspection; they are not upgraded or routed through the current Work
+evaluation engine. The helper hashes historical inventory, metadata and raw rollouts before/after.
+It does not add missing evidence links, create a collection receipt, rewrite rejection results or
+qualify any candidate. An intact current collected campaign instead
 uses the ordinary `evaluate` append-only operation. Sanitized fresh fixtures prove the full
 re-evaluation contract; historical incomplete diagnostics prove only what was observable.

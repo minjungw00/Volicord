@@ -113,9 +113,9 @@ class DocumentRealizationTests(unittest.TestCase):
                 r.prepare(root, captures)
             self.assertEqual(r.inspect_state(root), published)
             index = c.read_json(root / result["index"])
-            self.assertEqual(len(index["documents"]), 32)
+            self.assertEqual(len(index["documents"]), 12)
             visible = "\n".join(p.read_text() for p in (root / "realizer").rglob("*.json"))
-            for secret in (*c.BEHAVIOR_CLASSES, "expected_qualification", "evaluation_basis", "cycle_key", "raw_inputs"):
+            for secret in (*c.MATERIALITY_OBLIGATIONS, "expected_qualification", "evaluation_basis", "work_slot_id", "raw_inputs"):
                 self.assertNotIn(secret, visible)
             before = snapshot(root)
             with self.assertRaises(c.CampaignError):
@@ -138,7 +138,7 @@ class DocumentRealizationTests(unittest.TestCase):
                 self.assertEqual(recorded.read_bytes(), exact)
             complete = r.inspect_state(root)
             self.assertEqual(complete["state"], "realizations_fully_recorded")
-            self.assertEqual(complete["recorded_realizations"], 32)
+            self.assertEqual(complete["recorded_realizations"], 12)
             before_inspection = snapshot(root)
             cli = subprocess.run([str(c.ROOT / "rebuild/scripts/dogfood-campaign"),
                 "inspect-document-realizations", "--campaign-root", str(root)],
@@ -167,7 +167,7 @@ class DocumentRealizationTests(unittest.TestCase):
                     fixtures.snapshotter(binary, runtime, project, destination, locale, "en"))
             self.assertIsNone(c.load_campaign(root)["terminal_outcome"], summary)
             paths = list(root.glob("slots/*/evidence/generated-documents/*"))
-            self.assertEqual(len(paths), 64)
+            self.assertEqual(len(paths), 24)
             self.assertTrue(all("인수인계" in p.read_text() for p in paths))
             self.assertFalse(c.safe_archive_artifact("realizer/plans/anything.json", include_raw=True))
         self.assertEqual({p: p.read_bytes() for p in captures}, raw_before)

@@ -115,8 +115,15 @@ def publish(root: Path, files: dict[Path, bytes], *, drafts: dict[Path, bytes] |
 
 
 def raw_binding(mapped) -> list[dict[str, Any]]:
-    return [{"cycle": list(key), "session_id": value.capture.session_id,
-             "sha256": value.capture.source_sha256} for key, value in sorted(mapped.items())]
+    return [
+        {
+            "session_slot": list(key),
+            "session_slot_id": campaign_api().session_slot_id(*key),
+            "session_id": value.capture.session_id,
+            "sha256": value.capture.source_sha256,
+        }
+        for key, value in sorted(mapped.items())
+    ]
 
 
 def request(preparation: dict[str, Any], format_name: str) -> dict[str, Any]:
@@ -270,7 +277,7 @@ def inspect_state(root: Path) -> dict[str, Any]:
     c = campaign_api()
     campaign = c.load_campaign(root)
     c.verify_inventory(root)
-    total = len(campaign["cycles"]) * len(c.DOCUMENT_KINDS)
+    total = len(campaign["journeys"]) * len(c.DOCUMENT_KINDS)
     common = {"kind": "document_realization_operation_state", "mutation": "none",
         "candidate_head": campaign["candidate_head"], "expected_realizations": total,
         "qualification_state": "not_run"}
@@ -327,7 +334,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
     c = campaign_api()
     campaign = c.load_campaign_for_mutation(root)
     c.verify_inventory(root)
-    if campaign.get("terminal_outcome") is not None or any(s.get("state") != "sealed" for s in campaign["cycles"].values()):
+    if campaign.get("terminal_outcome") is not None or any(s.get("state") != "sealed" for s in campaign["works"].values()):
         raise c.CampaignError("realization preparation requires an untouched sealed campaign")
     if not required(campaign["document_language"], campaign["viewer_locale"]):
         return {"state": "fixed_locale", "qualification_state": "not_run"}
@@ -342,15 +349,14 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
         progress({"phase": "mapping_inputs", "completed": 1, "total": 1})
     files, drafts, bindings, index = {}, {}, [], []
     binary = Path(campaign["candidate_binary"])
-    expected = len(campaign["cycles"]) * len(c.DOCUMENT_KINDS)
+    expected = len(campaign["journeys"]) * len(c.DOCUMENT_KINDS)
     prepared = 0
-    for key, state in sorted(campaign["cycles"].items()):
-        kind, cycle = next((kind, cycle) for kind in c.CLASSES for cycle in c.cycle_numbers(kind)
-                           if c.cycle_key(kind, cycle) == key)
-        work_ids = c.observed_project_ids(mapped[(kind, cycle, "work")].capture)
-        resume_ids = c.observed_project_ids(mapped[(kind, cycle, "resume")].capture)
+    for key, state in sorted(campaign["journeys"].items()):
+        kind = state["repository_class"]
+        work_ids = c.observed_project_ids(mapped[(kind, "A", "start")].capture)
+        resume_ids = c.observed_project_ids(mapped[(kind, "A", "resume")].capture)
         if len(work_ids) != 1 or resume_ids != work_ids:
-            raise c.CampaignError("raw work/resume captures do not establish one exact cycle Project")
+            raise c.CampaignError("raw start/resume captures do not establish one exact journey Project")
         for document_kind in c.DOCUMENT_KINDS:
             identity = secrets.token_hex(16)
             preparation = {"kind": "active_host_document_preparation", "schema_version": 4,
@@ -378,7 +384,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
                         "claims": [{"identity": claim["identity"], "text": None} for claim in s["claims"]]}
                         for s in plan["sections"]]}}
             drafts[artifact(root, "drafts", identity)] = c.json_bytes(draft)
-            bindings.append({"cycle_key": key, "realization_id": identity, "document_kind": document_kind})
+            bindings.append({"journey_id": key, "realization_id": identity, "document_kind": document_kind})
             index.append({"realization_id": identity, "preparation": c.relative(root, plan_path),
                           "draft": c.relative(root, artifact(root, "drafts", identity))})
             prepared += 1
@@ -451,7 +457,7 @@ def record(root: Path, identity: str, draft_path: Path,
     c = campaign_api()
     campaign = c.load_campaign_for_mutation(root)
     c.verify_inventory(root)
-    if campaign.get("terminal_outcome") is not None or any(s.get("state") != "sealed" for s in campaign["cycles"].values()):
+    if campaign.get("terminal_outcome") is not None or any(s.get("state") != "sealed" for s in campaign["works"].values()):
         raise c.CampaignError("realization recording requires an untouched sealed campaign")
     verify_route(campaign)
     validate(root, identity, draft_path, runtime_rollout)
@@ -465,7 +471,7 @@ def record(root: Path, identity: str, draft_path: Path,
         raise c.CampaignError("realization preparation candidate/identity mismatch")
     if preparation["provenance_binding"]["mcp_sha256"] != campaign["document_realization_route"]["mcp_sha256"]:
         raise c.CampaignError("verified preparation route differs from candidate route")
-    state = campaign["cycles"][matches[0]["cycle_key"]]
+    state = campaign["journeys"][matches[0]["journey_id"]]
     for format_name, _ in c.DOCUMENT_FORMATS:
         consume(Path(campaign["candidate_binary"]), Path(state["runtime_home"]), preparation,
                 json.loads(data), format_name, runtime_rollout=runtime_rollout)
@@ -502,7 +508,7 @@ def consume(binary: Path, runtime: Path, preparation: dict[str, Any], draft: dic
 def fixed(root: Path, campaign: dict[str, Any], key: str, document_kind: str):
     c = campaign_api()
     bindings = json.loads(bound_bytes(root, root / "realization-bindings.json"))
-    matches = [b for b in bindings["documents"] if b["cycle_key"] == key and b["document_kind"] == document_kind]
+    matches = [b for b in bindings["documents"] if b["journey_id"] == key and b["document_kind"] == document_kind]
     if len(matches) != 1:
         raise c.CampaignError("required document realization has not been prepared")
     identity = matches[0]["realization_id"]
@@ -529,26 +535,26 @@ def require_batch_ready(root: Path, campaign: dict[str, Any], mapped) -> None:
     if (bindings["candidate_head"] != campaign["candidate_head"]
         or bindings["campaign_sha256"] != harness.sha256(c.campaign_file(root))
         or bindings["raw_inputs"] != raw_binding(mapped)):
-        raise c.CampaignError("realization preparation does not bind the current campaign and sixteen raw inputs")
-    for key in campaign["cycles"]:
+        raise c.CampaignError("realization preparation does not bind the current campaign and eight raw inputs")
+    for key, state in campaign["journeys"].items():
         for kind in c.DOCUMENT_KINDS:
             preparation, _ = fixed(root, campaign, key, kind)
-            binding = next((slot for slot in mapped if slot[2] == "work" and c.cycle_key(*slot[:2]) == key), None)
+            binding = (state["repository_class"], "A", "start")
             if binding is None or c.observed_project_ids(mapped[binding].capture) != [preparation["project_id"]]:
                 raise c.CampaignError("realization Project does not match exact mapped input")
 
 
-def generate(root: Path, kind: str, cycle: int, project_id: str, document_kind: str,
+def generate(root: Path, kind: str, work_label: str, project_id: str, document_kind: str,
              format_name: str, destination: Path) -> dict[str, Any]:
     c = campaign_api()
     try:
         campaign = c.load_campaign(root)
         verify_route(campaign)
-        key = c.cycle_key(kind, cycle)
+        key = c.journey_id(kind)
         preparation, draft = fixed(root, campaign, key, document_kind)
         if preparation["project_id"] != project_id:
-            raise c.CampaignError("fixed realization Project differs from cycle evidence")
-        content = consume(Path(campaign["candidate_binary"]), Path(campaign["cycles"][key]["runtime_home"]),
+            raise c.CampaignError("fixed realization Project differs from journey evidence")
+        content = consume(Path(campaign["candidate_binary"]), Path(campaign["journeys"][key]["runtime_home"]),
                           preparation, draft, format_name, allow_bound_runtime=True)
         verify_route(campaign)
     except c.CampaignError as error:

@@ -274,10 +274,10 @@ remain explicit operator actions.
 
 The qualification result separates evidence validity, exact-candidate technical gate,
 machine findings, qualitative completion, human escalations, operator approval,
-replacement qualification and Phase 9 readiness. Collection still requires eight
-cycles and sixteen globally distinct fresh sessions across the unchanged three
-repository classes. The private behavior profile remains blind until all eight
-provisional reviews are fixed.
+replacement qualification and Phase 9 readiness. Collection requires three
+repository journeys, five Works and eight globally distinct fresh sessions across
+the unchanged three repository classes. The private materiality-obligation profile
+remains blind until all five provisional reviews are fixed.
 
 The following table is a human-readable projection of the public operating
 contract in `dogfood/evaluation.json`; it does not own a separate campaign
@@ -286,13 +286,14 @@ definition.
 <!-- phase8-public-campaign-contract:start -->
 | Public campaign field | Current requirement |
 | --- | --- |
-| `qualification_cycles` | `8` |
-| `sessions_per_cycle` | `2` |
-| `fresh_sessions` | `16` |
-| `repository_cycles` | `volicord=3, small-python=3, polyglot-medium=2` |
-| `provisional_reviews_before_reveal` | `8` |
-| `sealed_descriptors_and_reviews` | `8` |
-| `complete_batch_raw_rollouts` | `16` |
+| `repository_journeys` | `3` |
+| `work_items` | `5` |
+| `work_slots_by_repository` | `volicord=A/B/C, small-python=A, polyglot-medium=A` |
+| `fresh_resume_pairs` | `3` |
+| `fresh_sessions` | `8` |
+| `provisional_reviews_before_reveal` | `5` |
+| `sealed_descriptors_and_reviews` | `5` |
+| `complete_batch_raw_rollouts` | `8` |
 <!-- phase8-public-campaign-contract:end -->
 
 `harness.py inspect-work --candidate-head <original-candidate> --descriptor <descriptor>

@@ -113,7 +113,7 @@ actual Git `HEAD` exactly matches the newly sealed candidate identified by its
 own successful maintained gate and verified capsule. Supplying the historical
 candidate `6031641c46cf014a754442dcee3137caf265882e`, or any other candidate
 argument, cannot qualify a different worktree HEAD. The fresh campaign must
-retain the maintained three-class, eight-cycle/sixteen-session reviewer-blind behavior-profile, distinct work/resume-session, automated,
+retain the maintained three-journey/five-Work/eight-session reviewer-blind obligation profile, distinct session-slot, automated,
 common qualitative-review, targeted human escalation and explicit operator approval contract.
 The campaign worktree itself must be the sealed candidate; a different
 support-branch HEAD cannot qualify by supplying only a candidate argument.
@@ -130,24 +130,25 @@ campaign definition.
 <!-- phase8-public-campaign-contract:start -->
 | Public campaign field | Current requirement |
 | --- | --- |
-| `qualification_cycles` | `8` |
-| `sessions_per_cycle` | `2` |
-| `fresh_sessions` | `16` |
-| `repository_cycles` | `volicord=3, small-python=3, polyglot-medium=2` |
-| `provisional_reviews_before_reveal` | `8` |
-| `sealed_descriptors_and_reviews` | `8` |
-| `complete_batch_raw_rollouts` | `16` |
+| `repository_journeys` | `3` |
+| `work_items` | `5` |
+| `work_slots_by_repository` | `volicord=A/B/C, small-python=A, polyglot-medium=A` |
+| `fresh_resume_pairs` | `3` |
+| `fresh_sessions` | `8` |
+| `provisional_reviews_before_reveal` | `5` |
+| `sealed_descriptors_and_reviews` | `5` |
+| `complete_batch_raw_rollouts` | `8` |
 <!-- phase8-public-campaign-contract:end -->
 
 Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation and
 evidence handling. The evaluator/control agent researches the repositories,
-creates all eight bounded blind-first reviewer preparations, records every provisional
+creates all five bounded blind-first Work reviewer preparations, records every provisional
 classification and materiality conclusion before exposing any evaluator basis,
 uses the hash-bound `reviewer/provisional-review-contract.json` and non-mutating
 `validate-provisional-review` operation to apply the recorder's reviewer-visible
 semantics before submission, fixes them through the opaque-slot
 `record-provisional-review` operation, verifies
-`provisional_count = 8`, reveals and validates the private qualification profile, and then
+`provisional_count = 5`, reveals and validates the private qualification profile, and then
 seals each descriptor against its immutable review without exposing evaluator
 material to the operator. Recording validates only reviewer-visible identity,
 schema, provenance bounds, and self-consistency derived from the reviewer's own
@@ -160,14 +161,16 @@ Repository and SessionStart
 hook trust remain explicit user actions. `activate-all` verifies the owned static manifest, MCP entry,
 SessionStart hook and exact candidate-local executable/Runtime binding, but this does not prove VS Code
 executed SessionStart. If setup is uncertain, the operator inspects it before sending a frozen task;
-runtime SessionStart evidence remains required for every capture. The operator then runs all sixteen
+runtime SessionStart evidence remains required for every capture. The operator then runs all eight
 fresh naturalistic VS Code Codex chats using only the frozen tasks, answers
 only genuine material Questions, preserves every raw rollout without
-per-session evidence-processing interruptions, and provides the sixteen files
-once for batch ingestion. The helper maps the cycles and automatically derives
-canonical bundles, bounded Runtime/activation summaries, all four document
+per-session evidence-processing interruptions, and provides the eight files
+once for batch ingestion. The helper maps the maintained journey/Work/session slots, proves
+same-Work resume, same-Project/different-Work continuity and cross-Project isolation, and derives
+one final canonical bundle, bounded Runtime/activation summary, all four document
 kinds in Markdown and self-contained HTML, and read-only static Viewer
-snapshots.
+snapshot per journey. Each Work retains its raw and checkpoint evidence without treating the
+journey-final projections as eight independent outputs.
 
 Machine evaluation completes independently of common qualitative review. The maintained
 qualification policy combines verified candidate-specific technical gate evidence, hard

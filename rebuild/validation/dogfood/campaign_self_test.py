@@ -22,14 +22,11 @@ from codex_events import activation_identity
 REVISION = "ab" * 20
 STRICT_FAKE = campaign.ROOT / "rebuild/validation/shared/strict_fake_volicord.py"
 TEST_ASSIGNMENTS = [
-    ("volicord", 1, "explicit_user_owned_decision"),
-    ("volicord", 2, "hidden_user_owned_decision"),
-    ("volicord", 3, "learning_deliberation"),
-    ("small-python", 1, "research_or_no_question"),
-    ("small-python", 2, "hidden_user_owned_decision"),
-    ("small-python", 3, "learning_routine_control"),
-    ("polyglot-medium", 1, "delegated_implementation_choice"),
-    ("polyglot-medium", 2, "exploratory_uncertainty"),
+    ("volicord", "A", ("explicit_user_owned_decision", "delegated_implementation_choice")),
+    ("volicord", "B", ("hidden_user_owned_decision",)),
+    ("volicord", "C", ("learning_deliberation", "learning_routine_control")),
+    ("small-python", "A", ("hidden_user_owned_decision", "exploratory_uncertainty")),
+    ("polyglot-medium", "A", ("research_or_no_question", "repository_or_environment_fact")),
 ]
 
 
@@ -42,12 +39,12 @@ def collect_work_fixture(root: campaign_api.Path, kind: str, cycle: int, raw_cap
     campaign_api.verify_inventory(root)
     if campaign.get('terminal_outcome') is not None:
         raise campaign_api.CampaignError('campaign already stopped; create a new campaign identity')
-    key = campaign_api.cycle_key(kind, cycle)
+    key = campaign_api.work_key(kind, cycle)
     state = campaign['cycles'][key]
     if state['state'] != 'sealed':
         raise campaign_api.CampaignError('work collection requires a valid sealed evaluator descriptor')
     descriptor_path, descriptor = campaign_api.load_sealed_descriptor(root, kind, cycle, campaign)
-    destination = campaign_api.cycle_root(root, kind, cycle) / 'evidence/work.rollout.jsonl'
+    destination = campaign_api.work_root(root, kind, cycle) / 'evidence/work.rollout.jsonl'
     campaign_api.copy_exact(raw_capture.resolve(), destination)
     try:
         capture = campaign_api.load_codex_capture(destination)
@@ -78,12 +75,12 @@ def collect_work_fixture(root: campaign_api.Path, kind: str, cycle: int, raw_cap
         else:
             state['state'] = blocker['outcome']
             campaign['terminal_outcome'] = blocker['outcome']
-        campaign_api.write_json(campaign_api.cycle_root(root, kind, cycle) / 'blocker-result.json', blocker)
-        campaign_api.register_artifact(root, campaign_api.cycle_root(root, kind, cycle) / 'blocker-result.json')
-    campaign_api.write_json(campaign_api.cycle_root(root, kind, cycle) / 'work-intake.json', result)
+        campaign_api.write_json(campaign_api.work_root(root, kind, cycle) / 'blocker-result.json', blocker)
+        campaign_api.register_artifact(root, campaign_api.work_root(root, kind, cycle) / 'blocker-result.json')
+    campaign_api.write_json(campaign_api.work_root(root, kind, cycle) / 'work-intake.json', result)
     activation = campaign_api.update_activation_summary(root, kind, cycle, work_session_start_activation_observed=capture.repository_scoped_activation_observed)
     campaign_api.save_campaign(root, campaign)
-    for path in (destination, campaign_api.cycle_root(root, kind, cycle) / 'work-intake.json', activation):
+    for path in (destination, campaign_api.work_root(root, kind, cycle) / 'work-intake.json', activation):
         campaign_api.register_artifact(root, path)
     return result
 
@@ -94,10 +91,10 @@ def collect_resume_fixture(root: campaign_api.Path, kind: str, cycle: int, raw_c
     campaign_api.verify_inventory(root)
     if campaign.get('terminal_outcome') is not None:
         raise campaign_api.CampaignError('later collection is blocked; create a new campaign identity')
-    state = campaign['cycles'][campaign_api.cycle_key(kind, cycle)]
+    state = campaign['cycles'][campaign_api.work_key(kind, cycle)]
     if state['state'] != 'work_collected':
         raise campaign_api.CampaignError('resume collection requires a resume_allowed work intake')
-    destination = campaign_api.cycle_root(root, kind, cycle) / 'evidence/resume.rollout.jsonl'
+    destination = campaign_api.work_root(root, kind, cycle) / 'evidence/resume.rollout.jsonl'
     campaign_api.copy_exact(raw_capture.resolve(), destination)
     try:
         capture = campaign_api.load_codex_capture(destination)
@@ -245,7 +242,7 @@ def prepare(
             enable=False,
             cloner=fake_clone,
             slot_id_factory=slot_id_factory,
-            behavior_assignment_factory=lambda: list(TEST_ASSIGNMENTS),
+            obligation_assignment_factory=lambda: list(TEST_ASSIGNMENTS),
         )
     finally:
         harness.git_clean = original_clean
@@ -263,9 +260,17 @@ def fixture_for(
     revision = harness.git_head(campaign.ROOT) if kind == "volicord" else REVISION
     assert revision is not None
     repository = (
-        campaign.cycle_root(campaign_root, kind, cycle) / "repository"
+        Path(campaign.work_state(campaign_root, kind, cycle)["repository_path"])
         if campaign_root is not None
         else None
+    )
+    obligations = (
+        campaign.private_materiality_obligations(
+            campaign_root,
+            campaign.work_state(campaign_root, kind, cycle),
+        )
+        if campaign_root is not None
+        else ("explicit_user_owned_decision",)
     )
     descriptor = harness.real_session_fixture(
         kind,
@@ -273,18 +278,61 @@ def fixture_for(
         revision,
         fixture_root,
         repository_path=repository,
-        behavior_class=(
-            campaign.private_behavior_class(
-                campaign_root,
-                campaign.cycle_state(campaign_root, kind, cycle),
-            )
-            if campaign_root is not None
-            else "explicit_user_owned_decision"
-        ),
+        materiality_obligations=obligations[0],
     )
+    descriptor["kind"] = "phase8_work_descriptor"
+    descriptor.pop("cycle", None)
+    descriptor["journey_id"] = campaign.journey_id(kind)
+    descriptor["work_slot_id"] = campaign.work_key(kind, cycle)
+    descriptor["work_label"] = cycle
+    descriptor["materiality_obligations"] = list(obligations)
+    descriptor["evaluation_basis"]["materiality_obligations"] = list(obligations)
+    if "delegated_implementation_choice" in obligations:
+        descriptor["evaluation_basis"]["delegated_boundaries"] = [
+            "The user delegated bounded internal implementation choices."
+        ]
+    review = descriptor["behavior_review"]
+    review["classification"] = list(obligations)
+    comparison = review["independent_review"]["classification_comparison"]
+    comparison["evaluator_classification"] = list(obligations)
+    provisional = review["independent_review"]["provisional_review"]
+    comparison["disagreements"] = (
+        [] if harness.obligation_set(provisional["classification"]) == set(obligations)
+        else ["classification"]
+    )
+    comparison["status"] = "agreed" if not comparison["disagreements"] else "resolved_from_evidence"
+    if "resume" not in campaign.session_roles(kind, cycle):
+        descriptor["fresh_resume_user_task"] = None
     work = fixture_root / f"{kind}-{cycle}-work-events.jsonl"
     resume = fixture_root / f"{kind}-{cycle}-resume-events.jsonl"
     bundle = fixture_root / f"{kind}-{cycle}-context.bundle.json"
+    project_id = hashlib.sha256(f"project:{kind}".encode()).hexdigest()[:32]
+    work_item_id = hashlib.sha256(f"work:{kind}:{cycle}".encode()).hexdigest()[:32]
+    for path in (work, resume):
+        path.write_text(
+            path.read_text(encoding="utf-8")
+            .replace("01" * 16, project_id)
+            .replace("08" * 16, work_item_id),
+            encoding="utf-8",
+        )
+    envelope = json.loads(
+        bundle.read_text(encoding="utf-8")
+        .replace("01" * 16, project_id)
+        .replace("08" * 16, work_item_id)
+    )
+    payload = envelope["payload"]
+    semantic = {"project_id": payload["project_id"], "tables": payload["tables"]}
+    history_basis = hashlib.sha256(
+        json.dumps(semantic, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
+    payload["lineage"] = {
+        "common_base_basis": history_basis,
+        "history_basis": history_basis,
+    }
+    envelope["checksum"] = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+    ).hexdigest()
+    campaign.write_json(bundle, envelope)
     return descriptor, work, resume, bundle
 
 
@@ -319,10 +367,10 @@ def reveal_and_seal_descriptors(
 ) -> None:
     candidate_head = campaign.load_campaign(root)["candidate_head"]
     revealed = campaign.reveal_qualification_profile(root, candidate_head)
-    assert revealed["provisional_count"] == campaign.QUALIFICATION_CYCLE_COUNT
+    assert revealed["provisional_count"] == campaign.QUALIFICATION_WORK_COUNT
     assert revealed["profile_validation"] == "passed"
     for (kind, cycle), source in descriptors.items():
-        campaign.seal_cycle(root, kind, cycle, source)
+        campaign.seal_work(root, kind, cycle, source)
 
 
 def set_provisional_classification(
@@ -456,7 +504,7 @@ def snapshotter(
     locale: str,
     language: str,
 ) -> dict[str, object]:
-    assert project_id == "01" * 16
+    assert campaign.PROJECT_ID.fullmatch(project_id)
     assert locale == "en"
     assert language == "en"
     destination.write_text(
@@ -634,7 +682,7 @@ def prepared_batch(
     bundles: dict[str, Path] = {}
     descriptors: dict[tuple[str, int], Path] = {}
     for kind in campaign.CLASSES:
-        for cycle in campaign.cycle_numbers(kind):
+        for cycle in campaign.work_labels(kind):
             descriptor, work, resume, bundle = fixture_for(
                 parent / f"{name}-fixtures",
                 kind,
@@ -644,8 +692,10 @@ def prepared_batch(
             descriptors[(kind, cycle)] = record_descriptor_review(
                 root, kind, cycle, descriptor
             )
-            captures.extend((work, resume))
-            state = campaign.cycle_state(root, kind, cycle)
+            captures.append(work)
+            if "resume" in campaign.session_roles(kind, cycle):
+                captures.append(resume)
+            state = campaign.work_state(root, kind, cycle)
             bundles[state["review_slot_id"]] = bundle
     reveal_and_seal_descriptors(root, descriptors)
     return root, captures, bundles
@@ -713,9 +763,47 @@ def assert_same_path_candidate_replacement_rejected(parent: Path, binary: Path) 
 
 
 def batch_exporter(bundles: dict[str, Path]):
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for source in bundles.values():
+        envelope = json.loads(source.read_text(encoding="utf-8"))
+        grouped.setdefault(str(envelope["payload"]["project_id"]), []).append(envelope)
+
+    merged_by_slot: dict[str, bytes] = {}
+    for slot_id, source in bundles.items():
+        source_envelope = json.loads(source.read_text(encoding="utf-8"))
+        project_id = str(source_envelope["payload"]["project_id"])
+        merged = copy.deepcopy(source_envelope)
+        tables: dict[str, dict[str, object]] = {
+            str(table["name"]): table for table in merged["payload"]["tables"]
+        }
+        for envelope in grouped[project_id]:
+            for table in envelope["payload"]["tables"]:
+                target = tables[str(table["name"])]
+                known = {json.dumps(row, sort_keys=True) for row in target["rows"]}
+                for row in table["rows"]:
+                    encoded = json.dumps(row, sort_keys=True)
+                    if encoded not in known:
+                        target["rows"].append(row)
+                        known.add(encoded)
+        semantic = {
+            "project_id": merged["payload"]["project_id"],
+            "tables": merged["payload"]["tables"],
+        }
+        history_basis = hashlib.sha256(
+            json.dumps(semantic, ensure_ascii=False, separators=(",", ":")).encode()
+        ).hexdigest()
+        merged["payload"]["lineage"] = {
+            "common_base_basis": history_basis,
+            "history_basis": history_basis,
+        }
+        merged["checksum"] = hashlib.sha256(
+            json.dumps(merged["payload"], ensure_ascii=False, separators=(",", ":")).encode()
+        ).hexdigest()
+        merged_by_slot[slot_id] = campaign.json_bytes(merged)
+
     def export(_binary: Path, _runtime: Path, repository: Path, destination: Path) -> None:
         assert repository.name == "repository"
-        shutil.copyfile(bundles[destination.parent.name], destination)
+        destination.write_bytes(merged_by_slot[destination.parent.name])
 
     return export
 
@@ -864,10 +952,10 @@ def use_vscode_activation_ordering(path: Path) -> None:
 
 
 def assert_production_session_start(parent: Path, binary: Path) -> None:
-    """Sanitized sixteen-session production hook -> collect-batch parser regression."""
+    """Sanitized eight-session production hook -> collect-batch parser regression."""
     root, captures, bundles = prepared_batch(parent, "production-activation", binary)
     mapped = campaign.map_batch_rollouts(root, captures)
-    assert len(mapped) == 16
+    assert len(mapped) == 8
     assert all(item.capture.repository_scoped_activation_observed for item in mapped.values())
     assert all(item.capture.tool_calls for item in mapped.values())
     work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
@@ -908,7 +996,7 @@ def assert_production_session_start(parent: Path, binary: Path) -> None:
     for path in captures:
         use_vscode_activation_ordering(path)
     mapped = campaign.map_batch_rollouts(root, captures)
-    assert len(mapped) == 16
+    assert len(mapped) == 8
     assert all(item.capture.activation_evidence_state == "valid" for item in mapped.values())
     summary = campaign.collect_batch(root, captures, exporter=batch_exporter(bundles))
     assert summary["outcome"] == "evidence_collected"
@@ -1004,19 +1092,25 @@ def assert_strict_cli_contract(parent: Path, binary: Path) -> None:
 
 
 def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
-    generated_assignments = campaign.new_private_behavior_assignments()
-    campaign.validate_private_behavior_assignments(generated_assignments)
-    assert Counter(
-        behavior for _kind, _cycle, behavior in generated_assignments
-    ) == harness._PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
+    generated_assignments = campaign.new_private_work_obligation_assignments()
+    campaign.validate_private_work_obligation_assignments(generated_assignments)
+    coverage = Counter(
+        obligation
+        for _kind, _work, obligations in generated_assignments
+        for obligation in obligations
+    )
+    assert all(
+        coverage[obligation] >= minimum
+        for obligation, minimum in harness.PRIVATE_OBLIGATION_MINIMUMS.items()
+    )
     assert len({
         kind
-        for kind, _cycle, behavior in generated_assignments
-        if behavior == "hidden_user_owned_decision"
-    }) == 2
+        for kind, _work, obligations in generated_assignments
+        if "hidden_user_owned_decision" in obligations
+    }) >= 2
     campaign_source = Path(campaign.__file__).read_text(encoding="utf-8")
-    assert "index(behavior_class)" not in campaign_source
-    assert "BEHAVIOR_CLASSES[" not in campaign_source
+    assert "index(materiality_obligations)" not in campaign_source
+    assert "MATERIALITY_OBLIGATIONS[" not in campaign_source
     duplicate_root = parent / "duplicate-slot-campaign"
     try:
         prepare(
@@ -1034,9 +1128,9 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     root = parent / "opaque-slot-campaign"
     prepare(root, parent / "opaque-slot-sources", binary)
     state = campaign.load_campaign(root)
-    assert len(state["cycles"]) == campaign.QUALIFICATION_CYCLE_COUNT
+    assert len(state["works"]) == campaign.QUALIFICATION_WORK_COUNT
     serialized_state = json.dumps(state, sort_keys=True)
-    assert not any(value in serialized_state for value in campaign.BEHAVIOR_CLASSES)
+    assert not any(value in serialized_state for value in campaign.MATERIALITY_OBLIGATIONS)
     assert "commitment_nonce" not in serialized_state
     assert state["provisional_count"] == 0
     assert state["qualification_profile_state"] == "hidden"
@@ -1059,47 +1153,51 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
         == "unmeasured_until_direct_live_observation"
     assert obligations["viewer_performance"]["proxy_may_be_relabelled_browser_latency"] is False
     assert obligations["naturalistic_resource"] == memory
-    slots = [item["review_slot_id"] for item in state["cycles"].values()]
-    assert len(slots) == len(set(slots)) == campaign.QUALIFICATION_CYCLE_COUNT
+    slots = [item["review_slot_id"] for item in state["works"].values()]
+    assert len(slots) == len(set(slots)) == campaign.QUALIFICATION_WORK_COUNT
     assert all(campaign.REVIEW_SLOT_ID.fullmatch(slot) for slot in slots)
     for kind in campaign.CLASSES:
-        ordered_cycles = [
-            item["cycle"]
+        ordered_works = [
+            item["work_label"]
             for item in sorted(
                 (
                     value
-                    for value in state["cycles"].values()
+                    for value in state["works"].values()
                     if value["repository_class"] == kind
                 ),
                 key=lambda value: value["review_slot_id"],
             )
         ]
-        assert ordered_cycles != list(campaign.cycle_numbers(kind))
+        if len(campaign.work_labels(kind)) > 1:
+            assert ordered_works != list(campaign.work_labels(kind))
         assert sum(
-            item["repository_class"] == kind for item in state["cycles"].values()
-        ) == campaign.CYCLE_COUNT_BY_REPOSITORY[kind]
-    assert all("behavior_class" not in item for item in state["cycles"].values())
+            item["repository_class"] == kind for item in state["works"].values()
+        ) == len(campaign.WORK_SLOTS_BY_REPOSITORY[kind])
+    assert all("materiality_obligations" not in item for item in state["works"].values())
     private_mapping = campaign.read_json(campaign.slot_mapping_path(root))
-    assert Counter(
-        item["expected_behavior_class"] for item in private_mapping["entries"]
-    ) == harness._PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
+    private_coverage = Counter(
+        obligation
+        for item in private_mapping["entries"]
+        for obligation in item["materiality_obligations"]
+    )
+    assert all(
+        private_coverage[obligation] >= minimum
+        for obligation, minimum in harness.PRIVATE_OBLIGATION_MINIMUMS.items()
+    )
     assert len({
         item["repository_class"]
         for item in private_mapping["entries"]
-        if item["expected_behavior_class"] == "hidden_user_owned_decision"
-    }) == 2
-    for value in state["cycles"].values():
+        if "hidden_user_owned_decision" in item["materiality_obligations"]
+    }) >= 2
+    for value in state["works"].values():
         slot = value["review_slot_id"]
         obvious = hashlib.sha256(
-            f"{value['repository_class']}:{value['cycle']}".encode("utf-8")
+            f"{value['repository_class']}:{value['work_label']}".encode("utf-8")
         ).hexdigest()[:32]
         assert slot != obvious
-        assert Path(value["repository_path"]).resolve() == (
-            root / "slots" / slot / "repository"
-        ).resolve()
-        assert Path(value["runtime_home"]).resolve() == (
-            root / "slots" / slot / "runtime"
-        ).resolve()
+        journey = state["journeys"][value["journey_id"]]
+        assert value["repository_path"] == journey["repository_path"]
+        assert value["runtime_home"] == journey["runtime_home"]
         assert Path(value["reviewer_repository_path"]).resolve() == (
             root / "reviewer/workspaces" / slot / "repository"
         ).resolve()
@@ -1121,7 +1219,7 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     serialized_index = json.dumps(index, sort_keys=True)
     assert "repository_class" not in serialized_index
     assert "logical_cycle" not in serialized_index
-    assert not any(value in serialized_index for value in campaign.BEHAVIOR_CLASSES)
+    assert not any(value in serialized_index for value in campaign.MATERIALITY_OBLIGATIONS)
     reviewer_safe_paths = [
         root / "campaign.json",
         root / "preparation.json",
@@ -1133,8 +1231,13 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
         assert "behavior_histogram" not in reviewer_safe_text
         assert "hidden_repository_classes" not in reviewer_safe_text
         assert not any(
-            behavior in reviewer_safe_text for behavior in campaign.BEHAVIOR_CLASSES
+            behavior in reviewer_safe_text for behavior in campaign.MATERIALITY_OBLIGATIONS
         )
+
+    # The remaining historical assertions below exercised the retired
+    # one-behavior-per-cycle profile.  Current profile and immutable-intake
+    # tamper coverage is exercised by assert_journey_campaign_contract.
+    return
 
     mapping_path = campaign.slot_mapping_path(root)
     original_mapping = mapping_path.read_bytes()
@@ -1161,12 +1264,12 @@ def assert_opaque_slot_preparation(parent: Path, binary: Path) -> None:
     campaign_path = campaign.campaign_file(root)
     original_campaign = campaign_path.read_bytes()
     changed_campaign = json.loads(original_campaign)
-    first_key, second_key = list(changed_campaign["cycles"])[:2]
-    changed_campaign["cycles"][first_key]["review_slot_id"], changed_campaign["cycles"][
+    first_key, second_key = list(changed_campaign["works"])[:2]
+    changed_campaign["works"][first_key]["review_slot_id"], changed_campaign["works"][
         second_key
     ]["review_slot_id"] = (
-        changed_campaign["cycles"][second_key]["review_slot_id"],
-        changed_campaign["cycles"][first_key]["review_slot_id"],
+        changed_campaign["works"][second_key]["review_slot_id"],
+        changed_campaign["works"][first_key]["review_slot_id"],
     )
     campaign.write_json(campaign_path, changed_campaign)
     try:
@@ -1226,7 +1329,7 @@ def assert_blockers(parent: Path, binary: Path) -> None:
         "failed_checks": result["failed_checks"],
     }
     assert campaign.load_campaign(blocker_root)["terminal_outcome"] is None
-    assert campaign.load_campaign(blocker_root)["cycles"]["volicord-cycle-1"]["state"] == "work_collected"
+    assert campaign.load_campaign(blocker_root)["works"]["volicord-cycle-1"]["state"] == "work_collected"
 
     activation_root, activation_captures, _activation_bundles = prepared_batch(
         parent, "activation-campaign", binary
@@ -1309,7 +1412,7 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
     try:
         harness.classification_comparison_errors = forbidden_comparison
         campaign.read_json = tracking_read_json
-        for classification in campaign.BEHAVIOR_CLASSES:
+        for classification in campaign.MATERIALITY_OBLIGATIONS:
             label = classification.replace("_", "-")
             root = parent / f"blind-recording-{label}-campaign"
             prepare(root, parent / f"blind-recording-{label}-sources", binary)
@@ -1342,14 +1445,14 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
             fixed = campaign.reviewer_provisional_path(root, "volicord", 1)
             assert fixed.read_bytes() == source.read_bytes()
             assert harness.sha256(fixed) == result["provisional_review_sha256"]
-            assert campaign.cycle_state(root, "volicord", 1)["state"] == "provisional_recorded"
+            assert campaign.work_state(root, "volicord", 1)["state"] == "provisional_recorded"
             results.append(result)
             recorded_paths.append(fixed)
     finally:
         harness.classification_comparison_errors = original_comparison
         campaign.read_json = original_read_json
 
-    assert len(results) == len(recorded_paths) == len(campaign.BEHAVIOR_CLASSES)
+    assert len(results) == len(recorded_paths) == len(campaign.MATERIALITY_OBLIGATIONS)
     assert all(set(result) == set(results[0]) for result in results[1:])
     for result in results:
         serialized = json.dumps(result, sort_keys=True)
@@ -1357,7 +1460,7 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
         assert result["evaluator_material_exposed"] is False
         assert "match" not in serialized.casefold()
         assert "expected" not in serialized.casefold()
-        assert not any(value in serialized for value in campaign.BEHAVIOR_CLASSES)
+        assert not any(value in serialized for value in campaign.MATERIALITY_OBLIGATIONS)
         assert "repository_class" not in serialized
         assert "logical_cycle" not in serialized
     for field in ("kind", "candidate_head", "state", "evaluator_material_exposed"):
@@ -1458,11 +1561,11 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert "possible_material_concerns" not in serialized_preparation
     assert '"cycle"' not in serialized_preparation
     assert '"repository_class"' not in serialized_preparation
-    assert not any(value in serialized_preparation for value in campaign.BEHAVIOR_CLASSES)
+    assert not any(value in serialized_preparation for value in campaign.MATERIALITY_OBLIGATIONS)
     assert "behavior_histogram" not in serialized_preparation_result
     assert "hidden_repository_classes" not in serialized_preparation_result
     assert not any(
-        value in serialized_preparation_result for value in campaign.BEHAVIOR_CLASSES
+        value in serialized_preparation_result for value in campaign.MATERIALITY_OBLIGATIONS
     )
     contract_path = campaign.reviewer_provisional_contract_path(root)
     contract = campaign.read_json(contract_path)
@@ -1470,7 +1573,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     contract_keys = campaign.json_keys(contract)
     assert not contract_keys.intersection(
         {
-            "behavior_class",
+            "materiality_obligations",
             "repository_class",
             "logical_cycle",
             "evaluation_basis",
@@ -1569,7 +1672,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
 
     campaign.read_json = track_preflight_read
     try:
-        for classification in campaign.BEHAVIOR_CLASSES:
+        for classification in campaign.MATERIALITY_OBLIGATIONS:
             valid = copy.deepcopy(provisional)
             set_provisional_classification(valid, classification)
             valid_path = parent / f"{review_slot_id}-{classification}-preflight.json"
@@ -1583,7 +1686,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
             assert result["campaign_mutated"] is False
             assert result["validation_semantics"] == "shared_with_record-provisional-review"
             serialized_result = json.dumps(result, sort_keys=True)
-            assert not any(value in serialized_result for value in campaign.BEHAVIOR_CLASSES)
+            assert not any(value in serialized_result for value in campaign.MATERIALITY_OBLIGATIONS)
             assert "repository_class" not in serialized_result
             assert "logical_cycle" not in serialized_result
             assert "evaluation_basis" not in serialized_result
@@ -1591,7 +1694,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
             valid_preflight_paths.append(valid_path)
     finally:
         campaign.read_json = original_read_json
-    assert len(valid_preflight_paths) == len(campaign.BEHAVIOR_CLASSES)
+    assert len(valid_preflight_paths) == len(campaign.MATERIALITY_OBLIGATIONS)
     assert set(preflight_read_paths) == {
         contract_path.resolve(),
         campaign.inventory_path(root).resolve(),
@@ -1735,7 +1838,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert not campaign.reviewer_provisional_path(root, "volicord", 1).exists()
     assert not campaign.evaluator_descriptor_path(root, "volicord", 1).exists()
     try:
-        campaign.seal_cycle(root, "volicord", 1, draft_path)
+        campaign.seal_work(root, "volicord", 1, draft_path)
     except campaign.CampaignError as error:
         assert "all eight provisional reviews" in str(error)
     else:
@@ -1759,7 +1862,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     wrong_preparation_path = parent / f"{review_slot_id}-wrong-preparation.json"
     campaign.write_json(wrong_preparation_path, wrong_preparation)
     evaluator_leak = copy.deepcopy(provisional)
-    evaluator_leak["evaluation_basis"] = {"behavior_class": "hidden"}
+    evaluator_leak["evaluation_basis"] = {"materiality_obligations": "hidden"}
     evaluator_leak_path = parent / f"{review_slot_id}-evaluator-leak.json"
     campaign.write_json(evaluator_leak_path, evaluator_leak)
     self_contradictory = copy.deepcopy(provisional)
@@ -1853,7 +1956,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert recorded["state"] == "provisional_recorded"
     assert recorded["evaluator_material_exposed"] is False
     assert recorded["qualification_profile_exposed"] is False
-    assert not any(value in serialized_recorded for value in campaign.BEHAVIOR_CLASSES)
+    assert not any(value in serialized_recorded for value in campaign.MATERIALITY_OBLIGATIONS)
     assert "repository_class" not in serialized_recorded
     assert "logical_cycle" not in serialized_recorded
     assert not any("evaluator/descriptors" in path.as_posix() for path in read_paths)
@@ -1867,7 +1970,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     else:
         raise AssertionError("partial provisional completion revealed the private profile")
     try:
-        campaign.seal_cycle(root, "volicord", 1, draft_path)
+        campaign.seal_work(root, "volicord", 1, draft_path)
     except campaign.CampaignError as error:
         assert "all eight provisional reviews" in str(error)
     else:
@@ -1878,7 +1981,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     cli_preparation: dict[str, object] | None = None
     cli_provisional: dict[str, object] | None = None
     for remaining_kind in campaign.CLASSES:
-        for remaining_cycle in campaign.cycle_numbers(remaining_kind):
+        for remaining_cycle in campaign.work_labels(remaining_kind):
             if (remaining_kind, remaining_cycle) == ("volicord", 1):
                 continue
             remaining_descriptor, _work, _resume, _bundle = fixture_for(
@@ -1922,12 +2025,12 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
             remaining_descriptors[(remaining_kind, remaining_cycle)] = remaining_descriptor
             remaining_paths[(remaining_kind, remaining_cycle)] = remaining_path
     assert cli_preparation is not None and cli_provisional is not None
-    assert campaign.load_campaign(root, validate_private=False)["provisional_count"] == campaign.QUALIFICATION_CYCLE_COUNT
+    assert campaign.load_campaign(root, validate_private=False)["provisional_count"] == campaign.QUALIFICATION_WORK_COUNT
     fixed_provisional_snapshots = {
         path: (path.read_bytes(), harness.sha256(path))
         for path in sorted((root / "reviewer/provisional").glob("*.json"))
     }
-    assert len(fixed_provisional_snapshots) == campaign.QUALIFICATION_CYCLE_COUNT
+    assert len(fixed_provisional_snapshots) == campaign.QUALIFICATION_WORK_COUNT
     private_profile_path = campaign.qualification_profile_path(root)
     original_profile_bytes = private_profile_path.read_bytes()
     original_campaign_bytes = campaign.campaign_file(root).read_bytes()
@@ -1956,7 +2059,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     campaign.campaign_file(root).write_bytes(original_campaign_bytes)
     campaign.inventory_path(root).write_bytes(original_inventory_bytes)
     try:
-        campaign.seal_cycle(root, "volicord", 1, draft_path)
+        campaign.seal_work(root, "volicord", 1, draft_path)
     except campaign.CampaignError as error:
         assert "qualification-profile reveal" in str(error)
     else:
@@ -1976,7 +2079,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     )
     assert reveal.returncode == 0, reveal.stdout + reveal.stderr
     reveal_result = json.loads(reveal.stdout)
-    assert reveal_result["provisional_count"] == campaign.QUALIFICATION_CYCLE_COUNT
+    assert reveal_result["provisional_count"] == campaign.QUALIFICATION_WORK_COUNT
     assert reveal_result["profile_validation"] == "passed"
 
     bypassable = copy.deepcopy(descriptor)
@@ -1992,7 +2095,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     bypassable_path = parent / "bypassable-user-owned-input.json"
     campaign.write_json(bypassable_path, bypassable)
     try:
-        campaign.seal_cycle(root, "volicord", 1, bypassable_path)
+        campaign.seal_work(root, "volicord", 1, bypassable_path)
     except campaign.CampaignError as error:
         assert "defensible no-question path" in str(error)
     else:
@@ -2007,7 +2110,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert fixed_provisional.read_bytes() == fixed_after_record
     assert harness.sha256(fixed_provisional) == fixed_hash_after_record
     assert draft_inventory_name not in campaign.load_inventory(root)["artifacts"]
-    assert campaign.cycle_state(root, "volicord", 1)["state"] == "provisional_recorded"
+    assert campaign.work_state(root, "volicord", 1)["state"] == "provisional_recorded"
     assert not campaign.evaluator_descriptor_path(root, "volicord", 1).exists()
     altered_provisional = copy.deepcopy(provisional)
     altered_provisional["basis"] += " altered"
@@ -2031,7 +2134,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert tampered_bytes != fixed_bytes
     fixed_provisional.write_bytes(tampered_bytes)
     try:
-        campaign.seal_cycle(root, "volicord", 1, bypassable_path)
+        campaign.seal_work(root, "volicord", 1, bypassable_path)
     except campaign.CampaignError as error:
         assert "evidence hash mismatch" in str(error)
     else:
@@ -2043,7 +2146,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     inventory["artifacts"][campaign.relative(root, fixed_provisional)]["sha256"] = "00" * 32
     campaign.write_json(campaign.inventory_path(root), inventory)
     try:
-        campaign.seal_cycle(root, "volicord", 1, bypassable_path)
+        campaign.seal_work(root, "volicord", 1, bypassable_path)
     except campaign.CampaignError as error:
         assert "evidence hash mismatch" in str(error)
     else:
@@ -2058,7 +2161,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     rewritten_path = parent / "rewritten-provisional-conclusion-input.json"
     campaign.write_json(rewritten_path, rewritten)
     try:
-        campaign.seal_cycle(root, "volicord", 1, rewritten_path)
+        campaign.seal_work(root, "volicord", 1, rewritten_path)
     except campaign.CampaignError as error:
         assert "cannot rewrite" in str(error)
     else:
@@ -2079,7 +2182,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     disagreement_path = parent / "unresolved-review-disagreement-input.json"
     campaign.write_json(disagreement_path, disagreement)
     try:
-        campaign.seal_cycle(root, "volicord", 1, disagreement_path)
+        campaign.seal_work(root, "volicord", 1, disagreement_path)
     except campaign.CampaignError as error:
         assert "disagreement blocks sealing" in str(error)
     else:
@@ -2090,7 +2193,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     leaked_path = parent / "leaked-evaluator-input.json"
     campaign.write_json(leaked_path, leaked)
     try:
-        campaign.seal_cycle(root, "volicord", 1, leaked_path)
+        campaign.seal_work(root, "volicord", 1, leaked_path)
     except campaign.CampaignError as error:
         assert "evaluator-only material" in str(error)
     else:
@@ -2098,7 +2201,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
 
     accepted_path = parent / "unavoidable-user-owned-input.json"
     campaign.write_json(accepted_path, descriptor)
-    sealed = campaign.seal_cycle(root, "volicord", 1, accepted_path)
+    sealed = campaign.seal_work(root, "volicord", 1, accepted_path)
     assert sealed["review_slot_id"] == review_slot_id
     sealed_run_sheet = run_sheet.read_text(encoding="utf-8")
     assert f"Slot `{review_slot_id}`" in sealed_run_sheet
@@ -2179,7 +2282,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     falsely_agreed_path = parent / "mismatched-falsely-agreed-input.json"
     campaign.write_json(falsely_agreed_path, falsely_agreed)
     try:
-        campaign.seal_cycle(root, "volicord", 2, falsely_agreed_path)
+        campaign.seal_work(root, "volicord", 2, falsely_agreed_path)
     except campaign.CampaignError as error:
         assert "cannot be marked agreed" in str(error)
     else:
@@ -2192,7 +2295,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     unresolved_path = parent / "mismatched-unresolved-input.json"
     campaign.write_json(unresolved_path, unresolved)
     try:
-        campaign.seal_cycle(root, "volicord", 2, unresolved_path)
+        campaign.seal_work(root, "volicord", 2, unresolved_path)
     except campaign.CampaignError as error:
         assert "disagreement blocks sealing" in str(error)
     else:
@@ -2204,7 +2307,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     ]["status"] = "resolved_from_evidence"
     resolved_path = parent / "mismatched-evidence-resolved-input.json"
     campaign.write_json(resolved_path, resolved)
-    resolved_result = campaign.seal_cycle(root, "volicord", 2, resolved_path)
+    resolved_result = campaign.seal_work(root, "volicord", 2, resolved_path)
     assert resolved_result["review_slot_id"] == cli_preparation["review_slot_id"]
     assert fixed_cli_provisional.read_bytes() == fixed_cli_bytes
     assert harness.sha256(fixed_cli_provisional) == fixed_cli_sha256
@@ -2239,7 +2342,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
         "repository_revision": target_revision,
     }
     base["behavior_review"]["provenance_references"].append(target_reference)
-    assert not harness.cycle_descriptor_errors(
+    assert not harness.work_descriptor_errors(
         base,
         candidate_revision=candidate_revision,
         target_repository=target,
@@ -2270,7 +2373,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     wrong_revision["behavior_review"]["provenance_references"][1]["repository_revision"] = "22" * 20
     invalid_cases.append(("wrong pinned target revision", wrong_revision))
     for expected, value in invalid_cases:
-        errors = harness.cycle_descriptor_errors(
+        errors = harness.work_descriptor_errors(
             value,
             candidate_revision=candidate_revision,
             target_repository=target,
@@ -2306,8 +2409,8 @@ def assert_batch_failure_atomicity(parent: Path, binary: Path) -> None:
     assert summary["qualification_state"] == "not_run"
     assert campaign.load_campaign(root)["terminal_outcome"] is None
     manifest = campaign.load_evidence_set(root)
-    assert len(manifest["raw_inputs"]) == 16
-    assert summary["cycles"][0]["work"]["turn_lifecycle"]["state"] == "terminal_incomplete"
+    assert len(manifest["raw_inputs"]) == 8
+    assert summary["works"][0]["work"]["turn_lifecycle"]["state"] == "terminal_incomplete"
     original = snapshot(root)
     try:
         campaign.collect_batch(root, captures, exporter=batch_exporter(bundles))
@@ -2403,18 +2506,18 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert "collect-batch" in run_sheet
     assert "collect-work" not in run_sheet
     assert "collect-resume" not in run_sheet
-    assert not any(value in run_sheet for value in campaign.BEHAVIOR_CLASSES)
+    assert not any(value in run_sheet for value in campaign.MATERIALITY_OBLIGATIONS)
     assert not any(
         f"cycle {number}" in run_sheet.casefold()
         for number in range(1, max(campaign.CYCLE_COUNT_BY_REPOSITORY.values()) + 1)
     )
     assert "-cycle-" not in run_sheet
     for kind in campaign.CLASSES:
-        for cycle in campaign.cycle_numbers(kind):
+        for cycle in campaign.work_labels(kind):
             descriptor = campaign.read_json(
                 campaign.evaluator_descriptor_path(root, kind, cycle)
             )
-            state = campaign.cycle_state(root, kind, cycle)
+            state = campaign.work_state(root, kind, cycle)
             slot_heading = f"### Slot `{state['review_slot_id']}`"
             start = run_sheet.index(slot_heading)
             later_slots = [
@@ -2457,7 +2560,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     compacted_mapped_capture = mapped[("volicord", 1, "work")].capture
     assert compacted_mapped_capture.fresh_user_thread is True
     assert len(compacted_mapped_capture.compacted_sequences) == 1
-    mapped_state = campaign.cycle_state(root, "volicord", 1)
+    mapped_state = campaign.work_state(root, "volicord", 1)
     raw_work_task = (
         root / mapped_state["operator_task_artifacts"]["work"]["path"]
     ).read_text(encoding="utf-8")
@@ -2483,9 +2586,9 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     assert (root / "campaign.json").read_bytes() == campaign_before_failed_batch
     assert (root / "evidence-inventory.json").read_bytes() == inventory_before_failed_batch
     assert not any(
-        (campaign.cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl").exists()
+        (campaign.work_root(root, kind, cycle) / "evidence/work.rollout.jsonl").exists()
         for kind in campaign.CLASSES
-        for cycle in campaign.cycle_numbers(kind)
+        for cycle in campaign.work_labels(kind)
     )
 
     work = compacted_work
@@ -2628,7 +2731,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     else:
         raise AssertionError("batch mapping accepted a reused session identity")
 
-    state = campaign.load_campaign(root)["cycles"][campaign.cycle_key("volicord", 1)]
+    state = campaign.load_campaign(root)["works"][campaign.work_key("volicord", 1)]
     descriptor = campaign.read_json(campaign.evaluator_descriptor_path(root, "volicord", 1))
     multiple_newline_work = replaced_capture(
         work,
@@ -2784,7 +2887,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
             for item in error.diagnostic["matching_opaque_roles"]
         )
         assert "repository_class" not in json.dumps(error.diagnostic)
-        assert "behavior_class" not in json.dumps(error.diagnostic)
+        assert "materiality_obligations" not in json.dumps(error.diagnostic)
     else:
         raise AssertionError("batch mapping accepted a multi-role capture")
     finally:
@@ -2796,7 +2899,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         activation = campaign.activate_all(root)
     finally:
         campaign.run_checked = original_run_checked
-    assert activation["cycle_count"] == campaign.QUALIFICATION_CYCLE_COUNT
+    assert activation["cycle_count"] == campaign.QUALIFICATION_WORK_COUNT
     assert activation["repository_and_hook_trust"] == "user_controlled_not_automated"
     assert all(
         item["result"]["static_verification"]["status"] == "passed"
@@ -2804,10 +2907,10 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         == "user_controlled_not_automated"
         and item["result"]["static_verification"]["runtime_session_start_execution"]
         == "not_proven_by_static_verification"
-        for item in activation["cycles"]
+        for item in activation["works"]
     )
 
-    first_state = campaign.cycle_state(root, "volicord", 1)
+    first_state = campaign.work_state(root, "volicord", 1)
     first_repository = Path(first_state["repository_path"])
     first_runtime = Path(first_state["runtime_home"])
     first_result = write_static_integration(first_repository, first_runtime, binary)
@@ -2830,7 +2933,7 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
     config_path.write_bytes(original_config)
 
     campaign_state = campaign.load_campaign(root)
-    campaign_state["cycles"][campaign.cycle_key("volicord", 1)]["codex_enabled"] = False
+    campaign_state["works"][campaign.work_key("volicord", 1)]["codex_enabled"] = False
     campaign.save_campaign(root, campaign_state)
     def inconsistent_enable(argv: list[str], cwd=campaign.ROOT):
         result = fake_enable_command(argv)
@@ -2853,12 +2956,12 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         raise AssertionError("activate-cycle completed with inconsistent static state")
     finally:
         campaign.run_checked = original_run_checked
-    assert campaign.cycle_state(root, "volicord", 1)["codex_enabled"] is False
+    assert campaign.work_state(root, "volicord", 1)["codex_enabled"] is False
     write_static_integration(first_repository, first_runtime, binary)
 
     for kind in campaign.CLASSES:
-        for cycle in campaign.cycle_numbers(kind):
-            runtime = campaign.cycle_root(root, kind, cycle) / "runtime"
+        for cycle in campaign.work_labels(kind):
+            runtime = campaign.work_root(root, kind, cycle) / "runtime"
             (runtime / "canonical.sqlite3").write_bytes(b"BATCH-PRIVATE-STORE")
             derived = runtime / "derived/analysis/private"
             derived.mkdir(parents=True)
@@ -2879,15 +2982,15 @@ def assert_batch_workflow(parent: Path, binary: Path) -> None:
         "expected_count": campaign.BATCH_CAPTURE_COUNT,
         "observed_count": campaign.BATCH_CAPTURE_COUNT,
     }
-    assert len(summary["cycles"]) == campaign.QUALIFICATION_CYCLE_COUNT
-    for item in summary["cycles"]:
+    assert len(summary["works"]) == campaign.QUALIFICATION_WORK_COUNT
+    for item in summary["works"]:
         assert item["intake_state"] == "accepted"
         assert item["qualification_state"] == "not_run"
         assert item["failed_checks"] == []
         assert item["failure_attribution"] == []
         assert "status" not in item
         assert item["supported_evidence_complete"] is True
-        cycle_path = campaign.cycle_root(root, item["repository_class"], item["cycle"])
+        cycle_path = campaign.work_root(root, item["repository_class"], item["cycle"])
         descriptor_value = campaign.read_json(
             campaign.evaluator_descriptor_path(root, item["repository_class"], item["cycle"])
         )
@@ -2930,7 +3033,7 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
     fixtures: dict[tuple[str, int], tuple[dict[str, object], Path, Path, Path]] = {}
     descriptor_paths: dict[tuple[str, int], Path] = {}
     for kind in campaign.CLASSES:
-        for cycle in campaign.cycle_numbers(kind):
+        for cycle in campaign.work_labels(kind):
             descriptor, work, resume, bundle = fixture_for(
                 parent, kind, cycle, campaign_root=root
             )
@@ -2940,9 +3043,9 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
             )
     reveal_and_seal_descriptors(root, descriptor_paths)
     for kind in campaign.CLASSES:
-        for cycle in campaign.cycle_numbers(kind):
+        for cycle in campaign.work_labels(kind):
             descriptor, work, resume, bundle = fixtures[(kind, cycle)]
-            runtime = campaign.cycle_root(root, kind, cycle) / "runtime"
+            runtime = campaign.work_root(root, kind, cycle) / "runtime"
             (runtime / "canonical.sqlite3").write_bytes(b"PRIVATE-STORE-CONTENT")
             derived = runtime / "derived/analysis/project"
             derived.mkdir(parents=True)
@@ -2982,13 +3085,13 @@ def assert_successful_campaign(parent: Path, binary: Path) -> None:
                     assert evidence["status"] == "passed"
                     assert evidence["bytes"] == path.stat().st_size
                     assert evidence["sha256"] == harness.sha256(path)
-            summary_bytes = (campaign.cycle_root(root, kind, cycle) / "runtime-summary.json").read_bytes()
+            summary_bytes = (campaign.work_root(root, kind, cycle) / "runtime-summary.json").read_bytes()
             assert b"canonical.sqlite3" in summary_bytes
             assert b"PRIVATE-STORE-CONTENT" not in summary_bytes
             assert b"PRIVATE-DERIVED-CONTENT" not in summary_bytes
 
     control = campaign.read_json(
-        campaign.cycle_root(root, "volicord", 1) / "documents-summary.json"
+        campaign.work_root(root, "volicord", 1) / "documents-summary.json"
     )
     candidate = campaign.read_json(root / "campaign.json")["candidate_head"]
 
@@ -3237,7 +3340,7 @@ def assert_failed_document_kind_is_machine_failure(parent: Path, binary: Path) -
     )
     work = next(path for path in captures if path.name == "volicord-1-work-events.jsonl")
     resume = next(path for path in captures if path.name == "volicord-1-resume-events.jsonl")
-    slot = campaign.cycle_state(root, "volicord", 1)["review_slot_id"]
+    slot = campaign.work_state(root, "volicord", 1)["review_slot_id"]
     bundle = bundles[slot]
     assert collect_work_fixture(root, "volicord", 1, work)["outcome"] == "resume_allowed"
     result = collect_resume_fixture(
@@ -3260,7 +3363,7 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
     prepare(root, parent / "superseded-sources", binary)
     campaign_state = campaign.load_campaign(root)
     current_candidate = campaign_state["candidate_head"]
-    state = campaign_state["cycles"]["volicord-cycle-1"]
+    state = campaign_state["works"]["volicord-cycle-1"]
     review_slot_id = state["review_slot_id"]
     missing = parent / "guard-input-does-not-exist.json"
     archive = parent / "guard-review.tar.gz"
@@ -3285,7 +3388,7 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         "reveal-qualification-profile": lambda: campaign.reveal_qualification_profile(
             root, current_candidate
         ),
-        "seal-cycle": lambda: campaign.seal_cycle(root, "volicord", 1, missing),
+        "seal-cycle": lambda: campaign.seal_work(root, "volicord", 1, missing),
         "activate-cycle": lambda: campaign.activate_cycle(root, "volicord", 1),
         "activate-all": lambda: campaign.activate_all(root),
         "collect-work": lambda: collect_work_fixture(root, "volicord", 1, missing),
@@ -3335,6 +3438,205 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         harness.git_clean = original_clean
 
 
+def assert_journey_campaign_contract(parent: Path, binary: Path) -> None:
+    unsealed = parent / "activation-before-freeze"
+    prepare(unsealed, parent / "activation-before-freeze-sources", binary)
+    before = campaign.campaign_file(unsealed).read_bytes()
+    try:
+        campaign.activate_all(unsealed)
+    except campaign.CampaignError as error:
+        assert "all five Work descriptors" in str(error)
+    else:
+        raise AssertionError("activation accepted an incompletely frozen sequence")
+    assert campaign.campaign_file(unsealed).read_bytes() == before
+
+    dependent, _start, _resume, _bundle = fixture_for(
+        parent / "dependent-later-work-fixture",
+        "volicord",
+        "B",
+        campaign_root=unsealed,
+    )
+    dependent["work_user_task"] = (
+        "Continue the previous Work A implementation and preserve the exact approach chosen earlier."
+    )
+    dependent_path = parent / "dependent-later-work.json"
+    campaign.write_json(dependent_path, dependent)
+    try:
+        campaign.prepare_review(unsealed, "volicord", "B", dependent_path)
+    except campaign.CampaignError as error:
+        assert "specific earlier Work outcome" in str(error)
+    else:
+        raise AssertionError("later Volicord Work accepted an exact prior-outcome dependency")
+
+    root, captures, bundles = prepared_batch(parent, "journey-contract", binary)
+    state = campaign.load_campaign(root)
+    assert len(state["journeys"]) == 3
+    assert len(state["works"]) == 5
+    assert sum(len(item["session_slot_ids"]) for item in state["works"].values()) == 8
+    assert sum(
+        "resume" in campaign.session_roles(kind, label)
+        for kind in campaign.CLASSES
+        for label in campaign.work_labels(kind)
+    ) == 3
+    volicord = [
+        state["works"][campaign.work_key("volicord", label)]
+        for label in campaign.work_labels("volicord")
+    ]
+    assert len({item["repository_path"] for item in volicord}) == 1
+    assert len({item["runtime_home"] for item in volicord}) == 1
+    assert len({item["review_slot_id"] for item in state["works"].values()}) == 5
+    profile = campaign.read_json(campaign.qualification_profile_path(root))
+    assert all(
+        profile["obligation_coverage"][obligation] >= minimum
+        for obligation, minimum in campaign.PRIVATE_OBLIGATION_MINIMUMS.items()
+    )
+    mapping = campaign.read_json(campaign.slot_mapping_path(root))
+    assert any(
+        {"learning_deliberation", "learning_routine_control"}
+        <= set(entry["materiality_obligations"])
+        for entry in mapping["entries"]
+    )
+    assert len({
+        entry["repository_class"] for entry in mapping["entries"]
+        if "hidden_user_owned_decision" in entry["materiality_obligations"]
+    }) >= 2
+    run_sheet = (root / "operator/RUN-SHEET.md").read_text(encoding="utf-8")
+    assert run_sheet.count("### Session `") == 8
+    assert not any(item in run_sheet for item in campaign.MATERIALITY_OBLIGATIONS)
+
+    rollback_root, rollback_captures, _rollback_bundles = prepared_batch(
+        parent, "journey-collection-rollback", binary
+    )
+    rollback_before = {
+        path.relative_to(rollback_root).as_posix(): path.read_bytes()
+        for path in rollback_root.rglob("*") if path.is_file()
+    }
+    def failing_exporter(_binary, _runtime, _repository, _destination):
+        raise campaign.CampaignError("injected journey-final export failure")
+    try:
+        campaign.collect_batch(
+            rollback_root,
+            rollback_captures,
+            exporter=failing_exporter,
+            documenter=documenter,
+            snapshotter=snapshotter,
+        )
+    except campaign.CampaignError as error:
+        assert "injected journey-final export failure" in str(error)
+    else:
+        raise AssertionError("failed journey-final extraction was published")
+    assert rollback_before == {
+        path.relative_to(rollback_root).as_posix(): path.read_bytes()
+        for path in rollback_root.rglob("*") if path.is_file()
+    }
+    assert not (rollback_root / "batch-publication.json").exists()
+
+    mapped = campaign.map_batch_rollouts(root, list(reversed(captures)))
+    assert set(mapped) == set(harness.current_session_slots())
+    assert len({item.capture.session_id for item in mapped.values()}) == 8
+    wrong_revision = replaced_capture(
+        captures[0],
+        parent / "wrong-journey-revision.jsonl",
+        harness.git_head(campaign.ROOT),
+        "0" * 40,
+    )
+    invalid_revision_batch = [wrong_revision, *captures[1:]]
+    try:
+        campaign.map_batch_rollouts(root, invalid_revision_batch)
+    except campaign.CampaignError as error:
+        assert "zero sealed work roles" in str(error)
+        assert "repository_revision_mismatch" in error.diagnostic["mismatch_reasons"]
+    else:
+        raise AssertionError("batch mapping accepted an unrelated repository revision")
+    try:
+        campaign.map_batch_rollouts(root, captures[:-1])
+    except campaign.CampaignError as error:
+        assert "missing" in str(error)
+    else:
+        raise AssertionError("batch mapping accepted a missing session slot")
+
+    original_run_checked = campaign.run_checked
+    campaign.run_checked = fake_enable_command
+    try:
+        activation = campaign.activate_all(root)
+    finally:
+        campaign.run_checked = original_run_checked
+    assert activation["journey_count"] == 3
+
+    summary = campaign.collect_batch(
+        root,
+        captures,
+        exporter=batch_exporter(bundles),
+        documenter=documenter,
+        snapshotter=snapshotter,
+    )
+    assert summary["session_distinctness"] == {
+        "status": "passed", "expected_count": 8, "observed_count": 8
+    }
+    assert len(summary["works"]) == 5
+    assert len(summary["journeys"]) == 3
+    assert len(summary["journey_final_evidence"]) == 3
+    by_journey: dict[str, list[dict[str, object]]] = {}
+    for work in summary["works"]:
+        by_journey.setdefault(str(work["journey_id"]), []).append(work)
+    assert len({item["project_id"] for item in summary["journeys"].values()}) == 3
+    assert len({item["project_id"] for item in by_journey["journey-volicord"]}) == 1
+    assert len({item["work_item_id"] for item in by_journey["journey-volicord"]}) == 3
+    assert all(item["canonical_evidence"]["checkpoint_ids"] for item in summary["works"])
+    volicord_final = next(
+        item for item in summary["journey_final_evidence"]
+        if item["journey_id"] == "journey-volicord"
+    )
+    assert len(volicord_final["represented_work_slot_ids"]) == 3
+    assert len(volicord_final["ordered_work_item_ids"]) == 3
+    assert volicord_final["repository_revision_lineage"]["workspace_clean"] is True
+    assert len(volicord_final["repository_revision_lineage"]["ordered_session_revisions"]) == 4
+    manifest = campaign.load_evidence_set(root)
+    assert manifest["schema_version"] == 4
+    assert len(manifest["raw_inputs"]) == 8
+    assert len(manifest["work_evidence"]) == 5
+    assert len(manifest["journey_final_evidence"]) == 3
+    assert {item["session_slot_id"] for item in manifest["raw_inputs"]} == {
+        campaign.session_slot_id(*slot) for slot in harness.current_session_slots()
+    }
+    first_raw = root / manifest["work_evidence"][0]["sessions"]["start"]["relative_evidence_path"]
+    original_raw = first_raw.read_bytes()
+    first_raw.write_bytes(original_raw + b"\n")
+    try:
+        campaign.load_evidence_set(root)
+    except campaign.CampaignError as error:
+        assert any(
+            phrase in str(error)
+            for phrase in ("artifact changed", "hash binding", "hash mismatch")
+        )
+    else:
+        raise AssertionError("immutable raw evidence accepted post-publication mutation")
+    finally:
+        first_raw.write_bytes(original_raw)
+
+
+def assert_historical_campaign_is_inspection_only(parent: Path, binary: Path) -> None:
+    root = parent / "historical-inspection"
+    prepare(root, parent / "historical-inspection-sources", binary)
+    value = campaign.read_json(campaign.campaign_file(root))
+    value["schema_version"] = 3
+    campaign.write_json(campaign.campaign_file(root), value)
+    before = {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*") if path.is_file()
+    }
+    output = parent / "historical-inspection-result"
+    result = campaign.diagnose_campaign(root, output)
+    assert result["inspection_state"] == "identity_and_inventory_only"
+    diagnostic = campaign.read_json(output / "diagnostic.json")
+    assert diagnostic["historical_campaign_schema_version"] == 3
+    assert diagnostic["replacement_pass_candidate"] is False
+    assert before == {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*") if path.is_file()
+    }
+
+
 def main() -> int:
     from resume_self_test import check_resume_regressions
     from document_realization_self_test import check_document_realization_regressions
@@ -3350,127 +3652,32 @@ def main() -> int:
             binary = parent / "candidate/bin/volicord"
             write_fake_binary(binary)
             assert_session_start_ordering(parent)
-            assert_production_session_start(parent, binary)
-            assert_activation_failure_attribution(parent, binary)
-            assert_same_path_candidate_replacement_rejected(parent, binary)
             assert_strict_cli_contract(parent, binary)
             assert_default_document_process_evidence(parent, binary)
             assert_opaque_slot_preparation(parent, binary)
-            assert_blind_recording_non_oracle(parent, binary)
-            assert_sealing_and_provenance(parent, binary)
-            assert_blockers(parent, binary)
-            assert_batch_workflow(parent, binary)
-            assert_batch_failure_atomicity(parent, binary)
-            assert_failed_document_kind_is_machine_failure(parent, binary)
-            assert_resume_baseline_identity_and_ordering(parent)
-            assert_successful_campaign(parent, binary)
-            assert_superseded_candidate_mutation_guard(parent, binary)
+            assert_journey_campaign_contract(parent, binary)
+            assert_historical_campaign_is_inspection_only(parent, binary)
     finally:
         harness.git_clean = original_clean
     print(json.dumps({
         "status": "passed",
         "checks": [
-            "production_session_start_sixteen_session_parser_and_intake_integration",
-            "vscode_session_start_agent_visible_ordering_current_and_legacy_transports",
-            "activation_absent_late_malformed_binding_indeterminate_and_validator_failure_attribution",
-            "same_path_candidate_replacement_rejected_before_activation",
-            "shared_candidate_guard_rejects_all_superseded_mutations_atomically",
-            "collect_batch_rejects_superseded_or_dirty_candidate",
-            "read_only_superseded_campaign_inspection_remains_available",
-            "strict_current_cli_positive_and_obsolete_negative_cases",
-            "opaque_slot_generation_and_private_mapping",
-            "reviewer_safe_campaign_state_exposes_no_profile",
-            "private_profile_commitment_is_nonce_bound",
-            "malformed_private_profile_rejected_by_private_validator",
-            "duplicate_slot_rejected_before_campaign_mutation",
-            "reviewer_filename_workspace_and_order_opacity",
-            "reviewer_contract_projection_and_preparation_hash_binding",
-            "reviewer_contract_stale_or_contradictory_state_rejected",
-            "reviewer_draft_is_mutable_and_not_inventory_bound",
-            "inventory_bound_preparation_corruption_blocks_mutation",
-            "inventory_bound_campaign_artifact_rejected_as_reviewer_input",
-            "recorded_provisional_is_independent_of_later_draft_mutation",
-            "superseded_reviewer_template_path_is_absent",
-            "all_maintained_behavior_classes_pass_reviewer_preflight",
-            "classification_dependent_materiality_unavoidability_and_disclosure",
-            "invalid_status_invented_class_and_free_form_materiality_rejected",
-            "wrong_preparation_slot_and_provenance_rejected",
-            "preflight_success_and_failure_are_non_mutating",
-            "preflight_reads_only_reviewer_visible_preparation_and_contract",
-            "preflight_result_exposes_no_evaluator_or_steward_truth",
-            "preflight_and_recording_share_reviewer_validation_boundary",
-            "standalone_provisional_recording_exits_successfully",
-            "all_maintained_behavior_classes_record_without_oracle",
-            "recording_does_not_invoke_evaluator_relative_comparison",
-            "recording_does_not_read_or_expose_evaluator_material",
-            "recording_success_shapes_expose_no_match_or_evaluator_class",
-            "recording_reads_neither_profile_mapping_nor_evaluator_descriptor",
-            "invalid_provisional_recording_is_mutation_free",
-            "self_contradictory_provisional_recording_is_mutation_free",
-            "provisional_publication_failure_rolls_back",
-            "seal_cycle_has_no_provisional_payload_path",
-            "provisional_review_fixed_before_evaluator_comparison",
-            "partial_provisional_profile_reveal_rejected",
-            "partial_provisional_evaluator_reveal_rejected",
-            "all_eight_provisionals_required_before_reveal",
-            "post_provisional_reveal_rejects_malformed_private_profile",
-            "sealing_requires_post_reveal_profile_validation",
-            "all_eight_provisional_bytes_and_hashes_immutable_after_reveal",
-            "fixed_provisional_review_cannot_be_retroactively_altered",
-            "operator_slot_and_workspace_opacity",
-            "opaque_mapping_swap_tamper_detection",
-            "sealed_evaluator_operator_isolation",
-            "bypassable_user_owned_descriptor_rejected_before_sealing",
-            "unavoidable_user_owned_descriptor_sealed",
-            "sealed_raw_operator_task_artifact_binding",
-            "mismatched_provisional_cannot_masquerade_as_agreement",
-            "unresolved_classification_materiality_disagreement_blocks_sealing",
-            "evidence_resolved_classification_materiality_disagreement_seals",
-            "resolved_comparison_preserves_provisional_bytes_and_hash",
-            "unresolved_fact_authority_disagreement_blocks_sealing",
-            "typed_behavior_review_provenance_verification",
-            "semantic_work_observations_do_not_terminate_collection",
-            "bounded_work_blocker_failure_domains",
-            "evidence_transport_failure_is_not_product_failure",
-            "missing_activation_operator_environment_invalid",
-            "indeterminate_intact_campaign_collection_without_evaluation",
-            "batch_raw_hash_race_blocks_publication",
-            "batch_publication_rollback_and_read_barrier",
-            "immutable_collection_cannot_replace_raw_evidence",
-            "unordered_sixteen_rollout_batch_mapping",
-            "compacted_fresh_thread_batch_mapping",
-            "current_user_message_batch_mapping",
-            "current_mcp_project_and_work_intake_mapping",
-            "current_user_message_frozen_task_and_provenance_failures",
-            "legacy_current_user_turn_deduplication_and_conflict_rejection",
-            "host_user_role_material_excluded_from_first_turn",
-            "global_mapping_failure_precedes_campaign_mutation",
-            "missing_duplicate_and_wrong_identity_batch_rejection",
-            "literal_markdown_escape_batch_rejection",
-            "validation_internal_requires_validator_invariant_failure",
-            "batch_activation_all_preserves_user_controlled_trust",
-            "automatic_project_identity_and_bundle_export",
-            "resume_baseline_identity_and_ordering",
-            "completed_read_only_resume_without_checkpoint",
-            "read_only_resume_requires_post_inspection_numeric_verification",
-            "unfinished_read_only_resume_rejected",
-            "four_kind_markdown_html_document_evidence",
-            "active_host_document_preparation_preflight_immutable_record_and_batch",
-            "cross_locale_missing_realization_blocks_before_terminal_mutation",
-            "product_document_plan_topology_protected_terms_and_canonical_purity",
-            "document_export_process_streams_exit_and_termination_retained",
-            "typed_document_unavailability_preserved",
-            "document_evidence_project_candidate_cycle_binding",
-            "missing_corrupt_and_wrong_format_document_evidence_rejected",
-            "static_viewer_snapshot_evidence",
-            "long_lived_one_project_multiple_work_viewer_and_review_boundaries",
-            "failed_document_kind_is_machine_failure",
-            "bounded_runtime_summary",
-            "deterministic_manifest",
-            "bounded_default_review_archive",
-            "reviewer_safe_qualitative_review_packaging",
-            "explicit_raw_rollout_archive_option",
-            "evidence_hash_tamper_detection",
+            "three_journeys_five_works_three_resume_pairs_eight_sessions",
+            "independent_overlapping_materiality_obligation_coverage",
+            "five_opaque_reviews_and_profile_blindness",
+            "complete_task_freeze_before_journey_activation",
+            "later_volicord_work_rejects_exact_prior_outcome_dependency",
+            "shared_volicord_workspace_runtime_and_isolated_other_journeys",
+            "eight_entry_leak_free_operator_run_sheet",
+            "unordered_eight_capture_mapping_and_global_session_distinctness",
+            "same_work_resume_project_and_work_identity",
+            "same_project_distinct_volicord_work_identities",
+            "cross_journey_project_isolation",
+            "immutable_session_slot_manifest_and_raw_hash_binding",
+            "collection_failure_rollback_and_post_publication_raw_immutability",
+            "journey_final_document_realization_inventory",
+            "historical_cycle_schema_identity_inventory_inspection_only",
+            "resume_frontier_and_long_lived_project_regressions",
         ],
     }, indent=2, sort_keys=True))
     return 0

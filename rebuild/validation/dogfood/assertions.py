@@ -303,7 +303,8 @@ def validate_evaluation_consumer_integration(
                 f"Dogfood harness no longer consumes evaluation.json through {marker}"
             )
     for marker in (
-        "BEHAVIOR_CLASSES = harness.BEHAVIOR_CLASSES",
+        "MATERIALITY_OBLIGATIONS = harness.MATERIALITY_OBLIGATIONS",
+        "WORK_SLOTS_BY_REPOSITORY = harness.WORK_SLOTS_BY_REPOSITORY",
         "definition = harness.load_definition()",
     ):
         if marker not in campaign_source:
@@ -313,31 +314,31 @@ def validate_evaluation_consumer_integration(
 
 
 def expected_public_campaign_contract(definition: dict[str, object]) -> dict[str, str]:
-    cycles_by_repository = definition["cycles_by_repository"]
+    topology = definition["campaign_topology"]
     real_session = definition["real_session_evidence"]
     profile = definition["qualification_profile_contract"]
     if not all(
         isinstance(value, dict)
-        for value in (cycles_by_repository, real_session, profile)
+        for value in (topology, real_session, profile)
     ):
         raise AssertionError("Phase 8 public campaign definition is malformed")
     batch = real_session["batch_campaign_contract"]
     if not isinstance(batch, dict):
         raise AssertionError("Phase 8 public batch definition is malformed")
-    repository_cycles = ", ".join(
-        f"{repository_class}={count}"
-        for repository_class, count in cycles_by_repository.items()
+    work_slots = ", ".join(
+        f"{repository_class}={'/'.join(labels)}"
+        for repository_class, labels in topology["work_slots_by_repository"].items()
     )
-    cycle_count = definition["qualification_cycle_count"]
     return {
-        "qualification_cycles": str(cycle_count),
-        "sessions_per_cycle": str(real_session["required_codex_sessions_per_cycle"]),
+        "repository_journeys": str(topology["journey_count"]),
+        "work_items": str(topology["work_count"]),
+        "work_slots_by_repository": work_slots,
+        "fresh_resume_pairs": str(topology["resume_pair_count"]),
         "fresh_sessions": str(real_session["full_replacement_session_count"]),
-        "repository_cycles": repository_cycles,
         "provisional_reviews_before_reveal": str(
             profile["reveal_requires_provisional_count"]
         ),
-        "sealed_descriptors_and_reviews": str(cycle_count),
+        "sealed_descriptors_and_reviews": str(topology["work_count"]),
         "complete_batch_raw_rollouts": str(batch["required_raw_rollout_count"]),
     }
 
@@ -395,12 +396,12 @@ def assert_public_campaign_contract_regressions(expected: dict[str, str]) -> Non
     stale = dict(expected)
     stale.update(
         {
-            "qualification_cycles": "6",
-            "fresh_sessions": "12",
-            "repository_cycles": "volicord=2, small-python=2, polyglot-medium=2",
+            "repository_journeys": "4",
+            "work_items": "6",
+            "fresh_sessions": "9",
             "provisional_reviews_before_reveal": "6",
             "sealed_descriptors_and_reviews": "6",
-            "complete_batch_raw_rollouts": "12",
+            "complete_batch_raw_rollouts": "9",
         }
     )
     try:
@@ -670,33 +671,45 @@ def main() -> int:
     ):
         raise AssertionError("Phase 8 Materiality Review authority contract changed")
     if (
-        real_session.get("required_codex_sessions_per_cycle") != 2
-        or real_session.get("full_replacement_session_count") != 16
-        or definition_value.get("cycles_by_repository")
-        != {"volicord": 3, "small-python": 3, "polyglot-medium": 2}
-        or definition_value.get("qualification_cycle_count") != 8
+        real_session.get("session_roles_by_work")
+        != {"resumed_work": ["start", "resume"], "non_resumed_work": ["start"]}
+        or real_session.get("full_replacement_session_count") != 8
+        or definition_value.get("campaign_topology")
+        != {
+            "journeys": ["volicord", "small-python", "polyglot-medium"],
+            "work_slots_by_repository": {
+                "volicord": ["A", "B", "C"],
+                "small-python": ["A"],
+                "polyglot-medium": ["A"],
+            },
+            "resume_work_slot_by_repository": {
+                "volicord": "A", "small-python": "A", "polyglot-medium": "A"
+            },
+            "journey_count": 3,
+            "work_count": 5,
+            "resume_pair_count": 3,
+            "session_count": 8,
+        }
         or definition_value.get("qualification_profile_contract")
         != {
             "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
-            "reveal_requires_provisional_count": 8,
+            "reveal_requires_provisional_count": 5,
             "validation_phase": "post_reveal_before_sealing",
             "reviewer_safe_profile_disclosure": False,
         }
-        or tuple(definition_value.get("behavior_classes", [])) != (
+        or tuple(definition_value.get("materiality_obligations", [])) != (
             "explicit_user_owned_decision",
             "hidden_user_owned_decision",
             "research_or_no_question",
+            "repository_or_environment_fact",
             "delegated_implementation_choice",
             "exploratory_uncertainty",
             "learning_deliberation",
             "learning_routine_control",
         )
         or len(definition_value.get("repository_classes", {})) != 3
-        or sum(definition_value["cycles_by_repository"].values())
-        * real_session["required_codex_sessions_per_cycle"]
-        != 16
     ):
-        raise AssertionError("Phase 8 no longer requires sixteen distinct real Codex sessions")
+        raise AssertionError("Phase 8 journey/Work/session topology changed")
     public_campaign_contract = expected_public_campaign_contract(definition_value)
     for path in PUBLIC_CAMPAIGN_CONTRACTS:
         validate_public_campaign_contract(
@@ -910,7 +923,7 @@ def main() -> int:
         or command_forwarding.get("execution_identity_conflict") != "rejected"
     ):
         raise AssertionError("Phase 8 terminal command evidence contract changed")
-    behavior_classes = definition_value.get("behavior_classes")
+    behavior_classes = definition_value.get("materiality_obligations")
     validate_behavior_specific_work_intake_contract(
         behavior_specific_work_intake, behavior_classes
     )
@@ -1063,8 +1076,8 @@ def main() -> int:
         or blind_first.get("all_provisionals_required_before_any_reveal") is not True
         or blind_first.get("qualification_profile_reveal_operation")
         != "reveal-qualification-profile"
-        or blind_first.get("evaluator_reveal_operation") != "seal-cycle"
-        or blind_first.get("required_provisional_count_before_reveal") != 8
+        or blind_first.get("evaluator_reveal_operation") != "seal-work"
+        or blind_first.get("required_provisional_count_before_reveal") != 5
         or blind_first.get("sealing_accepts_provisional_payload") is not False
         or blind_first.get("preparation_fields")
         != [
@@ -1120,9 +1133,9 @@ def main() -> int:
     if (
         opaque_slots.get("identity_generation")
         != "campaign_time_cryptographic_random_128_bit_token"
-        or opaque_slots.get("derived_from_repository_or_cycle") is not False
+        or opaque_slots.get("derived_from_repository_or_work") is not False
         or opaque_slots.get("physical_workspace_layout")
-        != "slots/<review_slot_id>/repository"
+        != "journeys/<journey_id>/{repository,runtime}"
         or opaque_slots.get("reviewer_workspace_layout")
         != "reviewer/workspaces/<review_slot_id>/repository"
         or opaque_slots.get("private_mapping_integrity")
@@ -1141,7 +1154,7 @@ def main() -> int:
         "provisional-review-contract.json",
         "provisional_recorded",
         "reveal-qualification-profile",
-        "all eight provisional reviews",
+        "all five provisional reviews",
         "qualification_profile_state",
     ):
         if marker not in campaign_source:
@@ -1196,7 +1209,7 @@ def main() -> int:
     candidate_guard = batch_contract.get("candidate_mutation_guard", {})
     if (
         batch_contract.get("operation") != "collect-batch"
-        or batch_contract.get("required_raw_rollout_count") != 16
+        or batch_contract.get("required_raw_rollout_count") != 8
         or batch_contract.get("global_mapping_precedes_campaign_mutation") is not True
         or batch_contract.get("terminal_work_failure_repaired_by_resume") is not False
         or candidate_guard
@@ -1208,8 +1221,8 @@ def main() -> int:
                 "prepare-review",
                 "record-provisional-review",
                 "reveal-qualification-profile",
-                "seal-cycle",
-                "activate-cycle",
+                "seal-work",
+                "activate-journey",
                 "activate-all",
                 "collect-batch",
                 "finalize-manifest",
@@ -1219,7 +1232,7 @@ def main() -> int:
             "read_only_predecessor_inspection_allowed": True,
         }
         or "read_only_static_viewer_snapshot"
-        not in batch_contract.get("automatic_cycle_evidence", [])
+        not in batch_contract.get("automatic_journey_final_evidence", [])
     ):
         raise AssertionError("Phase 8 batch campaign contract is incomplete")
     qualitative_contract = definition_value.get("qualitative_review_contract", {})
@@ -1257,10 +1270,11 @@ def main() -> int:
         qualitative_contract.get("artifact_kind") != "dogfood_qualitative_review"
         or qualitative_contract.get("machine_accessibility_may_be_overridden") is not False
         or qualitative_contract.get("sampling_algorithm")
-        != "cycle_scoped_with_repository_class_cli_scope"
-        or qualitative_contract.get("every_cycle_review_surfaces")
+        != "work_scoped_with_journey_final_projection_and_repository_class_cli_scope"
+        or qualitative_contract.get("every_work_review_surfaces")
+        != ["interaction", "context_recovery", "authority"]
+        or qualitative_contract.get("journey_final_review_surfaces")
         != [
-            "interaction",
             "generated_documents",
             "viewer_snapshot",
             "viewer_navigation_machine",

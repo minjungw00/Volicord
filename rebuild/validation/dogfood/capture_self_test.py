@@ -253,7 +253,7 @@ class CurrentExecutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             head = h.git_head(h.ROOT)
-            descriptor = h.real_session_fixture("volicord", 1, head, root, behavior_class="research_or_no_question")
+            descriptor = h.real_session_fixture("volicord", 1, head, root, materiality_obligations="research_or_no_question")
             capture = load_codex_capture(root / descriptor["evidence"]["captures"]["work"]["file"])
             capture = replace(capture, path_observations=(), evidence_transport_issues=(
                 EvidenceTransportIssue(10, capture.user_turns[0].turn_id, "file", "codex", None, "malformed_file_change"),))

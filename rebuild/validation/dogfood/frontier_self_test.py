@@ -17,7 +17,7 @@ class FrontierTests(unittest.TestCase):
         self.root = Path(self.directory.name)
 
     def fixture(self, behavior="research_or_no_question"):
-        descriptor = h.real_session_fixture("volicord", 1, "0" * 40, self.root, behavior_class=behavior)
+        descriptor = h.real_session_fixture("volicord", 1, "0" * 40, self.root, materiality_obligations=behavior)
         capture = h.load_codex_capture(self.root / descriptor["evidence"]["captures"]["work"]["file"])
         # Leave insertion room while retaining every observed partial order.
         fields = {}
@@ -351,12 +351,12 @@ class FrontierTests(unittest.TestCase):
     def facts(self, descriptor, capture, bundle, baseline=None):
         baseline = baseline or capture.successful_calls("repository_analyze")[0]
         first_write = min(x.sequence for x in h.meaningful_work_path_observations(capture))
-        return h.materiality_review_facts(capture, bundle, descriptor["behavior_class"],
+        return h.materiality_review_facts(capture, bundle, descriptor["materiality_obligations"],
             "08" * 16, descriptor["work_user_task"], descriptor["work_user_task"], baseline,
             first_write, "03" * 16, h.decision_facts(capture, bundle)[-1])
 
     def observe(self, descriptor, capture, baseline=None):
-        return h.work_blocker_behavior_observations(capture, descriptor["behavior_class"],
+        return h.work_blocker_behavior_observations(capture, descriptor["materiality_obligations"],
             baseline or capture.successful_calls("repository_analyze")[0],
             min(x.sequence for x in h.meaningful_work_path_observations(capture)))[0]
 
@@ -542,7 +542,7 @@ class FrontierTests(unittest.TestCase):
     def test_hidden_investigation_uncertainty_does_not_erase_lifecycle(self):
         head = h.git_head(h.ROOT)
         descriptor = h.real_session_fixture("volicord", 1, head, self.root,
-            behavior_class="hidden_user_owned_decision")
+            materiality_obligations="hidden_user_owned_decision")
         capture = h.load_codex_capture(self.root / descriptor["evidence"]["captures"]["work"]["file"])
         baseline = capture.successful_calls("repository_analyze")[0]
         discovery = capture.successful_calls("engineering_choice_discovery")[0]
@@ -665,8 +665,8 @@ class FrontierTests(unittest.TestCase):
             descriptor, capture, bundle = self.no_write_exploration(prototype)
             baseline = capture.successful_calls("repository_analyze")[0]
             self.assertTrue(h.exploratory_no_write_evidence(capture, baseline)["qualified"])
-            self.assertEqual(h.work_blocker_behavior_observations(capture, descriptor["behavior_class"], baseline, None), (True, False, False))
-            facts = h.materiality_review_facts(capture, bundle, descriptor["behavior_class"],
+            self.assertEqual(h.work_blocker_behavior_observations(capture, descriptor["materiality_obligations"], baseline, None), (True, False, False))
+            facts = h.materiality_review_facts(capture, bundle, descriptor["materiality_obligations"],
                 "08" * 16, descriptor["work_user_task"], descriptor["work_user_task"], baseline,
                 None, "03" * 16, h.decision_facts(capture, bundle)[-1])
             self.assertTrue(facts[0], facts[3])
@@ -692,7 +692,7 @@ class FrontierTests(unittest.TestCase):
                             or missing == "binding" and c.arguments.get("action") == "inspect"
                             or missing == "checkpoint" and c.operation == "checkpoint_record"
                             or missing == "routing" and c.arguments.get("action") == "record" and c.operation == "materiality_review")))
-                    self.assertFalse(h.work_blocker_behavior_observations(changed, descriptor["behavior_class"],
+                    self.assertFalse(h.work_blocker_behavior_observations(changed, descriptor["materiality_obligations"],
                         None if missing == "baseline" else baseline, None)[0])
 
     def test_literal_interpreter_scratch_has_only_exploration_authority(self):
@@ -973,13 +973,13 @@ class FrontierTests(unittest.TestCase):
     def test_non_user_authority_is_not_a_behavior_label(self):
         for behavior in ("delegated_implementation_choice", "exploratory_uncertainty"):
             descriptor, capture, bundle = self.fixture()
-            descriptor["behavior_class"] = behavior
+            descriptor["materiality_obligations"] = behavior
             self.assertTrue(self.observe(descriptor, capture))
             self.assertTrue(self.facts(descriptor, capture, bundle)[0])
 
     def test_delegated_behavior_does_not_hide_independent_user_owned_policy(self):
         descriptor, capture, bundle = self.fixture("explicit_user_owned_decision")
-        descriptor["behavior_class"] = "delegated_implementation_choice"
+        descriptor["materiality_obligations"] = "delegated_implementation_choice"
         self.assertTrue(self.observe(descriptor, capture))
         self.assertTrue(self.facts(descriptor, capture, bundle)[0])
         capture = replace(capture, tool_calls=tuple(c for c in capture.tool_calls if c.operation != "decision_record"))
@@ -1136,7 +1136,7 @@ class FrontierTests(unittest.TestCase):
         self.assertTrue(self.observe(descriptor, capture, baseline))
         facts = self.facts(descriptor, capture, bundle, baseline)
         self.assertTrue(facts[0])
-        lifecycle = h.material_question_lifecycle_facts(capture, bundle, descriptor["behavior_class"], {},
+        lifecycle = h.material_question_lifecycle_facts(capture, bundle, descriptor["materiality_obligations"], {},
             baseline, facts[1], facts[3], h.decision_facts(capture, bundle)[-1])
         self.assertTrue(lifecycle[0])
 
@@ -1225,7 +1225,7 @@ class FrontierTests(unittest.TestCase):
         self.assertTrue(self.observe(descriptor, capture))
         self.assertTrue(h.decision_facts(capture, bundle)[0])
         self.assertEqual(len(h.unnecessary_question_repetitions(capture)), 1)
-        with patch.object(h, "cycle_descriptor_errors", return_value=[]):
+        with patch.object(h, "work_descriptor_errors", return_value=[]):
             blocked = h.build_work_observation("0" * 40, descriptor, "0" * 64, capture)
         self.assertEqual(blocked["failed_checks"], ["unnecessary_question_repetition"])
         self.assertEqual(blocked["failure_attribution"]["domain"], "behavior_contract")
@@ -1284,7 +1284,7 @@ class FrontierTests(unittest.TestCase):
         self.assertTrue(facts[0])
         decisions = h.decision_facts(capture, bundle)
         self.assertTrue(decisions[0])
-        lifecycle = h.material_question_lifecycle_facts(capture, bundle, descriptor["behavior_class"], {},
+        lifecycle = h.material_question_lifecycle_facts(capture, bundle, descriptor["materiality_obligations"], {},
             capture.successful_calls("repository_analyze")[0], facts[1], facts[3], decisions[-1])
         self.assertFalse(lifecycle[0])
         self.assertFalse(self.observe(descriptor, capture))
@@ -1414,7 +1414,7 @@ class FrontierTests(unittest.TestCase):
     def test_settlement_does_not_hide_independent_authority_behind_behavior_labels(self):
         for behavior in ("delegated_implementation_choice", "research_or_no_question", "exploratory_uncertainty"):
             descriptor, capture, bundle = self.settled_same_review()
-            descriptor["behavior_class"] = behavior
+            descriptor["materiality_obligations"] = behavior
             self.assertTrue(self.observe(descriptor, capture))
             self.assertTrue(self.facts(descriptor, capture, bundle)[0])
             changed = replace(capture, tool_calls=tuple(c for c in capture.tool_calls if c.operation != "decision_record"))

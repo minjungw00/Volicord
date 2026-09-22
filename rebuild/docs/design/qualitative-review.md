@@ -22,8 +22,8 @@ with the preparation and recorded run. Changing kind requires a new run. An
 agent's session/model authorship cannot be submitted as human authorship.
 Kind is a declared role, not authenticated proof of a person's identity.
 
-Every collected cycle enters review, including failed, indeterminate and
-unevaluated cycles. Machine qualification is not a review prerequisite.
+Every collected Work enters review, including failed, indeterminate and
+unevaluated Works. Machine qualification is not a review prerequisite.
 The following mapping preserves the former human rubric without another engine:
 
 | Former review collection | Common criterion group | Preserved meaning |
@@ -35,14 +35,15 @@ The following mapping preserves the former human rubric without another engine:
 | Viewer request responsiveness | `viewer_navigation` | Candidate-bound monotonic snapshot-export request completion/duration and explicit proxy limit; not human stopwatch prose or a claim of browser input latency |
 | `repository_intelligence_reviews` | `repository_intelligence` | Structural navigation, semantic value, capability honesty and polyglot comprehension |
 | `cli_usability_reviews` | `cli` | Per-repository-class help discovery and status/analyze/Recall/documents/export/doctor without opaque Project IDs |
-| `live_viewer_accessibility` | `live_viewer` | `en`/`ko` keyboard reachability, visible focus, color-independent meaning, narrow/zoom presentation for the deterministic first Volicord cycle |
+| `live_viewer_accessibility` | `live_viewer` | `en`/`ko` keyboard reachability, visible focus, color-independent meaning, narrow/zoom presentation for the Volicord journey-final Viewer |
 | Live browser responsiveness | `live_viewer` | Direct human observation of input response and resulting paint in `en`/`ko`; snapshot-export request timing is not a substitute |
-| Long-lived Project continuity | `long_lived_project` | One real candidate-bound Project retaining multiple distinct Work identities, state and history across fresh sessions; deterministic fixtures are support only |
+| Long-lived Project continuity | `long_lived_project` | The Volicord journey's four raw sessions, one Project, three distinct Work identities, checkpoints and final bundle; deterministic fixtures are support only |
 | `authority_obligation_reviews` | `authority` | Every initial material challenge, all other actual outcomes, additional outcomes and complete implementation/coupled-artifact coverage |
 | Context recovery usability criterion | `context_recovery` | Goal, Decision/rationale, work state and open-question recovery across work/resume |
 
-Interaction, documents, Viewer snapshot, Viewer navigation, Repository Intelligence, context recovery, and
-authority collections cover every cycle. CLI covers each maintained repository class exactly
+Interaction, context recovery, and authority collections cover every Work. Documents, Viewer snapshot,
+Viewer navigation, and Repository Intelligence use the three journey-final projections while retaining
+the represented Work identities. CLI covers each maintained repository class exactly
 once: `3 classes × 7 criteria = 21 assessments`. A static HTML snapshot does
 not establish actual live keyboard/focus/zoom behavior; missing observation yields
 insufficient evidence. Missing CLI captures similarly cannot establish usability.
@@ -128,7 +129,7 @@ The blind pre-campaign provisional workflow remains separate and unchanged.
 
 ## Dedicated CLI observation
 
-CLI usability evidence is collected separately from the sixteen uncoached naturalistic
+CLI usability evidence is collected separately from the eight uncoached naturalistic
 sessions. After immutable evidence-set publication, `collect-cli-observations` clones each
 of the three pinned repository classes into a distinct ephemeral workspace, gives each a
 distinct ephemeral Runtime Home, and invokes the candidate-local `volicord` executable from
@@ -170,7 +171,7 @@ Preparation accepts the resulting directory through `--cli-observations`. It ver
 receipt and all candidate/evidence/repository/process bindings, then copies only bounded
 reviewer-safe per-class projections. It never reconstructs an invocation from prose.
 If one class observation is absent, exactly that class's seven required assessments remain
-`insufficient_evidence`; duplicated cycle-level CLI assessments and `not_applicable` fillers
+`insufficient_evidence`; duplicated Work-level CLI assessments and `not_applicable` fillers
 are not part of the current rubric.
 
 ## Current reviewer workflow
@@ -388,8 +389,8 @@ errors roll back staged files; preflight never repairs or rewrites evidence.
 
 `qualification_policy.py` consumes recorded runs using this rubric, including all 21 required
 repository-class CLI assessments. All criteria except
-live accessibility, browser input/paint responsiveness, long-lived Project continuity and
-actual user Decision comprehension permit agent review with the
+live accessibility, browser input/paint responsiveness and actual user Decision comprehension
+permit agent review with the
 required evidence. Missing surfaces remain insufficient, and a static HTML proxy never
 establishes human-observed usability. Human review may resolve only the remaining criteria.
 A high-impact authority/context-recovery insufficiency or conflicting review requires an
@@ -401,8 +402,9 @@ For direct live observations, human preparation additionally accepts `--human-ob
 pointing to the conversational capture directory. The lower-level JSON-file input remains
 available for automation. The object has kind `dogfood_human_observations`, original `candidate_head`,
 `evidence_set_sha256`, an `observer` using the common human reviewer identity shape, and
-exactly three `observations`: English and Korean live Viewer observations plus one long-lived
-one-Project/multiple-Work observation. Each has `sample_id`, typed `surface`, optional `locale`,
+exactly two `observations`: English and Korean live Viewer observations. Long-lived
+one-Project/multiple-Work continuity is read from the Volicord journey evidence rather than a
+separate user-authored observation. Each live observation has `sample_id`, typed `surface`, optional `locale`,
 a typed `control`, and either a grouped `{observation, limits}` response or a Korean-to-English
 locale reference with no duplicated semantic prose. Preparation copies and hashes
 these declared observations into immutable review evidence. Agent authorship is rejected.
@@ -445,7 +447,7 @@ in scope may be established by an agent from the permitted evidence; it does not
 a human to experience a nonexistent Decision. Applicable comprehension remains human-only.
 The single machine disposition table is `machine-policy.json`; check names and historical
 domains alone do not determine authority. Exact hard facts remain non-overridable even
-when a broad procedural check in the same cycle is review-required or advisory.
+when a broad procedural check in the same Work is review-required or advisory.
 
 `validate-approval --approval <approval-run>/approval.json --qualification
 <qualification-run>/qualification.json` rechecks the immutable approval, preserved

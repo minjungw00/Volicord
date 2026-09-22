@@ -8,27 +8,53 @@
     "skipped",
     "environment_blocked"
   ],
-  "cycles_by_repository": {
-    "volicord": 3,
-    "small-python": 3,
-    "polyglot-medium": 2
+  "campaign_topology": {
+    "journeys": [
+      "volicord",
+      "small-python",
+      "polyglot-medium"
+    ],
+    "work_slots_by_repository": {
+      "volicord": ["A", "B", "C"],
+      "small-python": ["A"],
+      "polyglot-medium": ["A"]
+    },
+    "resume_work_slot_by_repository": {
+      "volicord": "A",
+      "small-python": "A",
+      "polyglot-medium": "A"
+    },
+    "journey_count": 3,
+    "work_count": 5,
+    "resume_pair_count": 3,
+    "session_count": 8
   },
-  "qualification_cycle_count": 8,
   "qualification_profile_contract": {
     "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
-    "reveal_requires_provisional_count": 8,
+    "reveal_requires_provisional_count": 5,
     "validation_phase": "post_reveal_before_sealing",
     "reviewer_safe_profile_disclosure": false
   },
-  "behavior_classes": [
+  "materiality_obligations": [
     "explicit_user_owned_decision",
     "hidden_user_owned_decision",
     "research_or_no_question",
+    "repository_or_environment_fact",
     "delegated_implementation_choice",
     "exploratory_uncertainty",
     "learning_deliberation",
     "learning_routine_control"
   ],
+  "materiality_obligation_minimums": {
+    "explicit_user_owned_decision": 1,
+    "hidden_user_owned_decision": 2,
+    "research_or_no_question": 1,
+    "repository_or_environment_fact": 1,
+    "delegated_implementation_choice": 1,
+    "exploratory_uncertainty": 1,
+    "learning_deliberation": 1,
+    "learning_routine_control": 1
+  },
   "repository_classes": {
     "volicord": {
       "actual_repository_required": true,
@@ -275,9 +301,13 @@
       "ko"
     ],
     "machine_accessibility_may_be_overridden": false,
-    "sampling_algorithm": "cycle_scoped_with_repository_class_cli_scope",
-    "every_cycle_review_surfaces": [
+    "sampling_algorithm": "work_scoped_with_journey_final_projection_and_repository_class_cli_scope",
+    "every_work_review_surfaces": [
       "interaction",
+      "context_recovery",
+      "authority"
+    ],
+    "journey_final_review_surfaces": [
       "generated_documents",
       "viewer_snapshot",
       "viewer_navigation_machine",
@@ -523,8 +553,11 @@
   "real_session_evidence": {
     "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
-    "required_codex_sessions_per_cycle": 2,
-    "full_replacement_session_count": 16,
+    "session_roles_by_work": {
+      "resumed_work": ["start", "resume"],
+      "non_resumed_work": ["start"]
+    },
+    "full_replacement_session_count": 8,
     "required_capture_format": "codex_mcp_completion_rollout_jsonl",
     "required_product_artifact": "volicord_context_bundle_v6",
     "bounded_call_forms": [
@@ -749,15 +782,17 @@
       "unsupported_write_chronology": "indeterminate_non_passing",
       "late_scope_binding_can_certify_earlier_work": false
     },
-    "cycle_descriptor_contract": {
+    "work_descriptor_contract": {
       "work_user_task_field": "work_user_task",
       "fresh_resume_user_task_field": "fresh_resume_user_task",
-      "behavior_class_field": "behavior_class",
+      "materiality_obligations_field": "materiality_obligations",
       "evaluation_basis_field": "evaluation_basis",
       "behavior_review_field": "behavior_review",
       "identity_fields": [
+        "journey_id",
         "repository_class",
-        "cycle",
+        "work_slot_id",
+        "work_label",
         "repository_revision"
       ],
       "evidence_reference_field": "evidence",
@@ -852,6 +887,7 @@
       ],
       "non_user_owned_classes": {
         "research_or_no_question": "evidence-backed repository/environment fact, settled authority, resolved research, or another maintained non-user-owned ready basis with no manufactured Candidate, Question, or Decision",
+        "repository_or_environment_fact": "repository or environment inspection establishes the independent fact dimension with no manufactured Candidate, Question, or Decision",
         "delegated_implementation_choice": "current Goal delegation for internal detail may coexist with settled public authority, with no manufactured Candidate, Question, or Decision",
         "exploratory_uncertainty": "discovery-owned research or prototype requirements remain blocking until a same-review revision supplies matching bounded evidence completion, then typed inspect readiness precedes affected work, with no manufactured Candidate, Question, or Decision",
         "learning_deliberation": "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, then typed executable-scope inspect readiness before affected work with no canonical Decision from learning-only selection",
@@ -918,7 +954,7 @@
     },
     "bounded_evaluation_basis": {
       "required_fields": [
-        "behavior_class",
+        "materiality_obligations",
         "repository_facts",
         "accepted_contract_constraints",
         "delegated_boundaries",
@@ -940,6 +976,7 @@
         "explicit_user_owned_decision",
         "hidden_user_owned_decision",
         "research_or_no_question",
+        "repository_or_environment_fact",
         "delegated_implementation_choice",
         "exploratory_uncertainty",
         "learning_deliberation",
@@ -1013,8 +1050,8 @@
         "sealed_provisional_immutable_and_inventory_bound": true,
         "all_provisionals_required_before_any_reveal": true,
         "qualification_profile_reveal_operation": "reveal-qualification-profile",
-        "evaluator_reveal_operation": "seal-cycle",
-        "required_provisional_count_before_reveal": 8,
+        "evaluator_reveal_operation": "seal-work",
+        "required_provisional_count_before_reveal": 5,
         "sealing_accepts_provisional_payload": false
       },
       "fact_authority_agreement": {
@@ -1093,8 +1130,8 @@
       "identity_generation": "campaign_time_cryptographic_random_128_bit_token",
       "stable_for_prepared_campaign": true,
       "unique_within_campaign": true,
-      "derived_from_repository_or_cycle": false,
-      "physical_workspace_layout": "slots/<review_slot_id>/repository",
+      "derived_from_repository_or_work": false,
+      "physical_workspace_layout": "journeys/<journey_id>/{repository,runtime}",
       "reviewer_workspace_layout": "reviewer/workspaces/<review_slot_id>/repository",
       "reviewer_artifact_naming": "review_slot_id_only",
       "operator_ordering": "opaque_review_slot_id_with_optional_repository_grouping",
@@ -1129,15 +1166,15 @@
         "policy_owner": "machine_findings.py",
         "hard_integrity_review_override": false
       },
-      "required_raw_rollout_count": 16,
+      "required_raw_rollout_count": 8,
       "input_modes": [
-        "sixteen_explicit_paths",
-        "one_directory_with_exactly_sixteen_files"
+        "eight_explicit_paths",
+        "one_directory_with_exactly_eight_files"
       ],
       "mapping_evidence": [
         "exact_repository_workspace",
         "frozen_first_user_task",
-        "work_or_fresh_resume_role",
+        "maintained_start_or_fresh_resume_session_slot",
         "repository_revision",
         "source_vscode",
         "originator_codex_vscode",
@@ -1149,7 +1186,7 @@
       "terminal_work_failure_repaired_by_resume": false,
       "missing_activation_classification": "operator_environment_invalid",
       "failure_attribution": {
-        "cycle_fields": [
+        "work_fields": [
           "failed_checks",
           "failure_attribution"
         ],
@@ -1173,8 +1210,8 @@
           "prepare-review",
           "record-provisional-review",
           "reveal-qualification-profile",
-          "seal-cycle",
-          "activate-cycle",
+          "seal-work",
+          "activate-journey",
           "activate-all",
           "collect-batch",
           "finalize-manifest"
@@ -1183,7 +1220,7 @@
         "superseded_recovery_exception": false,
         "read_only_predecessor_inspection_allowed": true
       },
-      "automatic_cycle_evidence": [
+      "automatic_journey_final_evidence": [
         "project_identity",
         "canonical_bundle",
         "bounded_runtime_summary",

@@ -39,10 +39,10 @@ from codex_events import EvidenceError, command_is_repository_inspection, load_c
 
 ROOT = Path(__file__).resolve().parents[3]
 CLASSES = harness.CLASSES
-BEHAVIOR_CLASSES = harness.BEHAVIOR_CLASSES
-CYCLE_COUNT_BY_REPOSITORY = harness.CYCLE_COUNT_BY_REPOSITORY
-QUALIFICATION_CYCLE_COUNT = harness.QUALIFICATION_CYCLE_COUNT
-_PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS = harness._PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
+MATERIALITY_OBLIGATIONS = harness.MATERIALITY_OBLIGATIONS
+WORK_SLOTS_BY_REPOSITORY = harness.WORK_SLOTS_BY_REPOSITORY
+QUALIFICATION_WORK_COUNT = harness.QUALIFICATION_WORK_COUNT
+PRIVATE_OBLIGATION_MINIMUMS = harness.PRIVATE_OBLIGATION_MINIMUMS
 DOCUMENT_KINDS = (
     "project-architecture-guide",
     "decision-report",
@@ -60,7 +60,7 @@ MANAGED_STORES = (
     "guarded.sqlite3",
     "forgetting.sqlite3",
 )
-RAW_NAMES = {"work.rollout.jsonl", "resume.rollout.jsonl"}
+RAW_NAMES = {"start.rollout.jsonl", "resume.rollout.jsonl"}
 PROHIBITED_ARCHIVE_SUFFIXES = (".sqlite", ".sqlite3", ".db", "-wal", "-shm", "-journal")
 PROJECT_ID = re.compile(r"[0-9a-f]{32}")
 BATCH_CAPTURE_COUNT = harness.QUALIFICATION_SESSION_COUNT
@@ -175,16 +175,14 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
         )
     value = read_json(campaign_file(root))
     if (value.get("kind") != "phase8_dogfood_campaign"
-            or value.get("schema_version") not in {1, 2, 3}):
+            or value.get("schema_version") != 4):
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
-    if (value.get("schema_version") == 2
-            and value.get("naturalistic_memory_evidence")
+    if (value.get("naturalistic_memory_evidence")
             != naturalistic_memory_evidence(value.get("candidate_artifacts", {}))):
         raise CampaignError("naturalistic MCP memory support classification changed")
-    if (value.get("schema_version") == 3
-            and value.get("live_evidence_obligations")
+    if (value.get("live_evidence_obligations")
             != live_evidence_obligations(value.get("candidate_artifacts", {}))):
         raise CampaignError("live evidence obligation classification changed")
     if validate_private:
@@ -336,98 +334,201 @@ def save_campaign(root: Path, value: dict[str, Any]) -> None:
     write_json(campaign_file(root), value)
 
 
-def cycle_key(kind: str, cycle: int) -> str:
-    if kind not in CLASSES or cycle not in cycle_numbers(kind):
-        raise CampaignError("cycle must identify a maintained repository assignment")
-    return f"{kind}-cycle-{cycle}"
+def journey_id(kind: str) -> str:
+    try:
+        return harness.journey_id(kind)
+    except ValueError as error:
+        raise CampaignError(str(error)) from error
 
 
-def cycle_numbers(kind: str) -> range:
-    if kind not in CLASSES:
-        raise CampaignError("repository class is not maintained")
-    return range(1, CYCLE_COUNT_BY_REPOSITORY[kind] + 1)
+def work_key(kind: str, work_label: str) -> str:
+    try:
+        return harness.work_slot_id(kind, work_label)
+    except ValueError as error:
+        raise CampaignError(str(error)) from error
+
+
+def work_labels(kind: str) -> tuple[str, ...]:
+    try:
+        return harness.work_slots(kind)
+    except ValueError as error:
+        raise CampaignError(str(error)) from error
+
+
+def session_roles(kind: str, work_label: str) -> tuple[str, ...]:
+    try:
+        return harness.session_roles(kind, work_label)
+    except ValueError as error:
+        raise CampaignError(str(error)) from error
+
+
+def session_slot_id(kind: str, work_label: str, role: str) -> str:
+    try:
+        return harness.session_slot_id(kind, work_label, role)
+    except ValueError as error:
+        raise CampaignError(str(error)) from error
+
+
+def revision_is_bound(repository: Path, baseline: str, observed: str) -> bool:
+    """Accept the pinned revision or a committed descendant in the journey clone."""
+    if observed == baseline:
+        return True
+    if not re.fullmatch(r"[0-9a-f]{40}", str(observed or "")):
+        return False
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", baseline, observed],
+        cwd=repository,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
+def verify_journey_revision_chronology(
+    campaign: dict[str, Any],
+    mapped: dict[tuple[str, str, str], MappedRollout],
+) -> dict[str, Any]:
+    """Prove captured revisions form committed, clean, journey-local histories."""
+    evidence: dict[str, Any] = {}
+    for kind in CLASSES:
+        journey = campaign["journeys"][journey_id(kind)]
+        repository = Path(journey["repository_path"])
+        baseline = journey["repository_revision"]
+        ordered_slots = [
+            slot for slot in harness.current_session_slots() if slot[0] == kind
+        ]
+        revisions = [mapped[slot].capture.git_revision for slot in ordered_slots]
+        previous = baseline
+        for revision in revisions:
+            if not revision_is_bound(repository, previous, revision):
+                raise IntegrityError(
+                    "project_binding",
+                    CampaignError(
+                        "journey session revisions are not a chronological committed lineage"
+                    ),
+                )
+            previous = revision
+        # Production preparation always creates a Git clone. Lightweight unit
+        # fixtures intentionally replace the cloner and retain the exact pinned
+        # revision without a .git directory.
+        fixture_without_git = not (repository / ".git").exists()
+        final_revision = (
+            baseline
+            if fixture_without_git and all(revision == baseline for revision in revisions)
+            else harness.git_head(repository)
+        )
+        if (
+            not isinstance(final_revision, str)
+            or not revision_is_bound(repository, previous, final_revision)
+            or not harness.git_clean(repository)
+        ):
+            raise IntegrityError(
+                "project_binding",
+                CampaignError(
+                    "journey workspace must end at a clean committed descendant of its sessions"
+                ),
+            )
+        evidence[journey_id(kind)] = {
+            "baseline_revision": baseline,
+            "ordered_session_revisions": [
+                {
+                    "session_slot_id": session_slot_id(*slot),
+                    "revision": mapped[slot].capture.git_revision,
+                }
+                for slot in ordered_slots
+            ],
+            "final_revision": final_revision,
+            "workspace_clean": True,
+        }
+    return evidence
 
 
 def new_review_slot_id() -> str:
     return secrets.token_hex(16)
 
 
-def opaque_order_exposes_logical_cycle_order(
-    assignments: list[tuple[str, int, str, str]],
+def opaque_order_exposes_logical_work_order(
+    assignments: list[tuple[str, str, tuple[str, ...], str]],
 ) -> bool:
     for kind in CLASSES:
+        if len(work_labels(kind)) < 2:
+            continue
         ordered = sorted(
             (item for item in assignments if item[0] == kind),
             key=lambda item: item[3],
         )
-        if [number for _kind, number, _behavior, _slot in ordered] == list(
-            cycle_numbers(kind)
+        if [label for _kind, label, _obligations, _slot in ordered] == list(
+            work_labels(kind)
         ):
             return True
     return False
 
 
-def new_private_behavior_assignments() -> list[tuple[str, int, str]]:
+def new_private_work_obligation_assignments() -> list[tuple[str, str, tuple[str, ...]]]:
     positions = [
-        (kind, cycle)
+        (kind, work)
         for kind in CLASSES
-        for cycle in cycle_numbers(kind)
+        for work in work_labels(kind)
     ]
-    multiset = [
-        behavior
-        for behavior, count in _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS.items()
-        for _ in range(count)
+    profiles = [
+        ("explicit_user_owned_decision", "delegated_implementation_choice"),
+        ("hidden_user_owned_decision",),
+        ("hidden_user_owned_decision", "exploratory_uncertainty"),
+        ("research_or_no_question", "repository_or_environment_fact"),
+        ("learning_deliberation", "learning_routine_control"),
     ]
     generator = secrets.SystemRandom()
     for _attempt in range(128):
-        generator.shuffle(multiset)
+        generator.shuffle(profiles)
         assignments = [
-            (kind, cycle, behavior)
-            for (kind, cycle), behavior in zip(positions, multiset, strict=True)
+            (kind, work, tuple(sorted(obligations)))
+            for (kind, work), obligations in zip(positions, profiles, strict=True)
         ]
         hidden_repositories = {
             kind
-            for kind, _cycle, behavior in assignments
-            if behavior == "hidden_user_owned_decision"
+            for kind, _work, obligations in assignments
+            if "hidden_user_owned_decision" in obligations
         }
-        if len(hidden_repositories) == 2:
-            learning_repositories = {
-                behavior: kind
-                for kind, _cycle, behavior in assignments
-                if behavior in {"learning_deliberation", "learning_routine_control"}
-            }
-            if len(set(learning_repositories.values())) == 2:
-                return assignments
-    raise CampaignError("private behavior assignment could not satisfy repository-separation constraints")
+        if len(hidden_repositories) >= 2:
+            return assignments
+    raise CampaignError("private Work obligations could not satisfy repository-separation constraints")
 
 
-def validate_private_behavior_assignments(
-    assignments: list[tuple[str, int, str]],
+def validate_private_work_obligation_assignments(
+    assignments: list[tuple[str, str, tuple[str, ...]]],
 ) -> None:
-    positions = [(kind, cycle) for kind, cycle, _behavior in assignments]
+    positions = [(kind, work) for kind, work, _obligations in assignments]
     expected_positions = [
-        (kind, cycle)
+        (kind, work)
         for kind in CLASSES
-        for cycle in cycle_numbers(kind)
+        for work in work_labels(kind)
     ]
-    behavior_counts = Counter(behavior for _kind, _cycle, behavior in assignments)
+    obligation_counts = Counter(
+        obligation
+        for _kind, _work, obligations in assignments
+        for obligation in obligations
+    )
     hidden_repositories = {
         kind
-        for kind, _cycle, behavior in assignments
-        if behavior == "hidden_user_owned_decision"
-    }
-    learning_repositories = {
-        behavior: kind
-        for kind, _cycle, behavior in assignments
-        if behavior in {"learning_deliberation", "learning_routine_control"}
+        for kind, _work, obligations in assignments
+        if "hidden_user_owned_decision" in obligations
     }
     if (
         positions != expected_positions
-        or behavior_counts != _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
-        or len(hidden_repositories) != 2
-        or len(set(learning_repositories.values())) != 2
+        or any(
+            obligation_counts[obligation] < minimum
+            for obligation, minimum in PRIVATE_OBLIGATION_MINIMUMS.items()
+        )
+        or any(
+            obligation not in MATERIALITY_OBLIGATIONS
+            for _kind, _work, obligations in assignments
+            for obligation in obligations
+        )
+        or len(hidden_repositories) < 2
     ):
-        raise CampaignError("private behavior assignment violates qualification constraints")
+        raise CampaignError("private Work obligations violate qualification constraints")
 
 
 def slot_mapping_path(root: Path) -> Path:
@@ -440,23 +541,23 @@ def slot_root(root: Path, review_slot_id: str) -> Path:
     return root / "slots" / review_slot_id
 
 
-def cycle_state(
+def work_state(
     root: Path,
     kind: str,
-    cycle: int,
+    work_label: str,
     campaign: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     campaign = campaign or load_campaign(root)
-    return campaign["cycles"][cycle_key(kind, cycle)]
+    return campaign["works"][work_key(kind, work_label)]
 
 
-def cycle_root(
+def work_root(
     root: Path,
     kind: str,
-    cycle: int,
+    work_label: str,
     campaign: dict[str, Any] | None = None,
 ) -> Path:
-    return slot_root(root, cycle_state(root, kind, cycle, campaign)["review_slot_id"])
+    return slot_root(root, work_state(root, kind, work_label, campaign)["review_slot_id"])
 
 
 def slot_artifact_path(root: Path, plane: str, directory: str, review_slot_id: str) -> Path:
@@ -466,23 +567,25 @@ def slot_artifact_path(root: Path, plane: str, directory: str, review_slot_id: s
 
 
 def slot_mapping_value(
-    cycles: dict[str, Any],
-    behavior_by_slot: dict[str, str],
+    works: dict[str, Any],
+    obligations_by_slot: dict[str, tuple[str, ...]],
     commitment_nonce: str,
 ) -> dict[str, Any]:
     entries = []
-    for key, state in cycles.items():
+    for key, state in works.items():
         entries.append({
             "review_slot_id": state["review_slot_id"],
+            "journey_id": state["journey_id"],
             "repository_class": state["repository_class"],
-            "logical_cycle": state["cycle"],
-            "expected_behavior_class": behavior_by_slot[state["review_slot_id"]],
+            "work_slot_id": state["work_slot_id"],
+            "work_label": state["work_label"],
+            "materiality_obligations": list(obligations_by_slot[state["review_slot_id"]]),
             "repository_revision": state["repository_revision"],
             "authoritative_workspace": state["repository_path"],
             "reviewer_workspace": state["reviewer_repository_path"],
             "evaluator_input": f"evaluator/inputs/{state['review_slot_id']}.json",
             "authoritative_descriptor": f"evaluator/descriptors/{state['review_slot_id']}.json",
-            "private_cycle_key": key,
+            "private_work_key": key,
         })
     return {
         "kind": "phase8_dogfood_opaque_slot_mapping",
@@ -501,13 +604,15 @@ def qualification_profile_value(
     candidate_head: str,
     mapping: dict[str, Any],
 ) -> dict[str, Any]:
-    behavior_counts = Counter(
-        entry["expected_behavior_class"] for entry in mapping["entries"]
+    obligation_counts = Counter(
+        obligation
+        for entry in mapping["entries"]
+        for obligation in entry["materiality_obligations"]
     )
     hidden_repositories = sorted({
         entry["repository_class"]
         for entry in mapping["entries"]
-        if entry["expected_behavior_class"] == "hidden_user_owned_decision"
+        if "hidden_user_owned_decision" in entry["materiality_obligations"]
     })
     return {
         "kind": "phase8_dogfood_private_qualification_profile",
@@ -516,7 +621,8 @@ def qualification_profile_value(
         "candidate_head": candidate_head,
         "commitment_nonce": mapping["commitment_nonce"],
         "assignment_count": len(mapping["entries"]),
-        "behavior_histogram": dict(sorted(behavior_counts.items())),
+        "obligation_coverage": dict(sorted(obligation_counts.items())),
+        "obligation_minimums": PRIVATE_OBLIGATION_MINIMUMS,
         "hidden_repository_classes": hidden_repositories,
         "slot_mapping_sha256": hashlib.sha256(json_bytes(mapping)).hexdigest(),
     }
@@ -532,8 +638,8 @@ def validate_private_qualification_profile(
     if not isinstance(expected_hash, str) or harness.sha256(path) != expected_hash:
         raise CampaignError("campaign-private opaque slot mapping hash mismatch")
     mapping = read_json(path)
-    cycles = campaign.get("cycles")
-    if not isinstance(mapping, dict) or not isinstance(cycles, dict):
+    works = campaign.get("works")
+    if not isinstance(mapping, dict) or not isinstance(works, dict):
         raise CampaignError("campaign-private opaque slot mapping is malformed")
     entries = mapping.get("entries")
     if (
@@ -545,34 +651,36 @@ def validate_private_qualification_profile(
         or not isinstance(entries, list)
     ):
         raise CampaignError("campaign-private opaque slot mapping is malformed")
-    public_cycles_by_slot = {
+    public_works_by_slot = {
         state.get("review_slot_id"): (key, state)
-        for key, state in cycles.items()
+        for key, state in works.items()
         if isinstance(state, dict)
     }
     for entry in entries:
         if not isinstance(entry, dict):
             raise CampaignError("campaign-private opaque slot mapping is malformed")
-        matched = public_cycles_by_slot.get(entry.get("review_slot_id"))
+        matched = public_works_by_slot.get(entry.get("review_slot_id"))
         if matched is None:
             raise CampaignError("campaign-private opaque slot mapping is ambiguous or changed")
         key, state = matched
         if entry != {
             "review_slot_id": state.get("review_slot_id"),
+            "journey_id": state.get("journey_id"),
             "repository_class": state.get("repository_class"),
-            "logical_cycle": state.get("cycle"),
-            "expected_behavior_class": entry.get("expected_behavior_class"),
+            "work_slot_id": state.get("work_slot_id"),
+            "work_label": state.get("work_label"),
+            "materiality_obligations": entry.get("materiality_obligations"),
             "repository_revision": state.get("repository_revision"),
             "authoritative_workspace": state.get("repository_path"),
             "reviewer_workspace": state.get("reviewer_repository_path"),
             "evaluator_input": f"evaluator/inputs/{state.get('review_slot_id')}.json",
             "authoritative_descriptor": f"evaluator/descriptors/{state.get('review_slot_id')}.json",
-            "private_cycle_key": key,
+            "private_work_key": key,
         }:
             raise CampaignError("campaign-private opaque slot mapping is ambiguous or changed")
     ids = [entry.get("review_slot_id") for entry in mapping.get("entries", [])]
     if (
-        len(ids) != QUALIFICATION_CYCLE_COUNT
+        len(ids) != QUALIFICATION_WORK_COUNT
         or len(ids) != len(set(ids))
         or any(not isinstance(value, str) or REVIEW_SLOT_ID.fullmatch(value) is None for value in ids)
     ):
@@ -581,25 +689,25 @@ def validate_private_qualification_profile(
         kind: sum(entry.get("repository_class") == kind for entry in mapping["entries"])
         for kind in CLASSES
     }
-    behavior_counts = Counter(
-        entry.get("expected_behavior_class") for entry in mapping["entries"]
+    obligation_counts = Counter(
+        obligation
+        for entry in mapping["entries"]
+        for obligation in entry.get("materiality_obligations", [])
     )
     hidden_repositories = {
         entry.get("repository_class")
         for entry in mapping["entries"]
-        if entry.get("expected_behavior_class") == "hidden_user_owned_decision"
-    }
-    learning_repositories = {
-        entry.get("expected_behavior_class"): entry.get("repository_class")
-        for entry in mapping["entries"]
-        if entry.get("expected_behavior_class")
-        in {"learning_deliberation", "learning_routine_control"}
+        if "hidden_user_owned_decision" in entry.get("materiality_obligations", [])
     }
     if (
-        repository_counts != CYCLE_COUNT_BY_REPOSITORY
-        or behavior_counts != _PRIVATE_QUALIFICATION_BEHAVIOR_COUNTS
-        or len(hidden_repositories) != 2
-        or len(set(learning_repositories.values())) != 2
+        repository_counts != {
+            kind: len(labels) for kind, labels in WORK_SLOTS_BY_REPOSITORY.items()
+        }
+        or any(
+            obligation_counts[obligation] < minimum
+            for obligation, minimum in PRIVATE_OBLIGATION_MINIMUMS.items()
+        )
+        or len(hidden_repositories) < 2
     ):
         raise CampaignError("campaign-private behavior assignment violates qualification constraints")
     profile_path = qualification_profile_path(root)
@@ -619,21 +727,26 @@ def validate_private_qualification_profile(
     return profile
 
 
-def private_behavior_class(
+def private_materiality_obligations(
     root: Path,
     state: dict[str, Any],
     campaign: dict[str, Any] | None = None,
-) -> str:
+) -> tuple[str, ...]:
     campaign = campaign or load_campaign(root)
     mapping = read_json(slot_mapping_path(root))
     matches = [
-        entry.get("expected_behavior_class")
+        entry.get("materiality_obligations")
         for entry in mapping.get("entries", [])
         if entry.get("review_slot_id") == state.get("review_slot_id")
     ]
-    if len(matches) != 1 or matches[0] not in BEHAVIOR_CLASSES:
-        raise CampaignError("private behavior assignment is unavailable")
-    return str(matches[0])
+    if (
+        len(matches) != 1
+        or not isinstance(matches[0], list)
+        or not matches[0]
+        or any(item not in MATERIALITY_OBLIGATIONS for item in matches[0])
+    ):
+        raise CampaignError("private Work obligations are unavailable")
+    return tuple(matches[0])
 
 
 def inventory_path(root: Path) -> Path:
@@ -683,28 +796,28 @@ def copy_exact(source: Path, destination: Path) -> None:
         raise CampaignError("raw capture copy did not preserve source bytes")
 
 
-def evaluator_input_path(root: Path, kind: str, cycle: int) -> Path:
-    state = cycle_state(root, kind, cycle)
+def evaluator_input_path(root: Path, kind: str, work: str) -> Path:
+    state = work_state(root, kind, work)
     return slot_artifact_path(root, "evaluator", "inputs", state["review_slot_id"])
 
 
-def evaluator_descriptor_path(root: Path, kind: str, cycle: int) -> Path:
-    state = cycle_state(root, kind, cycle)
+def evaluator_descriptor_path(root: Path, kind: str, work: str) -> Path:
+    state = work_state(root, kind, work)
     return slot_artifact_path(root, "evaluator", "descriptors", state["review_slot_id"])
 
 
-def reviewer_preparation_path(root: Path, kind: str, cycle: int) -> Path:
-    state = cycle_state(root, kind, cycle)
+def reviewer_preparation_path(root: Path, kind: str, work: str) -> Path:
+    state = work_state(root, kind, work)
     return slot_artifact_path(root, "reviewer", "preparations", state["review_slot_id"])
 
 
-def reviewer_provisional_draft_path(root: Path, kind: str, cycle: int) -> Path:
-    state = cycle_state(root, kind, cycle)
+def reviewer_provisional_draft_path(root: Path, kind: str, work: str) -> Path:
+    state = work_state(root, kind, work)
     return slot_artifact_path(root, "reviewer", "drafts", state["review_slot_id"])
 
 
-def reviewer_provisional_path(root: Path, kind: str, cycle: int) -> Path:
-    state = cycle_state(root, kind, cycle)
+def reviewer_provisional_path(root: Path, kind: str, work: str) -> Path:
+    state = work_state(root, kind, work)
     return slot_artifact_path(root, "reviewer", "provisional", state["review_slot_id"])
 
 
@@ -730,14 +843,14 @@ def reviewer_provisional_contract_reference(root: Path) -> dict[str, str]:
     }
 
 
-def private_cycle_for_review_slot(
+def private_work_for_review_slot(
     campaign: dict[str, Any], review_slot_id: str
 ) -> dict[str, Any]:
     if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
         raise CampaignError("review slot identity is malformed")
     matches = [
         state
-        for state in campaign.get("cycles", {}).values()
+        for state in campaign.get("works", {}).values()
         if state.get("review_slot_id") == review_slot_id
     ]
     if len(matches) != 1:
@@ -750,7 +863,7 @@ def render_reviewer_index(root: Path) -> Path:
     contract = reviewer_provisional_contract_reference(root)
     entries = []
     for state in sorted(
-        campaign["cycles"].values(), key=lambda item: item["review_slot_id"]
+        campaign["works"].values(), key=lambda item: item["review_slot_id"]
     ):
         review_slot_id = state["review_slot_id"]
         entries.append({
@@ -799,9 +912,12 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
     if contract != harness.provisional_review_contract():
         raise CampaignError("reviewer provisional-review contract is stale or contradictory")
     prohibited_keys = {
-        "behavior_class",
-        "cycle",
+        "materiality_obligations",
+        "work",
         "logical_cycle",
+        "journey_id",
+        "work_slot_id",
+        "work_label",
         "repository_class",
         "evaluation_basis",
         "possible_material_concerns",
@@ -827,8 +943,8 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
             if json_keys(value).intersection(prohibited_keys):
                 raise CampaignError("blind reviewer artifact exposes evaluator identity or material")
             if directory == "preparations" and any(
-                behavior_class in path.read_text(encoding="utf-8")
-                for behavior_class in BEHAVIOR_CLASSES
+                materiality_obligations in path.read_text(encoding="utf-8")
+                for materiality_obligations in MATERIALITY_OBLIGATIONS
             ):
                 raise CampaignError("blind reviewer artifact exposes a behavior class")
     for entry in entries:
@@ -858,7 +974,7 @@ def descriptor_semantic_sha256(value: dict[str, Any]) -> str:
 
 
 def operator_task_artifact_path(root: Path, review_slot_id: str, role: str) -> Path:
-    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None or role not in {"work", "resume"}:
+    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None or role not in {"start", "resume"}:
         raise CampaignError("sealed operator task identity is malformed")
     return root / "operator/tasks" / f"{review_slot_id}.{role}.txt"
 
@@ -870,10 +986,10 @@ def write_operator_task_artifacts(
 ) -> dict[str, dict[str, Any]]:
     semantic_sha256 = descriptor_semantic_sha256(descriptor)
     artifacts: dict[str, dict[str, Any]] = {}
-    for role, field in (
-        ("work", "work_user_task"),
-        ("resume", "fresh_resume_user_task"),
-    ):
+    fields = [("start", "work_user_task")]
+    if "resume" in session_roles(state["repository_class"], state["work_label"]):
+        fields.append(("resume", "fresh_resume_user_task"))
+    for role, field in fields:
         content = descriptor[field].encode("utf-8")
         path = operator_task_artifact_path(root, state["review_slot_id"], role)
         if path.exists():
@@ -896,14 +1012,15 @@ def verify_operator_task_artifacts(
     descriptor: dict[str, Any],
 ) -> dict[str, dict[str, Any]]:
     artifacts = state.get("operator_task_artifacts")
-    if not isinstance(artifacts, dict) or set(artifacts) != {"work", "resume"}:
-        raise CampaignError("sealed cycle has no complete raw operator task artifacts")
+    expected_roles = set(session_roles(state["repository_class"], state["work_label"]))
+    if not isinstance(artifacts, dict) or set(artifacts) != expected_roles:
+        raise CampaignError("sealed Work has no complete raw operator task artifacts")
     inventory = load_inventory(root).get("artifacts", {})
     semantic_sha256 = descriptor_semantic_sha256(descriptor)
-    for role, field in (
-        ("work", "work_user_task"),
-        ("resume", "fresh_resume_user_task"),
-    ):
+    fields = [("start", "work_user_task")]
+    if "resume" in expected_roles:
+        fields.append(("resume", "fresh_resume_user_task"))
+    for role, field in fields:
         expected_path = operator_task_artifact_path(root, state["review_slot_id"], role)
         record = artifacts.get(role)
         expected_content = descriptor[field].encode("utf-8")
@@ -926,13 +1043,13 @@ def verify_operator_task_artifacts(
 
 def descriptor_skeleton(
     kind: str,
-    cycle: int,
-    behavior_class: str,
+    work_label: str,
+    materiality_obligations: tuple[str, ...],
     revision: str,
     candidate_head: str,
 ) -> dict[str, Any]:
     owner_path = "rebuild/docs/design/inquiry-and-decision.md"
-    if harness.is_user_owned_behavior(behavior_class):
+    if harness.is_user_owned_behavior(materiality_obligations):
         counterfactual_review = {
             "applicability": "required_for_material_user_owned_decision",
             "specific_unresolved_outcome": "REPLACE with the exact externally meaningful unresolved outcome",
@@ -954,7 +1071,7 @@ def descriptor_skeleton(
             }],
             "material_outcome_unavoidable": True,
             "operator_prompt_does_not_disclose_material_outcome": (
-                behavior_class == "hidden_user_owned_decision"
+                harness.has_obligation(materiality_obligations, "hidden_user_owned_decision")
             ),
             "conclusion": "unavoidable_user_owned_outcome",
         }
@@ -976,21 +1093,27 @@ def descriptor_skeleton(
             "conclusion": "not_applicable",
         }
     return {
-        "kind": "phase8_cycle_descriptor",
+        "kind": "phase8_work_descriptor",
         "producer": "volicord_phase8_codex_event_normalizer",
+        "journey_id": journey_id(kind),
         "repository_class": kind,
-        "cycle": cycle,
-        "behavior_class": behavior_class,
+        "work_slot_id": work_key(kind, work_label),
+        "work_label": work_label,
+        "materiality_obligations": list(materiality_obligations),
         "repository_revision": revision,
         "work_user_task": "REPLACE with the frozen naturalistic work task",
-        "fresh_resume_user_task": "REPLACE with the frozen naturalistic resume task",
+        "fresh_resume_user_task": (
+            "REPLACE with the frozen naturalistic resume task"
+            if "resume" in session_roles(kind, work_label)
+            else None
+        ),
         "work_scope": {
             "affected_paths": ["REPLACE/with-real-path", "REPLACE/with-second-real-path"],
             "user_visible_behavior": False,
             "boundary_kind": "component",
         },
         "evaluation_basis": {
-            "behavior_class": behavior_class,
+            "materiality_obligations": list(materiality_obligations),
             "repository_facts": ["REPLACE with an established repository fact"],
             "accepted_contract_constraints": [],
             "delegated_boundaries": [],
@@ -1001,7 +1124,7 @@ def descriptor_skeleton(
         },
         "behavior_review": {
             "kind": "phase8_behavior_review",
-            "classification": behavior_class,
+            "classification": list(materiality_obligations),
             "provenance_references": [{
                 "scope": "volicord_active_owner",
                 "path": owner_path,
@@ -1011,7 +1134,7 @@ def descriptor_skeleton(
             "outcome_rationale": "REPLACE after independent review",
             "user_ownership_assessment": "REPLACE after independent review",
             "silent_choice_risk_assessment": "REPLACE after independent review",
-            "unresolved_material_user_outcome": harness.is_user_owned_behavior(behavior_class),
+            "unresolved_material_user_outcome": harness.is_user_owned_behavior(materiality_obligations),
             "independent_review": {
                 "status": "pending",
                 "reviewer_role": "campaign_preparation_independent_reviewer",
@@ -1021,7 +1144,7 @@ def descriptor_skeleton(
                 "classification_comparison": {
                     "status": "unresolved_conflict",
                     "provisional_classification": "REPLACE with the immutable provisional classification",
-                    "evaluator_classification": behavior_class,
+                    "evaluator_classification": list(materiality_obligations),
                     "disagreements": ["REPLACE with exact disagreement field names"],
                     "resolution_basis": "REPLACE with inspectable source/owner evidence resolving the comparison",
                     "provenance_reference_indices": [0],
@@ -1044,7 +1167,7 @@ def hidden_evaluator_strings(descriptor: dict[str, Any]) -> set[str]:
     hidden: set[str] = set()
     basis = descriptor.get("evaluation_basis", {})
     for field, value in (basis.items() if isinstance(basis, dict) else ()):
-        if field == "behavior_class":
+        if field == "materiality_obligations":
             continue
         values = value if isinstance(value, list) else [value]
         hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
@@ -1127,9 +1250,9 @@ def assert_operator_artifacts_do_not_leak(root: Path) -> None:
         if (
             "EVALUATOR_ONLY" in text
             or any(value in text for value in hidden)
-            or any(behavior_class in text for behavior_class in BEHAVIOR_CLASSES)
+            or any(materiality_obligations in text for materiality_obligations in MATERIALITY_OBLIGATIONS)
             or re.search(r"\bcycle\s+[1-5]\b", text, flags=re.IGNORECASE)
-            or re.search(r"(?:^|[/\\])cycles(?:[/\\]|$)", text)
+            or re.search(r"(?:^|[/\\])works(?:[/\\]|$)", text)
         ):
             raise CampaignError(f"operator-facing artifact exposes evaluator-only material: {relative(root, path)}")
 
@@ -1137,42 +1260,33 @@ def assert_operator_artifacts_do_not_leak(root: Path) -> None:
 def render_operator_run_sheet(root: Path) -> Path:
     campaign = load_campaign(root)
     entries_by_repository: dict[str, list[str]] = {kind: [] for kind in CLASSES}
+    sequence_complete = all(
+        state.get("state") == "sealed" for state in campaign["works"].values()
+    )
     for kind in CLASSES:
-        states = sorted(
-            (
-                campaign["cycles"][cycle_key(kind, cycle)]
-                for cycle in cycle_numbers(kind)
-            ),
-            key=lambda item: item["review_slot_id"],
-        )
+        states = [campaign["works"][work_key(kind, label)] for label in work_labels(kind)]
         for state in states:
-            if state["state"] in {"prepared", "review_prepared", "provisional_recorded"}:
+            if not sequence_complete:
                 continue
-            cycle = state["cycle"]
-            descriptor = read_json(evaluator_descriptor_path(root, kind, cycle))
+            work = state["work_label"]
+            descriptor = read_json(evaluator_descriptor_path(root, kind, work))
             review_slot_id = state["review_slot_id"]
             task_artifacts = verify_operator_task_artifacts(root, state, descriptor)
-            work_task = task_artifacts["work"]
-            resume_task = task_artifacts["resume"]
-            entries_by_repository[kind].append(
-                f"### Slot `{review_slot_id}`\n\n"
-                f"- Repository: `{state['repository_path']}`\n"
-                f"- Runtime Home: `{state['runtime_home']}`\n"
-                f"- Work capture destination: `{slot_root(root, review_slot_id) / 'evidence/work.rollout.jsonl'}`\n"
-                f"- Resume capture destination: `{slot_root(root, review_slot_id) / 'evidence/resume.rollout.jsonl'}`\n\n"
-                "#### Frozen task transport\n\n"
-                f"- Work task artifact: `{root / work_task['path']}`\n"
-                f"- Work task SHA-256: `{work_task['sha256']}`\n"
-                f"- Resume task artifact: `{root / resume_task['path']}`\n"
-                f"- Resume task SHA-256: `{resume_task['sha256']}`\n\n"
-                "Copy the exact UTF-8 bytes from the applicable raw `.txt` artifact. Do not "
-                "copy or retype the task from Markdown, and do not add, remove, escape, or "
-                "normalize any character.\n\n"
-                "Explicitly inspect and approve repository and hook trust in VS Code. Start each task "
-                "in its own fresh thread. If trust or activation setup is uncertain, inspect it before "
-                "sending the frozen task. Then send only the frozen task and preserve the raw rollout file. "
-                "Do not run campaign collection between chats.\n"
-            )
+            for role in session_roles(kind, work):
+                task = task_artifacts[role]
+                entries_by_repository[kind].append(
+                    f"### Session `{review_slot_id}.{role}`\n\n"
+                    f"- Repository: `{state['repository_path']}`\n"
+                    f"- Runtime Home: `{state['runtime_home']}`\n"
+                    f"- Capture destination: `{slot_root(root, review_slot_id) / 'evidence' / f'{role}.rollout.jsonl'}`\n"
+                    f"- Frozen task artifact: `{root / task['path']}`\n"
+                    f"- Frozen task SHA-256: `{task['sha256']}`\n\n"
+                    "Copy the exact UTF-8 bytes from the raw `.txt` artifact. Do not copy or "
+                    "retype the task from Markdown, and do not add, remove, escape, or normalize "
+                    "any character. Explicitly inspect and approve repository and hook trust in "
+                    "VS Code. Start this task in its own fresh thread, send only the frozen task, "
+                    "and preserve the raw rollout file. Do not run campaign collection between chats.\n"
+                )
     entries = [
         f"## Repository `{kind}`\n\n" + "\n\n".join(entries_by_repository[kind])
         for kind in CLASSES
@@ -1183,14 +1297,15 @@ def render_operator_run_sheet(root: Path) -> Path:
     path.write_text(
         "# Naturalistic Dogfood Operator Run Sheet\n\n"
         "This helper does not grant repository or hook trust and does not start Codex sessions. "
-        "Use this operator material only after all eight sealed slot entries are present. Evaluator "
+        "Use this operator material only after all five Work descriptors and all eight session "
+        "entries are sealed. Evaluator "
         "research is maintained separately; this workflow isolation is not an operating-system "
-        "security boundary against deliberately opening evaluator files. After all eight entries are "
+        "security boundary against deliberately opening evaluator files. After all five Works are "
         "sealed, the campaign steward may run `activate-all`; activation never grants trust. The helper "
         "verifies the production-owned static MCP and SessionStart files, but that does not prove that "
         "VS Code executed SessionStart; every raw session still requires runtime activation evidence. "
         "If trust or activation is uncertain, inspect it before sending any frozen task. Run all "
-        "sixteen fresh work/resume chats, preserve their raw rollouts, and provide the sixteen files once "
+        "eight fresh start/resume chats, preserve their raw rollouts, and provide the eight files once "
         "to the steward. For cross-locale documents the steward runs `prepare-document-realizations`, "
         "has an active host complete and fix the private drafts, and then runs `collect-batch`. "
         "Same-locale evidence uses `collect-batch` directly. No per-chat control-session collection is required.\n\n"
@@ -1354,7 +1469,7 @@ def clone_repository(source: Path, destination: Path, revision: str) -> None:
         check=False,
     )
     if completed.returncode != 0:
-        raise CampaignError("disposable cycle repository clone failed")
+        raise CampaignError("disposable work repository clone failed")
     completed = subprocess.run(
         ["git", "checkout", "--quiet", "--detach", revision],
         cwd=destination,
@@ -1368,24 +1483,24 @@ def clone_repository(source: Path, destination: Path, revision: str) -> None:
         or harness.git_head(destination) != revision
         or not harness.git_clean(destination)
     ):
-        raise CampaignError("disposable cycle repository revision could not be pinned cleanly")
+        raise CampaignError("disposable work repository revision could not be pinned cleanly")
 
 
 def load_sealed_descriptor(
     root: Path,
     kind: str,
-    cycle: int,
+    work: str,
     campaign: dict[str, Any] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     campaign = campaign or load_campaign(root)
-    state = campaign["cycles"][cycle_key(kind, cycle)]
-    path = evaluator_descriptor_path(root, kind, cycle)
+    state = campaign["works"][work_key(kind, work)]
+    path = evaluator_descriptor_path(root, kind, work)
     if state.get("state") == "prepared" or not path.is_file():
-        raise CampaignError("cycle requires a valid sealed evaluator descriptor")
+        raise CampaignError("work requires a valid sealed evaluator descriptor")
     descriptor = read_json(path)
     if descriptor_semantic_sha256(descriptor) != state.get("sealed_semantic_sha256"):
         raise CampaignError("sealed evaluator descriptor semantics changed")
-    errors = harness.cycle_descriptor_errors(
+    errors = harness.work_descriptor_errors(
         descriptor,
         candidate_revision=campaign["candidate_head"],
         target_repository=Path(state["repository_path"]),
@@ -1400,24 +1515,45 @@ def load_sealed_descriptor(
 def review_preparation_draft_errors(
     descriptor: Any,
     kind: str,
-    cycle: int,
+    work_label: str,
     state: dict[str, Any],
     candidate_head: str,
 ) -> list[str]:
-    if not isinstance(descriptor, dict) or descriptor.get("kind") != "phase8_cycle_descriptor":
-        return ["review preparation requires a Phase 8 cycle descriptor draft"]
+    if not isinstance(descriptor, dict) or descriptor.get("kind") != "phase8_work_descriptor":
+        return ["review preparation requires a Phase 8 Work descriptor draft"]
     errors: list[str] = []
-    behavior_class = state["behavior_class"]
-    if descriptor.get("repository_class") != kind or descriptor.get("cycle") != cycle:
-        errors.append("review draft is bound to a different cycle")
-    if descriptor.get("behavior_class") != behavior_class:
-        errors.append("review draft is bound to the wrong behavior class")
+    materiality_obligations = state["materiality_obligations"]
+    if (
+        descriptor.get("repository_class") != kind
+        or descriptor.get("journey_id") != journey_id(kind)
+        or descriptor.get("work_slot_id") != work_key(kind, work_label)
+        or descriptor.get("work_label") != work_label
+    ):
+        errors.append("review draft is bound to a different Work slot")
+    if harness.obligation_set(descriptor.get("materiality_obligations")) != harness.obligation_set(materiality_obligations):
+        errors.append("review draft is bound to the wrong materiality obligations")
     if descriptor.get("repository_revision") != state.get("repository_revision"):
         errors.append("review draft is bound to the wrong pinned revision")
-    for field in ("work_user_task", "fresh_resume_user_task"):
+    fields = ["work_user_task"]
+    if "resume" in session_roles(kind, work_label):
+        fields.append("fresh_resume_user_task")
+    elif descriptor.get("fresh_resume_user_task") is not None:
+        errors.append("non-resume Work must not define a resume task")
+    for field in fields:
         error = harness.plain_user_task_error(descriptor.get(field), field)
         if error:
             errors.append(error)
+    if kind == "volicord" and work_label in {"B", "C"}:
+        task = descriptor.get("work_user_task")
+        if isinstance(task, str) and re.search(
+            r"\b(?:work\s+[ab]|previous\s+(?:work|task|implementation)|"
+            r"prior\s+(?:work|task)|implementation\s+chosen\s+earlier)\b",
+            task,
+            flags=re.IGNORECASE,
+        ):
+            errors.append(
+                "later Volicord Work task depends on a specific earlier Work outcome"
+            )
     errors.extend(
         harness.work_scope_errors(
             descriptor.get("work_scope"),
@@ -1428,8 +1564,8 @@ def review_preparation_draft_errors(
         )
     )
     basis = descriptor.get("evaluation_basis")
-    errors.extend(harness.evaluation_basis_errors(basis, behavior_class))
-    if not harness.evaluation_basis_errors(basis, behavior_class):
+    errors.extend(harness.evaluation_basis_errors(basis, materiality_obligations))
+    if not harness.evaluation_basis_errors(basis, materiality_obligations):
         errors.extend(
             harness.naturalistic_prompt_errors(
                 descriptor.get("work_user_task"),
@@ -1437,7 +1573,7 @@ def review_preparation_draft_errors(
                 basis,
             )
         )
-        if behavior_class == "hidden_user_owned_decision":
+        if harness.has_obligation(materiality_obligations, "hidden_user_owned_decision"):
             errors.extend(
                 harness.hidden_prompt_static_disclosure_errors(
                     descriptor.get("work_user_task"),
@@ -1471,23 +1607,23 @@ def review_preparation_draft_errors(
 def prepare_review(
     root: Path,
     kind: str,
-    cycle: int,
+    work: str,
     draft_descriptor: Path,
 ) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
-    state = campaign["cycles"][cycle_key(kind, cycle)]
+    state = campaign["works"][work_key(kind, work)]
     if state.get("state") != "prepared":
-        raise CampaignError("review preparation requires one unprepared cycle")
+        raise CampaignError("review preparation requires one unprepared work")
     descriptor = read_json(draft_descriptor.resolve())
-    behavior_class = private_behavior_class(root, state, campaign)
-    if descriptor.get("behavior_class") != behavior_class:
-        raise CampaignError("review draft is bound to the wrong behavior class")
+    materiality_obligations = private_materiality_obligations(root, state, campaign)
+    if harness.obligation_set(descriptor.get("materiality_obligations")) != harness.obligation_set(materiality_obligations):
+        raise CampaignError("review draft is bound to the wrong materiality obligations")
     errors = review_preparation_draft_errors(
         descriptor,
         kind,
-        cycle,
-        {**state, "behavior_class": behavior_class},
+        work,
+        {**state, "materiality_obligations": materiality_obligations},
         campaign["candidate_head"],
     )
     if errors:
@@ -1523,7 +1659,7 @@ def prepare_review(
             "mutation": "none",
         },
     }
-    preparation_path = reviewer_preparation_path(root, kind, cycle)
+    preparation_path = reviewer_preparation_path(root, kind, work)
     write_json(preparation_path, preparation)
     preparation_sha256 = harness.sha256(preparation_path)
     provisional_draft = {
@@ -1540,7 +1676,7 @@ def prepare_review(
         "basis": "",
         "provenance_reference_indices": [],
     }
-    provisional_draft_path = reviewer_provisional_draft_path(root, kind, cycle)
+    provisional_draft_path = reviewer_provisional_draft_path(root, kind, work)
     write_json(provisional_draft_path, provisional_draft)
     state["state"] = "review_prepared"
     state["review_preparation_sha256"] = preparation_sha256
@@ -1675,7 +1811,7 @@ def record_provisional_review(
     verify_inventory(root)
     if campaign.get("candidate_head") != candidate_head:
         raise CampaignError("provisional review is bound to a different campaign candidate")
-    state = private_cycle_for_review_slot(campaign, review_slot_id)
+    state = private_work_for_review_slot(campaign, review_slot_id)
     if state.get("state") != "review_prepared":
         raise CampaignError("provisional review requires one review-prepared opaque slot")
     (
@@ -1717,12 +1853,12 @@ def record_provisional_review(
         "sha256": source_sha256,
     }
     updated_campaign = copy.deepcopy(campaign)
-    updated_state = private_cycle_for_review_slot(updated_campaign, review_slot_id)
+    updated_state = private_work_for_review_slot(updated_campaign, review_slot_id)
     updated_state["state"] = "provisional_recorded"
     updated_state["provisional_review_sha256"] = source_sha256
     updated_campaign["provisional_count"] = sum(
         item.get("state") in {"provisional_recorded", "sealed"}
-        for item in updated_campaign["cycles"].values()
+        for item in updated_campaign["works"].values()
     )
 
     campaign_path = campaign_file(root)
@@ -1756,14 +1892,14 @@ def record_provisional_review(
 def verify_all_provisional_reviews_fixed(
     root: Path, campaign: dict[str, Any]
 ) -> None:
-    states = list(campaign.get("cycles", {}).values())
+    states = list(campaign.get("works", {}).values())
     if (
-        len(states) != QUALIFICATION_CYCLE_COUNT
-        or campaign.get("provisional_count") != QUALIFICATION_CYCLE_COUNT
+        len(states) != QUALIFICATION_WORK_COUNT
+        or campaign.get("provisional_count") != QUALIFICATION_WORK_COUNT
         or any(state.get("state") not in {"provisional_recorded", "sealed"} for state in states)
     ):
         raise CampaignError(
-            "qualification profile and evaluator reveal require all eight provisional reviews"
+            "qualification profile and evaluator reveal require all five provisional reviews"
         )
     inventory = load_inventory(root)
     for state in states:
@@ -1797,7 +1933,7 @@ def reveal_qualification_profile(root: Path, candidate_head: str) -> dict[str, A
     return {
         "kind": "phase8_dogfood_qualification_profile_revealed",
         "candidate_head": candidate_head,
-        "provisional_count": QUALIFICATION_CYCLE_COUNT,
+        "provisional_count": QUALIFICATION_WORK_COUNT,
         "qualification_profile_state": "revealed",
         "qualification_profile_sha256": harness.sha256(qualification_profile_path(root)),
         "assignment_count": profile["assignment_count"],
@@ -1806,10 +1942,10 @@ def reveal_qualification_profile(root: Path, candidate_head: str) -> dict[str, A
     }
 
 
-def seal_cycle(
+def seal_work(
     root: Path,
     kind: str,
-    cycle: int,
+    work: str,
     prepared_descriptor: Path,
 ) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
@@ -1819,10 +1955,10 @@ def seal_cycle(
         raise CampaignError(
             "evaluator reveal requires the all-provisionals qualification-profile reveal"
         )
-    state = campaign["cycles"][cycle_key(kind, cycle)]
+    state = campaign["works"][work_key(kind, work)]
     if state.get("state") != "provisional_recorded":
-        raise CampaignError("cycle sealing requires one recorded provisional review")
-    preparation_path = reviewer_preparation_path(root, kind, cycle)
+        raise CampaignError("work sealing requires one recorded provisional review")
+    preparation_path = reviewer_preparation_path(root, kind, work)
     preparation = read_json(preparation_path)
     if (
         preparation.get("kind") != "phase8_blind_review_preparation"
@@ -1830,7 +1966,7 @@ def seal_cycle(
         or harness.sha256(preparation_path) != state.get("review_preparation_sha256")
     ):
         raise CampaignError("blind reviewer preparation identity or hash changed")
-    provisional_destination = reviewer_provisional_path(root, kind, cycle)
+    provisional_destination = reviewer_provisional_path(root, kind, work)
     provisional = read_json(provisional_destination)
     provisional_errors = harness.blind_first_review_errors(
         {
@@ -1860,10 +1996,15 @@ def seal_cycle(
     descriptor = read_json(prepared_descriptor.resolve())
     if "evidence" in descriptor:
         raise CampaignError("evaluator-prepared descriptor must not contain collection evidence")
-    if descriptor.get("repository_class") != kind or descriptor.get("cycle") != cycle:
-        raise CampaignError("evaluator descriptor is bound to a different cycle")
-    if descriptor.get("behavior_class") != private_behavior_class(root, state, campaign):
-        raise CampaignError("evaluator descriptor is bound to the wrong behavior class")
+    if (
+        descriptor.get("repository_class") != kind
+        or descriptor.get("journey_id") != journey_id(kind)
+        or descriptor.get("work_slot_id") != work_key(kind, work)
+        or descriptor.get("work_label") != work
+    ):
+        raise CampaignError("evaluator descriptor is bound to a different Work slot")
+    if harness.obligation_set(descriptor.get("materiality_obligations")) != harness.obligation_set(private_materiality_obligations(root, state, campaign)):
+        raise CampaignError("evaluator descriptor is bound to the wrong materiality obligations")
     if descriptor.get("repository_revision") != state["repository_revision"]:
         raise CampaignError("evaluator descriptor is bound to the wrong pinned revision")
     if (
@@ -1900,7 +2041,7 @@ def seal_cycle(
         "sha256": state["review_preparation_sha256"],
     }
     independent["provisional_review"] = provisional
-    errors = harness.cycle_descriptor_errors(
+    errors = harness.work_descriptor_errors(
         descriptor,
         candidate_revision=campaign["candidate_head"],
         target_repository=Path(state["repository_path"]),
@@ -1913,7 +2054,7 @@ def seal_cycle(
         value in operator_text for value in hidden_evaluator_strings(descriptor)
     ):
         raise CampaignError("operator-facing task would expose evaluator-only material")
-    destination = evaluator_descriptor_path(root, kind, cycle)
+    destination = evaluator_descriptor_path(root, kind, work)
     if destination.exists():
         raise CampaignError("authoritative evaluator descriptor already exists")
     write_json(destination, descriptor)
@@ -1930,7 +2071,7 @@ def seal_cycle(
     register_artifact(root, run_sheet, replace=True)
     assert_reviewer_artifacts_are_behavior_opaque(root)
     return {
-        "kind": "phase8_dogfood_sealed_cycle",
+        "kind": "phase8_dogfood_sealed_work",
         "review_slot_id": state["review_slot_id"],
         "repository_revision": state["repository_revision"],
         "sealed_semantic_sha256": state["sealed_semantic_sha256"],
@@ -1939,12 +2080,14 @@ def seal_cycle(
     }
 
 
-def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
+def activate_journey(root: Path, kind: str) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
-    key = cycle_key(kind, cycle)
-    state = campaign["cycles"][key]
-    load_sealed_descriptor(root, kind, cycle, campaign)
+    if any(state.get("state") != "sealed" for state in campaign["works"].values()):
+        raise CampaignError("activation requires all five Work descriptors and eight tasks to be sealed")
+    for label in work_labels(kind):
+        load_sealed_descriptor(root, kind, label, campaign)
+    state = campaign["journeys"][journey_id(kind)]
     repository = Path(state["repository_path"])
     binary = Path(campaign["candidate_binary"])
     manifest = repository / ".codex/volicord-integration.json"
@@ -1967,31 +2110,26 @@ def activate_cycle(root: Path, kind: str, cycle: int) -> dict[str, Any]:
             result,
         )
     state["codex_enabled"] = True
-    campaign["active_cycle_by_repository"][kind] = cycle
     save_campaign(root, campaign)
-    return {"enable_result": result, "static_verification": verification}
+    return {
+        "journey_id": state["journey_id"],
+        "repository_class": kind,
+        "enable_result": result,
+        "static_verification": verification,
+    }
 
 
 def activate_all(root: Path) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
-    for kind in CLASSES:
-        for cycle in cycle_numbers(kind):
-            load_sealed_descriptor(root, kind, cycle, campaign)
-    results = []
-    for kind in CLASSES:
-        for cycle in cycle_numbers(kind):
-            state = load_campaign(root)["cycles"][cycle_key(kind, cycle)]
-            results.append({
-                "repository_class": kind,
-                "review_slot_id": state["review_slot_id"],
-                "result": activate_cycle(root, kind, cycle),
-            })
+    if any(state.get("state") != "sealed" for state in campaign["works"].values()):
+        raise CampaignError("activation requires all five Work descriptors and eight tasks to be sealed")
+    results = [activate_journey(root, kind) for kind in CLASSES]
     return {
         "kind": "phase8_dogfood_campaign_activation",
-        "cycle_count": len(results),
+        "journey_count": len(results),
         "repository_and_hook_trust": "user_controlled_not_automated",
-        "cycles": results,
+        "journeys": results,
     }
 
 
@@ -2005,7 +2143,9 @@ def prepare_campaign(
     enable: bool = False,
     cloner: Callable[[Path, Path, str], None] = clone_repository,
     slot_id_factory: Callable[[], str] = new_review_slot_id,
-    behavior_assignment_factory: Callable[[], list[tuple[str, int, str]]] = new_private_behavior_assignments,
+    obligation_assignment_factory: Callable[
+        [], list[tuple[str, str, tuple[str, ...]]]
+    ] = new_private_work_obligation_assignments,
 ) -> dict[str, Any]:
     root = root.resolve()
     if root.exists() and any(root.iterdir()):
@@ -2032,13 +2172,13 @@ def prepare_campaign(
     failures = [item for item in identities if item["status"] != "passed"]
     if failures:
         raise CampaignError("one or more source repository identities do not qualify")
-    private_behaviors = behavior_assignment_factory()
-    validate_private_behavior_assignments(private_behaviors)
-    assignments: list[tuple[str, int, str, str]] = []
+    private_obligations = obligation_assignment_factory()
+    validate_private_work_obligation_assignments(private_obligations)
+    assignments: list[tuple[str, str, tuple[str, ...], str]] = []
     for _attempt in range(64):
         assignments = [
-            (kind, number, behavior, slot_id_factory())
-            for kind, number, behavior in private_behaviors
+            (kind, label, obligations, slot_id_factory())
+            for kind, label, obligations in private_obligations
         ]
         review_slot_ids = [
             review_slot_id
@@ -2055,7 +2195,7 @@ def prepare_campaign(
             raise CampaignError(
                 "opaque review slot generation produced a duplicate or malformed identity"
             )
-        if not opaque_order_exposes_logical_cycle_order(assignments):
+        if not opaque_order_exposes_logical_work_order(assignments):
             break
     else:
         raise CampaignError("opaque review slot generation could not produce a blind order")
@@ -2065,21 +2205,46 @@ def prepare_campaign(
     candidate_artifacts = bind_candidate_artifacts(binary)
     realization_route = (document_realization.route(binary)
         if document_realization.required(document_language, viewer_locale) else None)
-    cycles: dict[str, Any] = {}
-    behavior_by_slot: dict[str, str] = {}
-    for kind, number, behavior_class, review_slot_id in assignments:
+    journeys: dict[str, Any] = {}
+    for kind in CLASSES:
+        spec = specs[kind]
+        revision = candidate_head if kind == "volicord" else spec["revision"]
+        identity = journey_id(kind)
+        journey_root = root / "journeys" / identity
+        journeys[identity] = {
+            "journey_id": identity,
+            "repository_class": kind,
+            "repository_path": str((journey_root / "repository").resolve()),
+            "repository_revision": revision,
+            "runtime_home": str((journey_root / "runtime").resolve()),
+            "work_slot_ids": [work_key(kind, label) for label in work_labels(kind)],
+            "project_id": None,
+            "codex_enabled": False,
+        }
+        (journey_root / "runtime").mkdir(parents=True)
+        cloner(Path(spec["path"]).resolve(), Path(journeys[identity]["repository_path"]), revision)
+
+    works: dict[str, Any] = {}
+    obligations_by_slot: dict[str, tuple[str, ...]] = {}
+    for kind, label, materiality_obligations, review_slot_id in assignments:
         spec = specs[kind]
         revision = candidate_head if kind == "volicord" else spec["revision"]
         destination = slot_root(root, review_slot_id)
         reviewer_repository = root / "reviewer/workspaces" / review_slot_id / "repository"
-        cycles[cycle_key(kind, number)] = {
+        journey = journeys[journey_id(kind)]
+        works[work_key(kind, label)] = {
             "review_slot_id": review_slot_id,
+            "journey_id": journey["journey_id"],
+            "work_slot_id": work_key(kind, label),
             "repository_class": kind,
-            "cycle": number,
-            "repository_path": str((destination / "repository").resolve()),
+            "work_label": label,
+            "session_slot_ids": [
+                session_slot_id(kind, label, role) for role in session_roles(kind, label)
+            ],
+            "repository_path": journey["repository_path"],
             "reviewer_repository_path": str(reviewer_repository.resolve()),
             "repository_revision": revision,
-            "runtime_home": str((destination / "runtime").resolve()),
+            "runtime_home": journey["runtime_home"],
             "state": "prepared",
             "sealed_semantic_sha256": None,
             "operator_task_artifacts": None,
@@ -2088,18 +2253,12 @@ def prepare_campaign(
             "project_id": None,
             "codex_enabled": False,
         }
-        behavior_by_slot[review_slot_id] = behavior_class
-    for state in sorted(cycles.values(), key=lambda item: item["review_slot_id"]):
+        obligations_by_slot[review_slot_id] = materiality_obligations
+    for state in sorted(works.values(), key=lambda item: item["review_slot_id"]):
         review_slot_id = state["review_slot_id"]
         destination = slot_root(root, review_slot_id)
         (destination / "evidence").mkdir(parents=True)
-        (destination / "runtime").mkdir()
         spec = specs[state["repository_class"]]
-        cloner(
-            Path(spec["path"]).resolve(),
-            Path(state["repository_path"]),
-            state["repository_revision"],
-        )
         reviewer_repository = Path(state["reviewer_repository_path"])
         reviewer_repository.parent.mkdir(parents=True, exist_ok=True)
         cloner(
@@ -2111,19 +2270,19 @@ def prepare_campaign(
             slot_artifact_path(root, "evaluator", "inputs", review_slot_id),
             descriptor_skeleton(
                 state["repository_class"],
-                state["cycle"],
-                behavior_by_slot[review_slot_id],
+                state["work_label"],
+                obligations_by_slot[review_slot_id],
                 state["repository_revision"],
                 candidate_head,
             ),
         )
-    mapping = slot_mapping_value(cycles, behavior_by_slot, secrets.token_hex(32))
+    mapping = slot_mapping_value(works, obligations_by_slot, secrets.token_hex(32))
     write_json(slot_mapping_path(root), mapping)
     profile = qualification_profile_value(campaign_id, candidate_head, mapping)
     write_json(qualification_profile_path(root), profile)
     campaign = {
         "kind": "phase8_dogfood_campaign",
-        "schema_version": 3,
+        "schema_version": 4,
         "campaign_id": campaign_id,
         "campaign_root": str(root),
         "candidate_head": candidate_head,
@@ -2140,8 +2299,8 @@ def prepare_campaign(
         "evaluation_state": "not_run",
         "qualification_state": "not_run",
         "evidence_set": None,
-        "active_cycle_by_repository": {},
-        "cycles": cycles,
+        "journeys": journeys,
+        "works": works,
         "opaque_slot_mapping_sha256": harness.sha256(slot_mapping_path(root)),
         "qualification_profile_sha256": harness.sha256(qualification_profile_path(root)),
         "qualification_profile_state": "hidden",
@@ -2157,14 +2316,17 @@ def prepare_campaign(
     assert_reviewer_artifacts_are_behavior_opaque(root)
     run_sheet = render_operator_run_sheet(root)
     if enable:
-        raise CampaignError("cycles must be evaluator-sealed before activation")
+        raise CampaignError("works must be evaluator-sealed before activation")
     preparation = {
         "kind": "phase8_dogfood_campaign_preparation",
         "campaign_id": campaign_id,
         "candidate_head": candidate_head,
         "candidate_worktree_clean": True,
         "repository_identities": identities,
-        "cycle_count": QUALIFICATION_CYCLE_COUNT,
+        "journey_count": harness.QUALIFICATION_JOURNEY_COUNT,
+        "work_count": QUALIFICATION_WORK_COUNT,
+        "resume_pair_count": harness.QUALIFICATION_RESUME_PAIR_COUNT,
+        "session_count": BATCH_CAPTURE_COUNT,
         "candidate_local_install": str(binary),
         "candidate_artifacts": candidate_artifacts,
         "naturalistic_memory_evidence": naturalistic_memory_evidence(candidate_artifacts),
@@ -2195,16 +2357,29 @@ def observed_project_ids(capture: Any) -> list[str]:
     return sorted(values)
 
 
-def update_activation_summary(root: Path, kind: str, cycle: int, **updates: Any) -> Path:
-    path = cycle_root(root, kind, cycle) / "activation-summary.json"
+def observed_work_item_ids(capture: Any) -> list[str]:
+    """Return durable Work identities exposed by successful checkpoint calls."""
+    values = {
+        str(call.arguments.get("goal_context_id"))
+        for call in capture.successful_calls("checkpoint_record")
+        if PROJECT_ID.fullmatch(str(call.arguments.get("goal_context_id", "")))
+    }
+    return sorted(values)
+
+
+def update_activation_summary(root: Path, kind: str, work: str, **updates: Any) -> Path:
+    path = work_root(root, kind, work) / "activation-summary.json"
     current = read_json(path) if path.exists() else {
         "kind": "phase8_dogfood_activation_summary",
         "repository_class": kind,
-        "cycle": cycle,
-        "repository_config_present": (Path(load_campaign(root)["cycles"][cycle_key(kind, cycle)]["repository_path"]) / ".codex/config.toml").is_file(),
-        "repository_ownership_manifest_present": (Path(load_campaign(root)["cycles"][cycle_key(kind, cycle)]["repository_path"]) / ".codex/volicord-integration.json").is_file(),
-        "work_session_start_activation_observed": None,
-        "resume_session_start_activation_observed": None,
+        "journey_id": journey_id(kind),
+        "work_slot_id": work_key(kind, work),
+        "repository_config_present": (Path(load_campaign(root)["works"][work_key(kind, work)]["repository_path"]) / ".codex/config.toml").is_file(),
+        "repository_ownership_manifest_present": (Path(load_campaign(root)["works"][work_key(kind, work)]["repository_path"]) / ".codex/volicord-integration.json").is_file(),
+        "start_session_start_activation_observed": None,
+        "resume_session_start_activation_observed": (
+            None if "resume" in session_roles(kind, work) else "not_applicable"
+        ),
     }
     current.update(updates)
     write_json(path, current)
@@ -2227,7 +2402,7 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         raise ResumeContractError(
             "recall_identity_or_project_invalid"
         )
-    if capture.session_id == state.get("work_session_id"):
+    if capture.session_id == state.get("start_session_id"):
         raise ResumeContractError("recall_identity_or_project_invalid")
     resolves = capture.successful_calls("project_resolve")
     recalls = capture.successful_calls("recall")
@@ -2372,7 +2547,7 @@ def runtime_summary(runtime: Path, repository: Path, work_activation: bool, resu
         "managed_file_inventory": sorted(managed, key=lambda item: item["logical_name"]),
         "repository_config_present": (repository / ".codex/config.toml").is_file(),
         "repository_ownership_manifest_present": (repository / ".codex/volicord-integration.json").is_file(),
-        "work_session_start_activation_observed": work_activation,
+        "start_session_start_activation_observed": work_activation,
         "resume_session_start_activation_observed": resume_activation,
         "content_included": False,
     }
@@ -2522,7 +2697,7 @@ def generate_viewer_snapshot(
 def collect_viewer_snapshot_evidence(
     root: Path,
     kind: str,
-    cycle: int,
+    work: str,
     binary: Path,
     runtime: Path,
     project_id: str,
@@ -2531,7 +2706,7 @@ def collect_viewer_snapshot_evidence(
     language: str,
     snapshotter: Callable[[Path, Path, str, Path, str, str], dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Path]]:
-    destination = cycle_root(root, kind, cycle) / "evidence/viewer-snapshot.html"
+    destination = work_root(root, kind, work) / "evidence/viewer-snapshot.html"
     started = time.monotonic_ns()
     try:
         result = snapshotter(
@@ -2555,7 +2730,7 @@ def collect_viewer_snapshot_evidence(
         "project_id": project_id,
         "candidate_head": candidate_head,
         "repository_class": kind,
-        "cycle": cycle,
+        "work": work,
         "locale": locale,
         "requested_language": language,
         "navigation_responsiveness": {
@@ -2583,7 +2758,7 @@ def collect_viewer_snapshot_evidence(
             if isinstance(basis, str) and basis.strip()
             else "public Viewer snapshot export did not produce usable evidence"
         )
-    summary = cycle_root(root, kind, cycle) / "viewer-snapshot-summary.json"
+    summary = work_root(root, kind, work) / "viewer-snapshot-summary.json"
     write_json(summary, evidence)
     produced.append(summary)
     return evidence, produced
@@ -2592,7 +2767,7 @@ def collect_viewer_snapshot_evidence(
 def collect_document_evidence(
     root: Path,
     kind: str,
-    cycle: int,
+    work: str,
     binary: Path,
     runtime: Path,
     repository: Path,
@@ -2602,7 +2777,7 @@ def collect_document_evidence(
     language: str,
     documenter: Callable[[Path, Path, Path, str, str, Path, str, str], dict[str, Any]],
 ) -> tuple[dict[str, Any], list[Path]]:
-    directory = cycle_root(root, kind, cycle) / "evidence/generated-documents"
+    directory = work_root(root, kind, work) / "evidence/generated-documents"
     directory.mkdir(parents=True, exist_ok=True)
     documents: dict[str, Any] = {}
     produced: list[Path] = []
@@ -2611,7 +2786,7 @@ def collect_document_evidence(
         for format_name, suffix in DOCUMENT_FORMATS:
             destination = directory / f"{document_kind}.{suffix}"
             try:
-                result = document_realization.generate(root, kind, cycle, project_id,
+                result = document_realization.generate(root, kind, work, project_id,
                     document_kind, format_name, destination) if document_realization.required(language, locale) else documenter(
                     binary,
                     runtime,
@@ -2689,7 +2864,7 @@ def collect_document_evidence(
         "project_id": project_id,
         "candidate_head": candidate_head,
         "repository_class": kind,
-        "cycle": cycle,
+        "work": work,
         "locale": locale,
         "language": language,
         "status": "passed" if all(item["status"] == "passed" for item in documents.values()) else "failed",
@@ -2702,10 +2877,10 @@ def collect_document_evidence(
 def write_operator_document_review_index(
     root: Path,
     kind: str,
-    cycle: int,
+    work: str,
     summary: dict[str, Any],
 ) -> Path:
-    state = cycle_state(root, kind, cycle)
+    state = work_state(root, kind, work)
     review_slot_id = state["review_slot_id"]
     lines = [
         f"# Generated document review: {kind} slot {review_slot_id}",
@@ -2733,7 +2908,7 @@ def write_operator_document_review_index(
 def extract_resume_evidence(
     root: Path,
     kind: str,
-    cycle: int,
+    work: str,
     capture: Any,
     destination: Path,
     *,
@@ -2744,14 +2919,14 @@ def extract_resume_evidence(
     integrity_only: bool = False,
 ) -> dict[str, Any]:
     campaign = load_campaign(root)
-    key = cycle_key(kind, cycle)
-    state = campaign["cycles"][key]
-    descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
+    key = work_key(kind, work)
+    state = campaign["works"][key]
+    descriptor_path, descriptor = load_sealed_descriptor(root, kind, work, campaign)
     project_id = state["project_id"] if integrity_only else inspect_resume(capture, descriptor, state)
     binary = Path(campaign["candidate_binary"])
     runtime = Path(state["runtime_home"])
     repository = Path(state["repository_path"])
-    bundle = cycle_root(root, kind, cycle) / "context.bundle.json"
+    bundle = work_root(root, kind, work) / "context.bundle.json"
     with candidate_artifact_use(campaign, ("volicord",)):
         exporter(binary, runtime, repository, bundle)
     try:
@@ -2762,17 +2937,17 @@ def extract_resume_evidence(
         raise CampaignError("portable bundle Project identity does not match the resume capture")
     descriptor["evidence"] = {
         "captures": {
-            "work": {"file": relative(root, cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl"), "sha256": harness.sha256(cycle_root(root, kind, cycle) / "evidence/work.rollout.jsonl")},
+            "work": {"file": relative(root, work_root(root, kind, work) / "evidence/start.rollout.jsonl"), "sha256": harness.sha256(work_root(root, kind, work) / "evidence/start.rollout.jsonl")},
             "resume": {"file": relative(root, destination), "sha256": harness.sha256(destination)},
         },
         "canonical_bundle": {"file": relative(root, bundle), "sha256": harness.sha256(bundle)},
     }
-    errors = harness.cycle_descriptor_errors(descriptor)
+    errors = harness.work_descriptor_errors(descriptor)
     if errors:
         raise CampaignError("completed descriptor does not qualify: " + "; ".join(errors))
-    summary_path = cycle_root(root, kind, cycle) / "runtime-summary.json"
+    summary_path = work_root(root, kind, work) / "runtime-summary.json"
     activation_path = update_activation_summary(
-        root, kind, cycle, resume_session_start_activation_observed=True
+        root, kind, work, resume_session_start_activation_observed=True
     )
     activation = read_json(activation_path)
     write_json(
@@ -2780,7 +2955,7 @@ def extract_resume_evidence(
         runtime_summary(
             runtime,
             Path(state["repository_path"]),
-            bool(activation["work_session_start_activation_observed"]),
+            bool(activation["start_session_start_activation_observed"]),
             True,
         ),
     )
@@ -2788,7 +2963,7 @@ def extract_resume_evidence(
         document_result, document_paths = collect_document_evidence(
             root,
             kind,
-            cycle,
+            work,
             binary,
             runtime,
             repository,
@@ -2798,16 +2973,16 @@ def extract_resume_evidence(
             campaign.get("document_language", "en"),
             documenter,
         )
-    document_summary = cycle_root(root, kind, cycle) / "documents-summary.json"
+    document_summary = work_root(root, kind, work) / "documents-summary.json"
     write_json(document_summary, document_result)
     document_review_index = write_operator_document_review_index(
-        root, kind, cycle, document_result
+        root, kind, work, document_result
     )
     with candidate_artifact_use(campaign, ("volicord-viewer",)):
         snapshot_result, snapshot_paths = collect_viewer_snapshot_evidence(
             root,
             kind,
-            cycle,
+            work,
             binary,
             runtime,
             project_id,
@@ -2816,7 +2991,7 @@ def extract_resume_evidence(
             campaign.get("document_language", "en"),
             snapshotter,
         )
-    snapshot_summary = cycle_root(root, kind, cycle) / "viewer-snapshot-summary.json"
+    snapshot_summary = work_root(root, kind, work) / "viewer-snapshot-summary.json"
     descriptor["evidence"].update({
         "runtime_summary": {
             "file": relative(root, summary_path),
@@ -2860,7 +3035,7 @@ def extract_resume_evidence(
         "kind": "phase8_dogfood_resume_intake",
         "outcome": "evidence_collected",
         "repository_class": kind,
-        "cycle": cycle,
+        "work": work,
         "project_id": project_id,
         "resume_capture_sha256": capture.source_sha256,
         "canonical_bundle_sha256": harness.sha256(bundle),
@@ -2876,40 +3051,40 @@ def batch_rollout_paths(
     rollout_directory: Path | None,
 ) -> list[Path]:
     if (explicit_paths is None) == (rollout_directory is None):
-        raise CampaignError("collect-batch requires either sixteen raw rollouts or one directory")
+        raise CampaignError("collect-batch requires either eight raw rollouts or one directory")
     if rollout_directory is not None:
         directory = rollout_directory.resolve()
         if not directory.is_dir():
             raise CampaignError("batch rollout directory is unavailable")
         entries = sorted(directory.iterdir())
         if len(entries) != BATCH_CAPTURE_COUNT or not all(path.is_file() for path in entries):
-            raise CampaignError("batch rollout directory must contain exactly sixteen files")
+            raise CampaignError("batch rollout directory must contain exactly eight files")
         paths = entries
     else:
         paths = [path.resolve() for path in explicit_paths or []]
         if len(paths) != BATCH_CAPTURE_COUNT:
-            raise CampaignError("collect-batch requires exactly sixteen explicit raw rollouts")
+            raise CampaignError("collect-batch requires exactly eight explicit raw rollouts")
     resolved = [path.resolve() for path in paths]
     if len(set(resolved)) != BATCH_CAPTURE_COUNT or not all(path.is_file() for path in resolved):
-        raise CampaignError("batch rollout inputs must be sixteen distinct files")
+        raise CampaignError("batch rollout inputs must be eight distinct files")
     return resolved
 
 
 def map_batch_rollouts(
     root: Path,
     raw_paths: list[Path],
-) -> dict[tuple[str, int, str], MappedRollout]:
+) -> dict[tuple[str, str, str], MappedRollout]:
     campaign = load_campaign(root)
     verify_inventory(root)
-    slots: dict[tuple[str, int, str], tuple[dict[str, Any], dict[str, Any]]] = {}
+    slots: dict[tuple[str, str, str], tuple[dict[str, Any], dict[str, Any]]] = {}
     for kind in CLASSES:
-        for cycle in cycle_numbers(kind):
-            _descriptor_path, descriptor = load_sealed_descriptor(root, kind, cycle, campaign)
-            state = campaign["cycles"][cycle_key(kind, cycle)]
-            for role, field in (("work", "work_user_task"), ("resume", "fresh_resume_user_task")):
-                slots[(kind, cycle, role)] = (state, descriptor)
+        for work in work_labels(kind):
+            _descriptor_path, descriptor = load_sealed_descriptor(root, kind, work, campaign)
+            state = campaign["works"][work_key(kind, work)]
+            for role in session_roles(kind, work):
+                slots[(kind, work, role)] = (state, descriptor)
 
-    mapped: dict[tuple[str, int, str], MappedRollout] = {}
+    mapped: dict[tuple[str, str, str], MappedRollout] = {}
     sessions: dict[str, Path] = {}
     for path in raw_paths:
         try:
@@ -2924,7 +3099,7 @@ def map_batch_rollouts(
                 "mismatch_reasons": ["provenance_or_capture_format_mismatch"],
             }
             raise CampaignError(
-                "batch rollout maps to zero sealed cycle roles",
+                "batch rollout maps to zero sealed work roles",
                 diagnostic=diagnostic,
             ) from error
         provenance_matches = (
@@ -2940,20 +3115,24 @@ def map_batch_rollouts(
         sessions[capture.session_id] = path
         candidates = []
         candidate_transport: dict[
-            tuple[str, int, str], harness.FrozenTaskTransportComparison
+            tuple[str, str, str], harness.FrozenTaskTransportComparison
         ] = {}
         task_candidates = []
         revision_candidates = []
         workspace_candidates = []
         for slot, (state, descriptor) in slots.items():
             role = slot[2]
-            task_field = "work_user_task" if role == "work" else "fresh_resume_user_task"
+            task_field = "work_user_task" if role == "start" else "fresh_resume_user_task"
             comparison = harness.compare_frozen_task_transport(
                 descriptor[task_field],
                 capture.user_turns[0].text if capture.user_turns else None,
             )
             task_matches = comparison.equivalent
-            revision_matches = capture.git_revision == state["repository_revision"]
+            revision_matches = revision_is_bound(
+                Path(state["repository_path"]),
+                state["repository_revision"],
+                capture.git_revision,
+            )
             workspace_matches = capture.cwd.resolve(strict=False) == Path(
                 state["repository_path"]
             ).resolve(strict=False)
@@ -2988,7 +3167,7 @@ def map_batch_rollouts(
                     "mismatch_reasons": mismatch_reasons,
                 }
                 raise CampaignError(
-                    "batch rollout maps to zero sealed cycle roles",
+                    "batch rollout maps to zero sealed work roles",
                     diagnostic=diagnostic,
                 )
             matching_roles = [
@@ -3008,16 +3187,17 @@ def map_batch_rollouts(
                 "reason": "multiple_sealed_roles_match_capture_identity",
             }
             raise CampaignError(
-                "batch rollout maps to multiple sealed cycle roles",
+                "batch rollout maps to multiple sealed work roles",
                 diagnostic=diagnostic,
             )
         slot = candidates[0]
         if slot in mapped:
-            raise CampaignError("batch rollouts contain duplicate evidence for one sealed cycle role")
+            raise CampaignError("batch rollouts contain duplicate evidence for one sealed work role")
         mapped[slot] = MappedRollout(path, capture, candidate_transport[slot])
     missing = sorted(set(slots) - set(mapped))
     if missing:
-        raise CampaignError("batch rollouts are missing one or more sealed cycle roles")
+        raise CampaignError("batch rollouts are missing one or more sealed work roles")
+    verify_journey_revision_chronology(campaign, mapped)
     return mapped
 
 
@@ -3100,27 +3280,27 @@ def bounded_failure_attribution(
 
 
 def aggregate_batch_failure_attribution(
-    cycles: list[dict[str, Any]],
+    works: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     domain_occurrences: Counter[str] = Counter()
-    domain_cycles: dict[str, set[tuple[str, int]]] = {
+    domain_works: dict[str, set[tuple[str, str]]] = {
         domain: set() for domain in FAILURE_DOMAINS
     }
     check_occurrences: Counter[str] = Counter()
-    check_cycles: dict[str, set[tuple[str, int]]] = {}
-    for cycle in cycles:
-        identity = (cycle["repository_class"], cycle["cycle"])
-        for attribution in cycle["failure_attribution"]:
+    check_works: dict[str, set[tuple[str, str]]] = {}
+    for work in works:
+        identity = (work["repository_class"], work["work"])
+        for attribution in work["failure_attribution"]:
             domain = attribution["domain"]
             domain_occurrences[domain] += 1
-            domain_cycles[domain].add(identity)
+            domain_works[domain].add(identity)
             for check in attribution["failed_checks"]:
                 check_occurrences[check] += 1
-                check_cycles.setdefault(check, set()).add(identity)
+                check_works.setdefault(check, set()).add(identity)
     domains = [
         {
             "domain": domain,
-            "cycle_count": len(domain_cycles[domain]),
+            "work_count": len(domain_works[domain]),
             "attribution_count": domain_occurrences[domain],
         }
         for domain in FAILURE_DOMAINS
@@ -3129,7 +3309,7 @@ def aggregate_batch_failure_attribution(
     checks = [
         {
             "check": check,
-            "cycle_count": len(check_cycles[check]),
+            "work_count": len(check_works[check]),
             "occurrence_count": check_occurrences[check],
         }
         for check in sorted(check_occurrences)
@@ -3152,8 +3332,8 @@ def collect_batch(
     integrity_check("campaign_inventory", verify_inventory, root)
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("campaign already stopped; create a new campaign identity")
-    if any(state.get("state") != "sealed" for state in campaign["cycles"].values()):
-        raise CampaignError("batch collection requires all eight sealed cycles")
+    if any(state.get("state") != "sealed" for state in campaign["works"].values()):
+        raise CampaignError("batch collection requires all five sealed Work descriptors")
     # Global identity mapping is read-only and complete before staging anything.
     mapped = integrity_check("session_mapping", map_batch_rollouts, root, raw_paths)
     integrity_check("realization_binding", document_realization.require_batch_ready, root, campaign, mapped)
@@ -3162,9 +3342,9 @@ def collect_batch(
         if failure is not None:
             raise CampaignError("required session activation is invalid",
                 diagnostic=activation_failure_diagnostic(rollout.source, rollout.capture,
-                    campaign["cycles"][cycle_key(*slot[:2])]["review_slot_id"], slot[2]))
-    for (kind, cycle, role), rollout in mapped.items():
-        destination = cycle_root(root, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
+                    campaign["works"][work_key(*slot[:2])]["review_slot_id"], slot[2]))
+    for (kind, work, role), rollout in mapped.items():
+        destination = work_root(root, kind, work) / "evidence" / f"{role}.rollout.jsonl"
         if destination.exists() or rollout.source.resolve() == destination.resolve():
             raise IntegrityError("destination_collision", CampaignError("batch evidence destination must be absent and distinct from its source"))
     baseline = {name: (root / name).read_bytes() for name in
@@ -3177,8 +3357,8 @@ def collect_batch(
         staged_campaign = copy.deepcopy(campaign)
         staged_campaign["campaign_root"] = str(stage)
         save_campaign(stage, staged_campaign)
-        for (kind, cycle, role), rollout in sorted(mapped.items()):
-            destination = cycle_root(stage, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"
+        for (kind, work, role), rollout in sorted(mapped.items()):
+            destination = work_root(stage, kind, work) / "evidence" / f"{role}.rollout.jsonl"
             copy_exact(rollout.source, destination)
             if harness.sha256(destination) != rollout.capture.source_sha256:
                 raise IntegrityError("raw_hash", CampaignError("raw capture changed after candidate-bound mapping"))
@@ -3262,14 +3442,14 @@ def publish_batch(root: Path, stage: Path, baseline: dict[str, bytes]) -> None:
     journal.unlink()
 
 
-def extract_batch_resume(root: Path, kind: str, cycle: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
+def extract_batch_resume(root: Path, kind: str, work: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
     """Rollback a failed derived extraction inside the unpublished batch stage."""
     before = {path for path in root.rglob("*") if path.is_file()}
-    mutable = [campaign_file(root), inventory_path(root), evaluator_descriptor_path(root, kind, cycle),
-               cycle_root(root, kind, cycle) / "activation-summary.json"]
+    mutable = [campaign_file(root), inventory_path(root), evaluator_descriptor_path(root, kind, work),
+               work_root(root, kind, work) / "activation-summary.json"]
     saved = {path: path.read_bytes() for path in mutable if path.is_file()}
     try:
-        return extract_resume_evidence(root, kind, cycle, *args, **kwargs)
+        return extract_resume_evidence(root, kind, work, *args, **kwargs)
     except BaseException:
         for path in (path for path in root.rglob("*") if path.is_file() and path not in before):
             path.unlink()
@@ -3278,75 +3458,193 @@ def extract_batch_resume(root: Path, kind: str, cycle: int, *args: Any, **kwargs
         raise
 
 
-def work_capture_failure_result(kind: str, cycle: int, error: harness.WorkCaptureContractError) -> dict[str, Any]:
+def work_capture_failure_result(kind: str, work: str, error: harness.WorkCaptureContractError) -> dict[str, Any]:
     return {"kind": "phase8_dogfood_work_intake", "outcome": "evidence_failed",
             "classification": "work_capture_contract_failure", "repository_class": kind,
-            "cycle": cycle, "basis": error.basis, "failed_checks": [error.check]}
+            "work": work, "basis": error.basis, "failed_checks": [error.check]}
 
 
 def normalize_batch(
-    root: Path, mapped: dict[tuple[str, int, str], MappedRollout], *,
+    root: Path, mapped: dict[tuple[str, str, str], MappedRollout], *,
     exporter=default_export, documenter=generate_document, snapshotter=generate_viewer_snapshot,
 ) -> dict[str, Any]:
     """Freeze observations and supported outputs without behavioral qualification."""
     campaign = load_campaign(root)
-    cycles = []
+    captures_by_work: dict[tuple[str, str], dict[str, Any]] = {}
+    journey_projects: dict[str, str] = {}
+    journey_work_ids: dict[str, list[str]] = {journey_id(kind): [] for kind in CLASSES}
+    work_item_ids: dict[tuple[str, str], str] = {}
+
+    # Resolve the complete identity graph before exporting any journey-final
+    # projection. This prevents Work A's export from being mistaken for the
+    # final state before later Volicord Works have been accounted for.
     for kind in CLASSES:
-        for cycle in cycle_numbers(kind):
-            state = campaign["cycles"][cycle_key(kind, cycle)]
-            work, resume = (mapped[(kind, cycle, role)].capture for role in ("work", "resume"))
-            work_ids, resume_ids = observed_project_ids(work), observed_project_ids(resume)
-            if len(work_ids) > 1 or (work_ids and resume_ids and work_ids != resume_ids):
-                raise IntegrityError("project_binding", CampaignError("capture Project identity conflicts across the cycle"))
-            state["project_id"] = work_ids[0] if work_ids else None
-            state["work_session_id"] = work.session_id
-            state["resume_session_id"] = resume.session_id
-            save_campaign(root, campaign)
-            update_activation_summary(root, kind, cycle,
-                work_session_start_activation_observed=True,
-                resume_session_start_activation_observed=True)
-            register_artifact(root, cycle_root(root, kind, cycle) / "activation-summary.json", replace=True)
-            extraction = {"outcome": "not_observed", "basis": "work_project_identity_unavailable"}
-            if state["project_id"]:
-                extraction = extract_batch_resume(root, kind, cycle, resume,
-                    cycle_root(root, kind, cycle) / "evidence/resume.rollout.jsonl",
+        for work_label in work_labels(kind):
+            key = work_key(kind, work_label)
+            state = campaign["works"][key]
+            captures = {
+                role: mapped[(kind, work_label, role)].capture
+                for role in session_roles(kind, work_label)
+            }
+            start = captures["start"]
+            start_projects = observed_project_ids(start)
+            start_work_ids = observed_work_item_ids(start)
+            if len(start_projects) != 1 or len(start_work_ids) != 1:
+                raise IntegrityError(
+                    "project_binding",
+                    CampaignError("each Work start must expose one Project and one Work identity"),
+                )
+            project_id = start_projects[0]
+            work_item_id = start_work_ids[0]
+            identity = journey_id(kind)
+            if identity in journey_projects and journey_projects[identity] != project_id:
+                raise IntegrityError("project_binding", CampaignError("one journey resolved multiple Project identities"))
+            journey_projects[identity] = project_id
+            if work_item_id in journey_work_ids[identity]:
+                raise IntegrityError("project_binding", CampaignError("distinct Work slots reused one Work identity"))
+            journey_work_ids[identity].append(work_item_id)
+            if "resume" in captures:
+                resume_projects = observed_project_ids(captures["resume"])
+                resume_work_ids = observed_work_item_ids(captures["resume"])
+                if resume_projects != [project_id] or resume_work_ids != [work_item_id]:
+                    raise IntegrityError(
+                        "project_binding",
+                        CampaignError("fresh resume must resolve the same Project and Work identity"),
+                    )
+            captures_by_work[(kind, work_label)] = captures
+            work_item_ids[(kind, work_label)] = work_item_id
+            state["project_id"] = project_id
+            state["work_item_id"] = work_item_id
+            state["start_session_id"] = start.session_id
+            state["resume_session_id"] = captures.get("resume").session_id if "resume" in captures else None
+
+    if len(set(journey_projects.values())) != len(CLASSES):
+        raise IntegrityError("project_binding", CampaignError("repository journeys share a Project identity"))
+    for identity, project_id in journey_projects.items():
+        campaign["journeys"][identity]["project_id"] = project_id
+    save_campaign(root, campaign)
+
+    revision_evidence = verify_journey_revision_chronology(campaign, mapped)
+    work_entries: list[dict[str, Any]] = []
+    journey_final_evidence: list[dict[str, Any]] = []
+    journey_bundle_evidence: dict[str, dict[str, Any]] = {}
+    for kind in CLASSES:
+        identity = journey_id(kind)
+        expected_work_ids = journey_work_ids[identity]
+        for work_label in work_labels(kind):
+            key = work_key(kind, work_label)
+            captures = captures_by_work[(kind, work_label)]
+            update_activation_summary(root, kind, work_label,
+                start_session_start_activation_observed=True,
+                resume_session_start_activation_observed=(True if "resume" in captures else "not_applicable"))
+            register_artifact(root, work_root(root, kind, work_label) / "activation-summary.json", replace=True)
+            extraction = {"outcome": "not_applicable", "basis": "no_resume_session_for_work"}
+            if "resume" in captures:
+                extraction = extract_batch_resume(root, kind, work_label, captures["resume"],
+                    work_root(root, kind, work_label) / "evidence/resume.rollout.jsonl",
                     exporter=exporter, documenter=documenter, snapshotter=snapshotter,
                     integrity_only=True, final_state="evidence_collected")
             campaign = load_campaign(root)
-            campaign["cycles"][cycle_key(kind, cycle)]["state"] = "evidence_collected"
-            entry = {"repository_class": kind, "cycle": cycle,
+            campaign["works"][key]["state"] = "evidence_collected"
+            if work_label == "A":
+                descriptor = read_json(evaluator_descriptor_path(root, kind, work_label))
+                bundle_binding = descriptor.get("evidence", {}).get("canonical_bundle")
+                if not isinstance(bundle_binding, dict):
+                    raise IntegrityError(
+                        "project_binding",
+                        CampaignError("journey-final canonical bundle binding is absent"),
+                    )
+                bundle = root / str(bundle_binding.get("file", ""))
+                try:
+                    canonical = harness.load_canonical_bundle(bundle)
+                except (OSError, EvidenceError) as error:
+                    raise IntegrityError("project_binding", error) from error
+                checkpoints_by_work = {
+                    work_item_id: sorted(
+                        str(row["id"])
+                        for row in canonical.rows("checkpoints")
+                        if row.get("project_id") == canonical.project_id
+                        and row.get("work_item_id") == work_item_id
+                        and isinstance(row.get("id"), str)
+                    )
+                    for work_item_id in expected_work_ids
+                }
+                if (
+                    canonical.project_id != journey_projects[identity]
+                    or any(not checkpoints for checkpoints in checkpoints_by_work.values())
+                ):
+                    raise IntegrityError(
+                        "project_binding",
+                        CampaignError(
+                            "journey-final canonical bundle does not retain every journey Work"
+                        ),
+                    )
+                journey_bundle_evidence[identity] = {
+                    "canonical_bundle": copy.deepcopy(bundle_binding),
+                    "checkpoint_ids_by_work_item": checkpoints_by_work,
+                }
+                final_entry = {
+                    "journey_id": identity,
+                    "project_id": journey_projects[identity],
+                    "represented_work_slot_ids": [
+                        work_key(kind, label) for label in work_labels(kind)
+                    ],
+                    "ordered_work_item_ids": expected_work_ids,
+                    "projection_source_work_slot_id": key,
+                    "artifact_inventory": copy.deepcopy(descriptor["evidence"]),
+                    "repository_revision_lineage": revision_evidence[identity],
+                }
+                journey_final_evidence.append(final_entry)
+
+            work_item_id = work_item_ids[(kind, work_label)]
+            bundle_evidence = journey_bundle_evidence[identity]
+            entry = {"journey_id": identity, "repository_class": kind,
+                "work_slot_id": key, "work_label": work_label,
                 "collection_state": "collected", "intake_state": "accepted",
                 "qualification_state": "not_run", "failed_checks": [], "failure_attribution": [],
-                "supported_evidence_complete": extraction.get("outcome") == "evidence_collected",
-                "extraction": extraction, "project_id": state["project_id"]}
-            for role, capture in (("work", work), ("resume", resume)):
-                entry[role] = {"session_id": capture.session_id,
-                    "relative_evidence_path": relative(root, cycle_root(root, kind, cycle) / "evidence" / f"{role}.rollout.jsonl"),
+                "resume_evidence": extraction, "project_id": journey_projects[identity],
+                "work_item_id": work_item_id,
+                "canonical_evidence": {
+                    **copy.deepcopy(bundle_evidence["canonical_bundle"]),
+                    "checkpoint_ids": bundle_evidence["checkpoint_ids_by_work_item"][work_item_id],
+                    "journey_final_shared_projection": True,
+                },
+                "sessions": {}}
+            for role, capture in captures.items():
+                entry["sessions"][role] = {"session_slot_id": session_slot_id(kind, work_label, role),
+                    "session_id": capture.session_id,
+                    "relative_evidence_path": relative(root, work_root(root, kind, work_label) / "evidence" / f"{role}.rollout.jsonl"),
                     "sha256": capture.source_sha256,
                     "turn_lifecycle": capture.turn_lifecycle.bounded_evidence(),
-                    "task_transport_equivalence": mapped[(kind, cycle, role)].task_transport.bounded_evidence()}
-            cycles.append(entry)
+                    "task_transport_equivalence": mapped[(kind, work_label, role)].task_transport.bounded_evidence()}
+            work_entries.append(entry)
+    campaign = load_campaign(root)
     campaign["collection_state"] = "collected"
     campaign["evaluation_state"] = "not_run"
     campaign["qualification_state"] = "not_run"
     save_campaign(root, campaign)
-    summary = {"kind": "phase8_dogfood_batch_intake_summary", "schema_version": 2,
+    summary = {"kind": "phase8_dogfood_batch_intake_summary", "schema_version": 3,
         "candidate_head": campaign["candidate_head"], "collection_state": "collected",
         "intake_state": "accepted", "qualification_state": "not_run", "outcome": "evidence_collected",
         "failed_checks": [], "failure_attribution": [],
         "session_distinctness": {"status": "passed", "expected_count": BATCH_CAPTURE_COUNT,
-            "observed_count": len(mapped)}, "cycles": cycles}
+            "observed_count": len(mapped)}, "journeys": copy.deepcopy(campaign["journeys"]),
+        "works": work_entries,
+        "journey_final_evidence": journey_final_evidence}
     write_json(root / "batch-intake-summary.json", summary)
     register_artifact(root, root / "batch-intake-summary.json")
     # The manifest closes over exact artifacts, excluding mutable inventory/campaign
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
-    manifest = {"kind": "dogfood_evidence_set", "schema_version": 3,
+    manifest = {"kind": "dogfood_evidence_set", "schema_version": 4,
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
         "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
         "naturalistic_memory_evidence": copy.deepcopy(campaign["naturalistic_memory_evidence"]),
         "live_evidence_obligations": copy.deepcopy(campaign["live_evidence_obligations"]),
         "raw_inputs": document_realization.raw_binding(mapped),
-        "cycles": copy.deepcopy(campaign["cycles"]),
+        "journeys": copy.deepcopy(campaign["journeys"]),
+        "works": copy.deepcopy(campaign["works"]),
+        "work_evidence": copy.deepcopy(work_entries),
+        "journey_final_evidence": copy.deepcopy(journey_final_evidence),
         "artifacts": copy.deepcopy(load_inventory(root)["artifacts"])}
     path = root / "evidence-set.json"
     write_json(path, manifest)
@@ -3366,36 +3664,36 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         or reference.get("sha256") != harness.sha256(root / "evidence-set.json")):
         raise CampaignError("campaign has no intact immutable evidence set")
     manifest = read_json(root / "evidence-set.json")
-    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") not in {1, 2, 3}
+    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 4
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
         or manifest.get("candidate_artifacts") != campaign.get("candidate_artifacts")
-        or manifest.get("cycles") != campaign["cycles"]
+        or manifest.get("journeys") != campaign["journeys"]
+        or manifest.get("works") != campaign["works"]
+        or len(manifest.get("work_evidence", [])) != QUALIFICATION_WORK_COUNT
+        or len(manifest.get("journey_final_evidence", [])) != len(CLASSES)
         or len(manifest.get("raw_inputs", [])) != BATCH_CAPTURE_COUNT):
         raise CampaignError("evidence-set identity or candidate binding mismatch")
-    if (manifest.get("schema_version") == 2
-            and manifest.get("naturalistic_memory_evidence")
+    if (manifest.get("naturalistic_memory_evidence")
             != campaign.get("naturalistic_memory_evidence")):
         raise CampaignError("evidence-set naturalistic memory classification changed")
-    if (manifest.get("schema_version") == 3
-            and (manifest.get("naturalistic_memory_evidence")
+    if (manifest.get("naturalistic_memory_evidence")
                 != campaign.get("naturalistic_memory_evidence")
                 or manifest.get("live_evidence_obligations")
-                != campaign.get("live_evidence_obligations"))):
+                != campaign.get("live_evidence_obligations")):
         raise CampaignError("evidence-set live evidence obligations changed")
     for name, binding in manifest["artifacts"].items():
         path = root / name
         if relative(root, path) != name or not path.is_file() or binding != {
             "bytes": path.stat().st_size, "sha256": harness.sha256(path)}:
             raise CampaignError("immutable evidence-set artifact changed")
-    expected_slots = {(kind, cycle, role) for kind in CLASSES for cycle in cycle_numbers(kind)
-        for role in ("work", "resume")}
-    if {tuple(item.get("cycle", [])) for item in manifest["raw_inputs"]} != expected_slots:
+    expected_slots = set(harness.current_session_slots())
+    if {tuple(item.get("session_slot", [])) for item in manifest["raw_inputs"]} != expected_slots:
         raise CampaignError("evidence-set rollout coverage changed")
     sessions = set()
     for item in manifest["raw_inputs"]:
-        kind, cycle, role = item["cycle"]
-        state = manifest["cycles"][cycle_key(kind, cycle)]
+        kind, work, role = item["session_slot"]
+        state = manifest["works"][work_key(kind, work)]
         raw = root / "slots" / state["review_slot_id"] / "evidence" / f"{role}.rollout.jsonl"
         if (not nonempty_session_id(item.get("session_id")) or item["session_id"] in sessions
             or item["session_id"] != state.get(f"{role}_session_id")
@@ -3405,22 +3703,22 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     return manifest
 
 
-def evaluate_cycles(root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
+def evaluate_works(root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
     """One observation engine for intact evidence and incomplete historical diagnostics."""
-    cycles = []
+    works = []
     for kind in CLASSES:
-        for cycle in cycle_numbers(kind):
-            state = manifest["cycles"][cycle_key(kind, cycle)]
+        for work in work_labels(kind):
+            state = manifest["works"][work_key(kind, work)]
             descriptor = read_json(root / "evaluator/descriptors" / f"{state['review_slot_id']}.json")
             descriptor["_evidence_directory"] = str(root)
-            observation = harness.real_session_evidence(descriptor, kind=kind, cycle=cycle,
+            observation = harness.real_session_evidence(descriptor, kind=kind, cycle=work,
                 repository_revision=state["repository_revision"], candidate_revision=manifest["candidate_head"],
                 target_repository=Path(state["repository_path"]))
             # The enclosing immutable observation retains every existing check/basis.
             observation.pop("machine_findings", None)
-            cycles.append({"repository_class": kind, "cycle": cycle, "observation": observation,
+            works.append({"repository_class": kind, "work": work, "observation": observation,
                 "findings": machine_findings.from_observation(observation)})
-    return cycles
+    return works
 
 
 def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | None = None) -> dict[str, Any]:
@@ -3429,7 +3727,7 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
     manifest = load_evidence_set(root)
     from evaluation_runs import policy_identity, historical_reference
     prior = historical_reference(previous, manifest["candidate_head"], campaign["evidence_set"]) if previous else None
-    cycles = evaluate_cycles(root, manifest)
+    works = evaluate_works(root, manifest)
     result = {"kind": "dogfood_machine_evaluation", "schema_version": 2,
         "candidate_head": manifest["candidate_head"], "evidence_set": campaign["evidence_set"],
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
@@ -3438,8 +3736,8 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
                 "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
-        "evaluation_state": "produced", "qualification_state": "not_run", "cycles": cycles,
-        "finding_state": machine_findings.evaluation_state([f for c in cycles for f in c["findings"]])}
+        "evaluation_state": "produced", "qualification_state": "not_run", "works": works,
+        "finding_state": machine_findings.evaluation_state([f for c in works for f in c["findings"]])}
     result["run_id"] = machine_findings.digest(result)
     machine_findings.validate_run(result)
     # Recheck input hashes after evaluation and before the controlled publication.
@@ -3458,7 +3756,13 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
 def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
     """Read-only diagnostic of existing artifacts; never manufacture a collection receipt."""
     import evaluation_runs
-    campaign = load_campaign(root)
+    campaign = read_json(campaign_file(root))
+    if (
+        campaign.get("kind") != "phase8_dogfood_campaign"
+        or campaign.get("schema_version") not in {1, 2, 3, 4}
+        or Path(campaign.get("campaign_root", "")).resolve() != root.resolve()
+    ):
+        raise CampaignError("unexpected dogfood campaign metadata")
     verify_inventory(root)
     names = set(load_inventory(root)["artifacts"]) | {"campaign.json", "evidence-inventory.json"}
     names.update(relative(root, p) for p in (root / "raw-rollouts").glob("*.jsonl"))
@@ -3466,9 +3770,42 @@ def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
         return {name: {"sha256": harness.sha256(root / name), "bytes": (root / name).stat().st_size}
             for name in sorted(names)}
     before = snapshot()
+    if campaign["schema_version"] != 4:
+        result = {
+            "kind": "dogfood_historical_campaign_diagnostic",
+            "schema_version": 1,
+            "historical_campaign_schema_version": campaign["schema_version"],
+            "candidate_head": campaign.get("candidate_head"),
+            "historical_campaign_sha256": before["campaign.json"]["sha256"],
+            "historical_terminal_outcome": campaign.get("terminal_outcome"),
+            "artifacts": before,
+            "inspection_state": "identity_and_inventory_only",
+            "qualification_state": "not_run",
+            "replacement_pass_candidate": False,
+            "phase_9_ready": False,
+            "limitation": (
+                "Superseded cycle-schema artifacts are preserved read-only; they are not "
+                "upgraded, mutated, or evaluated as the current journey campaign."
+            ),
+        }
+        result["run_id"] = machine_findings.digest(result)
+        if snapshot() != before:
+            raise CampaignError("historical evidence changed during diagnostic inspection")
+        if output.resolve().is_relative_to(root.resolve()):
+            raise CampaignError("diagnostic output must be outside historical campaign")
+        review_operations.publish_directory(output, {"diagnostic.json": json_bytes(result)})
+        return {
+            "diagnostic": str(output / "diagnostic.json"),
+            "run_id": result["run_id"],
+            "candidate_head": result["candidate_head"],
+            "inspection_state": result["inspection_state"],
+            "qualification_state": "not_run",
+            "phase_9_ready": False,
+        }
+    campaign = load_campaign(root)
     # The original descriptors are consumed as stored. Absent raw/support links
     # stay absent even when unrelated files elsewhere might look like replacements.
-    cycles = evaluate_cycles(root, campaign)
+    works = evaluate_works(root, campaign)
     result = {"kind": "dogfood_evaluation_diagnostic", "schema_version": 1,
         "candidate_head": campaign["candidate_head"],
         "evidence_set": {"state": "historical_inventory_only", "sha256": machine_findings.digest(before)},
@@ -3477,8 +3814,8 @@ def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
         "evaluation_run_nonce": secrets.token_hex(16), "qualitative_review_runs": [],
         "historical_campaign_sha256": before["campaign.json"]["sha256"],
         "historical_terminal_outcome": campaign.get("terminal_outcome"),
-        "artifacts": before, "cycles": cycles,
-        "finding_state": machine_findings.evaluation_state([f for c in cycles for f in c["findings"]]),
+        "artifacts": before, "works": works,
+        "finding_state": machine_findings.evaluation_state([f for c in works for f in c["findings"]]),
         "qualification_state": "not_run", "replacement_pass_candidate": False, "phase_9_ready": False,
         "limitation": "Diagnostic inventory is not an immutable collection receipt; missing historical evidence is not synthesized."}
     result["run_id"] = machine_findings.digest(result)
@@ -3504,12 +3841,12 @@ def finalize_manifest(root: Path, output: Path | None = None) -> Path:
     for kind in CLASSES:
         spec = specs[kind]
         real: dict[str, str] = {}
-        for number in cycle_numbers(kind):
-            state = campaign["cycles"][cycle_key(kind, number)]
+        for number in work_labels(kind):
+            state = campaign["works"][work_key(kind, number)]
             if state["state"] not in {"resume_collected", "evidence_collected"}:
-                raise CampaignError("all eight cycles must have resume evidence before finalization")
+                raise CampaignError("all five Works must have collected evidence before finalization")
             descriptor, _ = load_sealed_descriptor(root, kind, number, campaign)
-            real[str(number)] = relative(root, descriptor)
+            real[work_key(kind, number)] = relative(root, descriptor)
         repositories.append({
             **{key: spec[key] for key in ("class", "path", "origin", "revision", "license_file", "license_spdx", "provider_source_path") if key in spec},
             "revision": campaign["candidate_head"] if kind == "volicord" else spec["revision"],
@@ -3578,8 +3915,8 @@ def parser() -> argparse.ArgumentParser:
     validate_provisional = sub.add_parser("validate-provisional-review")
     record_provisional = sub.add_parser("record-provisional-review")
     reveal_profile = sub.add_parser("reveal-qualification-profile")
-    seal = sub.add_parser("seal-cycle")
-    activate = sub.add_parser("activate-cycle")
+    seal = sub.add_parser("seal-work")
+    activate = sub.add_parser("activate-journey")
     activate_every = sub.add_parser("activate-all")
     collect_b = sub.add_parser("collect-batch")
     prepare_documents = sub.add_parser("prepare-document-realizations")
@@ -3658,15 +3995,16 @@ def parser() -> argparse.ArgumentParser:
     for operation in (validate_qualitative, record_qualitative):
         operation.add_argument("--review-root", required=True)
         operation.add_argument("--draft", required=True)
-    for command in (prepare_reviewer, seal, activate):
+    for command in (prepare_reviewer, seal):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--repository-class", choices=CLASSES, required=True)
         command.add_argument(
-            "--cycle",
-            choices=range(1, max(CYCLE_COUNT_BY_REPOSITORY.values()) + 1),
-            type=int,
+            "--work",
+            choices=("A", "B", "C"),
             required=True,
         )
+    activate.add_argument("--campaign-root", required=True)
+    activate.add_argument("--repository-class", choices=CLASSES, required=True)
     prepare_reviewer.add_argument("--descriptor", required=True)
     for command in (validate_provisional, record_provisional):
         command.add_argument("--campaign-root", required=True)
@@ -3722,7 +4060,7 @@ def main() -> int:
         value = prepare_review(
             root,
             args.repository_class,
-            args.cycle,
+            args.work,
             Path(args.descriptor),
         )
     elif args.command == "validate-provisional-review":
@@ -3741,15 +4079,15 @@ def main() -> int:
         )
     elif args.command == "reveal-qualification-profile":
         value = reveal_qualification_profile(root, args.candidate_head)
-    elif args.command == "seal-cycle":
-        value = seal_cycle(
+    elif args.command == "seal-work":
+        value = seal_work(
             root,
             args.repository_class,
-            args.cycle,
+            args.work,
             Path(args.descriptor),
         )
-    elif args.command == "activate-cycle":
-        value = activate_cycle(root, args.repository_class, args.cycle)
+    elif args.command == "activate-journey":
+        value = activate_journey(root, args.repository_class)
     elif args.command == "activate-all":
         value = activate_all(root)
     elif args.command in {"validate-document-realization", "record-document-realization"}:
