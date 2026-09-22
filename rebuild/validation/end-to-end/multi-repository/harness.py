@@ -474,14 +474,15 @@ def viewer_project_understanding_evidence(
         content,
     )
     repository_entities = (
-        understanding.get("repository_map", {}).get("entities", [])
+        understanding.get("architecture", {}).get("components", [])
         if isinstance(understanding, dict)
         else []
     )
     named_entities = [
-        entity.get("name")
+        entity.get("display_name") or entity.get("identity")
         for entity in repository_entities
-        if isinstance(entity, dict) and isinstance(entity.get("name"), str)
+        if isinstance(entity, dict)
+        and isinstance(entity.get("display_name") or entity.get("identity"), str)
     ]
     grounded_relations = [
         relation
@@ -524,9 +525,12 @@ def viewer_project_understanding_evidence(
             "Project Understanding" in content
             and "How the architecture and code connect" in content
         ),
-        "readable_repository_entity": any(
-            len(name.strip()) >= 2 and html.escape(name, quote=True) in content
-            for name in named_entities
+        "readable_repository_entity_or_truthful_reduction": (
+            explicit_reduced_architecture
+            or any(
+                len(name.strip()) >= 2 and html.escape(name, quote=True) in content
+                for name in named_entities
+            )
         ),
         "readable_grounded_explanation": any(
             len(explanation.strip()) >= 24 for explanation in explanations
@@ -1350,6 +1354,8 @@ def rehearse_target(
         plan = (language_plan or {}).get("plan", {})
         realization = {
             "plan_fingerprint": plan.get("plan_fingerprint"),
+            "requested_language": "ko-KR",
+            "all_generated_prose_realized": True,
             "title": "프로젝트 인수인계와 작업 재개",
             "sections": [
                 {
@@ -1423,11 +1429,20 @@ def rehearse_target(
         and isinstance(status_before.get("architecture"), dict)
         and isinstance(status_before.get("evidence"), dict)
     )
+    understanding_architecture = (
+        understanding.get("architecture") if isinstance(understanding, dict) else None
+    )
+    understanding_shape_ok = bool(
+        isinstance(understanding_architecture, dict)
+        and isinstance(understanding_architecture.get("components"), list)
+        and isinstance(understanding_architecture.get("relationships"), list)
+        and isinstance(understanding_architecture.get("gaps"), list)
+    )
     steps["source_grounded_understanding"] = step(
         "passed"
         if understanding_ok
         and understanding
-        and understanding.get("repository_map", {}).get("entity_count", 0) > 0
+        and understanding_shape_ok
         and status_ok
         and viewer_result
         and viewer_snapshot.is_file()
@@ -3543,6 +3558,8 @@ def self_check() -> int:
         '"viewer",',
         '"document_preview",',
         '"ko-KR",',
+        '"requested_language": "ko-KR",',
+        '"all_generated_prose_realized": True,',
         'contains_hangul(realized_document.get("content", ""))',
         'viewer_understanding = viewer_project_understanding_evidence(',
         'viewer_understanding["status"] == "passed"',
@@ -3604,7 +3621,7 @@ def self_check() -> int:
         )
         viewer_contract_result = viewer_project_understanding_evidence(
             viewer_contract,
-            {"repository_map": {"entities": [{"name": "Service"}]}},
+            {"architecture": {"components": [{"display_name": "Service"}]}},
         )
         if viewer_contract_result["status"] != "passed":
             raise AssertionError("grounded Viewer Project Understanding did not qualify")
@@ -3617,7 +3634,7 @@ def self_check() -> int:
         )
         if viewer_project_understanding_evidence(
             viewer_contract,
-            {"repository_map": {"entities": [{"name": "Service"}]}},
+            {"architecture": {"components": [{"display_name": "Service"}]}},
         )["status"] != "failed":
             raise AssertionError("ungrounded Viewer diagram qualified")
         reduced_contract = Path(directory) / "project-understanding-reduced.html"
@@ -3649,7 +3666,7 @@ def self_check() -> int:
         )
         if viewer_project_understanding_evidence(
             reduced_contract,
-            {"repository_map": {"entities": [{"name": "Service"}]}},
+            {"architecture": {"components": [], "relationships": [], "gaps": [{}]}},
         )["status"] != "passed":
             raise AssertionError("truthful reduced Viewer architecture did not qualify")
         reduced_contract.write_text(
@@ -3661,7 +3678,7 @@ def self_check() -> int:
         )
         if viewer_project_understanding_evidence(
             reduced_contract,
-            {"repository_map": {"entities": [{"name": "Service"}]}},
+            {"architecture": {"components": [], "relationships": [], "gaps": [{}]}},
         )["status"] != "failed":
             raise AssertionError("uninspectable reduced Viewer architecture qualified")
     assert_recovery_recall_contract()
