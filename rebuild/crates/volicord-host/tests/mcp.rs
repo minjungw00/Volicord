@@ -2836,6 +2836,30 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         .expect("Learning Deliberation identity");
     assert_eq!(begun["state"]["state"], "awaiting_initial_response");
     assert_eq!(begun["canonical_decision"], false);
+    assert_eq!(begun["selection_authority"]["product_authority"], false);
+    assert_eq!(begun["explanation_basis"]["availability"], "available");
+    assert_eq!(
+        begun["explanation_basis"]["selection_outcome"]["state"],
+        "not_recorded"
+    );
+    assert_eq!(
+        begun["explanation_basis"]["problem"],
+        "Which invalidation boundary makes the consistency invariant easiest to preserve?"
+    );
+    assert_eq!(
+        begun["explanation_basis"]["alternatives"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert!(begun["explanation_basis"]["source_basis"]
+        .as_array()
+        .is_some_and(|sources| sources.iter().any(|source| source == repository_source)));
+    assert!(begun["explanation_basis"]["remaining_uncertainty"]
+        .as_array()
+        .is_some_and(|items| items
+            .iter()
+            .any(|item| item == "the learner selection is not recorded")));
     assert_eq!(begun["rounds"], json!([]));
     assert!(begun.get("agent_recommendation").is_none());
 
@@ -2920,6 +2944,38 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         preserved["learning_deliberation"]["state"]["state"],
         "completed"
     );
+    let explanation = &preserved["learning_explanation_basis"];
+    assert_eq!(explanation["availability"], "available");
+    assert_eq!(
+        explanation["statement_role"],
+        "source_grounded_explanation_basis"
+    );
+    assert_eq!(explanation["generated_interpretation"], false);
+    assert_eq!(explanation["selection_outcome"]["state"], "selected");
+    assert_eq!(explanation["selection_outcome"]["completed"], true);
+    assert_eq!(
+        explanation["selection_outcome"]["selections"][0]["alternative_id"],
+        "versioned-facade"
+    );
+    assert_eq!(
+        explanation["latest_user_rationale"],
+        "One explicit invariant is easier to audit."
+    );
+    assert!(explanation["latest_agent_feedback"]
+        .as_str()
+        .is_some_and(|feedback| feedback.contains("centralizes the invariant")));
+    assert!(explanation["latest_agent_recommendation"]["rationale"]
+        .as_str()
+        .is_some_and(|rationale| rationale.contains("reduces omission risk")));
+    assert_eq!(explanation["remaining_uncertainty"], json!([]));
+    assert!(explanation["alternatives"]
+        .as_array()
+        .is_some_and(|alternatives| alternatives.iter().any(|alternative| {
+            alternative["alternative_id"] == "mutation-sites"
+                && alternative["technical_consequences"][0]
+                    == "Simple reads but distributed invalidation obligations"
+                && alternative["affected_scope"] == json!(["cache", "mutation paths"])
+        })));
     let canonical = structured(&call(
         &mut restarted,
         "canonical_inspect",

@@ -12,9 +12,10 @@ mod trigger;
 mod understanding;
 
 pub use candidate_inspection::{
-    inspect_candidate, learning_resume_projection, CandidateContentAccess,
-    CandidateContentOmission, CandidateInspection, InspectionHealth, LearningResumeItem,
-    LearningResumeProjection, RetentionInspection,
+    build_learning_explanation_basis, inspect_candidate, learning_resume_projection,
+    CandidateContentAccess, CandidateContentOmission, CandidateInspection, InspectionHealth,
+    LearningExplanationAlternative, LearningExplanationAvailability, LearningExplanationBasis,
+    LearningResumeItem, LearningResumeProjection, LearningSelectionOutcome, RetentionInspection,
 };
 pub use documents::{
     generate_documents, prepare_narrative_plan, realize_narrative, ClaimClass, DocumentBody,

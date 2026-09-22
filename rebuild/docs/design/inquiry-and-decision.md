@@ -649,6 +649,17 @@ completed/delegated/skipped만 affected work를 해제한다. Durable lesson이 
 user Source를 가진 기존 `Context Item` role `Learning`을 사용하며 Candidate content에서 permanent
 learner profile을 추론하지 않는다.
 
+Learning interaction state와 explanation-basis availability는 서로 다른 사실이다. Selection,
+delegate 또는 skip이 기록되었거나 terminal state가 되었다는 사실은 그 자체로 useful explanation
+basis가 available하다는 뜻이 아니다. Read projection은 retained problem, established facts, actual
+choice/alternative와 technical consequence, affected code/design scope, Source와 Analysis Snapshot,
+selected/delegated/skipped outcome, user rationale, agent feedback/recommendation 및 remaining uncertainty를
+별도 `available`/`degraded`/`unavailable` explanation basis로 노출한다. 이 basis는 source-grounded
+material이며 generated interpretation이나 canonical Decision이 아니다. Volicord는 identity,
+grounding, completeness gap과 typed availability를 검증하지만 arbitrary final prose의 교육 품질이나
+사용자의 실제 이해를 deterministic하게 판정하지 않는다. 그 basis를 목적과 요청 깊이에 맞는 설명으로
+구성하는 일은 active agent의 책임이다.
+
 동등한 successor Review는 retained prior Learning Deliberation의 completed/delegated/skipped
 state를 기존 satisfied requirement와 learning Candidate identity로 재사용할 수 있다. 현재
 Discovery, prior retained Review/Discovery와 Deliberation에 보존한 실제 choices 모두 위의

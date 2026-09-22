@@ -44,10 +44,12 @@ use volicord_operations::{
     WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition, WorkflowStage,
 };
 use volicord_projections::{
-    build_project_understanding, CandidateDependencyState, DocumentKind, DocumentRequest,
-    FixedLocale, GeneratorIdentity, NarrativePlan, NarrativeRealization, NarrativeRealizationState,
-    OutputFormat, ProjectUnderstanding, RealizedNarrativeClaim, RealizedNarrativeSection,
-    UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingWork,
+    build_learning_explanation_basis, build_project_understanding, CandidateDependencyState,
+    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, LearningExplanationAvailability,
+    LearningExplanationBasis, LearningSelectionOutcome, NarrativePlan, NarrativeRealization,
+    NarrativeRealizationState, OutputFormat, ProjectUnderstanding, RealizedNarrativeClaim,
+    RealizedNarrativeSection, UnderstandingArchitectureSelectionBasis, UnderstandingBound,
+    UnderstandingWork,
 };
 
 pub const HOST_TOOL_NAMES: [&str; 21] = [
@@ -866,8 +868,18 @@ impl HostAdapter {
             .operations
             .workflow_for_review_candidate(project_id, deliberation.materiality_review_candidate_id)
             .map_err(operation_error)?;
+        let explanation_basis = build_learning_explanation_basis(
+            deliberation,
+            &candidate.observation_basis.source_basis,
+        );
         Ok(with_workflow(
-            learning_deliberation_json(action, candidate_id, candidate.revision, deliberation),
+            learning_deliberation_json(
+                action,
+                candidate_id,
+                candidate.revision,
+                deliberation,
+                &explanation_basis,
+            ),
             workflow,
         ))
     }
@@ -4865,8 +4877,22 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         .as_ref()
         .zip(candidate_revision)
         .map(|(deliberation, revision)| {
-            learning_deliberation_json("inspect", candidate_id, revision, deliberation)
+            let fallback = build_learning_explanation_basis(deliberation, &[]);
+            learning_deliberation_json(
+                "inspect",
+                candidate_id,
+                revision,
+                deliberation,
+                candidate
+                    .learning_explanation_basis
+                    .as_ref()
+                    .unwrap_or(&fallback),
+            )
         });
+    let learning_explanation_basis = candidate
+        .learning_explanation_basis
+        .as_ref()
+        .map(learning_explanation_basis_json);
     json!({
         "identity":candidate_id.to_string(),
         "exists":candidate.exists,
@@ -4886,6 +4912,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         "engineering_choice_discovery":engineering_choice_discovery,
         "materiality_review":materiality_review,
         "learning_deliberation":learning_deliberation,
+        "learning_explanation_basis":learning_explanation_basis,
         "content_omission":candidate.content_omission.map(|value| format!("{:?}",value).to_lowercase()),
         "content_cleaned":candidate.content_cleaned,
         "cleanup":cleanup,
@@ -6439,6 +6466,7 @@ fn learning_deliberation_json(
     candidate_id: CandidateId,
     revision: u64,
     deliberation: &LearningDeliberation,
+    explanation_basis: &LearningExplanationBasis,
 ) -> Value {
     let rounds = deliberation
         .rounds
@@ -6491,7 +6519,74 @@ fn learning_deliberation_json(
         "choices":deliberation.choices.iter().map(engineering_choice_json).collect::<Vec<_>>(),
         "rounds":rounds,
         "state":learning_deliberation_state_json(&deliberation.state),
+        "selection_authority":{
+            "kind":"learning_only_non_decision",
+            "canonical_decision":false,
+            "product_authority":false,
+        },
+        "explanation_basis":learning_explanation_basis_json(explanation_basis),
     })
+}
+
+fn learning_explanation_basis_json(basis: &LearningExplanationBasis) -> Value {
+    json!({
+        "availability":match basis.availability {
+            LearningExplanationAvailability::Available => "available",
+            LearningExplanationAvailability::Degraded => "degraded",
+            LearningExplanationAvailability::Unavailable => "unavailable",
+        },
+        "availability_reasons":basis.availability_reasons,
+        "statement_role":"source_grounded_explanation_basis",
+        "generated_interpretation":false,
+        "problem":basis.problem,
+        "established_facts":basis.established_facts,
+        "alternatives":basis.alternatives.iter().map(|alternative| json!({
+            "choice_id":alternative.choice_id,
+            "choice_summary":alternative.choice_summary,
+            "alternative_id":alternative.alternative_id,
+            "alternative_summary":alternative.alternative_summary,
+            "technical_consequences":alternative.technical_consequences,
+            "affected_scope":alternative.affected_scope,
+            "effect_categories":alternative.effect_categories.iter().copied().map(engineering_effect_category_name).collect::<Vec<_>>(),
+            "evidence_state":engineering_evidence_state_name(alternative.evidence_state),
+            "source_basis":alternative.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "affected_scope":basis.affected_scope,
+        "source_basis":basis.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "analysis_snapshot_id":basis.analysis_snapshot_id.map(|id| id.to_string()),
+        "selection_outcome":learning_selection_outcome_json(&basis.selection_outcome),
+        "latest_user_rationale":basis.latest_user_rationale,
+        "latest_agent_feedback":basis.latest_agent_feedback,
+        "latest_agent_recommendation":basis.latest_agent_recommendation.as_ref().map(|recommendation| json!({
+            "selections":recommendation.selections.iter().map(learning_selection_json).collect::<Vec<_>>(),
+            "rationale":recommendation.rationale,
+        })),
+        "remaining_uncertainty":basis.remaining_uncertainty,
+        "agent_responsibility":"Use this bounded source-grounded basis to produce appropriately deep prose; Volicord does not score or guarantee arbitrary natural-language pedagogy.",
+    })
+}
+
+fn learning_selection_outcome_json(outcome: &LearningSelectionOutcome) -> Value {
+    match outcome {
+        LearningSelectionOutcome::NotRecorded => json!({"state":"not_recorded"}),
+        LearningSelectionOutcome::Selected {
+            selections,
+            completed,
+        } => json!({
+            "state":"selected",
+            "completed":completed,
+            "selections":selections.iter().map(learning_selection_json).collect::<Vec<_>>(),
+        }),
+        LearningSelectionOutcome::Delegated => json!({"state":"delegated"}),
+        LearningSelectionOutcome::Skipped => json!({"state":"skipped"}),
+        LearningSelectionOutcome::ResearchOrPrototypeRequired { evidence_state } => json!({
+            "state":"research_or_prototype_required",
+            "evidence_state":engineering_evidence_state_name(*evidence_state),
+        }),
+        LearningSelectionOutcome::ReconsiderationRequested => {
+            json!({"state":"reconsideration_requested"})
+        }
+    }
 }
 
 fn engineering_choice_json(choice: &EngineeringChoice) -> Value {

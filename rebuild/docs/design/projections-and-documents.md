@@ -239,6 +239,16 @@ interaction review, alternative accounting, rounds와 executable artifacts는 �
 `candidate_inspect`/`learning_deliberation` detail에만 남는다. 이 projection은
 canonical Decision, permanent lesson 또는 새 learning authority를 만들지 않는다.
 
+`candidate_inspect`와 `learning_deliberation` detail은 compact resume state와 별도로
+`learning_explanation_basis`를 제공한다. 이 read-side basis는 problem, established facts,
+actual alternatives와 technical consequences, affected code/design scope, Source/Analysis Snapshot,
+selection outcome, latest rationale/feedback/recommendation과 remaining uncertainty를 보존한다.
+Availability는 `available`, `degraded`, `unavailable` 중 하나이며 selection completion이나
+workflow readiness에서 추론하지 않는다. Content forgetting/withholding은 explicit `unavailable`,
+부분 grounding은 `degraded`이고, 어느 상태도 learning selection을 canonical authority 또는
+generated interpretation으로 바꾸지 않는다. Host/agent는 이 material로 설명을 만들 수 있지만
+projection은 arbitrary natural-language pedagogy의 품질을 보증하거나 score하지 않는다.
+
 ## 4. Projection purity와 no-mutation
 
 Projection operation은 다음을 하지 않는다.

@@ -2,7 +2,9 @@ use volicord_context::TimestampMicros;
 use volicord_inquiry::{
     CandidateCleanup, CandidateDisposition, CandidateId, CandidateReadBasis, CandidateRecord,
     CollectionOptOut, CollectionOptOutScope, EngineeringChoiceDiscovery,
-    ExplicitDelegationEvidence, LearningDeliberation, MaterialityReview,
+    EngineeringChoiceEvidenceState, EngineeringEffectCategory, ExplicitDelegationEvidence,
+    LearningAlternativeSelection, LearningDeliberation, LearningDeliberationState,
+    LearningInitialResponse, LearningRecommendation, MaterialityReview,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,6 +47,61 @@ pub struct ExplicitDelegationInspection {
     pub evidence: ExplicitDelegationEvidence,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LearningExplanationAvailability {
+    Available,
+    Degraded,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LearningExplanationAlternative {
+    pub choice_id: String,
+    pub choice_summary: String,
+    pub alternative_id: String,
+    pub alternative_summary: String,
+    pub technical_consequences: Vec<String>,
+    pub affected_scope: Vec<String>,
+    pub effect_categories: Vec<EngineeringEffectCategory>,
+    pub evidence_state: EngineeringChoiceEvidenceState,
+    pub source_basis: Vec<volicord_context::SourceId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LearningSelectionOutcome {
+    NotRecorded,
+    Selected {
+        selections: Vec<LearningAlternativeSelection>,
+        completed: bool,
+    },
+    Delegated,
+    Skipped,
+    ResearchOrPrototypeRequired {
+        evidence_state: EngineeringChoiceEvidenceState,
+    },
+    ReconsiderationRequested,
+}
+
+/// Read-side material retained for an agent to explain what a learning
+/// interaction established. Availability is independent from participation,
+/// selection, canonical authority, and the quality of prose an agent produces.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LearningExplanationBasis {
+    pub availability: LearningExplanationAvailability,
+    pub availability_reasons: Vec<String>,
+    pub problem: Option<String>,
+    pub established_facts: Vec<String>,
+    pub alternatives: Vec<LearningExplanationAlternative>,
+    pub affected_scope: Vec<String>,
+    pub source_basis: Vec<volicord_context::SourceId>,
+    pub analysis_snapshot_id: Option<volicord_repository_intelligence::AnalysisSnapshotId>,
+    pub selection_outcome: LearningSelectionOutcome,
+    pub latest_user_rationale: Option<String>,
+    pub latest_agent_feedback: Option<String>,
+    pub latest_agent_recommendation: Option<LearningRecommendation>,
+    pub remaining_uncertainty: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CandidateInspection {
     pub candidate_id: CandidateId,
@@ -70,6 +127,7 @@ pub struct CandidateInspection {
     pub engineering_choice_discovery: Option<EngineeringChoiceDiscovery>,
     pub materiality_review: Option<MaterialityReview>,
     pub learning_deliberation: Option<LearningDeliberation>,
+    pub learning_explanation_basis: Option<LearningExplanationBasis>,
     pub content_omission: Option<CandidateContentOmission>,
 }
 
@@ -110,6 +168,7 @@ pub fn inspect_candidate(
             engineering_choice_discovery: None,
             materiality_review: None,
             learning_deliberation: None,
+            learning_explanation_basis: None,
             content_omission: None,
         };
     };
@@ -238,6 +297,18 @@ fn inspect_existing(
                     )
                 })
         };
+    let learning_explanation_basis =
+        (candidate.kind == volicord_inquiry::CandidateKind::LearningDeliberation).then(|| {
+            learning_deliberation.as_ref().map_or_else(
+                || unavailable_learning_explanation_basis(content_omission.as_ref()),
+                |deliberation| {
+                    build_learning_explanation_basis(
+                        deliberation,
+                        &candidate.observation_basis.source_basis,
+                    )
+                },
+            )
+        });
     CandidateInspection {
         candidate_id: candidate.id,
         exists: true,
@@ -262,7 +333,187 @@ fn inspect_existing(
         engineering_choice_discovery,
         materiality_review,
         learning_deliberation,
+        learning_explanation_basis,
         content_omission,
+    }
+}
+
+pub fn build_learning_explanation_basis(
+    deliberation: &LearningDeliberation,
+    additional_source_basis: &[volicord_context::SourceId],
+) -> LearningExplanationBasis {
+    let mut availability_reasons = Vec::new();
+    if deliberation.problem.trim().is_empty() {
+        availability_reasons.push("the retained problem statement is empty".to_owned());
+    }
+    if deliberation.established_facts.is_empty() {
+        availability_reasons.push("no established facts are retained".to_owned());
+    }
+    if deliberation.choices.is_empty() {
+        availability_reasons.push("no source-grounded alternatives are retained".to_owned());
+    }
+    let mut alternatives = Vec::new();
+    let mut source_basis = additional_source_basis.to_vec();
+    let mut remaining_uncertainty = Vec::new();
+    for choice in &deliberation.choices {
+        source_basis.extend(choice.source_basis.iter().copied());
+        if choice.source_basis.is_empty() {
+            availability_reasons.push(format!(
+                "choice `{}` has no retained Source basis",
+                choice.choice_id
+            ));
+        }
+        if choice.alternatives.is_empty() {
+            availability_reasons.push(format!(
+                "choice `{}` has no retained alternatives",
+                choice.choice_id
+            ));
+        }
+        if !matches!(
+            choice.evidence_state,
+            EngineeringChoiceEvidenceState::Sufficient
+        ) {
+            remaining_uncertainty.push(format!(
+                "choice `{}` requires {:?}",
+                choice.choice_id, choice.evidence_state
+            ));
+        }
+        alternatives.extend(choice.alternatives.iter().map(|alternative| {
+            LearningExplanationAlternative {
+                choice_id: choice.choice_id.clone(),
+                choice_summary: choice.summary.clone(),
+                alternative_id: alternative.alternative_id.clone(),
+                alternative_summary: alternative.summary.clone(),
+                technical_consequences: alternative.technical_consequences.clone(),
+                affected_scope: choice.affected_scope.clone(),
+                effect_categories: choice.effect_categories.clone(),
+                evidence_state: choice.evidence_state,
+                source_basis: choice.source_basis.clone(),
+            }
+        }));
+    }
+    let latest_round = deliberation.rounds.last();
+    if let Some(round) = latest_round {
+        source_basis.push(round.initial_response_source_id);
+        source_basis.extend(round.reconsideration_source_id);
+    }
+    source_basis.sort_unstable();
+    source_basis.dedup();
+    if source_basis.is_empty() {
+        availability_reasons.push("no Source basis is retained for this explanation".to_owned());
+    }
+    let selection_outcome = learning_selection_outcome(deliberation, latest_round);
+    match deliberation.state {
+        LearningDeliberationState::AwaitingInitialResponse => {
+            remaining_uncertainty.push("the learner selection is not recorded".to_owned());
+        }
+        LearningDeliberationState::AwaitingAgentFeedback { .. } => {
+            remaining_uncertainty
+                .push("agent feedback and implication are not recorded".to_owned());
+        }
+        LearningDeliberationState::ResearchOrPrototypeRequired { .. } => {
+            remaining_uncertainty
+                .push("requested research or prototype evidence is not yet resolved".to_owned());
+        }
+        LearningDeliberationState::ReconsiderationRequested { .. } => {
+            remaining_uncertainty
+                .push("the prior learning selection is under reconsideration".to_owned());
+        }
+        LearningDeliberationState::FeedbackProvided { .. }
+        | LearningDeliberationState::Completed { .. }
+        | LearningDeliberationState::Delegated { .. }
+        | LearningDeliberationState::Skipped { .. } => {}
+    }
+    remaining_uncertainty.sort();
+    remaining_uncertainty.dedup();
+    availability_reasons.sort();
+    availability_reasons.dedup();
+    LearningExplanationBasis {
+        availability: if availability_reasons.is_empty() {
+            LearningExplanationAvailability::Available
+        } else {
+            LearningExplanationAvailability::Degraded
+        },
+        availability_reasons,
+        problem: Some(deliberation.problem.clone()),
+        established_facts: deliberation.established_facts.clone(),
+        alternatives,
+        affected_scope: deliberation.affected_scope.clone(),
+        source_basis,
+        analysis_snapshot_id: Some(deliberation.baseline_analysis_snapshot_id),
+        selection_outcome,
+        latest_user_rationale: latest_round.and_then(|round| round.user_rationale.clone()),
+        latest_agent_feedback: latest_round.and_then(|round| round.agent_feedback.clone()),
+        latest_agent_recommendation: latest_round
+            .and_then(|round| round.agent_recommendation.clone()),
+        remaining_uncertainty,
+    }
+}
+
+fn learning_selection_outcome(
+    deliberation: &LearningDeliberation,
+    latest_round: Option<&volicord_inquiry::LearningDeliberationRound>,
+) -> LearningSelectionOutcome {
+    match &deliberation.state {
+        LearningDeliberationState::Completed {
+            selected_alternatives,
+            ..
+        } => LearningSelectionOutcome::Selected {
+            selections: selected_alternatives.clone(),
+            completed: true,
+        },
+        LearningDeliberationState::Delegated { .. } => LearningSelectionOutcome::Delegated,
+        LearningDeliberationState::Skipped { .. } => LearningSelectionOutcome::Skipped,
+        LearningDeliberationState::ResearchOrPrototypeRequired { evidence_state, .. } => {
+            LearningSelectionOutcome::ResearchOrPrototypeRequired {
+                evidence_state: *evidence_state,
+            }
+        }
+        LearningDeliberationState::ReconsiderationRequested { .. } => {
+            LearningSelectionOutcome::ReconsiderationRequested
+        }
+        LearningDeliberationState::AwaitingAgentFeedback { .. }
+        | LearningDeliberationState::FeedbackProvided { .. } => latest_round
+            .map(|round| match &round.response {
+                LearningInitialResponse::Select { selections } => {
+                    LearningSelectionOutcome::Selected {
+                        selections: selections.clone(),
+                        completed: false,
+                    }
+                }
+                LearningInitialResponse::DelegateToAgent => LearningSelectionOutcome::Delegated,
+                LearningInitialResponse::Skip => LearningSelectionOutcome::Skipped,
+                LearningInitialResponse::RequestResearchOrPrototype { evidence_state } => {
+                    LearningSelectionOutcome::ResearchOrPrototypeRequired {
+                        evidence_state: *evidence_state,
+                    }
+                }
+            })
+            .unwrap_or(LearningSelectionOutcome::NotRecorded),
+        LearningDeliberationState::AwaitingInitialResponse => LearningSelectionOutcome::NotRecorded,
+    }
+}
+
+fn unavailable_learning_explanation_basis(
+    omission: Option<&CandidateContentOmission>,
+) -> LearningExplanationBasis {
+    LearningExplanationBasis {
+        availability: LearningExplanationAvailability::Unavailable,
+        availability_reasons: vec![omission.map_or_else(
+            || "Learning Deliberation content is unavailable".to_owned(),
+            |omission| format!("Learning Deliberation content is unavailable: {omission:?}"),
+        )],
+        problem: None,
+        established_facts: Vec::new(),
+        alternatives: Vec::new(),
+        affected_scope: Vec::new(),
+        source_basis: Vec::new(),
+        analysis_snapshot_id: None,
+        selection_outcome: LearningSelectionOutcome::NotRecorded,
+        latest_user_rationale: None,
+        latest_agent_feedback: None,
+        latest_agent_recommendation: None,
+        remaining_uncertainty: vec!["the retained explanation basis cannot be inspected".to_owned()],
     }
 }
 
@@ -380,5 +631,35 @@ pub fn learning_resume_projection(basis: &CandidateReadBasis) -> LearningResumeP
         items,
         omitted_count,
         withheld_count,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        unavailable_learning_explanation_basis, CandidateContentOmission,
+        LearningExplanationAvailability, LearningSelectionOutcome,
+    };
+
+    #[test]
+    fn unavailable_learning_content_is_not_reported_as_a_completed_explanation_basis() {
+        let basis =
+            unavailable_learning_explanation_basis(Some(&CandidateContentOmission::PolicyWithheld));
+
+        assert_eq!(
+            basis.availability,
+            LearningExplanationAvailability::Unavailable
+        );
+        assert!(basis.problem.is_none());
+        assert!(basis.alternatives.is_empty());
+        assert_eq!(
+            basis.selection_outcome,
+            LearningSelectionOutcome::NotRecorded
+        );
+        assert!(basis
+            .availability_reasons
+            .iter()
+            .any(|reason| reason.contains("PolicyWithheld")));
+        assert!(!basis.remaining_uncertainty.is_empty());
     }
 }
