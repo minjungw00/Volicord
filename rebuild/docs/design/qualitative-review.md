@@ -4,7 +4,7 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 8 / policy revision 7, machine evaluation
+Current identities are qualitative review schema 9 / policy revision 8, machine evaluation
 policy `evidence-evaluation-3`, human observation/receipt schema 3, qualification policy
 `replacement-qualification-4`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
@@ -282,8 +282,13 @@ Exact conversational controls are typed semantics: `SKIP` keeps the criterion `n
 where the rubric permits it; and `ALREADY COVERED`, `SAME AS PREVIOUS`, or `SAME AS ENGLISH`
 records a compatible prior-criterion reference. The literal control remains in the immutable
 answer trace, while `human_controls` stores its action/reference and the assessment does not use
-the phrase as observation prose. A reference may only stay within the same sample/group, and the
-locale form must bind the matching English criterion. `insufficient_evidence` may have no
+the phrase as observation prose. `ALREADY COVERED` and `SAME AS PREVIOUS` reuse only the prior
+criterion's inspected observation/evidence context; the reviewer must still supply the current
+criterion's verdict, reasoning, relevance, uncertainty, criterion-specific dimensions,
+applicability and counterevidence conclusion. They never clone a semantic judgment. A reference
+may only stay within the same sample/group. `SAME AS ENGLISH` is the sole stronger reuse rule: it
+must bind the matching English criterion name and records `exact_semantic_judgment` provenance
+while rebinding the citation to the corresponding locale observation. `insufficient_evidence` may have no
 citation: it preserves the per-criterion inspected-evidence set (possibly empty) and a bounded
 account of what is missing. Only satisfied/violated judgments receive follow-up for still-required
 semantic dimensions, grouped in one confirmation rather than repetitive per-dimension prompts.

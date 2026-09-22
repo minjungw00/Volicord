@@ -446,13 +446,52 @@ class WorkflowTests(unittest.TestCase):
         ])
         human_review.converse_one(target, input_fn=direct.__next__, output_fn=lambda _text: None)
         referenced = human_review.converse_one(target,
-            input_fn=iter(["SAME AS PREVIOUS"]).__next__, output_fn=lambda _text: None)
+            input_fn=iter([
+                "SAME AS PREVIOUS",
+                "The same observation shows that ownership was violated for this distinct criterion.",
+                "2",
+                "The reused work capture is relevant to the separate ownership criterion.",
+                "No uncertainty remains for this bounded ownership judgment.",
+                "2",
+                "No contrary ownership evidence was found in the reused observation.",
+            ]).__next__, output_fn=lambda _text: None)
         self.assertEqual(referenced["control"], "same_as_prior")
         value = json.loads((target / "draft.json").read_bytes())
         reference_id = referenced["reference_criterion_id"]
         finding = value["assessments"][referenced["criterion_number"] - 1]
-        self.assertNotEqual(finding["reasoning"].casefold(), "same as previous")
-        self.assertEqual(value["human_controls"][finding["criterion_id"]]["reference_criterion_id"], reference_id)
+        prior = next(item for item in value["assessments"] if item["criterion_id"] == reference_id)
+        self.assertEqual(prior["assessment"], "satisfied")
+        self.assertEqual(finding["assessment"], "violated")
+        self.assertNotEqual(finding["reasoning"], prior["reasoning"])
+        self.assertEqual(finding["inspected_evidence"], prior["inspected_evidence"])
+        control = value["human_controls"][finding["criterion_id"]]
+        self.assertEqual(control["reference_criterion_id"], reference_id)
+        self.assertEqual(control["reuse_scope"], "observation_evidence_context")
+        cloned = copy.deepcopy(value)
+        cloned_finding = cloned["assessments"][referenced["criterion_number"] - 1]
+        cloned_finding["assessment"] = prior["assessment"]
+        cloned_finding["reasoning"] = prior["reasoning"]
+        cloned_path = self.parent / (self._testMethodName + "-cloned-verdict.json")
+        cloned_path.write_bytes(ops.encoded(cloned))
+        with self.assertRaisesRegex(ValueError, "separately authored"):
+            ops.validate(target, cloned_path)
+
+        covered = human_review.converse_one(target,
+            input_fn=iter([
+                "ALREADY COVERED",
+                "The reused observation separately establishes source grounding for this criterion.",
+                "1",
+                "The reused work capture directly grounds the separate source criterion.",
+                "No uncertainty remains for this bounded grounding judgment.",
+                "2",
+                "No contrary grounding evidence was found in the reused observation.",
+            ]).__next__, output_fn=lambda _text: None)
+        self.assertEqual(covered["control"], "already_covered")
+        value = json.loads((target / "draft.json").read_bytes())
+        covered_finding = value["assessments"][covered["criterion_number"] - 1]
+        self.assertEqual(covered_finding["assessment"], "satisfied")
+        self.assertEqual(value["human_controls"][covered_finding["criterion_id"]]["reuse_scope"],
+            "observation_evidence_context")
 
         skipped = human_review.converse_one(target,
             input_fn=iter(["SKIP"]).__next__, output_fn=lambda _text: None)
@@ -467,7 +506,61 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(gap["inspected_evidence"], [])
         self.assertEqual(value["human_controls"][gap["criterion_id"]]["action"], "cannot_assess")
         self.assertEqual(ops.validate(target, target / "draft.json")["counts"]["not_reviewed"],
-            len(value["assessments"]) - 3)
+            len(value["assessments"]) - 4)
+
+    def test_same_as_english_requires_the_identical_criterion_and_rebinds_locale_evidence(self):
+        observation_root = self.parent / (self._testMethodName + "-observations")
+        observation_answers = iter([
+            "OBSERVATION:\nEnglish keyboard use was directly observed.\nLIMITS:\nOnly the bounded journey was inspected.",
+            "SAME AS ENGLISH",
+            "OBSERVATION:\nOne Project retained two Work identities.\nLIMITS:\nOnly those sessions were inspected.",
+        ])
+        human_review.capture_viewer_observations(self.root, observation_root,
+            input_fn=observation_answers.__next__, output_fn=lambda _text: None,
+            run_id="d" * 32)
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="human", human_observations=observation_root)
+        preparation, _, _ = ops.load_package(target)
+        specs = q.criterion_specs(preparation["index"], preparation["rubric"])
+        english_position = next(index for index, spec in enumerate(specs)
+            if spec["group"] == "live_viewer" and spec["locale"] == "en"
+            and spec["name"] == "keyboard_reachability")
+        english_spec = specs[english_position]
+        eligible = human_review._eligible_evidence(preparation, english_spec)
+        evidence_number = next(index for index, (_identity, entry) in enumerate(eligible, 1)
+            if entry["surface"] == "live_viewer_observation" and entry["locale"] == "en")
+        human_review.converse_one(target, criterion_number=english_position + 1,
+            input_fn=iter([
+                "Keyboard reachability was satisfied in the direct English observation.",
+                "1", str(evidence_number), "START",
+                "The direct English live observation is relevant to keyboard reachability.",
+                "No uncertainty remains within the observed path.", "2",
+                "No contrary keyboard observation was found.",
+            ]).__next__, output_fn=lambda _text: None)
+        incompatible_position = next(index for index, spec in enumerate(specs)
+            if spec["group"] == "live_viewer" and spec["locale"] == "ko"
+            and spec["name"] == "visible_focus")
+        before = (target / "draft.json").read_bytes()
+        with self.assertRaisesRegex(ValueError, "no compatible prior reviewed criterion"):
+            human_review.converse_one(target, criterion_number=incompatible_position + 1,
+                input_fn=iter(["SAME AS ENGLISH"]).__next__, output_fn=lambda _text: None)
+        self.assertEqual((target / "draft.json").read_bytes(), before)
+        korean_position = next(index for index, spec in enumerate(specs)
+            if spec["group"] == "live_viewer" and spec["locale"] == "ko"
+            and spec["name"] == "keyboard_reachability")
+        mirrored = human_review.converse_one(target, criterion_number=korean_position + 1,
+            input_fn=iter(["SAME AS ENGLISH"]).__next__, output_fn=lambda _text: None)
+        self.assertEqual(mirrored["reuse_scope"], "exact_semantic_judgment")
+        value = json.loads((target / "draft.json").read_bytes())
+        english = value["assessments"][english_position]
+        korean = value["assessments"][korean_position]
+        self.assertEqual(korean["assessment"], english["assessment"])
+        self.assertEqual(korean["reasoning"], english["reasoning"])
+        self.assertTrue(all(preparation["index"]["evidence"][identity].get("locale") != "en"
+            for identity in korean["inspected_evidence"]))
+        self.assertEqual(value["human_controls"][korean["criterion_id"]]["reuse_scope"],
+            "exact_semantic_judgment")
+        self.assertEqual(ops.validate(target, target / "draft.json")["counts"]["satisfied"], 2)
 
     def test_evaluator_private_answers_are_not_selected(self):
         manifest = copy.deepcopy(c.load_evidence_set(self.root))

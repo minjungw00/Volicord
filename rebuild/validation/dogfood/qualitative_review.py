@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
@@ -500,7 +500,7 @@ def _validate_value(preparation, preparation_sha256, value):
     assessment_by_id = {item["criterion_id"]: item for item in value["assessments"]}
     for criterion_id, control in controls.items():
         require(criterion_id in spec_by_id and isinstance(control, dict)
-            and set(control) == {"action", "reference_criterion_id", "answer_trace"}
+            and set(control) == {"action", "reference_criterion_id", "reuse_scope", "answer_trace"}
             and control["action"] in {"direct", "skip", "already_covered", "same_as_prior",
                 "same_as_other_locale", "cannot_assess", "not_applicable"}
             and isinstance(control["answer_trace"], list) and control["answer_trace"],
@@ -515,10 +515,16 @@ def _validate_value(preparation, preparation_sha256, value):
             if control["action"] == "same_as_other_locale":
                 require(current["name"] == prior["name"] and current["locale"] != prior["locale"],
                     "same-locale reference must bind the matching other-locale criterion")
+                require(control["reuse_scope"] == "exact_semantic_judgment",
+                    "locale mirror requires explicit exact-semantic reuse")
+            else:
+                require(control["reuse_scope"] == "observation_evidence_context",
+                    "cross-criterion reference may reuse only observation/evidence context")
             require(assessment_by_id[reference]["assessment"] != "not_reviewed",
                 "human reference control targets an unresolved criterion")
         else:
-            require(reference is None, "non-reference human control cannot name a criterion")
+            require(reference is None and control["reuse_scope"] is None,
+                "non-reference human control cannot name reused meaning")
         assessment = assessment_by_id[criterion_id]
         if control["action"] == "skip":
             require(assessment == observation(criterion_id), "skip must remain not_reviewed")
@@ -530,9 +536,23 @@ def _validate_value(preparation, preparation_sha256, value):
                 "not-applicable control contradicts assessment")
         elif control["action"] == "direct":
             require(assessment["assessment"] != "not_reviewed", "direct control requires an assessment")
+        elif control["action"] == "same_as_other_locale":
+            prior_assessment = assessment_by_id[reference]
+            semantic_fields = ("assessment", "reasoning", "uncertainty", "criterion_observations",
+                "counterevidence", "applicability_reason", "authority")
+            require(all(assessment[field] == prior_assessment[field]
+                        for field in semantic_fields if field != "counterevidence")
+                and assessment["counterevidence"]["state"] == prior_assessment["counterevidence"]["state"]
+                and assessment["counterevidence"]["reasoning"] == prior_assessment["counterevidence"]["reasoning"],
+                "locale mirror must preserve the exact semantic judgment")
         else:
-            require(assessment["assessment"] == assessment_by_id[reference]["assessment"],
-                "reference control must preserve the referenced assessment state")
+            prior_inspected = assessment_by_id[reference]["inspected_evidence"]
+            require(prior_inspected and set(prior_inspected) <= set(assessment["inspected_evidence"]),
+                "cross-criterion reference must preserve the reused observation context")
+            require(len(control["answer_trace"]) >= 2
+                and assessment["human_answer_trace"] == control["answer_trace"]
+                and assessment["reasoning"] == control["answer_trace"][1]["answer"],
+                "cross-criterion reuse requires a separately authored current-criterion judgment")
     states = [validate_assessment(a, s, preparation, inspected) for a, s in zip(value["assessments"], specs)]
     additional = value["additional_outcomes"]
     require(isinstance(additional, list) and len(additional) <= 64, "additional material outcomes must be bounded")

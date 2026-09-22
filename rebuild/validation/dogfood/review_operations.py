@@ -447,7 +447,10 @@ That operation presents evidence identities and locators but never proposes a ve
 Use exact indexed JSON pointers or 1-based line numbers in evidence references.
 For every citation, explain its relevance to that exact criterion. Complete the
 criterion-specific semantic dimensions in preparation.json independently; do not
-inherit a group verdict. In particular, judge code behavior separately from
+inherit a group verdict. SAME AS PREVIOUS and ALREADY COVERED reuse only inspected
+observation/evidence context and still require a new criterion-specific judgment.
+Only SAME AS ENGLISH for the identical criterion is an exact-semantic mirror.
+In particular, judge code behavior separately from
 architecture flow and inspect primary document content, diagrams and Decision
 attribution rather than relying on existence or hashes. Record the evidence actually
 inspected for each criterion as well as the run-wide union,

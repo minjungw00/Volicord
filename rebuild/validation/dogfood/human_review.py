@@ -317,10 +317,56 @@ def _control_reference(answer, position, specs, draft):
         if action == "same_as_other_locale":
             if prior["name"] == current["name"] and prior["locale"] == "en" and current["locale"] == "ko":
                 candidates.append(prior_position)
-        else:
+        elif finding["inspected_evidence"]:
             candidates.append(prior_position)
     review.require(candidates, "the requested control has no compatible prior reviewed criterion")
     return action, candidates[-1]
+
+
+def _human_control(action, reference_criterion_id, reuse_scope, trace):
+    return {"action": action, "reference_criterion_id": reference_criterion_id,
+        "reuse_scope": reuse_scope, "answer_trace": trace}
+
+
+def _reused_references(prior, spec, input_fn, output_fn, trace):
+    references = []
+    for reference in prior["evidence"]:
+        relevance = _ask(
+            f"Explain why reused evidence {reference['evidence_id']} is relevant to "
+            f"the distinct criterion {spec['criterion_id']}.",
+            input_fn, output_fn, trace)
+        references.append({**copy.deepcopy(reference), "criterion_id": spec["criterion_id"],
+            "relevance": relevance})
+    return references
+
+
+def _locale_identity(preparation, identity, locale):
+    entry = preparation["index"]["evidence"][identity]
+    if entry.get("locale") is None:
+        return identity
+    matches = [candidate for candidate, other in preparation["index"]["evidence"].items()
+        if other["sample_id"] == entry["sample_id"] and other["surface"] == entry["surface"]
+        and other.get("locale") == locale]
+    review.require(len(matches) == 1,
+        "exact locale reuse requires one matching locale observation")
+    return matches[0]
+
+
+def _locale_mirror(preparation, prior, spec, trace):
+    mirrored = copy.deepcopy(prior)
+    prior_id = mirrored["criterion_id"]
+    mirrored["criterion_id"] = spec["criterion_id"]
+    mirrored["inspected_evidence"] = sorted({_locale_identity(
+        preparation, identity, spec["locale"]) for identity in mirrored["inspected_evidence"]})
+    for reference in [*mirrored["evidence"], *mirrored["counterevidence"]["evidence"]]:
+        identity = _locale_identity(preparation, reference["evidence_id"], spec["locale"])
+        entry = preparation["index"]["evidence"][identity]
+        reference.update(evidence_id=identity, criterion_id=spec["criterion_id"],
+            locator=entry["locators"][0],
+            relevance=f"Exact-semantic locale reference to {prior_id} for {spec['locale']}.")
+    mirrored["machine_relationships"] = []
+    mirrored["human_answer_trace"] = trace
+    return mirrored
 
 
 def _store_draft(root, draft_path, draft):
@@ -374,8 +420,8 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
     normalized = " ".join(observation.casefold().split())
     control_reference = _control_reference(observation, position, specs, draft)
     if normalized == "skip":
-        draft["human_controls"][spec["criterion_id"]] = {"action": "skip",
-            "reference_criterion_id": None, "answer_trace": trace}
+        draft["human_controls"][spec["criterion_id"]] = _human_control(
+            "skip", None, None, trace)
         result = review.validate_value(preparation, sha, draft)
         data = _store_draft(root, draft_path, draft)
         return {"state": "draft_updated", "criterion_number": position + 1,
@@ -389,24 +435,31 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
         action, prior_position = control_reference
         prior = copy.deepcopy(draft["assessments"][prior_position])
         prior_id = prior["criterion_id"]
-        prior["criterion_id"] = spec["criterion_id"]
-        for reference in [*prior["evidence"], *prior["counterevidence"]["evidence"]]:
-            reference["criterion_id"] = spec["criterion_id"]
-            reference["relevance"] = f"Referenced human observation from {prior_id}; no duplicate observation text was entered."
-        prior["machine_relationships"] = []
-        prior["human_answer_trace"] = trace
-        draft["assessments"][position] = prior
-        draft["human_controls"][spec["criterion_id"]] = {"action": action,
-            "reference_criterion_id": prior_id, "answer_trace": trace}
-        result = review.validate_value(preparation, sha, draft)
-        data = _store_draft(root, draft_path, draft)
-        return {"state": "draft_updated", "criterion_number": position + 1,
-            "criterion_id": spec["criterion_id"], "assessment": prior["assessment"],
-            "control": action, "reference_criterion_id": prior_id,
-            "draft_sha256": ops.digest(data), "review_run_id": preparation["reviewer"]["run_id"],
-            "candidate_head": preparation["binding"]["candidate_head"],
-            "evidence_set_sha256": preparation["binding"]["evidence_set"]["sha256"],
-            "review_result": result}
+        if action == "same_as_other_locale":
+            mirrored = _locale_mirror(preparation, prior, spec, trace)
+            draft["assessments"][position] = mirrored
+            draft["human_controls"][spec["criterion_id"]] = _human_control(
+                action, prior_id, "exact_semantic_judgment", trace)
+            inspected = set(draft["observation_scope"]["inspected_evidence"])
+            inspected.update(mirrored["inspected_evidence"])
+            draft["observation_scope"]["inspected_evidence"] = sorted(inspected)
+            result = review.validate_value(preparation, sha, draft)
+            data = _store_draft(root, draft_path, draft)
+            return {"state": "draft_updated", "criterion_number": position + 1,
+                "criterion_id": spec["criterion_id"], "assessment": mirrored["assessment"],
+                "control": action, "reference_criterion_id": prior_id,
+                "reuse_scope": "exact_semantic_judgment",
+                "draft_sha256": ops.digest(data), "review_run_id": preparation["reviewer"]["run_id"],
+                "candidate_head": preparation["binding"]["candidate_head"],
+                "evidence_set_sha256": preparation["binding"]["evidence_set"]["sha256"],
+                "review_result": result}
+        observation = _ask_multiline(
+            "The prior observation context will be retained. Describe the distinct current criterion's "
+            "observation and reasoning; its verdict and semantic meaning are not inherited.",
+            input_fn, output_fn, trace)
+        reuse_action, reuse_prior_id, reused_context = action, prior_id, prior
+    else:
+        reuse_action, reuse_prior_id, reused_context = None, None, None
     if normalized in {"not sure", "cannot assess", "cannot-assess"}:
         reasoning = _ask_multiline("Explain what you inspected and what evidence is missing.",
             input_fn, output_fn, trace)
@@ -416,8 +469,8 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
             "counterevidence": {"state": "not_observable", "reasoning": reasoning, "evidence": []},
             "human_answer_trace": trace}
         draft["assessments"][position] = finding
-        draft["human_controls"][spec["criterion_id"]] = {"action": "cannot_assess",
-            "reference_criterion_id": None, "answer_trace": trace}
+        draft["human_controls"][spec["criterion_id"]] = _human_control(
+            "cannot_assess", None, None, trace)
         result = review.validate_value(preparation, sha, draft)
         data = _store_draft(root, draft_path, draft)
         return {"state": "draft_updated", "criterion_number": position + 1,
@@ -433,6 +486,8 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
     reasoning = (observation if not forced_not_applicable else
         _ask_multiline("Explain why the maintained applicability rule applies.", input_fn, output_fn, trace))
     references = ([] if state == "insufficient_evidence" else
+        _reused_references(reused_context, spec, input_fn, output_fn, trace)
+        if reused_context is not None and reused_context["evidence"] else
         _references(root, preparation, spec, input_fn, output_fn, trace, purpose="the judgment"))
     uncertainty = _ask("State the remaining uncertainty or explicitly say that none remains.", input_fn, output_fn, trace)
     counter_state = _choice("What counterevidence did you find?",
@@ -461,18 +516,22 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
         detail = _authority_detail(preparation, spec, references, input_fn, output_fn, trace)
     finding = {"criterion_id": spec["criterion_id"], "assessment": state,
         "reasoning": reasoning,
-        "inspected_evidence": sorted({reference["evidence_id"] for reference in [*references, *counter_refs]}),
+        "inspected_evidence": sorted({
+            *([] if reused_context is None else reused_context["inspected_evidence"]),
+            *(reference["evidence_id"] for reference in [*references, *counter_refs]),
+        }),
         "evidence": references, "uncertainty": uncertainty,
         "criterion_observations": observations,
         "counterevidence": {"state": counter_state, "reasoning": counter_reasoning,
             "evidence": counter_refs}, "applicability_reason": applicability,
         "machine_relationships": [], "authority": detail, "human_answer_trace": trace}
     draft["assessments"][position] = finding
-    draft["human_controls"][spec["criterion_id"]] = {"action": (
-        "not_applicable" if forced_not_applicable else "direct"),
-        "reference_criterion_id": None, "answer_trace": trace}
+    control_action = (reuse_action or ("not_applicable" if forced_not_applicable else "direct"))
+    draft["human_controls"][spec["criterion_id"]] = _human_control(
+        control_action, reuse_prior_id,
+        "observation_evidence_context" if reuse_action else None, trace)
     inspected = set(draft["observation_scope"]["inspected_evidence"])
-    inspected.update(reference["evidence_id"] for reference in [*references, *counter_refs])
+    inspected.update(finding["inspected_evidence"])
     draft["observation_scope"]["inspected_evidence"] = sorted(inspected)
     for run_id, other_state in _resolution_runs(resolve_review_roots, spec["criterion_id"]):
         if _yes_no(f"Does this judgment explicitly resolve recorded review {run_id} ({other_state}) for this criterion?",
@@ -483,6 +542,8 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
     data = _store_draft(root, draft_path, draft)
     return {"state": "draft_updated", "criterion_number": position + 1,
         "criterion_id": spec["criterion_id"], "assessment": state,
+        **({"control": reuse_action, "reference_criterion_id": reuse_prior_id,
+            "reuse_scope": "observation_evidence_context"} if reuse_action else {}),
         "draft_sha256": ops.digest(data), "review_run_id": preparation["reviewer"]["run_id"],
         "candidate_head": preparation["binding"]["candidate_head"],
         "evidence_set_sha256": preparation["binding"]["evidence_set"]["sha256"],

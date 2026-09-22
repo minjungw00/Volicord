@@ -44,6 +44,7 @@ def main() -> int:
         "long_lived_project_self_test.LongLivedProjectTests.test_deterministic_fixture_is_not_naturalistic_qualification_evidence",
         "review_operations_self_test.WorkflowTests.test_conversational_human_judgment_generates_reviewable_draft",
         "review_operations_self_test.WorkflowTests.test_human_controls_preserve_partial_reference_and_insufficient_semantics",
+        "review_operations_self_test.WorkflowTests.test_same_as_english_requires_the_identical_criterion_and_rebinds_locale_evidence",
         "qualitative_review_self_test.ContractTests.test_viewer_usability_dimensions_and_machine_timing_remain_independent",
         "qualification_self_test.FileBoundaryTests.test_real_evidence_reviews_result_revalidation_and_mismatch",
     ]
@@ -51,7 +52,7 @@ def main() -> int:
         ("dogfood-interfaces",
          ["mixed_validation_semantics", "recovered_and_confirmed_failure_attribution",
           "long_lived_project_fixture_support_only", "live_evidence_unresolved_boundaries",
-          "conversational_human_review", "human_control_states", "updated_ux_rubric",
+          "conversational_human_review", "human_control_states", "exact_semantic_locale_reuse", "updated_ux_rubric",
           "durable_result_lineage"],
          [sys.executable, "-B", "-m", "unittest", "-v", *python_cases], HERE),
         ("project-work-read-consumers",
