@@ -1,6 +1,7 @@
 {
   "kind": "dogfood_long_lived_project_fixture",
   "schema_version": 1,
+  "evidence_class": "deterministic_support_only",
   "project": {
     "identity": "one-stable-project",
     "purpose": "Help maintainers understand and resume the project"

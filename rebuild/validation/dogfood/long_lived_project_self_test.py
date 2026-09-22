@@ -52,6 +52,10 @@ class LongLivedProjectTests(unittest.TestCase):
             ("volicord-viewer", "project_understanding_renders_three_stable_work_items_as_separate_hierarchy"),
         })
 
+    def test_deterministic_fixture_is_not_naturalistic_qualification_evidence(self):
+        self.assertEqual(self.value["evidence_class"], "deterministic_support_only")
+        self.assertNotIn("long_lived_project_observation", self.value)
+
 
 def check_long_lived_project_regressions():
     result = unittest.TextTestRunner(verbosity=1).run(
