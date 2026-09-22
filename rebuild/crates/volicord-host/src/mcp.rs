@@ -44,9 +44,10 @@ use volicord_operations::{
     WorkAuthorityBasisKind, WorkflowDirective, WorkflowDisposition, WorkflowStage,
 };
 use volicord_projections::{
-    CandidateDependencyState, DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity,
-    NarrativePlan, NarrativeRealization, NarrativeRealizationState, OutputFormat,
-    RealizedNarrativeClaim, RealizedNarrativeSection,
+    build_project_understanding, CandidateDependencyState, DocumentKind, DocumentRequest,
+    FixedLocale, GeneratorIdentity, NarrativePlan, NarrativeRealization, NarrativeRealizationState,
+    OutputFormat, ProjectUnderstanding, RealizedNarrativeClaim, RealizedNarrativeSection,
+    UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingWork,
 };
 
 pub const HOST_TOOL_NAMES: [&str; 21] = [
@@ -376,15 +377,12 @@ impl HostAdapter {
             .operations
             .project_projection(project(args)?)
             .map_err(operation_error)?;
-        Ok(json!({
-            "health":format!("{:?}",projection.health).to_lowercase(),
-            "candidate_dependency":candidate_dependency_key(projection.candidate_dependency),
-            "overview":{"name":projection.overview.project_name,"goals":projection.overview.current_goals,"active_decisions":projection.overview.active_decision_count,"open_questions":projection.overview.open_question_count},
-            "repository_map":{"entity_count":projection.repository_map.entities.len(),"relation_count":projection.repository_map.relations.len(),"entities":projection.repository_map.entities.into_iter().take(64).map(|value| json!({"identity":value.identity,"name":value.display_name,"kind":format!("{:?}",value.kind),"language":format!("{:?}",value.language),"source_id":value.source_id.to_string(),"freshness":format!("{:?}",value.freshness.state)})).collect::<Vec<_>>(),"gaps":projection.repository_map.gaps.into_iter().map(|value| json!({"state":format!("{:?}",value.state).to_lowercase(),"capability":format!("{:?}",value.capability).to_lowercase(),"area":value.area,"reason":value.reason})).collect::<Vec<_>>()},
-            "decision_context_code":projection.decision_context_code.into_iter().map(|value| json!({"decision_id":value.decision_id.to_string(),"revision":value.decision_revision,"paths":value.declared_paths,"code_entities":value.related_code_entities,"uncertainty":value.missing_or_uncertain_links})).collect::<Vec<_>>(),
-            "issues":projection.issues.into_iter().map(|value| json!({"kind":format!("{:?}",value.kind).to_lowercase(),"scope":value.affected_scope,"reason":value.reason})).collect::<Vec<_>>(),
-            "read_only":true
-        }))
+        let candidate_dependency = projection.candidate_dependency;
+        let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+        Ok(project_understanding_json(
+            &understanding,
+            candidate_dependency,
+        ))
     }
 
     fn repository_analyze(&self, args: &Value) -> Result<Value, HostError> {
@@ -1787,6 +1785,259 @@ impl HostAdapter {
     }
 }
 
+fn project_understanding_json(
+    understanding: &ProjectUnderstanding,
+    candidate_dependency: CandidateDependencyState,
+) -> Value {
+    let work_json = |work: &UnderstandingWork| {
+        json!({
+            "work_item_id":work.work_item_id.to_string(),
+            "title":work.title,
+            "state":understanding_work_state_key(work.state),
+            "checkpoint_ids":work.checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "decision_ids":work.decision_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "meaningful_changes":work.meaningful_changes,
+            "changed_paths":work.changed_paths,
+            "changed_components":work.changed_components,
+            "verification":work.verification.iter().map(|fact| json!({
+                "state":format!("{:?}",fact.state).to_lowercase(),
+                "source_id":fact.source_id.map(|id| id.to_string()),
+                "outcome":fact.outcome,
+            })).collect::<Vec<_>>(),
+            "next_step":work.next_step,
+            "open_question_ids":work.open_question_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "source_basis":work.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        })
+    };
+    let context_json = |item: &volicord_projections::BriefContextItem| {
+        json!({
+            "context_item_id":item.identity.to_string(),
+            "role":format!("{:?}",item.role).to_lowercase(),
+            "statement":item.statement,
+            "source_basis":item.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        })
+    };
+    json!({
+        "project_id":understanding.project_id.to_string(),
+        "project_name":understanding.project_name,
+        "canonical_revision":understanding.canonical_revision,
+        "health":format!("{:?}",understanding.health).to_lowercase(),
+        "candidate_dependency":candidate_dependency_key(candidate_dependency),
+        "project_purpose":understanding.project_purpose.iter().map(context_json).collect::<Vec<_>>(),
+        "current_work":understanding.current_work.iter().map(work_json).collect::<Vec<_>>(),
+        "completed_work":understanding.completed_work.iter().map(work_json).collect::<Vec<_>>(),
+        "remaining_work":understanding.remaining_work.iter().map(work_json).collect::<Vec<_>>(),
+        "work_history":understanding.work_history.iter().map(work_json).collect::<Vec<_>>(),
+        "unresolved_work_grouping":understanding.unresolved_work_grouping.iter().map(|item| json!({
+            "record_kind":item.record_kind,
+            "identity":item.identity,
+            "reason":item.reason,
+        })).collect::<Vec<_>>(),
+        "next_steps":understanding.next_steps.iter().map(|step| json!({
+            "identity":step.identity,
+            "text":step.text,
+            "source_basis":step.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "decision_basis":step.decision_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "uncertainty":step.uncertainty,
+        })).collect::<Vec<_>>(),
+        "active_decisions":understanding.active_decisions.iter().map(|item| json!({
+            "decision_id":item.decision.decision_id.to_string(),
+            "revision":item.decision.revision,
+            "state":format!("{:?}",item.decision.state).to_lowercase(),
+            "work_scope":decision_work_scope_host_json(item.decision.work_scope),
+            "choice":format!("{:?}",item.decision.choice),
+            "chosen_alternative_key":item.decision.chosen_alternative_key,
+            "recommended_alternative_key":item.decision.recommended_alternative_key,
+            "displayed_alternatives":item.decision.displayed_alternatives.iter().map(|alternative| json!({
+                "alternative_key":alternative.key,
+                "label":alternative.label,
+                "expected_consequence":alternative.consequence,
+            })).collect::<Vec<_>>(),
+            "user_rationale":item.decision.user_rationale,
+            "recommendation_rationale":item.decision.recommendation_rationale,
+            "assumptions":item.decision.assumptions,
+            "revisit_triggers":item.decision.revisit_triggers,
+            "source_basis":item.decision.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "question_uncertainty":item.decision.question_uncertainty,
+            "known_limits":item.decision.known_limits,
+            "review_basis":item.decision.review_basis,
+            "declared_paths":item.declared_paths,
+            "declared_components":item.declared_components,
+            "declared_work_contexts":item.declared_work_contexts,
+            "affected_code_entities":item.affected_code_entities,
+            "link_basis":item.link_basis,
+            "known_link_gaps":item.known_link_gaps,
+        })).collect::<Vec<_>>(),
+        "open_questions":understanding.open_questions.iter().map(|question| json!({
+            "question_id":question.question_id.to_string(),
+            "revision":question.revision,
+            "prompt":question.prompt,
+            "on_current_frontier":question.on_current_frontier,
+            "blocked_basis":question.blocked_basis,
+            "what_the_answer_unlocks":question.what_the_answer_unlocks,
+            "source_basis":question.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "risks_assumptions_and_limits":understanding.risks_assumptions_and_limits.iter().map(context_json).collect::<Vec<_>>(),
+        "known_limits":understanding.known_limits,
+        "architecture":{
+            "components":understanding.architecture.components.iter().map(|entity| json!({
+                "identity":entity.identity,
+                "display_name":entity.display_name,
+                "locator":entity.locator,
+                "kind":format!("{:?}",entity.kind),
+                "language":format!("{:?}",entity.language),
+                "source_id":entity.source_id.to_string(),
+                "analysis_snapshot_id":entity.analysis_snapshot.to_string(),
+                "repository_snapshot_id":entity.repository_snapshot.to_string(),
+                "freshness":format!("{:?}",entity.freshness.state).to_lowercase(),
+                "freshness_reason":entity.freshness.reason,
+                "uncertainty":{"level":format!("{:?}",entity.uncertainty.level).to_lowercase(),"reasons":entity.uncertainty.reasons},
+            })).collect::<Vec<_>>(),
+            "relationships":understanding.architecture.relationships.iter().map(|relation| json!({
+                "identity":relation.identity,
+                "class":format!("{:?}",relation.class).to_lowercase(),
+                "kind":relation.kind,
+                "source_entity":relation.source_entity,
+                "target_entity":relation.target_entity,
+                "source_id":relation.source_id.to_string(),
+                "analysis_snapshot_id":relation.analysis_snapshot.to_string(),
+                "repository_snapshot_id":relation.repository_snapshot.to_string(),
+                "freshness":format!("{:?}",relation.freshness.state).to_lowercase(),
+                "uncertainty":{"level":format!("{:?}",relation.uncertainty.level).to_lowercase(),"reasons":relation.uncertainty.reasons},
+                "diagnostics":relation.diagnostics,
+            })).collect::<Vec<_>>(),
+            "selection_basis":understanding.architecture.selection_basis.iter().map(|selection| json!({
+                "entity_identity":selection.entity_identity,
+                "basis":selection.basis.iter().map(architecture_selection_basis_json).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
+            "gaps":understanding.architecture.gaps.iter().map(|gap| json!({
+                "analysis_snapshot_id":gap.analysis_snapshot.to_string(),
+                "repository_snapshot_id":gap.repository_snapshot.to_string(),
+                "capability":format!("{:?}",gap.capability).to_lowercase(),
+                "language":gap.language.as_ref().map(|language| format!("{language:?}")),
+                "state":format!("{:?}",gap.state).to_lowercase(),
+                "area":gap.area,
+                "reason":gap.reason,
+                "affected_areas":gap.affected_areas,
+                "usable_remainder":gap.usable_remainder,
+            })).collect::<Vec<_>>(),
+        },
+        "deterministic_explanations":understanding.deterministic_explanations.iter().map(|explanation| json!({
+            "identity":explanation.identity,
+            "kind":format!("{:?}",explanation.kind).to_lowercase(),
+            "english":explanation.english,
+            "korean":explanation.korean,
+            "statement_role":"deterministic_derived",
+            "evidence_classes":explanation.evidence_classes.iter().map(|class| format!("{class:?}").to_lowercase()).collect::<Vec<_>>(),
+            "entity_basis":explanation.entity_basis,
+            "relation_basis":explanation.relation_basis,
+            "decision_basis":explanation.decision_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "source_basis":explanation.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "analysis_snapshot_basis":explanation.analysis_snapshot_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "repository_snapshot_basis":explanation.repository_snapshot_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "known_gaps":explanation.known_gaps,
+        })).collect::<Vec<_>>(),
+        "generated_interpretations":understanding.generated_interpretations.iter().map(|interpretation| json!({
+            "identity":interpretation.identity,
+            "text":interpretation.text,
+            "statement_role":"generated_interpretation",
+            "source_basis":interpretation.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "analysis_snapshot_id":interpretation.analysis_snapshot.to_string(),
+            "repository_snapshot_id":interpretation.repository_snapshot.to_string(),
+            "known_gaps":interpretation.known_gaps,
+            "uncertainty":{"level":format!("{:?}",interpretation.uncertainty.level).to_lowercase(),"reasons":interpretation.uncertainty.reasons},
+        })).collect::<Vec<_>>(),
+        "evidence":{
+            "sources":understanding.evidence.sources.iter().map(|basis| json!({
+                "source_id":basis.source.id.to_string(),
+                "availability":format!("{:?}",basis.availability).to_lowercase(),
+                "freshness":format!("{:?}",basis.freshness).to_lowercase(),
+                "snapshot_basis":basis.snapshot_basis,
+            })).collect::<Vec<_>>(),
+            "snapshots":understanding.evidence.snapshots.iter().map(|snapshot| json!({
+                "analysis_snapshot_id":snapshot.analysis_snapshot.to_string(),
+                "repository_snapshot_id":snapshot.repository_snapshot.to_string(),
+                "freshness":snapshot.freshness,
+                "capabilities":snapshot.capabilities,
+            })).collect::<Vec<_>>(),
+            "unresolved_relationships":understanding.evidence.unresolved_relationships.iter().map(|relation| json!({
+                "identity":relation.identity,
+                "class":format!("{:?}",relation.class).to_lowercase(),
+                "kind":relation.kind,
+                "source_entity":relation.source_entity,
+                "unresolved_target":relation.unresolved_target,
+                "source_id":relation.source_id.to_string(),
+                "analysis_snapshot_id":relation.analysis_snapshot.to_string(),
+                "repository_snapshot_id":relation.repository_snapshot.to_string(),
+                "diagnostics":relation.diagnostics,
+            })).collect::<Vec<_>>(),
+            "source_status":{
+                "current":understanding.evidence.source_status.current,
+                "stale":understanding.evidence.source_status.stale,
+                "unavailable":understanding.evidence.source_status.unavailable,
+                "unknown":understanding.evidence.source_status.unknown,
+            },
+            "issues":understanding.evidence.issues.iter().map(|issue| json!({
+                "kind":format!("{:?}",issue.kind).to_lowercase(),
+                "identity":issue.identity,
+                "scope":issue.affected_scope,
+                "reason":issue.reason,
+                "omitted_count":issue.omitted_count,
+            })).collect::<Vec<_>>(),
+        },
+        "omissions":understanding.omissions.iter().map(|omission| json!({
+            "section":omission.section,
+            "omitted_count":omission.omitted_count,
+        })).collect::<Vec<_>>(),
+        "read_only":true,
+    })
+}
+
+fn decision_work_scope_host_json(scope: DecisionWorkScope) -> Value {
+    match scope {
+        DecisionWorkScope::Unresolved => json!({"kind":"unresolved"}),
+        DecisionWorkScope::ProjectWide => json!({"kind":"project_wide"}),
+        DecisionWorkScope::WorkItem(work_item_id) => {
+            json!({"kind":"work_item","work_item_id":work_item_id.to_string()})
+        }
+    }
+}
+
+fn architecture_selection_basis_json(basis: &UnderstandingArchitectureSelectionBasis) -> Value {
+    match basis {
+        UnderstandingArchitectureSelectionBasis::ChangedPath {
+            checkpoint_id,
+            path,
+        } => json!({"kind":"changed_path","checkpoint_id":checkpoint_id.to_string(),"path":path}),
+        UnderstandingArchitectureSelectionBasis::DecisionCodeLink { decision_id } => {
+            json!({"kind":"decision_code_link","decision_id":decision_id.to_string()})
+        }
+        UnderstandingArchitectureSelectionBasis::GoalContextLink { context_item_id } => {
+            json!({"kind":"goal_context_link","context_item_id":context_item_id.to_string()})
+        }
+        UnderstandingArchitectureSelectionBasis::CheckpointLink { checkpoint_id } => {
+            json!({"kind":"checkpoint_link","checkpoint_id":checkpoint_id.to_string()})
+        }
+        UnderstandingArchitectureSelectionBasis::GroundedOneHop {
+            relation_id,
+            seed_entity,
+        } => json!({"kind":"grounded_one_hop","relation_id":relation_id,"seed_entity":seed_entity}),
+    }
+}
+
+const fn understanding_work_state_key(
+    state: volicord_projections::UnderstandingWorkState,
+) -> &'static str {
+    match state {
+        volicord_projections::UnderstandingWorkState::Open => "open",
+        volicord_projections::UnderstandingWorkState::InProgress => "in_progress",
+        volicord_projections::UnderstandingWorkState::Paused => "paused",
+        volicord_projections::UnderstandingWorkState::Completed => "completed",
+        volicord_projections::UnderstandingWorkState::Abandoned => "abandoned",
+        volicord_projections::UnderstandingWorkState::Superseded => "superseded",
+    }
+}
+
 const fn candidate_dependency_key(state: CandidateDependencyState) -> &'static str {
     match state {
         CandidateDependencyState::Available => "available",
@@ -1970,7 +2221,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_understanding" => (
-            "Read the Project overview, repository map, Decision-context-code links, gaps, and degraded states.",
+            "Read the bounded human-oriented Project Understanding: purpose; current, completed, and remaining Work with stable identities; Decisions and rationale; next steps; current-work code, component, and flow basis; coverage, freshness, gaps, uncertainty, and explicit omissions. This richer explanation surface complements the compact resume-oriented Recall and never mutates canonical or Candidate state.",
             project_schema(),
             ToolBehavior::ReadOnlyClosed,
         ),

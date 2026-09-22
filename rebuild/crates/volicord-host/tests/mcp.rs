@@ -1418,12 +1418,31 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         json!({"project_id":project}),
     ))
     .clone();
-    assert_eq!(understanding["overview"]["active_decisions"], 1);
-    assert!(understanding["decision_context_code"]
+    assert_eq!(understanding["project_id"], project);
+    assert!(understanding["active_decisions"]
         .as_array()
-        .expect("Decision projection")
+        .expect("Project Understanding Decisions")
         .iter()
-        .any(|item| item["decision_id"] == decision_id));
+        .any(|item| {
+            item["decision_id"] == decision_id
+                && item["recommendation_rationale"].is_string()
+                && item["source_basis"].is_array()
+        }));
+    let completed_work = understanding["completed_work"]
+        .as_array()
+        .expect("completed Work Items");
+    assert_eq!(completed_work.len(), 1, "{understanding}");
+    assert_eq!(completed_work[0]["work_item_id"], goal_context_id);
+    assert_eq!(completed_work[0]["state"], "completed");
+    assert_eq!(completed_work[0]["decision_ids"], json!([decision_id]));
+    assert!(completed_work[0]["changed_paths"]
+        .as_array()
+        .is_some_and(|paths| paths.iter().any(|path| path == "src/decision.rs")));
+    assert!(understanding["next_steps"].is_array());
+    assert!(understanding["architecture"]["components"].is_array());
+    assert!(understanding["evidence"]["snapshots"].is_array());
+    assert!(understanding["omissions"].is_array());
+    assert_eq!(understanding["read_only"], true);
 }
 
 #[test]
