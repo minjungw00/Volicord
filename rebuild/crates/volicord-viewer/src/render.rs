@@ -80,6 +80,7 @@ pub struct ViewerRenderProfile {
     pub project_projection_passes: usize,
     pub understanding: Duration,
     pub health_read: Duration,
+    pub health_analysis_snapshot_decodes: usize,
     pub privacy_read: Duration,
     pub document_preview: Duration,
     pub guarded_read: Duration,
@@ -216,7 +217,7 @@ impl ViewerAdapter {
         );
         let understanding_duration = understanding_started.elapsed();
         let health_started = Instant::now();
-        let health = self.operations.health(Some(request.project_id));
+        let (health, health_profile) = self.operations.health_profiled(Some(request.project_id));
         let health_read = health_started.elapsed();
         let privacy_started = Instant::now();
         let privacy = self.operations.privacy_status(request.project_id).ok();
@@ -381,6 +382,7 @@ impl ViewerAdapter {
                 project_projection_passes: 1,
                 understanding: understanding_duration,
                 health_read,
+                health_analysis_snapshot_decodes: health_profile.analysis_snapshot_decodes,
                 privacy_read,
                 document_preview,
                 guarded_read,

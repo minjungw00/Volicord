@@ -1,6 +1,6 @@
 use crate::analysis_io::{
-    analysis_cache_path, digest_file, encode_analysis, read_analysis, read_analysis_durable,
-    write_analysis_cache, AnalysisHeader,
+    analysis_cache_path, blob_dir, digest_file, encode_analysis, read_analysis,
+    read_analysis_durable, read_manifest, write_analysis_cache, AnalysisHeader,
 };
 use crate::forgetting::{ForgettingOperationRecord, ForgettingState, ForgettingStore};
 use crate::{
@@ -89,6 +89,26 @@ use volicord_repository_intelligence::{
 pub struct LocalOperations {
     layout: RuntimeLayout,
     analysis_headers: RefCell<BTreeMap<PathBuf, (u64, SystemTime, AnalysisHeader)>>,
+    analysis_validations: RefCell<BTreeMap<PathBuf, AnalysisValidationReceipt>>,
+}
+
+#[derive(Clone)]
+struct AnalysisValidationReceipt {
+    identity: AnalysisSnapshotId,
+    files: Vec<AnalysisFileStamp>,
+}
+
+#[derive(Clone)]
+struct AnalysisFileStamp {
+    path: PathBuf,
+    length: u64,
+    modified: SystemTime,
+}
+
+struct AnalysisInspection {
+    count: usize,
+    corrupt: Vec<(PathBuf, String)>,
+    decodes: usize,
 }
 
 struct PreparedAnalysisBasis {
@@ -107,9 +127,18 @@ struct PreparedAnalysisBasis {
 pub struct ProjectProjectionProfile {
     pub canonical_read: Duration,
     pub repository_analysis_read: Duration,
+    pub analysis_snapshot_decodes: usize,
     pub candidate_read: Duration,
     pub projection_build: Duration,
     pub total: Duration,
+}
+
+/// Exact expensive Analysis Snapshot validations performed by one health read.
+///
+/// This is diagnostic request evidence rather than a latency contract.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct HealthCheckProfile {
+    pub analysis_snapshot_decodes: usize,
 }
 
 impl LocalOperations {
@@ -117,6 +146,7 @@ impl LocalOperations {
         Self {
             layout,
             analysis_headers: RefCell::new(BTreeMap::new()),
+            analysis_validations: RefCell::new(BTreeMap::new()),
         }
     }
     pub fn layout(&self) -> &RuntimeLayout {
@@ -280,7 +310,15 @@ impl LocalOperations {
     }
 
     pub fn health(&self, project_id: Option<ProjectId>) -> HealthReport {
+        self.health_profiled(project_id).0
+    }
+
+    pub fn health_profiled(
+        &self,
+        project_id: Option<ProjectId>,
+    ) -> (HealthReport, HealthCheckProfile) {
         let mut issues = Vec::new();
+        let mut profile = HealthCheckProfile::default();
         let _health_lock = match self.layout.acquire_health_lock() {
             Ok(lock) => lock,
             Err(error) => {
@@ -289,17 +327,20 @@ impl LocalOperations {
                     scope: "runtime_access".into(),
                     detail: error.to_string(),
                 });
-                return HealthReport {
-                    state: HealthState::Failed,
-                    runtime_root: self.layout.root().to_path_buf(),
-                    canonical_available: false,
-                    candidate_available: false,
-                    privacy_available: false,
-                    guarded_available: false,
-                    forgetting_available: false,
-                    repository_available: None,
-                    issues,
-                };
+                return (
+                    HealthReport {
+                        state: HealthState::Failed,
+                        runtime_root: self.layout.root().to_path_buf(),
+                        canonical_available: false,
+                        candidate_available: false,
+                        privacy_available: false,
+                        guarded_available: false,
+                        forgetting_available: false,
+                        repository_available: None,
+                        issues,
+                    },
+                    profile,
+                );
             }
         };
         let canonical = open_health_store(&self.layout.canonical_store(), |path| Store::open(path));
@@ -402,12 +443,16 @@ impl LocalOperations {
             Err(_) => None,
         });
         if let Some(project_id) = project_id {
-            if let Err(error) = self.check_analyses(project_id) {
-                issues.push(HealthIssue {
-                    kind: HealthIssueKind::Corrupt,
-                    scope: format!("derived_analysis:{project_id}"),
-                    detail: error.to_string(),
-                });
+            match self.check_analyses_profiled(project_id) {
+                Ok((_, decodes)) => profile.analysis_snapshot_decodes = decodes,
+                Err((error, decodes)) => {
+                    profile.analysis_snapshot_decodes = decodes;
+                    issues.push(HealthIssue {
+                        kind: HealthIssueKind::Corrupt,
+                        scope: format!("derived_analysis:{project_id}"),
+                        detail: error.to_string(),
+                    });
+                }
             }
         }
         let state = if !canonical_available {
@@ -417,17 +462,20 @@ impl LocalOperations {
         } else {
             HealthState::Degraded
         };
-        HealthReport {
-            state,
-            runtime_root: self.layout.root().to_path_buf(),
-            canonical_available,
-            candidate_available,
-            privacy_available,
-            guarded_available,
-            forgetting_available,
-            repository_available,
-            issues,
-        }
+        (
+            HealthReport {
+                state,
+                runtime_root: self.layout.root().to_path_buf(),
+                canonical_available,
+                candidate_available,
+                privacy_available,
+                guarded_available,
+                forgetting_available,
+                repository_available,
+                issues,
+            },
+            profile,
+        )
     }
 
     pub fn analyze(
@@ -736,7 +784,9 @@ impl LocalOperations {
                 "unsupported repair scope {scope:?}; supported scope: derived-analysis"
             )));
         }
-        let (analysis_count, corrupt_manifests) = self.inspect_analyses(project_id)?;
+        let inspection = self.inspect_analyses(project_id)?;
+        let analysis_count = inspection.count;
+        let corrupt_manifests = inspection.corrupt;
         let diagnosis = match corrupt_manifests.first() {
             Some((_, error)) => format!("derived analysis is corrupt: {error}"),
             None if analysis_count == 0 => "derived analysis is missing".to_owned(),
@@ -2384,6 +2434,7 @@ impl LocalOperations {
         let canonical_read = canonical_started.elapsed();
         let analysis_started = Instant::now();
         let (analyses, analysis_issues) = self.load_projection_analyses(project_id, &canonical);
+        let analysis_snapshot_decodes = analyses.len();
         let repository_analysis_read = analysis_started.elapsed();
         let analysis_refs = analyses.iter().collect::<Vec<_>>();
         let mut candidate_basis = None;
@@ -2457,6 +2508,7 @@ impl LocalOperations {
             ProjectProjectionProfile {
                 canonical_read,
                 repository_analysis_read,
+                analysis_snapshot_decodes,
                 candidate_read,
                 projection_build,
                 total: total_started.elapsed(),
@@ -3698,24 +3750,37 @@ impl LocalOperations {
             .collect()
     }
 
-    fn check_analyses(&self, project_id: ProjectId) -> Result<usize, Error> {
-        let (count, corrupt) = self.inspect_analyses(project_id)?;
-        if let Some((_, error)) = corrupt.into_iter().next() {
-            return Err(Error::new(error));
-        }
-        Ok(count)
-    }
-
-    fn inspect_analyses(
+    fn check_analyses_profiled(
         &self,
         project_id: ProjectId,
-    ) -> Result<(usize, Vec<(PathBuf, String)>), Error> {
+    ) -> Result<(usize, usize), (Error, usize)> {
+        let inspection = self
+            .inspect_analyses(project_id)
+            .map_err(|error| (error, 0))?;
+        if let Some((_, error)) = inspection.corrupt.into_iter().next() {
+            return Err((Error::new(error), inspection.decodes));
+        }
+        Ok((inspection.count, inspection.decodes))
+    }
+
+    fn inspect_analyses(&self, project_id: ProjectId) -> Result<AnalysisInspection, Error> {
         let paths = self.analysis_paths(project_id)?;
         let mut corrupt = Vec::new();
+        let mut decodes = 0;
         for path in &paths {
+            if self
+                .analysis_validations
+                .borrow()
+                .get(path)
+                .is_some_and(analysis_validation_is_current)
+            {
+                continue;
+            }
+            decodes += 1;
             let result = AnalysisHeader::read(path, project_id).and_then(|header| {
                 let snapshot = read_analysis_durable(path)?;
                 if header.matches(&snapshot) {
+                    self.remember_analysis_validation(path, snapshot.identity);
                     Ok(())
                 } else {
                     Err(Error::new("Analysis Snapshot changed during validation"))
@@ -3725,7 +3790,11 @@ impl LocalOperations {
                 corrupt.push((path.clone(), error.to_string()));
             }
         }
-        Ok((paths.len(), corrupt))
+        Ok(AnalysisInspection {
+            count: paths.len(),
+            corrupt,
+            decodes,
+        })
     }
 
     fn select_analysis(
@@ -3775,7 +3844,19 @@ impl LocalOperations {
         if !header.matches(&value) {
             return Err(Error::new("Analysis Snapshot changed during selection"));
         }
+        self.remember_analysis_validation(&path, value.identity);
         Ok(vec![value])
+    }
+
+    fn remember_analysis_validation(&self, path: &Path, identity: AnalysisSnapshotId) {
+        let Ok(receipt) = analysis_validation_receipt(path, identity) else {
+            return;
+        };
+        let mut validations = self.analysis_validations.borrow_mut();
+        if validations.len() >= 64 {
+            validations.clear();
+        }
+        validations.insert(path.to_path_buf(), receipt);
     }
 
     fn load_recall_metadata(
@@ -3823,6 +3904,67 @@ impl LocalOperations {
         }
         Ok(value)
     }
+}
+
+fn analysis_validation_receipt(
+    path: &Path,
+    identity: AnalysisSnapshotId,
+) -> Result<AnalysisValidationReceipt, Error> {
+    let manifest = read_manifest(path)?;
+    if manifest.identity != identity {
+        return Err(Error::new(
+            "Analysis Snapshot identity changed before validation could be reused",
+        ));
+    }
+    let blobs = blob_dir(path)?;
+    let mut paths = vec![path.to_path_buf()];
+    paths.extend(
+        manifest
+            .shape_blobs
+            .iter()
+            .map(|hash| blobs.join(format!("{hash}.shape"))),
+    );
+    paths.push(blobs.join(format!("{}.values", manifest.values_blob)));
+    if let Some(base) = manifest.values_base_blob {
+        paths.push(blobs.join(format!("{base}.values")));
+    }
+    let files = paths
+        .into_iter()
+        .map(|path| {
+            let metadata = fs::metadata(&path).map_err(|error| {
+                Error::with_source("cannot inspect validated Analysis Snapshot storage", error)
+            })?;
+            let modified = metadata.modified().map_err(|error| {
+                Error::with_source(
+                    "cannot inspect validated Analysis Snapshot modification time",
+                    error,
+                )
+            })?;
+            Ok(AnalysisFileStamp {
+                path,
+                length: metadata.len(),
+                modified,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    Ok(AnalysisValidationReceipt { identity, files })
+}
+
+fn analysis_validation_is_current(receipt: &AnalysisValidationReceipt) -> bool {
+    !receipt.files.is_empty()
+        && receipt.files.iter().all(|stamp| {
+            fs::metadata(&stamp.path).is_ok_and(|metadata| {
+                metadata.len() == stamp.length
+                    && metadata
+                        .modified()
+                        .is_ok_and(|modified| modified == stamp.modified)
+            })
+        })
+        && receipt.files[0]
+            .path
+            .file_stem()
+            .and_then(OsStr::to_str)
+            .is_some_and(|name| name == receipt.identity.to_string())
 }
 
 fn candidate_dependency_failure_from_inquiry(
@@ -4878,6 +5020,47 @@ fn workflow_requirement(
 #[cfg(test)]
 mod performance_tests {
     use super::*;
+
+    #[test]
+    fn projection_validation_is_reused_by_health_until_snapshot_bytes_change(
+    ) -> Result<(), Box<dyn StdError>> {
+        let home = tempfile::tempdir()?;
+        let root = home.path().join("repository");
+        fs::create_dir_all(&root)?;
+        fs::write(root.join("main.py"), "def main():\n    return 0\n")?;
+        let operations = LocalOperations::new(RuntimeLayout::new(home.path().join("runtime"))?);
+        let project = operations
+            .initialize_project("Viewer health reuse", Some(&root))?
+            .project
+            .id;
+        operations.analyze(project, Vec::new())?;
+
+        let (_, projection_profile) = operations.project_projection_profiled(project)?;
+        assert_eq!(projection_profile.analysis_snapshot_decodes, 1);
+        let (healthy, health_profile) = operations.health_profiled(Some(project));
+        assert_eq!(healthy.state, HealthState::Healthy);
+        assert_eq!(health_profile.analysis_snapshot_decodes, 0);
+
+        let analysis_path = operations
+            .analysis_paths(project)?
+            .into_iter()
+            .next()
+            .ok_or("analysis path")?;
+        let manifest = read_manifest(&analysis_path)?;
+        let first_shape = manifest.shape_blobs.first().ok_or("shape blob")?;
+        fs::write(
+            blob_dir(&analysis_path)?.join(format!("{first_shape}.shape")),
+            b"corrupt",
+        )?;
+        let (degraded, changed_profile) = operations.health_profiled(Some(project));
+        assert_eq!(changed_profile.analysis_snapshot_decodes, 1);
+        assert_eq!(degraded.state, HealthState::Degraded);
+        assert!(degraded
+            .issues
+            .iter()
+            .any(|issue| issue.scope.starts_with("derived_analysis:")));
+        Ok(())
+    }
 
     #[test]
     fn observation_reuse_keeps_new_source_and_invalidates_changed_files(
