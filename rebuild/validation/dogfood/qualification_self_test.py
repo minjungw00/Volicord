@@ -207,6 +207,12 @@ class FileBoundaryTests(unittest.TestCase):
             verified = result_lineage.verify(copied)
         self.assertEqual(verified['qualification_run_id'], value['run_id'])
         self.assertFalse(verified['external_staging_paths_used'])
+        lineage_qualification = json.loads(
+            (copied / 'qualification/qualification.json').read_bytes())
+        lineage_evidence = json.loads((copied / 'source/evidence-set.json').read_bytes())
+        self.assertEqual(
+            lineage_qualification['naturalistic_evidence']['naturalistic_resource'],
+            lineage_evidence['naturalistic_memory_evidence'])
         evaluation_copy = copied / 'evaluation/evaluation.json'
         evaluation_copy.chmod(0o600)
         evaluation_copy.write_bytes(evaluation_copy.read_bytes() + b' ')

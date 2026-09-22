@@ -171,6 +171,10 @@ def verify(root):
         root, index["campaign"]["evidence_set_path"]))
     review.require(operations.digest(evidence_data) == index["campaign"]["evidence_set_sha256"],
         "result lineage evidence-set binding changed")
+    evidence_set = json.loads(evidence_data)
+    review.require(evidence_set.get("kind") == "dogfood_evidence_set"
+        and evidence_set.get("candidate_head") == index["candidate_head"],
+        "result lineage evidence-set identity changed")
     evaluation_path = operations.safe_path(root, index["evaluation"]["path"])
     evaluation = evaluation_runs.load(evaluation_path)
     review.require(index["evaluation"] == {"run_id": evaluation["run_id"],
@@ -199,6 +203,10 @@ def verify(root):
     qualification_policy.validate_result(qualification)
     review.require(qualification["candidate_head"] == index["candidate_head"]
         and qualification["evidence_set"]["sha256"] == index["campaign"]["evidence_set_sha256"]
+        and qualification["naturalistic_evidence"]["naturalistic_resource"]
+            == evidence_set.get("naturalistic_memory_evidence")
+        and evidence_set.get("live_evidence_obligations", {}).get("naturalistic_resource")
+            == evidence_set.get("naturalistic_memory_evidence")
         and qualification["evaluation_run"] == {"run_id": evaluation["run_id"],
             "sha256": operations.digest(operations.bounded_read(evaluation_path))}
         and qualification["qualitative_review_runs"] == sorted(review_refs, key=lambda item: item["run_id"]),
