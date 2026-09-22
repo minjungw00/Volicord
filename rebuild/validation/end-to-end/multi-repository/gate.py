@@ -30,6 +30,7 @@ ARCHITECTURE_CHECKER = REBUILD_ROOT / "scripts/check-architecture-contracts"
 CONTRACT_COVERAGE = REBUILD_ROOT / "validation/shared/contract_coverage.py"
 REALISTIC_QUALIFICATION = REBUILD_ROOT / "validation/repository-intelligence/realistic-qualification/assertions.py"
 DOGFOOD_HARNESS = REBUILD_ROOT / "validation/dogfood/harness.py"
+DOGFOOD_CONTRACT_ASSERTIONS = REBUILD_ROOT / "validation/dogfood/assertions.py"
 DOGFOOD_CAMPAIGN_SELF_TEST = REBUILD_ROOT / "validation/dogfood/campaign_self_test.py"
 DOGFOOD_REMEDIATION_INTEGRATION = REBUILD_ROOT / "validation/dogfood/remediation_integration.py"
 PROVIDER_QUALIFICATION = REBUILD_ROOT / "validation/privacy/background-provider-qualification/harness.py"
@@ -490,6 +491,7 @@ def evaluate_admission(
         ("architecture_contracts_self_test", (str(ARCHITECTURE_CHECKER), "--self-test")),
         ("repository_intelligence_realistic_qualification", (sys.executable, str(REALISTIC_QUALIFICATION))),
         ("dogfood_harness_self_test", (sys.executable, str(DOGFOOD_HARNESS), "self-test")),
+        ("dogfood_contract_assertions", (sys.executable, str(DOGFOOD_CONTRACT_ASSERTIONS))),
         ("dogfood_campaign_self_test", (sys.executable, str(DOGFOOD_CAMPAIGN_SELF_TEST))),
         ("dogfood_remediation_integration", (sys.executable, str(DOGFOOD_REMEDIATION_INTEGRATION))),
         ("provider_qualification_self_test", (sys.executable, str(PROVIDER_QUALIFICATION), "--self-test")),

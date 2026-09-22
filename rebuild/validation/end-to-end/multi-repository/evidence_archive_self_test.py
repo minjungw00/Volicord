@@ -630,6 +630,11 @@ def command_grammar_cases(root: Path, gate: Path) -> list[tuple[str, list[str], 
                 ROOT,
             ),
             (
+                "dogfood_contract_assertions",
+                [str(ROOT / "rebuild/validation/dogfood/assertions.py")],
+                ROOT,
+            ),
+            (
                 "dogfood_campaign_self_test",
                 [str(ROOT / "rebuild/validation/dogfood/campaign_self_test.py")],
                 ROOT,
@@ -1109,6 +1114,7 @@ def rewrite_archive(
 
 
 def main() -> int:
+    assert "rebuild/validation/dogfood/assertions.py" in builder.TRACKED_EVIDENCE_PATHS
     with tempfile.TemporaryDirectory(prefix="volicord-evidence-archive-self-test-") as directory:
         root = Path(directory)
         grammar = grammar_completeness_archives(root)
@@ -1536,6 +1542,7 @@ def main() -> int:
             "shell_python_git_config_payloads",
             "exact_final_command_shape",
             "maintained_architecture_self_test_shape",
+            "dogfood_contract_assertion_inventory",
             "unknown_structural_flag_rejection",
             "unknown_executable_marked_structural_rejection",
             "unknown_volicord_subcommand_rejection",

@@ -107,12 +107,16 @@ implementation and focused checks
 `rebuild/scripts/validate admission`은 exact final을 시작하기 전에 독립 실행할 수 있는
 machine-readable preflight다. 현재 clean worktree와 candidate HEAD, validation runner와
 V11 self-check, architecture contracts, realistic Repository Intelligence, redesigned
-Dogfood campaign/harness와 provider qualification self-check, required fixture
+Dogfood campaign/harness, maintained Phase 8 Dogfood contract assertions와 provider
+qualification self-check, required fixture
 identity/integrity, executable, disposable filesystem/runtime
 home, repository-owned bounded disk estimate, loopback, Codex executable/authentication,
 technical external-network state와 maintained authenticated V11 transmission을 평가한다.
 Blocker가 하나라도 있으면 exact final command count와 official V11 command count는 모두
 0이다.
+Dogfood contract assertion은 campaign self-test나 remediation integration과 별도 support
+check로 실행되며, nonzero exit는 admission을 `validation_failed`로 막는다. 기존 runner가
+그 실행의 stdout, stderr와 numeric exit를 그대로 보존한다.
 
 Authenticated V11은 installed Codex CLI가 사용하는 OpenAI Codex service를 destination으로
 하고, 세 target(`volicord`, `small-python`, `polyglot-medium`)에서 installed

@@ -63,6 +63,7 @@ def admission_overrides() -> dict[str, dict[str, Any]]:
                 "architecture_contracts_self_test",
                 "repository_intelligence_realistic_qualification",
                 "dogfood_harness_self_test",
+                "dogfood_contract_assertions",
                 "dogfood_campaign_self_test",
                 "dogfood_remediation_integration",
                 "provider_qualification_self_test",
@@ -381,11 +382,14 @@ def gate_consumed_result_contract(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def assert_contract_coverage_admission(root: Path) -> None:
+def assert_maintained_contract_admission(root: Path) -> None:
     commands = {
         "contract_coverage": (sys.executable, str(ROOT / "rebuild/validation/shared/contract_coverage.py")),
         "contract_coverage_self_test": (
             sys.executable, str(ROOT / "rebuild/validation/shared/contract_coverage.py"), "--self-test",
+        ),
+        "dogfood_contract_assertions": (
+            sys.executable, str(ROOT / "rebuild/validation/dogfood/assertions.py"),
         ),
     }
     # Exercise the maintained command dispatch and result classification, with
@@ -439,7 +443,7 @@ def assert_contract_coverage_admission(root: Path) -> None:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-gate-self-test-") as directory:
         root = Path(directory)
-        assert_contract_coverage_admission(root / "contract-coverage")
+        assert_maintained_contract_admission(root / "maintained-contracts")
 
         loopback_blocked = admission(
             root / "loopback",
@@ -689,7 +693,7 @@ def main() -> int:
 
     print(json.dumps({
         "status": "passed",
-        "scenarios": 18,
+        "scenarios": 19,
         "real_synthetic_result_contract_parity": "passed",
         "real_final_invocations": 0,
         "official_v11_invocations": 0,

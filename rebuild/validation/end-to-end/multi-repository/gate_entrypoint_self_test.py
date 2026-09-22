@@ -109,6 +109,7 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
         "rebuild/scripts/check-architecture-contracts",
         "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
         "rebuild/validation/dogfood/harness.py",
+        "rebuild/validation/dogfood/assertions.py",
         "rebuild/validation/dogfood/campaign_self_test.py",
         "rebuild/validation/dogfood/remediation_integration.py",
         "rebuild/validation/privacy/background-provider-qualification/harness.py",
@@ -117,6 +118,16 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
             candidate / relative,
             "#!/usr/bin/env python3\nraise SystemExit(0)\n",
         )
+    write_executable(
+        candidate / "rebuild/validation/dogfood/assertions.py",
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        "if os.environ.get('DOGFOOD_ASSERTIONS_FAIL') == '1':\n"
+        "    print('controlled dogfood assertion stdout')\n"
+        "    print('controlled dogfood assertion stderr', file=sys.stderr)\n"
+        "    raise SystemExit(37)\n"
+        "raise SystemExit(0)\n",
+    )
     gate.write_text(
         gate.read_text(encoding="utf-8")
         + "\n\ndef loopback_check():\n"
@@ -262,6 +273,40 @@ def main() -> int:
         authorized_value = structured_stdout(authorized)
         assert authorized_value["status"] == "eligible", authorized_value
 
+        failing_env = env.copy()
+        failing_env["DOGFOOD_ASSERTIONS_FAIL"] = "1"
+        failed_assertion = invoke(
+            candidate,
+            failing_env,
+            "admission",
+            "--external-network",
+            "available",
+            "--authorize-external-transmission",
+            AUTHORIZATION_ASSERTION,
+            "--authorize-provider-source-transmission",
+            PROVIDER_AUTHORIZATION_ASSERTION,
+            "--provider-model",
+            "synthetic-model",
+        )
+        failed_value = structured_stdout(failed_assertion)
+        failed_check = next(check for check in failed_value["checks"]
+            if check["name"] == "dogfood_contract_assertions")
+        assert failed_assertion.returncode == 1
+        assert failed_value["blocking_classification"] == "validation_failed"
+        assert failed_check["status"] == "failed"
+        assert failed_check["details"]["exit_code"] == 37
+        admission_result_line = next(line for line in failed_assertion.stderr.splitlines()
+            if line.startswith("admission result: "))
+        failed_run = Path(admission_result_line.removeprefix("admission result: ")).parent
+        assertion_artifacts = failed_run / "dogfood-contract-assertions"
+        result = json.loads((assertion_artifacts / "result.json").read_text(encoding="utf-8"))
+        assert result["exit_code"] == 37 and result["wrapper_exit_code"] == 37
+        assert (assertion_artifacts / "stdout.log").read_text(encoding="utf-8") \
+            == "controlled dogfood assertion stdout\n"
+        assert (assertion_artifacts / "stderr.log").read_text(encoding="utf-8") \
+            == "controlled dogfood assertion stderr\n"
+        assert not final_marker.exists() and not v11_marker.exists()
+
         probe_env = env.copy()
         probe_env["VALIDATION_DIRTY_PROBE"] = "1"
         probe = invoke(
@@ -294,9 +339,9 @@ def main() -> int:
 
     print(json.dumps({
         "status": "passed",
-        "scenarios": 4,
+        "scenarios": 5,
         "maintained_v11_preflight_invocations": 1,
-        "real_admission_entrypoint_invocations": 4,
+        "real_admission_entrypoint_invocations": 5,
         "real_final_invocations": 0,
         "official_v11_invocations": 0,
     }, indent=2, sort_keys=True))

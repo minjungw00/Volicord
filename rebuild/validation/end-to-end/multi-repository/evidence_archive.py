@@ -31,6 +31,7 @@ TRACKED_EVIDENCE_PATHS = (
     "rebuild/scripts/check-architecture-contracts",
     "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
     "rebuild/validation/dogfood/harness.py",
+    "rebuild/validation/dogfood/assertions.py",
     "rebuild/validation/dogfood/campaign_self_test.py",
     "rebuild/validation/dogfood/remediation_integration.py",
     "rebuild/validation/privacy/background-provider-qualification/harness.py",
