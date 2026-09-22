@@ -11,8 +11,13 @@ identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
 
-`evaluation.json.qualitative_review_contract` and `qualitative_review.rubric`
-maintain one rubric. Reviewer kind is explicitly `agent` or `human` and is fixed
+`evaluation.json.qualitative_review_contract.common_criteria` owns the one criterion
+inventory. `qualitative_review.rubric` loads that inventory without maintaining a
+second copy and adds the criterion prompts, semantic dimensions and structural rules
+that make it executable. The JSON workflow declaration and
+`review_operations.workflow_contract()` are mechanically compared by the maintained
+dogfood assertions, including the read-only `inspect-agent-review` operation. Reviewer
+kind is explicitly `agent` or `human` and is fixed
 with the preparation and recorded run. Changing kind requires a new run. An
 agent's session/model authorship cannot be submitted as human authorship.
 Kind is a declared role, not authenticated proof of a person's identity.

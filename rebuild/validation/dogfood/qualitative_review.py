@@ -18,30 +18,11 @@ STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "n
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
 DOCUMENT_KINDS = {"project-architecture-guide", "decision-report", "implementation-plan", "handoff-resume"}
-# Explicit migration of every former human-review field. Behavior-specific
-# criteria/prompts remain owned by evaluation.json; there is only one rubric.
-CRITERIA = {
-    "interaction": ["question_necessity_and_relevance", "user_ownership", "source_grounding",
-        "decision_comprehension_when_applicable", "repeat_behavior", "correct_no_question_behavior"],
-    "documents": ["fidelity", "usefulness", "source_grounding", "remaining_work_accuracy",
-        "requested_language_body_content"],
-    "viewer_snapshot": ["completed_current_remaining_work", "next_step", "decision_rationale",
-        "project_purpose_vs_current_work_clarity", "multiple_work_organization",
-        "architecture_components_flow", "code_behavior", "fact_versus_interpretation",
-        "evidence_explanation_comprehensibility", "ordinary_reading_audit_detail_exposure",
-        "diagram_usefulness", "diagram_structural_readability",
-        "information_hierarchy_and_cognitive_burden"],
-    "viewer_navigation": ["navigation_responsiveness"],
-    "repository_intelligence": ["structural_navigation_usefulness", "semantic_value_over_structural_only",
-        "capability_honesty", "polyglot_comprehension_when_applicable"],
-    "cli": ["discover_with_cli_help", "status_without_project_id", "analyze_without_project_id",
-        "recall_without_project_id", "documents_without_project_id", "export_without_project_id",
-        "doctor_without_project_id"],
-    "live_viewer": ["keyboard_reachability", "visible_focus", "not_color_only", "narrow_and_zoomed_presentation",
-        "browser_input_and_paint_responsiveness"],
-    "long_lived_project": ["one_project_multiple_work_across_fresh_sessions"],
-    "context_recovery": ["goal_decision_rationale_state_and_open_questions"],
-}
+CRITERION_GROUPS = (
+    "interaction", "documents", "viewer_snapshot", "viewer_navigation",
+    "repository_intelligence", "cli", "live_viewer", "long_lived_project",
+    "context_recovery",
+)
 SURFACES = {
     "interaction": ["work_capture"], "documents": ["documents", "canonical_bundle"],
     "viewer_snapshot": ["viewer_snapshot"], "repository_intelligence": ["work_capture"],
@@ -105,10 +86,23 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def criteria_contract(contract):
+    """Load the sole maintained criterion inventory from evaluation.json."""
+    criteria = contract.get("common_criteria")
+    require(isinstance(criteria, dict) and tuple(criteria) == CRITERION_GROUPS,
+        "qualitative criterion groups changed")
+    require(all(isinstance(names, list) and names
+                and len(names) == len(set(names))
+                and all(isinstance(name, str) and name for name in names)
+                for names in criteria.values()),
+        "qualitative criteria must be distinct nonempty names")
+    return copy.deepcopy(criteria)
+
+
 def rubric(definition):
     contract = definition["qualitative_review_contract"]
     return {"schema_version": SCHEMA_VERSION, "policy_revision": contract["policy_revision"],
-        "criteria": CRITERIA, "group_prompts": GROUP_PROMPTS,
+        "criteria": criteria_contract(contract), "group_prompts": GROUP_PROMPTS,
         "criterion_prompts": CRITERION_PROMPTS,
         "criterion_observations": CRITERION_OBSERVATIONS,
         "required_surfaces": SURFACES,
@@ -163,7 +157,9 @@ def criterion_specs(index, policy):
     specs = []
     for sample in index["samples"]:
         sample_id = sample["sample_id"]
-        for group in CRITERIA:
+        # Serialized review packages sort object keys, so criterion order comes
+        # from the stable group contract rather than mapping insertion order.
+        for group in CRITERION_GROUPS:
             if group == "cli":
                 continue
             names = policy["criteria"][group]

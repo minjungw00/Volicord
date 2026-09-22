@@ -40,7 +40,8 @@ class LongLivedProjectTests(unittest.TestCase):
         self.assertEqual(sorted(flattened), ["alpha", "beta", "gamma"])
         self.assertEqual(len(flattened), len(set(flattened)))
         criteria = set(self.value["expected_review_criteria"])
-        self.assertTrue(criteria <= set(review.CRITERIA["viewer_snapshot"]))
+        definition = json.loads(Path(__file__).with_name("evaluation.json").read_text())
+        self.assertTrue(criteria <= set(review.rubric(definition)["criteria"]["viewer_snapshot"]))
         self.assertIn("multiple_work_organization", review.CRITERION_OBSERVATIONS)
         self.assertIn("stable_work_identities",
             review.CRITERION_OBSERVATIONS["multiple_work_organization"])

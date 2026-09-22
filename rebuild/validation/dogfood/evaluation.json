@@ -274,12 +274,6 @@
       "en",
       "ko"
     ],
-    "live_viewer_criteria": [
-      "keyboard_reachability",
-      "visible_focus",
-      "not_color_only",
-      "narrow_and_zoomed_presentation"
-    ],
     "machine_accessibility_may_be_overridden": false,
     "sampling_algorithm": "cycle_scoped_with_repository_class_cli_scope",
     "every_cycle_review_surfaces": [
@@ -495,6 +489,7 @@
       "operations": [
         "capture-human-viewer-observations",
         "prepare-qualitative-review",
+        "inspect-agent-review",
         "converse-qualitative-review",
         "validate-qualitative-review",
         "record-qualitative-review",

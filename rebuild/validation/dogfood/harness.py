@@ -1250,7 +1250,6 @@ def load_definition() -> dict[str, Any]:
         or qualitative_contract.get("authority_obligation_contract") != authority_obligations.assessment_contract()
         or qualitative_contract.get("states") != qualitative_review.STATES
         or qualitative_contract.get("qualification_authority") is not False
-        or qualitative_contract.get("common_criteria") != qualitative_review.CRITERIA
         or tuple(qualitative_contract.get("interaction_repository_classes", [])) != CLASSES
         or tuple(qualitative_contract.get("document_repository_classes", [])) != CLASSES
         or tuple(qualitative_contract.get("cli_repository_classes", [])) != CLASSES
@@ -1284,6 +1283,7 @@ def load_definition() -> dict[str, Any]:
         )
     ):
         raise ValueError("the Phase 8 campaign-level qualitative review contract changed")
+    qualitative_review.criteria_contract(qualitative_contract)
     if (
         evidence.get("required_capture_format")
         != "codex_mcp_completion_rollout_jsonl"

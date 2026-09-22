@@ -86,6 +86,14 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_evaluation_contract_is_the_only_criterion_inventory(self):
+        definition = json.loads(Path(__file__).with_name("evaluation.json").read_text())
+        contract = definition["qualitative_review_contract"]
+        self.assertNotIn("live_viewer_criteria", contract)
+        self.assertEqual(q.rubric(definition)["criteria"], contract["common_criteria"])
+        self.assertIn("browser_input_and_paint_responsiveness",
+            contract["common_criteria"]["live_viewer"])
+
     def test_viewer_usability_dimensions_and_machine_timing_remain_independent(self):
         p = preparation()
         expected = {

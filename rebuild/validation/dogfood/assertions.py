@@ -1226,6 +1226,15 @@ def main() -> int:
     import review_operations
     if qualitative_contract.get("workflow") != review_operations.workflow_contract():
         raise AssertionError("qualitative reviewer workflow/privacy bounds drifted")
+    import qualitative_review
+    if (
+        "live_viewer_criteria" in qualitative_contract
+        or qualitative_review.rubric(definition_value).get("criteria")
+        != qualitative_contract.get("common_criteria")
+        or "browser_input_and_paint_responsiveness"
+        not in qualitative_contract.get("common_criteria", {}).get("live_viewer", [])
+    ):
+        raise AssertionError("qualitative criterion inventory drifted")
     from review_operations_self_test import run_workflow_tests
     run_workflow_tests()
     import authority_obligations
@@ -1254,6 +1263,7 @@ def main() -> int:
             "interaction",
             "generated_documents",
             "viewer_snapshot",
+            "viewer_navigation_machine",
             "repository_intelligence",
         ]
         or qualitative_contract.get("repository_class_review_surfaces") != ["cli_usability"]
