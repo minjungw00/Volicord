@@ -938,3 +938,10 @@ Admission's dogfood support checks consume these same tests. `gate-self-test` al
 Product candidate rejection without executing a real final aggregate/provider/V11.
 These deterministic checks are support evidence only; changed candidates require fresh naturalistic
 rollouts, independent review and replacement qualification. Previous failed captures remain diagnostic.
+
+`classification_comparison.provisional_classification` retains the sorted unique classifications
+of the immutable assessment collection. Disagreements are calculated per obligation against its
+paired fixed dimension's classification/materiality/unavoidability/disclosure conclusions; the
+scalar summary does not determine agreement. Fully matching multi-obligation mappings use `agreed`.
+Evidence-resolved paired disagreements remain explicit, even when a scalar summary matches the
+evaluator. Additional independently reviewed dimensions remain preserved without serving as an oracle.

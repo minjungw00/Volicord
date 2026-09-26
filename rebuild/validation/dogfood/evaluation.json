@@ -1110,7 +1110,9 @@
         "resolution_evidence": "inspectable source or active-owner provenance references",
         "provisional_artifact_rewritten": false,
         "coverage_gap": "blind_coverage_gap_blocks_sealing_and_qualification",
-        "resolution_scope": "already_independently_assessed_dimension_only"
+        "resolution_scope": "already_independently_assessed_dimension_only",
+        "provisional_classification_basis": "sorted_unique_immutable_assessment_classifications_not_scalar_summary",
+        "disagreement_basis": "per_obligation_paired_fixed_dimension"
       },
       "material_user_owned_counterfactual_review": {
         "applicability": "required_for_material_user_owned_decision",

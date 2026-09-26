@@ -91,3 +91,36 @@ def coverage_errors(rows, provisional, obligations, reference_count, maximum):
     if seen_obligations != set(obligations):
         errors.append("blind_coverage_gap: evaluator obligation has no independently assessed dimension")
     return errors
+
+
+def classifications(provisional):
+    assessments = provisional.get("assessments", []) if isinstance(provisional, dict) else []
+    if not isinstance(assessments, list):
+        return []
+    return sorted({item["classification"] for item in assessments if isinstance(item, dict)
+        and isinstance(item.get("classification"), str)})
+
+
+def comparison_disagreements(rows, provisional, rules):
+    """Compare paired immutable dimensions, never their representative summary."""
+    assessments = provisional.get("assessments", []) if isinstance(provisional, dict) else []
+    dimensions = {item["dimension_id"]: item for item in assessments if isinstance(item, dict)
+        and isinstance(item.get("dimension_id"), str)} if isinstance(assessments, list) else {}
+    disagreements = set()
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        identity, obligation = row.get("dimension_id"), row.get("obligation")
+        dimension = dimensions.get(identity) if isinstance(identity, str) else None
+        expected = rules.get(obligation) if isinstance(obligation, str) else None
+        if dimension is None or expected is None:
+            continue  # Coverage validator emits the explicit gap separately.
+        if dimension.get("classification") != obligation:
+            disagreements.add("classification")
+        for field, label in (("materiality_conclusion", "materiality_conclusion"),
+            ("material_outcome_unavoidable", "material_outcome_unavoidable"),
+            ("operator_prompt_does_not_disclose_material_outcome", "operator_prompt_disclosure")):
+            if dimension.get(field) != expected[field]:
+                disagreements.add(label)
+    return [field for field in ("classification", "materiality_conclusion", "material_outcome_unavoidable",
+        "operator_prompt_disclosure") if field in disagreements]

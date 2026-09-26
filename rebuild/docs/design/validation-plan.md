@@ -2027,3 +2027,10 @@ into batch evidence, operator run sheets, blind reviewer preparation, or reviewe
 symlink or path escape cannot redirect reconciliation outside the private campaign root. `/tmp`
 is not required for this workflow. Before seal, preserve private staging for diagnosis rather than
 editing immutable evidence or bypassing failed validation.
+
+`classification_comparison.provisional_classification` retains the sorted unique classifications
+of the immutable assessment collection. Disagreements are calculated per obligation against its
+paired fixed dimension's classification/materiality/unavoidability/disclosure conclusions; the
+scalar summary does not determine agreement. Fully matching multi-obligation mappings use `agreed`.
+Evidence-resolved paired disagreements remain explicit, even when a scalar summary matches the
+evaluator. Additional independently reviewed dimensions remain preserved without serving as an oracle.

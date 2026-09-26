@@ -341,11 +341,9 @@ def fixture_for(
     provisional = review["independent_review"]["provisional_review"]
     provisional["assessments"] = harness.fixture_blind_assessments(obligations)
     comparison["obligation_coverage"] = harness.fixture_obligation_coverage(provisional["assessments"])
-    comparison["disagreements"] = (
-        [] if harness.obligation_set(provisional["classification"]) == set(obligations)
-        else ["classification"]
-    )
-    comparison["status"] = "agreed" if not comparison["disagreements"] else "resolved_from_evidence"
+    comparison["provisional_classification"] = harness.blind_dimensions.classifications(provisional)
+    comparison["disagreements"] = []
+    comparison["status"] = "agreed"
     if "resume" not in campaign.session_roles(kind, cycle):
         descriptor["fresh_resume_user_task"] = None
     work = fixture_root / f"{kind}-{cycle}-work-events.jsonl"

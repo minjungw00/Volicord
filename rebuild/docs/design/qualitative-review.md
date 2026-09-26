@@ -498,3 +498,10 @@ Product violation, actor attribution, unrelated/pre-existing-dirty attribution, 
 verification. Review those independent claims using task, Source/Analysis Snapshot, Checkpoint,
 validation-command and raw observation evidence. The original target can later change or disappear;
 review-package and evidence-set integrity verify retained bytes rather than the live worktree.
+
+`classification_comparison.provisional_classification` retains the sorted unique classifications
+of the immutable assessment collection. Disagreements are calculated per obligation against its
+paired fixed dimension's classification/materiality/unavoidability/disclosure conclusions; the
+scalar summary does not determine agreement. Fully matching multi-obligation mappings use `agreed`.
+Evidence-resolved paired disagreements remain explicit, even when a scalar summary matches the
+evaluator. Additional independently reviewed dimensions remain preserved without serving as an oracle.

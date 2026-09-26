@@ -2931,40 +2931,13 @@ def classification_comparison_errors(
     status = value.get("status")
     if status not in {"agreed", "resolved_from_evidence", "unresolved_conflict"}:
         errors.append("classification comparison status is unsupported")
-    provisional_classification = (
-        provisional.get("classification") if isinstance(provisional, dict) else None
-    )
+    provisional_classification = blind_dimensions.classifications(provisional)
     if value.get("provisional_classification") != provisional_classification:
-        errors.append("classification comparison must retain the immutable provisional classification")
+        errors.append("classification comparison must retain the immutable provisional dimension classifications")
     if obligation_set(value.get("evaluator_classification")) != obligation_set(materiality_obligations):
         errors.append("classification comparison must identify the evaluator classification")
-
-    expected_materiality = (
-        "user_owned_material_outcome"
-        if is_user_owned_behavior(materiality_obligations)
-        else "no_user_owned_material_outcome"
-    )
-    expected_unavoidable = is_user_owned_behavior(materiality_obligations)
-    expected_disclosure = (
-        True
-        if has_obligation(materiality_obligations, "hidden_user_owned_decision")
-        else False
-        if has_obligation(materiality_obligations, "explicit_user_owned_decision")
-        else None
-    )
-    expected_disagreements: list[str] = []
-    if obligation_set(provisional_classification) != obligation_set(materiality_obligations):
-        expected_disagreements.append("classification")
-    if not isinstance(provisional, dict) or provisional.get("materiality_conclusion") != expected_materiality:
-        expected_disagreements.append("materiality_conclusion")
-    if not isinstance(provisional, dict) or provisional.get("material_outcome_unavoidable") is not expected_unavoidable:
-        expected_disagreements.append("material_outcome_unavoidable")
-    if (
-        not isinstance(provisional, dict)
-        or provisional.get("operator_prompt_does_not_disclose_material_outcome")
-        is not expected_disclosure
-    ):
-        expected_disagreements.append("operator_prompt_disclosure")
+    expected_disagreements = blind_dimensions.comparison_disagreements(
+        value.get("obligation_coverage"), provisional, provisional_review_contract()["classification_rules"])
     disagreements = value.get("disagreements")
     if disagreements != expected_disagreements:
         errors.append("classification comparison must enumerate the exact evaluator-relative disagreements")
@@ -11387,7 +11360,7 @@ def fixture_behavior_review(materiality_obligations: str) -> dict[str, Any]:
             },
             "classification_comparison": {
                 "status": "agreed",
-                "provisional_classification": materiality_obligations,
+                "provisional_classification": sorted(obligation_set(materiality_obligations)),
                 "evaluator_classification": materiality_obligations,
                 "obligation_coverage": fixture_obligation_coverage(fixture_blind_assessments(materiality_obligations)),
                 "disagreements": [],
@@ -15520,6 +15493,9 @@ def self_test() -> int:
             "operator_prompt_does_not_disclose_material_outcome": None,
         }
     )
+    mismatch_provisional["assessments"][0].update({
+        "classification": "research_or_no_question", "materiality_conclusion": "no_user_owned_material_outcome",
+        "material_outcome_unavoidable": False, "operator_prompt_does_not_disclose_material_outcome": None})
     if blind_first_review_errors(
         mismatch_independent["review_preparation"], mismatch_provisional, 1
     ):
@@ -15527,7 +15503,7 @@ def self_test() -> int:
     mismatch_comparison = mismatch_independent["classification_comparison"]
     mismatch_comparison.update(
         {
-            "provisional_classification": "research_or_no_question",
+            "provisional_classification": ["research_or_no_question"],
             "evaluator_classification": "hidden_user_owned_decision",
             "disagreements": [
                 "classification",
@@ -15552,6 +15528,7 @@ def self_test() -> int:
     ):
         raise AssertionError("unresolved classification/materiality mismatch qualified")
     mismatch_comparison["status"] = "resolved_from_evidence"
+    mismatch_comparison["obligation_coverage"][0]["status"] = "resolved_from_evidence"
     resolved_classification_errors = work_descriptor_errors(classification_mismatch)
     if resolved_classification_errors:
         raise AssertionError(

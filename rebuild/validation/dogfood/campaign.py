@@ -2007,7 +2007,7 @@ def prepare_reconciliation(root: Path, kind: str, work: str) -> dict[str, Any]:
     independent["review_preparation"] = {"kind": "phase8_blind_review_preparation_reference",
         "review_slot_id": state["review_slot_id"], "sha256": state["review_preparation_sha256"]}
     comparison = independent["classification_comparison"]
-    comparison["provisional_classification"] = independent["provisional_review"]["classification"]
+    comparison["provisional_classification"] = harness.blind_dimensions.classifications(independent["provisional_review"])
     if not comparison.get("obligation_coverage"):
         comparison["obligation_coverage"] = [{"obligation": obligation, "dimension_id": None,
             "reviewer_outcome_scope": None, "evaluator_outcome_scope": "REPLACE with bounded evaluator scope",

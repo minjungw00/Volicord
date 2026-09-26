@@ -36,7 +36,11 @@ class ReconciliationTests(unittest.TestCase):
                 if fact_disagreement:
                     dimension = independent["provisional_review"]["assessments"][0]
                     dimension["classification"] = "repository_or_environment_fact"
-                    independent["classification_comparison"]["obligation_coverage"][0]["status"] = "resolved_from_evidence"
+                    comparison = independent["classification_comparison"]
+                    comparison["obligation_coverage"][0]["status"] = "resolved_from_evidence"
+                    comparison["provisional_classification"] = harness.blind_dimensions.classifications(independent["provisional_review"])
+                    comparison["disagreements"] = ["classification"]
+                    comparison["status"] = "resolved_from_evidence"
             fixtures.record_descriptor_review(self.root, kind, work, descriptor)
         c.reveal_qualification_profile(self.root, c.load_campaign(self.root)["candidate_head"])
 

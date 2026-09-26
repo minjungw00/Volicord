@@ -18,8 +18,8 @@ class BlindDimensionTests(unittest.TestCase):
             "provenance_reference_indices": [0], "assessments": self.assessments}
         self.preparation = {"kind": "phase8_blind_review_preparation_reference",
             "review_slot_id": "1" * 32, "sha256": "a" * 64}
-        self.comparison = {"status": "resolved_from_evidence", "provisional_classification": "learning_deliberation",
-            "evaluator_classification": self.obligations, "disagreements": ["classification"],
+        self.comparison = {"status": "agreed", "provisional_classification": self.obligations,
+            "evaluator_classification": self.obligations, "disagreements": [],
             "resolution_basis": "Both independently assessed dimensions occur in this bounded fixture task.",
             "provenance_reference_indices": [0],
             "obligation_coverage": harness.fixture_obligation_coverage(self.assessments)}
@@ -62,9 +62,20 @@ class BlindDimensionTests(unittest.TestCase):
         fixed = json.dumps(self.provisional, sort_keys=True).encode()
         row = self.comparison["obligation_coverage"][0]
         row["status"] = "resolved_from_evidence"
+        self.comparison["provisional_classification"] = harness.blind_dimensions.classifications(self.provisional)
+        self.comparison["status"] = "resolved_from_evidence"
+        self.comparison["disagreements"] = ["classification"]
         row["basis"] = "The already inspected fork has deliberation value under the pinned participation source."
         self.assertEqual(self.errors(), [])
         self.assertEqual(json.dumps(self.provisional, sort_keys=True).encode(), fixed)
+
+    def test_summary_cannot_hide_dimension_disagreement(self):
+        # The scalar summary still says learning_deliberation, but the fixed
+        # dimension concluded repository fact. Aggregate agreement cannot hide it.
+        self.assessments[0]["classification"] = "repository_or_environment_fact"
+        self.comparison["provisional_classification"] = harness.blind_dimensions.classifications(self.provisional)
+        self.comparison["obligation_coverage"][0]["status"] = "resolved_from_evidence"
+        self.assertTrue(any("cannot be marked agreed" in error for error in self.errors()))
 
     def test_assessment_identity_bounds_and_typed_grounding(self):
         for field, bad in (("dimension_id", "../outside"), ("outcome_scope", ""),
