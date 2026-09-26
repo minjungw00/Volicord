@@ -4382,8 +4382,12 @@ def rematerialized_exploration_evidence(capture: CodexCapture, baseline: ToolCal
             c.get("evidence_state") in {"research_required", "prototype_required"} for c in choices.values()):
             continue
         # Research may settle observed consequences, but cannot acquire a new choice/dimension/source.
-        if any(choices[key].get("source_ids") != [baseline.result.get("repository_source_id")]
-            or current[key].get("source_ids") != choices[key].get("source_ids")
+        original_sources = discovery_source_sets(origin.arguments)
+        if original_sources is None or discovery_source_sets(discovery.arguments) != original_sources:
+            continue
+        if any(not grounded_discovery_sources(choices[key].get("source_ids"), baseline.result.get("repository_source_id"))
+            or not grounded_discovery_sources(current[key].get("source_ids"), baseline.result.get("repository_source_id"))
+            or set(current[key]["source_ids"]) != set(choices[key]["source_ids"])
             or set(current[key].get("effect_categories", [])) != set(choices[key].get("effect_categories", []))
             or {a["alternative_id"] for a in current[key]["alternatives"]}
                != {a["alternative_id"] for a in choices[key]["alternatives"]}
@@ -6623,6 +6627,7 @@ def current_goal_delegation_evidence_valid(
     goal_statement: str | None,
     frozen_task: str | None,
     repository_source_id: str | None,
+    current_source_ids: set[str] | None = None,
 ) -> bool:
     basis = dimension["basis"]
     evidence = basis.get("explicit_delegation")
@@ -6630,13 +6635,10 @@ def current_goal_delegation_evidence_valid(
     affected_scope = dimension.get("affected_scope")
     statement = evidence.get("verbatim_statement") if isinstance(evidence, dict) else None
     source_ids = set(basis["source_ids"])
-    additional_source_ids = (
-        source_ids - {goal_source_id} if nonempty_string(goal_source_id) else source_ids
-    )
-    discovery_source_valid = not additional_source_ids or (
-        nonempty_string(repository_source_id)
-        and additional_source_ids == {repository_source_id}
-    )
+    allowed_sources = current_source_ids if current_source_ids is not None else {
+        source for source in (goal_source_id, repository_source_id) if nonempty_string(source)
+    }
+    discovery_source_valid = bool(source_ids) and source_ids <= allowed_sources
     return (
         isinstance(evidence, dict)
         and set(evidence)
@@ -6907,6 +6909,77 @@ def indexed_materiality_dimensions(value: Any) -> dict[str, dict[str, Any]] | No
     return indexed
 
 
+def discovery_source_ids_valid(value: Any) -> bool:
+    return bool(isinstance(value, list) and 1 <= len(value) <= 64
+        and all(isinstance(source, str) and re.fullmatch(r"[0-9a-f]{32}", source) for source in value)
+        and len(set(value)) == len(value))
+
+
+def current_canonical_source_ids(bundle: CanonicalBundle) -> set[str]:
+    """Canonical read maps Available to Current; stale/unknown/unavailable never qualify."""
+    return {row["id"] for row in bundle.rows("sources")
+        if nonempty_string(row.get("id")) and row.get("project_id") == bundle.project_id
+        and row.get("availability") == "available"
+        and bundle.one("sources", id=row["id"]) is not None}
+
+
+def discovery_current_source_ids(
+    work: CodexCapture, bundle: CanonicalBundle, baseline: ToolCall, *, resumed: bool = False,
+) -> set[str]:
+    current = current_canonical_source_ids(bundle)
+    source = baseline.result.get("repository_source_id")
+    # Resume reads the Work's earlier export. Its later analysis creates a new
+    # canonical repository Source, witnessed by this exact post-Recall operation.
+    # Never override an exported unavailable/stale/foreign Source with a call claim.
+    if (resumed and not any(row.get("id") == source for row in bundle.rows("sources"))
+        and baseline.operation == "repository_analyze" and baseline.outcome == "succeeded"
+        and baseline.arguments.get("project_id") == baseline.result.get("project_id") == bundle.project_id
+        and discovery_source_ids_valid([source])
+        and any(recall.result.get("project_id") == bundle.project_id
+            and recall.completion_sequence < baseline.sequence
+            for recall in work.successful_calls("recall"))):
+        current.add(source)
+    return current
+
+
+def discovery_source_sets(value: Any, path: tuple[str, ...] = ()) -> dict[tuple[str, ...], frozenset[str]] | None:
+    """Retain each typed evidence basis; Source ordering has no domain meaning."""
+    result: dict[tuple[str, ...], frozenset[str]] = {}
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in {"source_ids", "source_basis"}:
+                if not discovery_source_ids_valid(item):
+                    return None
+                result[(*path, key)] = frozenset(item)
+            else:
+                nested = discovery_source_sets(item, (*path, key))
+                if nested is None:
+                    return None
+                result.update(nested)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            # Stable graph identities permit list presentation changes.
+            identity = next((item[key] for key in ("choice_id", "alternative_id", "effect_category", "axis", "outcome_id")
+                if isinstance(item, dict) and nonempty_string(item.get(key))), str(index))
+            nested = discovery_source_sets(item, (*path, identity))
+            if nested is None:
+                return None
+            result.update(nested)
+    return result
+
+
+def grounded_discovery_sources(
+    value: Any, repository_source_id: Any, current_source_ids: set[str] | None = None,
+) -> bool:
+    """Retain repository grounding; full evaluation also proves canonical currentness.
+
+    Capture-only graph equivalence checks structure and unchanged identities, not
+    Source admissibility. engineering_choice_discovery_facts owns that canonical proof.
+    """
+    return bool(discovery_source_ids_valid(value) and repository_source_id in value
+        and (current_source_ids is None or set(value) <= current_source_ids))
+
+
 def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
     if not isinstance(value, list) or not value or len(value) > 64:
         return None
@@ -6937,8 +7010,7 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
             or len({alternative["alternative_id"] for alternative in alternatives}) != len(alternatives)
             or not isinstance(choice.get("technical_consequences"), list)
             or not choice["technical_consequences"]
-            or not isinstance(choice.get("source_ids"), list)
-            or not choice["source_ids"]
+            or not discovery_source_ids_valid(choice.get("source_ids"))
             or not isinstance(choice.get("effect_categories"), list)
             or not choice["effect_categories"]
             or not isinstance(relationship, dict)
@@ -6982,7 +7054,7 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
                     or not all(nonempty_string(item) for item in residual["credible_implementations"])
                     or len(set(residual["credible_implementations"])) < 2
                     or residual.get("remaining_material_outcomes") != []
-                    or not isinstance(residual.get("source_basis"), list) or not residual["source_basis"]
+                    or not discovery_source_ids_valid(residual.get("source_basis"))
                     or not set(residual["source_basis"]) <= set(indexed[choice_id]["source_ids"])
                 ):
                     return False
@@ -7005,7 +7077,10 @@ def indexed_engineering_choices(value: Any) -> dict[str, dict[str, Any]] | None:
     return indexed if all(closed(choice_id) for choice_id in indexed) else None
 
 
-def interaction_review_facts(value: Any, choices: dict[str, Any] | None, repository_source_id: Any) -> tuple[bool, dict[str, Any]]:
+def interaction_review_facts(
+    value: Any, choices: dict[str, Any] | None, repository_source_id: Any,
+    current_source_ids: set[str] | None = None,
+) -> tuple[bool, dict[str, Any]]:
     """Validate declared identities/comparisons only; never infer material ownership."""
     axes = {"reference_basis", "composition_and_precedence", "multi_item_effects", "failure_and_recovery", "temporal_and_lifetime"}
     def ids(items, allow_empty=False):
@@ -7018,7 +7093,7 @@ def interaction_review_facts(value: Any, choices: dict[str, Any] | None, reposit
             return False, {}
         seen_axes.add(review["axis"])
         for outcome in review["outcomes"]:
-            if not isinstance(outcome, dict) or set(outcome) != {"outcome_id", "scenario", "credible_outcomes", "affected_choice_ids", "conclusion", "source_basis"} or not nonempty_string(outcome["outcome_id"]) or outcome["outcome_id"] in outcomes or not nonempty_string(outcome["scenario"]) or not ids(outcome["affected_choice_ids"], True) or not set(outcome["affected_choice_ids"]) <= set(choices) or outcome["source_basis"] != [repository_source_id]:
+            if not isinstance(outcome, dict) or set(outcome) != {"outcome_id", "scenario", "credible_outcomes", "affected_choice_ids", "conclusion", "source_basis"} or not nonempty_string(outcome["outcome_id"]) or outcome["outcome_id"] in outcomes or not nonempty_string(outcome["scenario"]) or not ids(outcome["affected_choice_ids"], True) or not set(outcome["affected_choice_ids"]) <= set(choices) or not grounded_discovery_sources(outcome["source_basis"], repository_source_id, current_source_ids):
                 return False, {}
             results = outcome["credible_outcomes"]
             if not isinstance(results, list) or not 1 <= len(results) <= 64 or any(not isinstance(r, dict) or set(r) != {"result_id", "description"} or not nonempty_string(r["description"]) for r in results) or not ids([r["result_id"] for r in results]):
@@ -7082,6 +7157,7 @@ def material_boundary_review_facts(
     value: Any,
     choices: dict[str, dict[str, Any]] | None,
     repository_source_id: Any,
+    current_source_ids: set[str] | None = None,
 ) -> tuple[bool, dict[str, Any]]:
     if not isinstance(value, list) or choices is None:
         return False, {}
@@ -7097,7 +7173,7 @@ def material_boundary_review_facts(
             or set(review) != {"effect_category", "reviewed_outcomes", "conclusion", "source_ids"}
             or not isinstance(review.get("reviewed_outcomes"), list) or not review["reviewed_outcomes"]
             or not all(nonempty_string(item) for item in review["reviewed_outcomes"])
-            or review.get("source_ids") != [repository_source_id]
+            or not grounded_discovery_sources(review.get("source_ids"), repository_source_id, current_source_ids)
         ):
             return False, {}
         state = conclusion.get("state")
@@ -7509,6 +7585,7 @@ def engineering_choice_discovery_facts(
     goal_source_id: str | None,
     baseline_call: ToolCall,
     review_call: ToolCall,
+    *, resumed: bool = False,
 ) -> tuple[
     bool,
     dict[str, Any],
@@ -7535,12 +7612,14 @@ def engineering_choice_discovery_facts(
     )
     discovered_id = discovery.result.get("discovery_candidate_id") if discovery else None
     repository_source_id = baseline_call.result.get("repository_source_id")
+    current_sources = discovery_current_source_ids(work, bundle, baseline_call, resumed=resumed)
     boundary_ok, boundary_basis = material_boundary_review_facts(
         discovery.arguments.get("material_boundary_review") if discovery else None,
         choices,
         repository_source_id,
+        current_sources,
     )
-    interaction_ok, interaction_basis = interaction_review_facts(discovery.arguments.get("interaction_review") if discovery else None, choices, repository_source_id)
+    interaction_ok, interaction_basis = interaction_review_facts(discovery.arguments.get("interaction_review") if discovery else None, choices, repository_source_id, current_sources)
     referenced_ids = {
         choice_id
         for dimension in (dimensions or {}).values()
@@ -7562,8 +7641,7 @@ def engineering_choice_discovery_facts(
         and set(choices) == referenced_ids
         and nonempty_string(repository_source_id)
         and all(
-            choice.get("source_ids")
-            == [baseline_call.result.get("repository_source_id")]
+            grounded_discovery_sources(choice.get("source_ids"), repository_source_id, current_sources)
             for choice in choices.values()
         )
         and all(
@@ -7608,6 +7686,7 @@ def materiality_dimension_authority_valid(
     repository_source_id: str | None,
     decision_evidence: dict[str, dict[str, Any]],
     require_current_goal_delegation: bool,
+    current_source_ids: set[str] | None = None,
 ) -> bool:
     disposition = dimension.get("disposition")
     learning_authority = dimension.get("learning_authority", {})
@@ -7618,6 +7697,8 @@ def materiality_dimension_authority_valid(
     basis = dimension["basis"]
     kinds = set(basis["kinds"])
     source_ids = set(basis["source_ids"])
+    if current_source_ids is not None and not source_ids <= current_source_ids:
+        return False
     decision_ids = basis["decision_ids"]
     if (decision_ids and learning_authority.get("state") == "assessed"
         and learning_authority.get("independent_user_authority") is not True):
@@ -7685,6 +7766,7 @@ def materiality_dimension_authority_valid(
                 goal_statement=goal_statement,
                 frozen_task=frozen_task,
                 repository_source_id=repository_source_id,
+                current_source_ids=current_source_ids,
             )
         )
         decision_path = (
@@ -7891,6 +7973,7 @@ def materiality_review_facts(
             goal_source_id,
             baseline_call,
             candidate_record,
+            resumed=resumed,
         )
         if discovery[0]:
             correlated_records.append((candidate_record, *discovery))
@@ -7966,6 +8049,7 @@ def materiality_review_facts(
                 else None
             ),
             decision_evidence=decision_evidence,
+            current_source_ids=discovery_current_source_ids(work, bundle, baseline_call, resumed=resumed),
             require_current_goal_delegation=(
                 has_obligation(materiality_obligations, "delegated_implementation_choice")
                 and dimension.get("disposition")
@@ -9478,8 +9562,8 @@ def equivalent_discovery_basis(capture: CodexCapture, earlier: ToolCall, later: 
 
     def normalize_repository_source(value, source):
         if isinstance(value, dict):
-            return {key: [({"repository_observation_source": True} if item == source else item)
-                          for item in item_value]
+            return {key: sorted([({"repository_observation_source": True} if item == source else item)
+                          for item in item_value], key=lambda item: json.dumps(item, sort_keys=True))
                     if key in {"source_ids", "source_basis"} and isinstance(item_value, list)
                     else normalize_repository_source(item_value, source)
                     for key, item_value in value.items()}
@@ -18659,6 +18743,65 @@ def self_test() -> int:
             or basis["suspicious_context_record_count"] == 0
             or basis.get("verified_goal_continuation_count", 0) != 0):
             raise AssertionError("forged continuation escaped integrity checks: " + label)
+
+    def add_goal_source_to_discovery(arguments: dict[str, Any]) -> None:
+        for choice in arguments.get("choices", []):
+            choice["source_ids"] = ["03" * 16, *choice["source_ids"]]
+            for alternative in choice["alternatives"]:
+                residual = alternative["material_decomposition"].get("residual_fork_closure")
+                if residual is not None:
+                    residual["source_basis"] = ["03" * 16, *residual["source_basis"]]
+        for boundary in arguments.get("material_boundary_review", []):
+            boundary["source_ids"] = ["03" * 16, *boundary["source_ids"]]
+        for review in arguments.get("interaction_review", []):
+            for outcome in review["outcomes"]:
+                outcome["source_basis"] = ["03" * 16, *outcome["source_basis"]]
+
+    for behavior in ("research_or_no_question", "explicit_user_owned_decision", "delegated_implementation_choice"):
+        multisource = real_session_fixture("volicord", 1, revision, evidence_directory,
+            materiality_obligations=behavior)
+        mutate_mcp_call(multisource, "work", "engineering_choice_discovery", add_goal_source_to_discovery)
+        mutate_custom_output(multisource, "work", "discovery-call", add_goal_source_to_discovery)
+        result = real_session_evidence(multisource, kind="volicord", cycle=1,
+            repository_revision=revision)
+        if (result["checks"]["pre_write_materiality_work_authority"] != "passed"
+            or result["checks"]["appropriate_inquiry_outcome"] != "passed"):
+            raise AssertionError("valid canonical multi-Source discovery invalidated authority: "
+                + behavior + " " + json.dumps(result["inquiry_behavior_basis"]))
+
+    for location in ("choices", "interaction_review", "material_boundary_review"):
+        for invalid in ("missing", "stale", "unavailable", "foreign_project", "unknown", "missing_repository", "duplicate"):
+            multisource = real_session_fixture("volicord", 1, revision, evidence_directory,
+                materiality_obligations="research_or_no_question")
+            def cite_sources(arguments):
+                values = ["03" * 16, "0f" * 16]
+                if invalid == "missing":
+                    values.append("fe" * 16)
+                elif invalid == "missing_repository":
+                    values = ["03" * 16]
+                elif invalid == "duplicate":
+                    values.append("03" * 16)
+                if location == "choices":
+                    arguments[location][0]["source_ids"] = values
+                elif location == "material_boundary_review":
+                    arguments[location][0]["source_ids"] = values
+                else:
+                    arguments[location][0]["outcomes"][0]["source_basis"] = values
+            mutate_mcp_call(multisource, "work", "engineering_choice_discovery", cite_sources)
+            mutate_custom_output(multisource, "work", "discovery-call", cite_sources)
+            if invalid in {"stale", "unavailable", "unknown", "foreign_project"}:
+                def invalidate_goal_source(value):
+                    table = next(t for t in value["payload"]["tables"] if t["name"] == "sources")
+                    row = next(r for r in table["rows"] if r[table["columns"].index("id")]["value"] == "03" * 16)
+                    field = "project_id" if invalid == "foreign_project" else "availability"
+                    row[table["columns"].index(field)] = {
+                        "type": "bytes" if field == "project_id" else "text",
+                        "value": "fe" * 16 if field == "project_id" else invalid}
+                mutate_bundle(multisource, invalidate_goal_source)
+            result = real_session_evidence(multisource, kind="volicord", cycle=1,
+                repository_revision=revision)
+            if result["checks"]["pre_write_materiality_work_authority"] != "failed":
+                raise AssertionError("invalid discovery Source qualified: " + location + "/" + invalid)
 
     duplicate_goal_fixture = real_session_fixture(
         "small-python", 1, revision, evidence_directory

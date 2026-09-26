@@ -549,6 +549,77 @@ class FrontierTests(unittest.TestCase):
             earlier_args = {k: v for k, v in origin.arguments.items() if k != field}
             self.assertFalse(h.equivalent_discovery_basis(capture, replace(origin, arguments=earlier_args), replace(current, arguments=args)))
 
+    def test_multisource_rematerialization_ignores_source_order_only(self):
+        capture, baseline, origin = self.equivalent_hidden_rebase()
+        current = capture.successful_calls("engineering_choice_discovery")[-1]
+        goal_source = capture.successful_calls("context_record")[0].result["source_id"]
+        # Normalize only Source sets; all other typed values still require equality.
+        def add(value, reverse=False):
+            if isinstance(value, dict):
+                result = {}
+                for key, item in value.items():
+                    if key in {"source_ids", "source_basis"}:
+                        result[key] = [*item, goal_source]
+                        if reverse:
+                            result[key].reverse()
+                    else:
+                        result[key] = add(item, reverse)
+                return result
+            if isinstance(value, list):
+                return [add(item, reverse) for item in value]
+            return value
+        origin = replace(origin, arguments=add(origin.arguments))
+        current = replace(current, arguments=add(current.arguments, True))
+        self.assertTrue(h.equivalent_discovery_basis(capture, origin, current))
+        for section in ("choices", "material_boundary_review", "interaction_review"):
+            args = deepcopy(current.arguments)
+            target = args[section][0]
+            key = "source_ids"
+            if section == "interaction_review":
+                target = target["outcomes"][0]
+                key = "source_basis"
+            target[key].append("ac" * 16)
+            self.assertFalse(h.equivalent_discovery_basis(capture, origin,
+                replace(current, arguments=args)), section)
+
+    def test_discovery_binds_current_sources_exact_goal_baseline_and_chronology(self):
+        _, capture, bundle = self.fixture("delegated_implementation_choice")
+        baseline = capture.successful_calls("repository_analyze")[0]
+        discovery = capture.successful_calls("engineering_choice_discovery")[0]
+        goal = capture.successful_calls("context_record")[0]
+        record = next(c for c in capture.successful_calls("materiality_review") if c.arguments.get("action") == "record")
+        # A pre-existing available canonical contract Source is also admissible.
+        source = {**bundle.rows("sources")[0], "id": "ab" * 16,
+            "source_kind": "url", "locator": "https://example.test/contract", "recorded_at": 0}
+        bundle = replace(bundle, tables={**bundle.tables, "sources": (*bundle.rows("sources"), source)})
+        args = deepcopy(discovery.arguments)
+        for choice in args["choices"]:
+            choice["source_ids"].extend([goal.result["source_id"], source["id"]])
+        discovery = replace(discovery, arguments=args)
+        capture = replace(capture, tool_calls=tuple(discovery if c.call_id == discovery.call_id else c for c in capture.tool_calls))
+        def facts(call=discovery, canonical=bundle):
+            work = replace(capture, tool_calls=tuple(call if c.call_id == discovery.call_id else c for c in capture.tool_calls))
+            return h.engineering_choice_discovery_facts(work, canonical,
+                goal.result["context_item_id"], goal.result["source_id"], baseline, record)
+        valid, _, dimensions, _ = facts()
+        self.assertTrue(valid)
+        for dimension in dimensions.values():
+            self.assertTrue(h.materiality_dimension_authority_valid(dimension,
+                goal_context_id=goal.result["context_item_id"], goal_source_id=goal.result["source_id"],
+                goal_statement=goal.arguments["statement"], frozen_task=goal.arguments["user_turn"],
+                repository_source_id=baseline.result["repository_source_id"], decision_evidence={},
+                require_current_goal_delegation=True, current_source_ids=h.current_canonical_source_ids(bundle)))
+        for state in ("stale", "unavailable", "unknown", "foreign", "missing"):
+            sources = tuple({**row, **({"project_id": "ac" * 16} if state == "foreign"
+                else {"availability": state})} if row["id"] == source["id"] else row
+                for row in bundle.rows("sources") if state != "missing" or row["id"] != source["id"])
+            self.assertFalse(facts(canonical=replace(bundle, tables={**bundle.tables, "sources": sources}))[0], state)
+        for field in ("goal_context_id", "baseline_analysis_snapshot_id"):
+            changed = {**args, field: "ac" * (32 if field.startswith("baseline") else 16)}
+            self.assertFalse(facts(replace(discovery, arguments=changed))[0], field)
+        for sequence in (baseline.sequence - 1, record.sequence + 1):
+            self.assertFalse(facts(replace(discovery, sequence=sequence, completion_sequence=sequence + 1))[0])
+
     def test_missing_origin_identity_and_wrong_original_grounding_fail_closed(self):
         capture, baseline, origin = self.equivalent_hidden_rebase()
         current = capture.successful_calls("engineering_choice_discovery")[-1]
@@ -805,6 +876,30 @@ class FrontierTests(unittest.TestCase):
             for index in range(3))
         continued = replace(capture, tool_calls=tuple(sorted((*capture.tool_calls, *continues), key=lambda c: c.sequence)))
         self.assertEqual(h.exploratory_no_write_evidence(continued, baseline), evidence)
+        goal_source = goal.result["source_id"]
+        def add_source(call, reverse=False):
+            args = deepcopy(call.arguments)
+            for choice in args["choices"]:
+                choice["source_ids"].append(goal_source)
+                if reverse:
+                    choice["source_ids"].reverse()
+            return replace(call, arguments=args)
+        multisource_origin = add_source(discovery)
+        multisource_current = add_source(rebound_discovery, True)
+        multisource = replace(continued, tool_calls=tuple(multisource_origin if c is discovery
+            else multisource_current if c is rebound_discovery else c for c in continued.tool_calls))
+        self.assertTrue(h.exploratory_no_write_evidence(multisource, baseline)["qualified"])
+        for section in ("choices", "material_boundary_review", "interaction_review"):
+            args = deepcopy(multisource_current.arguments)
+            target = args[section][0]
+            key = "source_ids"
+            if section == "interaction_review":
+                target = target["outcomes"][0]
+                key = "source_basis"
+            target[key].append("ac" * 16)
+            changed = replace(multisource, tool_calls=tuple(replace(c, arguments=args)
+                if c is multisource_current else c for c in multisource.tool_calls))
+            self.assertFalse(h.exploratory_no_write_evidence(changed, baseline)["qualified"], section)
         for missing in ("experiment", "resolution", "binding", "origin", "new_dimension", "new_source"):
             changed_discovery = rebound_discovery
             if missing in {"new_dimension", "new_source"}:
