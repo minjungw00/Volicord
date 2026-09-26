@@ -524,3 +524,15 @@ out of scope until this complete state exists. The 3-journey/5-Work/8-fresh-sess
 requirement and five-Work pre-campaign blind provisional boundary remain unchanged.
 The approved qualification must also have a verified durable result lineage; an approval
 reachable only through an ephemeral staging path is not a discoverable cutover record.
+
+Phase 8 collection observes target journey end state without automatically committing or cleaning
+it. Immutable Git attestation binds baseline/session/final HEADs, staged/unstaged patches, tracked
+content and nonignored untracked hashes to the evidence set. The Product candidate must still be
+clean and exact-HEAD-bound. Dirty target state alone is not a Product failure or proof of correct
+verification/actor attribution. Every counted qualification obligation requires a distinct fixed
+pre-reveal blind dimension; an evaluator-only newly discovered dimension remains a blocking
+`blind_coverage_gap`. Steward reconciliation uses the campaign-local private prepare/edit/validate/
+seal lifecycle, and only a validated campaign-owned artifact may create an immutable descriptor.
+Diagnostic failed rollout captures are not qualification evidence for a changed candidate. Such a
+candidate requires a fresh 3-journey/5-Work/3-resume/8-session naturalistic campaign, independent
+review and replacement qualification. Technical passage alone does not approve Phase 9.

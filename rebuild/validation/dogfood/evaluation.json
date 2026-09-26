@@ -1229,6 +1229,8 @@
           "prepare-review",
           "record-provisional-review",
           "reveal-qualification-profile",
+          "prepare-reconciliation",
+          "validate-reconciliation",
           "seal-work",
           "activate-journey",
           "activate-all",
@@ -1312,5 +1314,20 @@
       "criteria_per_class": 7,
       "required_assessments": 21
     }
+  },
+  "reconciliation_contract": {
+    "prepare_operation": "prepare-reconciliation",
+    "validate_operation": "validate-reconciliation",
+    "inspect_operation": "inspect-reconciliation",
+    "seal_operation": "seal-work",
+    "draft_path": "evaluator/reconciliation/<review_slot_id>/draft.json",
+    "validation_path": "evaluator/reconciliation/<review_slot_id>/validation.json",
+    "visibility": "steward_private",
+    "draft_inventory_bound": false,
+    "validation_inventory_bound_after_seal": true,
+    "external_descriptor_input_allowed": false,
+    "seal_requires_exact_validated_draft": true,
+    "sealed_descriptor_create_only": true,
+    "provisional_bytes_immutable": true
   }
 }

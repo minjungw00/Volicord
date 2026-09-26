@@ -1370,7 +1370,8 @@ obligations 또는 match/mismatch를 노출하지 않는다. Recording 뒤 이�
 provisional bytes/hash와 inventory integrity는 바뀌지 않는다. 모든 five provisional artifact와 hash가 고정되기
 전에는 qualification-profile reveal과 `seal-work` evaluator reveal을 모두 거부한다.
 `reveal-qualification-profile`은 `provisional_count = 5`와 모든 immutable hash를 확인한 뒤 private
-profile을 검증하고 reveal state를 고정한다. 그 뒤 `seal-work`은 이미 고정된 provisional
+profile을 검증하고 reveal state를 고정한다. 그 뒤 campaign-local steward plane의
+`prepare-reconciliation` → edit/compare → `validate-reconciliation` → `seal-work`은 이미 고정된 provisional
 artifact를 byte/hash 그대로 유지한 채 full evaluator basis와 비교한다. Structured
 `classification_comparison`은 provisional/evaluator classification과 classification, materiality,
 unavoidability, prompt-disclosure 차이를 기계적으로 열거한다. 일치한 비교는 `agreed`, 불일치는
@@ -2008,3 +2009,21 @@ reviewer scope remain explicit `blind_coverage_gap`. `resolved_from_evidence` ca
 authority about an already assessed dimension; it cannot discover another dimension for coverage.
 Sealing and replacement qualification reject gaps independently of common qualitative review.
 Compatible learning deliberation and routine-control obligations require separate blind assessments.
+
+The current steward reconciliation lifecycle is reveal → `prepare-reconciliation` → edit/compare
+→ `validate-reconciliation` → `seal-work`. Preparation copies the maintained private evaluator
+input and binds the immutable provisional; it does not fill in missing independent assessments.
+Mutable staging is `evaluator/reconciliation/<review_slot_id>/draft.json` under the private
+campaign root, outside the operator/reviewer planes. `validation.json` binds exact draft bytes,
+candidate, slot, preparation and provisional hashes, and the normalized descriptor semantic hash.
+Any draft edit makes validation stale and requires revalidation. `inspect-reconciliation` reports
+not prepared, unvalidated, validated, stale validation or sealed state without changing evidence.
+Sealing has no external descriptor argument; it consumes only the campaign-owned validated draft,
+rechecks the same review/provenance contract, and creates the authoritative descriptor exactly once.
+The validation receipt becomes inventory-bound immutable evidence at seal. The draft remains
+non-authoritative mutable staging outside artifact inventory; after seal it may be removed without
+changing the immutable receipt/descriptor or provisional evidence. Mutable staging is never copied
+into batch evidence, operator run sheets, blind reviewer preparation, or reviewer archives. A
+symlink or path escape cannot redirect reconciliation outside the private campaign root. `/tmp`
+is not required for this workflow. Before seal, preserve private staging for diagnosis rather than
+editing immutable evidence or bypassing failed validation.

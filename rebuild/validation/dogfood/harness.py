@@ -1915,6 +1915,8 @@ def load_definition() -> dict[str, Any]:
                 "prepare-review",
                 "record-provisional-review",
                 "reveal-qualification-profile",
+                "prepare-reconciliation",
+                "validate-reconciliation",
                 "seal-work",
                 "activate-journey",
                 "activate-all",

@@ -407,6 +407,16 @@ def record_descriptor_review(
     return source
 
 
+def seal_fixture_descriptor(root, kind, work, source):
+    state = campaign.work_state(root, kind, work)
+    draft, _receipt = campaign.reconciliation_paths(root, state)
+    if not draft.exists():
+        campaign.prepare_reconciliation(root, kind, work)
+    campaign.write_json(draft, campaign.read_json(source))
+    campaign.validate_reconciliation(root, kind, work)
+    return campaign.seal_work(root, kind, work)
+
+
 def reveal_and_seal_descriptors(
     root: Path, descriptors: dict[tuple[str, int], Path]
 ) -> None:
@@ -415,7 +425,7 @@ def reveal_and_seal_descriptors(
     assert revealed["provisional_count"] == campaign.QUALIFICATION_WORK_COUNT
     assert revealed["profile_validation"] == "passed"
     for (kind, cycle), source in descriptors.items():
-        campaign.seal_work(root, kind, cycle, source)
+        seal_fixture_descriptor(root, kind, cycle, source)
 
 
 def set_provisional_classification(
@@ -1880,7 +1890,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert not campaign.reviewer_provisional_path(root, "volicord", 1).exists()
     assert not campaign.evaluator_descriptor_path(root, "volicord", 1).exists()
     try:
-        campaign.seal_work(root, "volicord", 1, draft_path)
+        seal_fixture_descriptor(root, "volicord", 1, draft_path)
     except campaign.CampaignError as error:
         assert "all eight provisional reviews" in str(error)
     else:
@@ -2012,7 +2022,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     else:
         raise AssertionError("partial provisional completion revealed the private profile")
     try:
-        campaign.seal_work(root, "volicord", 1, draft_path)
+        seal_fixture_descriptor(root, "volicord", 1, draft_path)
     except campaign.CampaignError as error:
         assert "all eight provisional reviews" in str(error)
     else:
@@ -2101,7 +2111,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     campaign.campaign_file(root).write_bytes(original_campaign_bytes)
     campaign.inventory_path(root).write_bytes(original_inventory_bytes)
     try:
-        campaign.seal_work(root, "volicord", 1, draft_path)
+        seal_fixture_descriptor(root, "volicord", 1, draft_path)
     except campaign.CampaignError as error:
         assert "qualification-profile reveal" in str(error)
     else:
@@ -2137,7 +2147,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     bypassable_path = parent / "bypassable-user-owned-input.json"
     campaign.write_json(bypassable_path, bypassable)
     try:
-        campaign.seal_work(root, "volicord", 1, bypassable_path)
+        seal_fixture_descriptor(root, "volicord", 1, bypassable_path)
     except campaign.CampaignError as error:
         assert "defensible no-question path" in str(error)
     else:
@@ -2176,7 +2186,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     assert tampered_bytes != fixed_bytes
     fixed_provisional.write_bytes(tampered_bytes)
     try:
-        campaign.seal_work(root, "volicord", 1, bypassable_path)
+        seal_fixture_descriptor(root, "volicord", 1, bypassable_path)
     except campaign.CampaignError as error:
         assert "evidence hash mismatch" in str(error)
     else:
@@ -2188,7 +2198,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     inventory["artifacts"][campaign.relative(root, fixed_provisional)]["sha256"] = "00" * 32
     campaign.write_json(campaign.inventory_path(root), inventory)
     try:
-        campaign.seal_work(root, "volicord", 1, bypassable_path)
+        seal_fixture_descriptor(root, "volicord", 1, bypassable_path)
     except campaign.CampaignError as error:
         assert "evidence hash mismatch" in str(error)
     else:
@@ -2203,7 +2213,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     rewritten_path = parent / "rewritten-provisional-conclusion-input.json"
     campaign.write_json(rewritten_path, rewritten)
     try:
-        campaign.seal_work(root, "volicord", 1, rewritten_path)
+        seal_fixture_descriptor(root, "volicord", 1, rewritten_path)
     except campaign.CampaignError as error:
         assert "cannot rewrite" in str(error)
     else:
@@ -2224,7 +2234,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     disagreement_path = parent / "unresolved-review-disagreement-input.json"
     campaign.write_json(disagreement_path, disagreement)
     try:
-        campaign.seal_work(root, "volicord", 1, disagreement_path)
+        seal_fixture_descriptor(root, "volicord", 1, disagreement_path)
     except campaign.CampaignError as error:
         assert "disagreement blocks sealing" in str(error)
     else:
@@ -2235,7 +2245,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     leaked_path = parent / "leaked-evaluator-input.json"
     campaign.write_json(leaked_path, leaked)
     try:
-        campaign.seal_work(root, "volicord", 1, leaked_path)
+        seal_fixture_descriptor(root, "volicord", 1, leaked_path)
     except campaign.CampaignError as error:
         assert "evaluator-only material" in str(error)
     else:
@@ -2243,7 +2253,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
 
     accepted_path = parent / "unavoidable-user-owned-input.json"
     campaign.write_json(accepted_path, descriptor)
-    sealed = campaign.seal_work(root, "volicord", 1, accepted_path)
+    sealed = seal_fixture_descriptor(root, "volicord", 1, accepted_path)
     assert sealed["review_slot_id"] == review_slot_id
     sealed_run_sheet = run_sheet.read_text(encoding="utf-8")
     assert f"Slot `{review_slot_id}`" in sealed_run_sheet
@@ -2324,7 +2334,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     falsely_agreed_path = parent / "mismatched-falsely-agreed-input.json"
     campaign.write_json(falsely_agreed_path, falsely_agreed)
     try:
-        campaign.seal_work(root, "volicord", 2, falsely_agreed_path)
+        seal_fixture_descriptor(root, "volicord", 2, falsely_agreed_path)
     except campaign.CampaignError as error:
         assert "cannot be marked agreed" in str(error)
     else:
@@ -2337,7 +2347,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     unresolved_path = parent / "mismatched-unresolved-input.json"
     campaign.write_json(unresolved_path, unresolved)
     try:
-        campaign.seal_work(root, "volicord", 2, unresolved_path)
+        seal_fixture_descriptor(root, "volicord", 2, unresolved_path)
     except campaign.CampaignError as error:
         assert "disagreement blocks sealing" in str(error)
     else:
@@ -2349,7 +2359,7 @@ def assert_sealing_and_provenance(parent: Path, binary: Path) -> None:
     ]["status"] = "resolved_from_evidence"
     resolved_path = parent / "mismatched-evidence-resolved-input.json"
     campaign.write_json(resolved_path, resolved)
-    resolved_result = campaign.seal_work(root, "volicord", 2, resolved_path)
+    resolved_result = seal_fixture_descriptor(root, "volicord", 2, resolved_path)
     assert resolved_result["review_slot_id"] == cli_preparation["review_slot_id"]
     assert fixed_cli_provisional.read_bytes() == fixed_cli_bytes
     assert harness.sha256(fixed_cli_provisional) == fixed_cli_sha256
@@ -3435,7 +3445,9 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
         "reveal-qualification-profile": lambda: campaign.reveal_qualification_profile(
             root, current_candidate
         ),
-        "seal-work": lambda: campaign.seal_work(root, "volicord", "A", missing),
+        "seal-work": lambda: campaign.seal_work(root, "volicord", "A"),
+        "prepare-reconciliation": lambda: campaign.prepare_reconciliation(root, "volicord", "A"),
+        "validate-reconciliation": lambda: campaign.validate_reconciliation(root, "volicord", "A"),
         "activate-journey": lambda: campaign.activate_journey(root, "volicord"),
         "activate-all": lambda: campaign.activate_all(root),
         "collect-work": lambda: collect_work_fixture(root, "volicord", "A", missing),
@@ -3774,6 +3786,8 @@ def main() -> int:
     check_repository_state_regressions()
     from blind_dimensions_self_test import check_blind_dimension_regressions
     check_blind_dimension_regressions()
+    from reconciliation_self_test import check_reconciliation_regressions
+    check_reconciliation_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
     try:

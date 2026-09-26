@@ -1321,6 +1321,8 @@ def main() -> int:
                 "prepare-review",
                 "record-provisional-review",
                 "reveal-qualification-profile",
+                "prepare-reconciliation",
+                "validate-reconciliation",
                 "seal-work",
                 "activate-journey",
                 "activate-all",

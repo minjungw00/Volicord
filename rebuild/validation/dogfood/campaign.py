@@ -1222,6 +1222,11 @@ def hidden_evaluator_strings(descriptor: dict[str, Any]) -> set[str]:
     )
     if isinstance(comparison_basis, str) and len(comparison_basis) >= 8:
         hidden.add(comparison_basis)
+    coverage = comparison.get("obligation_coverage", []) if isinstance(comparison, dict) else []
+    for row in coverage if isinstance(coverage, list) else []:
+        if isinstance(row, dict):
+            hidden.update(value for field in ("basis", "evaluator_outcome_scope")
+                if isinstance((value := row.get(field)), str) and len(value) >= 8)
     agreement = (
         independent.get("fact_authority_agreement", {})
         if isinstance(independent, dict)
@@ -1971,11 +1976,112 @@ def reveal_qualification_profile(root: Path, candidate_head: str) -> dict[str, A
     }
 
 
-def seal_work(
+def reconciliation_paths(root: Path, state: dict[str, Any]) -> tuple[Path, Path]:
+    """Only campaign-owned steward paths; symlink staging is never accepted."""
+    review_slot_id = state["review_slot_id"]
+    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
+        raise CampaignError("reconciliation slot identity is malformed")
+    directory = root / "evaluator/reconciliation" / review_slot_id
+    draft, receipt = directory / "draft.json", directory / "validation.json"
+    for path in (root / "evaluator", root / "evaluator/reconciliation", directory, draft, receipt):
+        if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+            raise CampaignError("reconciliation must remain under the campaign private root")
+    return draft, receipt
+
+
+def prepare_reconciliation(root: Path, kind: str, work: str) -> dict[str, Any]:
+    campaign = load_campaign_for_mutation(root)
+    verify_inventory(root)
+    verify_all_provisional_reviews_fixed(root, campaign)
+    if campaign.get("qualification_profile_state") != "revealed":
+        raise CampaignError("reconciliation requires qualification-profile reveal")
+    state = campaign["works"][work_key(kind, work)]
+    if state.get("state") != "provisional_recorded":
+        raise CampaignError("reconciliation preparation requires an unsealed recorded Work")
+    draft, receipt = reconciliation_paths(root, state)
+    if draft.parent.exists():
+        raise CampaignError("reconciliation already prepared; edit its campaign-owned mutable draft")
+    descriptor = read_json(evaluator_input_path(root, kind, work))
+    independent = descriptor["behavior_review"]["independent_review"]
+    independent["provisional_review"] = read_json(reviewer_provisional_path(root, kind, work))
+    independent["review_preparation"] = {"kind": "phase8_blind_review_preparation_reference",
+        "review_slot_id": state["review_slot_id"], "sha256": state["review_preparation_sha256"]}
+    comparison = independent["classification_comparison"]
+    comparison["provisional_classification"] = independent["provisional_review"]["classification"]
+    if not comparison.get("obligation_coverage"):
+        comparison["obligation_coverage"] = [{"obligation": obligation, "dimension_id": None,
+            "reviewer_outcome_scope": None, "evaluator_outcome_scope": "REPLACE with bounded evaluator scope",
+            "status": "blind_coverage_gap", "basis": "REPLACE after comparison to fixed pre-reveal dimensions",
+            "provenance_reference_indices": []}
+            for obligation in private_materiality_obligations(root, state, campaign)]
+    draft.parent.mkdir(parents=True, mode=0o700)
+    draft.parent.chmod(0o700)
+    try:
+        atomic_write_bytes(draft, json_bytes(descriptor))
+        state["reconciliation_state"] = "prepared"
+        state["reconciliation_validation_sha256"] = None
+        save_campaign(root, campaign)
+    except BaseException:
+        shutil.rmtree(draft.parent)
+        raise
+    return {"kind": "phase8_reconciliation_preparation", "review_slot_id": state["review_slot_id"],
+        "draft": relative(root, draft), "validation": relative(root, receipt),
+        "visibility": "steward_private", "ownership": "mutable_before_seal_not_inventory_bound"}
+
+
+def reconciliation_receipt(campaign, state, descriptor, source_bytes):
+    return {"kind": "phase8_reconciliation_validation", "status": "passed",
+        "candidate_head": campaign["candidate_head"], "review_slot_id": state["review_slot_id"],
+        "draft_sha256": hashlib.sha256(source_bytes).hexdigest(),
+        "descriptor_semantic_sha256": descriptor_semantic_sha256(descriptor),
+        "preparation_sha256": state["review_preparation_sha256"],
+        "provisional_sha256": state["provisional_review_sha256"]}
+
+
+def validate_reconciliation(root: Path, kind: str, work: str) -> dict[str, Any]:
+    campaign, state, descriptor, source_bytes = reconciliation_descriptor(root, kind, work)
+    draft, receipt_path = reconciliation_paths(root, state)
+    receipt = reconciliation_receipt(campaign, state, descriptor, source_bytes)
+    if draft.read_bytes() != source_bytes:
+        raise CampaignError("reconciliation draft changed before validation publication")
+    before = receipt_path.read_bytes() if receipt_path.exists() else None
+    try:
+        atomic_write_bytes(receipt_path, json_bytes(receipt))
+        state["reconciliation_state"] = "validated"
+        state["reconciliation_validation_sha256"] = harness.sha256(receipt_path)
+        save_campaign(root, campaign)
+    except BaseException:
+        if before is None:
+            receipt_path.unlink(missing_ok=True)
+        else:
+            atomic_write_bytes(receipt_path, before)
+        raise
+    return {**receipt, "validation": relative(root, receipt_path),
+        "draft": relative(root, draft), "inventory_bound": False}
+
+
+def inspect_reconciliation(root: Path, kind: str, work: str) -> dict[str, Any]:
+    campaign = load_campaign(root)
+    state = campaign["works"][work_key(kind, work)]
+    draft, receipt = reconciliation_paths(root, state)
+    status = "not_prepared"
+    if state["state"] == "sealed":
+        verify_inventory(root)
+        status = "sealed"
+    elif draft.exists():
+        status = "unvalidated"
+        if receipt.is_file() and harness.sha256(receipt) == state.get("reconciliation_validation_sha256"):
+            status = "validated" if read_json(receipt).get("draft_sha256") == harness.sha256(draft) else "stale_validation"
+    return {"kind": "phase8_reconciliation_status", "review_slot_id": state["review_slot_id"],
+        "state": status, "draft": relative(root, draft), "validation": relative(root, receipt),
+        "draft_authority": "mutable_non_authoritative_staging",
+        "cleanup": "draft_may_be_removed_after_seal; retained_validation_and_descriptor_are_immutable"}
+
+
+def reconciliation_descriptor(
     root: Path,
     kind: str,
     work: str,
-    prepared_descriptor: Path,
 ) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root)
     verify_inventory(root)
@@ -2022,7 +2128,14 @@ def seal_work(
         raise CampaignError("fixed provisional review hash or inventory binding changed")
     assert_reviewer_artifacts_are_behavior_opaque(root)
 
-    descriptor = read_json(prepared_descriptor.resolve())
+    draft, _receipt = reconciliation_paths(root, state)
+    if not draft.is_file():
+        raise CampaignError("reconciliation requires its campaign-owned prepared draft")
+    source_bytes = draft.read_bytes()
+    try:
+        descriptor = json.loads(source_bytes)
+    except json.JSONDecodeError as error:
+        raise CampaignError("cannot read reconciliation draft") from error
     if "evidence" in descriptor:
         raise CampaignError("evaluator-prepared descriptor must not contain collection evidence")
     if (
@@ -2084,17 +2197,31 @@ def seal_work(
         value in operator_text for value in hidden_evaluator_strings(descriptor)
     ):
         raise CampaignError("operator-facing task would expose evaluator-only material")
+    if draft.read_bytes() != source_bytes:
+        raise CampaignError("reconciliation draft changed during validation")
+    return campaign, state, descriptor, source_bytes
+
+
+def seal_work(root: Path, kind: str, work: str) -> dict[str, Any]:
+    campaign, state, descriptor, source_bytes = reconciliation_descriptor(root, kind, work)
+    _draft, receipt_path = reconciliation_paths(root, state)
+    if (state.get("reconciliation_state") != "validated" or not receipt_path.is_file()
+        or harness.sha256(receipt_path) != state.get("reconciliation_validation_sha256")
+        or read_json(receipt_path) != reconciliation_receipt(campaign, state, descriptor, source_bytes)):
+        raise CampaignError("seal-work requires the campaign-owned validated reconciliation artifact")
     destination = evaluator_descriptor_path(root, kind, work)
     if destination.exists():
         raise CampaignError("authoritative evaluator descriptor already exists")
     write_json(destination, descriptor)
     state["state"] = "sealed"
+    state["reconciliation_state"] = "sealed"
     state["sealed_semantic_sha256"] = descriptor_semantic_sha256(descriptor)
     state["operator_task_artifacts"] = write_operator_task_artifacts(
         root, state, descriptor
     )
     save_campaign(root, campaign)
     register_artifact(root, destination)
+    register_artifact(root, receipt_path)
     for task in state["operator_task_artifacts"].values():
         register_artifact(root, root / task["path"])
     run_sheet = render_operator_run_sheet(root)
@@ -4090,7 +4217,10 @@ def parser() -> argparse.ArgumentParser:
     validate_provisional = sub.add_parser("validate-provisional-review")
     record_provisional = sub.add_parser("record-provisional-review")
     reveal_profile = sub.add_parser("reveal-qualification-profile")
-    seal = sub.add_parser("seal-work")
+    prepare_reconciliation_cli = sub.add_parser("prepare-reconciliation", help="Prepare campaign-local steward-private mutable reconciliation")
+    validate_reconciliation_cli = sub.add_parser("validate-reconciliation", help="Validate and bind the exact campaign-owned draft")
+    inspect_reconciliation_cli = sub.add_parser("inspect-reconciliation", help="Inspect mutable staging versus immutable sealed authority")
+    seal = sub.add_parser("seal-work", help="Seal the campaign-owned validated reconciliation artifact")
     activate = sub.add_parser("activate-journey")
     activate_every = sub.add_parser("activate-all")
     collect_b = sub.add_parser("collect-batch")
@@ -4170,7 +4300,7 @@ def parser() -> argparse.ArgumentParser:
     for operation in (validate_qualitative, record_qualitative):
         operation.add_argument("--review-root", required=True)
         operation.add_argument("--draft", required=True)
-    for command in (prepare_reviewer, seal):
+    for command in (prepare_reviewer, prepare_reconciliation_cli, validate_reconciliation_cli, inspect_reconciliation_cli, seal):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--repository-class", choices=CLASSES, required=True)
         command.add_argument(
@@ -4188,7 +4318,6 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--provisional-review", required=True)
     reveal_profile.add_argument("--campaign-root", required=True)
     reveal_profile.add_argument("--candidate-head", required=True)
-    seal.add_argument("--descriptor", required=True)
     activate_every.add_argument("--campaign-root", required=True)
     collect_b.add_argument("--campaign-root", required=True)
     batch_input = collect_b.add_mutually_exclusive_group(required=True)
@@ -4254,13 +4383,11 @@ def main() -> int:
         )
     elif args.command == "reveal-qualification-profile":
         value = reveal_qualification_profile(root, args.candidate_head)
-    elif args.command == "seal-work":
-        value = seal_work(
-            root,
-            args.repository_class,
-            args.work,
-            Path(args.descriptor),
-        )
+    elif args.command in {"prepare-reconciliation", "validate-reconciliation", "inspect-reconciliation", "seal-work"}:
+        operation = {"prepare-reconciliation": prepare_reconciliation,
+            "validate-reconciliation": validate_reconciliation,
+            "inspect-reconciliation": inspect_reconciliation, "seal-work": seal_work}[args.command]
+        value = operation(root, args.repository_class, args.work)
     elif args.command == "activate-journey":
         value = activate_journey(root, args.repository_class)
     elif args.command == "activate-all":

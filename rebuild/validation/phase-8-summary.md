@@ -8,7 +8,8 @@ verified exact-candidate technical-gate capsule and archive name that same
 commit. No hash recorded in this tracked document selects a current candidate.
 The maintained campaign is exactly three repository journeys, five Works,
 three Work A resume pairs, eight fresh sessions, and five opaque provisional
-Work reviews before reveal. The operator uses `seal-work`, then
+Work reviews before reveal. The steward uses `prepare-reconciliation`, edits the
+campaign-local private draft, runs `validate-reconciliation` and `seal-work`, then
 `activate-journey` or `activate-all`, supplies eight raw rollouts once to
 `collect-batch`, and continues through append-only evaluation, five-Work and
 three-journey qualitative review, qualification, optional approval, and durable
