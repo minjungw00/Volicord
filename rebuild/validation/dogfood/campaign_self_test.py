@@ -16,6 +16,7 @@ import tempfile
 
 import campaign
 import harness
+import repository_state
 from codex_events import activation_identity
 
 
@@ -232,6 +233,29 @@ def fake_identities() -> list[dict[str, object]]:
     ]
 
 
+# Explicit test double for the pre-existing lightweight (non-Git) cloner.
+# Real Git attestation is exercised separately by repository_state_self_test.
+FIXTURE_REPOSITORY_REVISIONS: dict[Path, str] = {}
+REAL_OBSERVE = repository_state.observe
+
+
+def observe_fixture_repository(repository):
+    revision = FIXTURE_REPOSITORY_REVISIONS.get(repository.resolve())
+    if revision is None:
+        return REAL_OBSERVE(repository)
+    patches = {"staged": b"", "unstaged": b""}
+    state = {"kind": "dogfood_journey_repository_state", "schema_version": 1,
+             "final_head": revision, "status": [], "index": [], "tracked": [], "untracked": [],
+             "diffs": {key: {"bytes": 0, "sha256": repository_state.digest(data)} for key, data in patches.items()},
+             "workspace_clean": True,
+             "boundary": "HEAD_index_tracked_and_nonignored_untracked; ignored_content_excluded"}
+    state["fingerprint"] = repository_state.digest(b"dogfood-journey-repository-state\0" + repository_state.encoded(state))
+    return state, patches
+
+
+repository_state.observe = observe_fixture_repository
+
+
 def prepare(
     root: Path,
     source_root: Path,
@@ -250,6 +274,7 @@ def prepare(
     try:
         def fake_clone(_source: Path, destination: Path, _revision: str) -> None:
             destination.mkdir(parents=True)
+            FIXTURE_REPOSITORY_REVISIONS[destination.resolve()] = _revision
 
         campaign.prepare_campaign(
             root,
@@ -3743,6 +3768,8 @@ def main() -> int:
     check_resume_regressions()
     check_long_lived_project_regressions()
     check_document_realization_regressions()
+    from repository_state_self_test import check_repository_state_regressions
+    check_repository_state_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
     try:

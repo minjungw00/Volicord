@@ -34,6 +34,7 @@ import machine_findings
 import review_operations
 import human_review
 import result_lineage
+import repository_state
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -87,7 +88,7 @@ class IntegrityError(CampaignError):
 def integrity_check(rule, operation, *args):
     try:
         return operation(*args)
-    except (CampaignError, EvidenceError, OSError) as error:
+    except (CampaignError, EvidenceError, OSError, repository_state.StateError) as error:
         raise IntegrityError(rule, error) from error
 
 
@@ -384,7 +385,7 @@ def verify_journey_revision_chronology(
     campaign: dict[str, Any],
     mapped: dict[tuple[str, str, str], MappedRollout],
 ) -> dict[str, Any]:
-    """Prove captured revisions form committed, clean, journey-local histories."""
+    """Prove chronological journey-local HEADs; observe final work without mutation."""
     evidence: dict[str, Any] = {}
     for kind in CLASSES:
         journey = campaign["journeys"][journey_id(kind)]
@@ -404,24 +405,16 @@ def verify_journey_revision_chronology(
                     ),
                 )
             previous = revision
-        # Production preparation always creates a Git clone. Lightweight unit
-        # fixtures intentionally replace the cloner and retain the exact pinned
-        # revision without a .git directory.
-        fixture_without_git = not (repository / ".git").exists()
-        final_revision = (
-            baseline
-            if fixture_without_git and all(revision == baseline for revision in revisions)
-            else harness.git_head(repository)
-        )
+        attestation, _patches = repository_state.observe(repository)
+        final_revision = attestation["final_head"]
         if (
             not isinstance(final_revision, str)
             or not revision_is_bound(repository, previous, final_revision)
-            or not harness.git_clean(repository)
         ):
             raise IntegrityError(
                 "project_binding",
                 CampaignError(
-                    "journey workspace must end at a clean committed descendant of its sessions"
+                    "journey workspace HEAD must descend from its chronological sessions"
                 ),
             )
         evidence[journey_id(kind)] = {
@@ -434,9 +427,32 @@ def verify_journey_revision_chronology(
                 for slot in ordered_slots
             ],
             "final_revision": final_revision,
-            "workspace_clean": True,
+            "workspace_clean": attestation["workspace_clean"],
+            "repository_state": attestation,
         }
     return evidence
+
+
+def verify_final_repository_states(root: Path, manifest: dict[str, Any], *, live: bool) -> None:
+    """Live recheck only at publication; historical consumers verify retained bytes."""
+    for entry in manifest["journey_final_evidence"]:
+        lineage = entry["repository_revision_lineage"]
+        binding = lineage["attestation_artifacts"]
+        state = read_json(root / binding["state"])
+        patches = {key: (root / binding[key]).read_bytes() for key in ("staged", "unstaged")}
+        repository_state.verify_retained(state, patches)
+        if state != lineage["repository_state"] or state["final_head"] != lineage["final_revision"]:
+            raise CampaignError("journey repository-state binding changed")
+        if live:
+            repository_state.verify(Path(manifest["journeys"][entry["journey_id"]]["repository_path"]), state)
+
+
+def verify_final_repository_states_for_publication(root: Path) -> None:
+    verify_final_repository_states(root, read_json(root / "evidence-set.json"), live=True)
+
+
+def verify_retained_repository_states(root: Path, manifest: dict[str, Any]) -> None:
+    verify_final_repository_states(root, manifest, live=False)
 
 
 def new_review_slot_id() -> str:
@@ -3362,6 +3378,7 @@ def collect_batch(
                 stage, mapped, exporter=exporter, documenter=documenter, snapshotter=snapshotter,
             )
         verify_inventory(stage)
+        integrity_check("project_binding", verify_final_repository_states_for_publication, stage)
         staged_campaign = load_campaign(stage)
         staged_campaign["campaign_root"] = str(root)
         save_campaign(stage, staged_campaign)
@@ -3383,6 +3400,7 @@ def publish_batch(root: Path, stage: Path, baseline: dict[str, bytes]) -> None:
     staged_campaign = read_json(stage / "campaign.json")
     require_current_candidate(staged_campaign["candidate_head"])
     verify_candidate_artifacts(staged_campaign)
+    integrity_check("project_binding", verify_final_repository_states_for_publication, stage)
     verify_inventory(root)
     if any((root / name).read_bytes() != data for name, data in baseline.items()):
         raise CampaignError("campaign changed during batch evaluation")
@@ -3416,6 +3434,7 @@ def publish_batch(root: Path, stage: Path, baseline: dict[str, bytes]) -> None:
             written.append(name)
             atomic_write_bytes(root / name, (stage / name).read_bytes())
         verify_candidate_artifacts(staged_campaign)
+        integrity_check("project_binding", verify_final_repository_states_for_publication, stage)
     except BaseException:
         try:
             for name in reversed(written):
@@ -3519,6 +3538,21 @@ def normalize_batch(
     save_campaign(root, campaign)
 
     revision_evidence = verify_journey_revision_chronology(campaign, mapped)
+    for identity, lineage in revision_evidence.items():
+        repository = Path(campaign["journeys"][identity]["repository_path"])
+        observed, patches = repository_state.observe(repository)
+        if observed != lineage["repository_state"]:
+            raise IntegrityError("project_binding", CampaignError("journey changed during collection"))
+        directory = root / "journeys" / identity / "evidence"
+        bindings = {"state": relative(root, directory / "repository-state.json"),
+                    "staged": relative(root, directory / "staged.patch"),
+                    "unstaged": relative(root, directory / "unstaged.patch")}
+        write_json(root / bindings["state"], observed)
+        for key, data in patches.items():
+            (root / bindings[key]).write_bytes(data)
+        for name in bindings.values():
+            register_artifact(root, root / name)
+        lineage["attestation_artifacts"] = bindings
     work_entries: list[dict[str, Any]] = []
     journey_final_evidence: list[dict[str, Any]] = []
     journey_bundle_evidence: dict[str, dict[str, Any]] = {}
@@ -3694,6 +3728,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
             or item.get("sha256") != harness.sha256(raw)):
             raise CampaignError("evidence-set raw session/hash binding changed")
         sessions.add(item["session_id"])
+    integrity_check("project_binding", verify_retained_repository_states, root, manifest)
     return manifest
 
 

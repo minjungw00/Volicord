@@ -978,8 +978,20 @@ the other journeys are physically isolated. Every session is globally fresh. Wor
 must resolve the same Project and Work, Volicord A/B/C must resolve one Project with three distinct
 chronologically retained Work identities, and Project identity must not cross journeys. Session
 revision evidence may advance from the pinned journey revision only through committed descendants;
-collection requires each journey workspace to end clean so session-created changes are not left
-uncommitted.
+collection accepts the observed final committed or naturally dirty state without altering the target.
+The final Git attestation supplements existing Source/Repository Snapshot/Analysis Snapshot and
+Checkpoint evidence; it does not create canonical authority or another analysis path. It retains
+pinned baseline, ordered session HEADs, final HEAD, normalized index/worktree status, index object
+identities, exact staged/unstaged binary patches and hashes, tracked content/modes and nonignored
+untracked paths/content hashes, and a domain-separated repository-state fingerprint. Ignored
+content is explicitly outside this Git boundary. Missing Git evidence, path escape, unsupported
+special entries/submodules, non-descendant history and changed observations fail closed.
+Collection rechecks the exact state before and during atomic publication; no commit, stash,
+reset, checkout, format or clean is performed. Immutable evidence-set artifacts close over the
+attestation and patches. Historical consumers verify retained evidence without the live workspace.
+This collection observation neither attributes dirty content to an actor nor establishes Product
+verification success; pre-existing/unrelated dirty attribution and verification honesty remain
+independent. The Product candidate still must be clean and exact-HEAD-bound.
 
 Naturalistic session의 MCP memory coverage는 scripted technical gate의 process-tree RSS와
 독립이다. 현재 production-owned `.codex/config.toml`은 VS Code/Codex host가 candidate-local

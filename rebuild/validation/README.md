@@ -886,3 +886,12 @@ Use `validate-approval --approval <approval-run>/approval.json --qualification
 <qualification-run>/qualification.json` to recheck a recorded authorization without
 creating another approval. The original qualification input references must remain
 available for this independent check.
+
+Naturalistic target journey collection observes Git state without committing or cleaning it.
+The pinned baseline and chronological descendant session HEADs remain required. Final HEAD may
+remain unchanged with staged, unstaged or untracked task changes. Journey-final evidence retains
+repository-state.json, staged.patch and unstaged.patch with deterministic content/mode hashes and
+an overall fingerprint; ignored files are outside this Git observation boundary. Publication
+rechecks the final target state and rolls back on change. Historical inspection verifies retained
+bytes without requiring the original workspace. This does not establish actor attribution or
+verification success. The Product candidate workspace remains strictly clean and exact-HEAD-bound.
