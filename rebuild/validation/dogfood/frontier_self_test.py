@@ -29,6 +29,37 @@ class FrontierTests(unittest.TestCase):
         bundle = h.load_canonical_bundle(self.root / descriptor["evidence"]["canonical_bundle"]["file"])
         return descriptor, capture, bundle
 
+    def test_continuation_requires_current_canonical_identity_and_prior_creation(self):
+        descriptor, capture, bundle = self.fixture()
+        goal = capture.successful_calls("context_record")[0]
+        continued = replace(goal, call_id="continue-work", sequence=goal.sequence + 10,
+            completion_sequence=goal.completion_sequence + 20,
+            arguments={"project_id": bundle.project_id, "role": "goal",
+                "work_transition": "continue", "goal_context_id": goal.result["context_item_id"]},
+            result={**goal.result, "work_transition": "continue", "canonical_mutation": False})
+        self.assertTrue(h.verified_goal_continuation(continued, goal, bundle))
+        for name, tables in (
+            ("revision", {"context_items": tuple({**r, "revision": 2} for r in bundle.rows("context_items"))}),
+            ("basis", {"context_item_sources": ()}),
+            ("unavailable Source", {"sources": tuple({**r, "availability": "unavailable"}
+                if r["id"] == goal.result["source_id"] else r for r in bundle.rows("sources"))}),
+            ("stale Goal", {"context_items": (*bundle.rows("context_items"),
+                {**bundle.rows("context_items")[0], "id": "ef" * 16, "recorded_at": 999})}),
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(h.verified_goal_continuation(continued, goal,
+                    replace(bundle, tables={**bundle.tables, **tables})))
+        self.assertFalse(h.verified_goal_continuation(continued, None, bundle))
+        # An actual new identity still counts as creation despite a false read-only flag.
+        new = replace(continued, result={**continued.result, "context_item_id": "ef" * 16})
+        changed = replace(capture, tool_calls=tuple(sorted((*capture.tool_calls, new), key=lambda c: c.sequence)))
+        self.assertEqual(len(h.goal_creation_calls(changed, bundle)), 2)
+        # A later creation makes an attempted continuation of the previous Work stale.
+        stale = replace(continued, sequence=new.completion_sequence + 10,
+            completion_sequence=new.completion_sequence + 20)
+        changed = replace(changed, tool_calls=tuple(sorted((*changed.tool_calls, stale), key=lambda c: c.sequence)))
+        self.assertEqual(len(h.goal_creation_calls(changed)), 3)
+
     def validation_capture(self, *specifications):
         """Build numeric command evidence without depending on private campaign paths."""
 
@@ -765,6 +796,15 @@ class FrontierTests(unittest.TestCase):
         evidence = h.exploratory_no_write_evidence(capture, baseline)
         self.assertTrue(evidence["qualified"], evidence)
         self.assertEqual(evidence["origin_discovery_sequence"], discovery.sequence)
+        goal = capture.successful_calls("context_record")[0]
+        continues = tuple(replace(goal, call_id=f"continue-{index}",
+            sequence=goal.sequence + 10 + index * 10, completion_sequence=goal.sequence + 11 + index * 10,
+            arguments={"project_id": goal.result["project_id"], "role": "goal",
+                "work_transition": "continue", "goal_context_id": goal.result["context_item_id"]},
+            result={**goal.result, "work_transition": "continue", "canonical_mutation": False})
+            for index in range(3))
+        continued = replace(capture, tool_calls=tuple(sorted((*capture.tool_calls, *continues), key=lambda c: c.sequence)))
+        self.assertEqual(h.exploratory_no_write_evidence(continued, baseline), evidence)
         for missing in ("experiment", "resolution", "binding", "origin", "new_dimension", "new_source"):
             changed_discovery = rebound_discovery
             if missing in {"new_dimension", "new_source"}:

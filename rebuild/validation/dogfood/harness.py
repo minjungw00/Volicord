@@ -4358,8 +4358,8 @@ def exploratory_resume_evidence(capture: CodexCapture | None, recall: ToolCall |
 def rematerialized_exploration_evidence(capture: CodexCapture, baseline: ToolCall,
                                       checkpoint: ToolCall, discovery: ToolCall, record: ToolCall) -> dict[str, Any] | None:
     """A completed research result may be bound to a new ready review on its exact baseline."""
-    goals = [c for c in capture.successful_calls("context_record")
-        if c.arguments.get("role") == "goal" and c.result.get("context_item_id") == checkpoint.arguments.get("goal_context_id")
+    goals = [c for c in goal_creation_calls(capture)
+        if c.result.get("context_item_id") == checkpoint.arguments.get("goal_context_id")
         and c.arguments.get("project_id") == baseline.result.get("project_id")
         and c.completion_sequence < baseline.sequence]
     if len(goals) != 1:
@@ -5792,9 +5792,8 @@ def build_work_observation(
     )
     goal_calls = [
         call
-        for call in capture.successful_calls("context_record")
-        if call.arguments.get("role") == "goal"
-        and call.result.get("context_item_id") == authoritative_goal_context_id
+        for call in goal_creation_calls(capture)
+        if call.result.get("context_item_id") == authoritative_goal_context_id
         and any(
             current_host_context_call_matches(
                 capture, call, first_turn, project_id
@@ -6330,6 +6329,62 @@ def decision_facts(
     )
 
 
+def verified_goal_continuation(
+    candidate: ToolCall, existing: ToolCall | None, bundle: CanonicalBundle | None = None,
+) -> bool:
+    """Prove read-only continuation from the prior creation and canonical basis."""
+    if existing is None:
+        return False
+    project_id = existing.result.get("project_id")
+    context_id = existing.result.get("context_item_id")
+    source_id = existing.result.get("source_id")
+    revision = existing.result.get("revision")
+    if not (
+        candidate.arguments.get("role") == candidate.result.get("role") == "goal"
+        and candidate.arguments.get("work_transition") == candidate.result.get("work_transition") == "continue"
+        and candidate.result.get("canonical_mutation") is False
+        and nonempty_string(project_id) and existing.arguments.get("project_id") == project_id
+        and candidate.arguments.get("project_id") == candidate.result.get("project_id") == project_id
+        and nonempty_string(context_id)
+        and candidate.arguments.get("goal_context_id") == candidate.result.get("context_item_id") == context_id
+        and nonempty_string(source_id) and candidate.result.get("source_id") == source_id
+        and type(revision) is int and revision > 0
+        and type(candidate.result.get("revision")) is int
+        and candidate.result["revision"] == revision
+        and existing.completion_sequence < candidate.sequence
+    ):
+        return False
+    if bundle is None:
+        # Capture-only exploration also gets canonical validation in goal_facts.
+        return True
+    goal = bundle.one("context_items", id=context_id, project_id=project_id)
+    source = bundle.one("sources", id=source_id, project_id=project_id)
+    relation = bundle.one("context_item_sources", project_id=project_id,
+        context_item_id=context_id, source_id=source_id, position=0)
+    goals = [item for item in bundle.rows("context_items")
+        if item.get("project_id") == project_id and item.get("role") == "goal"]
+    current = max(goals, key=lambda item: (item.get("recorded_at", -1), item.get("id", "")), default=None)
+    return bool(project_id == bundle.project_id and goal is not None and goal == current
+        and goal.get("role") == "goal" and goal.get("revision") == revision
+        and goal.get("statement") == existing.arguments.get("statement")
+        and goal.get("provenance_role") == "user_statement" and goal.get("author_kind") == "user"
+        and source is not None and source.get("availability") == "available"
+        and relation is not None)
+
+
+def goal_creation_calls(
+    capture: CodexCapture, bundle: CanonicalBundle | None = None,
+) -> list[ToolCall]:
+    """Only verified continues are excluded; malformed or mutating calls remain visible."""
+    creations: list[ToolCall] = []
+    for call in capture.successful_calls("context_record"):
+        if call.arguments.get("role") != "goal":
+            continue
+        if not verified_goal_continuation(call, creations[-1] if creations else None, bundle):
+            creations.append(call)
+    return creations
+
+
 def goal_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
@@ -6339,7 +6394,7 @@ def goal_facts(
     if work is None or bundle is None or not work.user_turns:
         return False, None, None, None, False, {}
     calls = work.successful_calls("context_record")
-    goal_calls = [call for call in calls if call.arguments.get("role") == "goal"]
+    goal_calls = goal_creation_calls(work, bundle)
     authoritative_calls = [
         call
         for call in goal_calls
@@ -6351,7 +6406,15 @@ def goal_facts(
     context_ids: set[str] = set()
     authoritative_record_valid = False
     suspicious_context_count = 0
+    continuation_records: list[dict[str, Any]] = []
     for candidate in calls:
+        if candidate.arguments.get("role") == "goal" and candidate not in goal_calls:
+            continuation_records.append({"sequence": candidate.sequence,
+                "completion_sequence": candidate.completion_sequence,
+                "context_id": candidate.result.get("context_item_id"),
+                "source_id": candidate.result.get("source_id"),
+                "revision": candidate.result.get("revision"), "qualified": True})
+            continue
         context_id = candidate.result.get("context_item_id")
         source_id = candidate.result.get("source_id")
         role = candidate.arguments.get("role")
@@ -6442,6 +6505,8 @@ def goal_facts(
             "raw_first_turn_matches_descriptor_transport_identity": goal_task_identity,
             "recorded_context_count": len(context_records),
             "goal_record_count": len(goal_calls),
+            "verified_goal_continuation_count": len(continuation_records),
+            "goal_continuations": continuation_records,
             "authoritative_goal_context_id": authoritative_goal_context_id,
             "authoritative_goal_call_count": len(authoritative_calls),
             "authoritative_goal_call_sequence": (
@@ -10021,9 +10086,8 @@ def real_session_evidence(
     authoritative_goal_calls = (
         [
             call
-            for call in work_capture.successful_calls("context_record")
-            if call.arguments.get("role") == "goal"
-            and call.result.get("context_item_id") == goal_context_id
+            for call in goal_creation_calls(work_capture, bundle)
+            if call.result.get("context_item_id") == goal_context_id
         ]
         if work_capture is not None
         else []
@@ -18542,6 +18606,59 @@ def self_test() -> int:
         ]["pre_work_readiness"]["uncovered_paths"]
     ):
         raise AssertionError("an uncovered root artifact in the first mutation qualified")
+
+    # A continue returns the existing identity without authoring another user statement.
+    for continuation_count in (1, 3):
+        continued = real_session_fixture("small-python", 1, revision, evidence_directory)
+        for index in range(continuation_count):
+            insert_successful_mcp_completion_before(
+                continued, before_call_marker="baseline-call", call_id=f"continue-{index}",
+                operation="context_record",
+                arguments={"project_id": "01" * 16, "role": "goal",
+                    "work_transition": "continue", "goal_context_id": "08" * 16},
+                structured={"project_id": "01" * 16, "role": "goal",
+                    "work_transition": "continue", "canonical_mutation": False,
+                    "context_item_id": "08" * 16, "source_id": "03" * 16, "revision": 1},
+            )
+        result = real_session_evidence(continued, kind="small-python", cycle=1,
+            repository_revision=revision)
+        basis = result["task_goal_basis"]["canonical_context_decomposition"]
+        if (result["checks"]["plain_task_goal_linkage"] != "passed"
+            or result["checks"]["pre_write_materiality_work_authority"] != "passed"
+            or basis["goal_record_count"] != 1
+            or basis["duplicate_or_unused_goal_count"] != 0
+            or basis["suspicious_context_record_count"] != 0
+            or basis.get("verified_goal_continuation_count") != continuation_count):
+            raise AssertionError("valid same-Work continue was counted as Goal creation: " + json.dumps(basis))
+
+    for label, argument_change, response_change in (
+        ("wrong Goal", {"goal_context_id": "30" * 16}, {}),
+        ("foreign Project", {"project_id": "30" * 16}, {}),
+        ("returned Goal", {}, {"context_item_id": "30" * 16}),
+        ("returned Source", {}, {"source_id": "30" * 16}),
+        ("returned revision", {}, {"revision": 2}),
+        ("returned Project", {}, {"project_id": "30" * 16}),
+        ("mutation claim", {}, {"canonical_mutation": True}),
+        ("flag alone", {"work_transition": "start_new"}, {}),
+    ):
+        forged = real_session_fixture("small-python", 1, revision, evidence_directory)
+        insert_successful_mcp_completion_before(
+            forged, before_call_marker="baseline-call", call_id="forged-continue",
+            operation="context_record",
+            arguments={"project_id": "01" * 16, "role": "goal",
+                "work_transition": "continue", "goal_context_id": "08" * 16, **argument_change},
+            structured={"project_id": "01" * 16, "role": "goal",
+                "work_transition": "continue", "canonical_mutation": False,
+                "context_item_id": "08" * 16, "source_id": "03" * 16, "revision": 1,
+                **response_change},
+        )
+        result = real_session_evidence(forged, kind="small-python", cycle=1,
+            repository_revision=revision)
+        basis = result["task_goal_basis"]["canonical_context_decomposition"]
+        if (basis["duplicate_or_unused_goal_count"] != 1
+            or basis["suspicious_context_record_count"] == 0
+            or basis.get("verified_goal_continuation_count", 0) != 0):
+            raise AssertionError("forged continuation escaped integrity checks: " + label)
 
     duplicate_goal_fixture = real_session_fixture(
         "small-python", 1, revision, evidence_directory
