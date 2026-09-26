@@ -212,3 +212,13 @@ Checkpoint failures preserve `details.workflow` and a bounded canonical
 `checkpoint_decision_work_mismatch` with `checkpoint_work_item_id`, `decision_id`,
 `decision_work_item_id` and a canonical inspection next action. Store rejection
 remains authoritative; storage backtraces and underlying source errors are absent.
+
+`inquiry_frontier.questions[]` includes `identity`, `revision`,
+`presentation_receipt_id`, `prompt`, `why_now`, `material_scope`, `established_facts`
+(with statement, Source basis, capability and freshness), `alternatives`,
+`trade_offs`, `uncertainty`, `known_limits`, `prerequisites` (exact revision,
+required/blocked/superseding outcomes and Source basis),
+`allowed_non_choice_dispositions` and `what_unlocks`. Initial presentation keeps
+`recommendation_state=withheld_until_initial_response` and contains no
+recommendation or rationale. The successful exact receipt-bound `decision_record`
+response retains the existing post-choice recommendation feedback.

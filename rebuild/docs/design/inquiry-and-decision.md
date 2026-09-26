@@ -718,6 +718,11 @@ Frontier의 각 Question은 최소 다음을 함께 표시한다.
 - 선택 외의 가능한 disposition: delegation, research, prototype, deferment 또는
   out-of-scope
 
+Initial MCP Frontier는 현재 QuestionPresentation의 material scope, Source/capability/freshness를
+가진 established facts, alternatives, trade-offs, uncertainty, known limits, exact prerequisite
+revision/outcome/Source context, allowed non-choice dispositions와 answer-unlocks를 모두 전달한다.
+Recommendation/rationale는 여기에 포함하지 않는다.
+
 Current host adapter는 실제 Frontier 결과를 표시할 때 Question identity/revision, exact alternative
 keys, Project와 host session을 묶은 opaque session-local presentation receipt를
 만든다. 이 receipt는 canonical Question/Decision state가 아니며 Frontier의 read semantics를 바꾸지

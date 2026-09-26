@@ -5369,14 +5369,19 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
                     source_basis: vec![basis.id],
                 },
                 trade_offs: vec!["Remote augmentation remains separate".into()],
-                uncertainty: Vec::new(),
+                uncertainty: vec!["Provider augmentation behavior is not yet selected".into()],
                 material_scope: vec!["storage".into()],
                 materiality: QuestionMateriality::Material,
                 presentation_order: 1,
                 why_it_matters_now: "The host journey needs an exact user choice".into(),
-                established_facts: Vec::new(),
+                established_facts: vec![volicord_context::QuestionEstablishedFact {
+                    statement: "Canonical persistence is local".into(),
+                    source_basis: vec![basis.id],
+                    capability: Some("repository inspection".into()),
+                    freshness: volicord_context::QuestionEvidenceFreshness::Current,
+                }],
                 assumptions: Vec::new(),
-                known_limits: Vec::new(),
+                known_limits: vec!["No provider retention policy is selected here".into()],
                 what_the_answer_unlocks: vec!["V08 Decision transport".into()],
                 allowed_non_choice_dispositions: NonUserQuestionOutcome::ALL.to_vec(),
                 research_state: QuestionResearchState::ReadyToAsk,
@@ -5423,6 +5428,58 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         json!({"project_id":project}),
     ))
     .clone();
+    let presented = &frontier["questions"][0];
+    assert_eq!(presented["identity"], question.id.to_string());
+    assert_eq!(presented["revision"], question.revision);
+    assert_eq!(presented["material_scope"], json!(["storage"]));
+    assert_eq!(
+        presented["established_facts"][0]["statement"],
+        "Canonical persistence is local"
+    );
+    assert_eq!(
+        presented["established_facts"][0]["source_basis"],
+        json!([basis.id.to_string()])
+    );
+    assert_eq!(presented["established_facts"][0]["freshness"], "current");
+    assert_eq!(
+        presented["established_facts"][0]["capability"],
+        "repository inspection"
+    );
+    assert_eq!(
+        presented["trade_offs"],
+        json!(["Remote augmentation remains separate"])
+    );
+    assert_eq!(
+        presented["uncertainty"],
+        json!(["Provider augmentation behavior is not yet selected"])
+    );
+    assert_eq!(
+        presented["known_limits"],
+        json!(["No provider retention policy is selected here"])
+    );
+    assert_eq!(presented["prerequisites"], json!([]));
+    assert_eq!(
+        presented["allowed_non_choice_dispositions"],
+        json!([
+            "resolved_by_research",
+            "requires_prototype",
+            "deferred",
+            "out_of_scope",
+            "superseded",
+        ])
+    );
+    assert_eq!(presented["what_unlocks"], json!(["V08 Decision transport"]));
+    assert_eq!(
+        presented["recommendation_state"],
+        "withheld_until_initial_response"
+    );
+    assert!(!presented
+        .as_object()
+        .unwrap()
+        .contains_key("recommendation"));
+    assert!(!serde_json::to_string(presented)
+        .unwrap()
+        .contains("The accepted product boundary is local-first"));
     let presentation_receipt_id = frontier["questions"][0]["presentation_receipt_id"]
         .as_str()
         .expect("presentation receipt");
@@ -5443,6 +5500,19 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
     ))
     .clone();
     assert_eq!(decision["all_succeeded"], true, "{decision}");
+    assert_eq!(
+        decision["post_choice_agent_feedback"]["recommendation"],
+        "local"
+    );
+    assert_eq!(
+        decision["post_choice_agent_feedback"]["rationale"],
+        "The accepted product boundary is local-first"
+    );
+    assert_eq!(
+        decision["post_choice_agent_feedback"]["source_ids"],
+        json!([basis.id.to_string()])
+    );
+
     let decision_source = decision["user_response_source_id"]
         .as_str()
         .expect("Decision Source")

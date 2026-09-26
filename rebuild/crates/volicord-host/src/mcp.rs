@@ -915,7 +915,10 @@ impl HostAdapter {
                         displayed,
                     },
                 );
-                Ok(json!({"identity":question.question_id.to_string(),"revision":question.displayed_revision,"presentation_receipt_id":presentation_receipt_id,"prompt":question.prompt_basis,"why_now":question.why_it_matters_now,"alternatives":question.alternatives.into_iter().map(|alternative| json!({"key":alternative.key,"label":alternative.label,"consequence":alternative.consequence})).collect::<Vec<_>>(),"recommendation_state":"withheld_until_initial_response","what_unlocks":question.what_the_answer_unlocks}))
+                Ok(question_presentation_json(
+                    question,
+                    presentation_receipt_id,
+                ))
             })
             .collect::<Result<Vec<_>, HostError>>()?;
         let response = json!({"questions":questions,"diagnostics":value.diagnostics.into_iter().map(|diagnostic| diagnostic.detail).collect::<Vec<_>>() });
@@ -7139,6 +7142,53 @@ fn workflow_disposition_name(value: WorkflowDisposition) -> &'static str {
 fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
 }
+fn question_outcome_name(outcome: volicord_context::QuestionTerminalOutcome) -> &'static str {
+    use volicord_context::QuestionTerminalOutcome::*;
+    match outcome {
+        Answered => "answered",
+        Delegated => "delegated",
+        ResolvedByResearch => "resolved_by_research",
+        RequiresPrototype => "requires_prototype",
+        Deferred => "deferred",
+        OutOfScope => "out_of_scope",
+        Superseded => "superseded",
+    }
+}
+
+fn question_presentation_json(
+    question: volicord_inquiry::QuestionPresentation,
+    receipt: String,
+) -> Value {
+    json!({
+        "identity":question.question_id.to_string(), "revision":question.displayed_revision,
+        "presentation_receipt_id":receipt, "prompt":question.prompt_basis,
+        "why_now":question.why_it_matters_now, "material_scope":question.material_scope,
+        "established_facts":question.established_facts.into_iter().map(|fact| json!({
+            "statement":fact.statement, "source_basis":fact.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "capability":fact.capability, "freshness":match fact.freshness {
+                QuestionEvidenceFreshness::Current => "current", QuestionEvidenceFreshness::Stale => "stale",
+                QuestionEvidenceFreshness::Unavailable => "unavailable", QuestionEvidenceFreshness::Unknown => "unknown",
+            },
+        })).collect::<Vec<_>>(),
+        "alternatives":question.alternatives.into_iter().map(|alternative| json!({
+            "key":alternative.key,"label":alternative.label,"consequence":alternative.consequence,
+        })).collect::<Vec<_>>(),
+        "trade_offs":question.trade_offs, "uncertainty":question.uncertainty, "known_limits":question.known_limits,
+        "prerequisites":question.prerequisites.into_iter().map(|prerequisite| json!({
+            "question_id":prerequisite.question_id.to_string(),"required_revision":prerequisite.required_revision,
+            "required_outcome":question_outcome_name(prerequisite.required_outcome),
+            "required_source_basis":prerequisite.required_source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+            "blocked_outcomes":prerequisite.blocked_outcomes.into_iter().map(question_outcome_name).collect::<Vec<_>>(),
+            "superseding_outcomes":prerequisite.superseding_outcomes.into_iter().map(question_outcome_name).collect::<Vec<_>>(),
+            "assessment_source_basis":prerequisite.assessment_source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "allowed_non_choice_dispositions":question.allowed_non_choice_dispositions.into_iter()
+            .map(|disposition| question_outcome_name(disposition.terminal_outcome())).collect::<Vec<_>>(),
+        "what_unlocks":question.what_the_answer_unlocks,
+        "recommendation_state":"withheld_until_initial_response",
+    })
+}
+
 fn canonical_cause_json(error: &volicord_operations::Error) -> Value {
     error.canonical_cause().map(|cause| json!({
         "kind":format!("{:?}",cause.kind()),
@@ -7408,6 +7458,59 @@ fn interaction_review_json(reviews: &[volicord_inquiry::InteractionReview]) -> V
 #[cfg(test)]
 mod draft_budget_tests {
     use super::*;
+
+    #[test]
+    fn initial_presentation_preserves_exact_prerequisite_outcome_context() {
+        use volicord_context::{QuestionDependency, QuestionTerminalOutcome as Outcome};
+        let source = SourceId::from_bytes([1; 16]);
+        let prerequisite = QuestionId::from_bytes([2; 16]);
+        let output = question_presentation_json(
+            volicord_inquiry::QuestionPresentation {
+                question_id: QuestionId::from_bytes([3; 16]),
+                displayed_revision: 7,
+                prompt_basis: "Choose after research".into(),
+                why_it_matters_now: "Research completed".into(),
+                material_scope: vec!["storage".into()],
+                established_facts: vec![],
+                alternatives: vec![],
+                trade_offs: vec![],
+                uncertainty: vec![],
+                known_limits: vec![],
+                prerequisites: vec![QuestionDependency {
+                    question_id: prerequisite,
+                    required_revision: 4,
+                    required_outcome: Outcome::ResolvedByResearch,
+                    required_source_basis: vec![source],
+                    blocked_outcomes: vec![Outcome::Deferred],
+                    superseding_outcomes: vec![Outcome::OutOfScope],
+                    assessment_source_basis: vec![source],
+                }],
+                what_the_answer_unlocks: vec!["implementation".into()],
+                allowed_non_choice_dispositions: vec![NonUserQuestionOutcome::Deferred],
+            },
+            "exact-host-receipt".into(),
+        );
+        assert_eq!(output["revision"], 7);
+        assert_eq!(output["presentation_receipt_id"], "exact-host-receipt");
+        assert_eq!(
+            output["prerequisites"][0],
+            json!({
+                "question_id":prerequisite.to_string(),"required_revision":4,"required_outcome":"resolved_by_research",
+                "required_source_basis":[source.to_string()],"blocked_outcomes":["deferred"],
+                "superseding_outcomes":["out_of_scope"],"assessment_source_basis":[source.to_string()],
+            })
+        );
+        assert_eq!(
+            output["allowed_non_choice_dispositions"],
+            json!(["deferred"])
+        );
+        assert_eq!(
+            output["recommendation_state"],
+            "withheld_until_initial_response"
+        );
+        assert!(output.get("recommendation").is_none());
+        assert!(output.get("recommendation_rationale").is_none());
+    }
 
     #[test]
     fn oversized_complete_draft_returns_bounded_inspection_instead_of_a_retry_loop() {
