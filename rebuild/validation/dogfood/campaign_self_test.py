@@ -241,7 +241,7 @@ REAL_OBSERVE = repository_state.observe
 
 def observe_fixture_repository(repository):
     revision = FIXTURE_REPOSITORY_REVISIONS.get(repository.resolve())
-    if revision is None:
+    if revision is None or (repository / ".git").exists():
         return REAL_OBSERVE(repository)
     patches = {"staged": b"", "unstaged": b""}
     state = {"kind": "dogfood_journey_repository_state", "schema_version": 1,
@@ -3484,15 +3484,16 @@ def assert_superseded_candidate_mutation_guard(parent: Path, binary: Path) -> No
 
     harness.git_clean = lambda _path: False
     try:
-        try:
-            campaign.collect_batch(root, [])
-        except campaign.CampaignError as error:
-            if "current clean qualifying HEAD" not in str(error):
-                raise
-        else:
-            raise AssertionError("collect-batch accepted a dirty qualifying worktree")
-        if snapshot() != before:
-            raise AssertionError("dirty-worktree rejection changed campaign state")
+        for operation, invoke in operations.items():
+            try:
+                invoke()
+            except campaign.CampaignError as error:
+                if "current clean qualifying HEAD" not in str(error):
+                    raise AssertionError(f"{operation} bypassed dirty-candidate guard") from error
+            else:
+                raise AssertionError(f"{operation} accepted a dirty qualifying worktree")
+            if snapshot() != before:
+                raise AssertionError("dirty-worktree rejection changed campaign state")
     finally:
         harness.git_clean = original_clean
 
@@ -3788,6 +3789,8 @@ def main() -> int:
     check_blind_dimension_regressions()
     from reconciliation_self_test import check_reconciliation_regressions
     check_reconciliation_regressions()
+    from evidence_controls_self_test import check_evidence_control_regressions
+    check_evidence_control_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
     try:
@@ -3842,6 +3845,10 @@ def main() -> int:
             "cross_journey_project_isolation",
             "immutable_session_slot_manifest_and_raw_hash_binding",
             "collection_failure_rollback_and_post_publication_raw_immutability",
+            "real_git_dirty_staged_unstaged_untracked_and_committed_collection",
+            "target_attestation_tamper_rejection_and_non_mutating_atomic_publication",
+            "independent_blind_dimensions_and_unseen_obligation_gap",
+            "campaign_owned_reconciliation_validation_privacy_and_create_only_seal",
             "batch_publication_failure_atomicity_and_read_barrier",
             "journey_final_document_realization_inventory",
             "historical_cycle_schema_identity_inventory_inspection_only",

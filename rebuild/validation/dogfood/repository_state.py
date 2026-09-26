@@ -75,6 +75,8 @@ def file_state(repository, name, *, missing_allowed=False):
 
 
 def observe(repository: Path):
+    if repository.is_symlink() or any(parent.is_symlink() for parent in repository.parents):
+        raise StateError("unexpected repository root path escape")
     repository = repository.resolve(strict=True)
     top = Path(os.fsdecode(git(repository, "rev-parse", "--show-toplevel")).strip()).resolve(strict=True)
     if top != repository:

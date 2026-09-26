@@ -490,3 +490,11 @@ into batch evidence, operator run sheets, blind reviewer preparation, or reviewe
 symlink or path escape cannot redirect reconciliation outside the private campaign root. `/tmp`
 is not required for this workflow. Before seal, preserve private staging for diagnosis rather than
 editing immutable evidence or bypassing failed validation.
+
+Journey-final `repository_state` is an additional immutable, bounded reviewer surface shared by
+that journey's Works. It exposes status, modes and content/diff hashes without copying private
+reconciliation or patch/source bodies. A dirty observed target state alone does not establish a
+Product violation, actor attribution, unrelated/pre-existing-dirty attribution, or truthful
+verification. Review those independent claims using task, Source/Analysis Snapshot, Checkpoint,
+validation-command and raw observation evidence. The original target can later change or disappear;
+review-package and evidence-set integrity verify retained bytes rather than the live worktree.

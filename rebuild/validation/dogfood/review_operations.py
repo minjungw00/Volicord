@@ -295,6 +295,9 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
         journey_sample_id = c.journey_id(kind)
         work_sample_ids = [c.work_key(kind, work) for work in c.work_labels(kind)]
         final = journey_final[journey_sample_id]
+        state_binding = final["repository_revision_lineage"]["attestation_artifacts"]["state"]
+        source(journey_sample_id + "-repository-state", state_binding, "repository_state",
+            journey_sample_id, sample_ids=[journey_sample_id, *work_sample_ids])
         projection_slot = final["projection_source_work_slot_id"]
         projection_state = manifest["works"][projection_slot]
         projection_prefix = f"slots/{projection_state['review_slot_id']}"

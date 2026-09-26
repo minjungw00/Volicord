@@ -931,3 +931,10 @@ into batch evidence, operator run sheets, blind reviewer preparation, or reviewe
 symlink or path escape cannot redirect reconciliation outside the private campaign root. `/tmp`
 is not required for this workflow. Before seal, preserve private staging for diagnosis rather than
 editing immutable evidence or bypassing failed validation.
+
+The maintained campaign self-test and remediation integration include real-Git collector,
+publication-tamper/atomicity, blind coverage-gap, and campaign-private reconciliation regressions.
+Admission's dogfood support checks consume these same tests. `gate-self-test` also guards dirty
+Product candidate rejection without executing a real final aggregate/provider/V11.
+These deterministic checks are support evidence only; changed candidates require fresh naturalistic
+rollouts, independent review and replacement qualification. Previous failed captures remain diagnostic.

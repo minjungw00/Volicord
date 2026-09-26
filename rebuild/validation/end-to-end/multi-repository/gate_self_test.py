@@ -440,10 +440,39 @@ def assert_maintained_contract_admission(root: Path) -> None:
         assert owners.counts == {"final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
 
 
+def assert_dirty_candidate_admission(root: Path) -> None:
+    from unittest.mock import patch
+    import subprocess
+    def dirty_git(*arguments):
+        output = HEAD + "\n" if arguments == ("rev-parse", "HEAD") else " M tracked\n?? untracked\n"
+        return subprocess.CompletedProcess(["git", *arguments], 0, output, "")
+    with patch.object(gate, "git_output", side_effect=dirty_git):
+        candidate_check, head = gate.repository_check()
+    assert head == HEAD
+    assert candidate_check["status"] == "environment_blocked"
+    assert candidate_check["details"]["dirty_entry_count"] == 2
+    overrides = admission_overrides()
+    overrides["candidate_identity_and_clean_worktree"] = candidate_check
+    rejected = gate.evaluate_admission(
+        authorization_assertion=gate.AUTHORIZATION_ASSERTION,
+        provider_authorization_assertion=gate.PROVIDER_AUTHORIZATION_ASSERTION,
+        provider_model="synthetic-model", external_network="available", artifact_root=root,
+        command_runner=unused_command_runner, runner_path=ROOT / "rebuild/scripts/validate",
+        overrides=overrides, environment_evidence=synthetic_environment_evidence(),
+        dependency_evidence=synthetic_dependency_evidence())
+    assert rejected["eligible"] is False
+    owners = Owners(root / "owners")
+    capsule, counts = run_orchestration(root / "gate", rejected, owners)
+    assert capsule["phase_8_ready"] is False
+    assert all(count == 0 for count in counts.values())
+    assert all(count == 0 for count in owners.counts.values())
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-gate-self-test-") as directory:
         root = Path(directory)
         assert_maintained_contract_admission(root / "maintained-contracts")
+        assert_dirty_candidate_admission(root / "dirty-candidate")
 
         loopback_blocked = admission(
             root / "loopback",

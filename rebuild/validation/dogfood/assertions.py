@@ -493,6 +493,69 @@ def assert_active_operations_regressions() -> None:
     validate_active_operations(historical, "historical-prose-control")
 
 
+def validate_corrected_evidence_contracts(definition, campaign_source):
+    state = definition.get("repository_state_attestation_contract", {})
+    if (state.get("candidate_state") != "clean_and_exact_head_bound"
+        or state.get("target_state") != "observed_committed_or_naturally_dirty_without_mutation"
+        or state.get("target_git_mutation_allowed") is not False
+        or state.get("dirty_state_is_product_failure") is not False
+        or state.get("actor_attribution_or_verification_success_implied") is not False
+        or state.get("analysis_or_checkpoint_replaced") is not False
+        or state.get("publication_verification") != "reobserve_exact_state_before_and_during_atomic_publication"
+        or set(state.get("artifacts", [])) != {"repository-state.json", "staged.patch", "unstaged.patch"}):
+        raise AssertionError("naturalistic repository-state attestation boundary changed")
+    reconciliation = definition.get("reconciliation_contract", {})
+    if (reconciliation.get("external_descriptor_input_allowed") is not False
+        or reconciliation.get("seal_requires_exact_validated_draft") is not True
+        or reconciliation.get("draft_inventory_bound") is not False
+        or reconciliation.get("validation_inventory_bound_after_seal") is not True
+        or reconciliation.get("visibility") != "steward_private"
+        or reconciliation.get("provisional_bytes_immutable") is not True):
+        raise AssertionError("campaign-owned private reconciliation boundary changed")
+    import harness
+    contract = harness.provisional_review_contract()
+    if ("assessments" not in contract["required_fields"]
+        or contract["assessments"]["maximum"] != 32
+        or contract["assessments"]["summary_classification"] != "summary_only_never_independent_coverage"):
+        raise AssertionError("independent multi-dimension blind coverage contract changed")
+    import inspect, campaign
+    if tuple(inspect.signature(campaign.seal_work).parameters) != ("root", "kind", "work"):
+        raise AssertionError("seal-work admits an external descriptor path")
+    tree = ast.parse(campaign_source)
+    chronology = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+        and node.name == "verify_journey_revision_chronology")
+    if "harness.git_clean" in ast.unparse(chronology):
+        raise AssertionError("target journey naturalistic dirty state is rejected")
+    for operation in ("collect_batch", "publish_batch"):
+        node = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == operation)
+        if "verify_final_repository_states_for_publication" not in ast.unparse(node):
+            raise AssertionError("publication bypasses attested target state verification")
+
+
+def assert_corrected_evidence_contract_mutations(definition, campaign_source):
+    for owner, field, bad in (("repository_state_attestation_contract", "target_git_mutation_allowed", True),
+        ("repository_state_attestation_contract", "dirty_state_is_product_failure", True),
+        ("repository_state_attestation_contract", "candidate_state", "dirty_allowed"),
+        ("reconciliation_contract", "external_descriptor_input_allowed", True),
+        ("reconciliation_contract", "seal_requires_exact_validated_draft", False)):
+        proposed = copy.deepcopy(definition)
+        proposed[owner][field] = bad
+        try:
+            validate_corrected_evidence_contracts(proposed, campaign_source)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError(f"controlled invariant mutation passed: {owner}.{field}")
+    weakened = campaign_source.replace("integrity_check(\"project_binding\", verify_final_repository_states_for_publication, stage)", "None")
+    try:
+        validate_corrected_evidence_contracts(definition, weakened)
+    except AssertionError as error:
+        if "publication bypasses" not in str(error):
+            raise
+    else:
+        raise AssertionError("controlled publication verification removal passed")
+
+
 def main() -> int:
     source = HARNESS.read_text(encoding="utf-8")
     campaign_source = CAMPAIGN.read_text(encoding="utf-8")
@@ -506,6 +569,8 @@ def main() -> int:
     operations_source = OPERATIONS.read_text(encoding="utf-8")
     definition = DEFINITION.read_text(encoding="utf-8")
     definition_value = json.loads(definition)
+    validate_corrected_evidence_contracts(definition_value, campaign_source)
+    assert_corrected_evidence_contract_mutations(definition_value, campaign_source)
     for path in ACTIVE_OPERATION_CONTRACTS:
         validate_active_operations(path.read_text(encoding="utf-8"), str(path))
     assert_active_operations_regressions()

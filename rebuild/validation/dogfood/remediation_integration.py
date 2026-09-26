@@ -35,6 +35,11 @@ def command(identity: str, coverage: list[str], argv: list[str], cwd: Path) -> d
 
 def main() -> int:
     python_cases = [
+        "repository_state_self_test.RepositoryStateTests",
+        "blind_dimensions_self_test.BlindDimensionTests",
+        "reconciliation_self_test.ReconciliationTests",
+        "evidence_controls_self_test.EvidenceControlTests",
+        "qualification_self_test.PolicyTests.test_blind_coverage_gap_is_not_overridden_by_complete_reviews",
         "frontier_self_test.FrontierTests.test_mixed_validation_outcomes_preserve_scope_and_attribution",
         "frontier_self_test.FrontierTests.test_validation_baseline_regression_recovery_and_environment_states",
         "machine_findings_self_test.MachineFindingTests.test_required_validation_hard_blocker_requires_confirmed_attribution",
@@ -50,7 +55,9 @@ def main() -> int:
     ]
     definitions = [
         ("dogfood-interfaces",
-         ["mixed_validation_semantics", "recovered_and_confirmed_failure_attribution",
+         ["naturalistic_target_state_attestation", "candidate_cleanliness_preserved",
+          "blind_multi_obligation_coverage_and_gap", "campaign_private_validated_reconciliation",
+          "non_mutating_collector_and_atomic_tamper_rejection", "mixed_validation_semantics", "recovered_and_confirmed_failure_attribution",
           "long_lived_project_fixture_support_only", "live_evidence_unresolved_boundaries",
           "conversational_human_review", "human_control_states", "exact_semantic_locale_reuse", "updated_ux_rubric",
           "durable_result_lineage"],
