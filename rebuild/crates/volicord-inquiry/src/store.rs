@@ -1779,7 +1779,7 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             ));
         }
         let mut accounted = BTreeSet::new();
-        for account in &dimension.alternative_accounting {
+        for (account_index, account) in dimension.alternative_accounting.iter().enumerate() {
             validate_text("accounted choice identity", &account.choice_id)?;
             validate_text("accounted alternative identity", &account.alternative_id)?;
             validate_text("alternative-accounting rationale", &account.rationale)?;
@@ -1789,13 +1789,23 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
                     .source_basis
                     .iter()
                     .any(|source| !dimension.basis.source_basis.contains(source))
-                || !accounted.insert((&account.choice_id, &account.alternative_id))
             {
                 return Err(Error::new(
                     ErrorKind::InvalidInput,
                     "alternative accounting requires unique identities and Source evidence included in the dimension authority basis",
+                ).at_authoring_field(format!("alternative_accounting[{account_index}].source_basis"), Some(&account.choice_id)));
+            }
+            if !accounted.insert((&account.choice_id, &account.alternative_id)) {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "alternative accounting must contain unique choice/alternative identities",
+                )
+                .at_authoring_field(
+                    format!("alternative_accounting[{account_index}].alternative_id"),
+                    Some(&account.choice_id),
                 ));
             }
+
             validate_alternative_resolution_authority(dimension, account)?;
         }
         let unresolved_alternatives = dimension
@@ -2201,7 +2211,7 @@ fn validate_engineering_choice_discovery(
         ));
     }
     let mut identities = BTreeSet::new();
-    for choice in &discovery.choices {
+    for (choice_index, choice) in discovery.choices.iter().enumerate() {
         validate_text("engineering choice identity", &choice.choice_id)?;
         validate_text("engineering choice summary", &choice.summary)?;
         validate_list(&choice.affected_scope)?;
@@ -2227,7 +2237,7 @@ fn validate_engineering_choice_discovery(
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "a discovery-worthy choice needs two credible alternatives or unresolved research/prototype evidence",
-            ));
+            ).at_authoring_field(format!("choices[{choice_index}].alternatives"), Some(&choice.choice_id)));
         }
         if choice.alternatives.len() > MAX_LIST_ITEMS {
             return Err(Error::new(
@@ -2404,7 +2414,20 @@ pub(crate) fn validate_material_decomposition(
                     "material decomposition references a missing choice",
                 )
             })?;
-        for alternative in &choice.alternatives {
+        let choice_index = discovery
+            .choices
+            .iter()
+            .position(|item| item.choice_id == id)
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidInput,
+                    "material decomposition choice missing",
+                )
+            })?;
+        for (alternative_index, alternative) in choice.alternatives.iter().enumerate() {
+            let path = format!(
+                "choices[{choice_index}].alternatives[{alternative_index}].material_decomposition"
+            );
             match &alternative.material_decomposition {
                 crate::MaterialDecomposition::MateriallyAtomic {
                     rationale,
@@ -2414,7 +2437,13 @@ pub(crate) fn validate_material_decomposition(
                         discovery,
                         choice,
                         residual_fork_closure,
-                    )?;
+                    )
+                    .map_err(|error| {
+                        error.at_authoring_field(
+                            format!("{path}.residual_fork_closure.interaction_comparisons"),
+                            Some(id),
+                        )
+                    })?;
                     validate_text("source-grounded material atomicity rationale", rationale)?;
                     validate_text(
                         "fixed material outcome",
@@ -2422,21 +2451,30 @@ pub(crate) fn validate_material_decomposition(
                     )?;
                     validate_list(&residual_fork_closure.credible_implementations)?;
                     validate_id_list(&residual_fork_closure.source_basis)?;
-                    if residual_fork_closure
+                    let invalid_field = if residual_fork_closure
                         .credible_implementations
                         .iter()
                         .collect::<BTreeSet<_>>()
                         .len()
                         < 2
-                        || !residual_fork_closure.remaining_material_outcomes.is_empty()
-                        || residual_fork_closure.source_basis.is_empty()
+                    {
+                        Some("credible_implementations")
+                    } else if !residual_fork_closure.remaining_material_outcomes.is_empty() {
+                        Some("remaining_material_outcomes")
+                    } else if residual_fork_closure.source_basis.is_empty()
                         || residual_fork_closure
                             .source_basis
                             .iter()
                             .any(|source| !choice.source_basis.contains(source))
                     {
+                        Some("source_basis")
+                    } else {
+                        None
+                    };
+                    if let Some(field) = invalid_field {
                         return Err(Error::new(ErrorKind::InvalidInput,
-                            "atomic residual-fork closure requires two credible implementations, current choice Sources and no remaining material outcome; decompose remaining outcomes into subordinate choices"));
+                            "atomic residual-fork closure requires two credible implementations, current choice Sources and no remaining material outcome; decompose remaining outcomes into subordinate choices")
+                            .at_authoring_field(format!("{path}.residual_fork_closure.{field}"),Some(id)));
                     }
                 }
                 crate::MaterialDecomposition::Decomposed { choice_ids } => {
@@ -2446,7 +2484,7 @@ pub(crate) fn validate_material_decomposition(
                         || choice_ids.iter().any(|child| child == id)
                     {
                         return Err(Error::new(ErrorKind::InvalidInput,
-                            "material decomposition requires non-empty unique subordinate choice identities without self-reference"));
+                            "material decomposition requires non-empty unique subordinate choice identities without self-reference").at_authoring_field(format!("{path}.choice_ids"),Some(id)));
                     }
                     crate::interaction::validate_decomposed_interactions(
                         discovery, choice, choice_ids,
@@ -2530,6 +2568,19 @@ fn validate_review_against_canonical(
             validate_current_host_user_source(canonical, *source_id)?;
         }
         behavior_context.push(item);
+    }
+    for dimension in &review.dimensions {
+        for (account_index, account) in dimension.alternative_accounting.iter().enumerate() {
+            if account
+                .source_basis
+                .iter()
+                .any(|source| !available.contains(source))
+            {
+                return Err(Error::new(ErrorKind::StaleBasis,
+                    "Materiality Review alternative accounting contains a missing or non-current Source basis")
+                    .at_authoring_field(format!("alternative_accounting[{account_index}].source_basis"),Some(&account.choice_id)));
+            }
+        }
     }
     if review.dimensions.iter().any(|dimension| {
         dimension

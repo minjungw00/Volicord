@@ -8603,3 +8603,165 @@ fn discovery_draft_round_trip_preserves_semantic_evidence_and_materiality_path()
         .active_decisions
         .is_empty());
 }
+
+#[test]
+fn pre_work_authoring_failures_report_exact_fields_and_supported_correction_paths() {
+    let (_temporary, mut adapter, project, draft, valid) = discovery_authoring_fixture();
+    let candidate_before = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .unwrap();
+    let mut unknown_relationship = valid.clone();
+    unknown_relationship["choices"][0]["relationship"] = json!({"state":"combined"});
+    let mut missing_closure = valid.clone();
+    missing_closure["choices"][0]["alternatives"][0]["material_decomposition"]
+        ["residual_fork_closure"]
+        .as_object_mut()
+        .unwrap()
+        .remove("credible_implementations");
+    let mut unknown_effect = valid.clone();
+    unknown_effect["choices"][0]["effect_categories"] = json!(["internal"]);
+    let mut missing_interaction_basis = valid.clone();
+    missing_interaction_basis["interaction_review"][0]["outcomes"][0]["conclusion"]
+        .as_object_mut()
+        .unwrap()
+        .remove("basis");
+    for (request,field,allowed) in [
+        (unknown_relationship,"arguments.choices[0].relationship.state","independent"),
+        (missing_closure,"arguments.choices[0].alternatives[0].material_decomposition.residual_fork_closure.credible_implementations","required"),
+        (unknown_effect,"arguments.choices[0].effect_categories[0]","implementation_internal"),
+        (missing_interaction_basis,"arguments.interaction_review[0].outcomes[0].conclusion.basis","required"),
+    ] {
+        let response = call(&mut adapter,"engineering_choice_discovery",request);
+        assert_eq!(response["result"]["isError"],true,"{response}");
+        let details = &structured(&response)["details"];
+        assert_eq!(details["diagnostic"],"aggregate_schema_validation");
+        let problems = details["problems"].to_string();
+        assert!(problems.contains(field),"{details}");
+        assert!(problems.contains(allowed),"{details}");
+        assert_eq!(details["next_supported_action"]["tool"],"engineering_choice_discovery");
+        assert_eq!(details["next_supported_action"]["action"],"draft");
+        assert_eq!(details["bound_identities"]["goal_context_id"],draft["goal_context_id"]);
+        assert_eq!(details["bound_identities"]["baseline_analysis_snapshot_id"],draft["baseline_analysis_snapshot_id"]);
+    }
+    let mut insufficient = valid.clone();
+    insufficient["choices"][0]["alternatives"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    let mut unrelated_source = valid.clone();
+    unrelated_source["choices"][0]["alternatives"][0]["material_decomposition"]
+        ["residual_fork_closure"]["source_basis"] =
+        json!([draft["current_goal"]["current_host_sources"][0]["source_id"]]);
+    let mut self_decomposition = valid.clone();
+    self_decomposition["choices"][0]["alternatives"][0]["material_decomposition"] = json!({
+        "state":"decomposed","choice_ids":["choice-1"],
+    });
+    for (request,field) in [
+        (insufficient,"arguments.choices[0].alternatives"),
+        (unrelated_source,"arguments.choices[0].alternatives[0].material_decomposition.residual_fork_closure.source_basis"),
+        (self_decomposition,"arguments.choices[0].alternatives[0].material_decomposition.choice_ids"),
+    ] {
+        let response = call(&mut adapter,"engineering_choice_discovery",request);
+        assert_eq!(response["result"]["isError"],true,"{response}");
+        let details = &structured(&response)["details"];
+        assert_eq!(details["diagnostic"],"authoring_semantic_validation","{details}");
+        assert_eq!(details["field_path"],field,"{details}");
+        assert_eq!(details["authoring_location"]["choice_id"],"choice-1");
+        assert_eq!(details["next_supported_action"]["action"],"draft");
+    }
+    assert_eq!(
+        candidate_before,
+        adapter
+            .operations()
+            .candidate_basis(parse_project(&project))
+            .unwrap()
+    );
+    let response = call(&mut adapter, "engineering_choice_discovery", valid);
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let recorded = structured(&response).clone();
+    let materiality = structured(&call(&mut adapter,"materiality_review",json!({
+        "action":"draft","project_id":project,"engineering_choice_discovery_candidate_id":recorded["discovery_candidate_id"],
+    }))).clone();
+    let judgment = draft_judgment(
+        &materiality,
+        "choice-1",
+        "agent_owned_implementation_choice",
+        json!({
+            "basis_summary":"Only private fixture organization differs",
+            "authority_counterfactual":"Source inspection fixes observable behavior and leaves private organization discretionary",
+            "learning_value":{"state":"routine","rationale":"No material transferable learning fork"},
+        }),
+    );
+    let mut review_request = draft_request(
+        &materiality,
+        "Source-grounded private fixture review",
+        json!({"state":"inactive"}),
+        vec![judgment],
+    );
+    review_request["behavioral_context_basis"]["context_item_ids"] =
+        json!([draft["behavioral_context"][0]["context_item_id"]]);
+    let candidate_before = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .unwrap();
+    let mut unknown_disposition = review_request.clone();
+    unknown_disposition["judgments"][0]["disposition"] = json!("implementation");
+    let mut forbidden_authority = review_request.clone();
+    forbidden_authority["judgments"][0]["contract_basis"] =
+        json!(["not authority for private discretion"]);
+    for (request, field) in [
+        (unknown_disposition, "arguments.judgments[0].disposition"),
+        (forbidden_authority, "arguments.judgments[0].contract_basis"),
+    ] {
+        let response = call(&mut adapter, "materiality_review", request);
+        assert_eq!(response["result"]["isError"], true, "{response}");
+        let details = &structured(&response)["details"];
+        assert!(details["problems"].to_string().contains(field), "{details}");
+        assert_eq!(
+            details["next_supported_action"]["tool"],
+            "materiality_review"
+        );
+        assert_eq!(details["next_supported_action"]["action"], "draft");
+        assert_eq!(
+            details["bound_identities"]["goal_context_id"],
+            draft["goal_context_id"]
+        );
+        assert_eq!(
+            details["bound_identities"]["baseline_analysis_snapshot_id"],
+            draft["baseline_analysis_snapshot_id"]
+        );
+        assert_eq!(
+            details["next_supported_action"]["engineering_choice_discovery_candidate_id"],
+            recorded["discovery_candidate_id"]
+        );
+    }
+    let mut unrelated_accounting_source = review_request.clone();
+    unrelated_accounting_source["judgments"][0]["alternative_accounting"][0]["source_ids"] =
+        json!([volicord_context::SourceId::from_bytes([255; 16]).to_string()]);
+    let response = call(
+        &mut adapter,
+        "materiality_review",
+        unrelated_accounting_source,
+    );
+    assert_eq!(response["result"]["isError"], true, "{response}");
+    let details = &structured(&response)["details"];
+    assert_eq!(
+        details["diagnostic"], "authoring_semantic_validation",
+        "{details}"
+    );
+    assert_eq!(
+        details["field_path"],
+        "arguments.judgments[0].alternative_accounting[0].source_ids"
+    );
+    assert_eq!(details["next_supported_action"]["action"], "draft");
+    assert_eq!(
+        candidate_before,
+        adapter
+            .operations()
+            .candidate_basis(parse_project(&project))
+            .unwrap()
+    );
+    let response = call(&mut adapter, "materiality_review", review_request);
+    assert_eq!(response["result"]["isError"], false, "{response}");
+}

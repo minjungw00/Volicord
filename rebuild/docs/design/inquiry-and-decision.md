@@ -391,6 +391,13 @@ Caller는 `tools/list` inputSchema를 읽고, 각 choice에 legal variant의 fix
 revise의 retained binding을 구분하며 모든 choice당 정확히 하나의 judgment를 제출한다.
 Null placeholder는 제출 가능한 semantic truth가 아니며 validation은 이를 허용하지 않는다.
 따라서 정상 record/revise는 malformed schema probe를 필요로 하지 않는다.
+Discovery/Materiality schema rejection은 exact failing field/allowed enum 또는 forbidden variant
+field와 supported draft action을 반환한다. Current retained discovery/review를 읽을 수 있으면
+Materiality diagnostic도 actual bound Goal/baseline을 반환한다. Schema 이후의 insufficient
+credible alternatives, invalid atomic/decomposed closure와 alternative-accounting Source mismatch는
+Inquiry가 typed field location/choice identity를 보존하고 Operations/Host가 exact input field와
+supported correction action으로 전달한다. Validation은 Source/authority invariant를 완화하지 않으며
+failure가 Candidate mutation이나 work readiness로 보고되지 않는다.
 
 Draft는 current blocking reason/next operation과 inspect skeleton, 여섯 artifact category,
 current dimension/choice/alternative accounting state 및 interaction/result/closure identity를

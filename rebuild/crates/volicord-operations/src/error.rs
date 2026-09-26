@@ -40,6 +40,18 @@ impl Error {
         None
     }
 
+    pub fn inquiry_cause(&self) -> Option<&volicord_inquiry::Error> {
+        let mut source = self.source();
+        for _ in 0..8 {
+            let current = source?;
+            if let Some(inquiry) = current.downcast_ref::<volicord_inquiry::Error>() {
+                return Some(inquiry);
+            }
+            source = current.source();
+        }
+        None
+    }
+
     pub fn message(&self) -> &str {
         &self.message
     }

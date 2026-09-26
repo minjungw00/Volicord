@@ -236,6 +236,100 @@ impl HostAdapter {
                         "next_supported_action":{"tool":"materiality_review","action":"draft"},
                     }));
                 }
+                if name == "engineering_choice_discovery" || name == "materiality_review" {
+                    let problem = error.to_string();
+                    let details = error.details.get_or_insert_with(|| {
+                        json!({
+                            "diagnostic":"authoring_contract_failure", "problem":problem,
+                        })
+                    });
+                    if let Some(object) = details.as_object_mut() {
+                        let mut bound = json!({"project_id":arguments.get("project_id")});
+                        if name == "materiality_review" {
+                            let candidate_id = arguments
+                                .get("engineering_choice_discovery_candidate_id")
+                                .or_else(|| arguments.get("review_candidate_id"))
+                                .and_then(Value::as_str);
+                            if let (Ok(project_id), Some(Ok(candidate_id))) =
+                                (project(&arguments), candidate_id.map(parse_candidate))
+                            {
+                                if let Ok(candidate) = self
+                                    .operations
+                                    .inspect_workflow_candidate(project_id, candidate_id)
+                                {
+                                    if let Some(content) = candidate.content.as_ref() {
+                                        if let Some(discovery) =
+                                            content.engineering_choice_discovery.as_ref()
+                                        {
+                                            bound["goal_context_id"] =
+                                                json!(discovery.goal_context_id.to_string());
+                                            bound["baseline_analysis_snapshot_id"] =
+                                                json!(discovery
+                                                    .baseline_analysis_snapshot_id
+                                                    .to_string());
+                                            bound["engineering_choice_discovery_candidate_id"] =
+                                                json!(candidate_id.to_string());
+                                        } else if let Some(review) =
+                                            content.materiality_review.as_ref()
+                                        {
+                                            bound["goal_context_id"] =
+                                                json!(review.goal_context_id.to_string());
+                                            bound["baseline_analysis_snapshot_id"] = json!(review
+                                                .baseline_analysis_snapshot_id
+                                                .to_string());
+                                            bound["engineering_choice_discovery_candidate_id"] =
+                                                json!(review
+                                                    .engineering_choice_discovery_candidate_id
+                                                    .to_string());
+                                            bound["review_candidate_id"] =
+                                                json!(candidate_id.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            bound["goal_context_id"] = arguments
+                                .get("goal_context_id")
+                                .cloned()
+                                .unwrap_or(Value::Null);
+                            bound["baseline_analysis_snapshot_id"] = arguments
+                                .get("baseline_analysis_snapshot_id")
+                                .cloned()
+                                .unwrap_or(Value::Null);
+                        }
+                        object.insert("bound_identities".into(), bound.clone());
+                        object.entry("next_supported_action").or_insert_with(|| json!({
+                            "tool":name,"action":"draft","project_id":bound["project_id"],
+                            "engineering_choice_discovery_candidate_id":bound.get("engineering_choice_discovery_candidate_id"),
+                            "baseline_analysis_snapshot_id":if name == "engineering_choice_discovery" { bound.get("baseline_analysis_snapshot_id") } else { None },
+                            "schema":"tools/list inputSchema; fill semantic placeholders before record/revise",
+                        }));
+                        if let Some(location) = object.get("authoring_location") {
+                            let domain_path = location["field_path"].as_str().unwrap_or_default();
+                            let host_path = if name == "materiality_review" {
+                                let choice_id = location["choice_id"].as_str();
+                                arguments["judgments"]
+                                    .as_array()
+                                    .and_then(|judgments| {
+                                        judgments.iter().position(|judgment| {
+                                            judgment["choice_id"].as_str() == choice_id
+                                        })
+                                    })
+                                    .map(|index| {
+                                        format!(
+                                            "arguments.judgments[{index}].{}",
+                                            domain_path.replace("source_basis", "source_ids")
+                                        )
+                                    })
+                            } else {
+                                Some(format!("arguments.{domain_path}"))
+                            };
+                            if let Some(host_path) = host_path {
+                                object.insert("field_path".into(), json!(host_path));
+                            }
+                        }
+                    }
+                }
                 let mut payload = json!({"error":error.to_string()});
                 if let (Some(object), Some(details)) = (payload.as_object_mut(), error.details) {
                     object.insert("details".into(), details);
@@ -7399,6 +7493,19 @@ fn canonical_cause_json(error: &volicord_operations::Error) -> Value {
 }
 
 fn operation_error(error: volicord_operations::Error) -> HostError {
+    if let Some(cause) = error.inquiry_cause() {
+        if let Some(location) = cause.authoring_location() {
+            return HostError::with_details(
+                error.to_string(),
+                json!({
+                    "diagnostic":"authoring_semantic_validation", "kind":format!("{:?}",cause.kind()),
+                    "problem":cause.to_string(), "authoring_location":{
+                        "field_path":location.field_path,"choice_id":location.choice_id,
+                    },
+                }),
+            );
+        }
+    }
     HostError::new(error.to_string())
 }
 fn required_str<'a>(value: &'a Value, key: &str) -> Result<&'a str, HostError> {

@@ -234,3 +234,12 @@ choices and interaction results as needed, retaining stable IDs during resume.
 Submit `record_request` through the same tool (`action=record`, the default when
 omitted). `tools/list` remains the sole complete record schema. Continue through
 the existing Materiality draft → record/revise → inspect path.
+
+Pre-work errors retain exact schema `details.problems` and a supported
+`details.next_supported_action`. Semantic closure/alternative-accounting failures
+also carry `details.authoring_location` and the corresponding MCP input
+`details.field_path`. Materiality errors resolve current Goal/baseline identities
+from the retained Discovery/Review when available. Invalid submissions preserve
+Candidates and never establish work authority. Other domain failures retain their
+named invariant and draft/inspection recovery path; no semantic conclusions are
+inferred from diagnostic prose.

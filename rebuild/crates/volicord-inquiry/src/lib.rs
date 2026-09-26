@@ -28,7 +28,7 @@ pub use checkpoint::{
     CheckpointRejection, CheckpointVerificationBasis, CompatibilitySurfaceReview,
     RepositoryWorkBasis,
 };
-pub use error::{Error, ErrorKind};
+pub use error::{AuthoringLocation, Error, ErrorKind};
 pub use frontier::{
     compute_frontier, recompute_frontier_for_resume, FrontierDiagnostic, FrontierDiagnosticKind,
     FrontierRead, ResumeFrontier,

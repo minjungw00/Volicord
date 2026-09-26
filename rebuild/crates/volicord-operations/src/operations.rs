@@ -1205,7 +1205,12 @@ impl LocalOperations {
             .and_then(|mut store| {
                 store.submit_engineering_choice_discovery(candidate, &canonical, &baseline)
             })
-            .map_err(|error| Error::new(format!("Engineering Choice Discovery failed: {error}")))?;
+            .map_err(|error| {
+                Error::with_source(
+                    format!("Engineering Choice Discovery failed: {error}"),
+                    error,
+                )
+            })?;
         let SubmissionOutcome::Stored(record) = stored else {
             return Err(Error::new(
                 "typed Engineering Choice Discovery was unexpectedly disabled",
@@ -1357,7 +1362,9 @@ impl LocalOperations {
                     &discovery_candidate,
                 )
             })
-            .map_err(|error| Error::new(format!("Materiality Review failed: {error}")))?;
+            .map_err(|error| {
+                Error::with_source(format!("Materiality Review failed: {error}"), error)
+            })?;
         let SubmissionOutcome::Stored(record) = stored else {
             return Err(Error::new(
                 "typed Materiality Review was unexpectedly disabled",
@@ -1433,7 +1440,12 @@ impl LocalOperations {
                     },
                 )
             })
-            .map_err(|error| Error::new(format!("Materiality Review revision failed: {error}")))?;
+            .map_err(|error| {
+                Error::with_source(
+                    format!("Materiality Review revision failed: {error}"),
+                    error,
+                )
+            })?;
         let review = record
             .content
             .as_ref()
