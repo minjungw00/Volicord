@@ -2657,6 +2657,52 @@ impl LocalOperations {
         })
     }
 
+    pub fn transition_work(
+        &self,
+        project_id: ProjectId,
+        transition: crate::WorkTransition,
+    ) -> Result<crate::UserContextRecordingOutcome, Error> {
+        match transition {
+            crate::WorkTransition::StartNew {
+                host,
+                session,
+                user_turn,
+                statement,
+            } => self.record_current_host_user_context(
+                project_id,
+                host,
+                session,
+                user_turn,
+                ContextItemRole::Goal,
+                statement,
+            ),
+            crate::WorkTransition::Continue { goal_context_id } => {
+                let canonical = self.canonical_basis(project_id)?;
+                if current_goal_id(&canonical) != Some(goal_context_id) {
+                    return Err(Error::new(
+                        "continue requires the exact currently recalled Goal identity",
+                    ));
+                }
+                let goal = canonical
+                    .context_items
+                    .iter()
+                    .find(|item| item.id == goal_context_id)
+                    .ok_or_else(|| Error::new("continued Goal is unavailable"))?;
+                let source_id = goal
+                    .source_basis
+                    .first()
+                    .copied()
+                    .ok_or_else(|| Error::new("continued Goal has no Source basis"))?;
+                Ok(crate::UserContextRecordingOutcome {
+                    source_id,
+                    context_item_id: goal.id,
+                    context_item_revision: goal.revision,
+                    role: ContextItemRole::Goal,
+                })
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn record_current_host_user_context(
         &self,
@@ -3176,6 +3222,16 @@ impl LocalOperations {
                 return Err(Error::new(
                     "Checkpoint applied Decision is not current in this Project",
                 ));
+            }
+        }
+
+        for lifecycle in &initial_canonical.active_decisions {
+            if unique_decisions.contains(&lifecycle.decision.id) {
+                volicord_context::validate_checkpoint_decision_work_scope(
+                    Some(draft.goal_context_id),
+                    &lifecycle.decision,
+                )
+                .map_err(|error| Error::with_source("Checkpoint recording failed", error))?;
             }
         }
 

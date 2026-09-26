@@ -19,9 +19,17 @@ pub enum ErrorKind {
     RepairRequired,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CheckpointDecisionWorkMismatch {
+    pub checkpoint_work_item_id: Option<crate::ContextItemId>,
+    pub decision_id: crate::DecisionId,
+    pub decision_work_item_id: crate::ContextItemId,
+}
+
 /// A typed kernel failure with a bounded diagnostic.
 #[derive(Debug)]
 pub struct Error {
+    checkpoint_decision_work_mismatch: Option<CheckpointDecisionWorkMismatch>,
     kind: ErrorKind,
     message: String,
     source: Option<Box<dyn StdError + Send + Sync>>,
@@ -30,6 +38,7 @@ pub struct Error {
 impl Error {
     pub(crate) fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
         Self {
+            checkpoint_decision_work_mismatch: None,
             kind,
             message: message.into(),
             source: None,
@@ -42,10 +51,24 @@ impl Error {
         source: impl StdError + Send + Sync + 'static,
     ) -> Self {
         Self {
+            checkpoint_decision_work_mismatch: None,
             kind,
             message: message.into(),
             source: Some(Box::new(source)),
         }
+    }
+
+    pub(crate) fn checkpoint_work_mismatch(diagnostic: CheckpointDecisionWorkMismatch) -> Self {
+        let mut error = Self::new(
+            ErrorKind::InvalidInput,
+            "Checkpoint cannot apply a Decision scoped to a different Work Item",
+        );
+        error.checkpoint_decision_work_mismatch = Some(diagnostic);
+        error
+    }
+
+    pub fn checkpoint_decision_work_mismatch(&self) -> Option<&CheckpointDecisionWorkMismatch> {
+        self.checkpoint_decision_work_mismatch.as_ref()
     }
 
     pub fn kind(&self) -> ErrorKind {
@@ -65,4 +88,23 @@ impl StdError for Error {
             .as_deref()
             .map(|source| source as &(dyn StdError + 'static))
     }
+}
+
+/// Shared canonical precondition; Store always rechecks inside its transaction.
+pub fn validate_checkpoint_decision_work_scope(
+    checkpoint_work_item_id: Option<crate::ContextItemId>,
+    decision: &crate::Decision,
+) -> Result<(), Error> {
+    if let crate::DecisionWorkScope::WorkItem(decision_work_item_id) = decision.work_scope {
+        if checkpoint_work_item_id != Some(decision_work_item_id) {
+            return Err(Error::checkpoint_work_mismatch(
+                CheckpointDecisionWorkMismatch {
+                    checkpoint_work_item_id,
+                    decision_id: decision.id,
+                    decision_work_item_id,
+                },
+            ));
+        }
+    }
+    Ok(())
 }

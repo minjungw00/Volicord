@@ -558,3 +558,89 @@ fn context_and_checkpoint_replay_consistently_after_restart(
     );
     Ok(())
 }
+
+#[test]
+fn checkpoint_rejects_cross_work_decision_with_exact_typed_cause(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let mut store = store_with_ids(
+        &root.path().join("context.sqlite3"),
+        &(1..30).collect::<Vec<_>>(),
+    )?;
+    let project = store.create_project(operation(100), "Work identity")?.value;
+    let (repository, user, _, _) = record_sources(&mut store, &project)?;
+    let original = store
+        .record_context_item(
+            operation(101),
+            project.id,
+            context_draft(
+                ContextItemRole::Goal,
+                StatementProvenanceRole::UserStatement,
+                PrincipalKind::User,
+                user.id,
+            ),
+        )?
+        .value;
+    let distinct = store
+        .record_context_item(
+            operation(102),
+            project.id,
+            context_draft(
+                ContextItemRole::Goal,
+                StatementProvenanceRole::UserStatement,
+                PrincipalKind::User,
+                user.id,
+            ),
+        )?
+        .value;
+    assert_ne!(original.id, distinct.id);
+    let question = store
+        .create_question(
+            operation(103),
+            project.id,
+            question_draft(repository.id, "Apply this Work decision?"),
+        )?
+        .value;
+    let decision = store
+        .record_question_response(
+            operation(104),
+            project.id,
+            QuestionResponseDraft {
+                expected_project_revision: 1,
+                question_id: question.id,
+                question_revision: question.revision,
+                user_turn_source: UserTurnSource::Existing(user.id),
+                displayed_alternative_keys: vec!["yes".into()],
+                displayed_recommendation_key: Some("yes".into()),
+                response: ExplicitQuestionResponse::Choice {
+                    alternative_key: "yes".into(),
+                    user_rationale: None,
+                },
+                work_scope: volicord_context::DecisionWorkScope::WorkItem(original.id),
+                applicability: Default::default(),
+                assumptions: vec![],
+                revisit_triggers: vec![],
+            },
+        )?
+        .value
+        .decision
+        .ok_or("Decision")?;
+    let mut draft = checkpoint_draft(CheckpointKind::Pause, WorkState::Paused, repository.id);
+    draft.state_change = Some("Meaningful handoff".into());
+    draft.work_item_id = Some(original.id);
+    draft.applied_decisions = vec![decision.id];
+    store.record_checkpoint(operation(105), project.id, draft.clone())?;
+    draft.work_item_id = Some(distinct.id);
+    let error = store
+        .record_checkpoint(operation(106), project.id, draft)
+        .err()
+        .ok_or("cross-Work must fail")?;
+    assert_eq!(error.kind(), ErrorKind::InvalidInput);
+    let mismatch = error
+        .checkpoint_decision_work_mismatch()
+        .ok_or("typed diagnostic")?;
+    assert_eq!(mismatch.checkpoint_work_item_id, Some(distinct.id));
+    assert_eq!(mismatch.decision_id, decision.id);
+    assert_eq!(mismatch.decision_work_item_id, original.id);
+    Ok(())
+}

@@ -1430,14 +1430,7 @@ impl Store {
         }
         for decision_id in &draft.applied_decisions {
             let decision = load_decision(&transaction, project_id, *decision_id)?;
-            if let DecisionWorkScope::WorkItem(decision_work_item) = decision.work_scope {
-                if draft.work_item_id != Some(decision_work_item) {
-                    return Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "Checkpoint cannot apply a Decision scoped to a different Work Item",
-                    ));
-                }
-            }
+            crate::validate_checkpoint_decision_work_scope(draft.work_item_id, &decision)?;
         }
         for question in &draft.open_questions {
             load_question(&transaction, project_id, question.question_id)?;

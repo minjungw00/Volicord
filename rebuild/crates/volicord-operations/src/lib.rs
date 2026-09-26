@@ -44,9 +44,9 @@ pub use model::{
     LearningReconsiderationDraft, LearningResponseDraft, LongOperationResult,
     MaterialityReviewDraft, MaterialityReviewOutcome, MaterialityReviewRevisionDraft,
     OperationState, PartialOutcome, ProgressState, ProjectInitialization, ProjectResolution,
-    PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome, WorkflowAction,
-    WorkflowBasisIdentity, WorkflowDirective, WorkflowDisposition, WorkflowRequirement,
-    WorkflowStage,
+    PublicationOutcome, RepairKind, RepairOutcome, UserContextRecordingOutcome, WorkTransition,
+    WorkflowAction, WorkflowBasisIdentity, WorkflowDirective, WorkflowDisposition,
+    WorkflowRequirement, WorkflowStage,
 };
 pub use operations::{HealthCheckProfile, LocalOperations, ProjectProjectionProfile};
 pub use payload::{

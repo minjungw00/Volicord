@@ -94,6 +94,12 @@ Canonical mutation과 projection은 서로 다른 authority와 success boundary�
 - Commit 여부를 확인할 수 없으면 success로 추측하지 않고 `repair_required` 또는
   operation-specific indeterminate diagnostic로 authoritative owner의 확인을 요구한다.
 
+Checkpoint의 Work-scoped Decision mismatch는 canonical `InvalidInput` cause와 exact
+Checkpoint Work/Decision/Decision Work identity를 전달한다. Local Operations는 같은 Kernel
+precondition으로 preflight하고 Store는 transaction 안에서 다시 검증한다. Host는 safe typed
+cause와 현재 workflow/required next action을 보존하며 internal storage source/backtrace를 노출하지
+않는다. Canonical inspection으로 exact Work applicability를 확인한 뒤 수정한다.
+
 ### Projection failure
 
 - Recall selection, map, document generation, preview, render 또는 export presentation이

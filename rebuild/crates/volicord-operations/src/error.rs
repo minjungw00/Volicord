@@ -27,6 +27,19 @@ impl Error {
         }
     }
 
+    /// Preserve only the bounded canonical diagnostic, never storage source details.
+    pub fn canonical_cause(&self) -> Option<&volicord_context::Error> {
+        let mut source = self.source();
+        for _ in 0..8 {
+            let current = source?;
+            if let Some(canonical) = current.downcast_ref::<volicord_context::Error>() {
+                return Some(canonical);
+            }
+            source = current.source();
+        }
+        None
+    }
+
     pub fn message(&self) -> &str {
         &self.message
     }

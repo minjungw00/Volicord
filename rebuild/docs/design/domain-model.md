@@ -311,6 +311,10 @@ interpretation을 같은 종류의 truth로 합치지 않는다.
 stable identity다. Work Item은 새 core entity나 legacy Task state machine이 아니라 Goal,
 그 identity를 명시적으로 참조하는 Checkpoint와 Decision을 묶는 current-only domain view다.
 동일한 Goal text, 시간상 인접함 또는 changed path 중첩은 identity equality가 아니다.
+Fresh-session continuation은 exact recalled Goal identity를 그대로 사용하며 새 Goal을 기록하지
+않는다. Existing Work가 있을 때 Goal authoring은 typed `continue` 또는 `start_new`를 명시한다.
+Continue는 read-only이고 original Goal/Source/revision을 반환한다. Start-new는 current-host의
+새 bounded verbatim Goal을 가진 distinct Work를 만든다. 문구로 이 전이를 추론하지 않는다.
 
 하나의 current-host turn은 role이 다른 여러 bounded verbatim Context Item을 만들 수 있다.
 Fresh Recall에서 statement가 사라졌을 때 authority, Question behavior, learning interruption 또는

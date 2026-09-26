@@ -1128,7 +1128,7 @@ impl HostAdapter {
                     });
                 return Err(HostError::with_details(
                     error.to_string(),
-                    json!({"workflow":workflow}),
+                    json!({"workflow":workflow,"cause":canonical_cause_json(&error)}),
                 ));
             }
         };
@@ -1159,23 +1159,48 @@ impl HostAdapter {
     fn context_record(&self, args: &Value) -> Result<Value, HostError> {
         let role = context_item_role(required_str(args, "role")?)?;
         let project_id = project(args)?;
-        let result = self
-            .operations
-            .record_current_host_user_context(
-                project_id,
-                "codex".into(),
-                self.host_session.clone(),
-                required_str(args, "user_turn")?.to_owned(),
-                role,
-                required_str(args, "statement")?.to_owned(),
-            )
-            .map_err(operation_error)?;
+        let transition = args.get("work_transition").and_then(Value::as_str);
+        let result = if role == ContextItemRole::Goal {
+            let transition = match transition {
+                Some("continue") => volicord_operations::WorkTransition::Continue {
+                    goal_context_id: parse_context_item(required_str(args, "goal_context_id")?)?,
+                },
+                Some("start_new") => volicord_operations::WorkTransition::StartNew {
+                    host: "codex".into(), session: self.host_session.clone(),
+                    user_turn: required_str(args, "user_turn")?.to_owned(),
+                    statement: required_str(args, "statement")?.to_owned(),
+                },
+                None => {
+                    let workflow = self.operations.workflow_after_recall(project_id).map_err(operation_error)?;
+                    if workflow.stage != WorkflowStage::Goal {
+                        return Err(HostError::with_details(
+                            "an existing Work requires explicit work_transition: continue or start_new",
+                            json!({"diagnostic":"work_transition_required", "workflow":workflow_json(workflow),
+                                "next_supported_action":{"tool":"context_record", "work_transition":["continue","start_new"]}}),
+                        ));
+                    }
+                    volicord_operations::WorkTransition::StartNew {
+                        host: "codex".into(), session: self.host_session.clone(),
+                        user_turn: required_str(args, "user_turn")?.to_owned(),
+                        statement: required_str(args, "statement")?.to_owned(),
+                    }
+                },
+                _ => return Err(HostError::new("invalid work_transition")),
+            };
+            self.operations.transition_work(project_id, transition)
+        } else {
+            self.operations.record_current_host_user_context(project_id, "codex".into(),
+                self.host_session.clone(), required_str(args, "user_turn")?.to_owned(),
+                role, required_str(args, "statement")?.to_owned())
+        }.map_err(operation_error)?;
         let response = json!({
             "project_id": project_id.to_string(),
             "source_id": result.source_id.to_string(),
             "context_item_id": result.context_item_id.to_string(),
             "revision": result.context_item_revision,
             "role": context_item_role_name(result.role),
+            "work_transition": if role == ContextItemRole::Goal { Some(transition.unwrap_or("start_new")) } else { None },
+            "canonical_mutation": transition != Some("continue"),
             "user_turn_content_provenance": "caller_supplied_not_host_authenticated",
         });
         Ok(if result.role == ContextItemRole::Goal {
@@ -2293,16 +2318,28 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "context_record" => (
-            "Record one bounded verbatim statement from the caller-reported current-host user turn as canonical Project Context before affected work. Apply this counterfactual to the whole turn: if losing a statement after fresh Recall could change authority, Question behavior, learning interruption, or bounded work, preserve it under its existing role. One turn may require repeated calls for separate Goal, Learning, Preference, or Constraint statements; do not collapse the whole turn into one Goal or record incidental wording. This MCP boundary does not authenticate raw host message content; callers must preserve the host text without reconstructing it.",
-            object_schema(
-                vec![
+            "For an existing Work, use role=goal with work_transition=continue and the exact recalled goal_context_id; this read-only transition preserves Goal/Work identity. Explicit work_transition=start_new records a distinct bounded Work. Omission is allowed only for the first Goal. Record one bounded verbatim statement from the caller-reported current-host user turn as canonical Project Context before affected work. Apply this counterfactual to the whole turn: if losing a statement after fresh Recall could change authority, Question behavior, learning interruption, or bounded work, preserve it under its existing role. One turn may require repeated calls for separate Goal, Learning, Preference, or Constraint statements; do not collapse the whole turn into one Goal or record incidental wording. This MCP boundary does not authenticate raw host message content; callers must preserve the host text without reconstructing it.",
+            json!({"oneOf":[
+                object_schema(vec![
+                    ("project_id", identity_schema("Project identity")),
+                    ("role", enum_schema("Existing Work Goal", &["goal"])),
+                    ("work_transition", enum_schema("Continue without canonical mutation", &["continue"])),
+                    ("goal_context_id", identity_schema("Exact currently recalled Goal/Work identity")),
+                ], &["project_id","role","work_transition","goal_context_id"]),
+                object_schema(vec![
                     ("project_id", identity_schema("Project identity")),
                     ("user_turn", text_schema("Caller-supplied raw current-host user turn; not authenticated by MCP", 1, 16_384)),
-                    ("role", enum_schema("User-statement Context role", &["project_purpose", "goal", "assumption", "constraint", "preference", "risk", "learning", "known_limit"])),
-                    ("statement", text_schema("Verbatim bounded statement within the caller-supplied user_turn", 1, 16_384)),
-                ],
-                &["project_id", "user_turn", "role", "statement"],
-            ),
+                    ("role", enum_schema("New Work Goal", &["goal"])),
+                    ("statement", text_schema("Verbatim bounded Goal within user_turn", 1, 16_384)),
+                    ("work_transition", enum_schema("Required when a Work already exists; explicitly create a distinct Work", &["start_new"])),
+                ], &["project_id","user_turn","role","statement"]),
+                object_schema(vec![
+                    ("project_id", identity_schema("Project identity")),
+                    ("user_turn", text_schema("Caller-supplied raw current-host user turn; not authenticated by MCP", 1, 16_384)),
+                    ("role", enum_schema("User-statement Context role", &["project_purpose","assumption","constraint","preference","risk","learning","known_limit"])),
+                    ("statement", text_schema("Verbatim bounded statement within user_turn", 1, 16_384)),
+                ], &["project_id","user_turn","role","statement"]),
+            ]}),
             ToolBehavior::AdditiveClosed,
         ),
         "checkpoint_record" => (
@@ -6888,6 +6925,11 @@ fn with_workflow(mut value: Value, workflow: WorkflowDirective) -> Value {
 
 fn workflow_json(workflow: WorkflowDirective) -> Value {
     let input_guidance = workflow_input_guidance(&workflow);
+    let continued_goal = workflow
+        .satisfied_basis_identities
+        .iter()
+        .find(|basis| basis.kind == "goal_context")
+        .map(|basis| basis.identity.clone());
     json!({
         "stage":workflow_stage_name(workflow.stage),
         "disposition":workflow_disposition_name(workflow.disposition),
@@ -6910,6 +6952,10 @@ fn workflow_json(workflow: WorkflowDirective) -> Value {
             })).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "input_guidance":input_guidance,
+        "work_transition":{
+            "continue":{"tool":"context_record","role":"goal","work_transition":"continue","goal_context_id":continued_goal},
+            "start_new":{"tool":"context_record","role":"goal","work_transition":"start_new","requires":["project_id","user_turn","statement"]},
+        },
     })
 }
 
@@ -7093,6 +7139,19 @@ fn workflow_disposition_name(value: WorkflowDisposition) -> &'static str {
 fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
 }
+fn canonical_cause_json(error: &volicord_operations::Error) -> Value {
+    error.canonical_cause().map(|cause| json!({
+        "kind":format!("{:?}",cause.kind()),
+        "message":cause.to_string(),
+        "checkpoint_decision_work_mismatch":cause.checkpoint_decision_work_mismatch().map(|mismatch| json!({
+            "checkpoint_work_item_id":mismatch.checkpoint_work_item_id.map(|id| id.to_string()),
+            "decision_id":mismatch.decision_id.to_string(),
+            "decision_work_item_id":mismatch.decision_work_item_id.to_string(),
+            "next_supported_action":{"tool":"canonical_inspect","reason":"inspect Decisions applicable to this exact Work; retain its Goal identity when continuing"},
+        })),
+    })).unwrap_or(Value::Null)
+}
+
 fn operation_error(error: volicord_operations::Error) -> HostError {
     HostError::new(error.to_string())
 }

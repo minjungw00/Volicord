@@ -562,3 +562,17 @@ pub struct GroundedCheckpointOutcome {
     pub applied_decisions: Vec<DecisionId>,
     pub verification_source_ids: Vec<SourceId>,
 }
+
+/// Continuing is read-only; starting explicitly records a distinct canonical Goal.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum WorkTransition {
+    Continue {
+        goal_context_id: ContextItemId,
+    },
+    StartNew {
+        host: String,
+        session: String,
+        user_turn: String,
+        statement: String,
+    },
+}

@@ -848,7 +848,7 @@ fn exercise_mcp_rediscovery(temporal: bool) {
         "context_record",
         json!({
             "project_id":project, "user_turn":"Implement the bounded behavior",
-            "role":"goal", "statement":"Implement the bounded behavior"
+            "role":"goal","work_transition":"start_new", "statement":"Implement the bounded behavior"
         }),
     ))
     .clone();
@@ -1049,7 +1049,7 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         json!({
             "project_id":project,
             "user_turn":"Teach me through the choices. Decide the user-visible failure mode, then implement it",
-            "role":"goal",
+            "role":"goal","work_transition":"start_new",
             "statement":"Decide the user-visible failure mode, then implement it",
         }),
     );
@@ -1456,7 +1456,7 @@ fn materiality_draft_surfaces_current_user_ownership_and_hidden_boundaries() {
         json!({
             "project_id":project,
             "user_turn":goal_turn,
-            "role":"goal",
+            "role":"goal","work_transition":"start_new",
             "statement":goal_turn,
         }),
     ))
@@ -1730,7 +1730,7 @@ fn materiality_draft_has_one_record_path_for_every_disposition() {
         let goal = structured(&call(
             &mut adapter,
             "context_record",
-            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","work_transition":"start_new","statement":goal_turn}),
         ))
         .clone();
         let analyzed = structured(&call(
@@ -1860,7 +1860,7 @@ fn broad_feature_goals_require_exact_authority_for_hidden_material_outcomes() {
         let goal = structured(&call(
             &mut adapter,
             "context_record",
-            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","work_transition":"start_new","statement":goal_turn}),
         ))
         .clone();
         let analyzed = structured(&call(
@@ -2004,7 +2004,7 @@ fn constraining_architecture_and_convention_cannot_claim_exact_authority() {
         let goal = structured(&call(
             &mut adapter,
             "context_record",
-            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+            json!({"project_id":project,"user_turn":goal_turn,"role":"goal","work_transition":"start_new","statement":goal_turn}),
         ))
         .clone();
         let analyzed = structured(&call(
@@ -2125,7 +2125,7 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
     let goal = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","work_transition":"start_new","statement":goal_turn}),
     ))
     .clone();
     let analyzed = structured(&call(
@@ -2200,7 +2200,7 @@ fn materiality_draft_one_call_supports_decision_and_inquiry_delegation_variants(
     let goal = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","work_transition":"start_new","statement":goal_turn}),
     ))
     .clone();
     let analyzed = structured(&call(
@@ -2324,7 +2324,7 @@ fn materiality_validation_reports_exact_correction_context() {
     let goal = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":"Implement the bounded choice","role":"goal","statement":"Implement the bounded choice"}),
+        json!({"project_id":project,"user_turn":"Implement the bounded choice","role":"goal","work_transition":"start_new","statement":"Implement the bounded choice"}),
     ))
     .clone();
     let analyzed = structured(&call(
@@ -2551,7 +2551,7 @@ fn installed_mcp_learning_deliberation_is_ordered_restartable_and_not_a_decision
         json!({
             "project_id":project,
             "user_turn":user_turn,
-            "role":"goal",
+            "role":"goal","work_transition":"start_new",
             "statement":user_turn,
         }),
     ))
@@ -3038,7 +3038,7 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
     let goal = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":user_turn,"role":"goal","statement":"Improve the parser"}),
+        json!({"project_id":project,"user_turn":user_turn,"role":"goal","work_transition":"start_new","statement":"Improve the parser"}),
     ))
     .clone();
     let learning = structured(&call(
@@ -3201,7 +3201,7 @@ fn active_learning_on_current_task_delegation_uses_non_decision_deliberation() {
     let goal = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","work_transition":"start_new","statement":goal_turn}),
     ))
     .clone();
     let analyzed = structured(&call(
@@ -3348,7 +3348,7 @@ fn exact_current_task_delegation_can_cover_one_material_outcome() {
     let goal = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","work_transition":"start_new","statement":goal_turn}),
     ))
     .clone();
     let analyzed = structured(&call(
@@ -3461,7 +3461,7 @@ fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
     let goal = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","statement":goal_turn}),
+        json!({"project_id":project,"user_turn":goal_turn,"role":"goal","work_transition":"start_new","statement":goal_turn}),
     ))
     .clone();
     let analyzed = structured(&call(
@@ -3552,7 +3552,7 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
         json!({
             "project_id":project,
             "user_turn":goal_turn,
-            "role":"goal",
+            "role":"goal","work_transition":"start_new",
             "statement":goal_turn,
         }),
     ))
@@ -3755,7 +3755,7 @@ fn checkpoint_refusal_returns_bounded_actionable_workflow_guidance() {
         json!({
             "project_id":project,
             "user_turn":"Pause after checking work authority",
-            "role":"goal",
+            "role":"goal","work_transition":"start_new",
             "statement":"Pause after checking work authority",
         }),
     );
@@ -3832,7 +3832,7 @@ fn concurrent_mcp_writers_preserve_every_committed_context() {
                 json!({
                     "project_id":project,
                     "user_turn":statement,
-                    "role":"goal",
+                    "role":"goal","work_transition":"start_new",
                     "statement":statement,
                 }),
             );
@@ -5400,6 +5400,23 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         json!([basis.id.to_string()])
     );
 
+    let goal = structured(&call(
+        &mut adapter,
+        "context_record",
+        json!({
+            "project_id":project,
+            "user_turn":"Complete a grounded ordinary-work handoff for the next Codex session.",
+            "role":"goal","work_transition":"start_new",
+            "statement":"Complete a grounded ordinary-work handoff"
+        }),
+    ))
+    .clone();
+    let goal_context_id = goal["context_item_id"]
+        .as_str()
+        .expect("Goal identity")
+        .to_owned();
+    let goal_source = goal["source_id"].as_str().expect("Goal Source").to_owned();
+
     let frontier = structured(&call(
         &mut adapter,
         "inquiry_frontier",
@@ -5419,7 +5436,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
             "question_revision": question.revision,
             "presentation_receipt_id": presentation_receipt_id,
             "alternative_key": "local",
-            "work_scope":"unresolved",
+            "work_scope":"work_item","work_item_id":goal_context_id,
             "user_turn": "Use the local storage boundary",
             "user_rationale": "Canonical project memory remains local"
         }),
@@ -5438,23 +5455,6 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         .decision
         .id
         .to_string();
-
-    let goal = structured(&call(
-        &mut adapter,
-        "context_record",
-        json!({
-            "project_id":project,
-            "user_turn":"Complete a grounded ordinary-work handoff for the next Codex session.",
-            "role":"goal",
-            "statement":"Complete a grounded ordinary-work handoff"
-        }),
-    ))
-    .clone();
-    let goal_context_id = goal["context_item_id"]
-        .as_str()
-        .expect("Goal identity")
-        .to_owned();
-    let goal_source = goal["source_id"].as_str().expect("Goal Source").to_owned();
 
     let baseline = structured(&call(
         &mut adapter,
@@ -6111,6 +6111,99 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         canonical,
         restarted.operations().canonical_basis(project_id).unwrap()
     );
+    let count = canonical.context_items.len();
+    let accidental = call(
+        &mut restarted,
+        "context_record",
+        json!({
+            "project_id":project,"role":"goal","user_turn":"Continue this same Work",
+            "statement":"Continue this same Work",
+        }),
+    );
+    assert_eq!(accidental["result"]["isError"], true, "{accidental}");
+    assert_eq!(
+        structured(&accidental)["details"]["diagnostic"],
+        "work_transition_required"
+    );
+    let continued = structured(&call(&mut restarted, "context_record", json!({
+        "project_id":project,"role":"goal","work_transition":"continue","goal_context_id":goal_context_id,
+    }))).clone();
+    assert_eq!(continued["context_item_id"], goal_context_id);
+    assert_eq!(continued["source_id"], goal["source_id"]);
+    assert_eq!(continued["canonical_mutation"], false);
+    assert_eq!(
+        restarted
+            .operations()
+            .canonical_basis(project_id)
+            .unwrap()
+            .context_items
+            .len(),
+        count
+    );
+    let resumed_checkpoint = call(
+        &mut restarted,
+        "checkpoint_record",
+        json!({
+            "project_id":project,"goal_context_id":goal_context_id,"baseline_analysis_snapshot_id":baseline_id,
+            "kind":"pause","work_state":"paused","state_change":"Verified the same Work in a fresh session",
+            "applied_decision_ids":[decision_id],"verification_basis":{"state":"ordinary_change"},
+            "verification":[{"state":"passed","command_label":"bounded content verification",
+                "command_invocation":passed_invocation,"exit_code":0,"termination":"exited","outcome":"verified same state"}],
+            "next_step":"Continue this Work",
+        }),
+    );
+    assert_eq!(
+        resumed_checkpoint["result"]["isError"], false,
+        "{resumed_checkpoint}"
+    );
+    assert_eq!(
+        restarted
+            .operations()
+            .canonical_basis(project_id)
+            .unwrap()
+            .latest_checkpoint
+            .unwrap()
+            .work_item_id,
+        Some(parse_context_identity(&goal_context_id))
+    );
+    let distinct = structured(&call(&mut restarted, "context_record", json!({
+        "project_id":project,"role":"goal","work_transition":"start_new",
+        "user_turn":"Implement a distinct bounded task","statement":"Implement a distinct bounded task",
+    }))).clone();
+    assert_ne!(distinct["context_item_id"], goal_context_id);
+    let mismatch = call(
+        &mut restarted,
+        "checkpoint_record",
+        json!({
+            "project_id":project,"goal_context_id":distinct["context_item_id"],"baseline_analysis_snapshot_id":baseline_id,
+            "kind":"pause","work_state":"paused","state_change":"Attempted old Decision on distinct Work",
+            "applied_decision_ids":[decision_id],"verification_basis":{"state":"ordinary_change"},"verification":[{"state":"not_run"}],
+            "next_step":"Inspect Work-scoped Decisions",
+        }),
+    );
+    assert_eq!(mismatch["result"]["isError"], true, "{mismatch}");
+    let diagnostic = &structured(&mismatch)["details"]["cause"];
+    assert!(diagnostic["message"]
+        .as_str()
+        .unwrap()
+        .contains("different Work Item"));
+    assert_eq!(
+        diagnostic["checkpoint_decision_work_mismatch"]["checkpoint_work_item_id"],
+        distinct["context_item_id"]
+    );
+    assert_eq!(
+        diagnostic["checkpoint_decision_work_mismatch"]["decision_work_item_id"],
+        goal_context_id
+    );
+    assert_eq!(
+        diagnostic["checkpoint_decision_work_mismatch"]["decision_id"],
+        decision_id
+    );
+    assert_eq!(
+        diagnostic["checkpoint_decision_work_mismatch"]["next_supported_action"]["tool"],
+        "canonical_inspect"
+    );
+    assert!(structured(&mismatch)["details"]["workflow"]["required_next_action"].is_object());
 }
 
 #[test]
@@ -6125,7 +6218,7 @@ fn current_host_goal_context_is_canonical_and_recalled_from_exact_user_text() {
         json!({
             "project_id":project,
             "user_turn":user_turn,
-            "role":"goal",
+            "role":"goal","work_transition":"start_new",
             "statement":statement,
         }),
     ))
@@ -6160,7 +6253,7 @@ fn current_host_goal_context_is_canonical_and_recalled_from_exact_user_text() {
         json!({
             "project_id":project,
             "user_turn":"The user only stated a narrow goal.",
-            "role":"goal",
+            "role":"goal","work_transition":"start_new",
             "statement":"An agent-authored expansion that the user did not state",
         }),
     );
@@ -7387,10 +7480,26 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "user_turn",
             ],
         )],
-        "context_record" => vec![shape(
-            &["project_id", "user_turn", "role", "statement"],
-            &["project_id", "user_turn", "role", "statement"],
-        )],
+        "context_record" => vec![
+            shape(
+                &["project_id", "role", "work_transition", "goal_context_id"],
+                &["project_id", "role", "work_transition", "goal_context_id"],
+            ),
+            shape(
+                &[
+                    "project_id",
+                    "user_turn",
+                    "role",
+                    "statement",
+                    "work_transition",
+                ],
+                &["project_id", "user_turn", "role", "statement"],
+            ),
+            shape(
+                &["project_id", "user_turn", "role", "statement"],
+                &["project_id", "user_turn", "role", "statement"],
+            ),
+        ],
         "checkpoint_record" => vec![shape(
             &[
                 "project_id",
@@ -8003,7 +8112,7 @@ fn compact_materiality_large_state_builds_record_revise_inspect_without_probes()
         &mut adapter,
         "context_record",
         json!({"project_id":project,
-        "user_turn":"Preserve public results while organizing internal modules", "role":"goal",
+        "user_turn":"Preserve public results while organizing internal modules", "role":"goal","work_transition":"start_new",
         "statement":"Preserve public results while organizing internal modules"}),
     ))
     .clone();

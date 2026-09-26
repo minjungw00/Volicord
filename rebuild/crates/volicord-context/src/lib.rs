@@ -15,7 +15,9 @@ mod read;
 mod store;
 mod time;
 
-pub use error::{Error, ErrorKind};
+pub use error::{
+    validate_checkpoint_decision_work_scope, CheckpointDecisionWorkMismatch, Error, ErrorKind,
+};
 pub use identity::{
     CheckpointId, ContextItemId, DecisionId, DeterministicIdGenerator, IdGenerator, LocalBindingId,
     OperationId, ProjectId, QuestionId, SourceId, SystemIdGenerator,

@@ -198,3 +198,17 @@ choice or interaction binding must cover that same result. Unmapped commitments
 revoke executable scope and require rediscovery and a new Materiality Review.
 Compact draft includes `temporal_effect_variants` and the current temporal IDs in
 `pre_write_materiality_closure`; full nested schemas remain in tools/list.
+
+When a Goal already exists, `context_record(role=goal)` requires an explicit
+`work_transition`. `continue` takes the exact recalled `goal_context_id` and
+returns its original identity, revision and Source without a canonical write.
+`start_new` takes a bounded verbatim `statement` and current `user_turn` and
+creates a distinct Work. Only the first Goal permits omission of the transition.
+Recall/analysis workflow guidance exposes both transitions; continuing still
+requires the normal pre-work evidence and authority review.
+
+Checkpoint failures preserve `details.workflow` and a bounded canonical
+`details.cause` (`kind`, `message`). A cross-Work Decision additionally returns
+`checkpoint_decision_work_mismatch` with `checkpoint_work_item_id`, `decision_id`,
+`decision_work_item_id` and a canonical inspection next action. Store rejection
+remains authoritative; storage backtraces and underlying source errors are absent.
