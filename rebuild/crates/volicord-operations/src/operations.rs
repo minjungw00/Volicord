@@ -1055,6 +1055,67 @@ impl LocalOperations {
         Ok(())
     }
 
+    pub fn draft_engineering_choice_discovery(
+        &self,
+        project_id: ProjectId,
+        baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    ) -> Result<crate::EngineeringChoiceAuthoringBasis, Error> {
+        let canonical = self.canonical_basis(project_id)?;
+        let goal_id = current_goal_id(&canonical)
+            .ok_or_else(|| Error::new("record a user-stated Goal before Discovery draft"))?;
+        let goal = canonical
+            .context_items
+            .iter()
+            .find(|item| item.id == goal_id)
+            .ok_or_else(|| Error::new("current Goal is unavailable"))?
+            .clone();
+        let baseline = self.load_analysis_snapshot(project_id, baseline_analysis_snapshot_id)?;
+        self.validate_exploratory_baseline_continuity(project_id, goal_id, baseline.identity)?;
+        let goal_sources = canonical
+            .sources
+            .iter()
+            .filter(|basis| {
+                goal.source_basis.contains(&basis.source.id)
+                    && basis.freshness == volicord_context::SourceFreshness::Current
+                    && basis.source.actor.kind == PrincipalKind::User
+                    && matches!(
+                        basis.source.payload,
+                        SourcePayload::CurrentHostUserTurn { .. }
+                    )
+            })
+            .map(|basis| basis.source.clone())
+            .collect::<Vec<_>>();
+        if goal.provenance_role != StatementProvenanceRole::UserStatement
+            || goal.author.kind != PrincipalKind::User
+            || goal_sources.is_empty()
+            || goal_sources.len() != goal.source_basis.len()
+        {
+            return Err(Error::new(
+                "Discovery draft requires current-host user Source grounding for its Goal",
+            ));
+        }
+        let behavioral_context = canonical
+            .context_items
+            .into_iter()
+            .filter(|item| {
+                matches!(
+                    item.role,
+                    ContextItemRole::Learning
+                        | ContextItemRole::Preference
+                        | ContextItemRole::Constraint
+                )
+            })
+            .collect();
+        Ok(crate::EngineeringChoiceAuthoringBasis {
+            project_id,
+            goal,
+            goal_sources,
+            behavioral_context,
+            baseline_analysis_snapshot_id: baseline.identity,
+            repository_source_id: baseline.repository_source.identity(),
+        })
+    }
+
     pub fn record_engineering_choice_discovery(
         &self,
         draft: EngineeringChoiceDiscoveryDraft,
@@ -1999,7 +2060,7 @@ impl LocalOperations {
                 disposition: WorkflowDisposition::EngineeringChoiceDiscoveryRequired,
                 required_next_action: Some(workflow_action(
                     "engineering_choice_discovery",
-                    Some("record"),
+                    Some("draft"),
                 )),
                 blocks_ordinary_work: true,
                 reason: "discover meaningful engineering forks before classifying their authority"
@@ -4884,7 +4945,7 @@ fn workflow_from_authority(
                 WorkflowDisposition::EngineeringChoiceDiscoveryRequired,
                 Some(workflow_action(
                     "engineering_choice_discovery",
-                    Some("record"),
+                    Some("draft"),
                 )),
             )
         }

@@ -59,6 +59,15 @@ Effect category는 completeness/discovery metadata이며 authority를 자동 결
 아니다. Syntax, local naming, private helper split와 mechanically equivalent refactor를 inventory하지
 않는다.
 
+Discovery의 read-only authoring draft는 Project와 caller가 보존한 exact pre-work Analysis
+Snapshot을 받고 current Goal/Work identity, original current-host Source와 behavioral Context를
+bind한다. Source·identity·고정 category/axis inventory와 ready-to-fill graph slot을 제공하며
+record schema의 같은 validator owner에서 closed variant와 semantic skeleton을 파생한다.
+Null semantic placeholder는 valid conclusion이 아니다. Credible alternatives, consequences,
+Source adequacy, counterfactual, interaction/residual closure는 active agent가 판단하고 채운다.
+Draft는 새 Goal, Candidate, Question 또는 Decision을 만들지 않으며 post-write snapshot을
+pre-work authority로 승격하지 않는다. Record는 같은 하나의 maintained semantic schema를 사용한다.
+
 Discovery를 complete로 기록하기 전에 active agent는 다음 counterfactual을 수행한다. "Goal을
 만족하면서도 아직 choice 또는 settled authority로 표현되지 않은 materially different subordinate
 product outcome이 가능한가?" Public API/observable semantics, compatibility/support, failure policy,

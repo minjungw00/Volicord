@@ -222,3 +222,15 @@ required/blocked/superseding outcomes and Source basis),
 `recommendation_state=withheld_until_initial_response` and contains no
 recommendation or rationale. The successful exact receipt-bound `decision_record`
 response retains the existing post-choice recommendation feedback.
+
+Use `engineering_choice_discovery(action=draft, project_id,
+baseline_analysis_snapshot_id)` after Recall/Goal and pre-work analysis. This
+read-only operation returns the current Goal, its original host Source, bounded
+behavioral Context, `record_request`, fixed enum inventories, and schema-derived
+`variant_templates` with ready-to-fill skeletons. Choose variants and fill all
+semantic nulls from current Source evidence. Source and graph-slot identities are
+prefilled; they do not assert semantic truth. The caller may add alternatives,
+choices and interaction results as needed, retaining stable IDs during resume.
+Submit `record_request` through the same tool (`action=record`, the default when
+omitted). `tools/list` remains the sole complete record schema. Continue through
+the existing Materiality draft → record/revise → inspect path.

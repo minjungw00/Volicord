@@ -576,3 +576,14 @@ pub enum WorkTransition {
         statement: String,
     },
 }
+
+/// Read-only authoring basis; semantic conclusions remain caller-owned.
+#[derive(Clone, Debug)]
+pub struct EngineeringChoiceAuthoringBasis {
+    pub project_id: volicord_context::ProjectId,
+    pub goal: volicord_context::ContextItem,
+    pub goal_sources: Vec<volicord_context::Source>,
+    pub behavioral_context: Vec<volicord_context::ContextItem>,
+    pub baseline_analysis_snapshot_id: AnalysisSnapshotId,
+    pub repository_source_id: SourceId,
+}

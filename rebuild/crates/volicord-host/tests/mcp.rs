@@ -3804,7 +3804,7 @@ fn checkpoint_refusal_returns_bounded_actionable_workflow_guidance() {
     );
     assert_eq!(
         refused["details"]["workflow"]["required_next_action"],
-        json!({"tool":"engineering_choice_discovery","action":"record"})
+        json!({"tool":"engineering_choice_discovery","action":"draft"})
     );
     assert_eq!(refused["details"]["workflow"]["blocks_ordinary_work"], true);
 }
@@ -7250,28 +7250,35 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             vec![shape(&["project_id"], &["project_id"])]
         }
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
-        "engineering_choice_discovery" => vec![shape(
-            &[
-                "project_id",
-                "goal_context_id",
-                "baseline_analysis_snapshot_id",
-                "source_operation",
-                "summary",
-                "choices",
-                "material_boundary_review",
-                "interaction_review",
-            ],
-            &[
-                "project_id",
-                "goal_context_id",
-                "baseline_analysis_snapshot_id",
-                "source_operation",
-                "summary",
-                "choices",
-                "material_boundary_review",
-                "interaction_review",
-            ],
-        )],
+        "engineering_choice_discovery" => vec![
+            shape(
+                &["action", "project_id", "baseline_analysis_snapshot_id"],
+                &["action", "project_id", "baseline_analysis_snapshot_id"],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "goal_context_id",
+                    "baseline_analysis_snapshot_id",
+                    "source_operation",
+                    "summary",
+                    "choices",
+                    "material_boundary_review",
+                    "interaction_review",
+                ],
+                &[
+                    "project_id",
+                    "goal_context_id",
+                    "baseline_analysis_snapshot_id",
+                    "source_operation",
+                    "summary",
+                    "choices",
+                    "material_boundary_review",
+                    "interaction_review",
+                ],
+            ),
+        ],
         "materiality_review" => vec![
             shape(
                 &[
@@ -8375,4 +8382,224 @@ fn compact_materiality_large_state_builds_record_revise_inspect_without_probes()
         "draft must materially reduce the previous duplicated schemas"
     );
     eprintln!("Materiality previous duplicated schema bytes={old_bytes}; largest compact draft MCP envelope bytes={largest}");
+}
+
+fn discovery_authoring_fixture() -> (tempfile::TempDir, HostAdapter, String, Value, Value) {
+    let (temporary, mut adapter, project) = setup();
+    fs::write(temporary.path().join("repository/src.txt"),
+        "Maintain the exact same externally observable result using either private inline or helper implementation. This fixture has no temporal, persistence, failure, multi-item, composition or reference-policy effect.\n").unwrap();
+    let goal = structured(&call(&mut adapter,"context_record",json!({
+        "project_id":project,"role":"goal","user_turn":"Maintain the private implementation with the same behavior",
+        "statement":"Maintain the private implementation with the same behavior",
+    }))).clone();
+    let constraint = structured(&call(&mut adapter,"context_record",json!({
+        "project_id":project,"role":"constraint","user_turn":"Keep observable behavior unchanged",
+        "statement":"Keep observable behavior unchanged",
+    }))).clone();
+    let analyzed = structured(&call(
+        &mut adapter,
+        "repository_analyze",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let canonical_before = adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .unwrap();
+    let candidate_before = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .unwrap();
+    let response = call(
+        &mut adapter,
+        "engineering_choice_discovery",
+        json!({
+            "action":"draft","project_id":project,"baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
+        }),
+    );
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let draft = structured(&response).clone();
+    assert_eq!(draft["goal_context_id"], goal["context_item_id"]);
+    assert_eq!(
+        draft["current_goal"]["current_host_sources"][0]["source_id"],
+        goal["source_id"]
+    );
+    assert_eq!(
+        draft["current_goal"]["current_host_sources"][0]["user_turn"],
+        "Maintain the private implementation with the same behavior"
+    );
+    assert_eq!(
+        draft["baseline_analysis_snapshot_id"],
+        analyzed["analysis_snapshot_id"]
+    );
+    assert_eq!(
+        draft["repository_source_id"],
+        analyzed["repository_source_id"]
+    );
+    assert_eq!(
+        draft["behavioral_context"][0]["context_item_id"],
+        constraint["context_item_id"]
+    );
+    assert_eq!(
+        draft["enum_inventories"]["effect_categories"]
+            .as_array()
+            .unwrap()
+            .len(),
+        11
+    );
+    assert_eq!(
+        draft["enum_inventories"]["interaction_axes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
+    assert_eq!(draft["canonical_mutation"], false);
+    assert_eq!(draft["candidate_mutation"], false);
+    assert_eq!(
+        canonical_before,
+        adapter
+            .operations()
+            .canonical_basis(parse_project(&project))
+            .unwrap()
+    );
+    assert_eq!(
+        candidate_before,
+        adapter
+            .operations()
+            .candidate_basis(parse_project(&project))
+            .unwrap()
+    );
+    assert!(response.to_string().len() <= volicord_operations::HOST_READ_RESULT_BYTE_BUDGET);
+    let mut request = draft["record_request"].clone();
+    request["summary"] = json!("Private implementation shape within settled behavior");
+    let choice = &mut request["choices"][0];
+    choice["summary"] = json!("Inline the implementation or extract a private helper");
+    choice["affected_scope"] = json!(["src.txt"]);
+    choice["technical_consequences"] =
+        json!(["Private organization changes, observable behavior remains identical"]);
+    choice["effect_categories"] = json!(["implementation_internal"]);
+    choice["evidence_state"] = json!("sufficient");
+    choice["relationship"] =
+        draft["variant_templates"]["choice.relationship"][0]["skeleton"].clone();
+    for (index, alternative) in choice["alternatives"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .enumerate()
+    {
+        alternative["summary"] = json!(if index == 0 {
+            "Inline implementation"
+        } else {
+            "Private helper"
+        });
+        alternative["technical_consequences"] =
+            json!(["Same observable result with different private structure"]);
+        let mut closure = draft["variant_templates"]["choice.alternative.material_decomposition"]
+            [0]["skeleton"]
+            .clone();
+        closure["rationale"] = json!(
+            "The inspected fixture Source fixes all observable results; only private shape varies"
+        );
+        closure["residual_fork_closure"]["fixed_outcome"] =
+            json!("Preserve the exact fixture result");
+        closure["residual_fork_closure"]["credible_implementations"] =
+            json!(["Inline private logic", "Extract a private helper"]);
+        closure["residual_fork_closure"]["interaction_comparisons"] = json!([]);
+        assert_eq!(
+            closure["residual_fork_closure"]["source_basis"],
+            json!([draft["repository_source_id"]])
+        );
+        alternative["material_decomposition"] = closure;
+    }
+    for boundary in request["material_boundary_review"].as_array_mut().unwrap() {
+        boundary["reviewed_outcomes"] =
+            json!(["The inspected fixture fixes all observable results within this category"]);
+        if boundary["effect_category"] == "implementation_internal" {
+            boundary["conclusion"] = draft["variant_templates"]
+                ["material_boundary_review.conclusion"][0]["skeleton"]
+                .clone();
+            boundary["conclusion"]["choice_ids"] = json!(["choice-1"]);
+        } else {
+            boundary["conclusion"] = draft["variant_templates"]
+                ["material_boundary_review.conclusion"][1]["skeleton"]
+                .clone();
+            boundary["conclusion"]["basis"] = json!("outside_affected_scope");
+            boundary["conclusion"]["rationale"] =
+                json!("The inspected fixture has no effect in this category");
+        }
+    }
+    for interaction in request["interaction_review"].as_array_mut().unwrap() {
+        let outcome = &mut interaction["outcomes"][0];
+        outcome["scenario"] =
+            json!("This private-only fixture does not alter this interaction axis");
+        outcome["credible_outcomes"][0]["description"] =
+            json!("The fixture result stays unchanged");
+        outcome["affected_choice_ids"] = json!([]);
+        outcome["conclusion"] = draft["variant_templates"]["interaction_review.outcome.conclusion"]
+            [1]["skeleton"]
+            .clone();
+        outcome["conclusion"]["basis"] = json!("outside_affected_scope");
+        outcome["conclusion"]["rationale"] =
+            json!("Current fixture Source bounds this axis outside affected private structure");
+        outcome["conclusion"]["result_id"] = outcome["credible_outcomes"][0]["result_id"].clone();
+    }
+    (temporary, adapter, project, draft, request)
+}
+
+#[test]
+fn discovery_draft_round_trip_preserves_semantic_evidence_and_materiality_path() {
+    let (_temporary, mut adapter, project, draft, request) = discovery_authoring_fixture();
+    let unfilled = call(
+        &mut adapter,
+        "engineering_choice_discovery",
+        draft["record_request"].clone(),
+    );
+    assert_eq!(unfilled["result"]["isError"], true, "{unfilled}");
+    let response = call(&mut adapter, "engineering_choice_discovery", request);
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let recorded = structured(&response).clone();
+    let discovery_id = recorded["discovery_candidate_id"].clone();
+    let materiality = structured(&call(&mut adapter,"materiality_review",json!({
+        "action":"draft","project_id":project,"engineering_choice_discovery_candidate_id":discovery_id,
+    }))).clone();
+    assert_eq!(materiality["goal_context_id"], draft["goal_context_id"]);
+    assert_eq!(
+        materiality["baseline_analysis_snapshot_id"],
+        draft["baseline_analysis_snapshot_id"]
+    );
+    for expected_action in ["record", "revise"] {
+        let materiality = structured(&call(&mut adapter,"materiality_review",json!({
+            "action":"draft","project_id":project,"engineering_choice_discovery_candidate_id":discovery_id,
+        }))).clone();
+        assert_eq!(materiality["record_request"]["action"], expected_action);
+        let judgment = draft_judgment(
+            &materiality,
+            "choice-1",
+            "agent_owned_implementation_choice",
+            json!({
+                "basis_summary":"Both alternatives preserve exact fixture behavior within private discretion",
+                "authority_counterfactual":"The inspected fixture fixes observable behavior; only private organization varies",
+                "learning_value":{"state":"routine","rationale":"No transferable material trade-off in this fixture"},
+            }),
+        );
+        let mut review_request = draft_request(
+            &materiality,
+            "Inspected current fixture and behavioral Context",
+            json!({"state":"inactive"}),
+            vec![judgment],
+        );
+        if expected_action == "record" {
+            review_request["behavioral_context_basis"]["context_item_ids"] =
+                json!([draft["behavioral_context"][0]["context_item_id"]]);
+        }
+        let response = call(&mut adapter, "materiality_review", review_request);
+        assert_eq!(response["result"]["isError"], false, "{response}");
+    }
+    assert!(adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .unwrap()
+        .active_decisions
+        .is_empty());
 }

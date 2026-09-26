@@ -215,7 +215,9 @@ impl HostAdapter {
         match result {
             Ok(value)
                 if name == "recall"
-                    || (name == "materiality_review" && arguments["action"] == "draft") =>
+                    || ((name == "materiality_review"
+                        || name == "engineering_choice_discovery")
+                        && arguments["action"] == "draft") =>
             {
                 Ok(compact_read_tool_result(value))
             }
@@ -445,6 +447,36 @@ impl HostAdapter {
 
     fn engineering_choice_discovery(&self, args: &Value) -> Result<Value, HostError> {
         let project_id = project(args)?;
+        if args.get("action").and_then(Value::as_str) == Some("draft") {
+            let baseline =
+                parse_analysis_snapshot(required_str(args, "baseline_analysis_snapshot_id")?)?;
+            let basis = self
+                .operations
+                .draft_engineering_choice_discovery(project_id, baseline)
+                .map_err(operation_error)?;
+            let workflow = self
+                .operations
+                .workflow_for_work_basis(
+                    project_id,
+                    basis.goal.id,
+                    baseline,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )
+                .map_err(operation_error)?;
+            let draft = with_workflow(engineering_choice_authoring_json(&basis), workflow);
+            if draft.to_string().len() > volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET {
+                return Err(HostError::with_details(
+                    "Discovery draft exceeds the bounded authoring budget",
+                    json!({"diagnostic":"discovery_draft_budget_exceeded", "next_supported_action":{
+                        "tool":"canonical_inspect","project_id":project_id.to_string()},
+                        "assembly":"Use tools/list engineering_choice_discovery inputSchema and exact analysis/Goal identities; do not retry the unchanged draft."}),
+                ));
+            }
+            return Ok(draft);
+        }
         let goal_context_id = parse_context_item(required_str(args, "goal_context_id")?)?;
         let baseline_analysis_snapshot_id =
             parse_analysis_snapshot(required_str(args, "baseline_analysis_snapshot_id")?)?;
@@ -2277,8 +2309,15 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "engineering_choice_discovery" => (
-            "Record one bounded Engineering Choice Discovery for the current Goal and exact pre-work Analysis Snapshot. Include only consequence-bearing forks with credible alternatives; preserve independent choices separately and declare genuinely coupled peers symmetrically. For destructive or history-clearing work, explicitly compare canonical records, Candidate state, derived/local state, provider-retained state, Project identity, and clone binding, including reversibility and recovery. An execution confirmation cannot settle those product outcomes. This is discovery, not authority or a user Decision.",
-            engineering_choice_discovery_schema(),
+            "Start with action=draft and Project/pre-work Analysis Snapshot identities to receive the current Goal, original current-host Source/context, ready-to-fill record_request, fixed category/axis inventories and validator-derived variant skeletons. Fill every null semantic placeholder using source inspection; draft invents no conclusions and does not record a Candidate. tools/list owns the single record schema; retained details use candidate_inspect. Record one bounded Engineering Choice Discovery for the current Goal and exact pre-work Analysis Snapshot. Include only consequence-bearing forks with credible alternatives; preserve independent choices separately and declare genuinely coupled peers symmetrically. For destructive or history-clearing work, explicitly compare canonical records, Candidate state, derived/local state, provider-retained state, Project identity, and clone binding, including reversibility and recovery. An execution confirmation cannot settle those product outcomes. This is discovery, not authority or a user Decision.",
+            json!({"oneOf":[
+                object_schema(vec![
+                    ("action", enum_schema("Read-only authoring draft", &["draft"])),
+                    ("project_id", identity_schema("Current Project identity")),
+                    ("baseline_analysis_snapshot_id", digest_identity_schema("Exact pre-work analysis returned by repository_analyze; never a post-write replacement")),
+                ], &["action","project_id","baseline_analysis_snapshot_id"]),
+                engineering_choice_discovery_schema(),
+            ]}),
             ToolBehavior::AdditiveClosed,
         ),
         "materiality_review" => (
@@ -2725,6 +2764,13 @@ fn engineering_choice_discovery_schema() -> Value {
     });
     object_schema(
         vec![
+            (
+                "action",
+                enum_schema(
+                    "Record semantic Discovery (default operation when omitted)",
+                    &["record"],
+                ),
+            ),
             ("project_id", identity_schema("Current Project identity")),
             (
                 "goal_context_id",
@@ -6291,6 +6337,156 @@ fn materiality_judgment_contract_json(
     })
 }
 
+fn authoring_skeleton(schema: &Value, prefilled: Value) -> Value {
+    if !prefilled.is_null() {
+        return prefilled;
+    }
+    if schema.get("oneOf").is_some() {
+        return Value::Null;
+    }
+    match schema.get("type").and_then(Value::as_str) {
+        Some("object") => {
+            let mut result = json!({});
+            for field in schema_required_fields(schema) {
+                result[&field] = authoring_skeleton(&schema["properties"][&field], Value::Null);
+            }
+            result
+        }
+        Some("array") if schema.get("maxItems").and_then(Value::as_u64) == Some(0) => json!([]),
+        Some("array") => match schema.get("minItems").and_then(Value::as_u64) {
+            Some(count) if count > 0 => Value::Array(
+                (0..count)
+                    .map(|_| authoring_skeleton(&schema["items"], Value::Null))
+                    .collect(),
+            ),
+            _ => Value::Null,
+        },
+        Some("string") => schema
+            .get("enum")
+            .and_then(Value::as_array)
+            .filter(|values| values.len() == 1)
+            .map(|values| values[0].clone())
+            .unwrap_or(Value::Null),
+        _ => Value::Null,
+    }
+}
+
+fn authoring_variants(schema: &Value) -> Vec<Value> {
+    let mut tables = schema_alternatives(schema.clone());
+    for (table, variant) in tables
+        .iter_mut()
+        .zip(schema["oneOf"].as_array().into_iter().flatten())
+    {
+        table["skeleton"] = authoring_skeleton(variant, Value::Null);
+    }
+    tables
+}
+
+fn engineering_choice_authoring_json(
+    basis: &volicord_operations::EngineeringChoiceAuthoringBasis,
+) -> Value {
+    let schema = engineering_choice_discovery_schema();
+    let properties = &schema["properties"];
+    let choice_schema = &properties["choices"]["items"];
+    let alternative_schema = &choice_schema["properties"]["alternatives"]["items"];
+    let boundary_schema = &properties["material_boundary_review"]["items"];
+    let interaction_schema = &properties["interaction_review"]["items"];
+    let outcome_schema = &interaction_schema["properties"]["outcomes"]["items"];
+    let result_schema = &outcome_schema["properties"]["credible_outcomes"]["items"];
+    let repository_source = basis.repository_source_id.to_string();
+    let mut choice = authoring_skeleton(choice_schema, Value::Null);
+    choice["choice_id"] = json!("choice-1");
+    choice["source_ids"] = json!([repository_source]);
+    choice["alternatives"] = Value::Array(
+        (1..=2)
+            .map(|index| {
+                let mut alternative = authoring_skeleton(alternative_schema, Value::Null);
+                alternative["alternative_id"] = json!(format!("alternative-{index}"));
+                alternative
+            })
+            .collect(),
+    );
+    let categories = boundary_schema["properties"]["effect_category"]["enum"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let axes = interaction_schema["properties"]["axis"]["enum"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let boundary = categories
+        .iter()
+        .map(|category| {
+            let mut item = authoring_skeleton(boundary_schema, Value::Null);
+            item["effect_category"] = category.clone();
+            item["source_ids"] = json!([repository_source]);
+            item
+        })
+        .collect::<Vec<_>>();
+    let interactions = axes
+        .iter()
+        .map(|axis| {
+            let mut item = authoring_skeleton(interaction_schema, Value::Null);
+            item["axis"] = axis.clone();
+            let mut outcome = authoring_skeleton(outcome_schema, Value::Null);
+            let mut result = authoring_skeleton(result_schema, Value::Null);
+            result["result_id"] = json!(format!("{}-result-1", axis.as_str().unwrap_or_default()));
+            outcome["outcome_id"] =
+                json!(format!("{}-outcome-1", axis.as_str().unwrap_or_default()));
+            outcome["source_basis"] = json!([repository_source]);
+            outcome["credible_outcomes"] = json!([result]);
+            item["outcomes"] = json!([outcome]);
+            item
+        })
+        .collect::<Vec<_>>();
+    let mut record = authoring_skeleton(&schema, Value::Null);
+    record["action"] = json!("record");
+    record["project_id"] = json!(basis.project_id.to_string());
+    record["goal_context_id"] = json!(basis.goal.id.to_string());
+    record["baseline_analysis_snapshot_id"] =
+        json!(basis.baseline_analysis_snapshot_id.to_string());
+    record["source_operation"] = json!("engineering_choice_discovery");
+    record["choices"] = json!([choice]);
+    record["material_boundary_review"] = json!(boundary);
+    record["interaction_review"] = json!(interactions);
+    let mut decompositions =
+        authoring_variants(&alternative_schema["properties"]["material_decomposition"]);
+    for variant in &mut decompositions {
+        if variant["skeleton"]["residual_fork_closure"].is_object() {
+            variant["skeleton"]["residual_fork_closure"]["source_basis"] =
+                json!([repository_source]);
+        }
+    }
+    json!({
+        "action":"draft", "canonical_mutation":false, "candidate_mutation":false,
+        "project_id":basis.project_id.to_string(), "goal_context_id":basis.goal.id.to_string(),
+        "baseline_analysis_snapshot_id":basis.baseline_analysis_snapshot_id.to_string(),
+        "repository_source_id":repository_source,
+        "current_goal":{"statement":basis.goal.statement,"revision":basis.goal.revision,
+            "current_host_sources":basis.goal_sources.iter().map(|source| match &source.payload {
+                volicord_context::SourcePayload::CurrentHostUserTurn { host, session, turn } =>
+                    json!({"source_id":source.id.to_string(),"host":host,"session":session,"user_turn":turn}),
+                _ => Value::Null,
+            }).collect::<Vec<_>>()},
+        "behavioral_context":volicord_operations::bounded_read_section(json!(basis.behavioral_context.iter().map(|item| json!({
+            "context_item_id":item.id.to_string(),"role":context_item_role_name(item.role),"statement":item.statement,
+            "source_ids":item.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>()), 12*1024),
+        "record_request":record,
+        "variant_templates":{
+            "choice.relationship":authoring_variants(&choice_schema["properties"]["relationship"]),
+            "choice.alternative.material_decomposition":decompositions,
+            "material_boundary_review.conclusion":authoring_variants(&boundary_schema["properties"]["conclusion"]),
+            "interaction_review.outcome.conclusion":authoring_variants(&outcome_schema["properties"]["conclusion"]),
+        },
+        "enum_inventories":{
+            "effect_categories":categories, "interaction_axes":axes,
+            "evidence_state":choice_schema["properties"]["evidence_state"]["enum"],
+        },
+        "authoring_notice":"Nulls are required active-agent semantic judgments, never valid submission truth. IDs only name draft graph slots. Add/remove choices, alternatives and outcome/result slots as evidence requires; preserve prior stable IDs when continuing. Select one schema-derived variant and fill its semantic fields. Source IDs provide grounding candidates, not proof of settlement. Inspect source content and omitted Context before judging. tools/list owns the full nested schema; candidate_inspect owns retained details.",
+    })
+}
+
 fn schema_alternatives(schema: Value) -> Vec<Value> {
     let alternatives = schema
         .get("oneOf")
@@ -6972,7 +7168,7 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
     };
     match workflow.stage {
         WorkflowStage::EngineeringChoiceDiscovery => json!({
-            "required_action":{"tool":"engineering_choice_discovery","action":"record"},
+            "required_action":{"tool":"engineering_choice_discovery","action":"draft"},
             "available_identities":{
                 "project_id":identity("project"),
                 "goal_context_id":identity("goal_context"),
