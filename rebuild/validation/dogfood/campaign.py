@@ -455,6 +455,23 @@ def verify_retained_repository_states(root: Path, manifest: dict[str, Any]) -> N
     verify_final_repository_states(root, manifest, live=False)
 
 
+def work_blind_coverage(root: Path, state: dict[str, Any], descriptor: dict[str, Any]) -> dict[str, Any]:
+    fixed = read_json(slot_artifact_path(root, "reviewer", "provisional", state["review_slot_id"]))
+    independent = descriptor.get("behavior_review", {}).get("independent_review", {})
+    errors = harness.blind_first_review_errors(independent.get("review_preparation"), fixed,
+        len(descriptor.get("behavior_review", {}).get("provenance_references", [])))
+    errors += harness.classification_comparison_errors(independent.get("classification_comparison"),
+        fixed, descriptor.get("materiality_obligations"),
+        len(descriptor.get("behavior_review", {}).get("provenance_references", [])))
+    if independent.get("provisional_review") != fixed:
+        errors.append("fixed provisional review changed in sealed descriptor")
+    obligations = harness.obligation_set(descriptor.get("materiality_obligations"))
+    return {"status": "blind_coverage_gap" if errors else "passed",
+            "obligation_count": len(obligations),
+            "assessed_count": 0 if errors else len(obligations),
+            "blind_coverage_gaps": sorted(set(errors))}
+
+
 def new_review_slot_id() -> str:
     return secrets.token_hex(16)
 
@@ -1155,6 +1172,7 @@ def descriptor_skeleton(
                     "status": "unresolved_conflict",
                     "provisional_classification": "REPLACE with the immutable provisional classification",
                     "evaluator_classification": list(materiality_obligations),
+                    "obligation_coverage": [],
                     "disagreements": ["REPLACE with exact disagreement field names"],
                     "resolution_basis": "REPLACE with inspectable source/owner evidence resolving the comparison",
                     "provenance_reference_indices": [0],
@@ -1679,6 +1697,7 @@ def prepare_review(
         "status": "recorded",
         "reviewer_role": "campaign_preparation_independent_reviewer",
         "preparation_sha256": preparation_sha256,
+        "assessments": [],
         "classification": None,
         "materiality_conclusion": None,
         "material_outcome_unavoidable": None,
@@ -2033,6 +2052,7 @@ def seal_work(
         "kind",
         "status",
         "reviewer_role",
+        "assessments",
         "classification",
         "materiality_conclusion",
         "material_outcome_unavoidable",
@@ -3728,6 +3748,11 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
             or item.get("sha256") != harness.sha256(raw)):
             raise CampaignError("evidence-set raw session/hash binding changed")
         sessions.add(item["session_id"])
+    for state in manifest["works"].values():
+        descriptor = read_json(slot_artifact_path(root, "evaluator", "descriptors", state["review_slot_id"]))
+        coverage = work_blind_coverage(root, state, descriptor)
+        if coverage["status"] != "passed":
+            raise CampaignError("blind_coverage_gap: immutable campaign control evidence is insufficient")
     integrity_check("project_binding", verify_retained_repository_states, root, manifest)
     return manifest
 
@@ -3751,7 +3776,8 @@ def evaluate_works(root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]
             observation.pop("machine_findings", None)
             works.append({"journey_id": journey_id(kind), "repository_class": kind,
                 "work_slot_id": work_key(kind, work), "work": work, "resume_pair": resume_pair,
-                "materiality_obligations": list(descriptor["materiality_obligations"]), "observation": observation,
+                "materiality_obligations": list(descriptor["materiality_obligations"]),
+                "blind_coverage": work_blind_coverage(root, state, descriptor), "observation": observation,
                 "findings": machine_findings.from_observation(observation)})
     return works
 

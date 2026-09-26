@@ -9,7 +9,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-5"
+REVISION = "replacement-qualification-6"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
 HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable",
     "journey-volicord/viewer_snapshot/multiple_work_organization"}
@@ -48,6 +48,7 @@ def contract():
         "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
         "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
         "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
+        "blind_coverage": "Every counted evaluator obligation requires a distinct independently fixed pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review.",
         "campaign_topology": TOPOLOGY,
         "cli_scope": {"repository_classes": 3, "criteria_per_class": 7, "required_assessments": 21}}
 
@@ -140,6 +141,20 @@ def naturalistic_summary(result, evaluation, memory=None):
     }
 
 
+def campaign_control_coverage(evaluation):
+    states = {}
+    for work in evaluation["works"]:
+        coverage = work.get("blind_coverage", {})
+        obligations = work.get("materiality_obligations", [])
+        passed = (coverage.get("status") == "passed" and bool(obligations)
+            and coverage.get("obligation_count") == len(set(obligations))
+            and coverage.get("assessed_count") == coverage.get("obligation_count")
+            and coverage.get("blind_coverage_gaps") == [])
+        states[work["work_slot_id"]] = "passed" if passed else "blind_coverage_gap"
+    return {"state": "passed" if all(s == "passed" for s in states.values()) else "blind_coverage_gap",
+            "works": dict(sorted(states.items()))}
+
+
 def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
             naturalistic_resource=None):
     """Inputs have been identity/hash validated by the file boundary below.
@@ -148,6 +163,7 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
     A machine observation is never erased by semantic adjudication.
     """
     topology = validate_topology(evaluation)
+    control_coverage = campaign_control_coverage(evaluation)
     scopes = [*evaluation["works"], *evaluation["journeys"]]
     findings = {finding_id(scope, n): f for scope in scopes for n, f in enumerate(scope["findings"])}
     hard = sorted(k for k, f in findings.items() if f["disposition"] == "hard_blocking")
@@ -200,9 +216,10 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
         if not addressed:
             unresolved_findings.append(fid)
     complete = not unresolved and not unresolved_findings and not violated
-    blocked = evidence_validity != "valid" or bool(hard) or technical["state"] in {"failed", "candidate_mismatch", "invalid"} or bool(violated)
+    blocked = control_coverage["state"] != "passed" or evidence_validity != "valid" or bool(hard) or technical["state"] in {"failed", "candidate_mismatch", "invalid"} or bool(violated)
     status = "blocked" if blocked else "qualified" if complete and technical["state"] == "passed" else "unresolved"
     result = {"evidence_validity": evidence_validity, "campaign_topology": topology,
+        "campaign_control_coverage": control_coverage,
         "technical_gate": technical,
         "machine_summary": {"counts": dict(sorted(Counter(f["disposition"] for f in findings.values()).items())),
             "hard_findings": hard, "unresolved_findings": sorted(unresolved_findings)},
@@ -252,6 +269,11 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
     import campaign
     manifest = campaign.load_evidence_set(root)
     evaluation = evaluation_runs.load(evaluation_path)
+    for work in evaluation["works"]:
+        state = manifest["works"][work["work_slot_id"]]
+        descriptor = campaign.read_json(campaign.slot_artifact_path(root, "evaluator", "descriptors", state["review_slot_id"]))
+        review.require(work.get("blind_coverage") == campaign.work_blind_coverage(root, state, descriptor),
+            "machine evaluation blind coverage differs from immutable pre-reveal evidence")
     evidence_hash = campaign.harness.sha256(root / "evidence-set.json")
     review.require(candidate == manifest["candidate_head"] == evaluation["candidate_head"], "Product candidate mismatch")
     review.require(evaluation["evidence_set"] == {"path": "evidence-set.json", "sha256": evidence_hash}, "evaluation evidence mismatch")
@@ -332,7 +354,12 @@ def validate_result(value):
             in {"unsupported_current_architecture", "not_provided", "measured"},
         "naturalistic evidence scope or qualification relationship changed")
     complete = not (q["unresolved_criteria"] or q["violated_criteria"] or q["human_escalations"] or m["unresolved_findings"])
-    blocked = value["evidence_validity"] != "valid" or bool(m["hard_findings"]) or bool(q["violated_criteria"]) or t["state"] in {"failed", "invalid", "candidate_mismatch"}
+    coverage = value.get("campaign_control_coverage", {})
+    review.require(set(coverage.get("works", {})) == {w[2] for w in EXPECTED_WORKS}
+        and set(coverage["works"].values()) <= {"passed", "blind_coverage_gap"}
+        and coverage.get("state") == ("passed" if all(s == "passed" for s in coverage["works"].values()) else "blind_coverage_gap"),
+        "invalid blind obligation control coverage")
+    blocked = coverage["state"] != "passed" or value["evidence_validity"] != "valid" or bool(m["hard_findings"]) or bool(q["violated_criteria"]) or t["state"] in {"failed", "invalid", "candidate_mismatch"}
     expected = "blocked" if blocked else "qualified" if complete and t["state"] == "passed" else "unresolved"
     review.require(value["replacement_qualification"] == expected and value["replacement_pass_candidate"] is (expected == "qualified")
         and q["state"] == ("complete" if complete else "incomplete"), "qualification state contradicts mandatory evidence")

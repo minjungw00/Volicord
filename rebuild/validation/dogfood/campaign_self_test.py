@@ -339,6 +339,8 @@ def fixture_for(
     comparison = review["independent_review"]["classification_comparison"]
     comparison["evaluator_classification"] = list(obligations)
     provisional = review["independent_review"]["provisional_review"]
+    provisional["assessments"] = harness.fixture_blind_assessments(obligations)
+    comparison["obligation_coverage"] = harness.fixture_obligation_coverage(provisional["assessments"])
     comparison["disagreements"] = (
         [] if harness.obligation_set(provisional["classification"]) == set(obligations)
         else ["classification"]
@@ -3770,6 +3772,8 @@ def main() -> int:
     check_document_realization_regressions()
     from repository_state_self_test import check_repository_state_regressions
     check_repository_state_regressions()
+    from blind_dimensions_self_test import check_blind_dimension_regressions
+    check_blind_dimension_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
     try:

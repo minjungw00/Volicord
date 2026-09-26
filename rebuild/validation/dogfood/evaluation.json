@@ -15,9 +15,17 @@
       "polyglot-medium"
     ],
     "work_slots_by_repository": {
-      "volicord": ["A", "B", "C"],
-      "small-python": ["A"],
-      "polyglot-medium": ["A"]
+      "volicord": [
+        "A",
+        "B",
+        "C"
+      ],
+      "small-python": [
+        "A"
+      ],
+      "polyglot-medium": [
+        "A"
+      ]
     },
     "resume_work_slot_by_repository": {
       "volicord": "A",
@@ -555,8 +563,13 @@
     "mode": "verify_repository_normalized_codex_rollout_and_canonical_bundle",
     "harness_performs_or_authorizes_transmission": false,
     "session_roles_by_work": {
-      "resumed_work": ["start", "resume"],
-      "non_resumed_work": ["start"]
+      "resumed_work": [
+        "start",
+        "resume"
+      ],
+      "non_resumed_work": [
+        "start"
+      ]
     },
     "full_replacement_session_count": 8,
     "required_capture_format": "codex_mcp_completion_rollout_jsonl",
@@ -1021,6 +1034,7 @@
           "status",
           "reviewer_role",
           "preparation_sha256",
+          "assessments",
           "classification",
           "materiality_conclusion",
           "material_outcome_unavoidable",
@@ -1053,7 +1067,8 @@
         "qualification_profile_reveal_operation": "reveal-qualification-profile",
         "evaluator_reveal_operation": "seal-work",
         "required_provisional_count_before_reveal": 5,
-        "sealing_accepts_provisional_payload": false
+        "sealing_accepts_provisional_payload": false,
+        "independent_assessment_contract": "bounded_reviewer_local_dimensions_source_grounded_before_reveal"
       },
       "fact_authority_agreement": {
         "accepted_statuses": [
@@ -1081,6 +1096,7 @@
           "status",
           "provisional_classification",
           "evaluator_classification",
+          "obligation_coverage",
           "disagreements",
           "resolution_basis",
           "provenance_reference_indices"
@@ -1092,7 +1108,9 @@
           "operator_prompt_disclosure"
         ],
         "resolution_evidence": "inspectable source or active-owner provenance references",
-        "provisional_artifact_rewritten": false
+        "provisional_artifact_rewritten": false,
+        "coverage_gap": "blind_coverage_gap_blocks_sealing_and_qualification",
+        "resolution_scope": "already_independently_assessed_dimension_only"
       },
       "material_user_owned_counterfactual_review": {
         "applicability": "required_for_material_user_owned_decision",
@@ -1259,7 +1277,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-5",
+    "revision": "replacement-qualification-6",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "journey-volicord/viewer_snapshot/multiple_work_organization",
@@ -1272,6 +1290,7 @@
     "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
     "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
     "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
+    "blind_coverage": "Every counted evaluator obligation requires a distinct independently fixed pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review.",
     "campaign_topology": {
       "repository_journeys": 3,
       "work_items": 5,

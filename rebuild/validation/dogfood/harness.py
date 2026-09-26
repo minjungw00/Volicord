@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import blind_dimensions
+
 import argparse
 import copy
 from collections import Counter
@@ -339,7 +341,7 @@ def provisional_review_contract() -> dict[str, Any]:
         }
     return {
         "kind": "phase8_provisional_review_contract",
-        "schema_version": 1,
+        "schema_version": 2,
         "artifact_kind": "phase8_provisional_behavior_review",
         "required_fields": [
             "kind",
@@ -347,6 +349,7 @@ def provisional_review_contract() -> dict[str, Any]:
             "status",
             "reviewer_role",
             "preparation_sha256",
+            "assessments",
             "classification",
             "materiality_conclusion",
             "material_outcome_unavoidable",
@@ -354,6 +357,15 @@ def provisional_review_contract() -> dict[str, Any]:
             "basis",
             "provenance_reference_indices",
         ],
+        "assessments": {
+            "required_fields": sorted(blind_dimensions.ASSESSMENT_FIELDS),
+            "minimum": 1, "maximum": blind_dimensions.MAX_DIMENSIONS,
+            "identity": "reviewer_local_stable_dimension_id",
+            "discovery": "independent_reviewer_visible_task_and_source_inspection",
+            "scope": "bounded_outcome_scope", "classification_count_per_dimension": 1,
+            "summary_classification": "summary_only_never_independent_coverage",
+            "reasoning_and_provenance": "same_bounds_and_reviewer_visible_locations_as_summary",
+        },
         "fixed_values": {
             "kind": "phase8_provisional_behavior_review",
             "status": "recorded",
@@ -1786,6 +1798,7 @@ def load_definition() -> dict[str, Any]:
             "status",
             "reviewer_role",
             "preparation_sha256",
+            "assessments",
             "classification",
             "materiality_conclusion",
             "material_outcome_unavoidable",
@@ -1840,6 +1853,7 @@ def load_definition() -> dict[str, Any]:
             "status",
             "provisional_classification",
             "evaluator_classification",
+            "obligation_coverage",
             "disagreements",
             "resolution_basis",
             "provenance_reference_indices",
@@ -2848,9 +2862,12 @@ def blind_first_review_errors(
         or provisional.get("preparation_sha256") != preparation.get("sha256")
     ):
         errors.append("provisional review is not fixed to the blind preparation")
+    errors.extend(blind_dimensions.assessment_errors(
+        provisional.get("assessments"), contract["classification_rules"],
+        reference_count, MAX_REVIEW_TEXT_BYTES))
     classification = provisional.get("classification")
     classification_rules = contract["classification_rules"]
-    if classification not in classification_rules:
+    if not isinstance(classification, str) or classification not in classification_rules:
         errors.append("provisional review classification is unsupported")
     basis = provisional.get("basis")
     maximum_basis_bytes = contract["bounded_reasoning"]["maximum_utf8_bytes"]
@@ -2865,7 +2882,7 @@ def blind_first_review_errors(
         or any(index < 0 or index >= reference_count for index in indices)
     ):
         errors.append("provisional review must cite reviewer-visible provenance locations")
-    if classification in classification_rules:
+    if isinstance(classification, str) and classification in classification_rules:
         rule = classification_rules[classification]
         user_owned = is_user_owned_behavior(classification)
         if provisional.get("materiality_conclusion") != rule["materiality_conclusion"]:
@@ -2899,13 +2916,16 @@ def classification_comparison_errors(
         "status",
         "provisional_classification",
         "evaluator_classification",
+        "obligation_coverage",
         "disagreements",
         "resolution_basis",
         "provenance_reference_indices",
     }
     if not isinstance(value, dict) or set(value) != required:
         return ["independent review requires the current classification comparison fields"]
-    errors: list[str] = []
+    errors: list[str] = blind_dimensions.coverage_errors(
+        value.get("obligation_coverage"), provisional, obligation_set(materiality_obligations),
+        reference_count, MAX_REVIEW_TEXT_BYTES)
     status = value.get("status")
     if status not in {"agreed", "resolved_from_evidence", "unresolved_conflict"}:
         errors.append("classification comparison status is unsupported")
@@ -11345,6 +11365,7 @@ def fixture_behavior_review(materiality_obligations: str) -> dict[str, Any]:
                 "status": "recorded",
                 "reviewer_role": "campaign_preparation_independent_reviewer",
                 "preparation_sha256": "aa" * 32,
+                "assessments": fixture_blind_assessments(materiality_obligations),
                 "classification": materiality_obligations,
                 "materiality_conclusion": (
                     "user_owned_material_outcome"
@@ -11366,6 +11387,7 @@ def fixture_behavior_review(materiality_obligations: str) -> dict[str, Any]:
                 "status": "agreed",
                 "provisional_classification": materiality_obligations,
                 "evaluator_classification": materiality_obligations,
+                "obligation_coverage": fixture_obligation_coverage(fixture_blind_assessments(materiality_obligations)),
                 "disagreements": [],
                 "resolution_basis": (
                     "The cited evidence supports the matching provisional and evaluator conclusions."
@@ -11389,6 +11411,25 @@ def fixture_behavior_review(materiality_obligations: str) -> dict[str, Any]:
             "counterfactual_review": counterfactual_review,
         },
     }
+
+
+def fixture_blind_assessments(obligations):
+    """Synthetic source-grounded test data, never a maintained reviewer verdict generator."""
+    rules = provisional_review_contract()["classification_rules"]
+    return [{"dimension_id": f"fixture-dimension-{n}",
+             "outcome_scope": f"Fixture bounded outcome {n}: {classification}",
+             "classification": classification, **rules[classification],
+             "basis": "Fixture task and pinned owner source ground this independently inspected outcome.",
+             "provenance_reference_indices": [0]}
+            for n, classification in enumerate(sorted(obligation_set(obligations)))]
+
+
+def fixture_obligation_coverage(assessments):
+    """Synthetic post-reveal mappings for deterministic fixtures only."""
+    return [{"obligation": item["classification"], "dimension_id": item["dimension_id"],
+             "reviewer_outcome_scope": item["outcome_scope"], "evaluator_outcome_scope": item["outcome_scope"],
+             "status": "independently_assessed", "basis": "The cited fixture source establishes identical outcome scope.",
+             "provenance_reference_indices": [0]} for item in assessments]
 
 
 def real_session_fixture(

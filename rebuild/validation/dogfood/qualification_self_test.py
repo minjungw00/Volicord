@@ -16,7 +16,9 @@ import qualification_policy as policy
 def evaluation():
     works = [
         {"repository_class": repository_class, "work": work,
-         "work_slot_id": work_slot_id, "resume_pair": resume_pair, "findings": []}
+         "work_slot_id": work_slot_id, "resume_pair": resume_pair, "findings": [],
+         "materiality_obligations": ["research_or_no_question"],
+         "blind_coverage": {"status": "passed", "obligation_count": 1, "assessed_count": 1, "blind_coverage_gaps": []}}
         for repository_class, work, work_slot_id, resume_pair in sorted(policy.EXPECTED_WORKS)
     ]
     journeys = []
@@ -66,6 +68,15 @@ class PolicyTests(unittest.TestCase):
         review.validate_value(self.human_prep, "d" * 64, self.human)
         self.assertEqual(self.result()["replacement_qualification"], "qualified")
         self.assertFalse(self.result()["phase_9_ready"])
+
+    def test_blind_coverage_gap_is_not_overridden_by_complete_reviews(self):
+        work = self.evaluation["works"][0]
+        work["materiality_obligations"].append("repository_or_environment_fact")
+        self.assertEqual(self.result()["replacement_qualification"], "blocked")
+        self.assertEqual(self.result()["campaign_control_coverage"]["state"], "blind_coverage_gap")
+        work["blind_coverage"] = {"status": "blind_coverage_gap", "obligation_count": 2,
+            "assessed_count": 1, "blind_coverage_gaps": ["unseen repository fact dimension"]}
+        self.assertEqual(self.result()["replacement_qualification"], "blocked")
 
     def test_hard_integrity_neither_agent_nor_human_can_override(self):
         self.evaluation["works"][0]["findings"] = [m.finding("raw_hash", "confirmed_violation", {"mismatch": True})]

@@ -457,3 +457,18 @@ when a broad procedural check in the same Work is review-required or advisory.
 `validate-approval --approval <approval-run>/approval.json --qualification
 <qualification-run>/qualification.json` rechecks the immutable approval, preserved
 qualification bytes and every original input without exercising approval again.
+
+Blind preparation now requires `assessments` (1–32 independently discovered dimensions).
+Each has reviewer-local stable `dimension_id`, bounded `outcome_scope`, one reviewer-safe
+classification, materiality/unavoidability/disclosure conclusions, bounded source-grounded
+reasoning and typed reviewer-visible provenance indices. The scalar classification remains a
+summary only and cannot establish independent coverage. Neither preflight nor recording reads
+private assignments, profile placement or evaluator scopes. Provisional bytes remain immutable.
+After all five provisionals are fixed and the profile is revealed, `obligation_coverage` maps each
+evaluator obligation to a distinct fixed dimension, retaining its exact reviewer scope and naming
+the evaluator scope with source-grounded equivalence reasoning. This is a steward semantic judgment,
+not a text-similarity, Question or alternative oracle. Missing/unseen/reused dimensions or rewritten
+reviewer scope remain explicit `blind_coverage_gap`. `resolved_from_evidence` can correct facts or
+authority about an already assessed dimension; it cannot discover another dimension for coverage.
+Sealing and replacement qualification reject gaps independently of common qualitative review.
+Compatible learning deliberation and routine-control obligations require separate blind assessments.

@@ -1374,7 +1374,8 @@ profile을 검증하고 reveal state를 고정한다. 그 뒤 `seal-work`은 이
 artifact를 byte/hash 그대로 유지한 채 full evaluator basis와 비교한다. Structured
 `classification_comparison`은 provisional/evaluator classification과 classification, materiality,
 unavoidability, prompt-disclosure 차이를 기계적으로 열거한다. 일치한 비교는 `agreed`, 불일치는
-inspectable provenance와 bounded basis를 가진 `resolved_from_evidence`일 때만 descriptor를
+independently assessed dimension의 inspectable provenance와 bounded basis를 가진
+`resolved_from_evidence`이며 blind coverage gap이 없을 때만 descriptor를
 봉인할 수 있고 `unresolved_conflict` 또는 불일치를 `agreed`로 표시한 입력은 거부된다. 이 두
 단계가 완료되기 전에는 activation과 rollout collection이
 거부된다. Sealing은 authoritative hidden descriptor를 evaluator plane에 두고 semantic hash를
@@ -1992,3 +1993,18 @@ It does not add missing evidence links, create a collection receipt, rewrite rej
 qualify any candidate. An intact current collected campaign instead
 uses the ordinary `evaluate` append-only operation. Sanitized fresh fixtures prove the full
 re-evaluation contract; historical incomplete diagnostics prove only what was observable.
+
+Blind preparation now requires `assessments` (1–32 independently discovered dimensions).
+Each has reviewer-local stable `dimension_id`, bounded `outcome_scope`, one reviewer-safe
+classification, materiality/unavoidability/disclosure conclusions, bounded source-grounded
+reasoning and typed reviewer-visible provenance indices. The scalar classification remains a
+summary only and cannot establish independent coverage. Neither preflight nor recording reads
+private assignments, profile placement or evaluator scopes. Provisional bytes remain immutable.
+After all five provisionals are fixed and the profile is revealed, `obligation_coverage` maps each
+evaluator obligation to a distinct fixed dimension, retaining its exact reviewer scope and naming
+the evaluator scope with source-grounded equivalence reasoning. This is a steward semantic judgment,
+not a text-similarity, Question or alternative oracle. Missing/unseen/reused dimensions or rewritten
+reviewer scope remain explicit `blind_coverage_gap`. `resolved_from_evidence` can correct facts or
+authority about an already assessed dimension; it cannot discover another dimension for coverage.
+Sealing and replacement qualification reject gaps independently of common qualitative review.
+Compatible learning deliberation and routine-control obligations require separate blind assessments.
