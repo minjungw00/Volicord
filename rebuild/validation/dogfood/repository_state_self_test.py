@@ -1,10 +1,13 @@
 """Deterministic real-Git collection regressions, never naturalistic evidence."""
 import copy
+import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 import campaign
 import harness
@@ -39,6 +42,246 @@ class RepositoryStateTests(unittest.TestCase):
         for slot in harness.current_session_slots():
             mapped[slot] = SimpleNamespace(capture=SimpleNamespace(git_revision=self.baseline))
         return {"journeys": journeys}, mapped
+
+    def worktree_bytes(self):
+        return {str(path.relative_to(self.repo)): path.read_bytes()
+            for path in self.repo.rglob("*") if path.is_file() and ".git" not in path.relative_to(self.repo).parts}
+
+    def assert_replacement(self, historical, replacements, *, staged):
+        head_before = self.git("rev-parse", "HEAD")
+        index_before = (self.repo / ".git/index").read_bytes()
+        status_before = self.git("status", "--porcelain=v1", "-z", "--untracked-files=all")
+        files_before = self.worktree_bytes()
+        captured, patches = state.observe(self.repo)
+        tracked = {item["path"]: item for item in captured["tracked"]}
+        untracked = {item["path"]: item for item in captured["untracked"]}
+        statuses = {item["path"]: item for item in captured["status"]}
+        indexed = {item["path"] for item in captured["index"]}
+        for name in historical:
+            self.assertEqual(tracked[name], {"path": name, "state": "deleted"})
+            self.assertEqual(statuses[name], {"path": name,
+                "index": "D" if staged else " ", "worktree": " " if staged else "D"})
+            self.assertEqual(name in indexed, not staged)
+        for name, content in replacements.items():
+            self.assertEqual((tracked if staged else untracked)[name],
+                {"path": name, "state": "file", "bytes": len(content), "sha256": state.digest(content)})
+            self.assertEqual(statuses[name], {"path": name,
+                "index": "A" if staged else "?", "worktree": " " if staged else "?"})
+            self.assertEqual(name in indexed, staged)
+        self.assertFalse(captured["workspace_clean"])
+        self.assertEqual(captured["schema_version"], 1)
+        self.assertIn(b"deleted file mode 100644", patches["staged" if staged else "unstaged"])
+        if staged:
+            self.assertIn(b"new file mode 100644", patches["staged"])
+            self.assertEqual(patches["unstaged"], b"")
+        else:
+            self.assertEqual(patches["staged"], b"")
+        self.assertEqual(state.observe(self.repo), (captured, patches))
+        state.verify(self.repo, captured)
+        retained = json.loads(state.encoded(captured))
+        state.verify_retained(retained, patches)
+        c, mapped = self.mapping()
+        lineage = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]
+        self.assertEqual(lineage["repository_state"], captured)
+        evidence = self.root / "retained"
+        evidence.mkdir()
+        binding = {"state": "repository-state.json", "staged": "staged.patch", "unstaged": "unstaged.patch"}
+        (evidence / binding["state"]).write_bytes(state.encoded(retained))
+        for key, patch in patches.items():
+            (evidence / binding[key]).write_bytes(patch)
+        manifest = {"journeys": {"journey-volicord": {"repository_path": str(self.repo)}},
+            "journey_final_evidence": [{"journey_id": "journey-volicord",
+                "repository_revision_lineage": {**lineage, "attestation_artifacts": binding}}]}
+        (evidence / "evidence-set.json").write_bytes(state.encoded(manifest))
+        campaign.verify_final_repository_states_for_publication(evidence)
+        self.assertEqual(self.git("rev-parse", "HEAD"), head_before)
+        self.assertEqual((self.repo / ".git/index").read_bytes(), index_before)
+        self.assertEqual(self.git("status", "--porcelain=v1", "-z", "--untracked-files=all"), status_before)
+        self.assertEqual(self.worktree_bytes(), files_before)
+        name, original = next(iter(replacements.items()))
+        (self.repo / name).write_bytes(original + b"tampered")
+        with self.assertRaisesRegex(state.StateError, "changed before publication"):
+            state.verify(self.repo, captured)
+        with self.assertRaisesRegex(state.StateError, "changed before publication"):
+            campaign.verify_final_repository_states_for_publication(evidence)
+        # Historical verification remains independent of the mutated live target.
+        state.verify_retained(retained, patches)
+        campaign.verify_retained_repository_states(evidence, manifest)
+        (self.repo / name).write_bytes(original)
+        damaged = copy.deepcopy(retained)
+        next(item for item in damaged["tracked"] if item["path"] in historical)["state"] = "file"
+        with self.assertRaisesRegex(state.StateError, "fingerprint"):
+            state.verify_retained(damaged, patches)
+        key = "staged" if staged else "unstaged"
+        with self.assertRaisesRegex(state.StateError, "diff"):
+            state.verify_retained(retained, {**patches, key: patches[key] + b"tampered"})
+
+    def replace_file_with_directory(self, *, staged):
+        (self.repo / "tracked.txt").unlink()
+        (self.repo / "tracked.txt/nested").mkdir(parents=True)
+        replacements = {"tracked.txt/first.bin": b"replacement\x00\xff\n",
+            "tracked.txt/nested/second.txt": b"another replacement\n"}
+        for name, content in replacements.items():
+            (self.repo / name).write_bytes(content)
+        if staged:
+            self.git("add", "-A")
+        self.assert_replacement(["tracked.txt"], replacements, staged=staged)
+
+    def replace_directory_with_file(self, *, staged):
+        (self.repo / "config/nested").mkdir(parents=True)
+        historical = ["config/settings.json", "config/nested/other.json"]
+        for name in historical:
+            (self.repo / name).write_bytes(b'{"baseline": true}\n')
+        self.git("add", "config")
+        self.git("commit", "-qm", "tracked directory")
+        for name in historical:
+            (self.repo / name).unlink()
+        (self.repo / "config/nested").rmdir()
+        (self.repo / "config").rmdir()
+        replacements = {"config": b"replacement\x00\xff\n"}
+        (self.repo / "config").write_bytes(replacements["config"])
+        if staged:
+            self.git("add", "-A")
+        self.assert_replacement(historical, replacements, staged=staged)
+
+    def test_unstaged_file_to_directory(self):
+        self.replace_file_with_directory(staged=False)
+
+    def test_staged_file_to_directory(self):
+        self.replace_file_with_directory(staged=True)
+
+    def test_unstaged_directory_to_file(self):
+        self.replace_directory_with_file(staged=False)
+
+    def test_staged_directory_to_file(self):
+        self.replace_directory_with_file(staged=True)
+
+    def test_ordinary_add_delete_and_rename(self):
+        (self.repo / "deleted.txt").write_bytes(b"deleted later\n")
+        self.git("add", "deleted.txt")
+        self.git("commit", "-qm", "deletion fixture")
+        (self.repo / "deleted.txt").unlink()
+        self.git("mv", "tracked.txt", "renamed.txt")
+        (self.repo / "added.txt").write_bytes(b"addition\n")
+        self.git("add", "-A")
+        self.assert_replacement(["deleted.txt", "tracked.txt"],
+            {"renamed.txt": b"baseline\n", "added.txt": b"addition\n"}, staged=True)
+
+    def test_staged_deletion_with_recreated_current_leaf(self):
+        self.git("rm", "-q", "tracked.txt")
+        content = b"recreated current file\n"
+        (self.repo / "tracked.txt").write_bytes(content)
+        captured, patches = state.observe(self.repo)
+        expected = {"path": "tracked.txt", "state": "file", "bytes": len(content),
+            "sha256": state.digest(content)}
+        self.assertIn(expected, captured["tracked"])
+        self.assertEqual(captured["untracked"], [expected])
+        state.verify(self.repo, captured)
+        state.verify_retained(captured, patches)
+
+    def test_current_symlink_and_executable_exact_bytes(self):
+        (self.repo / "link").symlink_to("tracked.txt")
+        (self.repo / "tracked.txt").chmod(0o755)
+        self.git("add", "link", "tracked.txt")
+        (self.repo / "untracked-link").symlink_to("tracked.txt")
+        captured, patches = state.observe(self.repo)
+        tracked = {item["path"]: item for item in captured["tracked"]}
+        self.assertEqual(tracked["link"], {"path": "link", "state": "symlink",
+            "bytes": len(b"tracked.txt"), "sha256": state.digest(b"tracked.txt")})
+        self.assertEqual(tracked["tracked.txt"], {"path": "tracked.txt", "state": "executable",
+            "bytes": len(b"baseline\n"), "sha256": state.digest(b"baseline\n")})
+        self.assertEqual(captured["untracked"], [{**tracked["link"], "path": "untracked-link"}])
+        state.verify(self.repo, captured)
+        state.verify_retained(captured, patches)
+
+    def test_directories_need_deleted_git_leaf_and_attested_descendant(self):
+        (self.repo / "tracked.txt").unlink()
+        (self.repo / "tracked.txt").mkdir()
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.observe(self.repo)
+        (self.repo / "tracked.txt/child").write_bytes(b"child")
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.file_state(self.repo, "tracked.txt", missing_allowed=True)
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.file_state(self.repo, "tracked.txt", replacement_leaves={"tracked.txt/child"})
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.file_state(self.repo, "tracked.txt", missing_allowed=True, replacement_leaves={"elsewhere"})
+
+    def test_non_directory_parent_requires_deleted_git_leaf_and_attestation(self):
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.file_state(self.repo, "tracked.txt/child", missing_allowed=True)
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.file_state(self.repo, "tracked.txt/child", replacement_leaves={"tracked.txt"})
+
+    def test_historical_directory_symlink_is_not_traversed(self):
+        (self.repo / "config").mkdir()
+        (self.repo / "config/settings.json").write_bytes(b"settings")
+        self.git("add", "config")
+        self.git("commit", "-qm", "directory fixture")
+        (self.repo / "config/settings.json").unlink()
+        (self.repo / "config").rmdir()
+        (self.repo / "inside").mkdir()
+        (self.repo / "inside/settings.json").write_bytes(b"replacement")
+        for target in (self.repo / "inside", self.root / "outside"):
+            with self.subTest(target=target):
+                (self.repo / "config").symlink_to(target)
+                with self.assertRaisesRegex(state.StateError, "escape"):
+                    state.observe(self.repo)
+                (self.repo / "config").unlink()
+
+    def test_special_entry_is_not_a_deleted_leaf_or_replacement(self):
+        (self.repo / "tracked.txt").unlink()
+        os.mkfifo(self.repo / "tracked.txt")
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.observe(self.repo)
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.file_state(self.repo, "tracked.txt/child", missing_allowed=True,
+                replacement_leaves={"tracked.txt"})
+        (self.repo / "tracked.txt").unlink()
+        (self.repo / "tracked.txt").mkdir()
+        os.mkfifo(self.repo / "tracked.txt/child")
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.observe(self.repo)
+
+    def test_unmerged_index_is_rejected(self):
+        object_id = self.git("rev-parse", "HEAD:tracked.txt").strip().decode()
+        subprocess.run(["git", "update-index", "--index-info"], cwd=self.repo, check=True,
+            input=f"100644 {object_id} 1\tconflict.txt\n100644 {object_id} 2\tconflict.txt\n".encode(),
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        with self.assertRaisesRegex(state.StateError, "unmerged index"):
+            state.observe(self.repo)
+
+    def test_submodule_index_is_rejected(self):
+        self.git("update-index", "--add", "--cacheinfo", "160000", self.baseline, "module")
+        with self.assertRaisesRegex(state.StateError, "submodule"):
+            state.observe(self.repo)
+
+    def test_deleted_head_submodule_is_not_a_directory_replacement(self):
+        self.git("update-index", "--add", "--cacheinfo", "160000", self.baseline, "module")
+        self.git("commit", "-qm", "submodule fixture")
+        self.git("update-index", "--force-remove", "module")
+        (self.repo / "module").mkdir()
+        (self.repo / "module/current.txt").write_bytes(b"replacement")
+        with self.assertRaisesRegex(state.StateError, "submodule"):
+            state.observe(self.repo)
+
+    def test_concurrent_status_or_head_mutation_is_rejected(self):
+        real_git = state.git
+        for commit in (False, True):
+            with self.subTest(commit=commit):
+                def mutate(repository, *arguments):
+                    output = real_git(repository, *arguments)
+                    if arguments[0] == "diff" and "--cached" not in arguments:
+                        (self.repo / "concurrent").write_bytes(b"concurrent change")
+                        if commit:
+                            self.git("add", "concurrent")
+                            self.git("commit", "-qm", "concurrent commit")
+                    return output
+                with mock.patch.object(state, "git", side_effect=mutate):
+                    with self.assertRaisesRegex(state.StateError, "changed during attestation"):
+                        state.observe(self.repo)
+                if not commit:
+                    (self.repo / "concurrent").unlink()
 
     def test_dirty_exact_bytes_determinism_and_no_git_mutation(self):
         (self.repo / "tracked.txt").write_bytes(b"staged\x00bytes\n")

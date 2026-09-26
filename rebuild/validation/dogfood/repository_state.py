@@ -47,14 +47,24 @@ def path_text(raw):
     return value
 
 
-def file_state(repository, name, *, missing_allowed=False):
+def file_state(repository, name, *, missing_allowed=False, replacement_leaves=()):
     path = repository / name
     # Never traverse a directory symlink, even one currently pointing inside.
     parent = repository
     for component in PurePosixPath(name).parts[:-1]:
         parent /= component
-        if parent.is_symlink():
+        try:
+            parent_mode = parent.lstat().st_mode
+        except FileNotFoundError:
+            break  # The leaf's missing-path check below still applies.
+        if stat.S_ISLNK(parent_mode):
             raise StateError("unexpected repository path escape")
+        if not stat.S_ISDIR(parent_mode):
+            # A Git-deleted leaf may be blocked by an attested regular ancestor.
+            # Never traverse that replacement or treat a special object as deletion.
+            if missing_allowed and stat.S_ISREG(parent_mode) and parent.relative_to(repository).as_posix() in replacement_leaves:
+                return {"path": name, "state": "deleted"}
+            raise StateError("unsupported repository entry (including submodule or special file)")
     try:
         mode = path.lstat().st_mode
     except FileNotFoundError:
@@ -69,6 +79,10 @@ def file_state(repository, name, *, missing_allowed=False):
     elif stat.S_ISREG(mode):
         content = path.read_bytes()
         kind = "executable" if mode & 0o111 else "file"
+    elif stat.S_ISDIR(mode) and missing_allowed and any(leaf.startswith(name + "/") for leaf in replacement_leaves):
+        # Only a deleted historical/index leaf can now be a directory container,
+        # and its replacement descendants must already have passed file checks.
+        return {"path": name, "state": "deleted"}
     else:
         raise StateError("unsupported repository entry (including submodule or special file)")
     return {"path": name, "state": kind, "bytes": len(content), "sha256": digest(content)}
@@ -100,11 +114,25 @@ def observe(repository: Path):
                 raise StateError("unverifiable unmerged index or submodule")
             index.append({"path": path_text(name), "mode": mode, "object_id": object_id})
     index.sort(key=lambda item: item["path"])
-    tracked_names = {item["path"] for item in index}
-    tracked_names.update(path_text(name) for name in git(repository, "ls-tree", "-r", "--name-only", "-z", "HEAD").split(b"\0") if name)
-    deleted = {item["path"] for item in status if "D" in (item["index"], item["worktree"])}
-    tracked = [file_state(repository, name, missing_allowed=name in deleted) for name in sorted(tracked_names)]
-    untracked = [file_state(repository, path_text(name)) for name in sorted(git(repository, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0")) if name]
+    index_names = {item["path"] for item in index}
+    head_names = set()
+    for record in git(repository, "ls-tree", "-r", "-z", "HEAD").split(b"\0"):
+        if record:
+            metadata, name = record.split(b"\t", 1)
+            if metadata.split()[0] == b"160000":
+                raise StateError("unverifiable HEAD submodule")
+            head_names.add(path_text(name))
+    deleted_head = {item["path"] for item in status if item["index"] == "D"} & (head_names - index_names)
+    deleted_index = {item["path"] for item in status if item["worktree"] == "D"} & index_names
+    deleted = deleted_head | deleted_index
+    untracked_names = [path_text(name) for name in sorted(git(repository, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0")) if name]
+    # Attest current leaves first. HEAD-only staged deletions and index leaves
+    # deleted in the worktree are historical paths, not current filesystem leaves.
+    current = {name: file_state(repository, name) for name in sorted((index_names - deleted_index) | set(untracked_names))}
+    tracked = [current[name] if name in current else file_state(repository, name,
+        missing_allowed=name in deleted, replacement_leaves=current)
+        for name in sorted(head_names | index_names)]
+    untracked = [current[name] for name in untracked_names]
     options = ("--binary", "--full-index", "--no-ext-diff", "--no-textconv", "--no-renames", "--src-prefix=a/", "--dst-prefix=b/")
     patches = {"staged": git(repository, "diff", "--cached", *options, "HEAD", "--"),
                "unstaged": git(repository, "diff", *options, "--")}
