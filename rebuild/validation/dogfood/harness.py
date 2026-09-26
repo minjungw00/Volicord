@@ -6335,6 +6335,7 @@ def decision_facts(
 
 def verified_goal_continuation(
     candidate: ToolCall, existing: ToolCall | None, bundle: CanonicalBundle | None = None,
+    *, later_creation_ids: frozenset[str] = frozenset(),
 ) -> bool:
     """Prove read-only continuation from the prior creation and canonical basis."""
     if existing is None:
@@ -6366,7 +6367,8 @@ def verified_goal_continuation(
     relation = bundle.one("context_item_sources", project_id=project_id,
         context_item_id=context_id, source_id=source_id, position=0)
     goals = [item for item in bundle.rows("context_items")
-        if item.get("project_id") == project_id and item.get("role") == "goal"]
+        if item.get("project_id") == project_id and item.get("role") == "goal"
+        and item.get("id") not in later_creation_ids]
     current = max(goals, key=lambda item: (item.get("recorded_at", -1), item.get("id", "")), default=None)
     return bool(project_id == bundle.project_id and goal is not None and goal == current
         and goal.get("role") == "goal" and goal.get("revision") == revision
@@ -6376,15 +6378,46 @@ def verified_goal_continuation(
         and relation is not None)
 
 
+def observed_canonical_goal_creation(capture: CodexCapture, call: ToolCall, bundle: CanonicalBundle) -> bool:
+    """Witness a later creation before reconstructing the earlier current Goal basis."""
+    turn = capture.turn_for_call(call)
+    if (call.arguments.get("role") != "goal" or call.result.get("role") != "goal"
+        or call.arguments.get("work_transition") not in (None, "start_new")
+        or not current_host_context_call_matches(capture, call, turn, bundle.project_id)):
+        return False
+    goal = bundle.one("context_items", id=call.result.get("context_item_id"), project_id=bundle.project_id)
+    source = bundle.one("sources", id=call.result.get("source_id"), project_id=bundle.project_id)
+    return bool(goal is not None and goal.get("role") == "goal"
+        and goal.get("statement") == call.arguments.get("statement")
+        and type(call.result.get("revision")) is int and call.result["revision"] > 0
+        and goal.get("revision") == call.result["revision"]
+        and goal.get("provenance_role") == "user_statement" and goal.get("author_kind") == "user"
+        and source is not None and source.get("source_kind") == "current_host_user_turn"
+        and source.get("actor_kind") == "user" and source.get("detail_one") == "codex"
+        and nonempty_string(source.get("detail_two"))
+        and codex_user_turn_transport_identity_matches(turn.text, source.get("locator"))
+        and bundle.one("context_item_sources", project_id=bundle.project_id,
+            context_item_id=goal["id"], source_id=source["id"], position=0) is not None)
+
+
 def goal_creation_calls(
     capture: CodexCapture, bundle: CanonicalBundle | None = None,
 ) -> list[ToolCall]:
     """Only verified continues are excluded; malformed or mutating calls remain visible."""
     creations: list[ToolCall] = []
-    for call in capture.successful_calls("context_record"):
+    calls = capture.successful_calls("context_record")
+    witnessed_creations = [call for call in calls
+        if bundle is not None and observed_canonical_goal_creation(capture, call, bundle)]
+    for call in calls:
         if call.arguments.get("role") != "goal":
             continue
-        if not verified_goal_continuation(call, creations[-1] if creations else None, bundle):
+        # The export is terminal state. Exclude only independently witnessed
+        # future creations when checking what was current at this call's boundary.
+        later_ids = frozenset(future.result["context_item_id"] for future in witnessed_creations
+            if call.completion_sequence < future.sequence
+            and future.result["context_item_id"] != call.result.get("context_item_id"))
+        if not verified_goal_continuation(call, creations[-1] if creations else None, bundle,
+            later_creation_ids=later_ids):
             creations.append(call)
     return creations
 
@@ -6925,6 +6958,7 @@ def current_canonical_source_ids(bundle: CanonicalBundle) -> set[str]:
 
 def discovery_current_source_ids(
     work: CodexCapture, bundle: CanonicalBundle, baseline: ToolCall, *, resumed: bool = False,
+    before_sequence: int | None = None,
 ) -> set[str]:
     current = current_canonical_source_ids(bundle)
     source = baseline.result.get("repository_source_id")
@@ -6939,6 +6973,30 @@ def discovery_current_source_ids(
             and recall.completion_sequence < baseline.sequence
             for recall in work.successful_calls("recall"))):
         current.add(source)
+    if before_sequence is not None:
+        creation_boundaries: dict[str, int] = {}
+        for call in work.tool_calls:
+            if (call.outcome != "succeeded"
+                or call.arguments.get("project_id") != bundle.project_id
+                or call.result.get("project_id") != bundle.project_id):
+                continue
+            created: list[Any] = []
+            if call.operation == "context_record" and call.arguments.get("work_transition") != "continue":
+                created = [call.result.get("source_id")]
+            elif call.operation == "repository_analyze":
+                created = [call.result.get("repository_source_id")]
+            elif call.operation == "decision_record":
+                created = [call.result.get("user_response_source_id")]
+            elif call.operation == "checkpoint_record" and isinstance(call.result.get("verification_source_ids"), list):
+                created = call.result["verification_source_ids"]
+            for identity in created:
+                if nonempty_string(identity):
+                    creation_boundaries[identity] = min(creation_boundaries.get(identity, call.completion_sequence),
+                        call.completion_sequence)
+        # The terminal export cannot make a later canonical creation available
+        # to earlier Discovery or authority evidence.
+        current.difference_update(identity for identity, boundary in creation_boundaries.items()
+            if boundary >= before_sequence)
     return current
 
 
@@ -7612,7 +7670,8 @@ def engineering_choice_discovery_facts(
     )
     discovered_id = discovery.result.get("discovery_candidate_id") if discovery else None
     repository_source_id = baseline_call.result.get("repository_source_id")
-    current_sources = discovery_current_source_ids(work, bundle, baseline_call, resumed=resumed)
+    current_sources = discovery_current_source_ids(work, bundle, baseline_call, resumed=resumed,
+        before_sequence=discovery.sequence if discovery else review_call.sequence)
     boundary_ok, boundary_basis = material_boundary_review_facts(
         discovery.arguments.get("material_boundary_review") if discovery else None,
         choices,
@@ -8049,7 +8108,8 @@ def materiality_review_facts(
                 else None
             ),
             decision_evidence=decision_evidence,
-            current_source_ids=discovery_current_source_ids(work, bundle, baseline_call, resumed=resumed),
+            current_source_ids=discovery_current_source_ids(work, bundle, baseline_call, resumed=resumed,
+                before_sequence=evaluation_frontier),
             require_current_goal_delegation=(
                 has_obligation(materiality_obligations, "delegated_implementation_choice")
                 and dimension.get("disposition")

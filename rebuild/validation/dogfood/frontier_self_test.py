@@ -60,6 +60,47 @@ class FrontierTests(unittest.TestCase):
         changed = replace(changed, tool_calls=tuple(sorted((*changed.tool_calls, stale), key=lambda c: c.sequence)))
         self.assertEqual(len(h.goal_creation_calls(changed)), 3)
 
+    def test_continuation_is_current_at_its_call_before_later_work_creation(self):
+        descriptor, capture, bundle = self.fixture()
+        goal = capture.successful_calls("context_record")[0]
+        continuation = replace(goal, call_id="continue-before-next-work",
+            sequence=goal.sequence + 10, completion_sequence=goal.completion_sequence + 20,
+            arguments={"project_id": bundle.project_id, "role": "goal", "work_transition": "continue",
+                "goal_context_id": goal.result["context_item_id"]},
+            result={**goal.result, "work_transition": "continue", "canonical_mutation": False})
+        next_goal = replace(goal, call_id="next-work", sequence=goal.sequence + 30,
+            completion_sequence=goal.sequence + 40,
+            arguments={**goal.arguments, "work_transition": "start_new"},
+            result={**goal.result, "context_item_id": "ef" * 16, "source_id": "ee" * 16,
+                "work_transition": "start_new", "canonical_mutation": True})
+        row = {**bundle.rows("context_items")[0], "id": next_goal.result["context_item_id"], "recorded_at": 999}
+        source = {**bundle.one("sources", id=goal.result["source_id"]), "id": next_goal.result["source_id"]}
+        relation = {**bundle.rows("context_item_sources")[0], "context_item_id": row["id"], "source_id": source["id"]}
+        bundle = replace(bundle, tables={**bundle.tables,
+            "context_items": (*bundle.rows("context_items"), row),
+            "sources": (*bundle.rows("sources"), source),
+            "context_item_sources": (*bundle.rows("context_item_sources"), relation)})
+        capture = replace(capture, tool_calls=tuple(sorted((*capture.tool_calls, continuation, next_goal), key=lambda c:c.sequence)))
+        self.assertEqual(h.goal_creation_calls(capture, bundle), [goal, next_goal])
+        facts = h.goal_facts(capture, bundle, descriptor["work_user_task"], row["id"])
+        self.assertTrue(facts[0])
+        self.assertEqual(facts[5]["goal_record_count"], 2)
+        self.assertEqual(facts[5]["verified_goal_continuation_count"], 1)
+        self.assertEqual(facts[5]["duplicate_or_unused_goal_count"], 1)
+        self.assertEqual(facts[5]["suspicious_context_record_count"], 0)
+        # A canonical newer Goal without a timed creation witness is still stale.
+        absent = replace(capture, tool_calls=tuple(c for c in capture.tool_calls if c is not next_goal))
+        self.assertIn(continuation, h.goal_creation_calls(absent, bundle))
+        for mismatch in ({"source_id": goal.result["source_id"]}, {"revision": 2}, {"revision": True}):
+            forged = replace(next_goal, result={**next_goal.result, **mismatch})
+            absent = replace(capture, tool_calls=tuple(forged if c is next_goal else c for c in capture.tool_calls))
+            self.assertIn(continuation, h.goal_creation_calls(absent, bundle))
+        # Continuing the old Work after the switch remains invalid.
+        stale = replace(continuation, call_id="stale-continue", sequence=next_goal.sequence + 30,
+            completion_sequence=next_goal.sequence + 40)
+        changed = replace(capture, tool_calls=tuple(sorted((*capture.tool_calls, stale), key=lambda c:c.sequence)))
+        self.assertEqual(h.goal_creation_calls(changed, bundle), [goal, next_goal, stale])
+
     def validation_capture(self, *specifications):
         """Build numeric command evidence without depending on private campaign paths."""
 
@@ -609,6 +650,24 @@ class FrontierTests(unittest.TestCase):
                 goal_statement=goal.arguments["statement"], frozen_task=goal.arguments["user_turn"],
                 repository_source_id=baseline.result["repository_source_id"], decision_evidence={},
                 require_current_goal_delegation=True, current_source_ids=h.current_canonical_source_ids(bundle)))
+        future_source = replace(goal, call_id="additional-source-created-later",
+            sequence=discovery.completion_sequence + 10, completion_sequence=discovery.completion_sequence + 20,
+            arguments={**goal.arguments, "role": "constraint"},
+            result={**goal.result, "role": "constraint", "source_id": source["id"], "context_item_id": "ac" * 16})
+        recorded_source = {**source, "source_kind": "current_host_user_turn", "locator": goal.arguments["user_turn"]}
+        context = {**bundle.rows("context_items")[0], "id": "ac" * 16, "role": "constraint"}
+        relation = {**bundle.rows("context_item_sources")[0], "context_item_id": context["id"], "source_id": source["id"]}
+        later_bundle = replace(bundle, tables={**bundle.tables,
+            "sources": tuple(recorded_source if row["id"] == source["id"] else row for row in bundle.rows("sources")),
+            "context_items": (*bundle.rows("context_items"), context),
+            "context_item_sources": (*bundle.rows("context_item_sources"), relation)})
+        for late in (False, True):
+            source_call = future_source if late else replace(future_source,
+                sequence=baseline.completion_sequence + 10, completion_sequence=baseline.completion_sequence + 20)
+            future_capture = replace(capture, tool_calls=tuple(sorted((*capture.tool_calls, source_call), key=lambda c:c.sequence)))
+            self.assertEqual(h.engineering_choice_discovery_facts(future_capture, later_bundle,
+                goal.result["context_item_id"], goal.result["source_id"], baseline, record)[0], not late,
+                "terminal export must not backdate a Source created after Discovery")
         for state in ("stale", "unavailable", "unknown", "foreign", "missing"):
             sources = tuple({**row, **({"project_id": "ac" * 16} if state == "foreign"
                 else {"availability": state})} if row["id"] == source["id"] else row
