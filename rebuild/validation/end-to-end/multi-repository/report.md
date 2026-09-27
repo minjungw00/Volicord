@@ -219,6 +219,16 @@ The capsule records 461 MCP calls, 6492 resource samples, total MCP call time
 measurements, not naturalistic Dogfood resource qualification or a general
 repository latency guarantee. Raw per-call timings remain outside the capsule.
 
+The current collector measures each MCP process's Linux VmHWM, rather than a
+sum of descendant RSS. Storage warmup starts at each Project's first observed
+completed current manifest with its referenced blobs present. The normalized
+storage metric is the maximum of Project logical bytes divided by that same
+observation's completed inventory/entity/relation item count; unrelated maxima
+cannot dilute it. Corrupt/incomplete publications still count toward storage,
+and later growth uses the original completed baseline. These collection rules
+retain the maintained ceilings and numeric report schema. The historical sealed
+candidate's observations above do not qualify a later engineering HEAD.
+
 ## Privacy and external transmission
 
 The bounded transmission configuration was

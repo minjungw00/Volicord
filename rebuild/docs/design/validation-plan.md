@@ -990,7 +990,7 @@ credentials, compact/reformatted JSON, clean artifacts and refreshed staging val
 
 Official V11은 `performance-budgets.json`의 maintained Linux regression ceiling을 함께
 검사한다: MCP process high-water RSS 4 GiB, manifest 파일 하나 2 GiB, analysis storage
-logical 2 GiB/physical 2.125 GiB, Project별 첫 snapshot 이후 누적 증가 512 MiB,
+logical 2 GiB/physical 2.125 GiB, Project별 첫 완성 snapshot 관측 이후 누적 증가 512 MiB,
 inventory/entity/relation item당 logical storage 2,048 bytes, V11 journey 15분, 개별 MCP
 RPC 90초. Absolute ceiling은 안정화되었지만 과대한 footprint를, normalized ceiling은
 repository scale 대비 과대한 표현을, post-warmup ceiling은 full-copy 누적 회귀를 서로
@@ -1004,6 +1004,14 @@ repository scale 대비 과대한 표현을, post-warmup ceiling은 full-copy �
 allocation delta로 해석하지 않는다. Snapshot publication 이후 manifest 수, graph scale,
 전체 content-addressed tree의 logical bytes와 Linux allocated blocks를 검사한다. Project의
 첫 완성 snapshot 관측을 warmup baseline으로 삼아 이후 최대 누적 delta를 별도로 기록한다.
+빈 Project 디렉터리, 잘못되거나 incomplete manifest, referenced blob이 없는 publication은
+baseline을 만들지 않는다. Current manifest의 identity/Project/metadata/count와 referenced
+blob 존재를 확인하며 graph body의 content integrity는 production reader가 소유한다.
+Normalized storage는 각 관측에서 Project의 전체 logical bytes를 그 Project의 완성
+manifest들이 나타내는 inventory/entity/relation item 합계로 나눈 뒤 최대값을 보존한다.
+다른 시점 또는 Project의 bytes/items 최대값을 서로 나누지 않으며 fractional ratio를
+내림하여 ceiling 위반을 숨기지 않는다. Corrupt/incomplete bytes도 absolute storage와 이미
+설정된 baseline 이후 growth에는 포함하며 완성 snapshot/item evidence를 대신하지 않는다.
 Raw per-call 수치는 ignored evidence에, bounded aggregate/ceiling/verdict는 gate capsule과
 sanitized archive에 보존한다. RPC argument/response나 Source body는 성능 기록에 넣지
 않는다. Self-check는 초과값, NaN, 측정 누락/오류의 거부와 실제 local process 관측을
@@ -1048,7 +1056,7 @@ This collection observation neither attributes dirty content to an actor nor est
 verification success; pre-existing/unrelated dirty attribution and verification honesty remain
 independent. The Product candidate still must be clean and exact-HEAD-bound.
 
-Naturalistic session의 MCP memory coverage는 scripted technical gate의 process-tree RSS와
+Naturalistic session의 MCP memory coverage는 scripted technical gate의 MCP process high-water RSS와
 독립이다. 현재 production-owned `.codex/config.toml`은 VS Code/Codex host가 candidate-local
 `volicord-mcp`를 직접 실행하게 하며 campaign helper는 session 동안 그 프로세스의 ancestor가
 아니다. 또한 candidate-bound PID/lifecycle channel이나 observer wrapper가 없으므로 helper의

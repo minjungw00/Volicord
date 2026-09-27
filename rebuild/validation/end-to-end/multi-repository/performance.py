@@ -9,6 +9,8 @@ import threading
 import time
 import tempfile
 
+ANALYSIS_FORMAT_VERSION = 5
+
 METRICS = {
     "mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms",
     "analysis_storage_logical_bytes", "analysis_storage_physical_bytes",
@@ -89,6 +91,7 @@ class Collector:
         self.analysis_storage_physical_bytes = 0
         self.analysis_snapshot_count = 0
         self.analysis_graph_item_count = 0
+        self.analysis_storage_bytes_per_graph_item = 0
         self.project_warmup_bytes = {}
         self.post_warmup_analysis_growth_bytes = 0
         self.snapshot_errors = 0
@@ -112,6 +115,47 @@ class Collector:
         self.processes.append(process)
         return process
 
+    @staticmethod
+    def completed_graph_items(path, value):
+        """Recognize current published manifests, without loading graph bodies.
+
+        Production publishes referenced blobs before its atomic manifest. This
+        check observes that publication boundary; product integrity validation
+        continues to own blob decoding/content verification.
+        """
+        if not isinstance(value, dict):
+            return None
+        project = {"identity": path.parent.name}
+        metadata = value.get("metadata")
+        if (value.get("format_kind") != "volicord.analysis_snapshot"
+                or type(value.get("format_version")) is not int or value["format_version"] != ANALYSIS_FORMAT_VERSION
+                or value.get("storage_format") != "volicord.normalized_analysis"
+                or value.get("identity") != path.stem or value.get("project") != project
+                or not isinstance(metadata, dict) or metadata.get("identity") != path.stem
+                or metadata.get("project") != project
+                or not isinstance(metadata.get("repository_snapshot"), str)
+                or not metadata["repository_snapshot"]
+                or not isinstance(metadata.get("capabilities"), list)):
+            return None
+        count_keys = ("inventory_entry_count", "entity_count", "relation_count")
+        if any(type(value.get(key)) is not int or value[key] < 0 for key in
+               (*count_keys, "logical_json_bytes", "scalar_count", "generated_at_unix_micros")):
+            return None
+        shapes = value.get("shape_blobs")
+        if not isinstance(shapes, list) or not shapes or "values_base_blob" not in value:
+            return None
+        references = [(item, "shape") for item in shapes] + [(value.get("values_blob"), "values")]
+        if value["values_base_blob"] is not None:
+            references.append((value["values_base_blob"], "values"))
+        for digest, extension in references:
+            if (not isinstance(digest, str) or len(digest) != 64
+                    or any(char not in "0123456789abcdef" for char in digest)):
+                return None
+            blob = path.parent / "blobs" / f"{digest}.{extension}"
+            if blob.is_symlink() or not blob.is_file() or blob.stat().st_size == 0:
+                return None
+        return sum(value[key] for key in count_keys)
+
     def snapshots(self, env):
         if not self.enabled:
             return
@@ -119,23 +163,24 @@ class Collector:
         if runtime:
             try:
                 analysis_root = Path(runtime) / "derived/analysis"
-                manifests = list(analysis_root.glob("*/*.json"))
                 project_totals = {}
-                graph_items = 0
+                project_graph_items = {}
                 valid_manifest_count = 0
-                for path in manifests:
+                for path in analysis_root.glob("*/*.json"):
                     stat = path.stat()
                     self.max_snapshot_bytes = max(self.max_snapshot_bytes, stat.st_size)
                     try:
                         value = json.loads(path.read_text())
-                    except json.JSONDecodeError:
-                        # V11 deliberately corrupts one derived snapshot before exercising
-                        # repair. Its bytes still count below, but it is not a completed
-                        # snapshot and must not abort or invalidate resource sampling.
+                    except (ValueError, UnicodeError):
+                        # Controlled corruption/incomplete publication still costs
+                        # storage, but cannot establish a completed warmup baseline.
+                        continue
+                    items = self.completed_graph_items(path, value)
+                    if items is None:
                         continue
                     valid_manifest_count += 1
-                    graph_items += sum(value.get(key, 0) for key in (
-                        "inventory_entry_count", "entity_count", "relation_count"))
+                    project = str(path.parent)
+                    project_graph_items[project] = project_graph_items.get(project, 0) + items
                 logical = physical = 0
                 for project in analysis_root.glob("*"):
                     if not project.is_dir():
@@ -151,13 +196,20 @@ class Collector:
                     project_totals[str(project)] = project_bytes
                 self.analysis_storage_logical_bytes = max(self.analysis_storage_logical_bytes, logical)
                 self.analysis_storage_physical_bytes = max(self.analysis_storage_physical_bytes, physical)
-                self.analysis_snapshot_count = max(
-                    self.analysis_snapshot_count, valid_manifest_count)
-                self.analysis_graph_item_count = max(self.analysis_graph_item_count, graph_items)
+                self.analysis_snapshot_count = max(self.analysis_snapshot_count, valid_manifest_count)
+                self.analysis_graph_item_count = max(self.analysis_graph_item_count, sum(project_graph_items.values()))
                 for project, total in project_totals.items():
-                    baseline = self.project_warmup_bytes.setdefault(project, total)
-                    self.post_warmup_analysis_growth_bytes = max(
-                        self.post_warmup_analysis_growth_bytes, max(0, total - baseline))
+                    if project in project_graph_items:
+                        baseline = self.project_warmup_bytes.setdefault(project, total)
+                        if project_graph_items[project] > 0:
+                            self.analysis_storage_bytes_per_graph_item = max(
+                                self.analysis_storage_bytes_per_graph_item,
+                                total / project_graph_items[project])
+                    else:
+                        baseline = self.project_warmup_bytes.get(project)
+                    if baseline is not None:
+                        self.post_warmup_analysis_growth_bytes = max(
+                            self.post_warmup_analysis_growth_bytes, max(0, total - baseline))
             except OSError:
                 self.snapshot_errors += 1
 
@@ -220,8 +272,7 @@ class Collector:
             "analysis_storage_logical_bytes": self.analysis_storage_logical_bytes,
             "analysis_storage_physical_bytes": self.analysis_storage_physical_bytes,
             "post_warmup_analysis_growth_bytes": self.post_warmup_analysis_growth_bytes,
-            "analysis_storage_bytes_per_graph_item": (
-                self.analysis_storage_logical_bytes // max(1, self.analysis_graph_item_count)),
+            "analysis_storage_bytes_per_graph_item": self.analysis_storage_bytes_per_graph_item,
             "analysis_snapshot_count": self.analysis_snapshot_count,
             "analysis_graph_item_count": self.analysis_graph_item_count,
             "mcp_total_call_ms": round(sum(x["duration_ms"] for x in self.calls), 3),
@@ -316,6 +367,118 @@ class Measurement:
             })
 
 
+def storage_self_check():
+    # Bind this operational publication check to the maintained current format.
+    model = Path(__file__).resolve().parents[3] / "crates/volicord-repository-intelligence/src/model.rs"
+    assert f"pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = {ANALYSIS_FORMAT_VERSION};" in model.read_text()
+    def manifest(project, name, items=10):
+        blobs = project / "blobs"
+        blobs.mkdir(parents=True, exist_ok=True)
+        shape, values = "a" * 64, "b" * 64
+        (blobs / f"{shape}.shape").write_bytes(b"s" * 100)
+        (blobs / f"{values}.values").write_bytes(b"v" * 37)
+        value = {
+            "format_kind": "volicord.analysis_snapshot", "format_version": ANALYSIS_FORMAT_VERSION,
+            "storage_format": "volicord.normalized_analysis", "identity": name,
+            "project": {"identity": project.name}, "generated_at_unix_micros": 1,
+            "logical_json_bytes": 100, "scalar_count": 10,
+            "shape_blobs": [shape], "values_blob": values, "values_base_blob": None,
+            "inventory_entry_count": items, "entity_count": 0, "relation_count": 0,
+            "metadata": {"identity": name, "project": {"identity": project.name},
+                         "repository_snapshot": "c" * 64, "capabilities": []},
+        }
+        (project / f"{name}.json").write_text(json.dumps(value))
+        return value
+
+    with tempfile.TemporaryDirectory() as temporary:
+        runtime = Path(temporary)
+        project = runtime / "derived/analysis/project"
+        project.mkdir(parents=True)
+        env = {"VOLICORD_RUNTIME_DIR": str(runtime)}
+        storage = Collector()
+        storage.enabled = True
+        storage.snapshots(env)
+        assert storage.project_warmup_bytes == {}
+        (project / "partial.data").write_bytes(b"p" * 300)
+        for partial in ("{", "null", "[]", "{}", '{"inventory_entry_count":1}'):
+            (project / "incomplete.json").write_text(partial)
+            storage.snapshots(env)
+            assert storage.project_warmup_bytes == {} and storage.analysis_snapshot_count == 0
+        (project / "incomplete.json").unlink()
+        first = manifest(project, "first")
+        for field, invalid in (("inventory_entry_count", -1), ("entity_count", True),
+                               ("relation_count", "3"), ("metadata", {}),
+                               ("shape_blobs", []), ("values_blob", "../escape"),
+                               ("values_base_blob", "d" * 64), ("format_version", 99)):
+            (project / "first.json").write_text(json.dumps({**first, field: invalid}))
+            storage.snapshots(env)
+            assert storage.project_warmup_bytes == {} and storage.analysis_snapshot_count == 0
+        (project / "first.json").write_text(json.dumps(first))
+        blob = project / "blobs" / ("b" * 64 + ".values")
+        blob.unlink()
+        storage.snapshots(env)
+        assert storage.project_warmup_bytes == {}
+        blob.write_bytes(b"")
+        storage.snapshots(env)
+        assert storage.project_warmup_bytes == {}
+        blob.write_bytes(b"v" * 37)
+        storage.snapshots(env)
+        baseline = sum(path.stat().st_size for path in project.rglob("*") if path.is_file())
+        assert storage.project_warmup_bytes == {str(project): baseline}
+        assert storage.post_warmup_analysis_growth_bytes == 0
+        manifest(project, "second")
+        (project / "more.values").write_bytes(b"v" * 37)
+        storage.snapshots(env)
+        assert storage.analysis_snapshot_count == 2 and storage.analysis_graph_item_count == 20
+        assert storage.analysis_storage_logical_bytes > baseline
+        assert storage.analysis_storage_physical_bytes >= storage.analysis_storage_logical_bytes
+        assert storage.post_warmup_analysis_growth_bytes == storage.analysis_storage_logical_bytes - baseline
+        (project / "corrupt.json").write_text("{ controlled corruption")
+        storage.snapshots(env)
+        assert storage.analysis_snapshot_count == 2 and storage.snapshot_errors == 0
+        assert storage.project_warmup_bytes[str(project)] == baseline
+        assert storage.post_warmup_analysis_growth_bytes == storage.analysis_storage_logical_bytes - baseline
+
+    with tempfile.TemporaryDirectory() as temporary:
+        runtime = Path(temporary)
+        project = runtime / "derived/analysis/early"
+        first = manifest(project, "first", items=1)
+        (project / "data").write_bytes(b"x" * 5000)
+        storage = Collector()
+        storage.enabled = True
+        env = {"VOLICORD_RUNTIME_DIR": str(runtime)}
+        storage.snapshots(env)
+        early_ratio = sum(path.stat().st_size for path in project.rglob("*") if path.is_file())
+        assert storage.analysis_storage_bytes_per_graph_item == early_ratio > 2048
+        # A later high-item observation and another large low-ratio Project must
+        # not dilute the original sample or cross-pair project bytes/items.
+        manifest(project, "second", items=10000)
+        other = runtime / "derived/analysis/later"
+        manifest(other, "large", items=100000)
+        (other / "data").write_bytes(b"x" * 100000)
+        storage.snapshots(env)
+        with storage.measurement(os.getpid(), "storage_counterexample", env):
+            pass
+        report = storage.report(1)
+        assert report["measurement_complete"] and report["status"] == "failed"
+        assert report["observed"]["analysis_storage_bytes_per_graph_item"] == early_ratio
+        assert "analysis_storage_bytes_per_graph_item" in report["exceeded"]
+        diluted = storage.analysis_storage_logical_bytes / storage.analysis_graph_item_count
+        assert diluted < 2048
+        assert storage.project_warmup_bytes[str(other)] == sum(
+            path.stat().st_size for path in other.rglob("*") if path.is_file())
+
+    # No floor rounding at a maintained threshold, and prior large scale metric
+    # values remain ordinary valid numbers in the existing report schema.
+    observed = {key: 1 for key in METRICS}
+    observed.update(mcp_sample_count=1, mcp_call_count=1, sampling_error_count=0,
+                    analysis_snapshot_count=1, analysis_graph_item_count=92704,
+                    analysis_storage_bytes_per_graph_item=2048.25)
+    assert "analysis_storage_bytes_per_graph_item" in qualify(observed, maintained_limits())["exceeded"]
+    observed["analysis_storage_bytes_per_graph_item"] = 2048
+    assert qualify(observed, maintained_limits())["status"] == "passed"
+
+
 def self_check():
     limits = {key: 100 for key in METRICS}
     observed = {**{key: 100 for key in METRICS}, "mcp_sample_count": 1, "mcp_call_count": 1,
@@ -332,30 +495,7 @@ def self_check():
     assert qualify({**stable, "analysis_storage_logical_bytes": 101}, limits)["status"] == "failed"
     assert qualify({**stable, "analysis_storage_bytes_per_graph_item": 101}, limits)["status"] == "failed"
 
-    with tempfile.TemporaryDirectory() as temporary:
-        runtime = Path(temporary)
-        project = runtime / "derived/analysis/project"
-        blobs = project / "blobs"
-        blobs.mkdir(parents=True)
-        first = {"inventory_entry_count": 2, "entity_count": 3, "relation_count": 5}
-        (project / "first.json").write_text(json.dumps(first))
-        (blobs / "first.shape").write_bytes(b"s" * 100)
-        storage = Collector()
-        storage.enabled = True
-        storage.snapshots({"VOLICORD_RUNTIME_DIR": str(runtime)})
-        baseline = storage.analysis_storage_logical_bytes
-        (project / "second.json").write_text(json.dumps(first))
-        (blobs / "second.values").write_bytes(b"v" * 37)
-        storage.snapshots({"VOLICORD_RUNTIME_DIR": str(runtime)})
-        assert storage.analysis_snapshot_count == 2
-        assert storage.analysis_graph_item_count == 20
-        assert storage.analysis_storage_logical_bytes > baseline
-        assert storage.analysis_storage_physical_bytes >= storage.analysis_storage_logical_bytes
-        assert storage.post_warmup_analysis_growth_bytes == storage.analysis_storage_logical_bytes - baseline
-        (project / "corrupt.json").write_text("{ controlled corruption")
-        storage.snapshots({"VOLICORD_RUNTIME_DIR": str(runtime)})
-        assert storage.analysis_snapshot_count == 2
-        assert storage.snapshot_errors == 0
+    storage_self_check()
     collector = Collector()
     collector.enabled = True
     with collector.measurement(os.getpid(), "self_check", {}):
@@ -431,4 +571,4 @@ def self_check():
 
 if __name__ == "__main__":
     self_check()
-    print(json.dumps({"status": "passed", "checks": "memory-attribution"}))
+    print(json.dumps({"status": "passed", "checks": ["memory-attribution", "completed-snapshot-warmup", "same-sample-project-storage-ratio"]}))
