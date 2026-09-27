@@ -277,8 +277,18 @@ def repository_check() -> tuple[Check, str | None]:
 def pre_final_repository_check(candidate_head: str) -> Check:
     current, observed_head = repository_check()
     details = current["details"]
+    return candidate_continuity_check(
+        candidate_head, observed_head, details.get("dirty_entry_count"), details.get("dirty_entries")
+    )
+
+
+def candidate_continuity_check(
+    candidate_head: str, observed_head: str | None, dirty_entry_count: int | None,
+    dirty_entries: list[str] | None,
+) -> Check:
+    """Pure form of the maintained exact-candidate, clean-worktree observation."""
     head_matches = None if observed_head is None else observed_head == candidate_head
-    worktree_clean = details.get("dirty_entry_count") == 0
+    worktree_clean = dirty_entry_count == 0
     passed = head_matches is True and worktree_clean
     return check(
         "pre_final_candidate_identity_and_clean_worktree",
@@ -289,8 +299,8 @@ def pre_final_repository_check(candidate_head: str) -> Check:
         expected_candidate_head=candidate_head,
         observed_candidate_head=observed_head,
         head_unchanged=head_matches,
-        dirty_entry_count=details.get("dirty_entry_count"),
-        dirty_entries=details.get("dirty_entries"),
+        dirty_entry_count=dirty_entry_count,
+        dirty_entries=dirty_entries,
     )
 
 

@@ -2069,7 +2069,14 @@ claim that a later run belonged to the original candidate execution.
 
 The maintained candidate technical gate remains authoritative and unchanged. Qualification
 requires a capsule matching the independently verified archive's completion transition for
-the exact Product candidate. Policy changes never trigger expensive technical execution.
+the exact Product candidate, followed by exactly one successful `archive_publication`
+continuity record when completion restores readiness. The prior continuity prefix and all
+other fields must remain unchanged; the publication observation must bind the same HEAD
+and a clean worktree through the gate-owned candidate check. Failed or blocked completion
+cannot be promoted by publication. Before fresh Dogfood preparation, the real
+`qualification_policy.verify_technical()` must consume that candidate's newly produced
+gate capsule/archive successfully, with its output and numeric exit preserved.
+Policy changes never trigger expensive technical execution.
 The engineering final HEAD requires its own gate-owned authoritative admission and maintained gate; standalone diagnostic admission is optional.
 
 ### Machine authority audit

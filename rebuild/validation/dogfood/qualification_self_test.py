@@ -233,6 +233,228 @@ class PolicyTests(unittest.TestCase):
             self.assertFalse((Path(directory) / 'approval').exists())
 
 
+class GateTechnicalBoundaryTests(unittest.TestCase):
+    """Actual gate entrypoint/archive/consumer flow with synthetic expensive owners."""
+
+    @classmethod
+    def setUpClass(cls):
+        import contextlib
+        import io
+        import runpy
+
+        root = Path(__file__).resolve().parents[3]
+        entrypoint = root / 'rebuild/validation/end-to-end/multi-repository/gate_entrypoint_self_test.py'
+        cls.temp = tempfile.TemporaryDirectory(prefix='volicord-technical-boundary-')
+        cls.addClassCleanup(cls.temp.cleanup)
+        parent = Path(cls.temp.name)
+        entrypoint_fixture = runpy.run_path(str(entrypoint))
+        candidate, _, _, _ = entrypoint_fixture['make_candidate'](parent)
+        # Use the maintained V11 result validator instead of the preflight-only
+        # fixture's deliberately non-passing shell harness. No real V11 runs.
+        shutil.copy2(entrypoint.with_name('harness.py'),
+            candidate / 'rebuild/validation/end-to-end/multi-repository/harness.py')
+        assert entrypoint_fixture['git'](candidate, 'add', '.').returncode == 0
+        assert entrypoint_fixture['git'](candidate, '-c', 'user.name=Validation Fixture',
+            '-c', 'user.email=validation@example.invalid', 'commit', '-qm',
+            'maintained V11 validator fixture').returncode == 0
+        runner = runpy.run_path(str(candidate / 'rebuild/scripts/validate'))
+        namespace = runner['run_gate'].__globals__
+        gate = runner['load_gate_module']()
+        archive_builder = runner['load_evidence_archive_module']()
+        collect = archive_builder.create_review_archive
+
+        def archive(**kwargs):
+            try:
+                return collect(**kwargs)
+            except (OSError, RuntimeError, ValueError) as error:
+                raise AssertionError('synthetic archive fixture invalid') from error
+        owners_fixture = runpy.run_path(str(entrypoint.with_name('gate_self_test.py')))
+        fixtures = owners_fixture['admission_overrides'].__globals__
+        cls.candidate = entrypoint_fixture['git'](
+            candidate, 'rev-parse', 'HEAD').stdout.strip()
+        owners = owners_fixture['Owners'](parent / 'owners')
+        admitted = gate.evaluate_admission(
+            authorization_assertion=gate.AUTHORIZATION_ASSERTION,
+            provider_authorization_assertion=gate.PROVIDER_AUTHORIZATION_ASSERTION,
+            provider_model='synthetic-model', external_network='available',
+            artifact_root=parent / 'admission', command_runner=owners_fixture['unused_command_runner'],
+            runner_path=candidate / 'rebuild/scripts/validate',
+            overrides={**owners_fixture['admission_overrides'](),
+                'candidate_identity_and_clean_worktree': gate.repository_check()[0]},
+            environment_evidence=owners_fixture['synthetic_environment_evidence'](),
+            dependency_evidence=gate.dependency_snapshot(cls.candidate))
+        assert admitted['eligible'], admitted
+        blocked_admission = gate.evaluate_admission(
+            authorization_assertion=gate.AUTHORIZATION_ASSERTION,
+            provider_authorization_assertion=gate.PROVIDER_AUTHORIZATION_ASSERTION,
+            provider_model='synthetic-model', external_network='unavailable',
+            artifact_root=parent / 'blocked-admission',
+            command_runner=owners_fixture['unused_command_runner'],
+            runner_path=candidate / 'rebuild/scripts/validate',
+            overrides={**owners_fixture['admission_overrides'](),
+                'candidate_identity_and_clean_worktree': gate.repository_check()[0]},
+            environment_evidence=owners_fixture['synthetic_environment_evidence'](),
+            dependency_evidence=gate.dependency_snapshot(cls.candidate))
+        assert not blocked_admission['eligible']
+        original_orchestrate = gate.orchestrate
+
+        def orchestrate(**kwargs):
+            return original_orchestrate(**kwargs,
+                contract_execution_owner=lambda summary: gate.check(
+                    'contract_coverage_execution', 'passed', 'synthetic execution coverage',
+                    execution_owner='exact_candidate_final_workspace_tests', mapped_test_count=12))
+
+        def aggregate(label, commands):
+            assert label == 'final' and commands == namespace['FINAL_COMMANDS']
+            summary, path = owners.final()
+            summary['working_directory'] = str(candidate)
+            summary['failure_count'] = sum(command['exit_code'] != 0
+                for command in summary['commands'])
+            for command in summary['commands']:
+                command['working_directory'] = str(candidate)
+            runner['write_json'](path, summary)
+            return summary, path.parent
+
+        def json_command(command_runner, directory, argv):
+            # Replace only costly owners; run_gate still owns their sequencing,
+            # Final binding, publication checks, collection and independent verification.
+            if '--live' in argv:
+                value, execution, path = owners.provider(cls.candidate)
+                target = Path(argv[argv.index('--evidence-output') + 1])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, target)
+                return value, execution
+            if argv[1] == 'preflight':
+                return owners.preflight(cls.candidate, Path(argv[-1]))
+            if argv[1] == 'run':
+                return owners.v11(cls.candidate, owners.final_path,
+                    Path(argv[argv.index('--output-dir') + 1]))
+            assert argv[1] == 'credential-audit', argv
+            return owners.audit(Path(argv[-1]))
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.dict(fixtures, HEAD=cls.candidate, FINAL_COMMANDS=namespace['FINAL_COMMANDS']), \
+                patch.dict(namespace, load_gate_module=lambda: gate,
+                    load_evidence_archive_module=lambda: archive_builder, run_aggregate=aggregate), \
+                patch.object(archive_builder, 'create_review_archive', side_effect=archive), \
+                patch.object(gate, 'evaluate_admission', return_value=admitted), \
+                patch.object(gate, 'orchestrate', side_effect=orchestrate), \
+                patch.object(gate, 'run_json_command', side_effect=json_command), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            arguments = [
+                '--external-network', 'available', '--authorize-external-transmission',
+                gate.AUTHORIZATION_ASSERTION, '--authorize-provider-source-transmission',
+                gate.PROVIDER_AUTHORIZATION_ASSERTION, '--provider-model', 'synthetic-model']
+            code = runner['run_gate'](arguments)
+            assert owners.counts == {'final': 1, 'provider': 1, 'preflight': 1, 'v11': 1, 'audit': 1}
+            owners.final_passes = False
+            failed_stdout, failed_stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(failed_stdout), contextlib.redirect_stderr(failed_stderr):
+                failed_code = runner['run_gate'](arguments)
+            assert failed_code == 1
+            blocked_stdout, blocked_stderr = io.StringIO(), io.StringIO()
+            counts = owners.counts.copy()
+            with patch.object(gate, 'evaluate_admission', return_value=blocked_admission), \
+                    contextlib.redirect_stdout(blocked_stdout), contextlib.redirect_stderr(blocked_stderr):
+                blocked_code = runner['run_gate'](arguments)
+            assert blocked_code == 1 and owners.counts == counts
+        assert code == 0, (stdout.getvalue(), stderr.getvalue())
+        cls.capsule = json.loads(stdout.getvalue())
+        cls.path = Path(next(line.removeprefix('evidence capsule: ')
+            for line in stderr.getvalue().splitlines() if line.startswith('evidence capsule: ')))
+        identity = json.loads((cls.path.parent / 'evidence-archive.json').read_bytes())
+        cls.archive = Path(identity['path'])
+        cls.gate = gate
+        cls.failed_path = Path(next(line.removeprefix('evidence capsule: ')
+            for line in failed_stderr.getvalue().splitlines() if line.startswith('evidence capsule: ')))
+        cls.failed_capsule = json.loads(failed_stdout.getvalue())
+        cls.failed_archive = Path(json.loads(
+            (cls.failed_path.parent / 'evidence-archive.json').read_bytes())['path'])
+
+        cls.blocked_path = Path(next(line.removeprefix('evidence capsule: ')
+            for line in blocked_stderr.getvalue().splitlines() if line.startswith('evidence capsule: ')))
+        cls.blocked_archive = Path(json.loads(
+            (cls.blocked_path.parent / 'evidence-archive.json').read_bytes())['path'])
+
+    def test_blocked_producer_evidence_is_non_passing(self):
+        self.assertEqual(policy.verify_technical(self.candidate, self.blocked_path,
+            self.blocked_archive)['state'], 'failed')
+
+    def test_failed_producer_evidence_cannot_be_promoted(self):
+        result = policy.verify_technical(self.candidate, self.failed_path, self.failed_archive)
+        self.assertEqual(result['state'], 'failed')
+        self.assertFalse(self.failed_capsule['phase_8_ready'])
+        self.assertFalse(self.failed_capsule['evidence_archive']['prerequisites_passed'])
+        self.assertNotIn('archive_publication', [entry['boundary']
+            for entry in self.failed_capsule.get('candidate_continuity_checks', [])])
+        changed = copy.deepcopy(self.failed_capsule)
+        changed['phase_8_ready'] = True
+        changed['evidence_archive']['prerequisites_passed'] = True
+        changed.setdefault('candidate_continuity_checks', []).append({'boundary': 'archive_publication',
+            **self.gate.candidate_continuity_check(self.candidate, self.candidate, 0, [])})
+        path = self.path.parent / 'forged-readiness.json'
+        path.write_bytes(policy.operations.encoded(changed))
+        with self.assertRaises(ValueError):
+            policy.verify_technical(self.candidate, path, self.failed_archive)
+
+    def test_successful_producer_capsule_is_consumed(self):
+        result = policy.verify_technical(self.candidate, self.path, self.archive)
+        self.assertEqual(result['state'], 'passed')
+        self.assertEqual(result['candidate_head'], self.candidate)
+        self.assertEqual(self.capsule['candidate_continuity_checks'][-1]['boundary'], 'archive_publication')
+
+    def test_final_capsule_mutations_are_rejected(self):
+        def publication(value):
+            return value['candidate_continuity_checks'][-1]
+
+        mutations = {
+            'missing_publication': lambda v: v['candidate_continuity_checks'].pop(),
+            'altered_prefix': lambda v: v['candidate_continuity_checks'][0].update(summary='changed'),
+            'extra_publication': lambda v: v['candidate_continuity_checks'].append(copy.deepcopy(publication(v))),
+            'wrong_boundary': lambda v: publication(v).update(boundary='other_publication'),
+            'wrong_check': lambda v: publication(v).update(name='arbitrary_success'),
+            'failed_publication': lambda v: publication(v).update(status='failed'),
+            'blocked_publication': lambda v: publication(v).update(status='environment_blocked'),
+            'wrong_expected_candidate': lambda v: publication(v)['details'].update(expected_candidate_head='f' * 40),
+            'changed_head': lambda v: publication(v)['details'].update(observed_candidate_head='f' * 40),
+            'head_changed_but_passed': lambda v: publication(v)['details'].update(head_unchanged=False),
+            'dirty_count': lambda v: publication(v)['details'].update(dirty_entry_count=1),
+            'dirty_entries': lambda v: publication(v)['details'].update(dirty_entries=['?? dirty.txt']),
+            'numeric_boolean': lambda v: publication(v)['details'].update(head_unchanged=1),
+            'boolean_count': lambda v: publication(v)['details'].update(dirty_entry_count=False),
+            'extra_publication_detail': lambda v: publication(v)['details'].update(unexpected=True),
+            'archive_hash': lambda v: v['evidence_archive'].update(sha256='f' * 64),
+            'archive_size': lambda v: v['evidence_archive'].update(size_bytes=1),
+            'archive_members': lambda v: v['evidence_archive'].update(member_count=1),
+            'archive_candidate': lambda v: v['evidence_archive'].update(candidate_head='f' * 40),
+            'archive_filename': lambda v: v['evidence_archive'].update(filename='other.tar.gz'),
+            'archive_prerequisites': lambda v: v['evidence_archive'].update(prerequisites_passed=False),
+            'archive_status': lambda v: v['evidence_archive'].update(status='pending'),
+            'archive_verification': lambda v: v['evidence_archive'].update(verification_status='failed'),
+            'final_artifact': lambda v: v.update(final_summary_sha256='f' * 64),
+            'unrelated_field': lambda v: v['execution_environment']['platform'].update(release='changed'),
+            'extra_field': lambda v: v.update(unexpected=True),
+            'readiness_false': lambda v: v.update(phase_8_ready=False),
+        }
+        # Swap earlier entries only, leaving the required publication last.
+        mutations['reordered_prefix'] = lambda v: v['candidate_continuity_checks'].__setitem__(
+            slice(0, 2), list(reversed(v['candidate_continuity_checks'][:2])))
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                changed = copy.deepcopy(self.capsule)
+                mutate(changed)
+                path = self.path.parent / 'mutated-capsule.json'
+                path.write_bytes(policy.operations.encoded(changed))
+                with self.assertRaises(ValueError):
+                    policy.verify_technical(self.candidate, path, self.archive)
+        with self.assertRaises(ValueError):
+            policy.verify_technical('f' * 40, self.path, self.archive)
+        tampered = self.archive.with_name('tampered.tar.gz')
+        tampered.write_bytes(self.archive.read_bytes()[:100])
+        with self.assertRaises((ValueError, OSError, EOFError)):
+            policy.verify_technical(self.candidate, self.path, tampered)
+
+
 class FileBoundaryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -303,7 +525,7 @@ class FileBoundaryTests(unittest.TestCase):
 
 
 def run_contract_tests():
-    result = unittest.TextTestRunner().run(unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls) for cls in (PolicyTests, FileBoundaryTests)))
+    result = unittest.TextTestRunner().run(unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls) for cls in (PolicyTests, GateTechnicalBoundaryTests, FileBoundaryTests)))
     if not result.wasSuccessful():
         raise AssertionError('qualification policy regressions failed')
 

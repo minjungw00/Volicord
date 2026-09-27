@@ -254,12 +254,18 @@ def verify_technical(candidate, capsule_path, archive_path):
     with tarfile.open(archive_path) as archive:
         prior = json.load(archive.extractfile("validation-evidence/capsule.json"))
     # The final capsule differs from its archived pre-verification snapshot only
-    # by the gate-owned archive completion transition.
+    # by archive completion and, when ready, one successful publication check.
     gate = runpy.run_path(str(campaign.ROOT / "rebuild/validation/end-to-end/multi-repository/gate.py"))
     expected = gate["complete_evidence_archive"](prior,
-        {"path": evidence["filename"], "candidate_head": candidate, "sha256": verification["archive_sha256"],
+        {"path": archive_path, "candidate_head": candidate, "sha256": verification["archive_sha256"],
          "size_bytes": verification["archive_size_bytes"], "member_count": verification["member_count"]}, verification)
-    review.require(capsule == expected, "final capsule differs from verified archive completion")
+    if expected["phase_8_ready"] is True:
+        expected["candidate_continuity_checks"].append({"boundary": "archive_publication",
+            **gate["candidate_continuity_check"](candidate, candidate, 0, [])})
+    # Compare the entire structure, including the unchanged continuity prefix.
+    # JSON encoding also distinguishes booleans from numerically equal values.
+    review.require(operations.encoded(capsule) == operations.encoded(expected),
+        "final capsule differs from verified archive completion/publication")
     return {"state": "passed" if capsule["phase_8_ready"] else "failed", "candidate_head": candidate,
         "capsule_sha256": operations.digest(data), "archive_sha256": verification["archive_sha256"],
         "verification": "maintained_independent_archive_and_capsule_contract", "execution": "reused"}
