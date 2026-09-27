@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 
 READINESS_TIMEOUT_SECONDS = 2
+COMPOUND_ARMING_TIMEOUT_SECONDS = 6
 READINESS_POLL_SECONDS = .01
 NEVER_READY_TIMEOUT_SECONDS = .15
 RPC_TIMEOUT_SECONDS = .15
@@ -27,7 +28,14 @@ INTERRUPTED_COMMAND_TIMEOUT_SECONDS = 30
 MCP_STARTUP_DELAY_SECONDS = 2 * RPC_TIMEOUT_SECONDS
 MCP_EXIT_DELAY_SECONDS = 5 * FORCED_CLEANUP_GRACE_SECONDS
 RECORDER_ARM_DELAY_SECONDS = 2 * RECORDER_ARMED_COMMAND_TIMEOUT_SECONDS
+DESCENDANT_ARM_DELAY_SECONDS = READINESS_TIMEOUT_SECONDS + RECORDER_ARM_DELAY_SECONDS
 
+# Readiness inventory: server() (including delayed/crashed/never-ready MCP) and
+# single-process Recorder TERM/KILL/exit-zero fixtures use simple readiness.
+# Descendant arming includes parent startup/delay, child startup/handler setup,
+# pipe acknowledgement and atomic publication. Interruption readiness includes
+# harness-parent imports, Recorder spawn and child publication. Those two trees
+# use compound arming; neither extends operation or post-arming exit budgets.
 # Readiness owns bounded interpreter/setup latency. RPC and armed-command clocks
 # begin only after readiness. Cooperative grace owns EOF-triggered natural exit;
 # Forced cleanup uses separate TERM, KILL/final-reap and stream-drain clocks
@@ -39,7 +47,9 @@ assert FORCED_CLEANUP_GRACE_SECONDS < MCP_EXIT_DELAY_SECONDS < COOPERATIVE_EXIT_
 assert RPC_TIMEOUT_SECONDS < MCP_STARTUP_DELAY_SECONDS < READINESS_TIMEOUT_SECONDS
 assert RECORDER_TIMEOUT_SECONDS < RECORDER_ARMED_COMMAND_TIMEOUT_SECONDS < RECORDER_ARM_DELAY_SECONDS
 assert RECORDER_ARM_DELAY_SECONDS < READINESS_TIMEOUT_SECONDS < OUTER_WAIT_SECONDS
-assert INTERRUPTED_COMMAND_TIMEOUT_SECONDS > READINESS_TIMEOUT_SECONDS + OUTER_WAIT_SECONDS
+assert READINESS_TIMEOUT_SECONDS < DESCENDANT_ARM_DELAY_SECONDS
+assert RECORDER_ARM_DELAY_SECONDS + DESCENDANT_ARM_DELAY_SECONDS < COMPOUND_ARMING_TIMEOUT_SECONDS
+assert INTERRUPTED_COMMAND_TIMEOUT_SECONDS > COMPOUND_ARMING_TIMEOUT_SECONDS + OUTER_WAIT_SECONDS
 
 
 def await_file(path, *, process=None, timeout=READINESS_TIMEOUT_SECONDS):
@@ -54,6 +64,7 @@ def await_file(path, *, process=None, timeout=READINESS_TIMEOUT_SECONDS):
 
 
 def run_armed(h, recorder, label, argv, env, armed, *,
+              arming_timeout_seconds=READINESS_TIMEOUT_SECONDS,
               cleanup_grace_seconds=FORCED_CLEANUP_GRACE_SECONDS):
     """Use Recorder's real child/sinks, separating setup from its wait timeout.
 
@@ -69,7 +80,7 @@ def run_armed(h, recorder, label, argv, env, armed, *,
         nonlocal armed_state
         process = popen(*args, **kwargs)
         try:
-            await_file(armed, process=process)
+            await_file(armed, process=process, timeout=arming_timeout_seconds)
             armed_state = json.loads(armed.read_text())
             assert armed_state["pid"] == process.pid
             assert armed_state["setup_seconds"] >= RECORDER_ARM_DELAY_SECONDS
@@ -303,9 +314,12 @@ def self_check(h):
                 # must allow cooperative teardown rather than use forced timing.
                 source += "signal.signal(signal.SIGTERM,lambda *_: sys.exit(0))\n"
             if mode == "descendant":
-                # The child's pipe acknowledgement follows handler installation.
-                # The outer arming timeout bounds both this read and child startup.
-                child = ("import os,signal,sys; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                # Deterministic compound-arming regression: child setup alone
+                # exceeds simple readiness before acknowledging its handler.
+                # This is an injected setup condition, not a scheduling workaround.
+                # Compound arming bounds child startup and the acknowledgement read.
+                child = ("import os,signal,sys,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+                         f"time.sleep({DESCENDANT_ARM_DELAY_SECONDS!r}); "
                          "fd=int(sys.argv[1]); os.write(fd,b'A'); os.close(fd); signal.pause()")
                 source += ("read_fd,write_fd=os.pipe()\n"
                            f"child=subprocess.Popen([sys.executable,'-B','-c',{child!r},str(write_fd)],pass_fds=(write_fd,))\n"
@@ -321,11 +335,18 @@ def self_check(h):
                        "'setup_seconds':time.monotonic()-started}))\n"
                        "temporary.replace(armed)\nsignal.pause()\n")
             started = time.monotonic()
+            arming_timeout = (COMPOUND_ARMING_TIMEOUT_SECONDS if mode == "descendant"
+                              else READINESS_TIMEOUT_SECONDS)
             result, armed_state = run_armed(
                 h, recorder, mode, [sys.executable, "-B", "-c", source], env, armed,
+                arming_timeout_seconds=arming_timeout,
                 cleanup_grace_seconds=(COOPERATIVE_EXIT_GRACE_SECONDS if mode == "term-exit-zero"
                                        else FORCED_CLEANUP_GRACE_SECONDS))
-            assert RECORDER_ARM_DELAY_SECONDS < time.monotonic() - started < OUTER_WAIT_SECONDS
+            # Only compound setup needs its own allowance in the total bound;
+            # retain the existing whole-fixture bound for simple Recorder modes.
+            completion_bound = (arming_timeout + OUTER_WAIT_SECONDS if mode == "descendant"
+                                else OUTER_WAIT_SECONDS)
+            assert RECORDER_ARM_DELAY_SECONDS < time.monotonic() - started < completion_bound
             assert result["stop_cause"] == {"kind": "timeout", "timeout_seconds": RECORDER_ARMED_COMMAND_TIMEOUT_SECONDS}
             assert result["outcome"] == "terminated" and result["cleanup"]["complete"]
             assert Path(result["stdout"]).read_text() == "before-stop\n"
@@ -339,6 +360,8 @@ def self_check(h):
                 assert result["cleanup"]["signals_sent"] == (
                     [int(signal.SIGTERM)] if mode == "term" else [int(signal.SIGTERM), int(signal.SIGKILL)])
             if mode == "descendant":
+                assert READINESS_TIMEOUT_SECONDS < armed_state["setup_seconds"] < COMPOUND_ARMING_TIMEOUT_SECONDS
+                assert armed_state["setup_seconds"] >= RECORDER_ARM_DELAY_SECONDS + DESCENDANT_ARM_DELAY_SECONDS
                 pid = armed_state["descendant_pid"]
                 assert isinstance(pid, int)
                 stat = Path(f"/proc/{pid}/stat")
@@ -366,7 +389,7 @@ def self_check(h):
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                       start_new_session=True)
             try:
-                await_file(ready, process=parent)
+                await_file(ready, process=parent, timeout=COMPOUND_ARMING_TIMEOUT_SECONDS)
                 parent.send_signal(number)
                 assert parent.wait(timeout=OUTER_WAIT_SECONDS) != 0
                 result = json.loads(next(evidence_root.rglob("result.json")).read_text())
