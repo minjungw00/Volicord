@@ -9,6 +9,7 @@ import threading
 import time
 import tempfile
 
+ANALYSIS_FORMAT_KIND = "volicord.repository_analysis"
 ANALYSIS_FORMAT_VERSION = 5
 
 METRICS = {
@@ -127,7 +128,7 @@ class Collector:
             return None
         project = {"identity": path.parent.name}
         metadata = value.get("metadata")
-        if (value.get("format_kind") != "volicord.analysis_snapshot"
+        if (value.get("format_kind") != ANALYSIS_FORMAT_KIND
                 or type(value.get("format_version")) is not int or value["format_version"] != ANALYSIS_FORMAT_VERSION
                 or value.get("storage_format") != "volicord.normalized_analysis"
                 or value.get("identity") != path.stem or value.get("project") != project
@@ -370,7 +371,9 @@ class Measurement:
 def storage_self_check():
     # Bind this operational publication check to the maintained current format.
     model = Path(__file__).resolve().parents[3] / "crates/volicord-repository-intelligence/src/model.rs"
-    assert f"pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = {ANALYSIS_FORMAT_VERSION};" in model.read_text()
+    source = model.read_text()
+    assert f'pub const ANALYSIS_SNAPSHOT_KIND: &str = "{ANALYSIS_FORMAT_KIND}";' in source
+    assert f"pub const ANALYSIS_SNAPSHOT_FORMAT_VERSION: u32 = {ANALYSIS_FORMAT_VERSION};" in source
     def manifest(project, name, items=10):
         blobs = project / "blobs"
         blobs.mkdir(parents=True, exist_ok=True)
@@ -378,7 +381,7 @@ def storage_self_check():
         (blobs / f"{shape}.shape").write_bytes(b"s" * 100)
         (blobs / f"{values}.values").write_bytes(b"v" * 37)
         value = {
-            "format_kind": "volicord.analysis_snapshot", "format_version": ANALYSIS_FORMAT_VERSION,
+            "format_kind": ANALYSIS_FORMAT_KIND, "format_version": ANALYSIS_FORMAT_VERSION,
             "storage_format": "volicord.normalized_analysis", "identity": name,
             "project": {"identity": project.name}, "generated_at_unix_micros": 1,
             "logical_json_bytes": 100, "scalar_count": 10,
@@ -406,7 +409,8 @@ def storage_self_check():
             assert storage.project_warmup_bytes == {} and storage.analysis_snapshot_count == 0
         (project / "incomplete.json").unlink()
         first = manifest(project, "first")
-        for field, invalid in (("inventory_entry_count", -1), ("entity_count", True),
+        for field, invalid in (("format_kind", "volicord.analysis_snapshot"),
+                               ("inventory_entry_count", -1), ("entity_count", True),
                                ("relation_count", "3"), ("metadata", {}),
                                ("shape_blobs", []), ("values_blob", "../escape"),
                                ("values_base_blob", "d" * 64), ("format_version", 99)):
