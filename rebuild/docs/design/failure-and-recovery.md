@@ -354,6 +354,12 @@ is rejected by the maintained validator and gate consumers. A successful Codex
 process exit alone cannot establish tool success: the bounded authenticated health
 probe must supply structured completed-call and healthy exact-Project evidence.
 
+Official qualification treats candidate/Final identity drift as a blocking failure.
+The exact clean candidate must continue through Final, V11 and archive publication;
+a parent-issued same-gate Final binding is required independently at V11 preflight
+and run boundaries. Failed continuity preserves observations but cannot publish
+readiness, reuse ancestor evidence, or be waived for validation-only changes.
+
 ## 10. Non-goals
 
 이 문서는 database, transaction engine, process supervisor, signal/tree cleanup library,

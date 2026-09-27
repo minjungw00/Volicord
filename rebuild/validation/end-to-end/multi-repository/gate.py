@@ -26,6 +26,10 @@ _performance_spec = importlib.util.spec_from_file_location("gate_performance", H
 assert _performance_spec is not None and _performance_spec.loader is not None
 performance_module = importlib.util.module_from_spec(_performance_spec)
 _performance_spec.loader.exec_module(performance_module)
+_final_spec = importlib.util.spec_from_file_location("gate_final_evidence", HERE / "final_evidence.py")
+assert _final_spec is not None and _final_spec.loader is not None
+final_evidence = importlib.util.module_from_spec(_final_spec)
+_final_spec.loader.exec_module(final_evidence)
 ARCHITECTURE_CHECKER = REBUILD_ROOT / "scripts/check-architecture-contracts"
 CONTRACT_COVERAGE = REBUILD_ROOT / "validation/shared/contract_coverage.py"
 REALISTIC_QUALIFICATION = REBUILD_ROOT / "validation/repository-intelligence/realistic-qualification/assertions.py"
@@ -653,22 +657,7 @@ def final_summary_view(summary: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def exact_final_passed(summary: dict[str, Any], final_commands: Sequence[Sequence[str]]) -> bool:
-    commands = summary.get("commands")
-    return bool(
-        summary.get("outcome") == "succeeded"
-        and type(summary.get("failure_count")) is int and summary["failure_count"] == 0
-        and type(summary.get("command_count")) is int
-        and summary["command_count"] == len(final_commands)
-        and isinstance(commands, list) and len(commands) == len(final_commands)
-        and all(isinstance(value, dict)
-                and value.get("argv") == list(expected)
-                and value.get("outcome") == "succeeded"
-                and type(value.get("exit_code")) is int and value["exit_code"] == 0
-                and "termination" in value and value["termination"] is None
-                and "spawn_error" in value and value["spawn_error"] is None
-                for value, expected in zip(commands, final_commands))
-    )
+exact_final_passed = final_evidence.exact_final_passed
 
 
 def v11_passed(result: dict[str, Any] | None) -> bool:
@@ -1000,7 +989,21 @@ def orchestrate(
     v11_owner: Callable[[str, Path, Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     audit_owner: Callable[[Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     pre_final_check_owner: Callable[[str], Check] = pre_final_repository_check,
+    candidate_check_owner: Callable[[str], Check] = pre_final_repository_check,
 ) -> tuple[dict[str, Any], dict[str, int]]:
+    continuity_checks = []
+    def continuity(boundary):
+        observed = candidate_check_owner(admission["candidate_head"])
+        continuity_checks.append({"boundary": boundary, **observed})
+        return observed.get("status") == "passed"
+
+    def candidate_failure(**evidence):
+        capsule = make_capsule(
+            admission=admission, candidate_head=admission["candidate_head"],
+            blocking_classification="candidate_changed_during_qualification", **evidence)
+        capsule["candidate_continuity_checks"] = continuity_checks
+        return capsule, counts
+
     counts = {"final": 0, "provider_live_qualification": 0, "preflight": 0, "official_v11": 0, "credential_audit": 0}
     candidate_head = admission.get("candidate_head")
     if not admission.get("eligible"):
@@ -1049,6 +1052,10 @@ def orchestrate(
             final_artifact_produced=True,
         ), counts
 
+    if not continuity("after_final"):
+        return candidate_failure(final_summary=final_summary, final_summary_hash=final_hash,
+                                 pre_final_check=pre_final, final_artifact_produced=True)
+
     counts["provider_live_qualification"] += 1
     provider_qualification, provider_execution, provider_path = provider_owner(candidate_head)
     provider_hash = sha256(provider_path) if provider_path.is_file() else None
@@ -1070,6 +1077,11 @@ def orchestrate(
             pre_final_check=pre_final,
             final_artifact_produced=True,
         ), counts
+
+    if not continuity("before_v11"):
+        return candidate_failure(final_summary=final_summary, final_summary_hash=final_hash,
+            provider_qualification=provider_qualification, provider_qualification_hash=provider_hash,
+            provider_qualification_status="passed", pre_final_check=pre_final, final_artifact_produced=True)
 
     counts["preflight"] += 1
     preflight, preflight_execution = preflight_owner(candidate_head, final_path)
@@ -1104,6 +1116,10 @@ def orchestrate(
     v11_accepted = (
         v11_execution.get("exit_code", v11_execution.get("wrapper_exit_code")) == 0
         and v11_passed(v11_result)
+        and v11_result.get("validated_production_head") == candidate_head
+        and v11_result.get("final_gate_artifact") == str(final_path.resolve())
+        and v11_result.get("qualification", {}).get("final_sha256") == final_hash
+        and v11_result.get("qualification", {}).get("gate_invocation") == gate_directory.name
     )
     audit_passed = (
         audit_execution.get("exit_code", audit_execution.get("wrapper_exit_code")) == 0
@@ -1112,6 +1128,16 @@ def orchestrate(
     blocking = None if v11_accepted and audit_passed else (
         "credential_retention_audit_failed" if not audit_passed else "v11_failed"
     )
+    candidate_continues = continuity("after_v11_and_audit")
+    try:
+        final_unchanged = sha256(final_path) == final_hash
+    except OSError:
+        final_unchanged = False
+    if not final_unchanged:
+        continuity_checks.append({"boundary": "final_artifact_publication",
+            **check("final_artifact_continuity", "environment_blocked", "bound Final artifact changed or disappeared")})
+    if not candidate_continues or not final_unchanged:
+        blocking = "candidate_changed_during_qualification"
     capsule = make_capsule(
         admission=admission,
         candidate_head=candidate_head,
@@ -1129,4 +1155,5 @@ def orchestrate(
         preflight_consumed_final_artifact=True,
         official_v11_consumed_final_artifact=True,
     )
+    capsule["candidate_continuity_checks"] = continuity_checks
     return capsule, counts

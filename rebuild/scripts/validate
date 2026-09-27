@@ -107,7 +107,9 @@ def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def run_in_directory(run_directory: Path, argv: Sequence[str]) -> dict[str, object]:
+def run_in_directory(
+    run_directory: Path, argv: Sequence[str], *, env: dict[str, str] | None = None
+) -> dict[str, object]:
     run_directory.mkdir(parents=True, exist_ok=True)
     stdout_path = run_directory / "stdout.log"
     stderr_path = run_directory / "stderr.log"
@@ -134,6 +136,7 @@ def run_in_directory(run_directory: Path, argv: Sequence[str]) -> dict[str, obje
                 stderr=stderr_file,
                 check=False,
                 shell=False,
+                env=env,
             )
             return_code = completed.returncode
         except OSError as error:
@@ -414,16 +417,26 @@ def run_gate(arguments: Sequence[str]) -> int:
     write_json(run_directory / "admission.json", admission)
 
     final_summary: dict[str, object] | None = None
+    binding_env: dict[str, str] | None = None
 
     def final_owner() -> tuple[dict[str, object], Path]:
-        nonlocal final_summary
+        nonlocal final_summary, binding_env
         summary, directory = run_aggregate("final", FINAL_COMMANDS)
         final_summary = summary
-        return summary, directory / "summary.json"
+        final_path = directory / "summary.json"
+        if gate.exact_final_passed(summary, FINAL_COMMANDS):
+            binding_env = os.environ.copy() | gate.final_evidence.issue_gate_binding(
+                run_directory, admission["candidate_head"], final_path)
+        return summary, final_path
+
+    def bound_v11_runner(directory: Path, argv: Sequence[str]) -> dict[str, object]:
+        if binding_env is None:
+            raise RuntimeError("V11 requires Final evidence issued by this gate invocation")
+        return run_in_directory(directory, argv, env=binding_env)
 
     def preflight_owner(candidate_head: str, final_path: Path) -> tuple[dict[str, object] | None, dict[str, object]]:
         return gate.run_json_command(
-            gate_command_runner,
+            bound_v11_runner,
             run_directory / "v11-preflight",
             (
                 str(gate.HARNESS), "preflight", "--validated-head", candidate_head,
@@ -459,7 +472,7 @@ def run_gate(arguments: Sequence[str]) -> int:
         output_directory: Path,
     ) -> tuple[dict[str, object] | None, dict[str, object]]:
         _, execution = gate.run_json_command(
-            gate_command_runner,
+            bound_v11_runner,
             run_directory / "official-v11-invocation",
             (
                 str(gate.HARNESS), "run", "--validated-head", candidate_head,
@@ -488,6 +501,37 @@ def run_gate(arguments: Sequence[str]) -> int:
         v11_owner=v11_owner,
         audit_owner=audit_owner,
     )
+    def publication_check(boundary: str) -> None:
+        if not capsule["phase_8_ready"]:
+            return
+        publication = gate.pre_final_repository_check(admission["candidate_head"])
+        checks = capsule.setdefault("candidate_continuity_checks", [])
+        checks.append({"boundary": boundary, **publication})
+        final_valid = False
+        if binding_env is not None:
+            try:
+                binding_path = Path(binding_env[gate.final_evidence.BINDING_PATH_ENV])
+                binding = json.loads(binding_path.read_text())
+                final_path = Path(binding["final_artifact"])
+                final_valid = (
+                    gate.sha256(binding_path) == binding_env[gate.final_evidence.BINDING_HASH_ENV]
+                    and binding["candidate_head"] == admission["candidate_head"]
+                    and binding["parent_pid"] == os.getpid()
+                    and binding["gate_invocation"] == run_directory.name
+                    and gate.sha256(final_path) == capsule["final_summary_sha256"]
+                )
+            except (OSError, KeyError, TypeError, ValueError):
+                pass
+        if not final_valid:
+            checks.append({"boundary": boundary, **gate.check(
+                "final_artifact_continuity", "environment_blocked", "bound Final artifact changed or disappeared")})
+        if publication["status"] != "passed" or not final_valid:
+            capsule["phase_8_ready"] = False
+            capsule["blocking_classification"] = "candidate_changed_during_qualification"
+            if "evidence_archive" in capsule:
+                capsule["evidence_archive"]["prerequisites_passed"] = False
+
+    publication_check("before_archive")
     capsule = gate.stage_evidence_archive(capsule)
 
     def current_gate_result() -> dict[str, object]:
@@ -555,6 +599,7 @@ def run_gate(arguments: Sequence[str]) -> int:
                     write_json(run_directory / "evidence-archive.json", archive_identity)
     else:
         capsule = gate.fail_evidence_archive(capsule, "creation")
+    publication_check("archive_publication")
     write_json(run_directory / "capsule.json", capsule)
     write_json(run_directory / "gate-result.json", current_gate_result())
     print(json.dumps(capsule, indent=2, sort_keys=True))

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import importlib.util
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -71,7 +73,7 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     shutil.copy2(EVIDENCE_ARCHIVE, evidence_archive)
     shutil.copy2(EVIDENCE_ARCHIVE_VERIFIER, evidence_archive_verifier)
     shutil.copy2(GATE, gate)
-    for name in ("performance.py", "performance-budgets.json"):
+    for name in ("performance.py", "performance-budgets.json", "final_evidence.py"):
         shutil.copy2(GATE.with_name(name), gate.with_name(name))
     shutil.copy2(RESOURCE_ESTIMATE, resource_estimate)
 
@@ -192,37 +194,115 @@ def assert_maintained_preflight(parent: Path) -> None:
     harness = candidate / "rebuild/validation/end-to-end/multi-repository/harness.py"
     harness.parent.mkdir(parents=True)
     shutil.copy2(HARNESS, harness)
-    for name in ("performance.py", "performance-budgets.json"):
+    for name in ("performance.py", "performance-budgets.json", "final_evidence.py"):
         shutil.copy2(HARNESS.with_name(name), harness.with_name(name))
+    runner = candidate / "rebuild/scripts/validate"
+    runner.parent.mkdir(parents=True)
+    shutil.copy2(RUNNER, runner)
+    (candidate / ".gitignore").write_text("/rebuild/.local/\n")
     assert git(candidate, "init", "-q").returncode == 0
     assert git(candidate, "add", ".").returncode == 0
-    committed = run(
-        (
-            "git", "-c", "user.name=Validation Fixture",
-            "-c", "user.email=validation@example.invalid",
-            "commit", "-qm", "preflight candidate",
-        ),
-        cwd=candidate,
-    )
-    assert committed.returncode == 0, committed.stderr
+    def commit(subject):
+        result = run(("git", "-c", "user.name=Validation Fixture", "-c",
+                      "user.email=validation@example.invalid", "commit", "-qm", subject), cwd=candidate)
+        assert result.returncode == 0, result.stderr
+    commit("preflight candidate")
     candidate_head = git(candidate, "rev-parse", "HEAD").stdout.strip()
-    final_artifact = parent / "synthetic-preflight-summary.json"
-    final_artifact.write_text(
-        json.dumps({"outcome": "succeeded", "failure_count": 0}), encoding="utf-8"
-    )
-    result = run(
-        (
-            str(harness), "preflight", "--validated-head", candidate_head,
-            "--final-artifact", str(final_artifact),
-        ),
-        cwd=candidate,
-        env=os.environ.copy(),
-    )
+    spec = importlib.util.spec_from_file_location("entrypoint_final_evidence", HARNESS.with_name("final_evidence.py"))
+    assert spec and spec.loader
+    final_evidence = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(final_evidence)
+    gate_dir = candidate / "rebuild/.local/validation/current-gate"
+    gate_dir.mkdir(parents=True)
+    final_artifact = gate_dir / "final/summary.json"
+    final_artifact.parent.mkdir()
+    commands = []
+    for index, argv in enumerate(final_evidence.maintained_final_commands(candidate)):
+        directory = final_artifact.parent / str(index)
+        directory.mkdir()
+        stdout = directory / "stdout.log"
+        stderr = directory / "stderr.log"
+        stdout.write_text("")
+        stderr.write_text("")
+        leaf = {"argv": list(argv), "outcome": "succeeded", "exit_code": 0,
+                "spawn_error": None, "termination": None,
+                "stdout": str(stdout), "stderr": str(stderr)}
+        (directory / "result.json").write_text(json.dumps(leaf))
+        commands.append({**leaf, "artifact_directory": str(directory)})
+    summary = {"schema_version": 1, "working_directory": str(candidate),
+               "outcome": "succeeded", "failure_count": 0, "command_count": 4, "commands": commands}
+    final_artifact.write_text(json.dumps(summary))
+    environment = os.environ.copy() | final_evidence.issue_gate_binding(gate_dir, candidate_head, final_artifact)
+    argv = (str(harness), "preflight", "--validated-head", candidate_head,
+            "--final-artifact", str(final_artifact))
+    result = run(argv, cwd=candidate, env=environment)
     value = structured_stdout(result)
-    assert result.returncode == 0, result.stderr
-    assert value["status"] == "passed"
-    assert value["worktree_clean"] is True
-    assert value["validated_head_is_ancestor"] is True
+    assert result.returncode == 0, (result.stderr, value)
+    assert value["status"] == "passed" and value["same_gate_final_valid"] is True
+    assert value["head_matches"] is True and value["worktree_clean"] is True
+
+    def rejected(label, arguments=argv, env=environment):
+        result = run(arguments, cwd=candidate, env=env)
+        assert result.returncode != 0, label
+        return result
+    unbound_env = {key: value for key, value in environment.items()
+                   if key not in {final_evidence.BINDING_PATH_ENV, final_evidence.BINDING_HASH_ENV}}
+    rejected("unbound-final", env=unbound_env)
+    original = final_artifact.read_bytes()
+    for body in (b'{"outcome":"succeeded","failure_count":0}', b'{', b'[]'):
+        final_artifact.write_bytes(body)
+        # Reissue even for fabricated artifacts: semantic validation must still reject.
+        changed_env = os.environ.copy() | final_evidence.issue_gate_binding(gate_dir, candidate_head, final_artifact)
+        rejected("fabricated-final", env=changed_env)
+    final_artifact.unlink()
+    rejected("missing-final")
+    final_artifact.write_bytes(original)
+    environment.update(final_evidence.issue_gate_binding(gate_dir, candidate_head, final_artifact))
+    other = gate_dir / "prior-final.json"
+    other.write_bytes(original)
+    rejected("other-final-path", arguments=(*argv[:-1], str(other)))
+    changed = json.loads(original)
+    changed["commands"][0].update(exit_code=7, outcome="failed")
+    final_artifact.write_text(json.dumps(changed))
+    rejected("changed-final-bytes")
+    changed_env = os.environ.copy() | final_evidence.issue_gate_binding(gate_dir, candidate_head, final_artifact)
+    rejected("failed-final-leaf-with-reissued-binding", env=changed_env)
+    final_artifact.write_bytes(original)
+    environment.update(final_evidence.issue_gate_binding(gate_dir, candidate_head, final_artifact))
+    leaf_path = Path(commands[0]["artifact_directory"]) / "result.json"
+    leaf_body = leaf_path.read_bytes()
+    leaf_path.write_text('{}')
+    rejected("mutated-preserved-final-leaf")
+    leaf_path.write_bytes(leaf_body)
+
+    binding_path = Path(environment[final_evidence.BINDING_PATH_ENV])
+    binding_body = binding_path.read_bytes()
+    for field, value in (("parent_pid", -1), ("gate_invocation", "prior-gate"),
+                         ("candidate_head", "f" * 40)):
+        changed_binding = json.loads(binding_body)
+        changed_binding[field] = value
+        binding_path.write_text(json.dumps(changed_binding))
+        changed_env = environment | {final_evidence.BINDING_HASH_ENV:
+                                    hashlib.sha256(binding_path.read_bytes()).hexdigest()}
+        rejected(f"invalid-binding-{field}", env=changed_env)
+    binding_path.write_bytes(binding_body)
+    rejected("changed-binding-digest", env=environment | {final_evidence.BINDING_HASH_ENV: "f" * 64})
+
+    validation_path = harness.parent / "validation-only.txt"
+    validation_path.write_text("dirty validation")
+    rejected("dirty-validation")
+    rejected("obsolete-override", arguments=(*argv, "--allow-validation-changes"))
+    assert git(candidate, "add", ".").returncode == 0
+    commit("later candidate")
+    rejected("ancestor-candidate")
+    new_head = git(candidate, "rev-parse", "HEAD").stdout.strip()
+    rejected("prior-candidate-final", arguments=(str(harness), "preflight", "--validated-head", new_head,
+                                                 "--final-artifact", str(final_artifact)))
+    output = gate_dir / "forbidden-run-output"
+    result = rejected("run-independently-enforces-binding", arguments=(str(harness), "run",
+        "--validated-head", new_head, "--final-artifact", str(final_artifact),
+        "--output-dir", str(output), "--model", "synthetic-model"))
+    assert structured_stdout(result)["status"] == "failed" and not output.exists()
     assert bytecode_artifacts(candidate) == []
 
 
@@ -340,7 +420,7 @@ def main() -> int:
     print(json.dumps({
         "status": "passed",
         "scenarios": 5,
-        "maintained_v11_preflight_invocations": 1,
+        "maintained_v11_preflight_mutation_controls": "passed",
         "real_admission_entrypoint_invocations": 5,
         "real_final_invocations": 0,
         "official_v11_invocations": 0,

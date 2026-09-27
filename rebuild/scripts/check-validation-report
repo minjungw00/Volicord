@@ -653,6 +653,8 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         if official_started
         else (True, True, False)
     )
+    if blocking == "candidate_changed_during_qualification" and not official_started:
+        expected_flow = (True, False, False)
     actual_flow = tuple(flow.get(key) for key in FLOW_KEYS)
     if actual_flow != expected_flow:
         errors.append("capsule same-session artifact flow is inconsistent with observed stages")
@@ -677,6 +679,18 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         ):
             errors.append("capsule dirty-worktree blocker lacks supporting pre-final evidence")
 
+    candidate_mutated = blocking == "candidate_changed_during_qualification"
+    continuity_checks = capsule.get("candidate_continuity_checks", [])
+    if not isinstance(continuity_checks, list):
+        errors.append("capsule candidate continuity checks must be a list")
+        continuity_checks = []
+    continuity_failed = any(isinstance(value, dict) and value.get("status") != "passed"
+                            for value in continuity_checks)
+    if candidate_mutated and (not final_started or not continuity_failed):
+        errors.append("capsule candidate mutation blocker lacks a failed continuity check")
+    if continuity_failed and (phase_8_ready is not False or not candidate_mutated):
+        errors.append("capsule failed candidate continuity cannot qualify")
+
     if not final_started:
         if provider_status != "not_run" or official_started or outcomes or audit_status != "not_run":
             errors.append("capsule final-not-run state contains later-stage evidence")
@@ -686,10 +700,10 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     elif provider_status == "failed":
         if blocking != "provider_live_qualification_failed" or official_started or outcomes or audit_status != "not_run":
             errors.append("capsule provider failure contains inconsistent later-stage evidence")
-    elif provider_status != "passed":
+    elif provider_status != "passed" and not candidate_mutated:
         errors.append("capsule passed final must run the live provider qualification exactly once")
     elif not official_started:
-        if blocking != "v11_preflight_failed" or outcomes or audit_status != "not_run":
+        if blocking not in {"v11_preflight_failed", "candidate_changed_during_qualification"} or outcomes or audit_status != "not_run":
             errors.append("capsule V11 preflight failure contains inconsistent official V11 evidence")
     else:
         if audit_status == "not_run":
@@ -697,6 +711,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         if blocking not in {
             None,
             "v11_failed",
+            "candidate_changed_during_qualification",
             "credential_retention_audit_failed",
             "evidence_archive_pending",
             "evidence_archive_creation_failed",
@@ -761,6 +776,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         errors.append("capsule passed V11 requires the official revisit-trigger assessment")
     technical_prerequisites_passed = (
         admission_status == "eligible"
+        and not candidate_mutated
         and final_passed
         and provider_passed
         and official_status == "passed"
@@ -1451,6 +1467,19 @@ def self_test() -> int:
         mutated = copy.deepcopy(fully_passed)
         mutated["official_v11"][field] = value
         assert capsule_contract_errors(mutated), field
+
+    mutated_candidate = copy.deepcopy(fully_passed)
+    mutated_candidate["phase_8_ready"] = False
+    mutated_candidate["blocking_classification"] = "candidate_changed_during_qualification"
+    mutated_candidate["evidence_archive"]["prerequisites_passed"] = False
+    mutated_candidate["candidate_continuity_checks"] = [{
+        "boundary": "archive_publication", "status": "environment_blocked",
+        "details": {"head_unchanged": False, "dirty_entry_count": 0},
+    }]
+    assert capsule_contract_errors(mutated_candidate) == []
+    contradictory_candidate = copy.deepcopy(mutated_candidate)
+    contradictory_candidate["phase_8_ready"] = True
+    assert capsule_contract_errors(contradictory_candidate)
 
     archive_failed = copy.deepcopy(fully_passed)
     archive_failed["blocking_classification"] = "evidence_archive_verification_failed"

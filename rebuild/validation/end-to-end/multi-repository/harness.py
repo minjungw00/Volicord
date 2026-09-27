@@ -33,6 +33,10 @@ _performance_spec = importlib.util.spec_from_file_location("v11_performance", HE
 assert _performance_spec is not None and _performance_spec.loader is not None
 performance_module = importlib.util.module_from_spec(_performance_spec)
 _performance_spec.loader.exec_module(performance_module)
+_final_spec = importlib.util.spec_from_file_location("v11_final_evidence", HERE / "final_evidence.py")
+assert _final_spec is not None and _final_spec.loader is not None
+final_evidence = importlib.util.module_from_spec(_final_spec)
+_final_spec.loader.exec_module(final_evidence)
 PERFORMANCE = performance_module.Collector()
 INSTALLER = ROOT / "rebuild/install.sh"
 SMALL_FIXTURE = ROOT / "rebuild/validation/repository-intelligence/polyglot-structural/fixtures/python"
@@ -318,13 +322,15 @@ def make_v11_result(
     repositories: list[dict[str, Any]],
     revisit_assessment: dict[str, Any],
     performance: dict[str, Any] | None = None,
+    qualification: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     statuses = [
         value["status"]
         for repository in repositories
         for value in repository.get("steps", {}).values()
     ]
-    phase_8_ready = v11_readiness(repositories, revisit_assessment, performance)
+    phase_8_ready = v11_readiness(repositories, revisit_assessment, performance) and qualification_passed(
+        qualification, validated_production_head, final_gate_artifact)
     result = {
         "schema_version": 1,
         "validation_id": "V11",
@@ -337,6 +343,8 @@ def make_v11_result(
         **revisit_assessment,
         "phase_8_ready": phase_8_ready,
     }
+    if qualification is not None:
+        result["qualification"] = qualification
     if performance is not None:
         result["performance"] = performance
     validate_result(result)
@@ -2972,7 +2980,9 @@ def authenticated_target_passed(repository: dict[str, Any]) -> bool:
         return False
 
 
-def v11_readiness(repositories, assessment, performance) -> bool:
+def v11_readiness(
+    repositories: list[dict[str, Any]], assessment: dict[str, Any], performance: dict[str, Any] | None
+) -> bool:
     return bool(
         len(repositories) == 3
         and [repository.get("class") for repository in repositories]
@@ -2986,9 +2996,28 @@ def v11_readiness(repositories, assessment, performance) -> bool:
     )
 
 
+def qualification_passed(qualification: Any, candidate_head: str, final_artifact: str) -> bool:
+    if not isinstance(qualification, dict):
+        return False
+    return bool(
+        qualification.get("status") == "passed"
+        and isinstance(qualification.get("gate_invocation"), str) and qualification["gate_invocation"]
+        and re.fullmatch(r"[0-9a-f]{64}", str(qualification.get("final_sha256")))
+        and qualification.get("final_artifact") == final_artifact
+        and all(isinstance(qualification.get(boundary), dict)
+                and qualification[boundary].get("status") == "passed"
+                and qualification[boundary].get("head") == candidate_head
+                and qualification[boundary].get("worktree_clean") is True
+                and qualification[boundary].get("same_gate_final_valid") is True
+                for boundary in ("start", "end"))
+    )
+
+
 def validate_result(result: dict[str, Any]) -> None:
-    if result.get("schema_version") != 1:
-        raise AssertionError("result schema_version must be 1")
+    if result.get("schema_version") != 1 or result.get("validation_id") != "V11":
+        raise AssertionError("result must use the maintained V11 schema")
+    if not re.fullmatch(r"[0-9a-f]{40}", str(result.get("validated_production_head"))):
+        raise AssertionError("V11 result has invalid exact candidate identity")
     repositories = result.get("repositories")
     if not isinstance(repositories, list) or len(repositories) != 3:
         raise AssertionError("V11 result must contain three repositories")
@@ -3059,7 +3088,8 @@ def validate_result(result: dict[str, Any]) -> None:
         qualified = performance_module.qualify(performance.get("observed", {}), performance_module.maintained_limits())
         if qualified != performance or (result.get("phase_8_ready") is True and qualified["status"] != "passed"):
             raise AssertionError("V11 performance evidence or readiness is inconsistent")
-    expected_ready = v11_readiness(repositories, result, performance)
+    expected_ready = v11_readiness(repositories, result, performance) and qualification_passed(
+        result.get("qualification"), result.get("validated_production_head"), result.get("final_gate_artifact"))
     if (result.get("phase_8_ready") is not expected_ready
         or result.get("status") != ("passed" if expected_ready else "failed")):
         raise AssertionError("V11 aggregate verdict disagrees with required leaf evidence")
@@ -3618,6 +3648,62 @@ def assert_current_materiality_review_contract(source: str) -> None:
         raise AssertionError(f"V11 materiality journey is incomplete: {sorted(found)}")
 
 
+def assert_qualification_publication() -> None:
+    from unittest.mock import patch
+
+    with tempfile.TemporaryDirectory(prefix="volicord-v11-publication-self-check-") as directory:
+        root = Path(directory)
+        probe = root / "probe.jsonl"
+        probe.write_text((HERE / "fixtures/authenticated-project-health.jsonl").read_text())
+        performance = performance_module.qualify({
+            **{key: 1 for key in performance_module.METRICS}, "mcp_call_count": 1,
+            "mcp_sample_count": 1, "sampling_error_count": 0,
+            "analysis_snapshot_count": 1, "analysis_graph_item_count": 1,
+        }, performance_module.maintained_limits())
+        for mutation in (None, "head", "worktree", "final"):
+            candidate = "1" * 40
+            state = {"status": "passed", "head": candidate, "worktree_clean": True}
+            binding = {"gate_invocation": "synthetic-current-gate", "final_sha256": "2" * 64,
+                       "final_artifact": str(root / "final.json")}
+            mutated = False
+            def read_final(*_args):
+                if mutation == "final" and mutated:
+                    raise ValueError("Final bytes changed during qualification")
+                return binding
+            def target(name, *_args):
+                nonlocal mutated
+                mutated = True
+                if mutation == "head":
+                    state.update(status="failed", head="3" * 40)
+                elif mutation == "worktree":
+                    state.update(status="failed", worktree_clean=False)
+                steps = {key: step("passed", "synthetic publication fixture") for key in REQUIRED_STEPS}
+                steps["project_binding"]["evidence"] = {"project_id": "synthetic-project"}
+                steps["codex_mcp_connection"]["evidence"] = {"authenticated": step("passed", "fixture",
+                    operation={"exit_code": 0, "outcome": "succeeded", "spawn_error": None,
+                               "termination": None, "stdout": str(probe)},
+                    probe=validate_codex_probe(probe.read_text(), "synthetic-project"))}
+                return {"class": name, "project_id": "synthetic-project", "steps": steps}
+            args = SimpleNamespace(model="synthetic-model", validated_head=candidate,
+                final_artifact=binding["final_artifact"], output_dir=str(root / str(mutation)))
+            collector = SimpleNamespace(enabled=False, report=lambda _duration: performance,
+                                        diagnostics=lambda: {})
+            with patch.dict(run.__globals__, {"PERFORMANCE": collector}), \
+                 patch.dict(qualification_preflight.__globals__, {"candidate_state": lambda _head: dict(state)}), \
+                 patch.object(final_evidence, "read_gate_final", side_effect=read_final), \
+                 patch.dict(run.__globals__, {"rehearse_target": target}):
+                from contextlib import redirect_stdout
+                import io
+                with redirect_stdout(io.StringIO()):
+                    exit_code = run(args)
+            result = json.loads((Path(args.output_dir) / "result.json").read_text())
+            assert result["counts"]["passed"] == 54
+            assert (exit_code == 0) is (mutation is None)
+            assert result["phase_8_ready"] is (mutation is None)
+            assert result["qualification"]["status"] == ("passed" if mutation is None else "failed")
+            validate_result(result)
+
+
 def self_check() -> int:
     performance_module.self_check()
     if platform.system() != "Linux":
@@ -3843,6 +3929,7 @@ def self_check() -> int:
             raise AssertionError("uninspectable reduced Viewer architecture qualified")
     assert_recovery_recall_contract()
     assert_candidate_repository_source_contract()
+    assert_qualification_publication()
     assert_codex_probe_completion()
     assert_authenticated_codex_lifecycle()
     assert_credential_retention_audit()
@@ -3936,44 +4023,47 @@ def self_check() -> int:
     return 0
 
 
+def candidate_state(candidate_head: str) -> dict[str, Any]:
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                          text=True, capture_output=True, check=False)
+    status = subprocess.run(["git", "status", "--porcelain=v1", "--untracked-files=all"],
+                            cwd=ROOT, text=True, capture_output=True, check=False)
+    observed = head.stdout.strip() if head.returncode == 0 else None
+    clean = status.returncode == 0 and not status.stdout
+    passed = head.returncode == 0 and observed == candidate_head and clean
+    return {"status": "passed" if passed else "failed", "head": observed,
+            "validated_head": candidate_head, "head_matches": observed == candidate_head,
+            "worktree_clean": clean}
+
+
+def qualification_preflight(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    state = candidate_state(args.validated_head)
+    binding = None
+    error = None
+    try:
+        binding = final_evidence.read_gate_final(ROOT, args.validated_head, Path(args.final_artifact))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as failure:
+        error = str(failure)
+    passed = platform.system() == "Linux" and state["status"] == "passed" and binding is not None
+    return {**state, "status": "passed" if passed else "failed",
+            "final_artifact": str(Path(args.final_artifact).resolve()),
+            "same_gate_final_valid": binding is not None, "error": error}, binding
+
+
 def preflight(args: argparse.Namespace) -> int:
-    final = json.loads(Path(args.final_artifact).read_text(encoding="utf-8"))
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True).stdout.strip()
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, text=True, capture_output=True, check=True).stdout
-    dirty_paths = [line[3:] for line in status.splitlines() if len(line) > 3]
-    allowed_dirty = bool(args.allow_validation_changes) and all(
-        path.startswith("rebuild/validation/") for path in dirty_paths
-    )
-    ancestor = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", args.validated_head, head], cwd=ROOT
-    ).returncode == 0
-    production_diff = subprocess.run(
-        [
-            "git", "diff", "--quiet", args.validated_head, head, "--",
-            "rebuild/crates", "rebuild/Cargo.toml", "rebuild/Cargo.lock",
-            "rebuild/install.sh", "rebuild/docs/design",
-        ],
-        cwd=ROOT,
-    ).returncode
-    passed = (
-        platform.system() == "Linux" and final.get("outcome") == "succeeded" and
-        final.get("failure_count") == 0 and ancestor and production_diff == 0 and
-        (not status or allowed_dirty)
-    )
-    print(json.dumps({
-        "status": "passed" if passed else "failed", "head": head,
-        "validated_head": args.validated_head, "validated_head_is_ancestor": ancestor,
-        "production_diff_empty": production_diff == 0, "worktree_clean": not status,
-        "allowed_validation_changes": allowed_dirty, "dirty_paths": dirty_paths,
-        "final_artifact": str(Path(args.final_artifact).resolve()), "final_outcome": final.get("outcome"),
-        "required_tools": {name: shutil.which(name) for name in ("cargo", "git", "codex")},
-    }, indent=2, sort_keys=True))
-    return 0 if passed else 1
+    result, _binding = qualification_preflight(args)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result["status"] == "passed" else 1
 
 
 def run(args: argparse.Namespace) -> int:
     if not args.model.strip():
         raise ValueError("an explicit Codex probe model is required")
+    start_state, binding = qualification_preflight(args)
+    if start_state["status"] != "passed":
+        print(json.dumps(start_state, indent=2, sort_keys=True))
+        return 1
+    assert binding is not None
     output = Path(args.output_dir).resolve()
     if output.exists():
         raise RuntimeError("V11 output directory already exists")
@@ -4001,6 +4091,13 @@ def run(args: argparse.Namespace) -> int:
     duration_ms = round((time.monotonic_ns() - started) / 1_000_000, 3)
     performance = PERFORMANCE.report(duration_ms)
     write_json(output / "performance-calls.json", PERFORMANCE.diagnostics())
+    end_state, end_binding = qualification_preflight(args)
+    qualification = {
+        "status": "passed" if end_state["status"] == "passed" and end_binding == binding else "failed",
+        "gate_invocation": binding["gate_invocation"],
+        "final_artifact": binding["final_artifact"], "final_sha256": binding["final_sha256"],
+        "start": start_state, "end": end_state,
+    }
     result = make_v11_result(
         validated_production_head=args.validated_head,
         final_gate_artifact=str(Path(args.final_artifact).resolve()),
@@ -4008,7 +4105,15 @@ def run(args: argparse.Namespace) -> int:
         repositories=repositories,
         revisit_assessment=revisit_assessment,
         performance=performance,
+        qualification=qualification,
     )
+    # Recheck immediately at publication, after result validation and probe replay.
+    publication_state, publication_binding = qualification_preflight(args)
+    if publication_state["status"] != "passed" or publication_binding != binding:
+        result["qualification"]["status"] = "failed"
+        result["qualification"]["end"] = publication_state
+        result["status"] = "failed"
+        result["phase_8_ready"] = False
     write_json(output / "result.json", result)
     print(json.dumps({
         "status": result["status"], "phase_8_ready": result["phase_8_ready"],
@@ -4027,8 +4132,6 @@ def parse_args() -> argparse.Namespace:
         child = subparsers.add_parser(name)
         child.add_argument("--validated-head", required=True)
         child.add_argument("--final-artifact", required=True)
-        if name == "preflight":
-            child.add_argument("--allow-validation-changes", action="store_true")
         if name == "run":
             child.add_argument("--output-dir", required=True)
             child.add_argument("--model", required=True)

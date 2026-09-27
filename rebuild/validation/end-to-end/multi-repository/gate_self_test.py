@@ -198,6 +198,7 @@ class Owners:
         directory.mkdir(parents=True)
         failed = not self.final_passes
         summary = {
+            "schema_version": 1,
             "outcome": "failed" if failed else "succeeded",
             "command_count": len(FINAL_COMMANDS),
             "failure_count": 1 if failed else 0,
@@ -316,6 +317,12 @@ class Owners:
             duration_ms=1.0,
             repositories=repositories,
             revisit_assessment=self.revisit_assessment or harness.read_decision_revisit_assessment(),
+            qualification={
+                "status": "passed", "gate_invocation": output_directory.parent.name,
+                "final_artifact": str(final_path.resolve()), "final_sha256": gate.sha256(final_path),
+                "start": {"status": "passed", "head": candidate_head, "worktree_clean": True, "same_gate_final_valid": True},
+                "end": {"status": "passed", "head": candidate_head, "worktree_clean": True, "same_gate_final_valid": True},
+            },
             performance=harness.performance_module.qualify({
                 **{key: 1 for key in harness.performance_module.METRICS},
                 "mcp_call_count": 1, "mcp_sample_count": 1, "sampling_error_count": 0,
@@ -340,7 +347,7 @@ class Owners:
         }, {"exit_code": 0}
 
 
-def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners) -> tuple[dict[str, Any], dict[str, int]]:
+def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners, candidate_checker=None) -> tuple[dict[str, Any], dict[str, int]]:
     root.mkdir(parents=True, exist_ok=True)
     return gate.orchestrate(
         gate_directory=root,
@@ -351,6 +358,8 @@ def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners) -> t
         preflight_owner=owners.preflight,
         v11_owner=owners.v11,
         audit_owner=owners.audit,
+        candidate_check_owner=candidate_checker or (lambda candidate_head: passed("candidate_continuity",
+            head_unchanged=True, dirty_entry_count=0)),
         pre_final_check_owner=lambda candidate_head: gate.check(
             "pre_final_candidate_identity_and_clean_worktree",
             "passed",
@@ -625,6 +634,48 @@ def main() -> int:
             )
             assert rejected["phase_8_ready"] is False
             assert rejected["blocking_classification"] == "v11_failed"
+        for field, value in (
+            ("validated_production_head", "f" * 40),
+            ("final_gate_artifact", "/synthetic/prior-final.json"),
+            ("gate_invocation", "prior-gate"),
+            ("final_sha256", "f" * 64),
+        ):
+            class StaleBindingOwners(Owners):
+                def v11(self, *args):
+                    result, execution = super().v11(*args)
+                    if field in result:
+                        result[field] = value
+                    else:
+                        result["qualification"][field] = value
+                    return result, execution
+            rejected, _ = run_orchestration(root / f"stale-{field}-gate", admitted,
+                                            StaleBindingOwners(root / f"stale-{field}-owners"))
+            assert rejected["phase_8_ready"] is False
+            assert rejected["blocking_classification"] == "v11_failed"
+        for fail_at in (1, 2, 3):
+            check_count = 0
+            def changed_candidate(_head):
+                nonlocal check_count
+                check_count += 1
+                return gate.check("candidate_continuity", "environment_blocked" if check_count == fail_at else "passed",
+                                  "synthetic candidate mutation", head_unchanged=check_count != fail_at,
+                                  dirty_entry_count=0)
+            rejected, counts = run_orchestration(root / f"mutation-{fail_at}-gate", admitted,
+                Owners(root / f"mutation-{fail_at}-owners"), candidate_checker=changed_candidate)
+            assert rejected["phase_8_ready"] is False
+            assert rejected["blocking_classification"] == "candidate_changed_during_qualification"
+            assert any(check["status"] != "passed" for check in rejected["candidate_continuity_checks"])
+            assert counts["official_v11"] == (1 if fail_at == 3 else 0)
+        class ChangedFinalOwners(Owners):
+            def v11(self, *args):
+                result, execution = super().v11(*args)
+                self.final_path.write_text(self.final_path.read_text() + "\n")
+                return result, execution
+        rejected, _ = run_orchestration(root / "changed-final-gate", admitted,
+                                        ChangedFinalOwners(root / "changed-final-owners"))
+        assert rejected["phase_8_ready"] is False
+        assert rejected["blocking_classification"] == "candidate_changed_during_qualification"
+        assert rejected["candidate_continuity_checks"][-1]["name"] == "final_artifact_continuity"
         pending_capsule = gate.stage_evidence_archive(capsule)
         assert pending_capsule["phase_8_ready"] is False
         assert pending_capsule["blocking_classification"] == "evidence_archive_pending"
@@ -666,6 +717,7 @@ def main() -> int:
             duration_ms=2.0,
             repositories=copy.deepcopy(owners.v11_result["repositories"]),
             performance=copy.deepcopy(owners.v11_result["performance"]),
+            qualification=copy.deepcopy(owners.v11_result["qualification"]),
             revisit_assessment=harness.read_decision_revisit_assessment(),
         )
         assert gate_consumed_result_contract(owners.v11_result) == (

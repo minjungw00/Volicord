@@ -24,6 +24,7 @@ TRACKED_EVIDENCE_PATHS = (
     "rebuild/scripts/verify-validation-archive",
     "rebuild/validation/end-to-end/multi-repository/evidence_archive.py",
     "rebuild/validation/end-to-end/multi-repository/gate.py",
+    "rebuild/validation/end-to-end/multi-repository/final_evidence.py",
     "rebuild/validation/end-to-end/multi-repository/harness.py",
     "rebuild/validation/end-to-end/multi-repository/performance.py",
     "rebuild/validation/end-to-end/multi-repository/performance-budgets.json",

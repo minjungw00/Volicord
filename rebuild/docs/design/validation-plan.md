@@ -871,6 +871,22 @@ Official V11 실행은 3.1의 admission과 exact final을 통과한 같은 gate 
 소유한다. 별도 session의 prior final artifact를 preflight input으로 요구하거나
 대체해서는 안 된다.
 
+Official preflight and run independently require current `HEAD` to equal the
+validated candidate exactly, with a clean tracked and untracked worktree. No
+ancestor equivalence or validation-only dirty override qualifies. The current gate
+parent issues a private Final binding (invocation, parent process, exact candidate,
+artifact path and digest), inherited only by its preflight/run children. Both
+commands validate the actual Final artifact against the runner-owned ordered
+command vector and preserved command results. Missing, fabricated, changed, or
+prior-gate evidence is rejected before V11 dispatch.
+
+V11 repeats candidate and bound-Final validation at run completion and publication;
+its result records both boundaries and the current gate identity. Gate consumption
+requires exact result candidate, Final path/digest and invocation agreement. The
+gate also checks candidate continuity after Final, before V11, after V11/audit and
+before archive/publication. A changed HEAD or dirty worktree blocks readiness and
+archive promotion; artifact hash verification alone cannot establish qualification.
+
 ### 대상
 
 1. Volicord 자체 Rust workspace
