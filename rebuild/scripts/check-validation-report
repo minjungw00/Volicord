@@ -312,7 +312,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         spawn_error = command.get("spawn_error")
         if not isinstance(spawn_error, bool):
             errors.append(f"capsule final command spawn_error must be a boolean: index {index}")
-        if outcome == "succeeded" and (exit_code != 0 or termination is not None or spawn_error):
+        if outcome == "succeeded" and (type(exit_code) is not int or exit_code != 0 or termination is not None or spawn_error):
             errors.append(f"capsule successful final command has inconsistent process state: index {index}")
         if outcome == "failed" and (
             not isinstance(exit_code, int) or exit_code == 0 or termination is not None or spawn_error
@@ -493,6 +493,12 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         digest(official.get("result_sha256"), "official_v11.result_sha256", errors)
         if not counts or required_step_count <= 0 or required_step_count != sum(counts.values()):
             errors.append("capsule official V11 step count does not match status counts")
+        if required_step_count != 54 or set(counts) != {
+            "passed", "partial", "unsupported", "failed", "environment_blocked", "skipped"
+        }:
+            errors.append("capsule official V11 must account for all 54 required target steps")
+        if official_status == "passed" and official_ready is not True:
+            errors.append("capsule passed official V11 must mark its phase ready")
         if official_status != "passed" and official_ready is not False:
             errors.append("capsule failed official V11 cannot mark its phase ready")
         if official_status == "passed" and any(
@@ -1109,7 +1115,7 @@ def self_test_capsule() -> dict[str, Any]:
                 "retained_evidence": {"source_body": False, "provider_response_body": False, "credential": False},
             },
         },
-        "official_v11": {"status": "passed", "result_sha256": "f" * 64, "required_step_count": 3, "status_counts": {"passed": 3}, "phase_8_ready": True},
+        "official_v11": {"status": "passed", "result_sha256": "f" * 64, "required_step_count": 54, "status_counts": {"passed": 54, "partial": 0, "unsupported": 0, "failed": 0, "environment_blocked": 0, "skipped": 0}, "phase_8_ready": True},
         "required_identities": {"candidate_head": head, "fixtures": [{"id": "fixture-one", "validation_id": "V11", "content_sha256": "1" * 64}]},
         "credential_retention_audit": {"status": "passed", "auth_named_file_count": 0, "credential_content_match_count": 0, "scan_error_count": 0},
         "authenticated_codex_outcomes": [
@@ -1389,8 +1395,8 @@ def self_test() -> int:
     official_failed["blocking_classification"] = "v11_failed"
     official_failed["official_v11"].update({
         "status": "failed",
-        "required_step_count": 2,
-        "status_counts": {"passed": 1, "failed": 1},
+        "required_step_count": 54,
+        "status_counts": {"passed": 53, "failed": 1, "partial": 0, "unsupported": 0, "environment_blocked": 0, "skipped": 0},
         "phase_8_ready": False,
     })
     official_failed["authenticated_codex_outcomes"] = [
@@ -1434,6 +1440,17 @@ def self_test() -> int:
         "revisit" in error or "assessment" in error
         for error in capsule_contract_errors(missing_revisit_evidence)
     )
+
+    for field, value in (("outcome", "failed"), ("exit_code", 9),
+                         ("termination", {"kind": "signal"}), ("spawn_error", True)):
+        mutated = copy.deepcopy(fully_passed)
+        mutated["final_aggregate"]["commands"][0][field] = value
+        assert capsule_contract_errors(mutated), field
+    for field, value in (("required_step_count", 3), ("phase_8_ready", False),
+                         ("status_counts", {"passed": 53, "failed": 1})):
+        mutated = copy.deepcopy(fully_passed)
+        mutated["official_v11"][field] = value
+        assert capsule_contract_errors(mutated), field
 
     archive_failed = copy.deepcopy(fully_passed)
     archive_failed["blocking_classification"] = "evidence_archive_verification_failed"

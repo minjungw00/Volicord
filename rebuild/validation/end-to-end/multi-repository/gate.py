@@ -655,14 +655,34 @@ def final_summary_view(summary: dict[str, Any]) -> dict[str, Any]:
 
 def exact_final_passed(summary: dict[str, Any], final_commands: Sequence[Sequence[str]]) -> bool:
     commands = summary.get("commands")
-    return (
+    return bool(
         summary.get("outcome") == "succeeded"
-        and summary.get("failure_count") == 0
-        and summary.get("command_count") == len(final_commands)
-        and isinstance(commands, list)
-        and len(commands) == len(final_commands)
-        and all(value.get("argv") == list(expected) for value, expected in zip(commands, final_commands))
+        and type(summary.get("failure_count")) is int and summary["failure_count"] == 0
+        and type(summary.get("command_count")) is int
+        and summary["command_count"] == len(final_commands)
+        and isinstance(commands, list) and len(commands) == len(final_commands)
+        and all(isinstance(value, dict)
+                and value.get("argv") == list(expected)
+                and value.get("outcome") == "succeeded"
+                and type(value.get("exit_code")) is int and value["exit_code"] == 0
+                and "termination" in value and value["termination"] is None
+                and "spawn_error" in value and value["spawn_error"] is None
+                for value, expected in zip(commands, final_commands))
     )
+
+
+def v11_passed(result: dict[str, Any] | None) -> bool:
+    if not isinstance(result, dict):
+        return False
+    spec = importlib.util.spec_from_file_location("gate_v11_validator", HARNESS)
+    assert spec is not None and spec.loader is not None
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
+    try:
+        harness.validate_result(result)
+    except (AssertionError, KeyError, TypeError, ValueError, AttributeError):
+        return False
+    return result["status"] == "passed" and result["phase_8_ready"] is True
 
 
 def provider_qualification_passed(
@@ -1081,20 +1101,15 @@ def orchestrate(
     }
     v11_path = output_directory / "result.json"
     v11_hash = sha256(v11_path) if v11_path.is_file() else None
-    v11_passed = (
+    v11_accepted = (
         v11_execution.get("exit_code", v11_execution.get("wrapper_exit_code")) == 0
-        and v11_result is not None
-        and v11_result.get("status") == "passed"
-        and v11_result.get("phase_8_ready") is True
-        and performance_module.accepted(v11_result.get("performance"))
-        and revisit_evidence_view(v11_result)[3]
-        and revisit_evidence_view(v11_result)[1] == []
+        and v11_passed(v11_result)
     )
     audit_passed = (
         audit_execution.get("exit_code", audit_execution.get("wrapper_exit_code")) == 0
         and audit.get("status") == "passed"
     )
-    blocking = None if v11_passed and audit_passed else (
+    blocking = None if v11_accepted and audit_passed else (
         "credential_retention_audit_failed" if not audit_passed else "v11_failed"
     )
     capsule = make_capsule(

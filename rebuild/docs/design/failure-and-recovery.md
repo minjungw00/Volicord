@@ -347,6 +347,13 @@ newer format을 결합해 다음을 확인한다.
 - Candidate Inspection failure가 promotion/deletion/retention/disposition mutation으로
   전파되지 않는 성질
 
+Qualification aggregates cannot erase failed, skipped, partial, unsupported, or
+environment-blocked required leaves. Final command process outcomes and V11 step
+statuses/counts remain authoritative; contradictory aggregate success or readiness
+is rejected by the maintained validator and gate consumers. A successful Codex
+process exit alone cannot establish tool success: the bounded authenticated health
+probe must supply structured completed-call and healthy exact-Project evidence.
+
 ## 10. Non-goals
 
 이 문서는 database, transaction engine, process supervisor, signal/tree cleanup library,

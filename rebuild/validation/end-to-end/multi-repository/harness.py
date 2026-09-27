@@ -324,15 +324,7 @@ def make_v11_result(
         for repository in repositories
         for value in repository.get("steps", {}).values()
     ]
-    steps_passed = bool(statuses and set(statuses) == {"passed"})
-    assessment_completed = (
-        revisit_assessment.get("decision_revisit_trigger_assessment")
-        == OFFICIAL_REVISIT_ASSESSMENT
-        and isinstance(revisit_assessment.get("active_decision_revisit_triggers"), list)
-    )
-    no_active_triggers = revisit_assessment.get("active_decision_revisit_triggers") == []
-    phase_8_ready = steps_passed and assessment_completed and no_active_triggers and (
-        performance is None or performance.get("status") == "passed")
+    phase_8_ready = v11_readiness(repositories, revisit_assessment, performance)
     result = {
         "schema_version": 1,
         "validation_id": "V11",
@@ -2960,6 +2952,40 @@ def rehearse_target(
     }
 
 
+def authenticated_target_passed(repository: dict[str, Any]) -> bool:
+    """Replay the bounded probe evidence for this repository's exact Project."""
+    try:
+        project_id = repository["project_id"]
+        if not isinstance(project_id, str) or not project_id:
+            return False
+        if repository["steps"]["project_binding"]["evidence"]["project_id"] != project_id:
+            return False
+        authenticated = repository["steps"]["codex_mcp_connection"]["evidence"]["authenticated"]
+        operation = authenticated["evidence"]["operation"]
+        if (authenticated["status"] != "passed" or type(operation.get("exit_code")) is not int
+            or operation["exit_code"] != 0 or operation.get("outcome") != "succeeded"
+            or operation.get("termination") is not None or operation.get("spawn_error") is not None):
+            return False
+        proof = validate_codex_probe(decoded(operation), project_id)
+        return proof == authenticated["evidence"]["probe"]
+    except (KeyError, TypeError, ValueError, OSError):
+        return False
+
+
+def v11_readiness(repositories, assessment, performance) -> bool:
+    return bool(
+        len(repositories) == 3
+        and [repository.get("class") for repository in repositories]
+        == ["volicord", "small-python", "polyglot-medium"]
+        and all(set(repository.get("steps", {})) == set(REQUIRED_STEPS)
+                and all(value.get("status") == "passed" for value in repository["steps"].values())
+                and authenticated_target_passed(repository) for repository in repositories)
+        and assessment.get("decision_revisit_trigger_assessment") == OFFICIAL_REVISIT_ASSESSMENT
+        and assessment.get("active_decision_revisit_triggers") == []
+        and performance_module.accepted(performance)
+    )
+
+
 def validate_result(result: dict[str, Any]) -> None:
     if result.get("schema_version") != 1:
         raise AssertionError("result schema_version must be 1")
@@ -2979,7 +3005,8 @@ def validate_result(result: dict[str, Any]) -> None:
                 raise AssertionError("invalid per-step status")
             statuses.append(value["status"])
     expected_counts = {status: statuses.count(status) for status in sorted(ALLOWED_STATUS)}
-    if result.get("counts") != expected_counts:
+    if (result.get("counts") != expected_counts
+        or any(type(value) is not int for value in result.get("counts", {}).values())):
         raise AssertionError("V11 result status counts do not match repository steps")
     assessment = result.get("decision_revisit_trigger_assessment")
     triggers = result.get("active_decision_revisit_triggers")
@@ -3032,15 +3059,10 @@ def validate_result(result: dict[str, Any]) -> None:
         qualified = performance_module.qualify(performance.get("observed", {}), performance_module.maintained_limits())
         if qualified != performance or (result.get("phase_8_ready") is True and qualified["status"] != "passed"):
             raise AssertionError("V11 performance evidence or readiness is inconsistent")
-    if result.get("status") == "passed":
-        for repository in repositories:
-            authenticated = (
-                repository["steps"]["codex_mcp_connection"]
-                .get("evidence", {})
-                .get("authenticated", {})
-            )
-            if authenticated.get("status") != "passed":
-                raise AssertionError("passed V11 result lacks authenticated target evidence")
+    expected_ready = v11_readiness(repositories, result, performance)
+    if (result.get("phase_8_ready") is not expected_ready
+        or result.get("status") != ("passed" if expected_ready else "failed")):
+        raise AssertionError("V11 aggregate verdict disagrees with required leaf evidence")
 
 
 def assert_required_steps_are_evidence_driven(

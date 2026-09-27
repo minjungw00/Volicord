@@ -931,6 +931,23 @@ action/target/effect/scope/revision/expiration match, user-response Source, sing
 rejection, no-dispatch-before-valid-confirmation, ordinary-action non-blocking 및
 indeterminate no-silent-retry behavior를 같은 integrated run에서 검증한다.
 
+V11 qualification truth is derived from all 54 required steps in the three target
+repositories. Counts must equal the actual leaf statuses; aggregate `passed` and
+`phase_8_ready = true` require every leaf to pass, maintained performance evidence,
+a completed no-trigger Decision assessment, and authenticated evidence for each
+exact Project. The gate consumes the maintained V11 validator rather than a
+separate top-level success predicate. Final success likewise requires each ordered
+exact argv once, numeric exit code 0, succeeded outcome, and no spawn error or
+termination; command/failure counts and aggregate outcome must agree with leaves.
+
+The bounded authenticated probe requires one completed successful `volicord` /
+`project_health` call with exact Project arguments in structured Codex CLI events,
+a completed turn, and a connected, healthy result with canonical/repository
+availability. Started-only, failed, text-only, conflicting result representations,
+and additional tool, shell, file-change, or search activity cannot qualify.
+The maintained positive fixture follows captured `codex exec --json` events;
+mutation controls exercise completion, identity, health, and action restrictions.
+
 ### V11 resource regression qualification
 
 Official V11은 `performance-budgets.json`의 maintained Linux regression ceiling을 함께

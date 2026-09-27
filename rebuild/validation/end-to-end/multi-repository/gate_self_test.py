@@ -207,6 +207,7 @@ class Owners:
                     "outcome": "failed" if failed else "succeeded",
                     "exit_code": 9 if failed else 0,
                     "termination": None,
+                    "spawn_error": None,
                     "duration_ms": 1.0,
                     "stdout": SECRET_SENTINELS[4],
                 }
@@ -299,13 +300,16 @@ class Owners:
                 name: harness.step(status, "synthetic gate fixture")
                 for name in harness.REQUIRED_STEPS
             }
-            steps["codex_mcp_connection"]["evidence"] = {
-                "authenticated": {
-                    "status": status,
-                    "summary": "synthetic-secret-must-not-be-copied",
-                }
-            }
-            repositories.append({"class": target, "steps": steps})
+            probe_stdout = output_directory / f"{target}-probe.jsonl"
+            probe_stdout.write_text((HERE / "fixtures/authenticated-project-health.jsonl").read_text())
+            operation = {"exit_code": 0, "outcome": "succeeded", "termination": None,
+                         "spawn_error": None, "stdout": str(probe_stdout)}
+            authenticated = harness.step(status, "synthetic-secret-must-not-be-copied",
+                operation=operation,
+                probe=harness.validate_codex_probe(probe_stdout.read_text(), "synthetic-project"))
+            steps["codex_mcp_connection"]["evidence"] = {"authenticated": authenticated}
+            steps["project_binding"]["evidence"] = {"project_id": "synthetic-project"}
+            repositories.append({"class": target, "project_id": "synthetic-project", "steps": steps})
         result = harness.make_v11_result(
             validated_production_head=candidate_head,
             final_gate_artifact=str(final_path),
@@ -530,6 +534,84 @@ def main() -> int:
         assert owners.preflight_path == owners.final_path and owners.preflight_path != old
         assert capsule["phase_8_ready"] is True
         assert capsule["official_v11"]["performance"] == owners.v11_result["performance"]
+        # Mutation controls preserve aggregate success while corrupting leaves.
+        accepted_mutations = []
+        original_final = json.loads(owners.final_path.read_text())
+        for label, mutation in (
+            ("failed-final-leaf", {"outcome": "failed", "exit_code": 9}),
+            ("nonzero-final-exit", {"exit_code": 9}),
+            ("terminated-final", {"termination": {"kind": "signal"}}),
+            ("spawn-failed-final", {"spawn_error": "synthetic failure"}),
+        ):
+            mutated = copy.deepcopy(original_final)
+            mutated["commands"][0].update(mutation)
+            if gate.exact_final_passed(mutated, FINAL_COMMANDS):
+                accepted_mutations.append(label)
+        for label, mutate in (
+            ("wrong-final-count", lambda value: value.update(command_count=2)),
+            ("wrong-final-failures", lambda value: value.update(failure_count=1)),
+            ("wrong-final-argv", lambda value: value["commands"][0].update(argv=["other"])),
+            ("missing-final", lambda value: value.update(commands=[])),
+            ("duplicate-final", lambda value: value["commands"].append(value["commands"][0])),
+        ):
+            mutated = copy.deepcopy(original_final)
+            mutate(mutated)
+            assert not gate.exact_final_passed(mutated, FINAL_COMMANDS), label
+        ordered = copy.deepcopy(original_final)
+        ordered["commands"].append(copy.deepcopy(ordered["commands"][0]))
+        ordered["commands"][1]["argv"] = ["second"]
+        ordered["command_count"] = 2
+        assert gate.exact_final_passed(ordered, (*FINAL_COMMANDS, ("second",)))
+        ordered["commands"].reverse()
+        assert not gate.exact_final_passed(ordered, (*FINAL_COMMANDS, ("second",)))
+        for target_index in range(3):
+            for name in harness.REQUIRED_STEPS:
+                for status in harness.ALLOWED_STATUS - {"passed"}:
+                    mutated = copy.deepcopy(owners.v11_result)
+                    mutated["repositories"][target_index]["steps"][name]["status"] = status
+                    mutated["counts"]["passed"] -= 1
+                    mutated["counts"][status] += 1
+                    try:
+                        harness.validate_result(mutated)
+                    except AssertionError:
+                        pass
+                    else:
+                        accepted_mutations.append(f"{target_index}/{name}/{status}")
+                    assert not gate.v11_passed(mutated)
+        for label, mutate in (
+            ("missing-performance", lambda value: value.pop("performance")),
+            ("wrong-counts", lambda value: value["counts"].update(passed=53)),
+            ("false-readiness", lambda value: value.update(phase_8_ready=False)),
+            ("missing-repository", lambda value: value["repositories"].pop()),
+            ("missing-authenticated", lambda value: value["repositories"][0]["steps"]
+                ["codex_mcp_connection"]["evidence"].pop("authenticated")),
+            ("wrong-authenticated-project", lambda value: value["repositories"][0]
+                .update(project_id="another-project")),
+            ("falsified-probe", lambda value: value["repositories"][0]["steps"]
+                ["codex_mcp_connection"]["evidence"]["authenticated"]["evidence"]
+                ["probe"].update(status="failed")),
+        ):
+            mutated = copy.deepcopy(owners.v11_result)
+            mutate(mutated)
+            assert not gate.v11_passed(mutated), label
+        no_performance = harness.make_v11_result(
+            validated_production_head=HEAD, final_gate_artifact=str(owners.final_path),
+            duration_ms=1, repositories=copy.deepcopy(owners.v11_result["repositories"]),
+            revisit_assessment=harness.read_decision_revisit_assessment())
+        assert no_performance["status"] == "failed" and no_performance["phase_8_ready"] is False
+        class FailedLeafOwners(Owners):
+            def v11(self, *args):
+                result, execution = super().v11(*args)
+                result["repositories"][0]["steps"]["ordinary_work"]["status"] = "failed"
+                result["counts"]["passed"] -= 1
+                result["counts"]["failed"] += 1
+                return result, execution
+        rejected, _ = run_orchestration(root / "failed-leaf-gate", admitted,
+                                        FailedLeafOwners(root / "failed-leaf-owners"))
+        if rejected["phase_8_ready"]:
+            accepted_mutations.append("failed-v11-leaf-gate")
+        if accepted_mutations:
+            raise AssertionError(f"contradictory aggregates accepted: {accepted_mutations}")
         for metric in harness.performance_module.METRICS:
             class FalsifiedPerformanceOwners(Owners):
                 def v11(self, *args):
@@ -583,6 +665,7 @@ def main() -> int:
             final_gate_artifact=str(owners.final_path),
             duration_ms=2.0,
             repositories=copy.deepcopy(owners.v11_result["repositories"]),
+            performance=copy.deepcopy(owners.v11_result["performance"]),
             revisit_assessment=harness.read_decision_revisit_assessment(),
         )
         assert gate_consumed_result_contract(owners.v11_result) == (
