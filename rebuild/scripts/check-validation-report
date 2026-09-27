@@ -653,7 +653,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         if official_started
         else (True, True, False)
     )
-    if blocking == "candidate_changed_during_qualification" and not official_started:
+    if blocking in {"candidate_changed_during_qualification", "contract_coverage_execution_failed"} and not official_started:
         expected_flow = (True, False, False)
     actual_flow = tuple(flow.get(key) for key in FLOW_KEYS)
     if actual_flow != expected_flow:
@@ -697,6 +697,11 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     elif not final_passed:
         if blocking != "final_failed" or provider_status != "not_run" or official_started or outcomes or audit_status != "not_run":
             errors.append("capsule final failure contains inconsistent V11 evidence")
+    elif blocking == "contract_coverage_execution_failed":
+        coverage = capsule.get("contract_coverage_execution", {})
+        if (coverage.get("status") != "failed" or provider_status != "not_run"
+            or official_started or outcomes or audit_status != "not_run" or phase_8_ready is not False):
+            errors.append("capsule contract execution failure contains inconsistent later-stage evidence")
     elif provider_status == "failed":
         if blocking != "provider_live_qualification_failed" or official_started or outcomes or audit_status != "not_run":
             errors.append("capsule provider failure contains inconsistent later-stage evidence")
@@ -1350,6 +1355,17 @@ def self_test() -> int:
         "phase_8_ready" in error
         for error in capsule_contract_errors(impossible_admission)
     )
+
+    coverage_failed = copy.deepcopy(fully_passed)
+    without_official_v11(coverage_failed)
+    without_provider(coverage_failed)
+    coverage_failed['blocking_classification'] = 'contract_coverage_execution_failed'
+    coverage_failed['contract_coverage_execution'] = {'status': 'failed'}
+    coverage_failed['gate_configuration']['same_session_artifact_flow'] = {
+        key: index == 0 for index, key in enumerate(FLOW_KEYS)}
+    assert check_capsule_semantics(self_test_report(coverage_failed), coverage_failed) == []
+    coverage_failed['contract_coverage_execution']['status'] = 'passed'
+    assert check_capsule_semantics(self_test_report(coverage_failed), coverage_failed)
 
     final_failed = copy.deepcopy(fully_passed)
     without_official_v11(final_failed)

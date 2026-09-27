@@ -629,6 +629,25 @@ def evaluate_admission(
     }
 
 
+def contract_execution_check(summary: dict[str, Any]) -> Check:
+    """Consume only the freshly returned, gate-owned Final metadata/test leaves."""
+    name = "contract_coverage_execution"
+    try:
+        spec = importlib.util.spec_from_file_location("gate_contract_coverage", CONTRACT_COVERAGE)
+        assert spec is not None and spec.loader is not None
+        coverage = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(coverage)
+        mapping = json.loads(coverage.DEFAULT_MAPPING.read_text(encoding="utf-8"))
+        metadata = json.loads(Path(summary['commands'][0]['stdout']).read_text(encoding="utf-8"))
+        coverage.validate_workspace_targets(mapping, metadata)
+        output = Path(summary['commands'][3]['stdout']).read_text(encoding="utf-8")
+        evidence = coverage.validate_execution(mapping, output)
+    except (AssertionError, OSError, KeyError, IndexError, TypeError, ValueError) as error:
+        return check(name, "failed", "mapped tests lack exact-candidate Final execution evidence",
+                     error_type=type(error).__name__)
+    return check(name, "passed", "mapped tests passed in the exact-candidate Final workspace suite", **evidence)
+
+
 def final_summary_view(summary: dict[str, Any]) -> dict[str, Any]:
     commands = summary.get("commands") if isinstance(summary.get("commands"), list) else []
     if not summary:
@@ -813,6 +832,7 @@ def make_capsule(
     v11_result_hash: str | None = None,
     credential_audit: dict[str, Any] | None = None,
     pre_final_check: Check | None = None,
+    contract_execution: Check | None = None,
     final_artifact_produced: bool = False,
     preflight_consumed_final_artifact: bool = False,
     official_v11_consumed_final_artifact: bool = False,
@@ -847,6 +867,8 @@ def make_capsule(
             },
         },
         "final_aggregate": final_view,
+        "contract_coverage_execution": contract_execution or check(
+            "contract_coverage_execution", "not_run", "Final workspace test execution has not qualified"),
         "final_summary_sha256": final_summary_hash,
         "live_provider_qualification": {
             "status": provider_qualification_status,
@@ -990,6 +1012,7 @@ def orchestrate(
     audit_owner: Callable[[Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     pre_final_check_owner: Callable[[str], Check] = pre_final_repository_check,
     candidate_check_owner: Callable[[str], Check] = pre_final_repository_check,
+    contract_execution_owner: Callable[[dict[str, Any]], Check] = contract_execution_check,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     continuity_checks = []
     def continuity(boundary):
@@ -1056,6 +1079,16 @@ def orchestrate(
         return candidate_failure(final_summary=final_summary, final_summary_hash=final_hash,
                                  pre_final_check=pre_final, final_artifact_produced=True)
 
+    contract_execution = contract_execution_owner(final_summary)
+    if contract_execution.get("status") != "passed":
+        return make_capsule(
+            admission=admission, candidate_head=candidate_head,
+            blocking_classification="contract_coverage_execution_failed",
+            final_summary=final_summary, final_summary_hash=final_hash,
+            pre_final_check=pre_final, final_artifact_produced=True,
+            contract_execution=contract_execution,
+        ), counts
+
     counts["provider_live_qualification"] += 1
     provider_qualification, provider_execution, provider_path = provider_owner(candidate_head)
     provider_hash = sha256(provider_path) if provider_path.is_file() else None
@@ -1072,6 +1105,7 @@ def orchestrate(
             blocking_classification="provider_live_qualification_failed",
             final_summary=final_summary,
             final_summary_hash=final_hash,
+            contract_execution=contract_execution,
             provider_qualification_hash=provider_hash,
             provider_qualification_status="failed",
             pre_final_check=pre_final,
@@ -1081,7 +1115,7 @@ def orchestrate(
     if not continuity("before_v11"):
         return candidate_failure(final_summary=final_summary, final_summary_hash=final_hash,
             provider_qualification=provider_qualification, provider_qualification_hash=provider_hash,
-            provider_qualification_status="passed", pre_final_check=pre_final, final_artifact_produced=True)
+            provider_qualification_status="passed", pre_final_check=pre_final, final_artifact_produced=True, contract_execution=contract_execution)
 
     counts["preflight"] += 1
     preflight, preflight_execution = preflight_owner(candidate_head, final_path)
@@ -1093,6 +1127,7 @@ def orchestrate(
             final_summary=final_summary,
             final_summary_hash=final_hash,
             provider_qualification=provider_qualification,
+            contract_execution=contract_execution,
             provider_qualification_hash=provider_hash,
             provider_qualification_status="passed",
             pre_final_check=pre_final,
@@ -1145,6 +1180,7 @@ def orchestrate(
         final_summary=final_summary,
         final_summary_hash=final_hash,
         provider_qualification=provider_qualification,
+        contract_execution=contract_execution,
         provider_qualification_hash=provider_hash,
         provider_qualification_status="passed",
         v11_result=v11_result,

@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "execution_owner": "exact_candidate_final_workspace_tests",
   "contracts": [
     {
       "id": "canonical-forgetting-local-closure",

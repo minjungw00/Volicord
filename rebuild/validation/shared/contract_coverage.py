@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import tempfile
 from pathlib import Path
 import re
 from typing import Any
@@ -16,7 +17,93 @@ DEFAULT_MAPPING = Path(__file__).with_name("contract-coverage.json")
 ENTRYPOINTS = {"local_operations", "cli", "mcp", "viewer"}
 
 
+# Only direct integration-test declarations are mapped. This small lexical mask
+# removes comments and literals, not Rust semantics; Cargo remains the compiler.
+def rust_code(source: str) -> str:
+    token = re.compile(r"""//[^\n]*|/\*|(?:b?r)(#*)"|b?"|b?'(?:\\.|[^'\\\n])'""")
+    chars = list(source)
+    offset = 0
+    while match := token.search(source, offset):
+        start, end = match.span()
+        value = match.group()
+        if value == "/*":
+            depth = 1
+            while depth:
+                nested = re.search(r"/\*|\*/", source[end:])
+                if nested is None:
+                    raise AssertionError("unterminated Rust block comment")
+                end += nested.end()
+                depth += 1 if nested.group() == "/*" else -1
+        elif match.group(1) is not None:
+            closing = '"' + match.group(1)
+            stop = source.find(closing, end)
+            if stop < 0:
+                raise AssertionError("unterminated Rust raw string")
+            end = stop + len(closing)
+        elif value in {'"', 'b"'}:
+            closing = re.compile(r'\\.|"').search(source, end)
+            while closing is not None and closing.group() != '"':
+                closing = re.compile(r'\\.|"').search(source, closing.end())
+            if closing is None:
+                raise AssertionError("unterminated Rust string")
+            end = closing.end()
+        chars[start:end] = ['\n' if c == '\n' else ' ' for c in source[start:end]]
+        offset = end
+    return ''.join(chars)
+
+
+def executable_test(source: str, name: str) -> bool:
+    code = rust_code(source)
+    # Reject conditional crate admission. Mapped functions use the maintained
+    # plain #[test] shape; cfg_attr, ignore, custom harness attributes and macro
+    # declarations are deliberately unsupported rather than guessed executable.
+    if re.search(r"#!\s*\[\s*(?:cfg|cfg_attr)\b", code):
+        return False
+    declarations = list(re.finditer(
+        rf"(?P<attrs>(?:#\s*\[[^\[\]]*\]\s*)*)"
+        rf"(?:pub(?:\([^)]*\))?\s+)?fn\s+{re.escape(name)}\s*\(\s*\)", code))
+    if len(declarations) != 1:
+        return False
+    declaration = declarations[0]
+    attributes = re.findall(r"#\s*\[\s*([^]]*?)\s*\]", declaration['attrs'])
+    # Depth across all delimiters also excludes macro token trees and modules.
+    prefix = code[:declaration.start()]
+    depth = sum(prefix.count(c) for c in '({[') - sum(prefix.count(c) for c in ')}]')
+    return depth == 0 and not prefix.rstrip().endswith(']') and attributes == ['test']
+
+
+def validate_workspace_targets(mapping: dict[str, Any], metadata: dict[str, Any], root: Path = ROOT) -> None:
+    members = set(metadata['workspace_members'])
+    targets = {
+        Path(target['src_path']).resolve()
+        for package in metadata['packages'] if package['id'] in members
+        for target in package['targets'] if target['kind'] == ['test'] and target['test'] is True
+    }
+    for contract in mapping['contracts']:
+        for _, relative, _ in contract['evidence']:
+            if (root / relative).resolve() not in targets:
+                raise AssertionError(f"mapped source {relative} is absent from Final workspace test targets")
+
+
+def validate_execution(mapping: dict[str, Any], stdout: str, root: Path = ROOT) -> dict[str, Any]:
+    """Require libtest success records from the gate-owned workspace test leaf.
+
+    Static registration and runtime success are separate evidence. Neither checks
+    whether a test body adequately expresses its mapped domain contract.
+    """
+    validate_mapping(mapping, root)
+    required = sorted({item[2] for contract in mapping['contracts'] for item in contract['evidence']})
+    records = re.findall(r'^test ([A-Za-z_][A-Za-z_0-9:]*) \.\.\. (ok|ignored|FAILED)(?: [^\n]*)?$', stdout, re.M)
+    for name in required:
+        outcomes = [outcome for observed, outcome in records if observed == name]
+        if outcomes != ['ok']:
+            raise AssertionError(f"mapped test {name} lacks one successful workspace execution: {outcomes}")
+    return {"execution_owner": "exact_candidate_final_workspace_tests", "mapped_test_count": len(required)}
+
+
 def validate_mapping(mapping: dict[str, Any], root: Path = ROOT) -> None:
+    if mapping.get("execution_owner") != "exact_candidate_final_workspace_tests":
+        raise AssertionError("contract coverage must name the exact-candidate Final workspace execution owner")
     if mapping.get("schema_version") != 1:
         raise AssertionError("contract coverage schema_version must be 1")
     contracts = mapping.get("contracts")
@@ -61,8 +148,10 @@ def validate_mapping(mapping: dict[str, Any], root: Path = ROOT) -> None:
             if not path.is_file() or not path.resolve().is_relative_to((root / "rebuild/crates").resolve()):
                 raise AssertionError(f"contract {identifier} references invalid Production test source")
             source = path.read_text(encoding="utf-8")
-            if re.search(rf"\bfn\s+{re.escape(test_name)}\s*\(", source) is None:
-                raise AssertionError(f"contract {identifier} references missing test {test_name}")
+            if path.suffix != '.rs' or path.parent.name != 'tests':
+                raise AssertionError("mapped evidence must be a direct Rust integration-test source")
+            if not executable_test(source, test_name):
+                raise AssertionError(f"contract {identifier} references non-executable or ignored test {test_name}")
             covered.add(entrypoint)
         missing = set(required) - covered
         if missing:
@@ -141,6 +230,45 @@ def self_test(mapping: dict[str, Any]) -> None:
         lambda: validate_mapping(missing_entrypoint),
         "missing required product entrypoint was accepted",
     )
+
+    with tempfile.TemporaryDirectory(prefix="contract-coverage-") as temporary:
+        root = Path(temporary)
+        relative = "rebuild/crates/example/tests/evidence.rs"
+        path = root / relative
+        path.parent.mkdir(parents=True)
+        probe = copy.deepcopy(mapping)
+        probe['contracts'] = [copy.deepcopy(mapping['contracts'][0])]
+        probe['contracts'][0]['required_entrypoints'] = ['cli']
+        probe['contracts'][0]['evidence'] = [['cli', relative, 'mapped_test']]
+        positive = '#[test]\nfn mapped_test() {}'
+        for source in (
+            '', 'fn mapped_test() {}', '// fn mapped_test() {}',
+            '/* #[test] fn mapped_test() {} */',
+            '/* nested /* comment */ #[test] fn mapped_test() {} */',
+            'const S: &str = r###"#[test] fn mapped_test() {}"###;',
+            '#[test] #[ignore] fn mapped_test() {}',
+            '#[ignore] #[test] fn mapped_test() {}',
+            '#[test] #[ignore = "reason"] fn mapped_test() {}',
+            '#[cfg_attr(test, ignore)] #[test] fn mapped_test() {}',
+            '#![cfg(any())]\n' + positive,
+            'mod nested { ' + positive + ' }',
+            'macro_rules! hidden { () => (' + positive + '); }',
+        ):
+            path.write_text(source)
+            expect_rejected(lambda: validate_mapping(probe, root), f"non-executable evidence accepted: {source}")
+        path.write_text('// ignored comment\n/* #[ignore] */\n' + positive)
+        validate_mapping(probe, root)
+        metadata = {'workspace_members': ['example'], 'packages': [
+            {'id': 'example', 'targets': [{'src_path': str(path), 'kind': ['test'], 'test': True}]}]}
+        validate_workspace_targets(probe, metadata, root)
+        expect_rejected(lambda: validate_workspace_targets(probe, metadata | {'workspace_members': []}, root),
+                        'omitted workspace test target accepted')
+        metadata['packages'][0]['targets'][0]['test'] = False
+        expect_rejected(lambda: validate_workspace_targets(probe, metadata, root), 'disabled test target accepted')
+        validate_execution(probe, 'test mapped_test ... ok\n', root)
+        for output in ('', 'test mapped_test ... ignored\n', 'test other ... ok\n',
+                       'test mapped_test ... FAILED\n', 'test mapped_test ... ok\ntest mapped_test ... ok\n'):
+            expect_rejected(lambda: validate_execution(probe, output, root), 'omitted/ignored/ambiguous execution accepted')
 
     complete = {
         "state": "completed",

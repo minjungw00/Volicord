@@ -25,6 +25,7 @@ def load_module(name: str, path: Path) -> Any:
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load {path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -347,13 +348,14 @@ class Owners:
         }, {"exit_code": 0}
 
 
-def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners, candidate_checker=None) -> tuple[dict[str, Any], dict[str, int]]:
+def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners, candidate_checker=None, execution_checker=None) -> tuple[dict[str, Any], dict[str, int]]:
     root.mkdir(parents=True, exist_ok=True)
     return gate.orchestrate(
         gate_directory=root,
         admission=admitted,
         final_commands=FINAL_COMMANDS,
         final_owner=owners.final,
+        contract_execution_owner=execution_checker or (lambda summary: passed("contract_coverage_execution", execution_owner="exact_candidate_final_workspace_tests", mapped_test_count=12)),
         provider_owner=owners.provider,
         preflight_owner=owners.preflight,
         v11_owner=owners.v11,
@@ -481,9 +483,41 @@ def assert_dirty_candidate_admission(root: Path) -> None:
     assert all(count == 0 for count in owners.counts.values())
 
 
+def assert_contract_execution(root: Path) -> None:
+    root.mkdir(parents=True)
+    mapping = json.loads(gate.CONTRACT_COVERAGE.with_name('contract-coverage.json').read_text())
+    sources = sorted({item[1] for contract in mapping['contracts'] for item in contract['evidence']})
+    names = sorted({item[2] for contract in mapping['contracts'] for item in contract['evidence']})
+    metadata_path, output_path = root / 'metadata.json', root / 'tests.log'
+    metadata = {'workspace_members': ['fixture'], 'packages': [
+        {'id': 'fixture', 'targets': [{'src_path': str(ROOT / source), 'kind': ['test'], 'test': True}
+                                    for source in sources]}]}
+    metadata_path.write_text(json.dumps(metadata))
+    output_path.write_text(''.join(f'test {name} ... ok\n' for name in names))
+    summary = {'commands': [{'stdout': str(metadata_path)}, {}, {}, {'stdout': str(output_path)}]}
+    assert gate.contract_execution_check(summary)['status'] == 'passed'
+    for output in ('', ''.join(f'test {name} ... ignored\n' for name in names)):
+        output_path.write_text(output)
+        assert gate.contract_execution_check(summary)['status'] == 'failed'
+    output_path.write_text(''.join(f'test {name} ... ok\n' for name in names))
+    metadata_path.write_text(json.dumps(metadata | {'workspace_members': []}))
+    assert gate.contract_execution_check(summary)['status'] == 'failed'
+    admitted = admission(root / 'admission', authorization=gate.AUTHORIZATION_ASSERTION,
+        provider_authorization=gate.PROVIDER_AUTHORIZATION_ASSERTION, provider_model='synthetic-model')
+    owners = Owners(root / 'owners')
+    capsule, counts = run_orchestration(root / 'gate', admitted, owners,
+        execution_checker=lambda final: gate.check('contract_coverage_execution', 'failed', 'omitted mapped test'))
+    assert capsule['blocking_classification'] == 'contract_coverage_execution_failed'
+    assert capsule['contract_coverage_execution']['status'] == 'failed'
+    assert counts == {'final': 1, 'provider_live_qualification': 0, 'preflight': 0,
+                      'official_v11': 0, 'credential_audit': 0}
+    assert owners.counts == {'final': 1, 'provider': 0, 'preflight': 0, 'v11': 0, 'audit': 0}
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-gate-self-test-") as directory:
         root = Path(directory)
+        assert_contract_execution(root / "contract-execution")
         assert_maintained_contract_admission(root / "maintained-contracts")
         assert_dirty_candidate_admission(root / "dirty-candidate")
 
