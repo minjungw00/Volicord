@@ -11,7 +11,13 @@ import tempfile
 import time
 
 
-def await_file(path, *, process=None, timeout=2):
+READINESS_TIMEOUT_SECONDS = 2
+RPC_TIMEOUT_SECONDS = .15
+COOPERATIVE_EXIT_GRACE_SECONDS = 1
+FORCED_CLEANUP_GRACE_SECONDS = .04
+
+
+def await_file(path, *, process=None, timeout=READINESS_TIMEOUT_SECONDS):
     deadline = time.monotonic() + timeout
     while not path.exists():
         if process is not None and process.poll() is not None:
@@ -27,7 +33,8 @@ def self_check(h):
         env = dict(os.environ)
         sequence = 0
 
-        def server(body, *, startup="", readiness_timeout=2):
+        def server(body, *, startup="", readiness_timeout=READINESS_TIMEOUT_SECONDS,
+                   cleanup_grace_seconds=COOPERATIVE_EXIT_GRACE_SECONDS):
             nonlocal sequence
             sequence += 1
             binary = root / f"server-{sequence}"
@@ -38,7 +45,10 @@ def self_check(h):
                               "from pathlib import Path\n" + startup
                               + f"Path({str(ready)!r}).touch()\n" + body)
             binary.chmod(0o755)
-            host = h.Mcp(binary, env, rpc_timeout_seconds=.15, cleanup_grace_seconds=.04)
+            # Normal/protocol fixtures need time for cooperative interpreter exit.
+            # Readiness-failure and timeout fixtures explicitly opt into fast cleanup.
+            host = h.Mcp(binary, env, rpc_timeout_seconds=RPC_TIMEOUT_SECONDS,
+                         cleanup_grace_seconds=cleanup_grace_seconds)
             try:
                 await_file(ready, process=host.process, timeout=readiness_timeout)
             except BaseException as error:
@@ -52,6 +62,28 @@ def self_check(h):
                 raise
             return host
 
+        # EOF acknowledges close(), so the injected teardown starts after the
+        # parent receives the response and closes stdin, regardless of scheduling.
+        # It exceeds forced cleanup's 40 ms but fits a cooperative one-second grace.
+        teardown = root / "cooperative-exit.json"
+        host = server("request=json.loads(sys.stdin.readline())\n"
+                      "print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{}}),flush=True)\n"
+                      "assert sys.stdin.read() == ''\n"
+                      "started=time.monotonic()\ntime.sleep(.2)\n"
+                      f"Path({str(teardown)!r}).write_text(json.dumps({{'duration_seconds':time.monotonic()-started}}))\n")
+        try:
+            assert host.rpc("initialize", {})["result"] == {}
+            assert host.process.poll() is None
+        finally:
+            evidence = host.close()
+        assert evidence["exit_code"] == 0, evidence
+        assert evidence["termination"] is None and evidence["stop_cause"] is None
+        assert evidence["cleanup"]["complete"] and evidence["cleanup"]["signals_sent"] == []
+        assert FORCED_CLEANUP_GRACE_SECONDS < .2 < COOPERATIVE_EXIT_GRACE_SECONDS
+        assert .2 <= json.loads(teardown.read_text())["duration_seconds"] < COOPERATIVE_EXIT_GRACE_SECONDS
+        assert len(evidence["stdout"].splitlines()) == 1 and evidence["stderr"] == ""
+        json.dumps(evidence)
+
         # This delay is the injected regression condition, not a race workaround:
         # readiness takes longer than the unchanged short RPC budget.
         started = time.monotonic()
@@ -64,7 +96,8 @@ def self_check(h):
         finally:
             evidence = host.close()
         assert evidence["exit_code"] == 0 and evidence["cleanup"]["complete"]
-        assert evidence["stop_cause"] is None
+        assert evidence["stop_cause"] is None and evidence["termination"] is None
+        assert evidence["cleanup"]["signals_sent"] == []
 
         # Crashed and never-ready fixtures fail at readiness and clean up even
         # though no RPC has been attempted.
@@ -76,7 +109,8 @@ def self_check(h):
             active = set(h.Mcp.active)
             started = time.monotonic()
             try:
-                server("", startup=startup, readiness_timeout=timeout)
+                server("", startup=startup, readiness_timeout=timeout,
+                       cleanup_grace_seconds=FORCED_CLEANUP_GRACE_SECONDS)
             except AssertionError as error:
                 assert "synthetic MCP readiness failed" in str(error)
                 assert diagnostic in str(error) and "cleanup_complete=True" in str(error)
@@ -116,6 +150,8 @@ def self_check(h):
             finally:
                 evidence = host.close()
             assert evidence["stop_cause"]["kind"] == "rpc_failure"
+            assert evidence["exit_code"] == 0 and evidence["termination"] is None
+            assert evidence["cleanup"]["signals_sent"] == []
             assert evidence["cleanup"]["complete"]
             json.dumps(evidence)
 
@@ -124,7 +160,7 @@ def self_check(h):
             ("sys.stdin.readline()\nsys.stdout.write('{');sys.stdout.flush()\nsignal.pause()\n", {}),
             ("signal.pause()\n", {"large": "x" * (1024 * 1024)}),
         ]:
-            host = server(body)
+            host = server(body, cleanup_grace_seconds=FORCED_CLEANUP_GRACE_SECONDS)
             started = time.monotonic()
             try:
                 host.rpc("initialize", params)
@@ -134,10 +170,13 @@ def self_check(h):
                 raise AssertionError("silent, incomplete or blocked-write MCP did not time out")
             finally:
                 evidence = host.close()
-            assert host.rpc_timeout_seconds == .15
+            assert host.rpc_timeout_seconds == RPC_TIMEOUT_SECONDS == .15
             assert .15 <= time.monotonic() - started < 2
             assert evidence["stdout"] == ("{" if "sys.stdout.write" in body else "")
             assert evidence["stop_cause"]["kind"] == "timeout"
+            assert host.cleanup_grace_seconds == FORCED_CLEANUP_GRACE_SECONDS
+            assert evidence["termination"] == {"kind": "signal", "number": 15}
+            assert evidence["cleanup"]["signals_sent"] == [15]
             assert evidence["cleanup"]["complete"]
 
         host = server("for line in sys.stdin:\n request=json.loads(line)\n os.write(2,b'e'*1048576)\n print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{'structuredContent':{'ok':True},'isError':False}}),flush=True)\n")
@@ -145,6 +184,9 @@ def self_check(h):
         assert host.tool("fake", {}) == ({"ok": True}, True)
         evidence = host.close()
         assert evidence["stderr"] == "e" * 2097152
+        assert evidence["termination"] is None and evidence["stop_cause"] is None
+        assert evidence["cleanup"]["signals_sent"] == []
+        json.dumps(evidence)
         assert len(evidence["stdout"].splitlines()) == 2
         assert evidence["exit_code"] == 0 and evidence["cleanup"]["complete"]
         for result in ({}, {"structuredContent": [], "isError": False},
@@ -155,7 +197,10 @@ def self_check(h):
             try:
                 assert host.tool("fake", {})[1] is False
             finally:
-                host.close()
+                evidence = host.close()
+            assert evidence["exit_code"] == 0 and evidence["termination"] is None
+            assert evidence["cleanup"]["complete"] and evidence["cleanup"]["signals_sent"] == []
+            json.dumps(evidence)
 
         recorder = h.Recorder(root / "evidence")
         success = recorder.run("success", [sys.executable, "-B", "-c",
@@ -179,7 +224,7 @@ def self_check(h):
             source += "print('before-stop',flush=True); print('error-before-stop',file=sys.stderr,flush=True); signal.pause()"
             started = time.monotonic()
             result = recorder.run(mode, [sys.executable, "-B", "-c", source], env,
-                                  timeout=.15, cleanup_grace_seconds=.04)
+                                  timeout=.15, cleanup_grace_seconds=FORCED_CLEANUP_GRACE_SECONDS)
             assert time.monotonic() - started < 1
             assert result["stop_cause"] == {"kind": "timeout", "timeout_seconds": .15}
             assert result["outcome"] == "terminated" and result["cleanup"]["complete"]
@@ -206,7 +251,8 @@ def self_check(h):
                       "h=importlib.util.module_from_spec(s);s.loader.exec_module(h); "
                       "signal.signal(signal.SIGTERM,h.interrupted_by_signal); "
                       "h.Recorder(Path(" + repr(str(evidence_root)) + ")).run('interrupted',"
-                      "[sys.executable,'-B','-c'," + repr(command) + "],dict(os.environ),cleanup_grace_seconds=.04)")
+                      "[sys.executable,'-B','-c'," + repr(command)
+                      + f"],dict(os.environ),cleanup_grace_seconds={FORCED_CLEANUP_GRACE_SECONDS!r})")
             parent = subprocess.Popen([sys.executable, "-B", "-c", source],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                       start_new_session=True)
