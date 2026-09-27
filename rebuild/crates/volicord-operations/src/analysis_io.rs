@@ -305,7 +305,16 @@ fn read_analysis_cache_value<T: serde::de::DeserializeOwned>(input: impl Read) -
     }
     let decoder = zstd::stream::read::Decoder::new(reader)
         .map_err(|error| Error::with_source("cannot open Analysis read cache", error))?;
-    rmp_serde::from_read(decoder)
+    decode_analysis_cache_value(decoder)
+}
+
+fn decode_analysis_cache_value<T: serde::de::DeserializeOwned>(
+    input: impl Read,
+) -> Result<T, Error> {
+    // MessagePack requests small headers and scalar reads. Buffer the decoded
+    // stream as well as the compressed input, keeping memory bounded while
+    // avoiding a decompressor call for every field of a large graph.
+    rmp_serde::from_read(BufReader::with_capacity(1024 * 1024, input))
         .map_err(|error| Error::with_source("cannot decode Analysis read cache", error))
 }
 
@@ -936,6 +945,49 @@ mod tests {
             Error::with_source("cannot create legacy cache test value", error)
         })?)?;
         assert!(read_analysis_cache_value::<Vec<String>>(legacy.as_slice()).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn analysis_cache_batches_decoded_reads_and_rejects_truncation() -> Result<(), Error> {
+        struct ObservedRead<'a> {
+            remaining: &'a [u8],
+            calls: Rc<Cell<usize>>,
+            largest_read: Rc<Cell<usize>>,
+        }
+
+        impl Read for ObservedRead<'_> {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                self.calls.set(self.calls.get() + 1);
+                self.largest_read
+                    .set(self.largest_read.get().max(output.len()));
+                self.remaining.read(output)
+            }
+        }
+
+        let values = (0..120_000)
+            .map(|index| format!("repository-entity-{index:08}"))
+            .collect::<Vec<_>>();
+        let encoded = rmp_serde::to_vec_named(&values)
+            .map_err(|error| Error::with_source("cannot encode cache read fixture", error))?;
+        let calls = Rc::new(Cell::new(0));
+        let largest_read = Rc::new(Cell::new(0));
+        let decoded: Vec<String> = decode_analysis_cache_value(ObservedRead {
+            remaining: &encoded,
+            calls: Rc::clone(&calls),
+            largest_read: Rc::clone(&largest_read),
+        })?;
+        assert_eq!(decoded, values);
+        assert!(calls.get() <= encoded.len() / (1024 * 1024) + 2);
+        assert_eq!(largest_read.get(), 1024 * 1024);
+        assert!(decode_analysis_cache_value::<Vec<String>>(&encoded[..encoded.len() - 1]).is_err());
+
+        let mut compressed = Vec::new();
+        write_analysis_cache_value(&mut compressed, &values)?;
+        assert!(
+            read_analysis_cache_value::<Vec<String>>(&compressed[..compressed.len() / 2]).is_err()
+        );
+        assert!(read_analysis_cache_value::<Vec<u64>>(compressed.as_slice()).is_err());
         Ok(())
     }
 
