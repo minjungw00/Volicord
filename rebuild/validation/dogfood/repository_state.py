@@ -25,7 +25,7 @@ def encoded(value):
     return (json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":")) + "\n").encode()
 
 
-def git(repository, *arguments):
+def git(repository, *arguments, allowed_returncodes=(0,)):
     result = subprocess.run(
         ["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c",
          "core.quotePath=true", *arguments], cwd=repository,
@@ -33,7 +33,7 @@ def git(repository, *arguments):
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         check=False,
     )
-    if result.returncode:
+    if result.returncode not in allowed_returncodes:
         raise StateError("cannot attest Git repository: " + result.stderr.decode(errors="replace"))
     return result.stdout
 
@@ -47,7 +47,31 @@ def path_text(raw):
     return value
 
 
-def file_state(repository, name, *, missing_allowed=False, replacement_leaves=()):
+def ignored_path(repository, name):
+    # Check one path's eligibility without enumerating or reading ignored content.
+    return bool(git(repository, "check-ignore", "--no-index", "--", name,
+        allowed_returncodes=(0, 1)))
+
+
+def check_replacement_directory(repository, name, replacement_leaves):
+    # Git may omit special files from its untracked listing. Check metadata,
+    # including empty containers, without turning excluded bytes into evidence.
+    for child in sorted((repository / name).iterdir()):
+        child_name = path_text(os.fsencode(child.relative_to(repository).as_posix()))
+        mode = child.lstat().st_mode
+        if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode) or stat.S_ISLNK(mode)):
+            raise StateError("unsupported repository entry (including submodule or special file)")
+        if stat.S_ISLNK(mode) and not child.resolve().is_relative_to(repository):
+            raise StateError("unexpected repository symlink escape")
+        if ignored_path(repository, child_name):
+            continue
+        if stat.S_ISDIR(mode):
+            check_replacement_directory(repository, child_name, replacement_leaves)
+        elif child_name not in replacement_leaves:
+            raise StateError("missing attested repository replacement file")
+
+
+def file_state(repository, name, *, missing_allowed=False, replacement_leaves=(), git_deleted=False):
     path = repository / name
     # Never traverse a directory symlink, even one currently pointing inside.
     parent = repository
@@ -60,9 +84,14 @@ def file_state(repository, name, *, missing_allowed=False, replacement_leaves=()
         if stat.S_ISLNK(parent_mode):
             raise StateError("unexpected repository path escape")
         if not stat.S_ISDIR(parent_mode):
-            # A Git-deleted leaf may be blocked by an attested regular ancestor.
-            # Never traverse that replacement or treat a special object as deletion.
-            if missing_allowed and stat.S_ISREG(parent_mode) and parent.relative_to(repository).as_posix() in replacement_leaves:
+            # A regular replacement may be attested or intentionally ignored.
+            # Git deletion proof is independent of that replacement's eligibility.
+            # Never traverse symlinks or treat a special object as deletion.
+            parent_name = parent.relative_to(repository).as_posix()
+            if missing_allowed and stat.S_ISREG(parent_mode) and (
+                parent_name in replacement_leaves or
+                (git_deleted and ignored_path(repository, parent_name))
+            ):
                 return {"path": name, "state": "deleted"}
             raise StateError("unsupported repository entry (including submodule or special file)")
     try:
@@ -77,11 +106,15 @@ def file_state(repository, name, *, missing_allowed=False, replacement_leaves=()
         content = os.fsencode(os.readlink(path))
         kind = "symlink"
     elif stat.S_ISREG(mode):
+        if missing_allowed and git_deleted and ignored_path(repository, name):
+            return {"path": name, "state": "deleted"}
         content = path.read_bytes()
         kind = "executable" if mode & 0o111 else "file"
-    elif stat.S_ISDIR(mode) and missing_allowed and any(leaf.startswith(name + "/") for leaf in replacement_leaves):
-        # Only a deleted historical/index leaf can now be a directory container,
-        # and its replacement descendants must already have passed file checks.
+    elif stat.S_ISDIR(mode) and missing_allowed and git_deleted:
+        # Git proves this historical/index leaf was deleted. Current nonignored
+        # descendants have already passed file checks; empty directories and
+        # ignored descendants create no attested content objects.
+        check_replacement_directory(repository, name, replacement_leaves)
         return {"path": name, "state": "deleted"}
     else:
         raise StateError("unsupported repository entry (including submodule or special file)")
@@ -130,7 +163,7 @@ def observe(repository: Path):
     # deleted in the worktree are historical paths, not current filesystem leaves.
     current = {name: file_state(repository, name) for name in sorted((index_names - deleted_index) | set(untracked_names))}
     tracked = [current[name] if name in current else file_state(repository, name,
-        missing_allowed=name in deleted, replacement_leaves=current)
+        missing_allowed=name in deleted, replacement_leaves=current, git_deleted=name in deleted)
         for name in sorted(head_names | index_names)]
     untracked = [current[name] for name in untracked_names]
     options = ("--binary", "--full-index", "--no-ext-diff", "--no-textconv", "--no-renames", "--src-prefix=a/", "--dst-prefix=b/")

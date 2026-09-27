@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+import socket
 from pathlib import Path
 from types import SimpleNamespace
 import subprocess
@@ -47,12 +48,19 @@ class RepositoryStateTests(unittest.TestCase):
         return {str(path.relative_to(self.repo)): path.read_bytes()
             for path in self.repo.rglob("*") if path.is_file() and ".git" not in path.relative_to(self.repo).parts}
 
-    def assert_replacement(self, historical, replacements, *, staged):
+    def assert_replacement(self, historical, replacements, *, staged, excluded=()):
         head_before = self.git("rev-parse", "HEAD")
         index_before = (self.repo / ".git/index").read_bytes()
         status_before = self.git("status", "--porcelain=v1", "-z", "--untracked-files=all")
         files_before = self.worktree_bytes()
-        captured, patches = state.observe(self.repo)
+        read_bytes = Path.read_bytes
+        def boundary_read(path):
+            self.assertNotIn(path.relative_to(self.repo).as_posix(), excluded,
+                "ignored replacement bytes must not be read by attestation")
+            return read_bytes(path)
+        with mock.patch.object(Path, "read_bytes", autospec=True, side_effect=boundary_read):
+            captured, patches = state.observe(self.repo)
+            state.verify(self.repo, captured)
         tracked = {item["path"]: item for item in captured["tracked"]}
         untracked = {item["path"]: item for item in captured["untracked"]}
         statuses = {item["path"]: item for item in captured["status"]}
@@ -68,11 +76,19 @@ class RepositoryStateTests(unittest.TestCase):
             self.assertEqual(statuses[name], {"path": name,
                 "index": "A" if staged else "?", "worktree": " " if staged else "?"})
             self.assertEqual(name in indexed, staged)
+        for name in excluded:
+            self.assertNotIn(name, untracked)
+            self.assertNotIn(name, indexed)
+            if name not in historical:
+                self.assertNotIn(name, tracked)
+                self.assertNotIn(name, statuses)
+            self.assertNotIn(files_before[name], patches["staged"] + patches["unstaged"])
         self.assertFalse(captured["workspace_clean"])
         self.assertEqual(captured["schema_version"], 1)
         self.assertIn(b"deleted file mode 100644", patches["staged" if staged else "unstaged"])
         if staged:
-            self.assertIn(b"new file mode 100644", patches["staged"])
+            if replacements:
+                self.assertIn(b"new file mode 100644", patches["staged"])
             self.assertEqual(patches["unstaged"], b"")
         else:
             self.assertEqual(patches["staged"], b"")
@@ -98,7 +114,14 @@ class RepositoryStateTests(unittest.TestCase):
         self.assertEqual((self.repo / ".git/index").read_bytes(), index_before)
         self.assertEqual(self.git("status", "--porcelain=v1", "-z", "--untracked-files=all"), status_before)
         self.assertEqual(self.worktree_bytes(), files_before)
-        name, original = next(iter(replacements.items()))
+        for name in excluded:
+            original = (self.repo / name).read_bytes()
+            (self.repo / name).write_bytes(original + b"ignored change")
+            self.assertEqual(state.observe(self.repo), (captured, patches))
+            state.verify(self.repo, captured)
+            campaign.verify_final_repository_states_for_publication(evidence)
+            (self.repo / name).write_bytes(original)
+        name, original = next(iter(replacements.items()), (".gitignore", b"ignored\n"))
         (self.repo / name).write_bytes(original + b"tampered")
         with self.assertRaisesRegex(state.StateError, "changed before publication"):
             state.verify(self.repo, captured)
@@ -156,6 +179,70 @@ class RepositoryStateTests(unittest.TestCase):
     def test_staged_directory_to_file(self):
         self.replace_directory_with_file(staged=True)
 
+    def replace_file_with_excluded_directory(self, *, staged, ignored):
+        (self.repo / "tracked.txt").unlink()
+        (self.repo / "tracked.txt").mkdir()
+        excluded = []
+        if ignored:
+            (self.repo / "tracked.txt/ignored/nested").mkdir(parents=True)
+            excluded = ["tracked.txt/ignored/first.bin", "tracked.txt/ignored/nested/second.txt"]
+            for name in excluded:
+                (self.repo / name).write_bytes(b"ignored replacement\x00\xff\n")
+        if staged:
+            self.git("add", "-u")
+        self.assert_replacement(["tracked.txt"], {}, staged=staged, excluded=excluded)
+
+    def test_unstaged_file_to_empty_directory(self):
+        self.replace_file_with_excluded_directory(staged=False, ignored=False)
+
+    def test_staged_file_to_empty_directory(self):
+        self.replace_file_with_excluded_directory(staged=True, ignored=False)
+
+    def test_unstaged_file_to_ignored_directory(self):
+        self.replace_file_with_excluded_directory(staged=False, ignored=True)
+
+    def test_staged_file_to_ignored_directory(self):
+        self.replace_file_with_excluded_directory(staged=True, ignored=True)
+
+    def replace_directory_with_ignored_file(self, *, staged):
+        (self.repo / "config/nested").mkdir(parents=True)
+        historical = ["config/settings.json", "config/nested/other.json"]
+        for name in historical:
+            (self.repo / name).write_bytes(b"historical settings\n")
+        self.git("add", "config")
+        self.git("commit", "-qm", "tracked directory")
+        (self.repo / ".git/info/exclude").write_text("/config\n")
+        for name in historical:
+            (self.repo / name).unlink()
+        (self.repo / "config/nested").rmdir()
+        (self.repo / "config").rmdir()
+        (self.repo / "config").write_bytes(b"ignored replacement\x00\xff\n")
+        if staged:
+            self.git("add", "-u")
+        self.assert_replacement(historical, {}, staged=staged, excluded=["config"])
+
+    def test_unstaged_directory_to_ignored_file(self):
+        self.replace_directory_with_ignored_file(staged=False)
+
+    def test_staged_directory_to_ignored_file(self):
+        self.replace_directory_with_ignored_file(staged=True)
+
+    def test_staged_deletion_with_ignored_recreated_leaf(self):
+        self.git("rm", "-q", "tracked.txt")
+        (self.repo / ".git/info/exclude").write_text("/tracked.txt\n")
+        (self.repo / "tracked.txt").write_bytes(b"ignored recreated leaf\n")
+        self.assert_replacement(["tracked.txt"], {}, staged=True, excluded=["tracked.txt"])
+
+    def test_ignored_current_index_leaf_is_still_attested(self):
+        (self.repo / ".git/info/exclude").write_text("/tracked.txt\n")
+        content = b"current tracked content\n"
+        (self.repo / "tracked.txt").write_bytes(content)
+        captured, patches = state.observe(self.repo)
+        self.assertIn({"path": "tracked.txt", "state": "file", "bytes": len(content),
+            "sha256": state.digest(content)}, captured["tracked"])
+        state.verify(self.repo, captured)
+        state.verify_retained(captured, patches)
+
     def test_ordinary_add_delete_and_rename(self):
         (self.repo / "deleted.txt").write_bytes(b"deleted later\n")
         self.git("add", "deleted.txt")
@@ -194,11 +281,17 @@ class RepositoryStateTests(unittest.TestCase):
         state.verify(self.repo, captured)
         state.verify_retained(captured, patches)
 
-    def test_directories_need_deleted_git_leaf_and_attested_descendant(self):
+    def test_directories_need_git_proven_deletion(self):
         (self.repo / "tracked.txt").unlink()
         (self.repo / "tracked.txt").mkdir()
-        with self.assertRaisesRegex(state.StateError, "unsupported"):
-            state.observe(self.repo)
+        real_git = state.git
+        def without_deletion(repository, *arguments, **options):
+            if "status" in arguments:
+                return b""
+            return real_git(repository, *arguments, **options)
+        with mock.patch.object(state, "git", side_effect=without_deletion):
+            with self.assertRaisesRegex(state.StateError, "unsupported"):
+                state.observe(self.repo)
         (self.repo / "tracked.txt/child").write_bytes(b"child")
         with self.assertRaisesRegex(state.StateError, "unsupported"):
             state.file_state(self.repo, "tracked.txt", missing_allowed=True)
@@ -243,6 +336,62 @@ class RepositoryStateTests(unittest.TestCase):
         with self.assertRaisesRegex(state.StateError, "unsupported"):
             state.observe(self.repo)
 
+    def assert_ignored_special_replacement_rejected(self, *, ancestor):
+        historical = "tracked.txt"
+        if ancestor:
+            (self.repo / historical).unlink()
+            (self.repo / historical).mkdir()
+            historical = "tracked.txt/child"
+            (self.repo / historical).write_bytes(b"baseline\n")
+            self.git("add", "-A")
+            self.git("commit", "-qm", "tracked descendant")
+        (self.repo / ".git/info/exclude").write_text("/tracked.txt\n")
+        for staged in (False, True):
+            for special in ("fifo", "socket"):
+                with self.subTest(staged=staged, special=special, ancestor=ancestor):
+                    (self.repo / historical).unlink()
+                    if ancestor:
+                        (self.repo / "tracked.txt").rmdir()
+                    if staged:
+                        self.git("update-index", "--force-remove", historical)
+                    if special == "fifo":
+                        os.mkfifo(self.repo / "tracked.txt")
+                    else:
+                        with socket.socket(socket.AF_UNIX) as endpoint:
+                            endpoint.bind(str(self.repo / "tracked.txt"))
+                    # A special object at the exact index leaf is a Git
+                    # modification; a blocking special ancestor proves deletion.
+                    status = ("D  " if staged else " D " if ancestor else " M ") + historical + "\0"
+                    self.assertIn(status.encode(), self.git("status", "--porcelain=v1", "-z"))
+                    with self.assertRaisesRegex(state.StateError, "unsupported"):
+                        state.observe(self.repo)
+                    (self.repo / "tracked.txt").unlink()
+                    if ancestor:
+                        (self.repo / "tracked.txt").mkdir()
+                    (self.repo / historical).write_bytes(b"baseline\n")
+                    self.git("add", "-f", historical)
+
+    def test_ignored_special_leaf_is_not_deletion(self):
+        self.assert_ignored_special_replacement_rejected(ancestor=False)
+
+    def test_ignored_special_ancestor_is_not_deletion(self):
+        self.assert_ignored_special_replacement_rejected(ancestor=True)
+
+    def test_ignored_external_symlink_is_still_rejected(self):
+        self.git("rm", "-q", "tracked.txt")
+        (self.repo / ".git/info/exclude").write_text("/tracked.txt\n")
+        (self.repo / "tracked.txt").symlink_to(self.root / "outside")
+        with self.assertRaisesRegex(state.StateError, "escape"):
+            state.observe(self.repo)
+
+    def test_replacement_directory_with_nonignored_special_and_current_file_fails(self):
+        (self.repo / "tracked.txt").unlink()
+        (self.repo / "tracked.txt/nested").mkdir(parents=True)
+        (self.repo / "tracked.txt/current").write_bytes(b"current replacement\n")
+        os.mkfifo(self.repo / "tracked.txt/nested/fifo")
+        with self.assertRaisesRegex(state.StateError, "unsupported"):
+            state.observe(self.repo)
+
     def test_unmerged_index_is_rejected(self):
         object_id = self.git("rev-parse", "HEAD:tracked.txt").strip().decode()
         subprocess.run(["git", "update-index", "--index-info"], cwd=self.repo, check=True,
@@ -269,8 +418,8 @@ class RepositoryStateTests(unittest.TestCase):
         real_git = state.git
         for commit in (False, True):
             with self.subTest(commit=commit):
-                def mutate(repository, *arguments):
-                    output = real_git(repository, *arguments)
+                def mutate(repository, *arguments, **options):
+                    output = real_git(repository, *arguments, **options)
                     if arguments[0] == "diff" and "--cached" not in arguments:
                         (self.repo / "concurrent").write_bytes(b"concurrent change")
                         if commit:
