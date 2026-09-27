@@ -964,6 +964,17 @@ and additional tool, shell, file-change, or search activity cannot qualify.
 The maintained positive fixture follows captured `codex exec --json` events;
 mutation controls exercise completion, identity, health, and action restrictions.
 
+V11's local MCP transport bounds request writes and complete newline-framed response
+reads with a monotonic per-RPC deadline (the maintained 90-second call ceiling).
+Matching integer request ID, JSON-RPC 2.0 and exclusive valid result/error framing
+are required; explicit RPC errors cannot be tool success. The measured call duration
+remains independent budget evidence. Stderr is captured to a file to avoid pipe
+backpressure. Linux command/MCP sessions use bounded process-group TERM/KILL cleanup,
+including descendants after leader exit. Recorder evidence separates timeout or
+interruption cause, final numeric exit/signal and cleanup completion; cleanup failure
+cannot become successful execution. Parent SIGINT/SIGTERM unwinds this local boundary.
+Short fake-server/process regressions run within the maintained harness self-check.
+
 ### V11 resource regression qualification
 
 Official V11은 `performance-budgets.json`의 maintained Linux regression ceiling을 함께

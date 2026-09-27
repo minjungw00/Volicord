@@ -15,8 +15,10 @@ import os
 from pathlib import Path
 import platform
 import re
+import selectors
 import shlex
 import shutil
+import signal
 import sqlite3
 import stat
 import subprocess
@@ -351,19 +353,62 @@ def make_v11_result(
     return result
 
 
+def process_group_active(pid: int) -> bool:
+    """Ignore reparented zombies; they cannot execute or keep streams open."""
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if int(fields[2]) == pid and fields[0] not in {"Z", "X"}:
+            return True
+    return False
+
+
+def cleanup_process_group(process, grace_seconds=1.0, kill_seconds=1.0):
+    """Bound Linux V11 cleanup, including children whose leader already exited."""
+    sent = []
+    errors = []
+    for number, seconds in ((signal.SIGTERM, grace_seconds), (signal.SIGKILL, kill_seconds)):
+        try:
+            if not process_group_active(process.pid):
+                break
+            os.killpg(process.pid, number)
+            sent.append(int(number))
+        except ProcessLookupError:
+            break
+        except (OSError, ValueError, IndexError) as error:
+            errors.append(type(error).__name__)
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            process.poll()
+            try:
+                if not process_group_active(process.pid):
+                    break
+            except (OSError, ValueError, IndexError) as error:
+                errors.append(type(error).__name__)
+                break
+            time.sleep(min(0.01, max(0, deadline - time.monotonic())))
+    try:
+        process.wait(timeout=kill_seconds)
+        complete = not process_group_active(process.pid)
+    except (subprocess.TimeoutExpired, OSError, ValueError, IndexError) as error:
+        errors.append(type(error).__name__)
+        complete = False
+    return {"complete": complete and not errors, "signals_sent": sent,
+            "error_kinds": errors[:8]}
+
+
 class Recorder:
     def __init__(self, root: Path):
         self.root = root
         self.sequence = 0
 
     def run(
-        self,
-        label: str,
-        argv: list[str],
-        env: dict[str, str],
-        *,
-        cwd: Path = ROOT,
-        timeout: int = 300,
+        self, label: str, argv: list[str], env: dict[str, str], *,
+        cwd: Path = ROOT, timeout: float = 300, cleanup_grace_seconds: float = 1.0,
     ) -> dict[str, Any]:
         self.sequence += 1
         directory = self.root / "operations" / f"{self.sequence:03d}-{label}"
@@ -371,62 +416,50 @@ class Recorder:
         started_at = time.time_ns() // 1_000
         started = time.monotonic_ns()
         metadata = {
-            "schema_version": 1,
-            "argv": argv,
-            "command": shlex.join(argv),
-            "working_directory": str(cwd),
-            "started_at_unix_micros": started_at,
+            "schema_version": 1, "argv": argv, "command": shlex.join(argv),
+            "working_directory": str(cwd), "started_at_unix_micros": started_at,
         }
         write_json(directory / "command.json", metadata)
-        termination = None
-        spawn_error = None
-        exit_code = None
-        stdout = b""
-        stderr = b""
+        termination = spawn_error = exit_code = stop_cause = cleanup = interrupted = None
         try:
-            process = subprocess.Popen(
-                argv,
-                cwd=cwd,
-                env=env,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            try:
-                stdout, stderr = process.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                process.terminate()
+            # File sinks preserve complete streams without pipe backpressure or an
+            # unbounded communicate() waiting for an inherited descendant pipe.
+            with (directory / "stdout.log").open("wb") as stdout, (directory / "stderr.log").open("wb") as stderr:
+                process = subprocess.Popen(
+                    argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                    stdout=stdout, stderr=stderr, start_new_session=True,
+                )
                 try:
-                    stdout, stderr = process.communicate(timeout=10)
-                    termination = {"kind": "timeout_terminate"}
+                    process.wait(timeout=timeout)
                 except subprocess.TimeoutExpired:
-                    process.kill()
-                    stdout, stderr = process.communicate()
-                    termination = {"kind": "timeout_kill"}
-            if process.returncode >= 0:
+                    stop_cause = {"kind": "timeout", "timeout_seconds": timeout}
+                except BaseException as error:
+                    stop_cause = {"kind": "interruption", "exception_kind": type(error).__name__}
+                    interrupted = error
+                finally:
+                    cleanup = cleanup_process_group(process, cleanup_grace_seconds, cleanup_grace_seconds)
+            if process.returncode is not None and process.returncode >= 0:
                 exit_code = process.returncode
-            else:
+            elif process.returncode is not None:
                 termination = {"kind": "signal", "number": -process.returncode}
         except OSError as error:
             spawn_error = f"{type(error).__name__}: {error}"
-            stderr = (spawn_error + "\n").encode()
-        (directory / "stdout.log").write_bytes(stdout)
-        (directory / "stderr.log").write_bytes(stderr)
+            (directory / "stderr.log").write_text(spawn_error + "\n")
         result = {
-            **metadata,
-            "ended_at_unix_micros": time.time_ns() // 1_000,
+            **metadata, "ended_at_unix_micros": time.time_ns() // 1_000,
             "duration_ms": round((time.monotonic_ns() - started) / 1_000_000, 3),
-            "exit_code": exit_code,
-            "termination": termination,
-            "spawn_error": spawn_error,
-            "stdout": str(directory / "stdout.log"),
-            "stderr": str(directory / "stderr.log"),
+            "exit_code": exit_code, "termination": termination,
+            "stop_cause": stop_cause, "cleanup": cleanup, "spawn_error": spawn_error,
+            "stdout": str(directory / "stdout.log"), "stderr": str(directory / "stderr.log"),
             "outcome": (
-                "spawn_failed" if spawn_error else "terminated" if termination else
+                "spawn_failed" if spawn_error else "terminated" if termination or stop_cause else
+                "failed" if not cleanup or not cleanup["complete"] else
                 "succeeded" if exit_code == 0 else "failed"
             ),
         }
         write_json(directory / "result.json", result)
+        if interrupted is not None:
+            raise interrupted
         PERFORMANCE.snapshots(env)
         return result
 
@@ -681,57 +714,156 @@ def qualify_candidate_dependency_failures(
 
 
 class Mcp:
-    def __init__(self, binary: Path, env: dict[str, str]):
-        self.process = subprocess.Popen(
-            [str(binary)], cwd=ROOT, env=env, text=True,
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
+    active = set()
+
+    def __init__(self, binary: Path, env: dict[str, str], *, rpc_timeout_seconds=None,
+                 cleanup_grace_seconds=1.0):
+        self.rpc_timeout_seconds = (performance_module.maintained_limits()["max_mcp_call_ms"] / 1000
+                                    if rpc_timeout_seconds is None else rpc_timeout_seconds)
+        if not 0 < self.rpc_timeout_seconds < float("inf"):
+            raise ValueError("MCP deadline must be finite and positive")
+        self.cleanup_grace_seconds = cleanup_grace_seconds
+        self.stderr_sink = tempfile.TemporaryFile()
+        self.stdout_sink = tempfile.TemporaryFile()
+        try:
+            self.process = subprocess.Popen(
+                [str(binary)], cwd=ROOT, env=env, bufsize=0,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr_sink,
+                start_new_session=True,
+            )
+        except BaseException:
+            self.stderr_sink.close()
+            self.stdout_sink.close()
+            raise
+        os.set_blocking(self.process.stdin.fileno(), False)
+        os.set_blocking(self.process.stdout.fileno(), False)
         self.performance_process = PERFORMANCE.register_process(self.process.pid)
         self.request_id = 0
         self.env = env
+        self.buffer = bytearray()
+        self.closed = None
+        self.stop_cause = None
+        self.active.add(self)
 
     def rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        if self.closed is not None:
+            raise RuntimeError("MCP connection is closed")
         operation = params.get("name", method) if method == "tools/call" else method
-        with PERFORMANCE.measurement(self.performance_process, operation, self.env):
-            return self._rpc(method, params)
+        try:
+            with PERFORMANCE.measurement(self.performance_process, operation, self.env):
+                return self._rpc(method, params)
+        except BaseException as error:
+            self.stop_cause = {"kind": "timeout" if isinstance(error, TimeoutError) else
+                               "rpc_failure" if isinstance(error, Exception) else "interruption",
+                               "exception_kind": type(error).__name__}
+            self.close()
+            raise
+
+    @staticmethod
+    def _unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate JSON member")
+            value[key] = item
+        return value
 
     def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         self.request_id += 1
-        assert self.process.stdin is not None and self.process.stdout is not None
+        deadline = time.monotonic() + self.rpc_timeout_seconds
         message = {"jsonrpc": "2.0", "id": self.request_id, "method": method, "params": params}
-        self.process.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
-        self.process.stdin.flush()
-        response = self.process.stdout.readline()
-        if not response:
-            raise RuntimeError(f"MCP ended while handling {method}")
-        return json.loads(response)
+        pending = memoryview((json.dumps(message, separators=(",", ":")) + "\n").encode())
+        with selectors.DefaultSelector() as selector:
+            selector.register(self.process.stdin, selectors.EVENT_WRITE)
+            selector.register(self.process.stdout, selectors.EVENT_READ)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("MCP RPC deadline expired")
+                if not pending and b"\n" in self.buffer:
+                    line, _, remainder = self.buffer.partition(b"\n")
+                    self.buffer = bytearray(remainder)
+                    break
+                for key, _events in selector.select(remaining):
+                    if key.fileobj is self.process.stdin:
+                        count = os.write(key.fd, pending[:65536])
+                        pending = pending[count:]
+                        if not pending:
+                            selector.unregister(self.process.stdin)
+                    else:
+                        chunk = os.read(key.fd, 65536)
+                        if not chunk:
+                            raise RuntimeError("MCP ended before a complete response frame")
+                        self.stdout_sink.write(chunk)
+                        self.buffer.extend(chunk)
+        try:
+            response = json.loads(line, object_pairs_hook=self._unique_object,
+                                  parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()))
+        except (ValueError, UnicodeError):
+            raise RuntimeError("MCP response is malformed JSON") from None
+        if (not isinstance(response, dict) or response.get("jsonrpc") != "2.0"
+                or type(response.get("id")) is not int or response["id"] != self.request_id
+                or ("result" in response) == ("error" in response)):
+            raise RuntimeError("MCP response identity or result/error framing is invalid")
+        if "error" in response:
+            error = response["error"]
+            if (not isinstance(error, dict) or type(error.get("code")) is not int
+                    or not isinstance(error.get("message"), str)):
+                raise RuntimeError("MCP RPC error framing is invalid")
+            raise RuntimeError("MCP returned an explicit RPC error")
+        if time.monotonic() >= deadline:
+            raise TimeoutError("MCP RPC deadline expired during response validation")
+        if not isinstance(response["result"], dict):
+            raise RuntimeError("MCP result shape is invalid")
+        return response
 
     def initialize(self) -> list[dict[str, Any]]:
-        initialized = self.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})
-        if "error" in initialized:
-            raise RuntimeError(str(initialized["error"]))
+        self.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}})
         catalog = self.rpc("tools/list", {})
-        return catalog["result"]["tools"]
+        tools = catalog["result"].get("tools")
+        if not isinstance(tools, list) or any(not isinstance(tool, dict) for tool in tools):
+            raise RuntimeError("MCP tool catalog shape is invalid")
+        return tools
 
     def tool(self, name: str, arguments: dict[str, Any]) -> tuple[dict[str, Any] | None, bool]:
         response = self.rpc("tools/call", {"name": name, "arguments": arguments})
-        result = response.get("result", {})
-        return result.get("structuredContent"), result.get("isError") is False
+        result = response["result"]
+        content = result.get("structuredContent")
+        return (content if isinstance(content, dict) else None,
+                isinstance(content, dict) and result.get("isError") is False)
 
     def close(self) -> dict[str, Any]:
-        assert self.process.stdin is not None
+        if self.closed is not None:
+            return self.closed
         self.process.stdin.close()
         try:
-            code = self.process.wait(timeout=10)
+            self.process.wait(timeout=self.cleanup_grace_seconds)
         except subprocess.TimeoutExpired:
-            self.process.kill()
-            code = self.process.wait()
-        stderr = self.process.stderr.read() if self.process.stderr else ""
-        if self.process.stdout:
-            self.process.stdout.close()
-        if self.process.stderr:
-            self.process.stderr.close()
-        return {"exit_code": code, "stderr": stderr}
+            pass
+        cleanup = cleanup_process_group(self.process, self.cleanup_grace_seconds, self.cleanup_grace_seconds)
+        # Consume only immediately available stdout, never wait for descendant EOF.
+        drain_deadline = time.monotonic() + self.cleanup_grace_seconds
+        while time.monotonic() < drain_deadline:
+            try:
+                chunk = os.read(self.process.stdout.fileno(), 65536)
+            except BlockingIOError:
+                break
+            if not chunk:
+                break
+            self.stdout_sink.write(chunk)
+        self.process.stdout.close()
+        self.stdout_sink.seek(0)
+        self.stderr_sink.seek(0)
+        code = self.process.returncode
+        self.closed = {"exit_code": code, "termination": (
+            {"kind": "signal", "number": -code} if code is not None and code < 0 else None),
+            "stop_cause": self.stop_cause, "cleanup": cleanup,
+            "stdout": self.stdout_sink.read(os.fstat(self.stdout_sink.fileno()).st_size).decode("utf-8", errors="replace"),
+            "stderr": self.stderr_sink.read(os.fstat(self.stderr_sink.fileno()).st_size).decode("utf-8", errors="replace")}
+        self.stdout_sink.close()
+        self.stderr_sink.close()
+        self.active.discard(self)
+        return self.closed
 
 
 def step(status: str, summary: str, **evidence: Any) -> dict[str, Any]:
@@ -3933,6 +4065,8 @@ def self_check() -> int:
     assert_codex_probe_completion()
     assert_authenticated_codex_lifecycle()
     assert_credential_retention_audit()
+    import execution_controls_self_test
+    execution_controls_self_test.self_check(sys.modules[__name__])
     assessment = read_decision_revisit_assessment()
     if assessment["active_decision_revisit_triggers"]:
         raise AssertionError("the maintained Decision register has an active revisit trigger")
@@ -4013,6 +4147,7 @@ def self_check() -> int:
         "candidate_structured_repository_source_regression": "passed",
         "self_guiding_work_authority_checkpoint_path": "passed",
         "viewer_project_understanding_contract": "passed",
+        "execution_controls": "passed",
         "authentication_lifecycle": "passed",
         "credential_retention_audit": "passed",
         "decision_revisit_trigger_assessment": "passed",
@@ -4153,5 +4288,14 @@ def main() -> int:
     return run(args)
 
 
+def interrupted_by_signal(number, _frame):
+    raise SystemExit(128 + number)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    signal.signal(signal.SIGTERM, interrupted_by_signal)
+    try:
+        raise SystemExit(main())
+    finally:
+        for host in list(Mcp.active):
+            host.close()
