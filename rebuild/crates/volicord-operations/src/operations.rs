@@ -73,10 +73,11 @@ use volicord_privacy::{
     ProviderRequestRecord, SourceClass,
 };
 use volicord_projections::{
-    build_project_projection, generate_documents, prepare_narrative_plan, realize_narrative,
-    CandidateContentAccess, CandidateDependencyFailure, CandidateDependencyFailureKind,
-    CandidateProjectionInput, DocumentKind, DocumentRequest, DocumentSet, GeneratedDocument,
-    NarrativePlan, NarrativeRealization, OutputFormat, ProjectProjection, ProjectProjectionInputs,
+    build_memory_inspection, build_project_projection, generate_documents, prepare_narrative_plan,
+    realize_narrative, CandidateContentAccess, CandidateDependencyFailure,
+    CandidateDependencyFailureKind, CandidateProjectionInput, DocumentKind, DocumentRequest,
+    DocumentSet, GeneratedDocument, MemoryInspectionProjection, NarrativePlan,
+    NarrativeRealization, OutputFormat, ProjectProjection, ProjectProjectionInputs,
     ProjectionBound, RecallBound, ResumeBrief,
 };
 use volicord_repository_intelligence::{
@@ -2492,27 +2493,30 @@ impl LocalOperations {
         })
     }
 
-    pub fn project_projection(&self, project_id: ProjectId) -> Result<ProjectProjection, Error> {
-        self.project_projection_profiled(project_id)
-            .map(|(projection, _profile)| projection)
-    }
-
-    pub fn project_projection_profiled(
+    pub fn memory_inspection(
         &self,
         project_id: ProjectId,
-    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
-        let total_started = Instant::now();
-        let canonical_started = Instant::now();
+    ) -> Result<MemoryInspectionProjection, Error> {
         let canonical = self.canonical_basis(project_id)?;
-        let canonical_read = canonical_started.elapsed();
-        let analysis_started = Instant::now();
-        let (analyses, analysis_issues) = self.load_projection_analyses(project_id, &canonical);
-        let analysis_snapshot_decodes = analyses.len();
-        let repository_analysis_read = analysis_started.elapsed();
-        let analysis_refs = analyses.iter().collect::<Vec<_>>();
+        let (basis, failure) = self.read_projection_candidates(project_id);
+        Ok(build_memory_inspection(
+            &canonical,
+            projection_candidates(basis.as_ref(), failure),
+            CandidateContentAccess::AllowBoundedSummary,
+            now_micros()?,
+            ProjectionBound::default(),
+        ))
+    }
+
+    fn read_projection_candidates(
+        &self,
+        project_id: ProjectId,
+    ) -> (
+        Option<CandidateReadBasis>,
+        Option<CandidateDependencyFailure>,
+    ) {
         let mut candidate_basis = None;
         let candidate_failure;
-        let candidate_started = Instant::now();
         match self.incomplete_committed_invalidations(project_id) {
             Ok(invalidations) => {
                 match CandidateStore::open(self.layout.candidate_store()).and_then(|store| {
@@ -2548,22 +2552,31 @@ impl LocalOperations {
                 });
             }
         }
+        (candidate_basis, candidate_failure)
+    }
+
+    pub fn project_projection(&self, project_id: ProjectId) -> Result<ProjectProjection, Error> {
+        self.project_projection_profiled(project_id)
+            .map(|(projection, _profile)| projection)
+    }
+
+    pub fn project_projection_profiled(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        let total_started = Instant::now();
+        let canonical_started = Instant::now();
+        let canonical = self.canonical_basis(project_id)?;
+        let canonical_read = canonical_started.elapsed();
+        let analysis_started = Instant::now();
+        let (analyses, analysis_issues) = self.load_projection_analyses(project_id, &canonical);
+        let analysis_snapshot_decodes = analyses.len();
+        let repository_analysis_read = analysis_started.elapsed();
+        let analysis_refs = analyses.iter().collect::<Vec<_>>();
+        let candidate_started = Instant::now();
+        let (candidate_basis, candidate_failure) = self.read_projection_candidates(project_id);
         let candidate_read = candidate_started.elapsed();
-        let candidates = match (candidate_basis.as_ref(), candidate_failure) {
-            (basis, Some(failure)) => CandidateProjectionInput::Degraded {
-                usable_basis: basis,
-                failure,
-            },
-            (Some(basis), None) => CandidateProjectionInput::Available(basis),
-            (None, None) => CandidateProjectionInput::Degraded {
-                usable_basis: None,
-                failure: CandidateDependencyFailure {
-                    kind: CandidateDependencyFailureKind::Failed,
-                    affected_scope: "candidate_inspection".to_owned(),
-                    reason: "Candidate read completed without a readable basis".to_owned(),
-                },
-            },
-        };
+        let candidates = projection_candidates(candidate_basis.as_ref(), candidate_failure);
         let projection_started = Instant::now();
         let projection = build_project_projection(ProjectProjectionInputs {
             analysis_issues: &analysis_issues,
@@ -5146,9 +5159,68 @@ fn workflow_requirement(
     }
 }
 
+fn projection_candidates(
+    basis: Option<&CandidateReadBasis>,
+    failure: Option<CandidateDependencyFailure>,
+) -> CandidateProjectionInput<'_> {
+    match (basis, failure) {
+        (basis, Some(failure)) => CandidateProjectionInput::Degraded {
+            usable_basis: basis,
+            failure,
+        },
+        (Some(basis), None) => CandidateProjectionInput::Available(basis),
+        (None, None) => CandidateProjectionInput::Degraded {
+            usable_basis: None,
+            failure: CandidateDependencyFailure {
+                kind: CandidateDependencyFailureKind::Failed,
+                affected_scope: "candidate_inspection".to_owned(),
+                reason: "Candidate read completed without a readable basis".to_owned(),
+            },
+        },
+    }
+}
+
 #[cfg(test)]
 mod performance_tests {
     use super::*;
+
+    #[test]
+    fn memory_inspection_does_not_read_graphs_and_preserves_full_inspection_sections(
+    ) -> Result<(), Box<dyn StdError>> {
+        let home = tempfile::tempdir()?;
+        let repository = home.path().join("repository");
+        fs::create_dir_all(&repository)?;
+        fs::write(repository.join("main.py"), "def main():\n    return 0\n")?;
+        let layout = RuntimeLayout::new(home.path().join("runtime"))?;
+        let producer = LocalOperations::new(layout.clone());
+        let project = producer
+            .initialize_project("Memory inspection", Some(&repository))?
+            .project
+            .id;
+        producer.analyze(project, Vec::new())?;
+        let operations = LocalOperations::new(layout);
+        let canonical_before = operations.canonical_basis(project)?;
+        let candidates_before = operations.candidate_basis(project)?;
+        let memory = operations.memory_inspection(project)?;
+        assert!(operations.analysis_validations.borrow().is_empty());
+        assert!(operations.analysis_headers.borrow().is_empty());
+        let full = operations.project_projection(project)?;
+        assert_eq!(memory.canonical_inspection, full.canonical_inspection);
+        assert_eq!(memory.candidate_inspection, full.candidate_inspection);
+        assert_eq!(memory.candidate_dependency, full.candidate_dependency);
+        assert!(!operations.analysis_validations.borrow().is_empty());
+        for path in operations.analysis_paths(project)? {
+            fs::write(path, b"{corrupt graph manifest")?;
+        }
+        assert_eq!(operations.memory_inspection(project)?, memory);
+        assert_eq!(
+            operations.health(Some(project)).state,
+            HealthState::Degraded
+        );
+        assert_eq!(operations.canonical_basis(project)?, canonical_before);
+        assert_eq!(operations.candidate_basis(project)?, candidates_before);
+        Ok(())
+    }
 
     #[test]
     fn projection_validation_is_reused_by_health_until_snapshot_bytes_change(

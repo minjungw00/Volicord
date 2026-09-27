@@ -1345,7 +1345,7 @@ impl HostAdapter {
     fn canonical_inspect(&self, args: &Value) -> Result<Value, HostError> {
         let projection = self
             .operations
-            .project_projection(project(args)?)
+            .memory_inspection(project(args)?)
             .map_err(operation_error)?;
         Ok(
             json!({"records":projection.canonical_inspection.into_iter().map(|record| json!({"kind":format!("{:?}",record.kind).to_lowercase(),"identity":record.identity,"revision":record.revision,"lifecycle_state":record.lifecycle_state,"statement_role":record.statement_role,"summary":record.summary,"source_basis":record.source_basis.into_iter().map(|source| source.to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"read_only":true}),
@@ -1456,7 +1456,7 @@ impl HostAdapter {
         }
         let projection = self
             .operations
-            .project_projection(project(args)?)
+            .memory_inspection(project(args)?)
             .map_err(operation_error)?;
         Ok(json!({
             "health": candidate_dependency_key(projection.candidate_dependency),

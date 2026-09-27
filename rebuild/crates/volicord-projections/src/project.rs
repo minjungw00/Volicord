@@ -788,6 +788,93 @@ pub struct ProjectProjection {
     pub health: ProjectionHealth,
 }
 
+/// Canonical and Candidate inspection sections share the same selection and
+/// failure contract as the full Project projection without requiring code graphs.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MemoryInspectionProjection {
+    pub canonical_inspection: Vec<CanonicalInspectionItem>,
+    pub candidate_inspection: Vec<CandidateInspection>,
+    pub candidate_dependency: CandidateDependencyState,
+    pub issues: Vec<ProjectionIssue>,
+}
+
+pub fn build_memory_inspection(
+    canonical: &CanonicalReadBasis,
+    candidates: CandidateProjectionInput<'_>,
+    content_access: CandidateContentAccess,
+    observed_at: TimestampMicros,
+    bound: ProjectionBound,
+) -> MemoryInspectionProjection {
+    let limit = bound.max_items_per_section.max(1);
+    let mut issues = Vec::new();
+    let canonical_inspection = build_canonical_inspection(canonical, limit, &mut issues);
+    let (candidate_basis, candidate_dependency) = match candidates {
+        CandidateProjectionInput::Available(basis) => {
+            (Some(basis), CandidateDependencyState::Available)
+        }
+        CandidateProjectionInput::Degraded {
+            usable_basis,
+            failure,
+        } => {
+            let state = candidate_dependency_failure_state(failure.kind);
+            issues.push(candidate_dependency_issue(failure));
+            (usable_basis, state)
+        }
+    };
+    let candidate_inspection = candidate_basis.map_or_else(Vec::new, |basis| {
+        let mut identities = basis
+            .candidates
+            .iter()
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        identities.sort();
+        if identities.len() > limit {
+            issues.push(bound_issue(
+                "candidate_inspection",
+                identities.len() - limit,
+            ));
+            identities.truncate(limit);
+        }
+        identities
+            .into_iter()
+            .map(|identity| {
+                let inspection = inspect_candidate(basis, identity, content_access, observed_at);
+                if inspection.health != crate::InspectionHealth::Complete {
+                    issues.push(ProjectionIssue {
+                        kind: ProjectionIssueKind::CandidateInspection,
+                        identity: identity.to_string(),
+                        affected_scope: "candidate_inspection".to_owned(),
+                        reason: format!(
+                            "Candidate inspection is {}",
+                            inspection_health_key(inspection.health)
+                        ),
+                        omitted_count: 0,
+                    });
+                }
+                inspection
+            })
+            .collect()
+    });
+    sort_projection_issues(&mut issues);
+    MemoryInspectionProjection {
+        canonical_inspection,
+        candidate_inspection,
+        candidate_dependency,
+        issues,
+    }
+}
+
+fn sort_projection_issues(issues: &mut Vec<ProjectionIssue>) {
+    issues.sort_by(|left, right| {
+        (&left.affected_scope, &left.identity, &left.reason).cmp(&(
+            &right.affected_scope,
+            &right.identity,
+            &right.reason,
+        ))
+    });
+    issues.dedup();
+}
+
 /// Builds viewer/host-ready read models from immutable subsystem bases. The
 /// function owns no store, analyzer, Candidate lifecycle, or filesystem handle.
 pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectProjection {
@@ -828,62 +915,20 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         &mut issues,
     );
     let checkpoint_timeline = build_timeline(inputs.canonical, limit, &mut issues);
-    let canonical_inspection = build_canonical_inspection(inputs.canonical, limit, &mut issues);
+    let memory = build_memory_inspection(
+        inputs.canonical,
+        inputs.candidates,
+        inputs.candidate_content_access,
+        inputs.observed_at,
+        inputs.bound,
+    );
+    let canonical_inspection = memory.canonical_inspection;
+    let candidate_inspection = memory.candidate_inspection;
+    let candidate_dependency = memory.candidate_dependency;
+    issues.extend(memory.issues);
     let mut source_catalog = inputs.canonical.sources.clone();
     source_catalog.sort_by_key(|source| source.source.id);
     bound(&mut source_catalog, limit, "source_catalog", &mut issues);
-    let (candidate_basis, candidate_dependency) = match inputs.candidates {
-        CandidateProjectionInput::Available(basis) => {
-            (Some(basis), CandidateDependencyState::Available)
-        }
-        CandidateProjectionInput::Degraded {
-            usable_basis,
-            failure,
-        } => {
-            let state = candidate_dependency_failure_state(failure.kind);
-            issues.push(candidate_dependency_issue(failure));
-            (usable_basis, state)
-        }
-    };
-    let candidate_inspection = candidate_basis.map_or_else(Vec::new, |basis| {
-        let mut identities = basis
-            .candidates
-            .iter()
-            .map(|candidate| candidate.id)
-            .collect::<Vec<_>>();
-        identities.sort();
-        if identities.len() > limit {
-            issues.push(bound_issue(
-                "candidate_inspection",
-                identities.len() - limit,
-            ));
-            identities.truncate(limit);
-        }
-        identities
-            .into_iter()
-            .map(|identity| {
-                let inspection = inspect_candidate(
-                    basis,
-                    identity,
-                    inputs.candidate_content_access,
-                    inputs.observed_at,
-                );
-                if inspection.health != crate::InspectionHealth::Complete {
-                    issues.push(ProjectionIssue {
-                        kind: ProjectionIssueKind::CandidateInspection,
-                        identity: identity.to_string(),
-                        affected_scope: "candidate_inspection".to_owned(),
-                        reason: format!(
-                            "Candidate inspection is {}",
-                            inspection_health_key(inspection.health)
-                        ),
-                        omitted_count: 0,
-                    });
-                }
-                inspection
-            })
-            .collect()
-    });
     let source_status = source_status(inputs.canonical);
     let mut current_goals = inputs
         .canonical
@@ -899,14 +944,7 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         "project_overview.goal",
         &mut issues,
     );
-    issues.sort_by(|left, right| {
-        (&left.affected_scope, &left.identity, &left.reason).cmp(&(
-            &right.affected_scope,
-            &right.identity,
-            &right.reason,
-        ))
-    });
-    issues.dedup();
+    sort_projection_issues(&mut issues);
     let health = health_from_issues(&issues);
     let overview = ProjectOverview {
         project_id: inputs.canonical.project.id,

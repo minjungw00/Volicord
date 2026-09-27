@@ -30,12 +30,13 @@ pub use documents::{
     RENDERED_DOCUMENT_FIELD_BYTE_LIMIT, RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 pub use project::{
-    build_project_projection, CandidateDependencyFailure, CandidateDependencyFailureKind,
-    CandidateDependencyState, CandidateProjectionInput, CanonicalInspectionItem,
-    CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry, CurrentWorkCodeLink,
-    CurrentWorkTopology, DecisionContextCodeLink, MapEntity, MapInterpretation, MapRelation,
-    MapRelationClass, ProjectOverview, ProjectProjection, ProjectProjectionInputs, ProjectionBound,
-    ProjectionHealth, ProjectionIssue, ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
+    build_memory_inspection, build_project_projection, CandidateDependencyFailure,
+    CandidateDependencyFailureKind, CandidateDependencyState, CandidateProjectionInput,
+    CanonicalInspectionItem, CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry,
+    CurrentWorkCodeLink, CurrentWorkTopology, DecisionContextCodeLink, MapEntity,
+    MapInterpretation, MapRelation, MapRelationClass, MemoryInspectionProjection, ProjectOverview,
+    ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionHealth, ProjectionIssue,
+    ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
 };
 pub use recall::{
     build_resume_brief, build_resume_brief_from_metadata, BriefContextItem, BriefDecision,

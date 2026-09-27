@@ -18,15 +18,15 @@ use volicord_inquiry::{
     CandidateRetention, CandidateStore, SubmissionOutcome,
 };
 use volicord_projections::{
-    build_project_projection, build_project_understanding, generate_documents,
-    prepare_narrative_plan, realize_narrative, BriefDecisionState, CandidateContentAccess,
-    CandidateDependencyFailure, CandidateDependencyFailureKind, CandidateDependencyState,
-    CandidateProjectionInput, CanonicalInspectionKind, ClaimClass, DocumentKind, DocumentRequest,
-    FixedLocale, GeneratorIdentity, MapRelationClass, NarrativeRealization,
-    NarrativeRealizationState, OutputFormat, ProjectProjection, ProjectProjectionInputs,
-    ProjectionBound, ProjectionHealth, ProjectionIssueKind, RealizedNarrativeClaim,
-    RealizedNarrativeSection, RequestedDestination, UnderstandingBound, UnderstandingEvidenceClass,
-    UnderstandingExplanationKind, GENERATED_DOCUMENT_METADATA_VERSION,
+    build_memory_inspection, build_project_projection, build_project_understanding,
+    generate_documents, prepare_narrative_plan, realize_narrative, BriefDecisionState,
+    CandidateContentAccess, CandidateDependencyFailure, CandidateDependencyFailureKind,
+    CandidateDependencyState, CandidateProjectionInput, CanonicalInspectionKind, ClaimClass,
+    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, MapRelationClass,
+    NarrativeRealization, NarrativeRealizationState, OutputFormat, ProjectProjection,
+    ProjectProjectionInputs, ProjectionBound, ProjectionHealth, ProjectionIssueKind,
+    RealizedNarrativeClaim, RealizedNarrativeSection, RequestedDestination, UnderstandingBound,
+    UnderstandingEvidenceClass, UnderstandingExplanationKind, GENERATED_DOCUMENT_METADATA_VERSION,
     NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT, NARRATIVE_PLAN_PROTECTED_TERM_LIMIT,
     NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
     RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
@@ -122,7 +122,7 @@ fn build_projection_fixture(
     project_id: ProjectId,
     bound: ProjectionBound,
 ) -> ProjectProjection {
-    build_project_projection(ProjectProjectionInputs {
+    let projection = build_project_projection(ProjectProjectionInputs {
         analysis_issues: &[],
         canonical,
         analyses: &[analysis],
@@ -138,7 +138,36 @@ fn build_projection_fixture(
         candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
         observed_at: TimestampMicros::from_unix_micros(30_000),
         bound,
-    })
+    });
+    let memory = build_memory_inspection(
+        canonical,
+        CandidateProjectionInput::Available(candidates),
+        CandidateContentAccess::AllowBoundedSummary,
+        TimestampMicros::from_unix_micros(30_000),
+        bound,
+    );
+    assert_memory_matches_full(&memory, &projection);
+    projection
+}
+
+fn assert_memory_matches_full(
+    memory: &volicord_projections::MemoryInspectionProjection,
+    full: &ProjectProjection,
+) {
+    assert_eq!(memory.canonical_inspection, full.canonical_inspection);
+    assert_eq!(memory.candidate_inspection, full.candidate_inspection);
+    assert_eq!(memory.candidate_dependency, full.candidate_dependency);
+    assert_eq!(
+        memory.issues,
+        full.issues
+            .iter()
+            .filter(|issue| matches!(
+                issue.affected_scope.as_str(),
+                "canonical_inspection" | "candidate_inspection"
+            ))
+            .cloned()
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
@@ -918,6 +947,12 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             ProjectionIssueKind::CandidateRepairRequired,
             "Candidate cleanup requires repair",
         ),
+        (
+            CandidateDependencyState::Failed,
+            CandidateDependencyFailureKind::Failed,
+            ProjectionIssueKind::CandidateFailed,
+            "Candidate storage read failed",
+        ),
     ];
     for (state, failure_kind, issue_kind, reason) in candidate_failures {
         let degraded = build_project_projection(ProjectProjectionInputs {
@@ -945,6 +980,22 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             observed_at: TimestampMicros::from_unix_micros(30_000),
             bound: ProjectionBound::default(),
         });
+        let memory = build_memory_inspection(
+            &canonical,
+            CandidateProjectionInput::Degraded {
+                usable_basis: (state == CandidateDependencyState::RepairRequired)
+                    .then_some(&candidates),
+                failure: CandidateDependencyFailure {
+                    kind: failure_kind,
+                    affected_scope: "candidate_inspection".to_owned(),
+                    reason: reason.to_owned(),
+                },
+            },
+            CandidateContentAccess::AllowBoundedSummary,
+            TimestampMicros::from_unix_micros(30_000),
+            ProjectionBound::default(),
+        );
+        assert_memory_matches_full(&memory, &degraded);
         assert_eq!(degraded.candidate_dependency, state);
         assert_eq!(degraded.health, ProjectionHealth::Degraded);
         assert!(!degraded.canonical_inspection.is_empty());
