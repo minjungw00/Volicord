@@ -233,6 +233,109 @@ class RepositoryStateTests(unittest.TestCase):
         (self.repo / "tracked.txt").write_bytes(b"ignored recreated leaf\n")
         self.assert_replacement(["tracked.txt"], {}, staged=True, excluded=["tracked.txt"])
 
+    def replace_leaf_with_symlink(self, *, staged, ignored):
+        targets = ("ignored/first", "ignored/second-longer-target")
+        (self.repo / "ignored").mkdir()
+        for target in targets:
+            (self.repo / target).write_bytes(b"excluded target content\n")
+        if staged:
+            self.git("rm", "-q", "tracked.txt")
+        else:
+            (self.repo / "tracked.txt").unlink()
+        if ignored:
+            (self.repo / ".git/info/exclude").write_text("/tracked.txt\n")
+        (self.repo / "tracked.txt").symlink_to(targets[0])
+        return targets
+
+    def test_staged_deletion_with_ignored_internal_symlink(self):
+        targets = self.replace_leaf_with_symlink(staged=True, ignored=True)
+        head_before = self.git("rev-parse", "HEAD")
+        index_before = (self.repo / ".git/index").read_bytes()
+        status_before = self.git("status", "--porcelain=v1", "-z", "--untracked-files=all")
+        files_before = self.worktree_bytes()
+        captured, patches = state.observe(self.repo)
+        self.assertEqual(next(item for item in captured["tracked"] if item["path"] == "tracked.txt"),
+            {"path": "tracked.txt", "state": "deleted"})
+        self.assertEqual(captured["untracked"], [])
+        self.assertNotIn("tracked.txt", {item["path"] for item in captured["index"]})
+        self.assertEqual(captured["status"], [{"path": "tracked.txt", "index": "D", "worktree": " "}])
+        self.assertEqual(captured["boundary"],
+            "HEAD_index_tracked_and_nonignored_untracked; ignored_content_excluded")
+        self.assertIn(b"deleted file mode 100644", patches["staged"])
+        self.assertEqual(patches["unstaged"], b"")
+        read_bytes, digest = Path.read_bytes, state.digest
+        def boundary_read(path):
+            self.assertNotIn(path.relative_to(self.repo).as_posix(), ("tracked.txt", *targets))
+            return read_bytes(path)
+        def boundary_digest(content):
+            self.assertNotIn(content, [os.fsencode(target) for target in targets] + [b"excluded target content\n"])
+            return digest(content)
+        with mock.patch.object(Path, "read_bytes", autospec=True, side_effect=boundary_read), \
+                mock.patch.object(state, "digest", side_effect=boundary_digest):
+            self.assertEqual(state.observe(self.repo), (captured, patches))
+            state.verify(self.repo, captured)
+        state.verify_retained(json.loads(state.encoded(captured)), patches)
+        c, mapped = self.mapping()
+        self.assertEqual(campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]["repository_state"], captured)
+        self.assertEqual(self.git("rev-parse", "HEAD"), head_before)
+        self.assertEqual((self.repo / ".git/index").read_bytes(), index_before)
+        self.assertEqual(self.git("status", "--porcelain=v1", "-z", "--untracked-files=all"), status_before)
+        self.assertEqual(self.worktree_bytes(), files_before)
+        self.assertEqual(os.readlink(self.repo / "tracked.txt"), targets[0])
+
+    def test_ignored_symlink_target_change_preserves_fingerprint_and_publication(self):
+        targets = self.replace_leaf_with_symlink(staged=True, ignored=True)
+        captured, patches = state.observe(self.repo)
+        c, mapped = self.mapping()
+        lineage = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]
+        evidence = self.root / "retained"
+        evidence.mkdir()
+        binding = {"state": "repository-state.json", "staged": "staged.patch", "unstaged": "unstaged.patch"}
+        (evidence / binding["state"]).write_bytes(state.encoded(captured))
+        for key, patch in patches.items():
+            (evidence / binding[key]).write_bytes(patch)
+        manifest = {"journeys": {"journey-volicord": {"repository_path": str(self.repo)}},
+            "journey_final_evidence": [{"journey_id": "journey-volicord",
+                "repository_revision_lineage": {**lineage, "attestation_artifacts": binding}}]}
+        (evidence / "evidence-set.json").write_bytes(state.encoded(manifest))
+        for target in (targets[1], targets[0]):
+            with self.subTest(target=target):
+                (self.repo / "tracked.txt").unlink()
+                (self.repo / "tracked.txt").symlink_to(target)
+                observed, observed_patches = state.observe(self.repo)
+                self.assertEqual(observed["fingerprint"], captured["fingerprint"])
+                self.assertEqual((observed, observed_patches), (captured, patches))
+                state.verify(self.repo, captured)
+                state.verify_retained(captured, patches)
+                campaign.verify_final_repository_states_for_publication(evidence)
+                campaign.verify_retained_repository_states(evidence, manifest)
+
+    def test_nonignored_same_path_symlink_is_still_attested(self):
+        targets = self.replace_leaf_with_symlink(staged=True, ignored=False)
+        captured, patches = state.observe(self.repo)
+        expected = {"path": "tracked.txt", "state": "symlink", "bytes": len(os.fsencode(targets[0])),
+            "sha256": state.digest(os.fsencode(targets[0]))}
+        self.assertIn(expected, captured["tracked"])
+        self.assertEqual(captured["untracked"], [expected])
+        state.verify(self.repo, captured)
+        state.verify_retained(captured, patches)
+        (self.repo / "tracked.txt").unlink()
+        (self.repo / "tracked.txt").symlink_to(targets[1])
+        with self.assertRaisesRegex(state.StateError, "changed before publication"):
+            state.verify(self.repo, captured)
+
+    def test_ignored_unstaged_symlink_is_type_change_not_deleted_leaf(self):
+        # Git still owns the index leaf: an ignore rule does not turn its
+        # unstaged file-to-symlink type change into a historical deletion.
+        targets = self.replace_leaf_with_symlink(staged=False, ignored=True)
+        self.assertEqual(self.git("status", "--porcelain=v1", "-z"), b" T tracked.txt\0")
+        captured, patches = state.observe(self.repo)
+        self.assertIn({"path": "tracked.txt", "state": "symlink", "bytes": len(os.fsencode(targets[0])),
+            "sha256": state.digest(os.fsencode(targets[0]))}, captured["tracked"])
+        self.assertEqual(captured["untracked"], [])
+        state.verify(self.repo, captured)
+        state.verify_retained(captured, patches)
+
     def test_ignored_current_index_leaf_is_still_attested(self):
         (self.repo / ".git/info/exclude").write_text("/tracked.txt\n")
         content = b"current tracked content\n"
@@ -380,9 +483,14 @@ class RepositoryStateTests(unittest.TestCase):
     def test_ignored_external_symlink_is_still_rejected(self):
         self.git("rm", "-q", "tracked.txt")
         (self.repo / ".git/info/exclude").write_text("/tracked.txt\n")
-        (self.repo / "tracked.txt").symlink_to(self.root / "outside")
-        with self.assertRaisesRegex(state.StateError, "escape"):
-            state.observe(self.repo)
+        outside = self.root / "outside"
+        outside.write_bytes(b"external content")
+        for target in (outside, "../outside", "../missing-outside"):
+            with self.subTest(target=target):
+                (self.repo / "tracked.txt").symlink_to(target)
+                with self.assertRaisesRegex(state.StateError, "escape"):
+                    state.observe(self.repo)
+                (self.repo / "tracked.txt").unlink()
 
     def test_replacement_directory_with_nonignored_special_and_current_file_fails(self):
         (self.repo / "tracked.txt").unlink()

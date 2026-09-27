@@ -103,6 +103,9 @@ def file_state(repository, name, *, missing_allowed=False, replacement_leaves=()
     if stat.S_ISLNK(mode):
         if not path.resolve().is_relative_to(repository):
             raise StateError("unexpected repository symlink escape")
+        # Validate the replacement's safety before excluding its link text.
+        if missing_allowed and git_deleted and ignored_path(repository, name):
+            return {"path": name, "state": "deleted"}
         content = os.fsencode(os.readlink(path))
         kind = "symlink"
     elif stat.S_ISREG(mode):
