@@ -11,9 +11,11 @@ import tempfile
 import time
 
 
-def await_file(path):
-    deadline = time.monotonic() + 2
+def await_file(path, *, process=None, timeout=2):
+    deadline = time.monotonic() + timeout
     while not path.exists():
+        if process is not None and process.poll() is not None:
+            raise AssertionError("synthetic process exited before readiness")
         if time.monotonic() >= deadline:
             raise AssertionError("synthetic process did not become ready")
         time.sleep(.01)
@@ -25,38 +27,95 @@ def self_check(h):
         env = dict(os.environ)
         sequence = 0
 
-        def server(body):
+        def server(body, *, startup="", readiness_timeout=2):
             nonlocal sequence
             sequence += 1
             binary = root / f"server-{sequence}"
-            binary.write_text("#!/usr/bin/env python3\nimport json,os,signal,sys\n" + body)
+            ready = root / f"server-{sequence}.ready"
+            # Signal after interpreter/import/startup work, immediately before the
+            # request behavior. Keep readiness off the MCP stdout/stderr streams.
+            binary.write_text("#!/usr/bin/env python3\nimport json,os,signal,sys,time\n"
+                              "from pathlib import Path\n" + startup
+                              + f"Path({str(ready)!r}).touch()\n" + body)
             binary.chmod(0o755)
-            return h.Mcp(binary, env, rpc_timeout_seconds=.15, cleanup_grace_seconds=.04)
+            host = h.Mcp(binary, env, rpc_timeout_seconds=.15, cleanup_grace_seconds=.04)
+            try:
+                await_file(ready, process=host.process, timeout=readiness_timeout)
+            except BaseException as error:
+                evidence = host.close()
+                if isinstance(error, AssertionError):
+                    raise AssertionError(
+                        f"synthetic MCP readiness failed: {error}; "
+                        f"exit_code={evidence['exit_code']}; "
+                        f"cleanup_complete={evidence['cleanup']['complete']}; "
+                        f"stderr={evidence['stderr']!r}") from error
+                raise
+            return host
 
+        # This delay is the injected regression condition, not a race workaround:
+        # readiness takes longer than the unchanged short RPC budget.
+        started = time.monotonic()
+        host = server("request=json.loads(sys.stdin.readline())\n"
+                      "print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{}}),flush=True)\n",
+                      startup="time.sleep(.3)\n")
+        try:
+            assert time.monotonic() - started >= .3 > host.rpc_timeout_seconds
+            assert host.rpc("initialize", {})["result"] == {}
+        finally:
+            evidence = host.close()
+        assert evidence["exit_code"] == 0 and evidence["cleanup"]["complete"]
+        assert evidence["stop_cause"] is None
+
+        # Crashed and never-ready fixtures fail at readiness and clean up even
+        # though no RPC has been attempted.
+        for startup, timeout, diagnostic in [
+            ("print('startup-crash',file=sys.stderr,flush=True)\nsys.exit(23)\n",
+             2, "exited before readiness"),
+            ("signal.pause()\n", .15, "did not become ready"),
+        ]:
+            active = set(h.Mcp.active)
+            started = time.monotonic()
+            try:
+                server("", startup=startup, readiness_timeout=timeout)
+            except AssertionError as error:
+                assert "synthetic MCP readiness failed" in str(error)
+                assert diagnostic in str(error) and "cleanup_complete=True" in str(error)
+                if diagnostic == "exited before readiness":
+                    assert "exit_code=23" in str(error) and "startup-crash" in str(error)
+            else:
+                raise AssertionError("unready MCP fixture was accepted")
+            assert time.monotonic() - started < timeout + 1
+            assert h.Mcp.active == active
+
+        identity_error = "MCP response identity or result/error framing is invalid"
         invalid = [
-            '{"jsonrpc":"2.0","id":999,"result":{}}',
-            '{"jsonrpc":"2.0","result":{}}',
-            '{"jsonrpc":"2.0","id":true,"result":{}}',
-            '{"id":1,"result":{}}',
-            '{"jsonrpc":"1.0","id":1,"result":{}}',
-            '{"jsonrpc":"2.0","id":1}',
-            '{"jsonrpc":"2.0","id":1,"result":{},"error":{"code":-1,"message":"test"}}',
-            '{"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"test"}}',
-            '{"jsonrpc":"2.0","id":1,"error":"bad"}',
-            '{"jsonrpc":"2.0","id":1,"result":[]}',
-            '{"jsonrpc":"2.0","id":1,"id":2,"result":{}}',
-            '[1,2]', 'not-json', '',
+            ('{"jsonrpc":"2.0","id":999,"result":{}}', identity_error),
+            ('{"jsonrpc":"2.0","result":{}}', identity_error),
+            ('{"jsonrpc":"2.0","id":true,"result":{}}', identity_error),
+            ('{"id":1,"result":{}}', identity_error),
+            ('{"jsonrpc":"1.0","id":1,"result":{}}', identity_error),
+            ('{"jsonrpc":"2.0","id":1}', identity_error),
+            ('{"jsonrpc":"2.0","id":1,"result":{},"error":{"code":-1,"message":"test"}}', identity_error),
+            ('{"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"test"}}',
+             "MCP returned an explicit RPC error"),
+            ('{"jsonrpc":"2.0","id":1,"error":"bad"}', "MCP RPC error framing is invalid"),
+            ('{"jsonrpc":"2.0","id":1,"result":[]}', "MCP result shape is invalid"),
+            ('{"jsonrpc":"2.0","id":1,"id":2,"result":{}}', "MCP response is malformed JSON"),
+            ('[1,2]', identity_error),
+            ('not-json', "MCP response is malformed JSON"),
+            ('', "MCP response is malformed JSON"),
         ]
-        for response in invalid:
+        for response, diagnostic in invalid:
             host = server(f"sys.stdin.readline()\nprint({response!r},flush=True)\n")
             try:
                 host.rpc("initialize", {})
-            except RuntimeError:
-                pass
+            except RuntimeError as error:
+                assert str(error) == diagnostic
             else:
                 raise AssertionError("invalid MCP response was accepted")
             finally:
                 evidence = host.close()
+            assert evidence["stop_cause"]["kind"] == "rpc_failure"
             assert evidence["cleanup"]["complete"]
             json.dumps(evidence)
 
@@ -69,13 +128,15 @@ def self_check(h):
             started = time.monotonic()
             try:
                 host.rpc("initialize", params)
-            except TimeoutError:
-                pass
+            except TimeoutError as error:
+                assert str(error) == "MCP RPC deadline expired"
             else:
                 raise AssertionError("silent, incomplete or blocked-write MCP did not time out")
             finally:
                 evidence = host.close()
-            assert time.monotonic() - started < 1
+            assert host.rpc_timeout_seconds == .15
+            assert .15 <= time.monotonic() - started < 2
+            assert evidence["stdout"] == ("{" if "sys.stdout.write" in body else "")
             assert evidence["stop_cause"]["kind"] == "timeout"
             assert evidence["cleanup"]["complete"]
 
