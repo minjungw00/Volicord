@@ -169,12 +169,15 @@ Rules:
 - Use `rebuild/scripts/validate self-test` to verify the repository-local
   validation runner and `rebuild/scripts/validate gate-self-test` to verify
   admission/orchestration without consuming the real final aggregate or V11.
-- Before any exact final aggregate, use `rebuild/scripts/validate admission`
-  to discover local, fixture, resource, network, authentication and bounded
-  external-transmission authorization blockers. `rebuild/scripts/validate
-  gate` is the only maintained path that may invoke the ordered final suite:
-  after successful admission it runs final once and the official V11 once in
-  the same parent process/session. Direct `rebuild/scripts/validate final`
+- `rebuild/scripts/validate gate` owns authoritative admission and is the only
+  maintained path that may invoke the ordered Final suite. On the exact clean
+  candidate it evaluates cheap eligibility first, runs deterministic support
+  once, then Final once and official V11 once in the same parent process/session.
+  `rebuild/scripts/validate admission` is optional diagnostic preflight for local,
+  resource, network, authentication, model and transmission-authorization blockers;
+  it runs no support suite and supplies no trusted artifact to the gate. A
+  successful diagnostic is not qualification. Do not require a redundant standalone
+  admission immediately before a gate. Direct `rebuild/scripts/validate final`
   invocation is refused.
 - The gate's printed, versionless evidence capsule is the maintained
   cross-session handoff. Ignored final/V11 artifacts support the current gate

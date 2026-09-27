@@ -104,19 +104,76 @@ implementation and focused checks
 → independent documentation-only conclusion
 ```
 
-`rebuild/scripts/validate admission`은 exact final을 시작하기 전에 독립 실행할 수 있는
-machine-readable preflight다. 현재 clean worktree와 candidate HEAD, validation runner와
-V11 self-check, architecture contracts, realistic Repository Intelligence, redesigned
-Dogfood campaign/harness, maintained Phase 8 Dogfood contract assertions와 provider
-qualification self-check, required fixture
-identity/integrity, executable, disposable filesystem/runtime
-home, repository-owned bounded disk estimate, loopback, Codex executable/authentication,
-technical external-network state와 maintained authenticated V11 transmission을 평가한다.
-Blocker가 하나라도 있으면 exact final command count와 official V11 command count는 모두
-0이다.
-Dogfood contract assertion은 campaign self-test나 remediation integration과 별도 support
-check로 실행되며, nonzero exit는 admission을 `validation_failed`로 막는다. 기존 runner가
-그 실행의 stdout, stderr와 numeric exit를 그대로 보존한다.
+`rebuild/scripts/validate admission`은 optional diagnostic/preflight다. Candidate
+identity/cleanliness, required executables, disposable filesystem/runtime home,
+bounded disk estimate, loopback, authentication material, network, model과 두
+operator authorization을 검사한다. 성공은 `preflight_passed`와
+`preflight_eligible = true`이며 authoritative `eligible`은 false다. Support는
+`not_run`/`diagnostic_preflight_only`로 남고 exit 0은 cheap prerequisite 통과만
+뜻한다. Gate는 이 artifact를 읽거나 신뢰하지 않으며 gate 직전에 standalone
+admission을 실행할 의무는 없다.
+
+Authoritative gate admission은 같은 cheap checks를 자체 실행한다. 하나라도
+막히면 모든 support command를 `not_run`/`cheap_preflight_blocked`로 남기고
+blocking check IDs를 기록한다. Final/provider/preflight/official V11/audit는
+시작하지 않는다. Cheap checks가 통과한 경우 아래 deterministic support를 그
+candidate revision에서 정확히 한 번 실행한다. Suite가 시작된 뒤에는 첫 failure로
+중단하지 않고 모든 command의 stdout/stderr, numeric exit와 result를 보존한다.
+Support failure는 `validation_failed`이며 Final을 시작하지 않는다.
+
+| Local exact-revision owner | Preserved invariant/evidence |
+| --- | --- |
+| runner `self-test` | argv, streams, exit/signal/spawn truth, non-fail-fast aggregation |
+| V11 `self-check` | required leaves/authenticated probe, recovery, credential audit, bounded execution and resource regressions |
+| `gate-self-test` | blockers, one-call lifecycle, fresh Final selection, coverage execution and candidate continuity |
+| `gate-entrypoint-self-test` | actual CLI in isolated candidates, dirty state, gate-parent Final binding and refusal controls |
+| `evidence-archive-self-test` | real collector/sanitizer, bounds, membership/hash/mode/candidate and prohibited-content controls |
+| report checker `--self-test` | report shape and capsule stage consistency, including contract-execution failure and skipped support |
+| contract coverage + `--self-test` | required entrypoints, real non-ignored declarations and negative controls |
+| architecture checker + `--self-test` | owner routing and cross-owner structural drift controls |
+| realistic RI assertions | seven-language fixture matrix and absent/available external-corpus integration |
+| Dogfood assertions | maintained contract checks, review workflow and one transitive harness self-test |
+| Dogfood campaign self-test | collection/activation plus resume, realization, long-lived Project, repository state, blind dimensions, reconciliation and evidence controls |
+| remediation integration | distinct MachineFindingTests: finite authority, attribution and immutable evaluation/lineage |
+| provider qualification `--self-test` | provider evidence/degradation and source-boundary controls |
+| fixture checker | actual maintained fixture hashes/integrity |
+
+Reconstruction CI also runs the runner/gate/entrypoint/archive/report self-tests;
+CI is an additional execution environment, not the local gate's execution owner.
+The gate does not reuse a different HEAD's CI or diagnostic result.
+
+No separate Dogfood harness command repeats the harness already invoked by
+assertions. Authority regression IDs are checked against that completed harness
+result rather than rerunning their suite. Campaign owns the complete
+RepositoryStateTests, BlindDimensionTests, ReconciliationTests,
+EvidenceControlTests and LongLivedProjectTests previously selected again by
+remediation. Assertions/harness own WorkflowTests, FrontierTests,
+ContractTests and PolicyTests/FileBoundaryTests; remediation retains the distinct
+MachineFindingTests. Gate self-test's former direct V11 required-step/credential
+regressions remain owned by V11 self-check.
+
+Final's existing all-targets/all-features workspace test command owns the formerly
+repeated remediation Rust selections: operations `multi_work_project` and
+`work_authority`, projections `current_work_flow` and `project_documents`, viewer
+`viewer` (understanding, disclosure and bounded profile), and host `mcp` (Inquiry,
+Decision and learning). These crates declare no package feature variants and the
+removed filters/`--exact`/`--nocapture` did not add integration semantics. Final also
+owns RI `realistic_qualification` and the injected structural adapter-failure unit
+test. The external-corpus Rust run remains: its explicit
+`VOLICORD_EXTERNAL_CORPUS_ROOT` supplies different evidence from the ordinary
+workspace run. Official V11's Rust fixture-control invocations also remain because
+they seed/inspect that journey's actual Runtime Home and Project.
+
+Contract coverage is registration/execution evidence, not a semantic oracle.
+The mapping's owner is `exact_candidate_final_workspace_tests`. Static inspection
+accepts only direct integration-test declarations with plain `#[test]`, strips
+comments/literals, and rejects ignored/conditional/nested/ordinary declarations.
+After successful Final, the gate requires each mapped source to be a test target
+in Final's actual Cargo metadata and each unique mapped name to have exactly one
+`ok` record in Final's preserved workspace test stdout. Omitted/ignored/ambiguous
+execution is `contract_coverage_execution_failed` and starts no provider or V11.
+The capsule preserves this separate result. Registry/checker success does not prove
+the domain adequacy or semantic correctness of the test bodies.
 
 Authenticated V11은 installed Codex CLI가 사용하는 OpenAI Codex service를 destination으로
 하고, 세 target(`volicord`, `small-python`, `polyglot-medium`)에서 installed
@@ -133,11 +190,11 @@ provider opt-in에서 authorization을 추론하지 않는다. Missing assertion
 `authorization_blocked`이며 operator prose나 credential content는 retained evidence에
 저장하지 않는다.
 
-`rebuild/scripts/validate gate`는 자체 admission을 다시 평가하는 유일한 exact-final
+`rebuild/scripts/validate gate`는 authoritative admission을 자체 평가하는 유일한 exact-final
 entry point다. Admission이 통과하면 gate parent process는 admission에서 기록한 HEAD를
 다시 확인하고 existing final owner의 ordered command vector를 정확히 한 번 실행한다.
 그 호출이 직접 반환한 새 `summary.json`만 읽으며 older ignored artifact를 검색하거나
-대체하지 않는다. 모든 exact command와 `failure_count = 0`을 확인한 경우에만 그 같은
+대체하지 않는다. 모든 exact command와 `failure_count = 0`, mapped-test execution을 확인한 경우에만 그 같은
 HEAD에서 separately authorized production-provider qualification을 정확히 한 번
 실행한다. 이 stage가 통과한 경우에만 final path와 HEAD를 existing V11 preflight에
 전달한다. Preflight가 통과한 경우에만 official
@@ -168,6 +225,7 @@ Gate는 numeric legacy version branch가 없는 현재 `validation_handoff_capsu
 stdout에 전부 출력하고 ignored `capsule.json`에도 쓴다. Capsule은 다음 bounded evidence를
 보존한다.
 
+- contract-coverage execution owner/status/mapped-test count from Final metadata and test output
 - validated candidate HEAD, sanitized admission check name/status, pre-final candidate check와
   blocking classification
 - 실제 Linux OS/release/platform, machine/architecture와 Python runtime identity
@@ -197,7 +255,10 @@ verifier의 closed allowlist를 통과해야 한다. Exact raw argv는 ignored l
 evidence에만 남는다. Builder는 tar를 쓰기 전에 모든 JSON member를 encode하고 manifest가
 선언하는 256 KiB uncompressed per-member bound를 검사하며, verifier는 같은 선언과
 bound를 독립적으로 다시 검사한다. 기존 512 KiB compressed archive bound도 별도로
-유지한다. 다른 process schema, numeric format branch 또는 legacy decoder는 두지 않는다.
+유지한다. Verifier는 membership/hash/mode/size/candidate와 prohibited-content
+integrity를 검사하며 Final, provider, V11이나 Product semantics를 독립 재실행하지
+않는다. Technical qualification은 gate의 실제 execution evidence가 소유한다.
+다른 process schema, numeric format branch 또는 legacy decoder는 두지 않는다.
 
 Version probe는 fixed non-secret command만 사용하며 environment variable, home content,
 username 또는 unrelated host metadata를 수집하지 않는다. Capsule은 Credential/API/session
@@ -865,7 +926,11 @@ reject
 
 ### 목표
 
-개별 spike가 결합됐을 때 실제 사용 가능한 하나의 Volicord journey를 제공하는지 검증한다.
+Installed Product의 deterministic integrated journey가 정의된 technical
+invariant를 만족하는지 검증한다. Naturalistic work quality, context recovery의
+실용성, Question relevance/necessity, interruption cost와 document usefulness는
+Phase 8 repeated Dogfood와 qualitative review가 소유한다. Technical V11 성공은
+Phase 9 approval이나 replacement passage가 아니다.
 
 Official V11 실행은 3.1의 admission과 exact final을 통과한 같은 gate process/session만
 소유한다. 별도 session의 prior final artifact를 preflight input으로 요구하거나
@@ -890,9 +955,8 @@ archive promotion; artifact hash verification alone cannot establish qualificati
 ### 대상
 
 1. Volicord 자체 Rust workspace
-2. 여러 production-like source/test/config 파일을 이어 이해하고 behavior를
-   변경·검증하는 소규모 단일 언어 application; trivial arithmetic/example
-   edit는 qualification work가 아님
+2. maintained 소규모 단일 언어 application fixture; technical V11은 scripted
+   adapter/invariant rehearsal이며 실제 source/test/config behavior work는 Phase 8가 검증
 3. 최소 세 언어, 문서/config, component boundary와 cross-language request/data
    flow가 있는 현실적인 중간 규모 polyglot repository
 
@@ -940,7 +1004,15 @@ Recall의 명시적 transport omission은 capability 손실 자체가 아니다.
 
 ### 통과 조건
 
-`acceptance-scenarios.md`의 최종 통과 조건을 모두 만족한다. 하나의 repository에서만 통과한 결과로 cutover gate를 열지 않는다.
+아래 세 target의 required technical steps를 모두 만족해야 Phase 8 technical
+entry가 가능하다. `acceptance-scenarios.md`의 naturalistic/qualitative 최종 조건은
+Phase 8가 별도로 만족해야 하며 technical V11만으로 cutover gate를 열지 않는다.
+
+`ordinary_work`는 ready-for-work materiality/learning result 뒤 disposable
+`v11-ordinary-work.txt`를 일반 filesystem write로 만들고 `guarded.sqlite3` hash가
+전후 동일한지 확인한다. 이는 ordinary write가 Guarded ceremony를 요구하지 않는
+technical invariant다. 실제 source/test/config behavior 변경·검증, engineering
+판단의 품질이나 의미 있는 ordinary work의 관측을 대신하지 않는다.
 
 특히 Candidate collection/inspection/promotion/retention journey와 Guarded effect의 exact
 action/target/effect/scope/revision/expiration match, user-response Source, single-use/reuse
@@ -1998,7 +2070,7 @@ claim that a later run belonged to the original candidate execution.
 The maintained candidate technical gate remains authoritative and unchanged. Qualification
 requires a capsule matching the independently verified archive's completion transition for
 the exact Product candidate. Policy changes never trigger expensive technical execution.
-The engineering final HEAD still requires its own admission and maintained gate.
+The engineering final HEAD requires its own gate-owned authoritative admission and maintained gate; standalone diagnostic admission is optional.
 
 ### Machine authority audit
 

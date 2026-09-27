@@ -16,6 +16,15 @@ three-journey qualitative review, qualification, optional approval, and durable
 result-lineage publication.
 <!-- phase8-active-operations:end -->
 
+Technical V11 observes deterministic invariants, including a disposable ordinary
+write with an unchanged Guarded-store hash. Naturalistic source/test/config work,
+practical context recovery, Question relevance, interruption cost and document
+usefulness require the repeated campaign and qualitative review. The independent
+archive verifier checks structural/integrity/candidate evidence and does not
+re-execute those semantics. Gate-owned admission runs local deterministic support
+once after cheap eligibility; standalone admission is optional diagnostic preflight.
+Successful technical entry never grants Phase 9 approval.
+
 ## Historical technical-entry result (2026-09-14)
 
 - Sealed Product/test candidate: `68e3699e77e1017896f4469ff1dd3aff11b476ce`

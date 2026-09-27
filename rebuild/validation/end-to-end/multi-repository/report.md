@@ -2,6 +2,9 @@
 
 ## Status
 
+This is a historical technical-entry report for the candidate named below. It
+records that invocation's evidence; it does not qualify current or later HEADs.
+
 Passed. The official V11 gate completed all 54 required steps for exact-final
 production/test candidate HEAD `68e3699e77e1017896f4469ff1dd3aff11b476ce`.
 All 54 steps passed, no blocking classification was reported, and
@@ -96,7 +99,7 @@ No authorization or environment blocker was reported:
 The maintained gate used the one-way lifecycle from admission through one
 exact final and the same-session official V11. The later documentation-only
 conclusion interprets the copied sanitized capsule and does not alter or extend
-the sealed production/test candidate. The conclusion is the documentation-only
+the sealed production/test candidate. The historical conclusion was a documentation-only
 child commit of the sealed candidate; its own HEAD is not the qualified
 campaign execution revision.
 
@@ -327,15 +330,21 @@ it does not certify Phase 8 dogfood quality or completion.
 - The sanitized capsule is a bounded projection and does not preserve raw
   target logs, provider payloads, source bodies, private prompt bodies, or
   per-step timing details.
-- V11 qualifies the three maintained target journeys and required fixtures; it
-  does not establish the broader repeated-dogfood conclusions owned by Phase 8.
-- This documentation-only conclusion commit is not part of the exact-final
-  production/test candidate and does not require another final aggregate.
+- V11 observes deterministic technical invariants in three maintained targets.
+  Its `ordinary_work` writes `v11-ordinary-work.txt` after readiness and observes
+  an unchanged Guarded-store hash. It does not establish naturalistic source/test/
+  config behavior work or Phase 8 work quality, practical context recovery,
+  Question relevance, interruption cost or document usefulness.
+- The archive verifier independently checks membership/hash/mode/bounds/candidate
+  and prohibited-content integrity. It does not semantically replay the journey.
+- This historical documentation conclusion does not qualify later HEADs. Any
+  HEAD used as a Product candidate requires its own authoritative gate. Phase 9
+  remains subject to repeated Dogfood, qualitative qualification and operator approval.
 
 ## Recommended implementation choice
 
-Begin a fresh Phase 8 naturalistic Dogfood campaign under the maintained
-repeated-use and replacement-gate plan from a separate clean worktree whose
+For that historical invocation, the recommendation was a fresh Phase 8 naturalistic
+Dogfood campaign under the maintained repeated-use and replacement-gate plan from a separate clean worktree whose
 actual Git `HEAD` is exactly the sealed production/test candidate
 `68e3699e77e1017896f4469ff1dd3aff11b476ce`. The later documentation-only
 commit must not be used for qualification by supplying the sealed commit only
@@ -346,6 +355,10 @@ completion, and review packaging. Fresh-resume sessions must resolve the
 repository-bound Project before Recall. Retain the accepted production,
 provider, credential, and validation lifecycle boundaries while evaluating
 Phase 8 quality.
+
+A current campaign must instead use the current clean HEAD with its own successful
+maintained gate and verified capsule/archive, as the current Phase 8 owner requires.
+No candidate recorded in this historical report selects a current execution HEAD.
 
 Every predecessor campaign's descriptors, workspaces, Runtime Homes, rollouts,
 bundles, evidence packages, and session identities remain non-reusable. This

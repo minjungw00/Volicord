@@ -55,25 +55,24 @@ surface, not a Volicord product command or production architecture.
   support for Dogfood campaign and repeated-resource paths. It accepts only the
   maintained repository-selected command ordering and fails every unexpected
   option, command, or subcommand.
-- `rebuild/scripts/validate admission` evaluates the current clean candidate,
-  runner/V11, both cross-owner contract-coverage modes, architecture, realistic
-  RI, Dogfood campaign/harness, and provider self-checks, required fixture
-  identity/integrity, executables, writable disposable
-  homes, the maintained resource estimate, loopback, Codex authentication,
-  technical external-network state, and the exact bounded transmission
-  authorization. It prints a structured result and retains `admission.json`
-  below ignored validation state. Both contract-coverage checks are mandatory
-  low-cost prechecks; a failure is a validation admission failure. A blocked
-  result runs none of exact final, production provider qualification, or V11.
-- `rebuild/scripts/validate gate` repeats admission in its own session, invokes
-  an immediate live clean-worktree/HEAD recheck, invokes the existing ordered
-  four-command final owner exactly once, invokes the separately authorized
-  production provider qualification once, passes only the returned summary to
-  V11 preflight, invokes official V11 at most once, runs the V11
-  credential-retention audit, creates and independently verifies the sanitized
-  evidence archive, and only then prints a fully ready sanitized handoff capsule.
-  Direct `rebuild/scripts/validate final` invocation is refused so an exact
-  aggregate cannot bypass admission or become detached from V11.
+- `rebuild/scripts/validate admission` is optional cheap diagnostic preflight:
+  candidate cleanliness, tools, writable disposable homes, resources, loopback,
+  authentication, network, exact model and both transmission authorizations.
+  It starts no deterministic support, Final, provider or V11 work. Exit 0 means
+  `preflight_passed`, with `preflight_eligible = true` and `eligible = false`.
+  Support checks are explicitly `not_run` with a reason. This diagnostic supplies
+  no trusted artifact to the gate and need not immediately precede it.
+- `rebuild/scripts/validate gate` owns authoritative admission. Cheap blockers
+  record all support as `not_run` with blocking check IDs. Once cheap checks pass,
+  it runs the deterministic runner/V11/gate/entrypoint/archive/report, contracts,
+  architecture, RI, Dogfood, provider and fixture support once, preserving every
+  result even after a failure. It then rechecks clean HEAD and invokes the ordered
+  four-command Final once. Final's Cargo metadata and test output must show each
+  mapped contract test's actual successful execution before provider qualification
+  starts. Only fresh evidence from this invocation is used for the provider, V11
+  preflight, official V11, credential audit and independently verified archive.
+  Direct `final` is refused. Local support ownership and the deduplication evidence
+  are maintained in [validation-plan.md](../docs/design/validation-plan.md#31-maintained-final-provider-qualification-v11과-documentation-handoff-lifecycle).
 - `rebuild/scripts/check-architecture-contracts` checks the nine active Phase 3
   owner documents, routing, relative links, traceability IDs, capability-based
   validation paths, prohibited supported paths, Phase 4 handoff structure,
@@ -85,7 +84,11 @@ surface, not a Volicord product command or production architecture.
   Candidate/Guarded omissions, without modifying active documents.
 - `python3 rebuild/validation/shared/contract_coverage.py` verifies that each
   mapped cross-owner behavior names its required Local Operations, CLI, MCP,
-  or Viewer product-entry-point tests. Its `--self-test` mode rejects
+  or Viewer product-entry-point tests as direct, plain `#[test]` Rust integration
+  tests. It rejects comments/literals, ordinary functions, ignored/conditional or
+  nested declarations. The gate binds them to actual Final workspace targets and
+  successful libtest records; static success alone does not prove execution or
+  the semantic adequacy of a test body. Its `--self-test` mode also rejects
   internal-primitive-only coverage, missing entrypoints, canonical-only or
   over-broad forgetting, ignored cleanup/repair failure, Candidate
   error-to-empty conversion, and configured-provider failure reported as
@@ -683,9 +686,18 @@ Replacement passage remains not established, and Phase 9 may not begin.
 Qualifying Dogfood must run from a separate clean worktree whose actual Git
 `HEAD` exactly matches the candidate identified by its own
 successful maintained gate and verified capsule/evidence archive. Historical
-historical candidate `6031641c46cf014a754442dcee3137caf265882e` and any later documentation
+candidate `6031641c46cf014a754442dcee3137caf265882e` and any later documentation
 HEAD remain distinct; neither can qualify a different HEAD through a helper
 argument.
+
+Technical V11 is a deterministic rehearsal across the three maintained repositories
+and fresh Runtime Homes. Its `ordinary_work` writes a disposable marker after
+readiness and checks that the Guarded store hash is unchanged; it does not perform
+naturalistic source/test/config behavior work. Phase 8's repeated campaign and
+qualitative review own work quality, practical context recovery, Question relevance,
+interruption cost and document usefulness. A successful technical gate opens
+technical entry only. Phase 9 requires the separate qualified state and explicit
+operator approval.
 
 ## Admission, authorization, and handoff
 
@@ -720,7 +732,7 @@ qualification also requires `--provider-model <exact-model>`. Admission records
 only the exact assertion IDs and model, not operator authorization prose or
 credential contents.
 
-Preflight-only example:
+Optional cheap diagnostic example (the gate performs its own admission):
 
 ```text
 rebuild/scripts/validate admission \
@@ -730,7 +742,7 @@ rebuild/scripts/validate admission \
   --provider-model <exact-model>
 ```
 
-Exact gate example (reserved for the one authorized final/V11 session):
+Authoritative exact-candidate gate example (no preceding admission is required):
 
 ```text
 rebuild/scripts/validate gate \
@@ -756,8 +768,10 @@ a passed top-level gate by themselves. Archive creation or verification failure
 publishes a corresponding blocked capsule with `phase_8_ready = false`; no final
 or V11 retry is performed.
 
-The portable archive is a bounded structured projection, not a replacement for
-the gate's ignored execution truth. Complete stdout/stderr, detailed V11 local
+Independent archive verification proves membership, hashes, modes, bounds,
+candidate agreement and prohibited-content integrity. It does not replay Final,
+provider or V11 commands, inspect mapped test semantics, or independently establish
+naturalistic work quality. The gate owns technical execution truth. Complete stdout/stderr, detailed V11 local
 artifacts, and raw command evidence remain under `rebuild/.local/validation/`.
 The archive contains only the capsule, sanitized admission/gate/final/process
 records, candidate-bound tracked validation-tool identities and executable
@@ -796,6 +810,7 @@ The versionless current capsule has `kind = validation_handoff_capsule`. It is
 one stage-dependent contract rather than separate success and failure schemas.
 Its bounded cross-session evidence is:
 
+- mapped contract-test execution owner/status/count from Final metadata and test output;
 - validated candidate HEAD, sanitized admission check name/status, pre-final
   check, and any gate blocker;
 - Linux OS/release/platform, machine/architecture, and Python runtime identity;
@@ -832,7 +847,8 @@ an external handoff location.
 Capsule semantic checking follows the stages actually reached. A blocked
 admission or pre-final check requires its supporting check outcome and no later
 evidence. A final failure requires complete exact-final evidence and no V11
-evidence. A V11-preflight failure requires the successful same-gate final and
+evidence. A successful Final with failed mapped-test execution remains blocked,
+with `contract_coverage_execution_failed` and no provider or V11 invocation. A V11-preflight failure requires the successful same-gate final and
 preflight consumption but no official result. An official-V11 failure requires
 the successful final, same-session ownership, actual V11 result/status, and
 only the authenticated targets attempted. Full success additionally requires
