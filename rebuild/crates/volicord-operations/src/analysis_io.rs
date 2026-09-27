@@ -675,15 +675,18 @@ impl NormalizingWriter {
     }
 
     fn finish_scalar(&mut self) -> std::io::Result<()> {
-        let value = std::mem::take(&mut self.token);
-        let index = if let Some(index) = self.symbol_index.get(&value) {
+        let index = if let Some(index) = self.symbol_index.get(&self.token) {
             *index
         } else {
             let index = u32::try_from(self.symbols.len()).map_err(std::io::Error::other)?;
-            self.symbol_index.insert(value.clone(), index);
-            self.symbols.push(value);
+            self.symbol_index.insert(self.token.clone(), index);
+            self.symbols.push(self.token.clone());
             index
         };
+        // Repeated field names and values dominate large graphs. Keep the
+        // scratch capacity instead of reallocating it for every scalar; interned
+        // symbols own independent bytes and retain the same first-seen indices.
+        self.token.clear();
         self.shape.push(b'$');
         self.references.push(index);
         Ok(())
@@ -988,6 +991,57 @@ mod tests {
             read_analysis_cache_value::<Vec<String>>(&compressed[..compressed.len() / 2]).is_err()
         );
         assert!(read_analysis_cache_value::<Vec<u64>>(compressed.as_slice()).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn normalized_scalar_reuse_preserves_exact_json_and_symbol_indices() -> Result<(), Error> {
+        let mut scalar_writer = NormalizingWriter::default();
+        scalar_writer
+            .write_all(br#"["repeat","unique","repeat",true,false,true,null,null,-12,-12]"#)
+            .map_err(|error| Error::with_source("cannot normalize scalar index fixture", error))?;
+        let mut expected_values = VALUES_MAGIC.to_vec();
+        put_u64(&mut expected_values, 6);
+        for symbol in [
+            b"\"repeat\"".as_slice(),
+            b"\"unique\"",
+            b"true",
+            b"false",
+            b"null",
+            b"-12",
+        ] {
+            put_u64(&mut expected_values, symbol.len() as u64);
+            expected_values.extend_from_slice(symbol);
+        }
+        put_u64(&mut expected_values, 10);
+        for index in [0_u32, 1, 0, 2, 3, 2, 4, 4, 5, 5] {
+            expected_values.extend_from_slice(&index.to_le_bytes());
+        }
+        assert_eq!(scalar_writer.finish()?.values, expected_values);
+
+        let value = json!({
+            "escaped": ["quote\"slash\\line\n", "한글 λ", "quote\"slash\\line\n"],
+            "numbers": [0, -12, 1.25, 0, -12],
+            "nested": [{"state": true, "value": null}, {"state": false, "value": null}],
+            "long": ["x".repeat(64 * 1024), "short", "x".repeat(64 * 1024)]
+        });
+        let original = serde_json::to_vec(&value)
+            .map_err(|error| Error::with_source("cannot encode scalar reuse fixture", error))?;
+        let mut writer = NormalizingWriter::default();
+        // Cross scalar and UTF-8 boundaries independently of serializer writes.
+        for chunk in original.chunks(7) {
+            writer.write_all(chunk).map_err(|error| {
+                Error::with_source("cannot normalize scalar reuse fixture", error)
+            })?;
+        }
+        let normalized = writer.finish()?;
+        let mut reader =
+            DenormalizingReader::new(normalized.shape, normalized.values, normalized.scalar_count)?;
+        let mut decoded = Vec::new();
+        reader.read_to_end(&mut decoded).map_err(|error| {
+            Error::with_source("cannot reconstruct scalar reuse fixture", error)
+        })?;
+        assert_eq!(decoded, original);
         Ok(())
     }
 
