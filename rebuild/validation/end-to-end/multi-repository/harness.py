@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import copy
 from contextlib import contextmanager
 import hashlib
 import html
@@ -1195,20 +1196,157 @@ def authenticated_codex(
         )
     if any(path.is_file() for path in retained_root.rglob("auth.json")):
         return step("failed", "authenticated Codex material remains in retained V11 artifacts")
-    if result["exit_code"] != 0:
+    if (result["exit_code"] != 0 or result.get("termination") is not None
+        or result.get("spawn_error") is not None or result.get("outcome") != "succeeded"):
         return step("environment_blocked", "authenticated Codex turn did not complete", operation=result)
-    calls = []
-    for line in decoded(result).splitlines():
+    try:
+        proof = validate_codex_probe(decoded(result), project_id)
+    except ValueError as error:
+        return step("failed", str(error), operation=result)
+    return step("passed", "authenticated Codex completed the bounded project_health probe",
+                operation=result, probe=proof)
+
+
+def validate_codex_probe(stdout: str, project_id: str) -> dict[str, Any]:
+    """Validate codex exec --json items, rather than dogfood rollout envelopes.
+
+    CLI items use snake-case structured_content and may omit isError; the
+    rollout helper handles a different ItemCompleted/CallToolResult shape.
+    Both result representations must agree when supplied.
+    """
+    started = None
+    completed = None
+    turn_started = False
+    turn_completed = False
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
         try:
             event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        encoded = json.dumps(event)
-        if "mcp_tool_call" in encoded and "volicord" in encoded and "project_health" in encoded:
-            calls.append(event)
-    if not calls:
-        return step("failed", "Codex completed without an observable Volicord project_health call", operation=result)
-    return step("passed", "authenticated Codex selected the installed Volicord MCP tool", operation=result)
+        except json.JSONDecodeError as error:
+            raise ValueError("Codex probe contains malformed JSON events") from error
+        if not isinstance(event, dict) or turn_completed:
+            raise ValueError("Codex probe contains invalid or post-turn events")
+        kind = event.get("type")
+        if kind == "thread.started":
+            if turn_started or not isinstance(event.get("thread_id"), str):
+                raise ValueError("Codex probe has invalid thread identity")
+        elif kind == "turn.started":
+            if turn_started:
+                raise ValueError("Codex probe contains additional turns")
+            turn_started = True
+        elif kind == "turn.completed":
+            if not turn_started or completed is None:
+                raise ValueError("Codex probe turn lacks successful tool completion")
+            turn_completed = True
+        elif kind in {"item.started", "item.completed"}:
+            item = event.get("item")
+            if not isinstance(item, dict):
+                raise ValueError("Codex probe has malformed item evidence")
+            item_kind = item.get("type")
+            if item_kind in {"agent_message", "reasoning", "error"}:
+                continue  # Non-action items never count as tool evidence.
+            if item_kind != "mcp_tool_call" or not turn_started:
+                raise ValueError("Codex probe contains forbidden additional activity")
+            if (item.get("server") != "volicord" or item.get("tool") != "project_health"
+                or item.get("arguments") != {"project_id": project_id}
+                or not isinstance(item.get("id"), str) or not item["id"]):
+                raise ValueError("Codex probe tool or Project identity is invalid")
+            if kind == "item.started":
+                if started is not None or completed is not None or item.get("status") != "in_progress":
+                    raise ValueError("Codex probe must contain exactly one tool call")
+                started = item
+                continue
+            if (started is None or completed is not None or item["id"] != started["id"]
+                or item.get("status") != "completed" or item.get("error") is not None):
+                raise ValueError("Codex probe tool did not complete successfully")
+            result = item.get("result")
+            if not isinstance(result, dict) or (
+                "isError" in result and result["isError"] is not False
+            ):
+                raise ValueError("Codex probe returned an invalid or error result")
+            content = result.get("content")
+            if not isinstance(content, list) or len(content) != 1 or not isinstance(content[0], dict):
+                raise ValueError("Codex probe lacks a typed health result")
+            if content[0].get("type") != "text" or not isinstance(content[0].get("text"), str):
+                raise ValueError("Codex probe health content is invalid")
+            try:
+                health = json.loads(content[0]["text"])
+            except json.JSONDecodeError as error:
+                raise ValueError("Codex probe health result is not structured JSON") from error
+            if "structured_content" in result and result["structured_content"] != health:
+                raise ValueError("Codex probe health result representations disagree")
+            if (not isinstance(health, dict) or health.get("connection") != "connected"
+                or health.get("capability_state") != "healthy"
+                or health.get("canonical_available") is not True
+                or health.get("repository_available") is not True
+                or health.get("issues") != []
+                or not isinstance(health.get("runtime_root"), str) or not health["runtime_root"]):
+                raise ValueError("Codex probe health is disconnected or unavailable")
+            completed = {"item_id": item["id"], "server": "volicord", "tool": "project_health",
+                         "project_id": project_id, "status": "completed", "health": health}
+        else:
+            raise ValueError("Codex probe contains failed or unsupported events")
+    if not turn_completed or completed is None:
+        raise ValueError("Codex probe lacks a completed successful project_health turn")
+    return completed
+
+
+def assert_codex_probe_completion() -> None:
+    events = [json.loads(line) for line in (HERE / "fixtures/authenticated-project-health.jsonl")
+              .read_text(encoding="utf-8").splitlines()]
+    def encode(value):
+        return "\n".join(json.dumps(event) for event in value)
+    validate_codex_probe(encode(events), "synthetic-project")
+    cases = {"started-only": events[:3], "text-only": [
+        {"type": "item.completed", "item": {"type": "agent_message",
+         "text": "mcp_tool_call volicord project_health"}}]}
+    for label, field, value in (
+        ("failed", "status", "failed"),
+        ("error", "error", {"message": "failed"}),
+        ("wrong-server", "server", "other"),
+        ("wrong-tool", "tool", "recall"),
+    ):
+        mutated = copy.deepcopy(events)
+        mutated[3]["item"][field] = value
+        cases[label] = mutated
+    mutated = copy.deepcopy(events)
+    for event in mutated[2:4]:
+        event["item"]["arguments"]["project_id"] = "another-project"
+    cases["wrong-project"] = mutated
+    for label, field, value in (
+        ("disconnected", "connection", "disconnected"),
+        ("unhealthy", "capability_state", "unavailable"),
+        ("canonical-unavailable", "canonical_available", False),
+        ("repository-unavailable", "repository_available", False),
+    ):
+        mutated = copy.deepcopy(events)
+        result = mutated[3]["item"]["result"]
+        result["structured_content"][field] = value
+        result["content"][0]["text"] = json.dumps(result["structured_content"])
+        cases[label] = mutated
+    mutated = copy.deepcopy(events)
+    mutated[3]["item"]["result"]["content"][0]["text"] = '{}'
+    cases["conflicting-result"] = mutated
+    for kind in ("command_execution", "file_change", "web_search", "unknown_action"):
+        cases[kind] = events[:-1] + [{"type": "item.started", "item": {
+            "id": "forbidden", "type": kind}}] + events[-1:]
+    extra = copy.deepcopy(events[3])
+    extra["item"].update(id="extra", tool="recall")
+    cases["extra-tool"] = events[:-1] + [extra] + events[-1:]
+    cases["duplicate-completion"] = events[:-1] + [events[3]] + events[-1:]
+    cases["unfinished-turn"] = events[:-1]
+    cases["failed-turn"] = events[:-1] + [{"type": "turn.failed", "error": {"message": "failed"}}]
+    accepted = []
+    for label, mutated in cases.items():
+        try:
+            validate_codex_probe(encode(mutated), "synthetic-project")
+        except ValueError:
+            pass
+        else:
+            accepted.append(label)
+    if accepted:
+        raise AssertionError(f"invalid bounded Codex probes accepted: {accepted}")
 
 
 def rehearse_target(
@@ -2998,7 +3136,7 @@ def assert_authenticated_codex_lifecycle() -> None:
             "pathlib.Path(os.environ['V11_AUTH_VISIBILITY_MARKER']).write_text('visible\\n')\n"
             "if os.environ.get('V11_SYNTHETIC_CODEX_FAILURE') == '1':\n"
             "    raise SystemExit(19)\n"
-            "print(json.dumps({'type':'mcp_tool_call','server':'volicord','tool':'project_health'}))\n",
+            f"print(pathlib.Path({str((HERE / 'fixtures/authenticated-project-health.jsonl').resolve())!r}).read_text())\n",
             encoding="utf-8",
         )
         fake_codex.chmod(0o700)
@@ -3683,6 +3821,7 @@ def self_check() -> int:
             raise AssertionError("uninspectable reduced Viewer architecture qualified")
     assert_recovery_recall_contract()
     assert_candidate_repository_source_contract()
+    assert_codex_probe_completion()
     assert_authenticated_codex_lifecycle()
     assert_credential_retention_audit()
     assessment = read_decision_revisit_assessment()

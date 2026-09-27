@@ -1,0 +1,5 @@
+{"type": "thread.started", "thread_id": "synthetic-thread"}
+{"type": "turn.started"}
+{"type": "item.started", "item": {"id": "item_0", "type": "mcp_tool_call", "server": "volicord", "tool": "project_health", "arguments": {"project_id": "synthetic-project"}, "result": null, "error": null, "status": "in_progress"}}
+{"type": "item.completed", "item": {"id": "item_0", "type": "mcp_tool_call", "server": "volicord", "tool": "project_health", "arguments": {"project_id": "synthetic-project"}, "result": {"content": [{"type": "text", "text": "{\"canonical_available\": true, \"capability_state\": \"healthy\", \"connection\": \"connected\", \"issues\": [], \"repository_available\": true, \"runtime_root\": \"/synthetic/runtime\"}"}], "structured_content": {"canonical_available": true, "capability_state": "healthy", "connection": "connected", "issues": [], "repository_available": true, "runtime_root": "/synthetic/runtime"}}, "error": null, "status": "completed"}}
+{"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 1}}
