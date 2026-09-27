@@ -107,6 +107,10 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
         "exit 0\n",
     )
     for relative in (
+        "rebuild/validation/end-to-end/multi-repository/gate_self_test.py",
+        "rebuild/validation/end-to-end/multi-repository/gate_entrypoint_self_test.py",
+        "rebuild/validation/end-to-end/multi-repository/evidence_archive_self_test.py",
+        "rebuild/scripts/check-validation-report",
         "rebuild/validation/shared/contract_coverage.py",
         "rebuild/scripts/check-architecture-contracts",
         "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
@@ -317,6 +321,12 @@ def main() -> int:
         assert clean_value["blocking_classification"] == "authorization_blocked"
         assert clean_value["final_command_count"] == 0
         assert clean_value["official_v11_command_count"] == 0
+        assert clean_value['support_command_count'] == 0
+        blocked_gate = invoke(candidate, env, 'gate', '--external-network', 'unavailable')
+        blocked_capsule = structured_stdout(blocked_gate)
+        assert blocked_gate.returncode == 1 and blocked_capsule['final_aggregate']['status'] == 'not_run'
+        assert blocked_capsule['official_v11']['status'] == 'not_run'
+        assert any(check['status'] == 'not_run' for check in blocked_capsule['admission_checks'])
         assert git(candidate, "status", "--porcelain=v1", "--untracked-files=all").stdout == ""
         assert bytecode_artifacts(candidate) == []
         assert not final_marker.exists() and not v11_marker.exists()
@@ -351,14 +361,17 @@ def main() -> int:
             "synthetic-model",
         )
         authorized_value = structured_stdout(authorized)
-        assert authorized_value["status"] == "eligible", authorized_value
+        assert authorized_value["status"] == "preflight_passed", authorized_value
+        assert authorized_value['eligible'] is False and authorized_value['support_command_count'] == 0
+        assert all(check['status'] == 'not_run' for check in authorized_value['checks']
+                   if check['details'].get('reason') == 'diagnostic_preflight_only')
 
         failing_env = env.copy()
         failing_env["DOGFOOD_ASSERTIONS_FAIL"] = "1"
         failed_assertion = invoke(
             candidate,
             failing_env,
-            "admission",
+            "gate",
             "--external-network",
             "available",
             "--authorize-external-transmission",
@@ -368,17 +381,17 @@ def main() -> int:
             "--provider-model",
             "synthetic-model",
         )
-        failed_value = structured_stdout(failed_assertion)
+        failed_capsule = structured_stdout(failed_assertion)
+        failed_run = Path(next(line for line in failed_assertion.stderr.splitlines()
+            if line.startswith("evidence capsule: ")).removeprefix("evidence capsule: ")).parent
+        failed_value = json.loads((failed_run / 'admission.json').read_text())
         failed_check = next(check for check in failed_value["checks"]
             if check["name"] == "dogfood_contract_assertions")
         assert failed_assertion.returncode == 1
         assert failed_value["blocking_classification"] == "validation_failed"
         assert failed_check["status"] == "failed"
         assert failed_check["details"]["exit_code"] == 37
-        admission_result_line = next(line for line in failed_assertion.stderr.splitlines()
-            if line.startswith("admission result: "))
-        failed_run = Path(admission_result_line.removeprefix("admission result: ")).parent
-        assertion_artifacts = failed_run / "dogfood-contract-assertions"
+        assertion_artifacts = failed_run / 'admission-checks/dogfood-contract-assertions'
         result = json.loads((assertion_artifacts / "result.json").read_text(encoding="utf-8"))
         assert result["exit_code"] == 37 and result["wrapper_exit_code"] == 37
         assert (assertion_artifacts / "stdout.log").read_text(encoding="utf-8") \

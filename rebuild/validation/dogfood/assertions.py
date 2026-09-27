@@ -1420,7 +1420,6 @@ def main() -> int:
     from review_operations_self_test import run_workflow_tests
     run_workflow_tests()
     import authority_obligations
-    from authority_obligations_self_test import self_test as authority_obligation_self_test
     if qualitative_contract.get("authority_obligation_contract") != authority_obligations.assessment_contract():
         raise AssertionError("maintained authority obligation schema drifted from the human-review consumer")
     required_authority_regressions = {
@@ -1431,8 +1430,6 @@ def main() -> int:
         "interaction_late_resolution", "interaction_avoided", "interaction_deferred", "interaction_scratch_prototype",
         "qualitative_review_exposes_interaction_and_planned_commitment_identities",
     }
-    if not required_authority_regressions <= authority_obligation_self_test().keys():
-        raise AssertionError("required authority obligation regression scenarios are missing")
     behavior_criteria = qualitative_contract.get("interaction_behavior_criterion_contracts", {})
     material_grounding = qualitative_contract.get("material_completeness_grounding", {})
     if (
@@ -1538,9 +1535,16 @@ def main() -> int:
         [sys.executable, "-B", str(HARNESS), "self-test"],
         cwd=ROOT,
         check=False,
+        stdout=subprocess.PIPE,
+        text=True,
     )
+    # Preserve the nested result and check its actual completed regression IDs.
+    print(result.stdout, end="")
     if result.returncode != 0:
         raise RuntimeError(f"Phase 8 harness self-test failed with exit {result.returncode}")
+    completed = json.loads(result.stdout)
+    if not required_authority_regressions <= completed.get('authority_obligation_regressions', {}).keys():
+        raise AssertionError("required authority obligation regression scenarios are missing")
     print("phase 8 dogfood assertions passed")
     return 0
 

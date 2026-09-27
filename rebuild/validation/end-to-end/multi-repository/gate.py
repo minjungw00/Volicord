@@ -33,7 +33,6 @@ _final_spec.loader.exec_module(final_evidence)
 ARCHITECTURE_CHECKER = REBUILD_ROOT / "scripts/check-architecture-contracts"
 CONTRACT_COVERAGE = REBUILD_ROOT / "validation/shared/contract_coverage.py"
 REALISTIC_QUALIFICATION = REBUILD_ROOT / "validation/repository-intelligence/realistic-qualification/assertions.py"
-DOGFOOD_HARNESS = REBUILD_ROOT / "validation/dogfood/harness.py"
 DOGFOOD_CONTRACT_ASSERTIONS = REBUILD_ROOT / "validation/dogfood/assertions.py"
 DOGFOOD_CAMPAIGN_SELF_TEST = REBUILD_ROOT / "validation/dogfood/campaign_self_test.py"
 DOGFOOD_REMEDIATION_INTEGRATION = REBUILD_ROOT / "validation/dogfood/remediation_integration.py"
@@ -234,7 +233,7 @@ def check(name: str, status: str, summary: str, **details: Any) -> Check:
 
 
 def command_check(name: str, result: dict[str, Any], summary: str) -> Check:
-    passed = result.get("wrapper_exit_code") == 0 or result.get("exit_code") == 0
+    passed = result.get("wrapper_exit_code", result.get("exit_code")) == 0
     return check(
         name,
         "passed" if passed else "failed",
@@ -245,9 +244,12 @@ def command_check(name: str, result: dict[str, Any], summary: str) -> Check:
 
 
 def git_output(*arguments: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *arguments], cwd=ROOT, text=True, capture_output=True, check=False
-    )
+    try:
+        return subprocess.run(
+            ["git", *arguments], cwd=ROOT, text=True, capture_output=True, check=False
+        )
+    except OSError as error:
+        return subprocess.CompletedProcess(["git", *arguments], 127, "", type(error).__name__)
 
 
 def repository_check() -> tuple[Check, str | None]:
@@ -320,12 +322,18 @@ def fixture_identities() -> tuple[list[dict[str, str]], Check]:
 
 
 def executable_check() -> Check:
-    tools = {name: shutil.which(name) is not None for name in ("cargo", "git", "python3", "codex")}
+    tools = {name: shutil.which(name) is not None for name in ("cargo", "rustc", "rustfmt", "cargo-clippy", "git", "python3", "codex")}
     files = {
         "installer": (REBUILD_ROOT / "install.sh").is_file()
         and os.access(REBUILD_ROOT / "install.sh", os.X_OK),
         "v11_harness": HARNESS.is_file() and os.access(HARNESS, os.X_OK),
     }
+    for name, argv in support_commands(REBUILD_ROOT / "scripts/validate"):
+        target = Path(argv[1] if argv[0] == sys.executable else argv[0])
+        files[name] = target.is_file() and os.access(target, os.R_OK if argv[0] == sys.executable else os.X_OK)
+    for name in ('gate_self_test.py', 'gate_entrypoint_self_test.py', 'evidence_archive_self_test.py'):
+        target = HERE / name
+        files[name] = target.is_file() and os.access(target, os.X_OK)
     passed = all(tools.values()) and all(files.values())
     return check(
         "required_local_executables",
@@ -452,6 +460,29 @@ def authentication_check() -> Check:
     )
 
 
+def support_commands(runner_path: Path) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """The gate owns this deterministic suite once, after cheap eligibility."""
+    return (
+        ("validation_runner_self_check", (str(runner_path), "self-test")),
+        ("v11_harness_self_check", (str(HARNESS), "self-check")),
+        ("gate_self_test", (str(runner_path), "gate-self-test")),
+        ("gate_entrypoint_self_test", (str(runner_path), "gate-entrypoint-self-test")),
+        ("evidence_archive_self_test", (str(runner_path), "evidence-archive-self-test")),
+        ("validation_report_self_test", (str(REBUILD_ROOT / "scripts/check-validation-report"), "--self-test")),
+        ("contract_coverage", (sys.executable, str(CONTRACT_COVERAGE))),
+        ("contract_coverage_self_test", (sys.executable, str(CONTRACT_COVERAGE), "--self-test")),
+        ("architecture_contracts", (str(ARCHITECTURE_CHECKER),)),
+        ("architecture_contracts_self_test", (str(ARCHITECTURE_CHECKER), "--self-test")),
+        ("repository_intelligence_realistic_qualification", (sys.executable, str(REALISTIC_QUALIFICATION))),
+        # Assertions run the harness; campaign owns its nested regression classes.
+        ("dogfood_contract_assertions", (sys.executable, str(DOGFOOD_CONTRACT_ASSERTIONS))),
+        ("dogfood_campaign_self_test", (sys.executable, str(DOGFOOD_CAMPAIGN_SELF_TEST))),
+        ("dogfood_remediation_integration", (sys.executable, str(DOGFOOD_REMEDIATION_INTEGRATION))),
+        ("provider_qualification_self_test", (sys.executable, str(PROVIDER_QUALIFICATION), "--self-test")),
+        ("fixture_manifest_integrity", (str(FIXTURE_CHECKER), str(FIXTURE_MANIFEST))),
+    )
+
+
 def evaluate_admission(
     *,
     authorization_assertion: str | None,
@@ -464,6 +495,7 @@ def evaluate_admission(
     overrides: dict[str, Check] | None = None,
     environment_evidence: dict[str, Any] | None = None,
     dependency_evidence: dict[str, Any] | None = None,
+    run_support: bool = True,
 ) -> dict[str, Any]:
     overrides = overrides or {}
     checks: list[Check] = []
@@ -476,37 +508,6 @@ def evaluate_admission(
     if checks[-1]["details"].get("candidate_head"):
         candidate_head = checks[-1]["details"]["candidate_head"]
 
-    runner = overrides.get("validation_runner_self_check")
-    if runner is None:
-        runner_result = command_runner(artifact_root / "runner-self-check", (str(runner_path), "self-test"))
-        runner = command_check("validation_runner_self_check", runner_result, "validation runner self-check completed")
-    checks.append(runner)
-
-    v11 = overrides.get("v11_harness_self_check")
-    if v11 is None:
-        v11_result = command_runner(artifact_root / "v11-self-check", (str(HARNESS), "self-check"))
-        v11 = command_check("v11_harness_self_check", v11_result, "V11 harness self-check completed")
-    checks.append(v11)
-
-    maintained_self_checks = (
-        ("contract_coverage", (sys.executable, str(CONTRACT_COVERAGE))),
-        ("contract_coverage_self_test", (sys.executable, str(CONTRACT_COVERAGE), "--self-test")),
-        ("architecture_contracts", (str(ARCHITECTURE_CHECKER),)),
-        ("architecture_contracts_self_test", (str(ARCHITECTURE_CHECKER), "--self-test")),
-        ("repository_intelligence_realistic_qualification", (sys.executable, str(REALISTIC_QUALIFICATION))),
-        ("dogfood_harness_self_test", (sys.executable, str(DOGFOOD_HARNESS), "self-test")),
-        ("dogfood_contract_assertions", (sys.executable, str(DOGFOOD_CONTRACT_ASSERTIONS))),
-        ("dogfood_campaign_self_test", (sys.executable, str(DOGFOOD_CAMPAIGN_SELF_TEST))),
-        ("dogfood_remediation_integration", (sys.executable, str(DOGFOOD_REMEDIATION_INTEGRATION))),
-        ("provider_qualification_self_test", (sys.executable, str(PROVIDER_QUALIFICATION), "--self-test")),
-    )
-    for name, argv in maintained_self_checks:
-        support = overrides.get(name)
-        if support is None:
-            support_result = command_runner(artifact_root / name.replace("_", "-"), argv)
-            support = command_check(name, support_result, f"{name.replace('_', ' ')} completed")
-        checks.append(support)
-
     identity_check = overrides.get("required_fixture_identities")
     identities: list[dict[str, str]] = []
     if identity_check is None:
@@ -514,15 +515,6 @@ def evaluate_admission(
     checks.append(identity_check)
     if checks[-1]["details"].get("fixtures"):
         identities = checks[-1]["details"]["fixtures"]
-
-    integrity = overrides.get("fixture_manifest_integrity")
-    if integrity is None:
-        fixture_result = command_runner(
-            artifact_root / "fixture-integrity",
-            (str(FIXTURE_CHECKER), str(FIXTURE_MANIFEST)),
-        )
-        integrity = command_check("fixture_manifest_integrity", fixture_result, "fixture manifest integrity check completed")
-    checks.append(integrity)
 
     for name, factory in (
         ("required_local_executables", executable_check),
@@ -594,10 +586,26 @@ def evaluate_admission(
     )
     checks.append(overrides.get(provider_model_check["name"], provider_model_check))
 
+    preflight_blockers = [value['name'] for value in checks if value['status'] != 'passed']
+    preflight_eligible = not preflight_blockers
+    for name, argv in support_commands(runner_path):
+        if not preflight_eligible or not run_support:
+            reason = "cheap_preflight_blocked" if preflight_blockers else "diagnostic_preflight_only"
+            support = check(name, "not_run", "support command intentionally not started",
+                            reason=reason, blocking_checks=preflight_blockers, argv=list(argv))
+        else:
+            support = overrides.get(name)
+            if support is None:
+                directory = artifact_root / name.replace('_', '-')
+                result = command_runner(directory, argv)
+                support = command_check(name, result, f"{name.replace('_', ' ')} completed")
+                support['details']['artifact_directory'] = str(directory)
+        checks.append(support)
+
     statuses = {value["status"] for value in checks}
-    eligible = statuses == {"passed"}
+    eligible = run_support and statuses == {"passed"}
     classification = None
-    if not eligible:
+    if not preflight_eligible or (run_support and not eligible):
         classification = (
             "authorization_blocked"
             if "authorization_blocked" in statuses
@@ -607,7 +615,10 @@ def evaluate_admission(
         )
     return {
         "kind": "validation_admission_result",
-        "status": "eligible" if eligible else "blocked",
+        "status": "eligible" if eligible else "preflight_passed" if preflight_eligible and not run_support else "blocked",
+        "purpose": "authoritative_gate_admission" if run_support else "diagnostic_preflight",
+        "preflight_eligible": preflight_eligible,
+        "support_command_count": sum(value["status"] != "not_run" for value in checks if value["name"] in {name for name, _ in support_commands(runner_path)}),
         "eligible": eligible,
         "blocking_classification": classification,
         "candidate_head": candidate_head,
@@ -851,6 +862,9 @@ def make_capsule(
             {
                 "name": value.get("name"),
                 "status": value.get("status"),
+                **({"not_run_reason": value.get("details", {}).get("reason"),
+                    "blocking_checks": value.get("details", {}).get("blocking_checks", [])}
+                   if value.get("status") == "not_run" else {}),
             }
             for value in admission.get("checks", [])
             if isinstance(value, dict)

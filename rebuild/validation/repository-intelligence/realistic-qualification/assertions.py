@@ -58,16 +58,10 @@ def main() -> int:
         "-p",
         "volicord-repository-intelligence",
     ]
-    run([*cargo, "--test", "realistic_qualification"])
-    run(
-        [
-            *cargo,
-            "--lib",
-            "structural::tests::injected_adapter_failure_is_bounded_to_one_language",
-            "--",
-            "--exact",
-        ]
-    )
+    # The exact-candidate Final workspace run owns the maintained Rust tests,
+    # including realistic_qualification and injected adapter-failure controls.
+    # The explicit external-corpus environment below adds distinct integration
+    # evidence and is retained when that corpus is available.
 
     with tempfile.TemporaryDirectory(prefix="volicord-external-corpus-absent-") as absent:
         absent_status = subprocess.run(
@@ -117,7 +111,8 @@ def main() -> int:
             {
                 "schema_version": 1,
                 "kind": "repository_intelligence_realistic_qualification",
-                "local_status": "passed",
+                "local_status": "fixtures_verified",
+                "local_test_execution_owner": "exact_candidate_final_workspace_tests",
                 "tier_1_language_count": len(languages),
                 "semantic_ecosystem_count": len(
                     qualification["tier_1"]["semantic_gold"]["ecosystems"]

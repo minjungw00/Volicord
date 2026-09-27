@@ -615,7 +615,10 @@ def sanitized_admission(value: dict[str, Any]) -> dict[str, Any]:
         "blocking_classification": value.get("blocking_classification"),
         "candidate_head": value.get("candidate_head"),
         "checks": [
-            {"name": check.get("name"), "status": check.get("status")}
+            {"name": check.get("name"), "status": check.get("status"),
+             **({"not_run_reason": check.get("details", {}).get("reason"),
+                 "blocking_checks": check.get("details", {}).get("blocking_checks", [])}
+                if check.get("status") == "not_run" else {})}
             for check in value.get("checks", [])
             if isinstance(check, dict)
         ],

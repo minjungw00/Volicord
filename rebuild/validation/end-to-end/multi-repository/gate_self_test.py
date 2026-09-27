@@ -53,23 +53,7 @@ def admission_overrides() -> dict[str, dict[str, Any]]:
         "candidate_identity_and_clean_worktree": passed(
             "candidate_identity_and_clean_worktree", candidate_head=HEAD, dirty_entry_count=0
         ),
-        "validation_runner_self_check": passed("validation_runner_self_check"),
-        "v11_harness_self_check": passed("v11_harness_self_check"),
-        **{
-            name: passed(name)
-            for name in (
-                "contract_coverage",
-                "contract_coverage_self_test",
-                "architecture_contracts",
-                "architecture_contracts_self_test",
-                "repository_intelligence_realistic_qualification",
-                "dogfood_harness_self_test",
-                "dogfood_contract_assertions",
-                "dogfood_campaign_self_test",
-                "dogfood_remediation_integration",
-                "provider_qualification_self_test",
-            )
-        },
+        **{name: passed(name) for name, _ in gate.support_commands(ROOT / "rebuild/scripts/validate")},
         "required_fixture_identities": passed(
             "required_fixture_identities",
             fixtures=[
@@ -514,9 +498,67 @@ def assert_contract_execution(root: Path) -> None:
     assert owners.counts == {'final': 1, 'provider': 0, 'preflight': 0, 'v11': 0, 'audit': 0}
 
 
+def assert_support_scheduling(root: Path) -> None:
+    runner_path = ROOT / "rebuild/scripts/validate"
+    commands = gate.support_commands(runner_path)
+    names = [name for name, _ in commands]
+    assert len(names) == len(set(names))
+    assert len(commands) == len({argv for _, argv in commands})
+    for required in ('validation_runner_self_check', 'v11_harness_self_check', 'gate_self_test',
+                     'gate_entrypoint_self_test', 'evidence_archive_self_test', 'validation_report_self_test'):
+        assert names.count(required) == 1
+    assert 'dogfood_harness_self_test' not in names  # assertions invoke it once
+    overrides = admission_overrides()
+    for name in names:
+        overrides.pop(name)
+    options = dict(authorization_assertion=gate.AUTHORIZATION_ASSERTION,
+        provider_authorization_assertion=gate.PROVIDER_AUTHORIZATION_ASSERTION,
+        provider_model='synthetic-model', external_network='available', artifact_root=root,
+        runner_path=runner_path, overrides=overrides,
+        environment_evidence=synthetic_environment_evidence(), dependency_evidence=synthetic_dependency_evidence())
+    blockers = ('candidate_identity_and_clean_worktree', 'required_local_executables',
+                'filesystem_and_runtime_home', 'bounded_local_resource_estimate', 'local_loopback',
+                'codex_authentication_material', 'external_network_capability',
+                'operator_external_transmission_authorization',
+                'operator_provider_source_transmission_authorization', 'provider_qualification_model')
+    for name in blockers:
+        broken = dict(overrides)
+        details = {'candidate_head': HEAD, 'dirty_entry_count': 1} if name.startswith('candidate_') else {}
+        broken[name] = gate.check(name, 'environment_blocked', 'synthetic cheap blocker', **details)
+        result = gate.evaluate_admission(**(options | {'overrides': broken}), command_runner=unused_command_runner)
+        assert result['eligible'] is False and result['support_command_count'] == 0
+        skipped = [value for value in result['checks'] if value['name'] in names]
+        assert len(skipped) == len(commands) and all(value['status'] == 'not_run' for value in skipped)
+        assert all(value['details']['reason'] == 'cheap_preflight_blocked' and name in value['details']['blocking_checks']
+                   for value in skipped)
+    for missing in ({'authorization_assertion': None}, {'provider_authorization_assertion': None},
+                    {'provider_model': None}, {'external_network': 'unavailable'}):
+        result = gate.evaluate_admission(**(options | missing), command_runner=unused_command_runner)
+        assert result['eligible'] is False and result['support_command_count'] == 0
+    preflight = gate.evaluate_admission(**options, command_runner=unused_command_runner, run_support=False)
+    assert preflight['status'] == 'preflight_passed' and preflight['preflight_eligible'] is True
+    assert preflight['eligible'] is False and preflight['support_command_count'] == 0
+    invoked = []
+    def runner(directory, argv):
+        index = len(invoked)
+        invoked.append(tuple(argv))
+        assert directory.name == names[index].replace('_', '-')
+        return {'wrapper_exit_code': 37 if index in (0, 2) else 0,
+                'exit_code': 37 if index in (0, 2) else 0,
+                'outcome': 'failed' if index in (0, 2) else 'succeeded'}
+    rejected = gate.evaluate_admission(**options, command_runner=runner)
+    assert invoked == [argv for _, argv in commands]  # non-fail-fast, each owner once
+    assert rejected['support_command_count'] == len(commands)
+    assert rejected['blocking_classification'] == 'validation_failed'
+    failures = [value for value in rejected['checks'] if value['status'] == 'failed']
+    assert [value['name'] for value in failures] == [names[0], names[2]]
+    assert all(value['details']['exit_code'] == 37 and value['details']['artifact_directory'] for value in failures)
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-gate-self-test-") as directory:
         root = Path(directory)
+        assert_support_scheduling(root / "support-scheduling")
         assert_contract_execution(root / "contract-execution")
         assert_maintained_contract_admission(root / "maintained-contracts")
         assert_dirty_candidate_admission(root / "dirty-candidate")
@@ -884,8 +926,7 @@ def main() -> int:
         assert len(capsule["authenticated_codex_outcomes"]) == 3
         assert capsule["phase_8_ready"] is False
 
-        harness.assert_required_step_policy_regressions()
-        harness.assert_credential_retention_audit()
+        # Required-step and raw credential-audit regressions run in V11 self-check.
         unavailable = gate.bounded_version_probe(("volicord-version-probe-does-not-exist", "--version"))
         assert unavailable["status"] == "unavailable" and unavailable["version"] is None
 

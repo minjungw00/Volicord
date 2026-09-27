@@ -393,11 +393,12 @@ def run_admission(arguments: Sequence[str]) -> int:
         artifact_root=run_directory,
         command_runner=gate_command_runner,
         runner_path=Path(__file__).resolve(),
+        run_support=False,
     )
     write_json(run_directory / "admission.json", result)
     print(json.dumps(result, indent=2, sort_keys=True))
     print(f"admission result: {run_directory / 'admission.json'}", file=sys.stderr)
-    return 0 if result["eligible"] else 1
+    return 0 if result["preflight_eligible"] else 1
 
 
 def run_gate(arguments: Sequence[str]) -> int:
@@ -622,7 +623,8 @@ def usage() -> int:
         "  rebuild/scripts/validate evidence-archive-self-test\n"
         "  rebuild/scripts/validate focused <label> -- <command> [arguments...]\n"
         "  rebuild/scripts/validate final  # gate-owned; direct invocation is refused\n"
-        "  rebuild/scripts/validate admission [--external-network <state>] "
+        "  rebuild/scripts/validate admission  # diagnostic cheap preflight; no support suite\n"
+        "    [--external-network <state>] "
         "[--authorize-external-transmission <assertion>]\n"
         "    [--authorize-provider-source-transmission <assertion>] [--provider-model <model>]\n"
         "  rebuild/scripts/validate gate [--external-network <state>] "
@@ -670,7 +672,7 @@ def main(arguments: Sequence[str]) -> int:
             return 2
     if arguments == ("final",) or list(arguments) == ["final"]:
         print(
-            "direct final validation is refused; run admission, then use the same-session validation gate",
+            "direct final validation is refused; use the authoritative validation gate (admission is optional diagnostic preflight)",
             file=sys.stderr,
         )
         return 2

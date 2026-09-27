@@ -202,7 +202,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         status = nonempty_string(
             admission_check.get("status"), f"admission_checks[{index}].status", errors
         )
-        if status not in {"passed", "failed", "environment_blocked", "authorization_blocked"}:
+        if status not in {"passed", "failed", "environment_blocked", "authorization_blocked", "not_run"}:
             errors.append(f"capsule admission check status is invalid: index {index}")
         admission_check_names.append(name)
         admission_check_statuses.append(status)
