@@ -975,6 +975,17 @@ interruption cause, final numeric exit/signal and cleanup completion; cleanup fa
 cannot become successful execution. Parent SIGINT/SIGTERM unwinds this local boundary.
 Short fake-server/process regressions run within the maintained harness self-check.
 
+The raw V11 credential audit compares whole auth material and individual known
+credential-bearing values, including their JSON string spellings. Each authenticated
+probe captures the actual staged auth before execution and refreshed auth before
+cleanup in memory, audits retained artifacts, and records only safe counts/categories.
+Streaming artifact reads catch values across chunk boundaries; retained symlinks are
+scan failures and are never followed outside the artifact boundary. Invalid/unreadable
+auth or retained artifacts cannot certify a clean audit. Temporary auth deletion and
+sanitized archive verification remain distinct checks; no credential value or reusable
+fingerprint is diagnostic evidence. Synthetic controls cover access/refresh/ID/API
+credentials, compact/reformatted JSON, clean artifacts and refreshed staging values.
+
 ### V11 resource regression qualification
 
 Official V11은 `performance-budgets.json`의 maintained Linux regression ceiling을 함께

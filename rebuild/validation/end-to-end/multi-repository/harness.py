@@ -1210,6 +1210,7 @@ def staged_codex_authentication(
     retained_root: Path,
     *,
     staging_parent: Path | None = None,
+    credential_material: dict | None = None,
 ) -> Iterator[Path]:
     """Yield a Codex home containing only the registered config and staged auth."""
     if staging_parent is not None:
@@ -1219,6 +1220,7 @@ def staged_codex_authentication(
         dir=staging_parent,
     )
     staging_directory = Path(temporary.name)
+    staged_auth = staging_directory / "codex-home/auth.json"
     try:
         retained = retained_root.resolve()
         staged = staging_directory.resolve()
@@ -1234,8 +1236,14 @@ def staged_codex_authentication(
         (codex_home / "config.toml").chmod(0o600)
         shutil.copyfile(source_auth, codex_home / "auth.json")
         (codex_home / "auth.json").chmod(0o600)
+        if credential_material is not None:
+            capture_credential_material(staged_auth, credential_material)
         yield codex_home
     finally:
+        # Codex can refresh staged tokens. Keep both versions in memory until the
+        # raw retained-artifact audit, and always remove staging afterwards.
+        if credential_material is not None and staged_auth.exists():
+            capture_credential_material(staged_auth, credential_material)
         try:
             temporary.cleanup()
         except OSError as error:
@@ -1300,12 +1308,14 @@ def authenticated_codex(
         "repository_analyze, another tool, or the shell. Report the returned connection "
         "and capability state."
     )
+    credential_material = {"needles": set(), "errors": 0}
     try:
         with staged_codex_authentication(
             auth,
             Path(env["CODEX_HOME"]),
             retained_root,
             staging_parent=staging_parent,
+            credential_material=credential_material,
         ) as codex_home:
             result = recorder.run(
                 "authenticated-codex",
@@ -1326,8 +1336,11 @@ def authenticated_codex(
             "authenticated Codex material could not be staged",
             error=f"{type(error).__name__}: {error}",
         )
-    if any(path.is_file() for path in retained_root.rglob("auth.json")):
-        return step("failed", "authenticated Codex material remains in retained V11 artifacts")
+    retention = credential_retention_audit(retained_root, known_material=credential_material)
+    write_json(Path(result["stdout"]).with_name("credential-audit.json"), retention)
+    if retention["status"] != "passed":
+        return step("failed", "authenticated credential retention audit failed",
+                    credential_audit=retention, operation=result)
     if (result["exit_code"] != 0 or result.get("termination") is not None
         or result.get("spawn_error") is not None or result.get("outcome") != "succeeded"):
         return step("environment_blocked", "authenticated Codex turn did not complete", operation=result)
@@ -1336,7 +1349,7 @@ def authenticated_codex(
     except ValueError as error:
         return step("failed", str(error), operation=result)
     return step("passed", "authenticated Codex completed the bounded project_health probe",
-                operation=result, probe=proof)
+                operation=result, probe=proof, credential_audit=retention)
 
 
 def validate_codex_probe(stdout: str, project_id: str) -> dict[str, Any]:
@@ -3628,65 +3641,109 @@ def assert_candidate_repository_source_contract() -> None:
         raise AssertionError("missing analysis fabricated a repository Source identity")
 
 
-def credential_retention_audit(
-    artifact_directory: Path,
-    authentication_source: Path | None = None,
-) -> dict[str, Any]:
-    auth = authentication_source or (
-        Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
-    )
-    named_files = 0
-    content_matches = 0
-    scan_errors = 0
+CREDENTIAL_KEYS = {
+    "token", "accesstoken", "refreshtoken", "idtoken", "apikey", "openaiapikey",
+    "secret", "clientsecret", "password", "authorization", "bearertoken",
+}
+
+
+def credential_needles(material: bytes) -> set[tuple[str, bytes]]:
+    """Known auth values and JSON string spellings stay in memory, never evidence."""
     try:
-        credential = auth.read_bytes()
-    except OSError:
-        credential = b""
-        scan_errors += 1
-    needles = {credential, credential.rstrip()} - {b""}
-    if not artifact_directory.is_dir():
+        value = json.loads(material)
+    except (ValueError, UnicodeError):
+        raise ValueError("authentication material is not valid JSON") from None
+    if not isinstance(value, dict):
+        raise ValueError("authentication material is not a JSON object")
+    needles = {("whole_file", item) for item in (material, material.rstrip()) if item}
+
+    def walk(item, credential_bearing=False):
+        if isinstance(item, dict):
+            for key, child in item.items():
+                normalized = re.sub(r"[^a-z0-9]", "", key.lower())
+                walk(child, credential_bearing or normalized in CREDENTIAL_KEYS
+                     or normalized.endswith(("token", "secret", "password", "apikey")))
+        elif isinstance(item, list):
+            for child in item:
+                walk(child, credential_bearing)
+        elif credential_bearing and isinstance(item, str) and item:
+            needles.add(("value", item.encode("utf-8")))
+            for ascii_only in (False, True):
+                needles.add(("value", json.dumps(item, ensure_ascii=ascii_only)[1:-1].encode("utf-8")))
+
+    walk(value)
+    return needles
+
+
+def capture_credential_material(path: Path, material: dict) -> None:
+    try:
+        material["needles"].update(credential_needles(path.read_bytes()))
+    except (OSError, ValueError, RecursionError):
+        material["errors"] += 1
+
+
+def credential_retention_audit(
+    artifact_directory: Path, authentication_source: Path | None = None, *,
+    known_material: dict | None = None,
+) -> dict[str, Any]:
+    material = known_material
+    if material is None:
+        material = {"needles": set(), "errors": 0}
+        auth = authentication_source or (
+            Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
+        )
+        capture_credential_material(auth, material)
+    named_files = content_matches = whole_matches = value_matches = 0
+    scan_errors = material["errors"]
+    needles = material["needles"]
+    overlap = max((len(needle) for _category, needle in needles), default=1) - 1
+    if not artifact_directory.is_dir() or artifact_directory.is_symlink():
         scan_errors += 1
     else:
-        for path in artifact_directory.rglob("*"):
-            if not path.is_file():
-                continue
-            if path.name == "auth.json":
-                named_files += 1
-            try:
-                content = path.read_bytes()
-            except OSError:
-                scan_errors += 1
-                continue
-            if any(needle in content for needle in needles):
-                content_matches += 1
+        try:
+            for path in artifact_directory.rglob("*"):
+                # Never follow retained links into unrelated user files.
+                if path.is_symlink():
+                    scan_errors += 1
+                    continue
+                if not path.is_file():
+                    continue
+                if path.name == "auth.json":
+                    named_files += 1
+                matches = set()
+                try:
+                    with path.open("rb") as stream:
+                        tail = b""
+                        while chunk := stream.read(65536):
+                            content = tail + chunk
+                            for category, needle in needles:
+                                if needle in content:
+                                    matches.add(category)
+                            tail = content[-overlap:] if overlap else b""
+                except OSError:
+                    scan_errors += 1
+                    continue
+                if matches:
+                    content_matches += 1
+                whole_matches += "whole_file" in matches
+                value_matches += "value" in matches
+        except OSError:
+            scan_errors += 1
     passed = named_files == 0 and content_matches == 0 and scan_errors == 0
     return {
         "kind": "v11_credential_retention_audit",
         "status": "passed" if passed else "failed",
         "auth_named_file_count": named_files,
         "credential_content_match_count": content_matches,
+        "whole_auth_file_match_count": whole_matches,
+        "credential_value_match_count": value_matches,
         "scan_error_count": scan_errors,
     }
 
 
 def assert_credential_retention_audit() -> None:
-    secret = b'{"synthetic":"credential-audit-secret"}\n'
-    with tempfile.TemporaryDirectory(prefix="volicord-v11-credential-audit-") as directory:
-        root = Path(directory)
-        auth = root / "source-auth.json"
-        auth.write_bytes(secret)
-        clean = root / "clean"
-        clean.mkdir()
-        (clean / "result.json").write_text('{"status":"passed"}\n', encoding="utf-8")
-        clean_result = credential_retention_audit(clean, auth)
-        if clean_result["status"] != "passed" or secret.rstrip() in json.dumps(clean_result).encode():
-            raise AssertionError("clean credential audit is not bounded and secret-free")
-        leaked = root / "leaked"
-        leaked.mkdir()
-        (leaked / "auth.json").write_bytes(secret)
-        leaked_result = credential_retention_audit(leaked, auth)
-        if leaked_result["status"] != "failed":
-            raise AssertionError("credential audit accepted retained authentication")
+    import credential_audit_self_test
+    credential_audit_self_test.self_check(sys.modules[__name__])
 
 
 def assert_current_materiality_review_contract(source: str) -> None:
