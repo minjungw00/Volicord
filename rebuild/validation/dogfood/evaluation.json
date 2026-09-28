@@ -90,26 +90,7 @@
       "cross_language_config_api_or_process_work_required": true
     }
   },
-  "required_product_steps": [
-    "clean_install",
-    "codex_mcp_connection",
-    "project_binding",
-    "repository_analysis",
-    "source_grounded_understanding",
-    "candidate_boundary",
-    "inquiry_decision",
-    "ordinary_work",
-    "guarded_boundary",
-    "checkpoint",
-    "restart_recall",
-    "portable_clone",
-    "divergent_conflict",
-    "correction_supersession_deletion",
-    "document_outputs",
-    "provider_failure",
-    "parser_failure",
-    "derived_index_recovery"
-  ],
+  "technical_evidence_dependency": "verified_current_contract_gate_capsule_archive_for_exact_candidate",
   "quality_observations": [
     "context_recovery_accuracy",
     "decision_repetition",

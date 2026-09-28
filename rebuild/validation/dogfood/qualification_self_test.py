@@ -2,12 +2,14 @@
 import copy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import machine_findings as m
+import harness
 import qualitative_review as review
 import qualitative_review_self_test as fixtures
 import qualification_policy as policy
@@ -29,6 +31,43 @@ def evaluation():
             "work_slot_ids": list(work_slot_ids), "findings": findings})
     return {"run_id": "a" * 64, "works": works, "journeys": journeys,
         "coverage": copy.deepcopy(policy.TOPOLOGY)}
+
+
+class DefinitionDependencyTests(unittest.TestCase):
+    def test_definition_is_independent_of_v11_leaf_names_and_count(self):
+        for leaves in (('new_v11_only_leaf',), ('renamed_technical_leaf', 'another_new_leaf')):
+            with self.subTest(leaves=leaves), \
+                 patch.object(harness, 'load_v11', return_value=SimpleNamespace(REQUIRED_STEPS=leaves)) as loader:
+                definition = harness.load_definition()
+            loader.assert_not_called()
+            self.assertEqual(definition['technical_evidence_dependency'],
+                harness.TECHNICAL_EVIDENCE_DEPENDENCY)
+            self.assertNotIn('required_product_steps', definition)
+
+    def test_technical_dependency_and_journey_topology_are_required(self):
+        original = harness.load_definition()
+        mutations = []
+        for dependency in (None, 'unverified_gate_capsule', 'verified_prior_contract'):
+            changed = copy.deepcopy(original)
+            if dependency is None:
+                changed.pop('technical_evidence_dependency')
+            else:
+                changed['technical_evidence_dependency'] = dependency
+            mutations.append(changed)
+        for field, value in (('journey_count', 4), ('work_count', 6),
+                             ('resume_pair_count', 2), ('session_count', 9)):
+            changed = copy.deepcopy(original)
+            changed['campaign_topology'][field] = value
+            mutations.append(changed)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'evaluation.json'
+            with patch.object(harness, 'DEFINITION', path):
+                for changed in mutations:
+                    with self.subTest(changed=changed.get('technical_evidence_dependency'),
+                                      topology=changed['campaign_topology']):
+                        path.write_text(json.dumps(changed), encoding='utf-8')
+                        with self.assertRaises(ValueError):
+                            harness.load_definition()
 
 
 class PolicyTests(unittest.TestCase):
@@ -153,6 +192,15 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.result([self.human], {"state": "not_provided"})["replacement_qualification"], "unresolved")
         self.assertEqual(self.result([self.human], {"state": "failed"})["replacement_qualification"], "blocked")
 
+    def test_completed_qualitative_reviews_cannot_manufacture_technical_success(self):
+        for technical, expected in (({'state': 'not_provided'}, 'unresolved'),
+                                    ({'state': 'failed'}, 'blocked')):
+            with self.subTest(technical=technical):
+                result = self.result([self.agent, self.human], technical)
+                self.assertEqual(result['qualitative_review']['state'], 'complete')
+                self.assertEqual(result['replacement_qualification'], expected)
+                self.assertFalse(result['replacement_pass_candidate'])
+
     def test_one_missing_repository_class_cli_observation_is_a_bounded_gap(self):
         missing = copy.deepcopy(self.agent)
         for assessment in missing["assessments"]:
@@ -261,6 +309,9 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         # fixture's deliberately non-passing shell harness. No real V11 runs.
         shutil.copy2(entrypoint.with_name('harness.py'),
             candidate / 'rebuild/validation/end-to-end/multi-repository/harness.py')
+        for helper in ('restart_recall.py', 'materiality_scenarios.py'):
+            shutil.copy2(entrypoint.with_name(helper),
+                candidate / 'rebuild/validation/end-to-end/multi-repository' / helper)
         assert entrypoint_fixture['git'](candidate, 'add', '.').returncode == 0
         assert entrypoint_fixture['git'](candidate, '-c', 'user.name=Validation Fixture',
             '-c', 'user.email=validation@example.invalid', 'commit', '-qm',
@@ -373,6 +424,7 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         identity = json.loads((cls.path.parent / 'evidence-archive.json').read_bytes())
         cls.archive = Path(identity['path'])
         cls.gate = gate
+        cls.owners = owners
         cls.failed_path = Path(next(line.removeprefix('evidence capsule: ')
             for line in failed_stderr.getvalue().splitlines() if line.startswith('evidence capsule: ')))
         cls.failed_capsule = json.loads(failed_stdout.getvalue())
@@ -383,6 +435,13 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
             for line in blocked_stderr.getvalue().splitlines() if line.startswith('evidence capsule: ')))
         cls.blocked_archive = Path(json.loads(
             (cls.blocked_path.parent / 'evidence-archive.json').read_bytes())['path'])
+
+    def test_missing_technical_evidence_is_not_verified(self):
+        self.assertEqual(policy.verify_technical(self.candidate, None, None)['state'],
+            'not_provided')
+        for capsule, archive in ((self.path, None), (None, self.archive)):
+            with self.assertRaisesRegex(ValueError, 'requires capsule and archive'):
+                policy.verify_technical(self.candidate, capsule, archive)
 
     def test_blocked_producer_evidence_is_non_passing(self):
         self.assertEqual(policy.verify_technical(self.candidate, self.blocked_path,
@@ -406,7 +465,9 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
             policy.verify_technical(self.candidate, path, self.failed_archive)
 
     def test_successful_producer_capsule_is_consumed(self):
+        before = self.owners.counts.copy()
         result = policy.verify_technical(self.candidate, self.path, self.archive)
+        self.assertEqual(self.owners.counts, before, 'technical verification reran a gate owner')
         self.assertEqual(result['state'], 'passed')
         self.assertEqual(result['candidate_head'], self.candidate)
         self.assertEqual(self.capsule['candidate_continuity_checks'][-1]['boundary'], 'archive_publication')
@@ -431,6 +492,7 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
             'numeric_boolean': lambda v: publication(v)['details'].update(head_unchanged=1),
             'boolean_count': lambda v: publication(v)['details'].update(dirty_entry_count=False),
             'extra_publication_detail': lambda v: publication(v)['details'].update(unexpected=True),
+            'wrong_contract_kind': lambda v: v.update(kind='obsolete_gate_contract'),
             'archive_hash': lambda v: v['evidence_archive'].update(sha256='f' * 64),
             'archive_size': lambda v: v['evidence_archive'].update(size_bytes=1),
             'archive_members': lambda v: v['evidence_archive'].update(member_count=1),
@@ -479,15 +541,20 @@ class FileBoundaryTests(unittest.TestCase):
         from review_operations_self_test import insufficient_draft, snapshot
         before = snapshot(self.root)
         target = self.parent / 'incomplete-review'
-        ops.prepare(self.root, target, reviewer_kind='agent', session_id='separate-review', evaluation_path=self.evaluation)
-        insufficient_draft(target)
-        ops.record(target, target / 'draft.json')
+        with patch.object(campaign.harness, 'load_v11', side_effect=AssertionError('V11 rerun')), \
+             patch.object(policy, 'verify_technical', side_effect=AssertionError('technical verification during review')):
+            ops.prepare(self.root, target, reviewer_kind='agent', session_id='separate-review', evaluation_path=self.evaluation)
+            insufficient_draft(target)
+            ops.record(target, target / 'draft.json')
         output = self.parent / 'qualification'
-        with patch.object(campaign.harness, 'real_session_evidence', side_effect=AssertionError('naturalistic rerun')):
+        with patch.object(campaign.harness, 'real_session_evidence', side_effect=AssertionError('naturalistic rerun')), \
+             patch.object(campaign.harness, 'load_v11', side_effect=AssertionError('V11 rerun')), \
+             patch.object(policy, 'verify_technical', wraps=policy.verify_technical) as technical_verifier:
             value = policy.qualify(self.root, self.evaluation, output,
                 candidate=campaign.load_campaign(self.root)['candidate_head'], review_roots=[target])
             self.assertNotEqual(value['replacement_qualification'], 'qualified')
             self.assertEqual(value['technical_gate']['state'], 'not_provided')
+            technical_verifier.assert_called_once_with(campaign.load_campaign(self.root)['candidate_head'], None, None)
             self.assertEqual(policy.verify_qualification(output / 'qualification.json'), value)
             with self.assertRaisesRegex(ValueError, 'cannot replace'):
                 policy.approve(output / 'qualification.json', self.parent / 'approval', operator='operator', statement='approve-phase-9')
@@ -533,7 +600,7 @@ class FileBoundaryTests(unittest.TestCase):
 
 
 def run_contract_tests():
-    result = unittest.TextTestRunner().run(unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls) for cls in (PolicyTests, GateTechnicalBoundaryTests, FileBoundaryTests)))
+    result = unittest.TextTestRunner().run(unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls) for cls in (DefinitionDependencyTests, PolicyTests, GateTechnicalBoundaryTests, FileBoundaryTests)))
     if not result.wasSuccessful():
         raise AssertionError('qualification policy regressions failed')
 

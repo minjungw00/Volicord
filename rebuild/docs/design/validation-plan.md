@@ -2082,6 +2082,13 @@ for transient preparation but is never the sole authoritative discovery path. A 
 review, qualification or approval publishes a new lineage; it cannot mutate Campaign evidence or
 claim that a later run belonged to the original candidate execution.
 
+The naturalistic Dogfood definition declares only
+`technical_evidence_dependency = verified_current_contract_gate_capsule_archive_for_exact_candidate`.
+It does not enumerate V11 leaf names or counts. A V11-only technical leaf may evolve without
+changing Dogfood task or topology definitions; the gate and its current report checker own
+technical coverage. Review preparation and qualification do not execute Final, provider, or
+V11. Missing, failed, wrong-candidate, stale-contract, or tampered evidence cannot qualify.
+
 The maintained candidate technical gate remains authoritative and unchanged. Qualification
 requires a capsule matching the independently verified archive's completion transition for
 the exact Product candidate, followed by exactly one successful `archive_publication`

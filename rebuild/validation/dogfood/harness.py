@@ -66,6 +66,7 @@ sys.path.insert(0, str(ROOT / "rebuild/validation/shared"))
 from architecture_owners import ACTIVE_ARCHITECTURE_OWNER_PATHS  # noqa: E402
 
 DEFINITION = HERE / "evaluation.json"
+TECHNICAL_EVIDENCE_DEPENDENCY = "verified_current_contract_gate_capsule_archive_for_exact_candidate"
 CURRENT_MCP_FIXTURE = HERE / "fixtures/current-codex-mcp-completion.jsonl"
 CURRENT_EXECUTION_FIXTURE = HERE / "fixtures/current-codex-execution-evidence.jsonl"
 V11_HARNESS = ROOT / "rebuild/validation/end-to-end/multi-repository/harness.py"
@@ -1334,9 +1335,8 @@ def load_definition() -> dict[str, Any]:
         or polyglot_rules.get("cross_language_config_api_or_process_work_required") is not True
     ):
         raise ValueError("the realistic polyglot work-boundary contract changed")
-    v11 = load_v11()
-    if tuple(value.get("required_product_steps", [])) != tuple(v11.REQUIRED_STEPS):
-        raise ValueError("Phase 8 no longer routes its product journey through maintained V11 steps")
+    if value.get("technical_evidence_dependency") != TECHNICAL_EVIDENCE_DEPENDENCY:
+        raise ValueError("Phase 8 requires verified current-contract gate evidence for the exact Product candidate")
     evidence = value.get("real_session_evidence", {})
     if evidence.get("mode") != "verify_repository_normalized_codex_rollout_and_canonical_bundle":
         raise ValueError("Phase 8 must normalize Codex rollout and canonical product evidence")
@@ -16425,7 +16425,6 @@ def self_test() -> int:
     ]
     if any(value in serialized_external_result for value in hidden_values):
         raise AssertionError("sanitized result retained a plain task or hidden evaluation text")
-    fake_steps = {name: "passed" for name in definition["required_product_steps"]}
     valid_html = (
         "<!doctype html><html lang=\"en\"><head>"
         "<meta name=\"viewport\" content=\"width=device-width\">"
@@ -22950,7 +22949,7 @@ def self_test() -> int:
         "status": "passed",
         "authority_obligation_regressions": authority_obligation_results,
         "definition_sha256": sha256(DEFINITION),
-        "required_product_steps": len(definition["required_product_steps"]),
+        "technical_evidence_dependency": definition["technical_evidence_dependency"],
         "repository_classes": list(CLASSES),
         "private_qualification_profile_contract": "passed",
         "real_session_positive_path": "passed",
