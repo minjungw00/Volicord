@@ -897,6 +897,7 @@ def integration_archive(root: Path) -> tuple[Path, str]:
         "phase_8_ready": False,
         "blocking_classification": "evidence_archive_pending",
         "evidence_archive": {"status": "pending"},
+        "official_v11": {"status": "not_run", "required_by_target": {}},
         "live_provider_qualification": {
             "status": "passed",
             "evidence_sha256": "2" * 64,
@@ -1063,6 +1064,7 @@ def production_scale_archive(root: Path) -> dict[str, int]:
         "phase_8_ready": False,
         "blocking_classification": "evidence_archive_pending",
         "evidence_archive": {"status": "pending"},
+        "official_v11": {"status": "not_run", "required_by_target": {}},
     }
     gate_result = {
         "kind": "validation_gate_result",

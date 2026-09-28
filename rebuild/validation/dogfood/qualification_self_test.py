@@ -309,7 +309,8 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         # fixture's deliberately non-passing shell harness. No real V11 runs.
         shutil.copy2(entrypoint.with_name('harness.py'),
             candidate / 'rebuild/validation/end-to-end/multi-repository/harness.py')
-        for helper in ('restart_recall.py', 'materiality_scenarios.py'):
+        for helper in ('restart_recall.py', 'materiality_scenarios.py',
+                       'multi_work.py', 'result_contract.py', 'multi_work_self_test.py'):
             shutil.copy2(entrypoint.with_name(helper),
                 candidate / 'rebuild/validation/end-to-end/multi-repository' / helper)
         assert entrypoint_fixture['git'](candidate, 'add', '.').returncode == 0

@@ -76,6 +76,7 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     for name in ("performance.py", "performance-budgets.json", "final_evidence.py"):
         shutil.copy2(GATE.with_name(name), gate.with_name(name))
     shutil.copy2(RESOURCE_ESTIMATE, resource_estimate)
+    shutil.copy2(GATE.with_name("result_contract.py"), gate.with_name("result_contract.py"))
 
     (candidate / ".gitignore").write_text("/rebuild/.local/\n", encoding="utf-8")
     manifest = candidate / "rebuild/validation/shared/fixture-manifest.json"
@@ -96,6 +97,12 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     (candidate / "rebuild/Cargo.lock").write_text(
         "# synthetic gate-entrypoint fixture\nversion = 4\n", encoding="utf-8"
     )
+    (candidate / "rebuild/validation/shared/contract-coverage.json").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    mcp_test = candidate / "rebuild/crates/volicord-host/tests/mcp.rs"
+    mcp_test.parent.mkdir(parents=True, exist_ok=True)
+    mcp_test.write_text("// synthetic tracked owner\n", encoding="utf-8")
 
     write_executable(candidate / "rebuild/install.sh", "#!/bin/sh\nexit 0\n")
     write_executable(
@@ -115,6 +122,8 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
         "rebuild/scripts/check-architecture-contracts",
         "rebuild/validation/repository-intelligence/realistic-qualification/assertions.py",
         "rebuild/validation/dogfood/harness.py",
+        "rebuild/validation/dogfood/qualification_policy.py",
+        "rebuild/validation/dogfood/qualification_self_test.py",
         "rebuild/validation/dogfood/assertions.py",
         "rebuild/validation/dogfood/campaign_self_test.py",
         "rebuild/validation/dogfood/remediation_integration.py",
@@ -198,7 +207,9 @@ def assert_maintained_preflight(parent: Path) -> None:
     harness = candidate / "rebuild/validation/end-to-end/multi-repository/harness.py"
     harness.parent.mkdir(parents=True)
     shutil.copy2(HARNESS, harness)
-    for name in ("performance.py", "performance-budgets.json", "final_evidence.py"):
+    for name in ("performance.py", "performance-budgets.json", "final_evidence.py",
+                 "restart_recall.py", "multi_work.py", "result_contract.py",
+                 "multi_work_self_test.py"):
         shutil.copy2(HARNESS.with_name(name), harness.with_name(name))
     runner = candidate / "rebuild/scripts/validate"
     runner.parent.mkdir(parents=True)
