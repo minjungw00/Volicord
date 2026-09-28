@@ -1078,15 +1078,24 @@ credentials, compact/reformatted JSON, clean artifacts and refreshed staging val
 ### V11 resource regression qualification
 
 Official V11은 `performance-budgets.json`의 maintained Linux regression ceiling을 함께
-검사한다: MCP process high-water RSS 4 GiB, manifest 파일 하나 2 GiB, analysis storage
-logical 2 GiB/physical 2.125 GiB, Project별 첫 완성 snapshot 관측 이후 누적 증가 512 MiB,
-inventory/entity/relation item당 logical storage 2,048 bytes, V11 journey 15분, 개별 MCP
-RPC 90초. Absolute ceiling은 안정화되었지만 과대한 footprint를, normalized ceiling은
+검사한다. 이 예산은 workload identity
+`three-target-installed-journey-volicord-three-work-1`에 묶인다: MCP process high-water
+RSS 4 GiB, manifest 파일 하나 2 GiB, analysis storage logical 2 GiB/physical 2.125 GiB,
+Project별 첫 완성 snapshot 관측 이후 누적 증가 800 MiB, inventory/entity/relation item당
+logical storage 2,048 bytes, V11 journey 20분, 개별 MCP RPC 90초. Absolute ceiling은
+안정화되었지만 과대한 footprint를, normalized ceiling은
 repository scale 대비 과대한 표현을, post-warmup ceiling은 full-copy 누적 회귀를 서로
 독립적으로 거부한다. 이는 현재 three-target journey의 회귀 상한이며 일반 제품의
 모든 repository에 대한 latency SLA는 아니다. 상한 초과 또는 측정 누락/오류는 functional
 target별 필수 leaf가 모두 통과해도 aggregate readiness를 막는다. 변경 시 실제 원인과 근거를 검토하며
-실패 실행을 통과시키기 위해 관측값에 맞춰 상한을 올리지 않는다.
+실패 실행을 통과시키기 위해 관측값에 맞춰 상한을 올리지 않는다. 이전 54-leaf 여정의
+15분/512 MiB 예산은 해당 작업량의 기록으로 남는다. 현재 55-leaf 여정은 Volicord의
+실제 B/C Work 연속성 검사와 B/C의 완성 Analysis Snapshot 8개를 추가한다. 54-leaf
+기록의 실행 시간은 703,027.593 ms였고, 55-leaf 첫 clean-HEAD 실행은 모든 leaf를
+통과하면서 1,026,151.145 ms 및 post-warmup 증가 763,064,961 bytes를 측정했다.
+새 예산은 B/C 분석·상호작용에 5분과 snapshot당 36 MiB씩 8개의 보유 비용을
+기존 예산에 더한 값이다. 다른 여섯 상한은 그대로다. Workload identity가 예산과
+일치하지 않으면 V11 실행과 독립 검증은 실패한다.
 
 각 RPC는 monotonic duration과 Linux `/proc` VmHWM을 50ms 간격으로 관측하고 호출
 종료 시 한 번 더 읽는다. VmHWM은 그 프로세스의 누적 high-water 값이므로 call-local

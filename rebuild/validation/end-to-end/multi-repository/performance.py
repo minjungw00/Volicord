@@ -5,6 +5,7 @@ import json
 import math
 import os
 from pathlib import Path
+import runpy
 import threading
 import time
 import tempfile
@@ -72,11 +73,22 @@ def qualify(observed: dict, limits: dict) -> dict:
             "measurement_complete": bool(measured)}
 
 
+def limits_for_workload(policy: dict, workload_identity: str) -> dict:
+    if (not isinstance(policy, dict) or policy.get("policy_version") != 2
+            or policy.get("workload_identity") != workload_identity):
+        raise ValueError("unsupported performance budget policy or V11 workload")
+    limits = policy.get("limits")
+    if (not isinstance(limits, dict) or set(limits) != METRICS
+            or any(type(value) is not int or value <= 0 for value in limits.values())):
+        raise ValueError("invalid performance budget limits")
+    return limits
+
+
 def maintained_limits():
-    policy = json.loads(Path(__file__).with_name("performance-budgets.json").read_text())
-    if policy.get("policy_version") != 1:
-        raise ValueError("unsupported performance budget policy")
-    return policy["limits"]
+    directory = Path(__file__).parent
+    policy = json.loads((directory / "performance-budgets.json").read_text())
+    workload_identity = runpy.run_path(str(directory / "result_contract.py"))["WORKLOAD_IDENTITY"]
+    return limits_for_workload(policy, workload_identity)
 
 
 def accepted(report):
@@ -484,6 +496,20 @@ def storage_self_check():
 
 
 def self_check():
+    policy = json.loads(Path(__file__).with_name("performance-budgets.json").read_text())
+    current_limits = maintained_limits()
+    assert current_limits["v11_duration_ms"] == 20 * 60 * 1000
+    assert current_limits["post_warmup_analysis_growth_bytes"] == 800 * 1024 * 1024
+    for invalid in ({**policy, "workload_identity": "previous-v11-workload"},
+                    {**policy, "policy_version": 1},
+                    {**policy, "limits": {**current_limits, "v11_duration_ms": 0}}):
+        try:
+            limits_for_workload(invalid, policy["workload_identity"])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid V11 performance policy accepted")
+
     limits = {key: 100 for key in METRICS}
     observed = {**{key: 100 for key in METRICS}, "mcp_sample_count": 1, "mcp_call_count": 1,
                 "sampling_error_count": 0, "analysis_snapshot_count": 1,
