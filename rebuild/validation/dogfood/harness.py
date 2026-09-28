@@ -341,7 +341,7 @@ def provisional_review_contract() -> dict[str, Any]:
         }
     return {
         "kind": "phase8_provisional_review_contract",
-        "schema_version": 2,
+        "schema_version": 3,
         "artifact_kind": "phase8_provisional_behavior_review",
         "required_fields": [
             "kind",
@@ -363,8 +363,19 @@ def provisional_review_contract() -> dict[str, Any]:
             "identity": "reviewer_local_stable_dimension_id",
             "discovery": "independent_reviewer_visible_task_and_source_inspection",
             "scope": "bounded_outcome_scope", "classification_count_per_dimension": 1,
+            "applicability": {
+                "applicable": "independently_assessed_positive_scope",
+                "not_applicable": "explicitly_considered_negative_scope_before_reveal",
+                "missing": "no_assessment_fixed_for_this_scope",
+            },
             "summary_classification": "summary_only_never_independent_coverage",
             "reasoning_and_provenance": "same_bounds_and_reviewer_visible_locations_as_summary",
+            "scope_decomposition": [
+                "Authority to perform an action does not settle authority over the content affected by it.",
+                "Ability to generate an artifact does not establish sufficiency for the recipient and stated review purpose.",
+                "Delegated implementation authority does not establish implementation feasibility.",
+                "A routine explanation does not establish a deliberation-worthy learning fork.",
+            ],
         },
         "fixed_values": {
             "kind": "phase8_provisional_behavior_review",
@@ -11657,7 +11668,7 @@ def fixture_blind_assessments(obligations):
     rules = provisional_review_contract()["classification_rules"]
     return [{"dimension_id": f"fixture-dimension-{n}",
              "outcome_scope": f"Fixture bounded outcome {n}: {classification}",
-             "classification": classification, **rules[classification],
+             "classification": classification, "applicability": "applicable", **rules[classification],
              "basis": "Fixture task and pinned owner source ground this independently inspected outcome.",
              "provenance_reference_indices": [0]}
             for n, classification in enumerate(sorted(obligation_set(obligations)))]

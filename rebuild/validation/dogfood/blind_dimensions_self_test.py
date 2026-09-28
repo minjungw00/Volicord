@@ -77,6 +77,23 @@ class BlindDimensionTests(unittest.TestCase):
         self.comparison["obligation_coverage"][0]["status"] = "resolved_from_evidence"
         self.assertTrue(any("cannot be marked agreed" in error for error in self.errors()))
 
+    def test_explicit_negative_is_fixed_scope_not_absence(self):
+        negative = copy.deepcopy(self.assessments[0])
+        negative["applicability"] = "not_applicable"
+        negative["basis"] = "The pinned owner and inspected task show this named fork is routine explanation only."
+        self.provisional["assessments"] = [negative, self.assessments[1]]
+        self.assertEqual(harness.blind_first_review_errors(self.preparation, self.provisional, 1), [])
+        self.assertEqual(harness.blind_dimensions.classifications(self.provisional), ["learning_routine_control"])
+        omitted = copy.deepcopy(self.provisional)
+        omitted["assessments"].pop(0)
+        self.assertNotEqual(omitted, self.provisional)
+        malformed = copy.deepcopy(self.provisional)
+        malformed["assessments"][0]["basis"] = ""
+        self.assertTrue(harness.blind_first_review_errors(self.preparation, malformed, 1))
+        malformed = copy.deepcopy(self.provisional)
+        malformed["assessments"][0]["applicability"] = "unknown"
+        self.assertTrue(harness.blind_first_review_errors(self.preparation, malformed, 1))
+
     def test_assessment_identity_bounds_and_typed_grounding(self):
         for field, bad in (("dimension_id", "../outside"), ("outcome_scope", ""),
                            ("classification", "invented"), ("provenance_reference_indices", [True])):

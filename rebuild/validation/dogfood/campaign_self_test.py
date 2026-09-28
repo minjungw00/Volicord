@@ -1527,6 +1527,16 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
             set_provisional_classification(provisional, classification)
             provisional["preparation_sha256"] = preparation["preparation_sha256"]
             provisional["review_slot_id"] = preparation["review_slot_id"]
+            if classification == "learning_deliberation":
+                negative = copy.deepcopy(provisional["assessments"][0])
+                negative.update({
+                    "dimension_id": "reviewer-discovered-routine-scope",
+                    "outcome_scope": "A separate explanatory detail has no meaningful pre-work learning fork.",
+                    "classification": "learning_deliberation",
+                    "applicability": "not_applicable",
+                    "basis": "The visible task and owner distinguish this routine detail from the bounded technical fork.",
+                })
+                provisional["assessments"].append(negative)
             source = parent / f"blind-recording-{label}-provisional.json"
             campaign.write_json(source, provisional)
             result = campaign.record_provisional_review(
@@ -1539,6 +1549,18 @@ def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
             assert fixed.read_bytes() == source.read_bytes()
             assert harness.sha256(fixed) == result["provisional_review_sha256"]
             assert campaign.work_state(root, "volicord", "A")["state"] == "provisional_recorded"
+            if classification == "learning_deliberation":
+                assert any(item["applicability"] == "not_applicable" for item in campaign.read_json(fixed)["assessments"])
+                original_bytes = fixed.read_bytes()
+                fixed.write_bytes(original_bytes + b" ")
+                try:
+                    campaign.verify_inventory(root)
+                except campaign.CampaignError:
+                    pass
+                else:
+                    raise AssertionError("recorded negative applicability mutation escaped inventory binding")
+                fixed.write_bytes(original_bytes)
+                campaign.verify_inventory(root)
             results.append(result)
             recorded_paths.append(fixed)
     finally:

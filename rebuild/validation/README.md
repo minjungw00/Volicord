@@ -917,9 +917,12 @@ verification success. The Product candidate workspace remains strictly clean and
 
 Blind preparation now requires `assessments` (1–32 independently discovered dimensions).
 Each has reviewer-local stable `dimension_id`, bounded `outcome_scope`, one reviewer-safe
-classification, materiality/unavoidability/disclosure conclusions, bounded source-grounded
-reasoning and typed reviewer-visible provenance indices. The scalar classification remains a
-summary only and cannot establish independent coverage. Neither preflight nor recording reads
+classification, explicit `applicable` or `not_applicable` judgment, materiality/unavoidability/
+disclosure conclusions, bounded source-grounded reasoning and typed reviewer-visible
+provenance indices. The scalar classification remains a
+summary only and cannot establish independent coverage. A missing scope has no assessment; it is never inferred to be an explicit negative judgment.
+The fixed negative judgment names a reviewer-discovered scope and class with reviewer-visible
+source reasoning. Its exact bytes and hash are bound before reveal. Neither preflight nor recording reads
 private assignments, profile placement or evaluator scopes. Provisional bytes remain immutable.
 After all five provisionals are fixed and the profile is revealed, `obligation_coverage` maps each
 evaluator obligation to a distinct fixed dimension, retaining its exact reviewer scope and naming

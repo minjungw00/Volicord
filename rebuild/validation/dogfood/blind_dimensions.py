@@ -7,7 +7,7 @@ import re
 
 
 ASSESSMENT_FIELDS = {
-    "dimension_id", "outcome_scope", "classification", "materiality_conclusion",
+    "dimension_id", "outcome_scope", "classification", "applicability", "materiality_conclusion",
     "material_outcome_unavoidable", "operator_prompt_does_not_disclose_material_outcome",
     "basis", "provenance_reference_indices",
 }
@@ -49,9 +49,19 @@ def assessment_errors(assessments, rules, reference_count, maximum):
         rule = rules.get(classification) if isinstance(classification, str) else None
         if rule is None:
             errors.append("blind assessment classification is unsupported")
-        elif any(item.get(field) != rule[field] or (field != "materiality_conclusion" and item.get(field) is not rule[field])
-                 for field in ("materiality_conclusion", "material_outcome_unavoidable", "operator_prompt_does_not_disclose_material_outcome")):
-            errors.append("blind assessment materiality, unavoidability or disclosure is inconsistent")
+        else:
+            applicability = item.get("applicability")
+            if applicability not in {"applicable", "not_applicable"}:
+                errors.append("blind assessment applicability is unsupported")
+            expected = rule if applicability == "applicable" else {
+                "materiality_conclusion": "no_user_owned_material_outcome",
+                "material_outcome_unavoidable": False,
+                "operator_prompt_does_not_disclose_material_outcome": None,
+            }
+            if any(item.get(field) != expected[field] or
+                   (field != "materiality_conclusion" and item.get(field) is not expected[field])
+                   for field in ("materiality_conclusion", "material_outcome_unavoidable", "operator_prompt_does_not_disclose_material_outcome")):
+                errors.append("blind assessment materiality, unavoidability or disclosure is inconsistent")
     if len(identities) != len(set(identities)):
         errors.append("blind assessment dimension identities must be unique")
     return errors
@@ -98,7 +108,7 @@ def classifications(provisional):
     if not isinstance(assessments, list):
         return []
     return sorted({item["classification"] for item in assessments if isinstance(item, dict)
-        and isinstance(item.get("classification"), str)})
+        and isinstance(item.get("classification"), str) and item.get("applicability") == "applicable"})
 
 
 def comparison_disagreements(rows, provisional, rules):
