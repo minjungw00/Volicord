@@ -26,6 +26,7 @@ TRACKED_EVIDENCE_PATHS = (
     "rebuild/validation/end-to-end/multi-repository/evidence_archive.py",
     "rebuild/validation/end-to-end/multi-repository/gate.py",
     "rebuild/validation/end-to-end/multi-repository/gate_self_test.py",
+    "rebuild/validation/end-to-end/multi-repository/gate_entrypoint_self_test.py",
     "rebuild/validation/end-to-end/multi-repository/evidence_archive_self_test.py",
     "rebuild/validation/end-to-end/multi-repository/final_evidence.py",
     "rebuild/validation/end-to-end/multi-repository/harness.py",

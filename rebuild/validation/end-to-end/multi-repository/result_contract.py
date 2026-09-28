@@ -48,12 +48,27 @@ def _exact(value: Any, names: set[str]) -> bool:
     return isinstance(value, dict) and set(value) == names
 
 
+def _purpose_digest(value: Any) -> str | None:
+    if not isinstance(value, list) or not value:
+        return None
+    meaning = []
+    for row in value:
+        if not isinstance(row, dict) or not isinstance(row.get("statement"), str) or not row["statement"].strip():
+            return None
+        sources = row.get("source_ids", row.get("source_basis"))
+        if (not isinstance(sources, list) or not sources
+                or any(not _id(source) for source in sources)):
+            return None
+        meaning.append([row["statement"], sorted(sources)])
+    return _digest(sorted(meaning))
+
+
 def _view(value: dict[str, Any] | None) -> dict[str, Any]:
     value = value or {}
     rows = value.get("work_history", [])
     return {
         "project_id": value.get("project_id"),
-        "purpose_sha256": _digest(value.get("project_purpose")),
+        "purpose_sha256": _purpose_digest(value.get("project_purpose")),
         "history": sorted([{
             "work_id": row.get("work_item_id"),
             "state": row.get("state"),

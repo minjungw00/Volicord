@@ -249,6 +249,19 @@ def verify_rehearsal(evidence: dict[str, Any], expected_a: dict[str, Any],
             and {row.get("work_item_id") for row in view.get("remaining_work", [])}
             == set(ids[:2])
         )
+    def purpose_meaning(view: dict[str, Any]) -> list[tuple[str, tuple[str, ...]]]:
+        rows = view.get("project_purpose")
+        if not isinstance(rows, list):
+            return []
+        meaning = []
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("statement"), str):
+                return []
+            sources = row.get("source_ids", row.get("source_basis"))
+            if not isinstance(sources, list) or not sources:
+                return []
+            meaning.append((row["statement"], tuple(sorted(sources))))
+        return sorted(meaning)
     purpose = before.get("project_purpose")
     records = canonical.get("records", [])
     record_ids = {(row.get("kind"), row.get("identity")) for row in records
@@ -272,7 +285,8 @@ def verify_rehearsal(evidence: dict[str, Any], expected_a: dict[str, Any],
             for view in (before, after, understanding, imported))),
         "purpose_preserved": bool(purpose_id and ("contextitem", purpose_id) in record_ids
             and purpose and purpose == after.get("project_purpose")
-            and purpose == imported.get("project_purpose")),
+            and purpose == imported.get("project_purpose")
+            and purpose_meaning(before) == purpose_meaning(understanding)),
         "distinct_work_goal_source_checkpoint": distinct(ids)
             and distinct(sources) and distinct(checkpoints),
         "restart_a_retained": bool(

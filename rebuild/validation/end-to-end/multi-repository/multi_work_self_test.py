@@ -44,6 +44,11 @@ def fixture():
         "canonical_after_new_work": {"records": records},
         "cross_work_rejection": rejection,
     }
+    evidence["mcp_understanding"]["project_purpose"] = [{
+        "context_item_id": purpose, "role": "projectpurpose",
+        "statement": purpose_rows[0]["statement"],
+        "source_basis": purpose_rows[0]["source_ids"],
+    }]
     for row in evidence["mcp_understanding"]["work_history"]:
         row["source_basis"] = row.pop("source_ids")
     evidence["mcp_understanding"]["work_history"][2]["state"] = "in_progress"
@@ -59,6 +64,7 @@ def self_check(module):
     mutations = (
         ("wrong project", lambda e, p: e["status_after"].update(project_id="wrong")),
         ("changed purpose", lambda e, p: e["status_after"].update(project_purpose=[])),
+        ("changed MCP purpose", lambda e, p: e["mcp_understanding"].update(project_purpose=[])),
         ("duplicate Work", lambda e, p: e["work"]["C"].update(goal_id=e["work"]["B"]["goal_id"])),
         ("lost A history", lambda e, p: e["status_after"]["work_history"].pop(0)),
         ("lost MCP source basis", lambda e, p: e["mcp_understanding"]["work_history"][0].pop("source_basis")),
@@ -146,6 +152,7 @@ def contract_self_check(contract):
         ("duplicate A/B", lambda p: p["work"]["B"].update(goal_id=p["work"]["A"]["goal_id"])),
         ("lost prior history", lambda p: p["retention"].update(after=[])),
         ("changed purpose", lambda p: p["views"]["portable"].update(purpose_sha256="0" * 64)),
+        ("missing MCP purpose", lambda p: p["views"]["mcp"].update(purpose_sha256=None)),
         ("wrong current Work", lambda p: p["views"]["cli"].update(current_work_ids=[p["work"]["B"]["goal_id"]])),
         ("cross-Work accepted", lambda p: p["authority"].update(rejected=False)),
         ("cross-Work mutated canonical", lambda p: p["authority"].update(canonical_after_sha256="0" * 64)),
