@@ -31,6 +31,10 @@ from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[4]
 HERE = Path(__file__).resolve().parent
+_restart_spec = importlib.util.spec_from_file_location("v11_restart_recall", HERE / "restart_recall.py")
+assert _restart_spec is not None and _restart_spec.loader is not None
+restart_recall = importlib.util.module_from_spec(_restart_spec)
+_restart_spec.loader.exec_module(restart_recall)
 _performance_spec = importlib.util.spec_from_file_location("v11_performance", HERE / "performance.py")
 assert _performance_spec is not None and _performance_spec.loader is not None
 performance_module = importlib.util.module_from_spec(_performance_spec)
@@ -1760,6 +1764,7 @@ def rehearse_target(
     inquiry_evidence: dict[str, Any] = {}
     candidate_status = "failed"
     inquiry_status = "failed"
+    goal = candidate_analysis = decision_record = None
     decision_id = None
     decision_revision = None
     decision_source_id = None
@@ -2690,38 +2695,88 @@ def rehearse_target(
         "the exact Goal, pre-work Analysis Snapshot, resolved Materiality Review, and explicit Decision grounded a Handoff Checkpoint",
         **checkpoint_evidence,
     )
+    pre_restart_resolution = pre_restart_canonical = None
+    expected = None
+    restart_errors: list[str] = []
+    try:
+        pre_host = Mcp(mcp_binary, env)
+        pre_host.initialize()
+        pre_restart_resolution, resolved_ok = pre_host.tool(
+            "project_resolve", {"repository": str(repository.resolve())}
+        )
+        pre_restart_canonical, canonical_ok = pre_host.tool(
+            "canonical_inspect", {"project_id": project_id}
+        )
+        pre_cleanup = pre_host.close()
+        if not resolved_ok or not canonical_ok or not pre_restart_resolution:
+            raise ValueError("pre-restart Project/canonical inspection failed")
+        expected = restart_recall.expected_state(
+            project_id, pre_restart_resolution.get("binding", {}),
+            (initialized or {}).get("binding", {}), goal_statement if goal else "",
+            goal or {}, decision_record or {}, decision_source_id,
+            checkpoint_value or {}, candidate_analysis or {},
+            provider_evidence.get("local_structural") or {}, pre_restart_canonical,
+            checkpoint_next_step,
+        )
+        restart_errors.extend(restart_recall.binding_errors(expected, pre_restart_resolution))
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
+        pre_cleanup = {}
+        restart_errors.append(f"pre-restart evidence: {error}")
+
     recall_before, recall_op = cli_json(
         recorder, "recall", cli, env, "recall", cwd=repository
     )
+    resolved_after = recall_after = continued = canonical_after_read = canonical_after_continue = None
+    recall_after_ok = continue_ok = read_inspection_ok = continue_inspection_ok = False
     try:
         restarted = Mcp(mcp_binary, env)
         restarted.initialize()
+        resolved_after, resolved_after_ok = restarted.tool(
+            "project_resolve", {"repository": str(repository.resolve())}
+        )
         recall_after, recall_after_ok = restarted.tool("recall", {"project_id": project_id})
+        canonical_after_read, read_inspection_ok = restarted.tool(
+            "canonical_inspect", {"project_id": project_id}
+        )
+        if expected and recall_after_ok and not restart_recall.recall_errors(expected, recall_after):
+            continued, continue_ok = restarted.tool("context_record", {
+                "project_id": project_id, "role": "goal", "work_transition": "continue",
+                "goal_context_id": expected["goal_id"],
+            })
+            canonical_after_continue, continue_inspection_ok = restarted.tool(
+                "canonical_inspect", {"project_id": project_id}
+            )
         restart_cleanup = restarted.close()
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
-        recall_after, recall_after_ok, restart_cleanup = {"error": str(error)}, False, {}
+        restart_errors.append(f"fresh MCP process: {error}")
+        restart_cleanup = {}
+    if expected:
+        restart_errors.extend(restart_recall.verify_restart(
+            expected, recall_before, recall_after, resolved_after,
+            canonical_after_read, continued, canonical_after_continue,
+        ))
     recalled_learning = (recall_after or {}).get("learning_context", [])
     learning_recall_ok = (
         completed_learning_recalled(recalled_learning)
         if target_kind == "small-python"
         else not recalled_learning
     )
-    restart_ok = all([
-        checkpoint_value,
-        recall_before,
-        recall_before.get("active_decision_count", 0) >= 1,
-        recall_before.get("next_step") == checkpoint_next_step,
-        recall_after_ok,
-        recall_after,
-        len(recall_after.get("decisions", [])) >= 1,
-        recall_after.get("next_step") == checkpoint_next_step,
-        recall_after.get("learning_context_health", {}).get("state") == "available",
-        learning_recall_ok,
-    ])
+    restart_ok = bool(
+        checkpoint_status == "passed" and expected and recall_before
+        and recall_op.get("exit_code") == 0 and resolved_after_ok and recall_after_ok
+        and continue_ok and read_inspection_ok and continue_inspection_ok
+        and recall_after.get("learning_context_health", {}).get("state") == "available"
+        and learning_recall_ok and not restart_errors
+    )
     steps["restart_recall"] = step(
         "passed" if restart_ok else "failed",
-        "a new MCP process recovered the integrated Decision, bounded learning context, and explicit Handoff next step",
-        cli_recall=recall_before, cli_operation=recall_op, restarted_recall=recall_after, cleanup=restart_cleanup,
+        "CLI and fresh MCP Recall matched authored Project, Work, Checkpoint, Decision, and Source state; continue preserved canonical identity",
+        expected_state=expected, errors=restart_errors,
+        pre_restart_resolution=pre_restart_resolution, pre_restart_canonical=pre_restart_canonical,
+        pre_restart_cleanup=pre_cleanup, cli_recall=recall_before, cli_operation=recall_op,
+        restarted_resolution=resolved_after, restarted_recall=recall_after,
+        canonical_after_read=canonical_after_read, continuation=continued,
+        canonical_after_continue=canonical_after_continue, cleanup=restart_cleanup,
     )
 
     base_bundle = target_root / "base.volicord.json"
@@ -3895,6 +3950,13 @@ def assert_qualification_publication() -> None:
 
 def self_check() -> int:
     performance_module.self_check()
+    restart_test_spec = importlib.util.spec_from_file_location(
+        "v11_restart_recall_self_test", HERE / "restart_recall_self_test.py"
+    )
+    assert restart_test_spec is not None and restart_test_spec.loader is not None
+    restart_test = importlib.util.module_from_spec(restart_test_spec)
+    restart_test_spec.loader.exec_module(restart_test)
+    restart_test.self_check(restart_recall)
     if platform.system() != "Linux":
         raise AssertionError("V11 is qualified only on Linux")
     if not SMALL_FIXTURE.is_dir() or not POLYGLOT_FIXTURE.is_dir():
