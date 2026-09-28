@@ -1872,11 +1872,16 @@ def load_definition() -> dict[str, Any]:
         ]
         or comparison_contract.get("mechanical_disagreement_fields")
         != [
+            "applicability",
             "classification",
             "materiality_conclusion",
             "material_outcome_unavoidable",
             "operator_prompt_disclosure",
         ]
+        or comparison_contract.get("applicability_resolution")
+        != "per_fixed_negative_scope_evaluator_correct_reviewer_correct_or_unresolved_conflict"
+        or comparison_contract.get("provisional_classification_basis")
+        != "sorted_unique_immutable_positive_assessment_classifications_not_scalar_summary"
         or comparison_contract.get("provisional_artifact_rewritten") is not False
         or counterfactual_contract.get("applicability")
         != "required_for_material_user_owned_decision"
@@ -3009,9 +3014,19 @@ def classification_comparison_errors(
         or any(index < 0 or index >= reference_count for index in indices)
     ):
         errors.append("classification comparison must cite inspectable provenance references")
+    assessments = provisional.get("assessments", []) if isinstance(provisional, dict) else []
+    by_id = {item["dimension_id"]: item for item in assessments if isinstance(item, dict) and isinstance(item.get("dimension_id"), str)} if isinstance(assessments, list) else {}
+    rows = value.get("obligation_coverage", [])
+    resolutions = [row.get("applicability_resolution") for row in rows if isinstance(row, dict)
+                   and isinstance(by_id.get(row.get("dimension_id")), dict)
+                   and by_id[row["dimension_id"]].get("applicability") == "not_applicable"] if isinstance(rows, list) else []
+    if "unresolved_conflict" in resolutions and status != "unresolved_conflict":
+        errors.append("unresolved applicability disagreement blocks sealing")
+    if resolutions and status == "agreed":
+        errors.append("applicability disagreement cannot be marked agreed")
     if expected_disagreements:
         if status == "agreed":
-            errors.append("classification or materiality disagreement cannot be marked agreed")
+            errors.append("classification, applicability or materiality disagreement cannot be marked agreed")
         elif status == "unresolved_conflict":
             errors.append("unresolved classification or materiality disagreement blocks sealing")
     elif status != "agreed":
@@ -11678,7 +11693,8 @@ def fixture_obligation_coverage(assessments):
     """Synthetic post-reveal mappings for deterministic fixtures only."""
     return [{"obligation": item["classification"], "dimension_id": item["dimension_id"],
              "reviewer_outcome_scope": item["outcome_scope"], "evaluator_outcome_scope": item["outcome_scope"],
-             "status": "independently_assessed", "basis": "The cited fixture source establishes identical outcome scope.",
+             "status": "independently_assessed", "applicability_resolution": "not_applicable",
+             "basis": "The cited fixture source establishes identical outcome scope.",
              "provenance_reference_indices": [0]} for item in assessments]
 
 

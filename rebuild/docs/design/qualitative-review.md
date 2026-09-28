@@ -471,10 +471,15 @@ After all five provisionals are fixed and the profile is revealed, `obligation_c
 evaluator obligation to a distinct fixed dimension, retaining its exact reviewer scope and naming
 the evaluator scope with source-grounded equivalence reasoning. This is a steward semantic judgment,
 not a text-similarity, Question or alternative oracle. Missing/unseen/reused dimensions or rewritten
-reviewer scope remain explicit `blind_coverage_gap`. `resolved_from_evidence` can correct facts or
-authority about an already assessed dimension; it cannot discover another dimension for coverage.
-Sealing and replacement qualification reject gaps independently of common qualitative review.
-Compatible learning deliberation and routine-control obligations require separate blind assessments.
+reviewer scope remain explicit `blind_coverage_gap`. A matching fixed `not_applicable`
+assessment instead becomes `applicability_disagreement`, with per-obligation evidence-bound
+`evaluator_correct`, `reviewer_correct`, or `unresolved_conflict` resolution. An unresolved conflict
+blocks sealing. `resolved_from_evidence` can settle facts, authority, or applicability for a scope
+fixed before reveal; it cannot discover another dimension for coverage. A reviewer-correct result
+preserves the assigned positive evaluator obligation as `evaluator_obligation_invalid` and blocks
+replacement qualification. Sealing and qualification reject genuine gaps independently of common
+qualitative review. Compatible learning deliberation and routine-control obligations require
+separate blind assessments.
 
 The current steward reconciliation lifecycle is reveal → `prepare-reconciliation` → edit/compare
 → `validate-reconciliation` → `seal-work`. Preparation copies the maintained private evaluator
@@ -502,9 +507,9 @@ verification. Review those independent claims using task, Source/Analysis Snapsh
 validation-command and raw observation evidence. The original target can later change or disappear;
 review-package and evidence-set integrity verify retained bytes rather than the live worktree.
 
-`classification_comparison.provisional_classification` retains the sorted unique classifications
-of the immutable assessment collection. Disagreements are calculated per obligation against its
-paired fixed dimension's classification/materiality/unavoidability/disclosure conclusions; the
-scalar summary does not determine agreement. Fully matching multi-obligation mappings use `agreed`.
+`classification_comparison.provisional_classification` retains the sorted unique positive
+classifications of the immutable assessment collection. Disagreements are calculated per obligation
+against its paired fixed dimension's applicability/classification/materiality/unavoidability/
+disclosure conclusions; the scalar summary does not determine agreement. Fully matching multi-obligation mappings use `agreed`.
 Evidence-resolved paired disagreements remain explicit, even when a scalar summary matches the
 evaluator. Additional independently reviewed dimensions remain preserved without serving as an oracle.

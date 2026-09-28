@@ -48,7 +48,7 @@ def contract():
         "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
         "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
         "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
-        "blind_coverage": "Every counted evaluator obligation requires a distinct independently fixed pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review.",
+        "blind_coverage": "Every counted evaluator obligation requires a distinct independently fixed pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review; reviewer-correct applicability blocks qualification as evaluator_obligation_invalid.",
         "campaign_topology": TOPOLOGY,
         "cli_scope": {"repository_classes": 3, "criteria_per_class": 7, "required_assessments": 21}}
 
@@ -150,8 +150,12 @@ def campaign_control_coverage(evaluation):
             and coverage.get("obligation_count") == len(set(obligations))
             and coverage.get("assessed_count") == coverage.get("obligation_count")
             and coverage.get("blind_coverage_gaps") == [])
-        states[work["work_slot_id"]] = "passed" if passed else "blind_coverage_gap"
-    return {"state": "passed" if all(s == "passed" for s in states.values()) else "blind_coverage_gap",
+        states[work["work_slot_id"]] = "passed" if passed else (
+            "evaluator_obligation_invalid" if coverage.get("status") == "evaluator_obligation_invalid"
+            else "blind_coverage_gap")
+    overall = "blind_coverage_gap" if "blind_coverage_gap" in states.values() else (
+        "evaluator_obligation_invalid" if "evaluator_obligation_invalid" in states.values() else "passed")
+    return {"state": overall,
             "works": dict(sorted(states.items()))}
 
 
@@ -362,8 +366,11 @@ def validate_result(value):
     complete = not (q["unresolved_criteria"] or q["violated_criteria"] or q["human_escalations"] or m["unresolved_findings"])
     coverage = value.get("campaign_control_coverage", {})
     review.require(set(coverage.get("works", {})) == {w[2] for w in EXPECTED_WORKS}
-        and set(coverage["works"].values()) <= {"passed", "blind_coverage_gap"}
-        and coverage.get("state") == ("passed" if all(s == "passed" for s in coverage["works"].values()) else "blind_coverage_gap"),
+        and set(coverage["works"].values()) <= {"passed", "blind_coverage_gap", "evaluator_obligation_invalid"}
+        and coverage.get("state") == (
+            "blind_coverage_gap" if "blind_coverage_gap" in coverage["works"].values()
+            else "evaluator_obligation_invalid" if "evaluator_obligation_invalid" in coverage["works"].values()
+            else "passed"),
         "invalid blind obligation control coverage")
     blocked = coverage["state"] != "passed" or value["evidence_validity"] != "valid" or bool(m["hard_findings"]) or bool(q["violated_criteria"]) or t["state"] in {"failed", "invalid", "candidate_mismatch"}
     expected = "blocked" if blocked else "qualified" if complete and t["state"] == "passed" else "unresolved"

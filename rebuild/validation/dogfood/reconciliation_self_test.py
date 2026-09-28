@@ -24,7 +24,7 @@ class ReconciliationTests(unittest.TestCase):
         self.clean.start()
         self.addCleanup(self.clean.stop)
 
-    def prepare(self, *, missing_dimension=False, fact_disagreement=False):
+    def prepare(self, *, missing_dimension=False, fact_disagreement=False, negative_applicability=False):
         fixtures.prepare(self.root, self.parent / "sources", self.binary)
         for kind, work, _obligations in fixtures.TEST_ASSIGNMENTS:
             descriptor, *_ = fixtures.fixture_for(self.parent / f"fixture-{kind}-{work}",
@@ -33,11 +33,22 @@ class ReconciliationTests(unittest.TestCase):
                 independent = descriptor["behavior_review"]["independent_review"]
                 if missing_dimension:
                     independent["provisional_review"]["assessments"].pop()
+                if negative_applicability:
+                    dimension = independent["provisional_review"]["assessments"][0]
+                    dimension["applicability"] = "not_applicable"
+                    dimension["basis"] = "The visible task and owner make this specific fork routine explanation, not pre-work learner participation."
+                    comparison = independent["classification_comparison"]
+                    comparison["provisional_classification"] = harness.blind_dimensions.classifications(independent["provisional_review"])
+                    comparison["obligation_coverage"][0]["status"] = "applicability_disagreement"
+                    comparison["obligation_coverage"][0]["applicability_resolution"] = "unresolved_conflict"
+                    comparison["disagreements"] = ["applicability"]
+                    comparison["status"] = "unresolved_conflict"
                 if fact_disagreement:
                     dimension = independent["provisional_review"]["assessments"][0]
                     dimension["classification"] = "repository_or_environment_fact"
                     comparison = independent["classification_comparison"]
                     comparison["obligation_coverage"][0]["status"] = "resolved_from_evidence"
+                    comparison["obligation_coverage"][0]["evaluator_outcome_scope"] = "The narrower pinned implementation fork within the assessed repository fact."
                     comparison["provisional_classification"] = harness.blind_dimensions.classifications(independent["provisional_review"])
                     comparison["disagreements"] = ["classification"]
                     comparison["status"] = "resolved_from_evidence"
@@ -127,6 +138,54 @@ class ReconciliationTests(unittest.TestCase):
         c.validate_reconciliation(self.root, "volicord", "C")
         c.seal_work(self.root, "volicord", "C")
         self.assertEqual(fixed.read_bytes(), original)
+
+    def test_explicit_negative_requires_resolution_and_evaluator_correct_can_seal(self):
+        self.prepare(negative_applicability=True)
+        fixed = c.reviewer_provisional_path(self.root, "volicord", "C")
+        original = fixed.read_bytes()
+        c.prepare_reconciliation(self.root, "volicord", "C")
+        with self.assertRaisesRegex(c.CampaignError, "disagreement blocks sealing"):
+            c.validate_reconciliation(self.root, "volicord", "C")
+        draft, _receipt = self.paths()
+        value = c.read_json(draft)
+        comparison = value["behavior_review"]["independent_review"]["classification_comparison"]
+        comparison["status"] = "resolved_from_evidence"
+        comparison["obligation_coverage"][0]["applicability_resolution"] = "evaluator_correct"
+        comparison["resolution_basis"] = "The cited owner and pinned source establish a transferable fork with real implementation consequences."
+        c.write_json(draft, value)
+        c.validate_reconciliation(self.root, "volicord", "C")
+        c.seal_work(self.root, "volicord", "C")
+        self.assertEqual(fixed.read_bytes(), original)
+        state = c.work_state(self.root, "volicord", "C")
+        self.assertEqual(c.work_blind_coverage(self.root, state, c.read_json(c.evaluator_descriptor_path(self.root, "volicord", "C")))["status"], "passed")
+
+    def test_reviewer_correct_resolution_blocks_qualification_without_calling_it_a_gap(self):
+        self.prepare(negative_applicability=True)
+        c.prepare_reconciliation(self.root, "volicord", "C")
+        draft, _receipt = self.paths()
+        value = c.read_json(draft)
+        comparison = value["behavior_review"]["independent_review"]["classification_comparison"]
+        comparison["status"] = "resolved_from_evidence"
+        comparison["obligation_coverage"][0]["applicability_resolution"] = "reviewer_correct"
+        comparison["resolution_basis"] = "The cited owner and pinned source establish routine explanation, so the assigned positive obligation is invalid."
+        c.write_json(draft, value)
+        c.validate_reconciliation(self.root, "volicord", "C")
+        c.seal_work(self.root, "volicord", "C")
+        state = c.work_state(self.root, "volicord", "C")
+        coverage = c.work_blind_coverage(self.root, state, c.read_json(c.evaluator_descriptor_path(self.root, "volicord", "C")))
+        self.assertEqual(coverage["status"], "evaluator_obligation_invalid")
+        self.assertEqual(coverage["blind_coverage_gaps"], [])
+
+    def test_distinct_authority_and_sufficiency_omissions_remain_gaps(self):
+        for scope in ("authority over content disclosed to this recipient", "sufficiency of generated artifact for the stated review purpose"):
+            with self.subTest(scope=scope):
+                provisional = {"assessments": [{"dimension_id": "action-or-generation", "outcome_scope": "Action authority or artifact generation", "classification": "research_or_no_question", "applicability": "applicable"}]}
+                rows = [{"obligation": "hidden_user_owned_decision", "dimension_id": None,
+                         "reviewer_outcome_scope": None, "evaluator_outcome_scope": scope,
+                         "status": "blind_coverage_gap", "applicability_resolution": "not_applicable",
+                         "basis": "This independent outcome was not reviewed before reveal.", "provenance_reference_indices": [0]}]
+                errors = harness.blind_dimensions.coverage_errors(rows, provisional, {"hidden_user_owned_decision"}, 1, harness.MAX_REVIEW_TEXT_BYTES)
+                self.assertTrue(any("blind_coverage_gap" in error for error in errors))
 
     def test_pre_reveal_preparation_and_reprepare_refused(self):
         fixtures.prepare(self.root, self.parent / "sources", self.binary)

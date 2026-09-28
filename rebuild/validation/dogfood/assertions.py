@@ -1276,11 +1276,16 @@ def main() -> int:
         != {"agreed", "resolved_from_evidence"}
         or comparison.get("mechanical_disagreement_fields")
         != [
+            "applicability",
             "classification",
             "materiality_conclusion",
             "material_outcome_unavoidable",
             "operator_prompt_disclosure",
         ]
+        or comparison.get("applicability_resolution")
+        != "per_fixed_negative_scope_evaluator_correct_reviewer_correct_or_unresolved_conflict"
+        or comparison.get("provisional_classification_basis")
+        != "sorted_unique_immutable_positive_assessment_classifications_not_scalar_summary"
         or comparison.get("provisional_artifact_rewritten") is not False
         or counterfactual.get("applicability")
         != "required_for_material_user_owned_decision"

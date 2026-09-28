@@ -539,7 +539,9 @@ content and nonignored untracked hashes to the evidence set. The Product candida
 clean and exact-HEAD-bound. Dirty target state alone is not a Product failure or proof of correct
 verification/actor attribution. Every counted qualification obligation requires a distinct fixed
 pre-reveal blind dimension; an evaluator-only newly discovered dimension remains a blocking
-`blind_coverage_gap`. Steward reconciliation uses the campaign-local private prepare/edit/validate/
+`blind_coverage_gap`. Explicit fixed negative applicability is reconciled as a disagreement;
+reviewer-correct resolution keeps the assigned evaluator obligation invalid and blocks qualification.
+Steward reconciliation uses the campaign-local private prepare/edit/validate/
 seal lifecycle, and only a validated campaign-owned artifact may create an immutable descriptor.
 Diagnostic failed rollout captures are not qualification evidence for a changed candidate. Such a
 candidate requires a fresh 3-journey/5-Work/3-resume/8-session naturalistic campaign, independent

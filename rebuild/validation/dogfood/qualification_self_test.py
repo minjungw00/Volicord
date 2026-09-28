@@ -78,6 +78,14 @@ class PolicyTests(unittest.TestCase):
             "assessed_count": 1, "blind_coverage_gaps": ["unseen repository fact dimension"]}
         self.assertEqual(self.result()["replacement_qualification"], "blocked")
 
+    def test_reviewer_correct_evaluator_obligation_is_not_a_blind_gap_or_qualification(self):
+        work = self.evaluation["works"][0]
+        work["blind_coverage"] = {"status": "evaluator_obligation_invalid", "obligation_count": 1,
+            "assessed_count": 1, "blind_coverage_gaps": []}
+        result = self.result()
+        self.assertEqual(result["campaign_control_coverage"]["state"], "evaluator_obligation_invalid")
+        self.assertEqual(result["replacement_qualification"], "blocked")
+
     def test_hard_integrity_neither_agent_nor_human_can_override(self):
         self.evaluation["works"][0]["findings"] = [m.finding("raw_hash", "confirmed_violation", {"mismatch": True})]
         for reviews in ([self.agent], [self.human], [self.agent, self.human]):

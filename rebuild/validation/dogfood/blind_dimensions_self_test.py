@@ -94,6 +94,24 @@ class BlindDimensionTests(unittest.TestCase):
         malformed["assessments"][0]["applicability"] = "unknown"
         self.assertTrue(harness.blind_first_review_errors(self.preparation, malformed, 1))
 
+    def test_negative_mapping_cannot_be_agreed_or_repaired_as_missing_coverage(self):
+        self.assessments[0]["applicability"] = "not_applicable"
+        self.comparison["provisional_classification"] = harness.blind_dimensions.classifications(self.provisional)
+        self.comparison["disagreements"] = ["applicability"]
+        errors = self.errors()
+        self.assertTrue(any("applicability" in error for error in errors))
+        row = self.comparison["obligation_coverage"][0]
+        row["status"] = "applicability_disagreement"
+        row["applicability_resolution"] = "unresolved_conflict"
+        self.comparison["status"] = "unresolved_conflict"
+        self.assertTrue(any("blocks sealing" in error for error in self.errors()))
+        self.comparison["status"] = "resolved_from_evidence"
+        for resolution in ("evaluator_correct", "reviewer_correct"):
+            row["applicability_resolution"] = resolution
+            self.assertEqual(self.errors(), [])
+        self.provisional["assessments"].pop(0)
+        self.assertTrue(any("blind_coverage_gap" in error for error in self.errors()))
+
     def test_assessment_identity_bounds_and_typed_grounding(self):
         for field, bad in (("dimension_id", "../outside"), ("outcome_scope", ""),
                            ("classification", "invented"), ("provenance_reference_indices", [True])):

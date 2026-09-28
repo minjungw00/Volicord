@@ -466,8 +466,12 @@ def work_blind_coverage(root: Path, state: dict[str, Any], descriptor: dict[str,
     if independent.get("provisional_review") != fixed:
         errors.append("fixed provisional review changed in sealed descriptor")
     obligations = harness.obligation_set(descriptor.get("materiality_obligations"))
-    return {"status": "blind_coverage_gap" if errors else "passed",
-            "obligation_count": len(obligations),
+    comparison = independent.get("classification_comparison")
+    coverage_rows = comparison.get("obligation_coverage", []) if isinstance(comparison, dict) else []
+    reviewer_correct = any(isinstance(row, dict) and row.get("applicability_resolution") == "reviewer_correct"
+                           for row in coverage_rows) if isinstance(coverage_rows, list) else False
+    status = "blind_coverage_gap" if errors else "evaluator_obligation_invalid" if reviewer_correct else "passed"
+    return {"status": status, "obligation_count": len(obligations),
             "assessed_count": 0 if errors else len(obligations),
             "blind_coverage_gaps": sorted(set(errors))}
 
@@ -2023,7 +2027,8 @@ def prepare_reconciliation(root: Path, kind: str, work: str) -> dict[str, Any]:
     if not comparison.get("obligation_coverage"):
         comparison["obligation_coverage"] = [{"obligation": obligation, "dimension_id": None,
             "reviewer_outcome_scope": None, "evaluator_outcome_scope": "REPLACE with bounded evaluator scope",
-            "status": "blind_coverage_gap", "basis": "REPLACE after comparison to fixed pre-reveal dimensions",
+            "status": "blind_coverage_gap", "applicability_resolution": "not_applicable",
+            "basis": "REPLACE after comparison to fixed pre-reveal dimensions",
             "provenance_reference_indices": []}
             for obligation in private_materiality_obligations(root, state, campaign)]
     draft.parent.mkdir(parents=True, mode=0o700)
@@ -3891,7 +3896,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         descriptor = read_json(slot_artifact_path(root, "evaluator", "descriptors", state["review_slot_id"]))
         coverage = work_blind_coverage(root, state, descriptor)
         if coverage["status"] != "passed":
-            raise CampaignError("blind_coverage_gap: immutable campaign control evidence is insufficient")
+            raise CampaignError(f"{coverage['status']}: immutable campaign control evidence is insufficient")
     integrity_check("project_binding", verify_retained_repository_states, root, manifest)
     return manifest
 

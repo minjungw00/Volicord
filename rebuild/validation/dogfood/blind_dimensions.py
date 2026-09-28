@@ -13,7 +13,7 @@ ASSESSMENT_FIELDS = {
 }
 COVERAGE_FIELDS = {
     "obligation", "dimension_id", "reviewer_outcome_scope", "evaluator_outcome_scope",
-    "status", "basis", "provenance_reference_indices",
+    "status", "applicability_resolution", "basis", "provenance_reference_indices",
 }
 MAX_DIMENSIONS = 32
 
@@ -95,9 +95,18 @@ def coverage_errors(rows, provisional, obligations, reference_count, maximum):
             errors.append("blind coverage mapping requires bounded evaluator scope and equivalence reasoning")
         if not references_valid(row.get("provenance_reference_indices"), reference_count):
             errors.append("blind coverage mapping requires inspectable provenance")
-        expected = "independently_assessed" if dimension.get("classification") == obligation else "resolved_from_evidence"
-        if row.get("status") != expected:
-            errors.append("blind coverage mapping must resolve factual disagreement about the already assessed dimension")
+        negative = dimension.get("applicability") == "not_applicable"
+        if negative:
+            if dimension.get("classification") != obligation:
+                errors.append("applicability disagreement must match the fixed concern class")
+            if row.get("status") != "applicability_disagreement" or row.get("applicability_resolution") not in {
+                "evaluator_correct", "reviewer_correct", "unresolved_conflict"
+            }:
+                errors.append("fixed negative applicability requires an explicit evidence-bound disagreement resolution")
+        else:
+            expected = "independently_assessed" if dimension.get("classification") == obligation else "resolved_from_evidence"
+            if row.get("status") != expected or row.get("applicability_resolution") != "not_applicable":
+                errors.append("blind coverage mapping must resolve factual disagreement about the already assessed dimension")
     if seen_obligations != set(obligations):
         errors.append("blind_coverage_gap: evaluator obligation has no independently assessed dimension")
     return errors
@@ -125,6 +134,8 @@ def comparison_disagreements(rows, provisional, rules):
         expected = rules.get(obligation) if isinstance(obligation, str) else None
         if dimension is None or expected is None:
             continue  # Coverage validator emits the explicit gap separately.
+        if dimension.get("applicability") == "not_applicable":
+            disagreements.add("applicability")
         if dimension.get("classification") != obligation:
             disagreements.add("classification")
         for field, label in (("materiality_conclusion", "materiality_conclusion"),
@@ -132,5 +143,5 @@ def comparison_disagreements(rows, provisional, rules):
             ("operator_prompt_does_not_disclose_material_outcome", "operator_prompt_disclosure")):
             if dimension.get(field) != expected[field]:
                 disagreements.add(label)
-    return [field for field in ("classification", "materiality_conclusion", "material_outcome_unavoidable",
+    return [field for field in ("applicability", "classification", "materiality_conclusion", "material_outcome_unavoidable",
         "operator_prompt_disclosure") if field in disagreements]
