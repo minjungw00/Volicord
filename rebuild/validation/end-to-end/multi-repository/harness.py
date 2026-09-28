@@ -35,6 +35,10 @@ _restart_spec = importlib.util.spec_from_file_location("v11_restart_recall", HER
 assert _restart_spec is not None and _restart_spec.loader is not None
 restart_recall = importlib.util.module_from_spec(_restart_spec)
 _restart_spec.loader.exec_module(restart_recall)
+_multi_work_spec = importlib.util.spec_from_file_location("v11_multi_work", HERE / "multi_work.py")
+assert _multi_work_spec is not None and _multi_work_spec.loader is not None
+multi_work = importlib.util.module_from_spec(_multi_work_spec)
+_multi_work_spec.loader.exec_module(multi_work)
 _performance_spec = importlib.util.spec_from_file_location("v11_performance", HERE / "performance.py")
 assert _performance_spec is not None and _performance_spec.loader is not None
 performance_module = importlib.util.module_from_spec(_performance_spec)
@@ -1787,6 +1791,12 @@ def rehearse_target(
             inquiry_evidence = {"missing_public_tools": missing_candidate_tools}
         else:
             canonical_before, canonical_before_ok = host.tool("canonical_inspect", {"project_id": project_id})
+            purpose, purpose_ok = host.tool("context_record", {
+                "project_id": project_id,
+                "user_turn": "Keep the V11 Project understandable across its Work history",
+                "role": "project_purpose",
+                "statement": "Keep the V11 Project understandable across its Work history",
+            }) if target_kind == "volicord" else (None, True)
             learning_active = target_kind == "small-python"
             technical_delegated = target_kind == "polyglot-medium"
             base_goal_statement = (
@@ -2115,7 +2125,8 @@ def rehearse_target(
                 "question_revision": displayed.get("revision") if displayed else 0,
                 "presentation_receipt_id": displayed.get("presentation_receipt_id") if displayed else "",
                 "alternative_key": "local",
-                "work_scope": "project_wide",
+                "work_scope": "work_item" if target_kind == "volicord" else "project_wide",
+                **({"work_item_id": goal.get("context_item_id")} if target_kind == "volicord" else {}),
                 "user_turn": "Choose the local Project context boundary",
                 "user_rationale": "Keep canonical Project context local and authorize providers separately",
             }) if displayed else (None, False)
@@ -2392,6 +2403,7 @@ def rehearse_target(
             )
             candidate_ok = all([
                 canonical_before_ok,
+                purpose_ok,
                 goal_ok,
                 goal,
                 not learning_active
@@ -2468,6 +2480,7 @@ def rehearse_target(
                 "candidate_research_analysis": candidate_research_analysis,
                 "candidate_research_source_id": research_source_id,
                 "goal": goal,
+                "project_purpose": purpose,
                 "learning_context": learning_context,
                 "materiality_review": review,
                 "materiality_review_readiness": review_readiness,
@@ -2717,6 +2730,10 @@ def rehearse_target(
             checkpoint_value or {}, candidate_analysis or {},
             provider_evidence.get("local_structural") or {}, pre_restart_canonical,
             checkpoint_next_step,
+            decision_work_scope=(
+                {"kind": "work_item", "work_item_id": goal.get("context_item_id")}
+                if target_kind == "volicord" else {"kind": "project_wide"}
+            ),
         )
         restart_errors.extend(restart_recall.binding_errors(expected, pre_restart_resolution))
     except (OSError, RuntimeError, ValueError, TypeError, KeyError) as error:
@@ -2779,6 +2796,15 @@ def rehearse_target(
         canonical_after_continue=canonical_after_continue, cleanup=restart_cleanup,
     )
 
+    multi_work_evidence = None
+    if target_kind == "volicord":
+        multi_work_evidence = multi_work.rehearse(
+            sys.modules[__name__], project_id=project_id, repository=repository,
+            cli=cli, mcp_binary=mcp_binary, env=env, recorder=recorder,
+            expected_a=expected or {}, canonical_after_a=canonical_after_continue or {},
+            purpose_id=(candidate_evidence.get("project_purpose") or {}).get("context_item_id"),
+        )
+
     base_bundle = target_root / "base.volicord.json"
     exported, export_op = cli_json(
         recorder, "bundle-export", cli, env, "context", "export", "--output", str(base_bundle), cwd=repository
@@ -2802,6 +2828,19 @@ def rehearse_target(
         export=exported, export_operation=export_op, clone_operation=clone_result,
         import_result=imported, import_operation=import_op, binding=bound, bind_operation=bind_op,
     )
+
+    if target_kind == "volicord" and multi_work_evidence is not None:
+        portable_status, portable_status_op = cli_json(
+            recorder, "multi-work-portable-status", cli, env, "status",
+            runtime=clone_runtime, cwd=clone,
+        ) if portability_ok else (None, {"exit_code": None})
+        multi_work_evidence["portable_status"] = portable_status
+        multi_work_evidence["portable_status_operation"] = portable_status_op
+        multi_work_evidence["checks"] = multi_work.verify_rehearsal(
+            multi_work_evidence, expected or {}, portable_status)
+        multi_work_evidence["status"] = (
+            "passed" if all(multi_work_evidence["checks"].values()) else "failed"
+        )
 
     local_decision = incoming_decision = comparison = resolution = None
     source_a = source_b = None
@@ -3156,6 +3195,7 @@ def rehearse_target(
         "identity": identity,
         "project_id": project_id,
         "legacy_runtime_untouched": legacy_before == legacy_after,
+        **({"multi_work_rehearsal": multi_work_evidence} if target_kind == "volicord" else {}),
         "steps": steps,
     }
 
@@ -3957,6 +3997,13 @@ def self_check() -> int:
     restart_test = importlib.util.module_from_spec(restart_test_spec)
     restart_test_spec.loader.exec_module(restart_test)
     restart_test.self_check(restart_recall)
+    multi_work_test_spec = importlib.util.spec_from_file_location(
+        "v11_multi_work_self_test", HERE / "multi_work_self_test.py"
+    )
+    assert multi_work_test_spec is not None and multi_work_test_spec.loader is not None
+    multi_work_test = importlib.util.module_from_spec(multi_work_test_spec)
+    multi_work_test_spec.loader.exec_module(multi_work_test)
+    multi_work_test.self_check(multi_work)
     if platform.system() != "Linux":
         raise AssertionError("V11 is qualified only on Linux")
     if not SMALL_FIXTURE.is_dir() or not POLYGLOT_FIXTURE.is_dir():

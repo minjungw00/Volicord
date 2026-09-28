@@ -34,7 +34,8 @@ def expected_state(project_id: str, binding: dict[str, Any], initial_binding: di
                    goal_statement: str, goal: dict[str, Any],
                    decision: dict[str, Any], decision_source_id: str,
                    checkpoint: dict[str, Any], analysis: dict[str, Any],
-                   current_analysis: dict[str, Any], inspection: dict[str, Any], next_step: str) -> dict[str, Any]:
+                   current_analysis: dict[str, Any], inspection: dict[str, Any], next_step: str,
+                   decision_work_scope: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build only from successful authoring results and a pre-restart canonical read."""
     goal_id = goal.get("context_item_id")
     decision_id = decision.get("identity")
@@ -78,6 +79,7 @@ def expected_state(project_id: str, binding: dict[str, Any], initial_binding: di
         "goal_statement": records["goal"]["summary"], "goal_source_id": goal["source_id"],
         "goal_sources": records["goal"]["source_basis"],
         "decision_id": decision_id, "decision_revision": decision["revision"],
+        "decision_work_scope": decision_work_scope or {"kind": "project_wide"},
         "decision_source_id": decision_source_id,
         "decision_sources": records["decision"]["source_basis"],
         "checkpoint_id": checkpoint_id, "checkpoint_revision": checkpoint["revision"],
@@ -136,7 +138,7 @@ def recall_errors(expected: dict[str, Any], recall: dict[str, Any] | None) -> li
         decision = decisions[0]
         require(decision.get("revision") == expected["decision_revision"], "Decision revision")
         require(decision.get("state") == "current", "Decision applicability")
-        require(decision.get("work_scope") == {"kind": "project_wide"}, "Decision work scope")
+        require(decision.get("work_scope") == expected["decision_work_scope"], "Decision work scope")
         require(decision.get("chosen_alternative_key") == "local", "Decision choice")
         require(set(expected["decision_sources"]) <= set(decision.get("source_basis", [])), "Decision Source basis")
         require(expected["decision_source_id"] in decision.get("source_basis", []), "Decision response Source")
