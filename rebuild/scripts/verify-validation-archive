@@ -9,12 +9,17 @@ import json
 import math
 from pathlib import Path, PurePosixPath
 import re
+import runpy
 import sys
 import tarfile
 from typing import Any
 
 
 ROOT = "validation-evidence"
+V11_CONTRACT = runpy.run_path(str(
+    Path(__file__).resolve().parents[1] /
+    "validation/end-to-end/multi-repository/result_contract.py"
+))
 
 
 def verify_performance(capsule):
@@ -743,6 +748,10 @@ def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
     verify_process_payloads(contents)
 
     capsule = load_json(contents, f"{ROOT}/capsule.json")
+    contract_errors = V11_CONTRACT["capsule_technical_errors"](
+        capsule.get("official_v11"), capsule.get("authenticated_codex_outcomes"))
+    if contract_errors:
+        fail("V11 current technical contract: " + ", ".join(contract_errors))
     verify_performance(capsule)
     admission = load_json(contents, f"{ROOT}/admission.json")
     gate_result = load_json(contents, f"{ROOT}/gate-result.json")

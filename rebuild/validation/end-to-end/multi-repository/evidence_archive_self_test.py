@@ -52,6 +52,17 @@ def load_builder() -> Any:
 
 
 builder = load_builder()
+contract_spec = importlib.util.spec_from_file_location(
+    "archive_v11_contract", HERE / "result_contract.py")
+assert contract_spec is not None and contract_spec.loader is not None
+contract = importlib.util.module_from_spec(contract_spec)
+contract_spec.loader.exec_module(contract)
+fixture_spec = importlib.util.spec_from_file_location(
+    "archive_multi_work_fixture", HERE / "multi_work_self_test.py")
+assert fixture_spec is not None and fixture_spec.loader is not None
+multi_work_fixture = importlib.util.module_from_spec(fixture_spec)
+fixture_spec.loader.exec_module(multi_work_fixture)
+
 
 
 def payloads() -> dict[str, object]:
@@ -67,7 +78,22 @@ def payloads() -> dict[str, object]:
             "final_summary_sha256": None,
             "evidence_archive": {"status": "pending"},
             "phase_8_ready": False,
+            "authenticated_codex_outcomes": [
+                {"target": target, "project_id": "p" * 32,
+                 "status": "passed", "classification": "passed"}
+                for target in contract.TARGETS
+            ],
             "official_v11": {
+                "status": "passed",
+                "schema_version": contract.SCHEMA_VERSION,
+                "technical_contract": contract.TECHNICAL_CONTRACT,
+                "workload_identity": contract.WORKLOAD_IDENTITY,
+                "required_by_target": contract.required_counts(),
+                "required_step_count": contract.required_total(),
+                "status_counts": {"passed": contract.required_total(),
+                                  "partial": 0, "unsupported": 0, "failed": 0,
+                                  "environment_blocked": 0, "skipped": 0},
+                "multi_work_continuity": multi_work_fixture.contract_fixture(contract)[2],
                 "phase_8_ready": True,
                 "performance": {
                     "status": "passed", "measurement_complete": True, "exceeded": [],
@@ -1174,6 +1200,26 @@ def main() -> int:
             values["capsule.json"]["official_v11"].pop("performance"))
         rejected_attestation("unmeasured-performance", lambda values:
             values["capsule.json"]["official_v11"]["performance"]["observed"].__setitem__("mcp_sample_count", 0))
+
+        for label, mutate in (
+            ("old-schema", lambda value: value.update(schema_version=1)),
+            ("missing-proof", lambda value: value.update(multi_work_continuity=None)),
+            ("wrong-restart-goal", lambda value: value["multi_work_continuity"]["restart"]["mcp"].update(goal_id="wrong")),
+            ("duplicate-work", lambda value: value["multi_work_continuity"]["work"]["C"].update(
+                goal_id=value["multi_work_continuity"]["work"]["B"]["goal_id"])),
+            ("lost-prior-history", lambda value: value["multi_work_continuity"]["retention"].update(after=[])),
+            ("purpose-drift", lambda value: value["multi_work_continuity"]["views"]["portable"].update(
+                purpose_sha256="0" * 64)),
+            ("wrong-current-work", lambda value: value["multi_work_continuity"]["views"]["cli"].update(
+                current_work_ids=["wrong"])),
+            ("cross-work-mutated", lambda value: value["multi_work_continuity"]["authority"].update(
+                canonical_after_sha256="0" * 64)),
+        ):
+            result = rejected_attestation(
+                f"rehashed-lifecycle-{label}",
+                lambda values, mutate=mutate: mutate(
+                    values["capsule.json"]["official_v11"]))
+            assert "V11 current technical contract" in result.stderr, label
 
         source_content = rejected_attestation(
             "negative-attestation-source-content",

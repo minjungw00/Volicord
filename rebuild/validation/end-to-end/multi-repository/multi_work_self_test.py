@@ -38,7 +38,7 @@ def fixture():
         "work_b": {"checkpoint": {"checkpoint_id": checkpoints["B"]}},
         "work_c": {"checkpoint": {"checkpoint_id": checkpoints["C"]}},
         "status_before": {"project_id": project, "project_purpose": purpose_rows,
-                          "work_history": history[:1]},
+                          "work_history": history[:1], "current_work": [], "remaining_work": history[:1]},
         "status_after": copy.deepcopy(view), "mcp_understanding": copy.deepcopy(view),
         "canonical_after_a": {"records": before},
         "canonical_after_new_work": {"records": records},
@@ -70,3 +70,100 @@ def self_check(module):
         changed, current, imported = copy.deepcopy(evidence), copy.deepcopy(expected), copy.deepcopy(portable)
         mutate(changed, imported)
         assert not all(module.verify_rehearsal(changed, current, imported).values()), label
+
+
+def contract_fixture(contract, project_id="p" * 32):
+    """A coherent synthetic raw producer observation for contract mutation tests."""
+    evidence, expected_ids, portable = fixture()
+    old_project = evidence["project_id"]
+    evidence["project_id"] = project_id
+    for key in ("status_before", "status_after", "mcp_understanding"):
+        evidence[key]["project_id"] = project_id
+    portable["project_id"] = project_id
+    evidence["portable_status"] = portable
+    a, b, c = [evidence["work"][label] for label in ("A", "B", "C")]
+    for label, baseline in (("B", "8" * 32), ("C", "9" * 32)):
+        row = evidence["work"][label]
+        evidence[f"work_{label.lower()}"] = {
+            "goal": {"project_id": project_id, "context_item_id": row["goal_id"],
+                     "source_id": row["source_id"], "work_transition": "start_new",
+                     "canonical_mutation": True},
+            "baseline": {"analysis_snapshot_id": baseline},
+            "ready": {"workflow": {"stage": "ready_for_work"}},
+            "checkpoint": {"checkpoint_id": row["checkpoint_id"],
+                           "goal_context_id": row["goal_id"],
+                           "baseline_analysis_snapshot_id": baseline,
+                           "applied_decision_ids": [],
+                           "workflow": {"disposition": "checkpoint_recorded"}},
+        }
+    scope = {"kind": "work_item", "work_item_id": a["goal_id"]}
+    recall = {
+        "project_id": project_id,
+        "goal_basis": [{"identity": a["goal_id"], "source_ids": [a["source_id"]]}],
+        "decisions": [{"identity": expected_ids["decision_id"], "revision": 1,
+                       "work_scope": scope}],
+        "checkpoint": {"identity": a["checkpoint_id"], "revision": 1,
+                       "work_item_id": a["goal_id"],
+                       "applied_decisions": [expected_ids["decision_id"]]},
+    }
+    restart = {
+        "expected_state": {
+            "project_id": project_id,
+            "goal_id": a["goal_id"], "goal_source_id": a["source_id"],
+            "goal_revision": 1,
+            "decision_id": expected_ids["decision_id"],
+            "decision_revision": 1, "decision_work_scope": scope,
+            "checkpoint_id": a["checkpoint_id"], "checkpoint_revision": 1,
+        },
+        "cli_recall": copy.deepcopy(recall),
+        "restarted_recall": copy.deepcopy(recall),
+        "continuation": {
+            "project_id": project_id, "context_item_id": a["goal_id"],
+            "source_id": a["source_id"], "revision": 1,
+            "work_transition": "continue", "canonical_mutation": False,
+        },
+    }
+    proof = contract.make_lifecycle_proof(evidence, restart)
+    assert not contract.lifecycle_errors(proof), contract.lifecycle_errors(proof)
+    return evidence, restart, proof
+
+
+def contract_self_check(contract):
+    _, _, original = contract_fixture(contract)
+    mutations = (
+        ("wrong Project", lambda p: p["views"]["cli"].update(project_id="wrong")),
+        ("wrong Work", lambda p: p["views"]["portable"]["history"][0].update(work_id="wrong")),
+        ("wrong Decision", lambda p: p["restart"]["mcp"].update(decision_id="wrong")),
+        ("wrong Checkpoint", lambda p: p["restart"]["cli"].update(checkpoint_id="wrong")),
+        ("missing restart", lambda p: p["restart"].pop("mcp")),
+        ("both transports wrong", lambda p: (
+            p["restart"]["cli"].update(goal_id="wrong"),
+            p["restart"]["mcp"].update(goal_id="wrong"))),
+        ("continue made new Work", lambda p: p["restart"]["continuation"].update(goal_id=p["work"]["B"]["goal_id"])),
+        ("duplicate A/B", lambda p: p["work"]["B"].update(goal_id=p["work"]["A"]["goal_id"])),
+        ("lost prior history", lambda p: p["retention"].update(after=[])),
+        ("changed purpose", lambda p: p["views"]["portable"].update(purpose_sha256="0" * 64)),
+        ("wrong current Work", lambda p: p["views"]["cli"].update(current_work_ids=[p["work"]["B"]["goal_id"]])),
+        ("cross-Work accepted", lambda p: p["authority"].update(rejected=False)),
+        ("cross-Work mutated canonical", lambda p: p["authority"].update(canonical_after_sha256="0" * 64)),
+        ("missing new baseline", lambda p: p["authored"]["C"].update(baseline_id=None)),
+        ("passed without B checkpoint", lambda p: p["authored"]["B"].update(checkpoint_id=None)),
+        ("unbounded user prose", lambda p: p["retention"]["after"].append(
+            ["source", "/home/private/source", 1, []])),
+    )
+    for label, mutate in mutations:
+        changed = copy.deepcopy(original)
+        mutate(changed)
+        assert contract.lifecycle_errors(changed), label
+    assert contract.required_counts() == {
+        target: len(contract.required_steps_for_target(target))
+        for target in contract.TARGETS
+    }
+    assert len(contract.COMMON_STEPS) == 18
+    assert not set(contract.VOLICORD_EXTRA) & set(contract.COMMON_STEPS)
+    try:
+        contract.required_steps_for_target("unknown")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unknown V11 target accepted")

@@ -284,8 +284,17 @@ class Owners:
         for target in ("volicord", "small-python", "polyglot-medium"):
             steps = {
                 name: harness.step(status, "synthetic gate fixture")
-                for name in harness.REQUIRED_STEPS
+                for name in harness.result_contract.required_steps_for_target(target)
             }
+            lifecycle_raw = None
+            if target == "volicord" and self.v11_passes:
+                lifecycle_raw, restart, proof = harness.multi_work_self_test.contract_fixture(
+                    harness.result_contract, "synthetic-project")
+                steps["restart_recall"]["evidence"] = restart
+                steps["multi_work_continuity"] = harness.step(
+                    status, "synthetic installed lifecycle", proof=proof,
+                    checks=harness.multi_work.verify_rehearsal(
+                        lifecycle_raw, restart["expected_state"], lifecycle_raw["portable_status"]))
             probe_stdout = output_directory / f"{target}-probe.jsonl"
             probe_stdout.write_text((HERE / "fixtures/authenticated-project-health.jsonl").read_text())
             operation = {"exit_code": 0, "outcome": "succeeded", "termination": None,
@@ -295,7 +304,10 @@ class Owners:
                 probe=harness.validate_codex_probe(probe_stdout.read_text(), "synthetic-project"))
             steps["codex_mcp_connection"]["evidence"] = {"authenticated": authenticated}
             steps["project_binding"]["evidence"] = {"project_id": "synthetic-project"}
-            repositories.append({"class": target, "project_id": "synthetic-project", "steps": steps})
+            repositories.append({
+                "class": target, "project_id": "synthetic-project", "steps": steps,
+                **({"multi_work_rehearsal": lifecycle_raw} if lifecycle_raw is not None else {}),
+            })
         result = harness.make_v11_result(
             validated_production_head=candidate_head,
             final_gate_artifact=str(final_path),
@@ -650,7 +662,9 @@ def main() -> int:
         ordered["commands"].reverse()
         assert not gate.exact_final_passed(ordered, (*FINAL_COMMANDS, ("second",)))
         for target_index in range(3):
-            for name in harness.REQUIRED_STEPS:
+            for name in harness.result_contract.required_steps_for_target(
+                harness.result_contract.TARGETS[target_index]
+            ):
                 for status in harness.ALLOWED_STATUS - {"passed"}:
                     mutated = copy.deepcopy(owners.v11_result)
                     mutated["repositories"][target_index]["steps"][name]["status"] = status

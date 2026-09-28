@@ -779,6 +779,7 @@ def authenticated_outcomes(result: dict[str, Any] | None) -> list[dict[str, Any]
         )
         outcomes.append({
             "target": target,
+            "project_id": repository.get("project_id"),
             "status": authenticated.get("status", "unavailable"),
             "classification": authenticated.get("status", "unavailable"),
         })
@@ -902,8 +903,20 @@ def make_capsule(
         "official_v11": {
             "status": v11_result.get("status", "not_run") if v11_result else "not_run",
             "result_sha256": v11_result_hash,
+            "schema_version": v11_result.get("schema_version") if v11_result else None,
+            "technical_contract": v11_result.get("technical_contract") if v11_result else None,
+            "workload_identity": v11_result.get("workload_identity") if v11_result else None,
+            "required_by_target": v11_result.get("required_by_target", {}) if v11_result else {},
             "required_step_count": sum(counts.values()) if counts else 0,
             "status_counts": counts,
+            "multi_work_continuity": (
+                v11_result["repositories"][0]["steps"]["multi_work_continuity"]
+                .get("evidence", {}).get("proof")
+                if v11_result and v11_result.get("repositories")
+                and v11_result["repositories"][0].get("class") == "volicord"
+                and "multi_work_continuity" in v11_result["repositories"][0].get("steps", {})
+                else None
+            ),
             "phase_8_ready": bool(v11_result and v11_result.get("phase_8_ready")),
             "performance": v11_result.get("performance") if v11_result else None,
         },

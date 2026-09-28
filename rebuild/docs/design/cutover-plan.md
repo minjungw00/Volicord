@@ -304,7 +304,10 @@ qualitative review와 current production background semantic-provider의
 별도로 authorized real success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
 단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
 Technical V11은 세 maintained repository와 fresh Runtime Home의 deterministic
-invariant rehearsal다. `ordinary_work`의 disposable marker write와 unchanged Guarded
+invariant rehearsal다. Current technical contract는 Volicord의 installed public
+operation A → exact Resume A → B → C 경로와 Work-scoped Decision의 cross-Work
+rejection, CLI/MCP/portable history를 필수로 소유한다. 이는 naturalistic 3 journey /
+5 Work / 3 resume pair / 8 fresh session evidence를 대체하지 않는다. `ordinary_work`의 disposable marker write와 unchanged Guarded
 store는 ordinary-write non-blocking을 관측하며 meaningful source/test/config behavior
 변경을 대신하지 않는다. Work quality, practical context recovery, Question relevance,
 interruption cost와 document usefulness는 Phase 8 repeated Dogfood/qualitative review가

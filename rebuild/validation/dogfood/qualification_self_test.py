@@ -493,6 +493,15 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
             'boolean_count': lambda v: publication(v)['details'].update(dirty_entry_count=False),
             'extra_publication_detail': lambda v: publication(v)['details'].update(unexpected=True),
             'wrong_contract_kind': lambda v: v.update(kind='obsolete_gate_contract'),
+            'old_v11_schema': lambda v: v['official_v11'].update(schema_version=1),
+            'old_v11_workload': lambda v: v['official_v11'].update(
+                workload_identity='historical-54-workload'),
+            'missing_multi_work': lambda v: v['official_v11'].update(
+                multi_work_continuity=None),
+            'wrong_multi_work_scope': lambda v: v['official_v11'][
+                'multi_work_continuity']['authority'].update(decision_work_id='wrong'),
+            'wrong_target_counts': lambda v: v['official_v11'].update(
+                required_by_target={'volicord': 18, 'small-python': 18, 'polyglot-medium': 18}),
             'archive_hash': lambda v: v['evidence_archive'].update(sha256='f' * 64),
             'archive_size': lambda v: v['evidence_archive'].update(size_bytes=1),
             'archive_members': lambda v: v['evidence_archive'].update(member_count=1),

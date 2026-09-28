@@ -975,6 +975,11 @@ clean Linux install
 → exact Guarded confirmation and effect outcome where applicable
 → source-grounded Checkpoint
 → process restart and new-session Recall
+→ Volicord target: continue exact Work A, author distinct Work B/C with new Goal,
+  fresh Analysis Snapshot, resolved Materiality Review and grounded Checkpoint
+→ reject Work A-scoped Decision on Work B without canonical mutation; record a valid
+  B Checkpoint after rejection and preserve Project Purpose
+→ read current/historical A/B/C Work identities through CLI/MCP and portable clone
 → bundle export/import to another clone
 → divergent conflict handling
 → correction, supersession and deletion
@@ -1019,11 +1024,23 @@ action/target/effect/scope/revision/expiration match, user-response Source, sing
 rejection, no-dispatch-before-valid-confirmation, ordinary-action non-blocking 및
 indeterminate no-silent-retry behavior를 같은 integrated run에서 검증한다.
 
-V11 qualification truth is derived from all 54 required steps in the three target
-repositories. Counts must equal the actual leaf statuses; aggregate `passed` and
-`phase_8_ready = true` require every leaf to pass, maintained performance evidence,
-a completed no-trigger Decision assessment, and authenticated evidence for each
-exact Project. The gate consumes the maintained V11 validator rather than a
+The current internal V11 result uses schema 2, technical contract
+`v11-work-continuity-1`, and workload identity
+`three-target-installed-journey-volicord-three-work-1`. Historical schema 1
+results remain historical; they do not acquire lifecycle evidence through
+conversion. The V11-local required-steps-for-target contract owns 18 common
+categories for each target and `multi_work_continuity` only for Volicord.
+Thus current successful coverage derives as 19 + 18 + 18. Unknown, duplicate,
+missing, or unexpected target/leaf combinations fail. Counts must equal actual
+leaf statuses; aggregate `passed` and `phase_8_ready = true` require every
+target-specific leaf to pass, maintained performance evidence, a completed
+no-trigger Decision assessment, and authenticated evidence for each exact
+Project. The Volicord leaf records bounded expected/observed restart, Work,
+authority, canonical retention, CLI/MCP, and portable relations. The maintained
+result validator rechecks these against raw public-operation observations;
+capsule/report/archive verification rechecks the sanitized relation proof,
+technical identity, and derived target coverage. A passed status or count alone
+does not qualify. The gate consumes the maintained V11 validator rather than a
 separate top-level success predicate. Final success likewise requires each ordered
 exact argv once, numeric exit code 0, succeeded outcome, and no spawn error or
 termination; command/failure counts and aggregate outcome must agree with leaves.
@@ -1068,7 +1085,7 @@ RPC 90초. Absolute ceiling은 안정화되었지만 과대한 footprint를, nor
 repository scale 대비 과대한 표현을, post-warmup ceiling은 full-copy 누적 회귀를 서로
 독립적으로 거부한다. 이는 현재 three-target journey의 회귀 상한이며 일반 제품의
 모든 repository에 대한 latency SLA는 아니다. 상한 초과 또는 측정 누락/오류는 functional
-54개가 통과해도 aggregate readiness를 막는다. 변경 시 실제 원인과 근거를 검토하며
+target별 필수 leaf가 모두 통과해도 aggregate readiness를 막는다. 변경 시 실제 원인과 근거를 검토하며
 실패 실행을 통과시키기 위해 관측값에 맞춰 상한을 올리지 않는다.
 
 각 RPC는 monotonic duration과 Linux `/proc` VmHWM을 50ms 간격으로 관측하고 호출

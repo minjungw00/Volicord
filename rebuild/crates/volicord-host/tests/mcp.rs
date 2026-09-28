@@ -6241,6 +6241,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         "user_turn":"Implement a distinct bounded task","statement":"Implement a distinct bounded task",
     }))).clone();
     assert_ne!(distinct["context_item_id"], goal_context_id);
+    let canonical_before_rejection = restarted.operations().canonical_basis(project_id).unwrap();
     let mismatch = call(
         &mut restarted,
         "checkpoint_record",
@@ -6252,6 +6253,11 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         }),
     );
     assert_eq!(mismatch["result"]["isError"], true, "{mismatch}");
+    assert_eq!(
+        restarted.operations().canonical_basis(project_id).unwrap(),
+        canonical_before_rejection,
+        "rejected cross-Work Checkpoint mutated canonical state"
+    );
     let diagnostic = &structured(&mismatch)["details"]["cause"];
     assert!(diagnostic["message"]
         .as_str()

@@ -6,7 +6,7 @@ replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 10 / policy revision 9, machine evaluation
 policy `evidence-evaluation-4`, human observation/receipt schema 3, qualification policy
-`replacement-qualification-5`, and result-lineage schema 1. Historical runs retain their old
+`replacement-qualification-6`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers

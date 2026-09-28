@@ -39,6 +39,16 @@ _multi_work_spec = importlib.util.spec_from_file_location("v11_multi_work", HERE
 assert _multi_work_spec is not None and _multi_work_spec.loader is not None
 multi_work = importlib.util.module_from_spec(_multi_work_spec)
 _multi_work_spec.loader.exec_module(multi_work)
+_contract_spec = importlib.util.spec_from_file_location("v11_result_contract", HERE / "result_contract.py")
+assert _contract_spec is not None and _contract_spec.loader is not None
+result_contract = importlib.util.module_from_spec(_contract_spec)
+_contract_spec.loader.exec_module(result_contract)
+_multi_work_test_spec = importlib.util.spec_from_file_location(
+    "v11_multi_work_self_test", HERE / "multi_work_self_test.py"
+)
+assert _multi_work_test_spec is not None and _multi_work_test_spec.loader is not None
+multi_work_self_test = importlib.util.module_from_spec(_multi_work_test_spec)
+_multi_work_test_spec.loader.exec_module(multi_work_self_test)
 _performance_spec = importlib.util.spec_from_file_location("v11_performance", HERE / "performance.py")
 assert _performance_spec is not None and _performance_spec.loader is not None
 performance_module = importlib.util.module_from_spec(_performance_spec)
@@ -59,26 +69,8 @@ DOCUMENT_KINDS = (
     "implementation-plan",
     "handoff-resume",
 )
-REQUIRED_STEPS = (
-    "clean_install",
-    "codex_mcp_connection",
-    "project_binding",
-    "repository_analysis",
-    "source_grounded_understanding",
-    "candidate_boundary",
-    "inquiry_decision",
-    "ordinary_work",
-    "guarded_boundary",
-    "checkpoint",
-    "restart_recall",
-    "portable_clone",
-    "divergent_conflict",
-    "correction_supersession_deletion",
-    "document_outputs",
-    "provider_failure",
-    "parser_failure",
-    "derived_index_recovery",
-)
+REQUIRED_STEPS = result_contract.COMMON_STEPS
+
 ALLOWED_STATUS = {
     "passed",
     "partial",
@@ -342,7 +334,10 @@ def make_v11_result(
     phase_8_ready = v11_readiness(repositories, revisit_assessment, performance) and qualification_passed(
         qualification, validated_production_head, final_gate_artifact)
     result = {
-        "schema_version": 1,
+        "schema_version": result_contract.SCHEMA_VERSION,
+        "technical_contract": result_contract.TECHNICAL_CONTRACT,
+        "workload_identity": result_contract.WORKLOAD_IDENTITY,
+        "required_by_target": result_contract.required_counts(),
         "validation_id": "V11",
         "validated_production_head": validated_production_head,
         "final_gate_artifact": final_gate_artifact,
@@ -1563,7 +1558,7 @@ def rehearse_target(
         installation_created_global_registration=not installation_only,
     )
     if not installed:
-        for name in REQUIRED_STEPS[1:]:
+        for name in result_contract.required_steps_for_target(target_kind)[1:]:
             steps[name] = step("skipped", "prerequisite clean installation failed")
         return {"class": target_kind, "identity": identity, "steps": steps}
 
@@ -1578,7 +1573,7 @@ def rehearse_target(
     )
     project_prerequisite_status = "passed" if project_id else "skipped"
     if not project_id:
-        for name in REQUIRED_STEPS[3:]:
+        for name in result_contract.required_steps_for_target(target_kind)[3:]:
             steps[name] = step(project_prerequisite_status, "Project initialization failed")
         steps["codex_mcp_connection"] = step(
             project_prerequisite_status,
@@ -2842,6 +2837,22 @@ def rehearse_target(
             "passed" if all(multi_work_evidence["checks"].values()) else "failed"
         )
 
+        proof = None
+        if multi_work_evidence["status"] == "passed":
+            try:
+                proof = result_contract.make_lifecycle_proof(
+                    multi_work_evidence, steps["restart_recall"]["evidence"]
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                multi_work_evidence["errors"].append(f"bounded proof: {error}")
+                multi_work_evidence["status"] = "failed"
+        steps["multi_work_continuity"] = step(
+            multi_work_evidence["status"],
+            "installed A to exact Resume A to B/C Work continuity, scoped rejection, and portable readback",
+            checks=multi_work_evidence["checks"], proof=proof,
+            errors=multi_work_evidence["errors"],
+        )
+
     local_decision = incoming_decision = comparison = resolution = None
     source_a = source_b = None
     conflict_operations: list[dict[str, Any]] = []
@@ -3227,7 +3238,8 @@ def v11_readiness(
         len(repositories) == 3
         and [repository.get("class") for repository in repositories]
         == ["volicord", "small-python", "polyglot-medium"]
-        and all(set(repository.get("steps", {})) == set(REQUIRED_STEPS)
+        and all(set(repository.get("steps", {})) == set(
+            result_contract.required_steps_for_target(repository["class"]))
                 and all(value.get("status") == "passed" for value in repository["steps"].values())
                 and authenticated_target_passed(repository) for repository in repositories)
         and assessment.get("decision_revisit_trigger_assessment") == OFFICIAL_REVISIT_ASSESSMENT
@@ -3254,7 +3266,11 @@ def qualification_passed(qualification: Any, candidate_head: str, final_artifact
 
 
 def validate_result(result: dict[str, Any]) -> None:
-    if result.get("schema_version") != 1 or result.get("validation_id") != "V11":
+    if (result.get("schema_version") != result_contract.SCHEMA_VERSION
+        or result.get("technical_contract") != result_contract.TECHNICAL_CONTRACT
+        or result.get("workload_identity") != result_contract.WORKLOAD_IDENTITY
+        or result.get("required_by_target") != result_contract.required_counts()
+        or result.get("validation_id") != "V11"):
         raise AssertionError("result must use the maintained V11 schema")
     if not re.fullmatch(r"[0-9a-f]{40}", str(result.get("validated_production_head"))):
         raise AssertionError("V11 result has invalid exact candidate identity")
@@ -3267,12 +3283,34 @@ def validate_result(result: dict[str, Any]) -> None:
         raise AssertionError("V11 result has the wrong repository target contract")
     statuses: list[str] = []
     for repository in repositories:
-        if set(repository.get("steps", {})) != set(REQUIRED_STEPS):
+        if set(repository.get("steps", {})) != set(
+            result_contract.required_steps_for_target(repository["class"])
+        ):
             raise AssertionError(f"incomplete V11 steps for {repository.get('class')}")
         for value in repository["steps"].values():
             if value.get("status") not in ALLOWED_STATUS:
                 raise AssertionError("invalid per-step status")
             statuses.append(value["status"])
+    volicord = repositories[0]
+    lifecycle = volicord["steps"]["multi_work_continuity"]
+    if lifecycle["status"] == "passed":
+        proof = lifecycle.get("evidence", {}).get("proof")
+        errors = result_contract.lifecycle_errors(proof)
+        if errors:
+            raise AssertionError(f"V11 lifecycle proof is inconsistent: {errors}")
+        if proof["project_id"] != volicord.get("project_id"):
+            raise AssertionError("V11 lifecycle proof Project differs from target")
+        raw = volicord.get("multi_work_rehearsal")
+        if isinstance(raw, dict):
+            checks = multi_work.verify_rehearsal(
+                raw, volicord["steps"]["restart_recall"].get("evidence", {}).get("expected_state", {}),
+                raw.get("portable_status"))
+            if (not all(checks.values()) or lifecycle["evidence"].get("checks") != checks
+                    or result_contract.make_lifecycle_proof(
+                        raw, volicord["steps"]["restart_recall"]["evidence"]) != proof):
+                raise AssertionError("V11 lifecycle proof disagrees with raw public-operation evidence")
+    elif lifecycle.get("evidence", {}).get("proof") is not None:
+        raise AssertionError("non-passing V11 lifecycle contains a passing proof")
     expected_counts = {status: statuses.count(status) for status in sorted(ALLOWED_STATUS)}
     if (result.get("counts") != expected_counts
         or any(type(value) is not int for value in result.get("counts", {}).values())):
@@ -3340,7 +3378,7 @@ def assert_required_steps_are_evidence_driven(
     required_steps: set[str] | None = None,
 ) -> None:
     tree = ast.parse(source if source is not None else Path(__file__).read_text(encoding="utf-8"))
-    required = set(REQUIRED_STEPS) if required_steps is None else required_steps
+    required = set(REQUIRED_STEPS + result_contract.VOLICORD_EXTRA) if required_steps is None else required_steps
     assigned: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
@@ -3961,13 +3999,28 @@ def assert_qualification_publication() -> None:
                     state.update(status="failed", head="3" * 40)
                 elif mutation == "worktree":
                     state.update(status="failed", worktree_clean=False)
-                steps = {key: step("passed", "synthetic publication fixture") for key in REQUIRED_STEPS}
+                steps = {key: step("passed", "synthetic publication fixture")
+                         for key in result_contract.required_steps_for_target(name)}
+                if name == "volicord":
+                    raw, restart, proof = multi_work_self_test.contract_fixture(
+                        result_contract, "synthetic-project")
+                    synthetic_lifecycle_status = "passed"
+                    steps["multi_work_continuity"] = step(
+                        synthetic_lifecycle_status, "synthetic publication fixture",
+                        proof=proof,
+                        checks=multi_work.verify_rehearsal(
+                            raw, restart["expected_state"], raw["portable_status"]),
+                    )
+                    steps["restart_recall"]["evidence"] = restart
                 steps["project_binding"]["evidence"] = {"project_id": "synthetic-project"}
                 steps["codex_mcp_connection"]["evidence"] = {"authenticated": step("passed", "fixture",
                     operation={"exit_code": 0, "outcome": "succeeded", "spawn_error": None,
                                "termination": None, "stdout": str(probe)},
                     probe=validate_codex_probe(probe.read_text(), "synthetic-project"))}
-                return {"class": name, "project_id": "synthetic-project", "steps": steps}
+                return {
+                    "class": name, "project_id": "synthetic-project", "steps": steps,
+                    **({"multi_work_rehearsal": raw} if name == "volicord" else {}),
+                }
             args = SimpleNamespace(model="synthetic-model", validated_head=candidate,
                 final_artifact=binding["final_artifact"], output_dir=str(root / str(mutation)))
             collector = SimpleNamespace(enabled=False, report=lambda _duration: performance,
@@ -3981,7 +4034,7 @@ def assert_qualification_publication() -> None:
                 with redirect_stdout(io.StringIO()):
                     exit_code = run(args)
             result = json.loads((Path(args.output_dir) / "result.json").read_text())
-            assert result["counts"]["passed"] == 54
+            assert result["counts"]["passed"] == result_contract.required_total()
             assert (exit_code == 0) is (mutation is None)
             assert result["phase_8_ready"] is (mutation is None)
             assert result["qualification"]["status"] == ("passed" if mutation is None else "failed")
@@ -3997,13 +4050,8 @@ def self_check() -> int:
     restart_test = importlib.util.module_from_spec(restart_test_spec)
     restart_test_spec.loader.exec_module(restart_test)
     restart_test.self_check(restart_recall)
-    multi_work_test_spec = importlib.util.spec_from_file_location(
-        "v11_multi_work_self_test", HERE / "multi_work_self_test.py"
-    )
-    assert multi_work_test_spec is not None and multi_work_test_spec.loader is not None
-    multi_work_test = importlib.util.module_from_spec(multi_work_test_spec)
-    multi_work_test_spec.loader.exec_module(multi_work_test)
-    multi_work_test.self_check(multi_work)
+    multi_work_self_test.self_check(multi_work)
+    multi_work_self_test.contract_self_check(result_contract)
     if platform.system() != "Linux":
         raise AssertionError("V11 is qualified only on Linux")
     if not SMALL_FIXTURE.is_dir() or not POLYGLOT_FIXTURE.is_dir():
@@ -4262,8 +4310,10 @@ def self_check() -> int:
     else:
         raise AssertionError("unassessable Decision revisit evidence was accepted")
     fake_repositories = [
-        {"class": name, "steps": {key: step("skipped", "self-check") for key in REQUIRED_STEPS}}
-        for name in ("volicord", "small-python", "polyglot-medium")
+        {"class": name, "steps": {
+            key: step("skipped", "self-check")
+            for key in result_contract.required_steps_for_target(name)}}
+        for name in result_contract.TARGETS
     ]
     make_v11_result(
         validated_production_head="0" * 40,
@@ -4277,8 +4327,18 @@ def self_check() -> int:
         final_gate_artifact="/synthetic/final.json",
         duration_ms=0.0,
         repositories=[
-            {"class": name, "steps": {key: step("passed", "self-check") for key in REQUIRED_STEPS}}
-            for name in ("volicord", "small-python", "polyglot-medium")
+            {
+                "class": name,
+                **({"project_id": "p" * 32} if name == "volicord" else {}),
+                "steps": {
+                    key: step("passed", "self-check", **(
+                        {"proof": multi_work_self_test.contract_fixture(result_contract)[2]}
+                        if key == "multi_work_continuity" else {}
+                    ))
+                    for key in result_contract.required_steps_for_target(name)
+                },
+            }
+            for name in result_contract.TARGETS
         ],
         revisit_assessment=active_assessment,
     )
@@ -4296,7 +4356,7 @@ def self_check() -> int:
             repositories=active_result["repositories"], revisit_assessment=assessment,
             performance=report,
         )
-        assert failed["counts"]["passed"] == 54
+        assert failed["counts"]["passed"] == result_contract.required_total()
         assert failed["status"] == "failed" and failed["phase_8_ready"] is False
         report["status"] = "passed"
         try:
@@ -4307,8 +4367,8 @@ def self_check() -> int:
             raise AssertionError("falsified performance verdict was accepted")
     print(json.dumps({
         "status": "passed",
-        "required_steps": len(REQUIRED_STEPS),
-        "evidence_driven_steps": len(REQUIRED_STEPS),
+        "required_steps_by_target": result_contract.required_counts(),
+        "evidence_driven_steps": len(REQUIRED_STEPS + result_contract.VOLICORD_EXTRA),
         "required_step_policy_regressions": "passed",
         "candidate_structured_repository_source_regression": "passed",
         "self_guiding_work_authority_checkpoint_path": "passed",
@@ -4383,7 +4443,7 @@ def run(args: argparse.Namespace) -> int:
             repositories.append({
                 "class": target,
                 "identity": {},
-                "steps": {name: step("failed" if name == "clean_install" else "skipped", str(error)) for name in REQUIRED_STEPS},
+                "steps": {name: step("failed" if name == "clean_install" else "skipped", str(error)) for name in result_contract.required_steps_for_target(target)},
             })
     try:
         revisit_assessment = read_decision_revisit_assessment()

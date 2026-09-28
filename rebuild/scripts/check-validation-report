@@ -8,11 +8,13 @@ import copy
 import json
 from pathlib import Path
 import re
+import runpy
 import shlex
 import subprocess
 import sys
 import tempfile
 from typing import Any, Sequence
+from types import SimpleNamespace
 
 
 SECTIONS = (
@@ -63,6 +65,14 @@ FLOW_KEYS = (
 )
 SHA256 = re.compile(r"[0-9a-f]{64}")
 HEAD = re.compile(r"[0-9a-f]{40}")
+V11_CONTRACT = runpy.run_path(str(
+    Path(__file__).resolve().parents[1] /
+    "validation/end-to-end/multi-repository/result_contract.py"
+))
+V11_TEST_FIXTURE = runpy.run_path(str(
+    Path(__file__).resolve().parents[1] /
+    "validation/end-to-end/multi-repository/multi_work_self_test.py"
+))
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -493,10 +503,10 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         digest(official.get("result_sha256"), "official_v11.result_sha256", errors)
         if not counts or required_step_count <= 0 or required_step_count != sum(counts.values()):
             errors.append("capsule official V11 step count does not match status counts")
-        if required_step_count != 54 or set(counts) != {
+        if set(counts) != {
             "passed", "partial", "unsupported", "failed", "environment_blocked", "skipped"
         }:
-            errors.append("capsule official V11 must account for all 54 required target steps")
+            errors.append("capsule official V11 status categories are incomplete")
         if official_status == "passed" and official_ready is not True:
             errors.append("capsule passed official V11 must mark its phase ready")
         if official_status != "passed" and official_ready is not False:
@@ -512,6 +522,9 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         or official_ready is not False
     ):
         errors.append("capsule official-V11-not-run state contains official V11 evidence")
+
+    errors.extend(V11_CONTRACT["capsule_technical_errors"](
+        official, capsule.get("authenticated_codex_outcomes")))
 
     identities = mapping(capsule.get("required_identities"), "required_identities", errors)
     identity_head = optional_digest(
@@ -955,8 +968,13 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
             errors,
         )
     if official["status"] != "not_run":
-        for key in ("status", "result_sha256", "required_step_count", "phase_8_ready"):
+        for key in ("status", "result_sha256", "schema_version",
+                    "technical_contract", "workload_identity",
+                    "required_step_count", "phase_8_ready"):
             require(observed, "Observed results", f"official_v11.{key}", official[key], errors)
+        for target, count in official["required_by_target"].items():
+            require(coverage, "Coverage and failures",
+                    f"official_v11.required_by_target.{target}", count, errors)
         for status, count in official["status_counts"].items():
             require(coverage, "Coverage and failures", f"official_v11.status_counts.{status}", count, errors)
     require(acceptance, "Acceptance results", "admission_status", capsule.get("admission_status"), errors)
@@ -1136,11 +1154,25 @@ def self_test_capsule() -> dict[str, Any]:
                 "retained_evidence": {"source_body": False, "provider_response_body": False, "credential": False},
             },
         },
-        "official_v11": {"status": "passed", "result_sha256": "f" * 64, "required_step_count": 54, "status_counts": {"passed": 54, "partial": 0, "unsupported": 0, "failed": 0, "environment_blocked": 0, "skipped": 0}, "phase_8_ready": True},
+        "official_v11": {
+            "status": "passed", "result_sha256": "f" * 64,
+            "schema_version": V11_CONTRACT["SCHEMA_VERSION"],
+            "technical_contract": V11_CONTRACT["TECHNICAL_CONTRACT"],
+            "workload_identity": V11_CONTRACT["WORKLOAD_IDENTITY"],
+            "required_by_target": V11_CONTRACT["required_counts"](),
+            "required_step_count": V11_CONTRACT["required_total"](),
+            "status_counts": {"passed": V11_CONTRACT["required_total"](), "partial": 0,
+                              "unsupported": 0, "failed": 0,
+                              "environment_blocked": 0, "skipped": 0},
+            "multi_work_continuity": V11_TEST_FIXTURE["contract_fixture"](
+                SimpleNamespace(**V11_CONTRACT))[2],
+            "phase_8_ready": True,
+        },
         "required_identities": {"candidate_head": head, "fixtures": [{"id": "fixture-one", "validation_id": "V11", "content_sha256": "1" * 64}]},
         "credential_retention_audit": {"status": "passed", "auth_named_file_count": 0, "credential_content_match_count": 0, "scan_error_count": 0},
         "authenticated_codex_outcomes": [
-            {"target": target, "status": "passed", "classification": "passed"}
+            {"target": target, "project_id": "p" * 32,
+             "status": "passed", "classification": "passed"}
             for target in ("volicord", "small-python", "polyglot-medium")
         ],
         "active_decision_revisit_triggers": [],
@@ -1232,7 +1264,10 @@ def self_test_report(capsule: dict[str, Any]) -> str:
             key: value for key, value in official.items() if key != "status_counts"
         }
         content["Coverage and failures"] = "\n".join(flat_lines({
-            "official_v11": {"status_counts": official["status_counts"]},
+            "official_v11": {
+                "status_counts": official["status_counts"],
+                "required_by_target": official["required_by_target"],
+            },
         }))
     if observed_values:
         content["Observed results"] = "\n".join(flat_lines(observed_values))
@@ -1427,13 +1462,17 @@ def self_test() -> int:
     official_failed["blocking_classification"] = "v11_failed"
     official_failed["official_v11"].update({
         "status": "failed",
-        "required_step_count": 54,
-        "status_counts": {"passed": 53, "failed": 1, "partial": 0, "unsupported": 0, "environment_blocked": 0, "skipped": 0},
+        "required_step_count": V11_CONTRACT["required_total"](),
+        "status_counts": {"passed": V11_CONTRACT["required_total"]() - 1, "failed": 1, "partial": 0, "unsupported": 0, "environment_blocked": 0, "skipped": 0},
         "phase_8_ready": False,
     })
     official_failed["authenticated_codex_outcomes"] = [
-        {"target": "volicord", "status": "passed", "classification": "passed"},
-        {"target": "small-python", "status": "failed", "classification": "failed"},
+        {"target": "volicord", "project_id": "p" * 32,
+         "status": "passed", "classification": "passed"},
+        {"target": "small-python", "project_id": "p" * 32,
+         "status": "failed", "classification": "failed"},
+        {"target": "polyglot-medium", "project_id": "p" * 32,
+         "status": "passed", "classification": "passed"},
     ]
     official_failed["evidence_archive"]["prerequisites_passed"] = False
     official_failed["phase_8_ready"] = False
@@ -1483,6 +1522,20 @@ def self_test() -> int:
         mutated = copy.deepcopy(fully_passed)
         mutated["official_v11"][field] = value
         assert capsule_contract_errors(mutated), field
+
+    for label, mutate in (
+        ("old_schema", lambda value: value.update(schema_version=1)),
+        ("wrong_contract", lambda value: value.update(technical_contract="historical-v11")),
+        ("wrong_workload", lambda value: value.update(workload_identity="old-54-workload")),
+        ("target_count_forgery", lambda value: value.update(required_by_target={
+            "volicord": 18, "small-python": 18, "polyglot-medium": 18})),
+        ("missing_lifecycle", lambda value: value.update(multi_work_continuity=None)),
+        ("contradictory_lifecycle", lambda value: value["multi_work_continuity"]["authority"].update(
+            decision_work_id="wrong")),
+    ):
+        mutated = copy.deepcopy(fully_passed)
+        mutate(mutated["official_v11"])
+        assert capsule_contract_errors(mutated), label
 
     mutated_candidate = copy.deepcopy(fully_passed)
     mutated_candidate["phase_8_ready"] = False
