@@ -44,6 +44,8 @@ def fixture():
         "canonical_after_new_work": {"records": records},
         "cross_work_rejection": rejection,
     }
+    for row in evidence["mcp_understanding"]["work_history"]:
+        row["source_basis"] = row.pop("source_ids")
     evidence["mcp_understanding"]["work_history"][2]["state"] = "in_progress"
     evidence["mcp_understanding"]["current_work"][0]["state"] = "in_progress"
     expected = {"goal_id": ids["A"], "goal_source_id": sources["A"],
@@ -59,6 +61,7 @@ def self_check(module):
         ("changed purpose", lambda e, p: e["status_after"].update(project_purpose=[])),
         ("duplicate Work", lambda e, p: e["work"]["C"].update(goal_id=e["work"]["B"]["goal_id"])),
         ("lost A history", lambda e, p: e["status_after"]["work_history"].pop(0)),
+        ("lost MCP source basis", lambda e, p: e["mcp_understanding"]["work_history"][0].pop("source_basis")),
         ("wrong current Work", lambda e, p: e["status_after"].update(current_work=[e["status_after"]["work_history"][1]])),
         ("wrong portable history", lambda e, p: p["work_history"].pop(1)),
         ("cross-Work accepted", lambda e, p: e["cross_work_rejection"].update(accepted=True)),

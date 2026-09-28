@@ -58,7 +58,7 @@ def _view(value: dict[str, Any] | None) -> dict[str, Any]:
             "work_id": row.get("work_item_id"),
             "state": row.get("state"),
             "checkpoint_ids": sorted(row.get("checkpoint_ids", [])),
-            "source_ids": sorted(row.get("source_ids", [])),
+            "source_ids": sorted(row.get("source_ids", row.get("source_basis", []))),
         } for row in rows if isinstance(row, dict)], key=lambda row: str(row["work_id"])),
         "current_work_ids": sorted(row.get("work_item_id") for row in value.get("current_work", [])
                                    if isinstance(row, dict)),
