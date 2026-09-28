@@ -1232,6 +1232,15 @@ repository placement를 공개하지 않는다.
 - `learning_routine_control`: explicit learning participation이 있어도 routine/trivial detail은
   Learning Deliberation이나 Question 없이 non-interrupting이어야 함
 
+Positive evaluator obligation은 assigned profile label만으로 reviewer-ready가 되지 않는다. Prepared
+Work의 bounded evaluation basis는 해당 class의 owner-defined scope와 evidence를 실현해야 한다.
+`learning_deliberation`에는 affected Work path에 묶인 구체적 agent-owned fork, credible
+alternatives, technical consequence, non-obvious tradeoff, transferable principle, ordinary
+explanation 대신 pre-work participation이 필요한 이유와 typed owner/repository provenance를
+기록한다. 명시적 learning request나 generic explanation만으로는 충분하지 않다. Assigned
+obligation을 실현하지 못하면 `prepare-review`는 blind recording 전에 거부하며 profile을
+수정하거나 positive obligation을 제거하지 않는다.
+
 Campaign preparation은 exact realized Work assignment와 release-qualification profile을
 evaluator/steward-private integrity-bound state에만 보존한다. Profile은 campaign-wide minimum으로
 explicit user-owned >= 1 Work, hidden user-owned >= 2 Works across >= 2 repository classes,

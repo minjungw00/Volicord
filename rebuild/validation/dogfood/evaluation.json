@@ -975,7 +975,8 @@
         "possible_material_concerns",
         "consequences",
         "facts_not_for_user",
-        "current_relevance"
+        "current_relevance",
+        "learning_deliberation_basis"
       ],
       "visibility": "evaluator_input_only",
       "possible_material_concerns_are_exhaustive": false,

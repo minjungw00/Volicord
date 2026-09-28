@@ -1148,6 +1148,17 @@ def descriptor_skeleton(
             "consequences": ["REPLACE with a plausible consequence"],
             "facts_not_for_user": ["REPLACE with a fact the agent must research"],
             "current_relevance": "REPLACE with why this behavior class is relevant now",
+            "learning_deliberation_basis": ({
+                "outcome_scope": "REPLACE with the specific agent-owned fork and affected work scope",
+                "affected_paths": ["REPLACE/with-real-path"],
+                "agent_owned_authority": "REPLACE with the exact delegated authority and active learning participation",
+                "alternatives": ["REPLACE with credible alternative one", "REPLACE with credible alternative two"],
+                "meaningful_consequence": "REPLACE with the technical consequence of this choice",
+                "non_obvious_tradeoff": "REPLACE with the non-obvious tradeoff or uncertainty",
+                "transferable_principle": "REPLACE with why this teaches a principle beyond routine wording",
+                "interruption_necessity": "REPLACE with why pre-work participation is justified over routine explanation",
+                "evidence_provenance_reference_indices": [0],
+            } if harness.has_obligation(materiality_obligations, "learning_deliberation") else None),
         },
         "behavior_review": {
             "kind": "phase8_behavior_review",
@@ -1598,6 +1609,7 @@ def review_preparation_draft_errors(
     )
     basis = descriptor.get("evaluation_basis")
     errors.extend(harness.evaluation_basis_errors(basis, materiality_obligations))
+    errors.extend(harness.learning_basis_reference_errors(basis, descriptor.get("behavior_review"), descriptor.get("work_scope")))
     if not harness.evaluation_basis_errors(basis, materiality_obligations):
         errors.extend(
             harness.naturalistic_prompt_errors(

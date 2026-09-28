@@ -1708,6 +1708,7 @@ def load_definition() -> dict[str, Any]:
             "consequences",
             "facts_not_for_user",
             "current_relevance",
+            "learning_deliberation_basis",
         )
         or evaluation_basis.get("possible_material_concerns_are_exhaustive") is not False
         or evaluation_basis.get("unique_question_wording_required") is not False
@@ -2668,6 +2669,7 @@ def evaluation_basis_errors(value: Any, materiality_obligations: Any) -> list[st
         "consequences",
         "facts_not_for_user",
         "current_relevance",
+        "learning_deliberation_basis",
     }
     if set(value) != required:
         errors.append("evaluation_basis must contain the current bounded fields only")
@@ -2698,7 +2700,49 @@ def evaluation_basis_errors(value: Any, materiality_obligations: Any) -> list[st
         errors.append("delegated_implementation_choice requires an explicit delegated boundary")
     if has_obligation(materiality_obligations, "research_or_no_question") and not value.get("repository_facts"):
         errors.append("research_or_no_question requires repository facts")
+    learning = value.get("learning_deliberation_basis")
+    if has_obligation(materiality_obligations, "learning_deliberation"):
+        fields = {"outcome_scope", "agent_owned_authority", "alternatives", "meaningful_consequence",
+                  "non_obvious_tradeoff", "transferable_principle", "interruption_necessity",
+                  "evidence_provenance_reference_indices", "affected_paths"}
+        if not isinstance(learning, dict) or set(learning) != fields:
+            errors.append("learning_deliberation requires a concrete bounded deliberation-worthy fork")
+        else:
+            for field in fields - {"alternatives", "evidence_provenance_reference_indices", "affected_paths"}:
+                if not nonempty_string(learning.get(field)) or len(learning[field].encode("utf-8")) > MAX_REVIEW_TEXT_BYTES:
+                    errors.append(f"learning_deliberation_basis.{field} must be bounded evidence")
+            errors.extend(bounded_text_list_errors(learning.get("alternatives"), "learning_deliberation_basis.alternatives", minimum=2))
+            paths = learning.get("affected_paths")
+            if not isinstance(paths, list) or not paths or any(not isinstance(path, str) or safe_relative_evidence_path(path) is None for path in paths) or len(paths) != len(set(paths)):
+                errors.append("learning_deliberation_basis requires concrete affected paths")
+            if any(isinstance(text, str) and "REPLACE" in text for text in [
+                *[learning.get(field) for field in fields - {"alternatives", "evidence_provenance_reference_indices", "affected_paths"}],
+                *(learning.get("alternatives") if isinstance(learning.get("alternatives"), list) else []),
+            ]):
+                errors.append("learning_deliberation_basis contains an incomplete claim")
+            indices = learning.get("evidence_provenance_reference_indices")
+            if not isinstance(indices, list) or not indices or any(type(i) is not int or i < 0 for i in indices) or len(indices) != len(set(indices)):
+                errors.append("learning_deliberation_basis requires typed provenance indices")
+    elif learning is not None:
+        errors.append("learning_deliberation_basis requires a learning_deliberation obligation")
     return errors
+
+
+def learning_basis_reference_errors(basis: Any, review: Any, work_scope: Any) -> list[str]:
+    if not isinstance(basis, dict) or not isinstance(basis.get("learning_deliberation_basis"), dict):
+        return []
+    learning = basis["learning_deliberation_basis"]
+    paths = learning.get("affected_paths")
+    scoped = work_scope.get("affected_paths") if isinstance(work_scope, dict) else None
+    if not isinstance(paths, list) or not isinstance(scoped, list) or any(not isinstance(path, str) for path in paths) or not set(paths).issubset(scoped):
+        return ["learning_deliberation_basis affected paths must belong to the prepared Work scope"]
+    indices = learning.get("evidence_provenance_reference_indices")
+    references = review.get("provenance_references") if isinstance(review, dict) else None
+    if not isinstance(indices, list) or not isinstance(references, list) or any(
+        type(i) is not int or i < 0 or i >= len(references) for i in indices
+    ):
+        return ["learning_deliberation_basis must cite evaluator-verifiable owner or repository provenance"]
+    return []
 
 
 def behavior_review_errors(
@@ -4715,6 +4759,7 @@ def work_descriptor_errors(
     )
     basis = value.get("evaluation_basis")
     errors.extend(evaluation_basis_errors(basis, materiality_obligations))
+    errors.extend(learning_basis_reference_errors(basis, value.get("behavior_review"), value.get("work_scope")))
     errors.extend(behavior_review_errors(
         value.get("behavior_review"),
         materiality_obligations,
@@ -11454,6 +11499,17 @@ def fixture_evaluation_basis(materiality_obligations: str) -> dict[str, Any]:
         "consequences": ["The outcome changes diagnostic usefulness or maintenance cost."],
         "facts_not_for_user": ["Existing adapter and test behavior must be inspected locally."],
         "current_relevance": "The selected class tests proportional inquiry behavior for this bounded task.",
+        "learning_deliberation_basis": ({
+            "outcome_scope": "The agent must choose the adapter state representation before changing the transition code.",
+            "affected_paths": ["src/existing.rs"],
+            "agent_owned_authority": "The user delegated implementation structure while requesting participation in this technical choice.",
+            "alternatives": ["Use one tagged state enum with explicit transitions.", "Use separate phase fields with guarded transitions."],
+            "meaningful_consequence": "The choice changes which invalid transition states can be represented and tested.",
+            "non_obvious_tradeoff": "The tagged state is safer but requires wider call-site changes; phase fields preserve existing callers but need additional guards.",
+            "transferable_principle": "The choice illustrates how state representation trades migration cost against invalid-state prevention in other adapters.",
+            "interruption_necessity": "A pre-implementation learner selection lets the user compare the two consequences; a routine explanation after implementation loses that choice.",
+            "evidence_provenance_reference_indices": [0],
+        } if has_obligation(materiality_obligations, "learning_deliberation") else None),
     }
 
 
@@ -13435,6 +13491,8 @@ def real_session_fixture(
         "work_session_start_activation_observed": True,
         "resume_session_start_activation_observed": True,
     })
+    if isinstance(evaluation_basis.get("learning_deliberation_basis"), dict):
+        evaluation_basis["learning_deliberation_basis"]["affected_paths"] = work_paths[:1]
     return {
         "kind": "phase8_work_descriptor",
         "producer": "volicord_phase8_codex_event_normalizer",
