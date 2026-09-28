@@ -33,7 +33,7 @@ def command(identity: str, coverage: list[str], argv: list[str], cwd: Path) -> d
 
 
 def main() -> int:
-    # Campaign owns repository state, blind dimensions, reconciliation,
+    # Campaign owns repository state, blind dimensions and completeness protocol, reconciliation,
     # evidence controls and long-lived Project classes. Assertions/harness own
     # frontier, review workflow and qualification classes. Final owns every
     # selected Rust test formerly repeated here with identical configuration.

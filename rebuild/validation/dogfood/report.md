@@ -146,48 +146,38 @@ rebuild/scripts/dogfood-campaign prepare \
   --repositories <three-repository-input.json>
 ```
 
-Complete each evaluator input under the private control plane, use
-`prepare-review`, obtain the independent provisional review without disclosing
-the evaluator basis, and use the preparation's hash-bound reviewer contract and
-non-mutating preflight before recording:
+Complete each evaluator input privately, then call `prepare-review` for its opaque slot.
+The reviewer index and preparation bind the maintained
+`reviewer/provisional-review-contract.json`. The generated discovery draft is intentionally
+incomplete and must be completed from reviewer-visible task, workspace and owner sources.
 
-```text
-rebuild/scripts/dogfood-campaign validate-provisional-review \
-  --campaign-root /absolute/private/campaign \
-  --candidate-head <new-sealed-candidate-head> \
-  --review-slot-id <opaque-review-slot-id> \
-  --provisional-review /absolute/private/campaign/reviewer/drafts/<opaque-review-slot-id>.json
-```
+A fresh primary blind reviewer fills the mutable `reviewer/drafts/<slot>.json` discovery draft
+from the reviewer-safe preparation and workspace. `validate-discovery` checks its bounded
+assessments and reviewer-visible provenance without changing campaign state;
+`record-discovery` fixes its exact bytes at `reviewer/discovery/<slot>.json` and advances the
+Work to `discovery_recorded`. The reviewer keeps the evaluator/profile plane closed.
 
-The stable contract projection is
-`reviewer/provisional-review-contract.json`; `prepare-review` exposes its path and
-SHA-256 in the reviewer index, preparation, and result. Preflight reads that contract, the
-exact reviewer preparation, the proposed review, and inventory membership solely to reject
-immutable campaign evidence as input. It applies the same reviewer-visible validator as
-recording and does not mutate campaign state. Ownership is
-explicit: the preparation is read-only inventory-bound campaign evidence; the generated
-`reviewer/drafts/<opaque-review-slot-id>.json` is reviewer-editable mutable work product and
-is not inventory-bound before recording. The draft is intentionally incomplete and cannot
-pass preflight without removing its marker and supplying contract-valid conclusions and
-grounding. Preflight rejects any inventory-bound campaign artifact passed as reviewer work.
-Record the validated draft with the opaque reviewer identity:
+An independent fresh blind critic uses `prepare-critique`, the same reviewer-safe surfaces,
+and the immutable discovery. The critic may propose a missing or split scope, equivalence,
+reclassification, authority or applicability correction, or removal of implementation-detail
+inflation. Each bounded proposal cites reviewer-visible evidence. `validate-critique` and
+`record-critique` fix the critique at `reviewer/critique/<slot>.json`, advancing the Work to
+`critique_recorded`. A fresh blind adjudicator then calls `prepare-adjudication`, edits the
+mutable final draft, and records an evidence-backed disposition for every proposal. Accepted
+or partially accepted concerns enter final assessments only through explicit lineage; rejected
+concerns do not enter, and equivalent concerns do not duplicate an assessment.
 
-```text
-rebuild/scripts/dogfood-campaign record-provisional-review \
-  --campaign-root /absolute/private/campaign \
-  --candidate-head <new-sealed-candidate-head> \
-  --review-slot-id <opaque-review-slot-id> \
-  --provisional-review /absolute/private/campaign/reviewer/drafts/<opaque-review-slot-id>.json
-```
+`validate-provisional-review` checks the adjudicated final against both immutable hashes,
+all dispositions, and every final dimension's discovery/critic lineage. It cannot publish.
+`record-provisional-review` alone fixes its exact bytes at
+`reviewer/provisional/<slot>.json` and increments `provisional_count`. All three roles remain
+blind to evaluator descriptors and the qualification profile. The campaign owns opaque role
+artifacts and hashes; actual fresh conversation independence is an operator procedure, not a
+machine-attested identity claim. Five complete pipelines and intact inventory bindings are
+required before `reveal-qualification-profile`. A scope missed by both blind roles remains a
+real `blind_coverage_gap` after reveal; explicit `not_applicable` remains a distinct fixed
+negative assessment.
 
-The command validates reviewer-visible shape and self-consistency from the
-reviewer's own classification, copies the exact accepted bytes to
-`reviewer/provisional/<opaque-review-slot-id>.json`, and fixes that private review and its
-campaign inventory/hash binding without reading an evaluator descriptor, checking
-evaluator correctness, or exposing journey/Work/class identity. Any maintained,
-well-formed classification therefore reaches the same `provisional_recorded`
-state even when it disagrees with the evaluator. The recorded provisional is immutable
-campaign evidence; later edits to the old draft cannot change it or invalidate inventory.
 After reveal, use `prepare-reconciliation` with campaign/class/Work arguments,
 edit the returned steward-private draft, then run `validate-reconciliation` and
 `seal-work` with the same arguments. No external descriptor path is accepted by sealing.

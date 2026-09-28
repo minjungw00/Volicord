@@ -1013,7 +1013,7 @@
       "blind_first_review": {
         "preparation_artifact_kind": "phase8_blind_review_preparation",
         "preparation_immutable_and_inventory_bound": true,
-        "draft_artifact_kind": "phase8_provisional_behavior_review",
+        "draft_artifact_kind": "phase8_blind_discovery",
         "draft_path": "reviewer/drafts/<review_slot_id>.json",
         "draft_ownership": "reviewer_owned_mutable_work_product_before_recording",
         "draft_mutable_before_recording": true,
@@ -1043,21 +1043,22 @@
           "material_outcome_unavoidable",
           "operator_prompt_does_not_disclose_material_outcome",
           "basis",
-          "provenance_reference_indices"
+          "provenance_reference_indices",
+          "adjudication"
         ],
         "evaluator_material_visible_before_provisional_fix": false,
         "reviewer_order": "opaque_review_slot_id",
         "logical_identity_visible_before_provisional_fix": false,
         "reviewer_contract_path": "reviewer/provisional-review-contract.json",
         "reviewer_contract_integrity": "sha256_bound_to_each_preparation",
-        "preflight_operation": "validate-provisional-review",
+        "preflight_operation": "validate-discovery",
         "preflight_mutates_campaign": false,
-        "preflight_validation_semantics": "shared_with_record-provisional-review",
+        "preflight_validation_semantics": "shared_with_record-discovery",
         "preflight_reads_evaluator_or_steward_truth": false,
         "preflight_rejects_inventory_bound_campaign_artifact": true,
         "recording_operation": "record-provisional-review",
         "recording_identity": "candidate_and_opaque_review_slot",
-        "recording_transition": "review_prepared_to_provisional_recorded",
+        "recording_transition": "critique_recorded_to_provisional_recorded",
         "recording_success_exit_code": 0,
         "recording_reads_evaluator_descriptor": false,
         "recording_compares_evaluator_classification_or_materiality": false,
@@ -1071,7 +1072,19 @@
         "evaluator_reveal_operation": "seal-work",
         "required_provisional_count_before_reveal": 5,
         "sealing_accepts_provisional_payload": false,
-        "independent_assessment_contract": "bounded_reviewer_local_dimensions_source_grounded_before_reveal"
+        "independent_assessment_contract": "bounded_reviewer_local_dimensions_source_grounded_before_reveal",
+        "protocol_sequence": [
+          "blind_discovery",
+          "independent_blind_critique",
+          "blind_adjudication",
+          "final_provisional",
+          "reveal"
+        ],
+        "discovery_recording_operation": "record-discovery",
+        "critique_recording_operation": "record-critique",
+        "adjudication_preparation_operation": "prepare-adjudication",
+        "final_preflight_operation": "validate-provisional-review",
+        "automatic_critic_union": false
       },
       "fact_authority_agreement": {
         "accepted_statuses": [
@@ -1299,7 +1312,8 @@
     "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
     "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
     "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
-    "blind_coverage": "Every counted evaluator obligation requires a distinct independently fixed pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review; reviewer-correct applicability blocks qualification as evaluator_obligation_invalid.",
+    "blind_coverage": "Every counted evaluator obligation requires a distinct adjudicated pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review; reviewer-correct applicability blocks qualification as evaluator_obligation_invalid.",
+    "blind_pipeline": "All five final provisionals require intact discovery, critique, adjudication dispositions and dimension lineage before profile reveal and later qualification.",
     "campaign_topology": {
       "repository_journeys": 3,
       "work_items": 5,

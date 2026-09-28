@@ -1494,32 +1494,32 @@ repository class/journey/Work mapping, concerns, alternatives, recommendation,
 user-owned outcome과 counterfactual conclusion은 제외한다. Phase A reviewer는 repository
 source와 listed owner document를 조사하되 qualification-control implementation이나
 evaluator/steward state가 아닌 prepared reviewer plane만 campaign evidence로 사용한다. 이는
-workflow isolation이며 OS secrecy 주장이 아니다. Independent control agent가 provisional
-review를 작성할 때 reviewer plane의 `reviewer/provisional-review-contract.json`이 exact field,
-fixed value, maintained behavior vocabulary, classification별 materiality/unavoidability/disclosure,
-bounded basis, provenance-index와 preparation binding을 단일 machine-readable projection으로
-제공한다. Reviewer index와 각 preparation은 이 path와 SHA-256을 노출한다. `prepare-review`는
-제거해야 하는 explicit incomplete marker, null conclusion과 빈 basis/provenance를 가진
-reviewer-owned mutable draft를 `reviewer/drafts/<review_slot_id>.json`에 만든다. Preparation은 read-only campaign
-evidence이고 inventory-bound지만 draft는 recording 전 reviewer work product이며 inventory에
-등록하지 않는다. `validate-provisional-review`는 candidate, opaque slot, exact preparation bytes,
-proposed review와 proposed path가 inventory-bound campaign artifact인지 판정하는 inventory
-membership만 읽어 같은 reviewer-visible validator를 실행하고 evaluator/profile/descriptor를
-읽거나 어떤 campaign state도 변경하지 않는다. Inventory-bound campaign artifact를 mutable
-reviewer input으로 전달하면 명시적으로 거부한다. 성공과 실패 모두 `provisional_count`,
-Work/reveal state, artifact와 inventory를 바꾸지 않는다. Independent control agent가 preflight를 통과한 provisional review를
-제출하면 `record-provisional-review`가 exact candidate,
-opaque `review_slot_id`, preparation identity와 strict reviewer-visible schema를 검증하고 immutable
-private artifact `reviewer/provisional/<review_slot_id>.json`에 accepted input의 exact bytes를
-복사하고 그 bytes/hash를 inventory에 고정하면서 `review_prepared`에서
-`provisional_recorded`로 성공 전환한다. 이 operation은 evaluator descriptor를 읽지 않고
-reviewer가 기록한 classification에서만 materiality와 disclosure self-consistency를 계산한다.
+workflow isolation이며 OS secrecy 주장이 아니다.
+Independent blind primary reviewer는 `reviewer/provisional-review-contract.json`의
+reviewer-visible field, classification, provenance와 분해 지침에 따라 discovery draft를
+작성한다. `validate-discovery`는 evaluator/profile을 읽지 않고 non-mutating 검사를 수행하며,
+`record-discovery`는 exact bytes/hash를 `reviewer/discovery/<review_slot_id>.json`과
+inventory/state에 고정한다. 이후 다른 fresh blind critic은 `prepare-critique`로 동일한
+reviewer-safe preparation/workspace와 immutable discovery만 받아 누락, 과도한 병합,
+중복, 재분류, authority, applicability와 비물질적 구현 detail을 bounded proposal로
+검토한다. `validate-critique`와 `record-critique`는 critique를
+`reviewer/critique/<review_slot_id>.json`에 immutable하게 기록한다. 별도 fresh blind
+adjudicator는 `prepare-adjudication`으로 discovery와 critique를 받고 모든 proposal에
+근거 있는 accept/reject/merge-equivalent/partial disposition을 부여한다. Critic output은
+자동으로 최종 assessment에 합쳐지지 않는다. 최종 각 dimension은 discovery나 accepted
+critic proposal 및 equivalent merge의 lineage를 명시한다. 세 role은 evaluator/profile
+blind이며 campaign-owned role/run artifact hash만 검증 가능하다. 실제 Codex conversation의
+독립성은 observable identity source가 없으므로 operator 절차다.
+`validate-provisional-review`는 predecessor hash, disposition과 final lineage까지
+non-mutating으로 검증하고 `record-provisional-review`만
+`reviewer/provisional/<review_slot_id>.json`의 exact final bytes를 고정하며
+`critique_recorded`에서 `provisional_recorded`로 전환한다.
 Maintained vocabulary에 속하고 internally consistent한 provisional conclusion은 private evaluator
 obligations와 일치하지 않아도 성공하며, 결과는 repository class, journey/Work, evaluator
 obligations 또는 match/mismatch를 노출하지 않는다. Recording 뒤 이전 draft를 더 편집해도 recorded
-provisional bytes/hash와 inventory integrity는 바뀌지 않는다. 모든 five provisional artifact와 hash가 고정되기
+provisional bytes/hash와 inventory integrity는 바뀌지 않는다. 모든 five discovery/critique/adjudicated provisional artifact와 hash가 고정되기
 전에는 qualification-profile reveal과 `seal-work` evaluator reveal을 모두 거부한다.
-`reveal-qualification-profile`은 `provisional_count = 5`와 모든 immutable hash를 확인한 뒤 private
+`reveal-qualification-profile`은 최종 provisional만 세는 `provisional_count = 5`와 모든 predecessor/final immutable hash를 확인한 뒤 private
 profile을 검증하고 reveal state를 고정한다. 그 뒤 campaign-local steward plane의
 `prepare-reconciliation` → edit/compare → `validate-reconciliation` → `seal-work`은 이미 고정된 provisional
 artifact를 byte/hash 그대로 유지한 채 full evaluator basis와 비교한다. Structured

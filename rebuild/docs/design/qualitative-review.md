@@ -129,7 +129,9 @@ chooses the favorable side by label or narrative similarity.
 Review validity and the aggregate assessment describe only the recorded review.
 Every result retains `qualification_state = not_run` and `phase_9_ready = false`.
 The old human-only schema, validator and publication/approval helpers are removed.
-The blind pre-campaign provisional workflow remains separate and unchanged.
+The separate blind pre-campaign workflow now fixes discovery, independent critique, and
+adjudicated final provisional before profile reveal; this qualitative review still consumes
+only the final immutable provisional.
 
 ## Dedicated CLI observation
 

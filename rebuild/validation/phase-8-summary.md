@@ -169,18 +169,16 @@ campaign definition.
 
 Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation and
 evidence handling. The evaluator/control agent researches the repositories,
-creates all five bounded blind-first Work reviewer preparations, records every provisional
-classification and materiality conclusion before exposing any evaluator basis,
-uses the hash-bound `reviewer/provisional-review-contract.json` and non-mutating
-`validate-provisional-review` operation to apply the recorder's reviewer-visible
-semantics before submission, fixes them through the opaque-slot
-`record-provisional-review` operation, verifies
-`provisional_count = 5`, reveals and validates the private qualification profile, and then
-seals each descriptor against its immutable review without exposing evaluator
-material to the operator. Recording validates only reviewer-visible identity,
-schema, provenance bounds, and self-consistency derived from the reviewer's own
-classification; a well-formed evaluator disagreement receives the same successful
-`provisional_recorded` transition. After reveal, a structured comparison must mark
+creates all five bounded blind-first Work reviewer preparations. Each Work then follows
+immutable discovery, independent blind critique, and evidence-backed blind adjudication
+before `record-provisional-review` fixes one final provisional. The hash-bound reviewer
+contract and non-mutating preflight operations enforce the visible schema and lineage.
+`provisional_count = 5` counts only adjudicated final provisionals; reveal checks every
+precursor artifact and hash before exposing the private qualification profile. Recording
+uses reviewer-visible identity, provenance and self-consistency only, so a well-formed
+evaluator disagreement can still reach `provisional_recorded`. Fresh role conversations
+remain an operator requirement because the campaign has no trustworthy conversation ID.
+After reveal, a structured comparison must mark
 matching conclusions `agreed`, resolve every classification/materiality/disclosure
 difference from inspectable evidence, or block sealing as `unresolved_conflict`.
 The original provisional bytes and hash are never rewritten by that comparison.

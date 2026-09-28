@@ -176,7 +176,7 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
         )
     value = read_json(campaign_file(root))
     if (value.get("kind") != "phase8_dogfood_campaign"
-            or value.get("schema_version") != 4):
+            or value.get("schema_version") != 5):
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
@@ -594,7 +594,11 @@ def work_root(
 def slot_artifact_path(root: Path, plane: str, directory: str, review_slot_id: str) -> Path:
     if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
         raise CampaignError("review slot identity is malformed")
-    return root / plane / directory / f"{review_slot_id}.json"
+    path = root / plane / directory / f"{review_slot_id}.json"
+    for candidate in (root / plane, root / plane / directory, path):
+        if candidate.is_symlink() or not candidate.resolve(strict=False).is_relative_to(root.resolve()):
+            raise CampaignError("campaign-owned artifact path escaped the private root")
+    return path
 
 
 def slot_mapping_value(
@@ -900,7 +904,7 @@ def render_reviewer_index(root: Path) -> Path:
         entries.append({
             "review_slot_id": review_slot_id,
             "preparation": f"preparations/{review_slot_id}.json",
-            "provisional_review_draft": f"drafts/{review_slot_id}.json",
+            "discovery_draft": f"drafts/{review_slot_id}.json",
             "reviewer_workspace": f"workspaces/{review_slot_id}/repository",
         })
     path = reviewer_index_path(root)
@@ -908,8 +912,13 @@ def render_reviewer_index(root: Path) -> Path:
         "kind": "phase8_blind_review_index",
         "ordering": "opaque_review_slot_id",
         "provisional_review_contract": contract,
-        "preflight_operation": "validate-provisional-review",
+        "preflight_operation": "validate-discovery",
         "preflight_mutates_campaign": False,
+        "operation_sequence": ["prepare-review", "validate-discovery", "record-discovery",
+            "prepare-critique", "validate-critique", "record-critique",
+            "prepare-adjudication", "validate-provisional-review", "record-provisional-review",
+            "reveal-qualification-profile"],
+        "fresh_independent_sessions": "operator_required_not_machine_attested",
         "entries": entries,
     })
     return path
@@ -932,8 +941,12 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
         or index.get("ordering") != "opaque_review_slot_id"
         or index.get("provisional_review_contract")
         != reviewer_provisional_contract_reference(root)
-        or index.get("preflight_operation") != "validate-provisional-review"
+        or index.get("preflight_operation") != "validate-discovery"
         or index.get("preflight_mutates_campaign") is not False
+        or index.get("operation_sequence") != ["prepare-review", "validate-discovery", "record-discovery",
+            "prepare-critique", "validate-critique", "record-critique", "prepare-adjudication",
+            "validate-provisional-review", "record-provisional-review", "reveal-qualification-profile"]
+        or index.get("fresh_independent_sessions") != "operator_required_not_machine_attested"
         or not isinstance(entries, list)
         or [item.get("review_slot_id") for item in entries]
         != sorted(item.get("review_slot_id") for item in entries)
@@ -966,10 +979,13 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
     }
     if json_keys(contract).intersection(prohibited_keys):
         raise CampaignError("reviewer provisional-review contract exposes evaluator material")
-    for directory in ("preparations", "drafts", "provisional"):
+    for directory in ("preparations", "drafts", "discovery", "critique-preparations",
+                      "critique-drafts", "critique", "adjudication-preparations", "provisional"):
         for path in sorted((root / "reviewer" / directory).glob("*.json")):
             if REVIEW_SLOT_ID.fullmatch(path.stem) is None:
                 raise CampaignError("blind reviewer filename exposes a non-opaque identity")
+            if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+                raise CampaignError("blind reviewer artifact path escaped the private root")
             value = read_json(path)
             if json_keys(value).intersection(prohibited_keys):
                 raise CampaignError("blind reviewer artifact exposes evaluator identity or material")
@@ -985,7 +1001,7 @@ def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
         expected = {
             "review_slot_id": review_slot_id,
             "preparation": f"preparations/{review_slot_id}.json",
-            "provisional_review_draft": f"drafts/{review_slot_id}.json",
+            "discovery_draft": f"drafts/{review_slot_id}.json",
             "reviewer_workspace": f"workspaces/{review_slot_id}/repository",
         }
         if entry != expected:
@@ -1702,11 +1718,7 @@ def prepare_review(
     references = descriptor["behavior_review"]["provenance_references"]
     review_slot_id = state["review_slot_id"]
     reviewer_repository = Path(state["reviewer_repository_path"])
-    if (
-        reviewer_repository.resolve(strict=False)
-        != (root / "reviewer/workspaces" / review_slot_id / "repository").resolve(strict=False)
-    ):
-        raise CampaignError("reviewer workspace is not bound to the opaque review slot")
+    validate_reviewer_workspace(root, review_slot_id, str(reviewer_repository))
     preparation = {
         "kind": "phase8_blind_review_preparation",
         "review_slot_id": review_slot_id,
@@ -1726,7 +1738,7 @@ def prepare_review(
         ],
         "provisional_review_contract": reviewer_provisional_contract_reference(root),
         "preflight": {
-            "operation": "validate-provisional-review",
+            "operation": "validate-discovery",
             "mutation": "none",
         },
     }
@@ -1735,10 +1747,10 @@ def prepare_review(
     preparation_sha256 = harness.sha256(preparation_path)
     provisional_draft = {
         "_draft_state": "INCOMPLETE_REMOVE_THIS_FIELD_BEFORE_PREFLIGHT",
-        "kind": "phase8_provisional_behavior_review",
+        "kind": "phase8_blind_discovery",
         "review_slot_id": review_slot_id,
         "status": "recorded",
-        "reviewer_role": "campaign_preparation_independent_reviewer",
+        "reviewer_role": "primary_blind_discovery",
         "preparation_sha256": preparation_sha256,
         "assessments": [],
         "classification": None,
@@ -1760,15 +1772,284 @@ def prepare_review(
         "review_slot_id": review_slot_id,
         "preparation": relative(root, preparation_path),
         "preparation_sha256": preparation_sha256,
-        "provisional_review_draft": relative(root, provisional_draft_path),
-        "provisional_review_draft_ownership": "reviewer_owned_mutable_before_recording",
-        "provisional_review_draft_inventory_bound": False,
+        "discovery_draft": relative(root, provisional_draft_path),
+        "discovery_draft_ownership": "reviewer_owned_mutable_before_recording",
+        "discovery_draft_inventory_bound": False,
         "provisional_review_contract": reviewer_provisional_contract_reference(root),
-        "preflight_operation": "validate-provisional-review",
+        "preflight_operation": "validate-discovery",
         "preflight_mutates_campaign": False,
         "evaluator_material_exposed": False,
     }
 
+
+def blind_stage_path(root: Path, directory: str, review_slot_id: str) -> Path:
+    return slot_artifact_path(root, "reviewer", directory, review_slot_id)
+
+
+def validate_reviewer_workspace(root: Path, review_slot_id: str, workspace: str) -> None:
+    expected = root / "reviewer/workspaces" / review_slot_id / "repository"
+    for path in (root / "reviewer", root / "reviewer/workspaces",
+                 root / "reviewer/workspaces" / review_slot_id, expected):
+        if path.is_symlink() or not path.resolve(strict=False).is_relative_to(root.resolve()):
+            raise CampaignError("reviewer workspace escaped the campaign private root")
+    if not isinstance(workspace, str) or (Path(workspace) != expected and
+            Path(workspace).resolve(strict=False) != expected.resolve(strict=False)):
+        raise CampaignError("reviewer workspace is not bound to its opaque slot")
+
+
+def blind_preparation(root: Path, candidate_head: str, review_slot_id: str) -> tuple[dict[str, Any], str]:
+    path = blind_stage_path(root, "preparations", review_slot_id)
+    preparation = read_json(path)
+    digest = harness.sha256(path)
+    if (preparation.get("kind") != "phase8_blind_review_preparation"
+            or preparation.get("candidate_head") != candidate_head
+            or preparation.get("review_slot_id") != review_slot_id
+            or preparation.get("provisional_review_contract") != reviewer_provisional_contract_reference(root)):
+        raise CampaignError("blind preparation identity or contract changed")
+    validate_reviewer_workspace(root, review_slot_id, preparation.get("reviewer_repository_path"))
+    entry = load_inventory(root)["artifacts"].get(relative(root, path))
+    if not isinstance(entry, dict) or entry.get("sha256") != digest:
+        raise CampaignError("blind preparation is not inventory bound")
+    return preparation, digest
+
+
+def reviewer_owned_input(root: Path, source: Path) -> tuple[bytes, dict[str, Any]]:
+    resolved = source.resolve()
+    if resolved in {(root / name).resolve() for name in load_inventory(root)["artifacts"]}:
+        raise CampaignError("inventory-bound reviewer artifact cannot be mutable input")
+    try:
+        payload = resolved.read_bytes()
+        value = json.loads(payload)
+    except (OSError, json.JSONDecodeError) as error:
+        raise CampaignError("reviewer-owned input is not readable JSON") from error
+    return payload, value
+
+
+def fixed_blind_artifact(root: Path, directory: str, review_slot_id: str, expected_hash: str | None = None) -> tuple[dict[str, Any], str]:
+    path = blind_stage_path(root, directory, review_slot_id)
+    value = read_json(path)
+    digest = harness.sha256(path)
+    entry = load_inventory(root)["artifacts"].get(relative(root, path))
+    if not isinstance(entry, dict) or entry.get("sha256") != digest or entry.get("bytes") != path.stat().st_size \
+            or (expected_hash is not None and digest != expected_hash):
+        raise CampaignError(f"immutable {directory} hash or inventory binding changed")
+    return value, digest
+
+
+def publish_blind_artifact(root: Path, campaign: dict[str, Any], review_slot_id: str,
+                           directory: str, payload: bytes, new_state: str, state_hash_field: str) -> dict[str, Any]:
+    destination = blind_stage_path(root, directory, review_slot_id)
+    if destination.exists() or destination.is_symlink():
+        raise CampaignError("blind stage artifact already exists")
+    name = relative(root, destination)
+    inventory = load_inventory(root)
+    if name in inventory["artifacts"]:
+        raise CampaignError("blind stage artifact is already inventory bound")
+    digest = hashlib.sha256(payload).hexdigest()
+    updated_inventory = copy.deepcopy(inventory)
+    updated_inventory["artifacts"][name] = {"bytes": len(payload), "sha256": digest}
+    updated_campaign = copy.deepcopy(campaign)
+    state = private_work_for_review_slot(updated_campaign, review_slot_id)
+    state["state"] = new_state
+    state[state_hash_field] = digest
+    if new_state == "provisional_recorded":
+        updated_campaign["provisional_count"] = sum(
+            item.get("state") in {"provisional_recorded", "sealed"}
+            for item in updated_campaign["works"].values())
+    campaign_path, evidence_path = campaign_file(root), inventory_path(root)
+    old_campaign, old_inventory = campaign_path.read_bytes(), evidence_path.read_bytes()
+    assert_reviewer_artifacts_are_behavior_opaque(root)
+    try:
+        atomic_write_bytes(destination, payload)
+        atomic_write_bytes(evidence_path, json_bytes(updated_inventory))
+        atomic_write_bytes(campaign_path, json_bytes(updated_campaign))
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        atomic_write_bytes(evidence_path, old_inventory)
+        atomic_write_bytes(campaign_path, old_campaign)
+        raise
+    return {"review_slot_id": review_slot_id, "state": new_state, "artifact": name,
+            "bytes": len(payload), "sha256": digest,
+            "provisional_count": updated_campaign["provisional_count"],
+            "evaluator_material_exposed": False, "qualification_profile_exposed": False}
+
+
+def validated_discovery_payload(root: Path, candidate_head: str, review_slot_id: str,
+                                discovery_path: Path) -> bytes:
+    import blind_protocol
+    preparation, digest = blind_preparation(root, candidate_head, review_slot_id)
+    payload, discovery = reviewer_owned_input(root, discovery_path)
+    errors = blind_protocol.discovery_errors(discovery,
+        {"kind": "phase8_blind_review_preparation_reference", "review_slot_id": review_slot_id,
+         "sha256": digest}, len(preparation["owner_document_locations"]))
+    if errors:
+        raise CampaignError("blind discovery does not qualify: " + "; ".join(errors))
+    return payload
+
+
+def validate_discovery(root: Path, candidate_head: str, review_slot_id: str,
+                       discovery_path: Path) -> dict[str, Any]:
+    validated_discovery_payload(root, candidate_head, review_slot_id, discovery_path)
+    return {"kind": "phase8_blind_discovery_preflight", "status": "passed",
+            "review_slot_id": review_slot_id, "campaign_mutated": False,
+            "evaluator_material_exposed": False}
+
+
+def record_discovery(root: Path, candidate_head: str, review_slot_id: str,
+                     discovery_path: Path) -> dict[str, Any]:
+    campaign = load_campaign_for_mutation(root, validate_private=False)
+    verify_inventory(root)
+    if campaign["candidate_head"] != candidate_head or private_work_for_review_slot(campaign, review_slot_id)["state"] != "review_prepared":
+        raise CampaignError("discovery requires one review-prepared opaque slot")
+    payload = validated_discovery_payload(root, candidate_head, review_slot_id, discovery_path)
+    if blind_preparation(root, candidate_head, review_slot_id)[1] != \
+            private_work_for_review_slot(campaign, review_slot_id)["review_preparation_sha256"]:
+        raise CampaignError("blind preparation state hash changed")
+    result = publish_blind_artifact(root, campaign, review_slot_id, "discovery", payload,
+                                    "discovery_recorded", "discovery_sha256")
+    result["kind"] = "phase8_blind_discovery_recorded"
+    return result
+
+
+def prepare_critique(root: Path, candidate_head: str, review_slot_id: str) -> dict[str, Any]:
+    campaign = load_campaign_for_mutation(root, validate_private=False)
+    verify_inventory(root)
+    state = private_work_for_review_slot(campaign, review_slot_id)
+    if campaign["candidate_head"] != candidate_head or state["state"] != "discovery_recorded":
+        raise CampaignError("critique preparation requires immutable discovery")
+    preparation, preparation_sha = blind_preparation(root, candidate_head, review_slot_id)
+    discovery, discovery_sha = fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
+    import blind_protocol
+    errors = blind_protocol.discovery_errors(discovery,
+        {"kind": "phase8_blind_review_preparation_reference", "review_slot_id": review_slot_id,
+         "sha256": preparation_sha}, len(preparation["owner_document_locations"]))
+    if errors:
+        raise CampaignError("recorded discovery is invalid: " + "; ".join(errors))
+    path = blind_stage_path(root, "critique-preparations", review_slot_id)
+    if path.exists() or path.is_symlink():
+        raise CampaignError("critique preparation already exists")
+    critic_run_id = secrets.token_hex(16)
+    write_json(path, {"kind": "phase8_blind_critique_preparation", "review_slot_id": review_slot_id,
+                      "critic_run_id": critic_run_id,
+                      "next_operations": ["validate-critique", "record-critique"],
+                      "review_preparation": {"path": relative(root, blind_stage_path(root, "preparations", review_slot_id)), "sha256": preparation_sha},
+                      "reviewer_workspace": preparation["reviewer_repository_path"],
+                      "contract": reviewer_provisional_contract_reference(root),
+                      "discovery": {"path": relative(root, blind_stage_path(root, "discovery", review_slot_id)), "sha256": discovery_sha}})
+    register_artifact(root, path)
+    draft = blind_stage_path(root, "critique-drafts", review_slot_id)
+    write_json(draft, {"kind": "phase8_blind_completeness_critique", "review_slot_id": review_slot_id,
+                       "preparation_sha256": preparation_sha, "discovery_sha256": discovery_sha,
+                       "critic_run_id": critic_run_id, "proposals": []})
+    assert_reviewer_artifacts_are_behavior_opaque(root)
+    return {"kind": "phase8_blind_critique_prepared", "review_slot_id": review_slot_id,
+            "preparation": relative(root, path), "draft": relative(root, draft),
+            "discovery_sha256": discovery_sha, "evaluator_material_exposed": False}
+
+
+def validated_critique_payload(root: Path, candidate_head: str, review_slot_id: str,
+                               critique_path: Path) -> bytes:
+    import blind_protocol
+    preparation, preparation_sha = blind_preparation(root, candidate_head, review_slot_id)
+    discovery, discovery_sha = fixed_blind_artifact(root, "discovery", review_slot_id)
+    critique_preparation, _ = fixed_blind_artifact(root, "critique-preparations", review_slot_id)
+    if (critique_preparation.get("next_operations") != ["validate-critique", "record-critique"]
+            or critique_preparation.get("discovery") != {"path": relative(root, blind_stage_path(root, "discovery", review_slot_id)), "sha256": discovery_sha}):
+        raise CampaignError("critique preparation discovery binding changed")
+    payload, critique = reviewer_owned_input(root, critique_path)
+    errors = blind_protocol.critique_errors(critique, review_slot_id, preparation_sha,
+        discovery_sha, critique_preparation["critic_run_id"], discovery,
+        len(preparation["owner_document_locations"]))
+    if errors:
+        raise CampaignError("blind critique does not qualify: " + "; ".join(errors))
+    return payload
+
+
+def validate_critique(root: Path, candidate_head: str, review_slot_id: str,
+                      critique_path: Path) -> dict[str, Any]:
+    validated_critique_payload(root, candidate_head, review_slot_id, critique_path)
+    return {"kind": "phase8_blind_critique_preflight", "status": "passed",
+            "review_slot_id": review_slot_id, "campaign_mutated": False,
+            "evaluator_material_exposed": False}
+
+
+def record_critique(root: Path, candidate_head: str, review_slot_id: str,
+                    critique_path: Path) -> dict[str, Any]:
+    campaign = load_campaign_for_mutation(root, validate_private=False)
+    verify_inventory(root)
+    state = private_work_for_review_slot(campaign, review_slot_id)
+    if campaign["candidate_head"] != candidate_head or state["state"] != "discovery_recorded":
+        raise CampaignError("critique requires recorded discovery")
+    fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
+    payload = validated_critique_payload(root, candidate_head, review_slot_id, critique_path)
+    result = publish_blind_artifact(root, campaign, review_slot_id, "critique", payload,
+                                    "critique_recorded", "critique_sha256")
+    result["kind"] = "phase8_blind_critique_recorded"
+    return result
+
+
+def prepare_adjudication(root: Path, candidate_head: str, review_slot_id: str) -> dict[str, Any]:
+    campaign = load_campaign_for_mutation(root, validate_private=False)
+    verify_inventory(root)
+    state = private_work_for_review_slot(campaign, review_slot_id)
+    if campaign["candidate_head"] != candidate_head or state["state"] != "critique_recorded":
+        raise CampaignError("adjudication preparation requires immutable critique")
+    discovery, discovery_sha = fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
+    critique, critique_sha = fixed_blind_artifact(root, "critique", review_slot_id, state["critique_sha256"])
+    preparation, preparation_sha = blind_preparation(root, candidate_head, review_slot_id)
+    path = blind_stage_path(root, "adjudication-preparations", review_slot_id)
+    if path.exists() or path.is_symlink():
+        raise CampaignError("adjudication preparation already exists")
+    adjudicator_run_id = secrets.token_hex(16)
+    write_json(path, {"kind": "phase8_blind_adjudication_preparation", "review_slot_id": review_slot_id,
+                      "adjudicator_run_id": adjudicator_run_id,
+                      "next_operations": ["validate-provisional-review", "record-provisional-review"],
+                      "review_preparation": {"path": relative(root, blind_stage_path(root, "preparations", review_slot_id)), "sha256": preparation_sha},
+                      "reviewer_workspace": preparation["reviewer_repository_path"],
+                      "contract": reviewer_provisional_contract_reference(root),
+                      "discovery": {"path": relative(root, blind_stage_path(root, "discovery", review_slot_id)), "sha256": discovery_sha},
+                      "critique": {"path": relative(root, blind_stage_path(root, "critique", review_slot_id)), "sha256": critique_sha}})
+    register_artifact(root, path)
+    draft = blind_stage_path(root, "drafts", review_slot_id)
+    provisional = copy.deepcopy(discovery)
+    provisional["kind"] = "phase8_provisional_behavior_review"
+    provisional["reviewer_role"] = "campaign_preparation_independent_reviewer"
+    provisional["adjudication"] = {"discovery_sha256": discovery_sha, "critique_sha256": critique_sha,
+        "adjudicator_run_id": adjudicator_run_id,
+        "dispositions": [], "lineage": [{"dimension_id": item["dimension_id"],
+            "discovery_dimension_ids": [item["dimension_id"]], "critic_proposal_ids": [],
+            "relationship": "discovery"} for item in discovery["assessments"]]}
+    write_json(draft, provisional)
+    assert_reviewer_artifacts_are_behavior_opaque(root)
+    return {"kind": "phase8_blind_adjudication_prepared", "review_slot_id": review_slot_id,
+            "preparation": relative(root, path), "draft": relative(root, draft),
+            "proposal_count": len(critique["proposals"]), "evaluator_material_exposed": False}
+
+
+def validate_final_lineage(root: Path, candidate_head: str, review_slot_id: str,
+                           provisional: dict[str, Any], references: int) -> None:
+    import blind_protocol
+    discovery, discovery_sha = fixed_blind_artifact(root, "discovery", review_slot_id)
+    critique, critique_sha = fixed_blind_artifact(root, "critique", review_slot_id)
+    critique_preparation, _ = fixed_blind_artifact(root, "critique-preparations", review_slot_id)
+    adjudication_preparation, _ = fixed_blind_artifact(root, "adjudication-preparations", review_slot_id)
+    preparation, preparation_sha = blind_preparation(root, candidate_head, review_slot_id)
+    if (adjudication_preparation.get("next_operations") != ["validate-provisional-review", "record-provisional-review"]
+            or adjudication_preparation.get("discovery", {}).get("sha256") != discovery_sha
+            or adjudication_preparation.get("critique", {}).get("sha256") != critique_sha
+            or adjudication_preparation.get("review_preparation", {}).get("sha256") != preparation_sha):
+        raise CampaignError("adjudication preparation predecessor binding changed")
+    errors = blind_protocol.discovery_errors(discovery,
+        {"kind": "phase8_blind_review_preparation_reference", "review_slot_id": review_slot_id,
+         "sha256": preparation_sha}, references)
+    errors += blind_protocol.critique_errors(critique, review_slot_id, preparation_sha,
+        discovery_sha, critique_preparation["critic_run_id"], discovery, references)
+    if errors:
+        raise CampaignError("blind predecessor does not qualify: " + "; ".join(errors))
+    errors = blind_protocol.adjudication_errors(provisional, discovery, critique,
+        discovery_sha, critique_sha, adjudication_preparation["adjudicator_run_id"], references)
+    if errors:
+        raise CampaignError("blind adjudication does not qualify: " + "; ".join(errors))
 
 def load_and_validate_reviewer_provisional_review(
     root: Path,
@@ -1806,7 +2087,7 @@ def load_and_validate_reviewer_provisional_review(
         or preparation.get("candidate_head") != candidate_head
         or preparation.get("provisional_review_contract") != contract_reference
         or preparation.get("preflight")
-        != {"operation": "validate-provisional-review", "mutation": "none"}
+        != {"operation": "validate-discovery", "mutation": "none"}
     ):
         raise CampaignError("blind reviewer preparation identity, candidate, or contract changed")
     source = provisional_review_path.resolve()
@@ -1836,6 +2117,8 @@ def load_and_validate_reviewer_provisional_review(
         raise CampaignError(
             "provisional review does not qualify: " + "; ".join(provisional_errors)
         )
+    validate_final_lineage(root, candidate_head, review_slot_id, provisional,
+                           len(preparation.get("owner_document_locations", [])))
     return (
         source_bytes,
         provisional,
@@ -1874,9 +2157,7 @@ def validate_provisional_review(
 
 
 def record_provisional_review(
-    root: Path,
-    candidate_head: str,
-    review_slot_id: str,
+    root: Path, candidate_head: str, review_slot_id: str,
     provisional_review_path: Path,
 ) -> dict[str, Any]:
     campaign = load_campaign_for_mutation(root, validate_private=False)
@@ -1884,91 +2165,36 @@ def record_provisional_review(
     if campaign.get("candidate_head") != candidate_head:
         raise CampaignError("provisional review is bound to a different campaign candidate")
     state = private_work_for_review_slot(campaign, review_slot_id)
-    if state.get("state") != "review_prepared":
-        raise CampaignError("provisional review requires one review-prepared opaque slot")
-    (
-        source_bytes,
-        provisional,
-        preparation,
-        preparation_sha256,
-        _contract_reference,
-    ) = load_and_validate_reviewer_provisional_review(
-        root,
-        candidate_head,
-        review_slot_id,
-        provisional_review_path,
-    )
-    if (
-        preparation.get("repository_revision") != state.get("repository_revision")
-        or preparation.get("reviewer_repository_path")
-        != state.get("reviewer_repository_path")
-        or preparation_sha256 != state.get("review_preparation_sha256")
-    ):
-        raise CampaignError("blind reviewer preparation identity, candidate, or hash changed")
-    provisional_destination = slot_artifact_path(
-        root, "reviewer", "provisional", review_slot_id
-    )
-    source = provisional_review_path.resolve()
-    if source == provisional_destination.resolve():
-        raise CampaignError("provisional review input must remain separate until recording")
-    if provisional_destination.exists():
-        raise CampaignError("fixed provisional review already exists")
-    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
-    inventory = load_inventory(root)
-    artifact_name = relative(root, provisional_destination)
-    artifacts = inventory.setdefault("artifacts", {})
-    if artifact_name in artifacts:
-        raise CampaignError("fixed provisional review is already inventory-bound")
-    updated_inventory = copy.deepcopy(inventory)
-    updated_inventory["artifacts"][artifact_name] = {
-        "bytes": len(source_bytes),
-        "sha256": source_sha256,
-    }
-    updated_campaign = copy.deepcopy(campaign)
-    updated_state = private_work_for_review_slot(updated_campaign, review_slot_id)
-    updated_state["state"] = "provisional_recorded"
-    updated_state["provisional_review_sha256"] = source_sha256
-    updated_campaign["provisional_count"] = sum(
-        item.get("state") in {"provisional_recorded", "sealed"}
-        for item in updated_campaign["works"].values()
-    )
-
-    campaign_path = campaign_file(root)
-    evidence_path = inventory_path(root)
-    original_campaign = campaign_path.read_bytes()
-    original_inventory = evidence_path.read_bytes()
-    assert_reviewer_artifacts_are_behavior_opaque(root)
-    try:
-        atomic_write_bytes(provisional_destination, source_bytes)
-        atomic_write_bytes(evidence_path, json_bytes(updated_inventory))
-        atomic_write_bytes(campaign_path, json_bytes(updated_campaign))
-    except BaseException:
-        provisional_destination.unlink(missing_ok=True)
-        atomic_write_bytes(evidence_path, original_inventory)
-        atomic_write_bytes(campaign_path, original_campaign)
-        raise
-    return {
-        "kind": "phase8_dogfood_provisional_review_recorded",
-        "review_slot_id": review_slot_id,
-        "candidate_head": candidate_head,
-        "state": "provisional_recorded",
-        "provisional_review": artifact_name,
-        "provisional_review_bytes": len(source_bytes),
-        "provisional_review_sha256": source_sha256,
-        "provisional_count": updated_campaign["provisional_count"],
-        "evaluator_material_exposed": False,
-        "qualification_profile_exposed": False,
-    }
+    if state.get("state") != "critique_recorded":
+        raise CampaignError("final provisional requires recorded discovery and critique")
+    fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
+    fixed_blind_artifact(root, "critique", review_slot_id, state["critique_sha256"])
+    payload, _provisional, preparation, preparation_sha, _contract = (
+        load_and_validate_reviewer_provisional_review(root, candidate_head, review_slot_id,
+                                                       provisional_review_path))
+    if (preparation.get("repository_revision") != state.get("repository_revision")
+            or preparation.get("reviewer_repository_path") != state.get("reviewer_repository_path")
+            or preparation_sha != state.get("review_preparation_sha256")):
+        raise CampaignError("blind reviewer preparation identity or hash changed")
+    result = publish_blind_artifact(root, campaign, review_slot_id, "provisional", payload,
+                                    "provisional_recorded", "provisional_review_sha256")
+    result.update({"kind": "phase8_dogfood_provisional_review_recorded",
+                   "candidate_head": candidate_head,
+                   "provisional_review": result["artifact"],
+                   "provisional_review_bytes": result["bytes"],
+                   "provisional_review_sha256": result["sha256"]})
+    return result
 
 
 def verify_all_provisional_reviews_fixed(
-    root: Path, campaign: dict[str, Any]
+    root: Path, campaign: dict[str, Any], *, post_collection: bool = False
 ) -> None:
     states = list(campaign.get("works", {}).values())
+    allowed_states = {"evidence_collected", "sealed"} if post_collection else {"provisional_recorded", "sealed"}
     if (
         len(states) != QUALIFICATION_WORK_COUNT
         or campaign.get("provisional_count") != QUALIFICATION_WORK_COUNT
-        or any(state.get("state") not in {"provisional_recorded", "sealed"} for state in states)
+        or any(state.get("state") not in allowed_states for state in states)
     ):
         raise CampaignError(
             "qualification profile and evaluator reveal require all five provisional reviews"
@@ -1986,6 +2212,22 @@ def verify_all_provisional_reviews_fixed(
             or entry.get("bytes") != path.stat().st_size
         ):
             raise CampaignError("fixed provisional review hash or inventory binding changed")
+        preparation, preparation_sha = blind_preparation(root, campaign["candidate_head"], review_slot_id)
+        if preparation_sha != state.get("review_preparation_sha256"):
+            raise CampaignError("blind preparation state hash changed")
+        for field in ("discovery_sha256", "critique_sha256"):
+            if not harness.valid_capture_sha256(state.get(field)):
+                raise CampaignError("blind predecessor state hash is missing")
+        fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
+        fixed_blind_artifact(root, "critique", review_slot_id, state["critique_sha256"])
+        final = read_json(path)
+        final_errors = harness.blind_first_review_errors(
+            {"kind": "phase8_blind_review_preparation_reference", "review_slot_id": review_slot_id,
+             "sha256": preparation_sha}, final, len(preparation["owner_document_locations"]))
+        if final_errors:
+            raise CampaignError("fixed provisional review is invalid: " + "; ".join(final_errors))
+        validate_final_lineage(root, campaign["candidate_head"], review_slot_id, final,
+                               len(preparation["owner_document_locations"]))
 
 
 def reveal_qualification_profile(root: Path, candidate_head: str) -> dict[str, Any]:
@@ -2445,6 +2687,8 @@ def prepare_campaign(
             "sealed_semantic_sha256": None,
             "operator_task_artifacts": None,
             "review_preparation_sha256": None,
+            "discovery_sha256": None,
+            "critique_sha256": None,
             "provisional_review_sha256": None,
             "project_id": None,
             "codex_enabled": False,
@@ -2478,7 +2722,7 @@ def prepare_campaign(
     write_json(qualification_profile_path(root), profile)
     campaign = {
         "kind": "phase8_dogfood_campaign",
-        "schema_version": 4,
+        "schema_version": 5,
         "campaign_id": campaign_id,
         "campaign_root": str(root),
         "candidate_head": candidate_head,
@@ -3872,6 +4116,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     """Read-only identity verification; never repairs or upgrades older campaigns."""
     campaign = load_campaign(root)
     verify_inventory(root)
+    verify_all_provisional_reviews_fixed(root, campaign, post_collection=True)
     reference = campaign.get("evidence_set")
     if (campaign.get("collection_state") != "collected" or not isinstance(reference, dict)
         or reference.get("path") != "evidence-set.json"
@@ -4068,7 +4313,8 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
         "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
-                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py")},
+                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py",
+                "blind_dimensions.py", "blind_protocol.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "works": works,
@@ -4100,7 +4346,7 @@ def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
     campaign = read_json(campaign_file(root))
     if (
         campaign.get("kind") != "phase8_dogfood_campaign"
-        or campaign.get("schema_version") not in {1, 2, 3, 4}
+        or campaign.get("schema_version") not in {1, 2, 3, 4, 5}
         or Path(campaign.get("campaign_root", "")).resolve() != root.resolve()
     ):
         raise CampaignError("unexpected dogfood campaign metadata")
@@ -4111,7 +4357,7 @@ def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
         return {name: {"sha256": harness.sha256(root / name), "bytes": (root / name).stat().st_size}
             for name in sorted(names)}
     before = snapshot()
-    if campaign["schema_version"] != 4:
+    if campaign["schema_version"] != 5:
         result = {
             "kind": "dogfood_historical_campaign_diagnostic",
             "schema_version": 1,
@@ -4125,8 +4371,8 @@ def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
             "replacement_pass_candidate": False,
             "phase_9_ready": False,
             "limitation": (
-                "Superseded cycle-schema artifacts are preserved read-only; they are not "
-                "upgraded, mutated, or evaluated as the current journey campaign."
+                "Superseded campaign artifacts are preserved read-only; they are not "
+                "upgraded, mutated, or evaluated as the current blind-pipeline campaign."
             ),
         }
         result["run_id"] = machine_findings.digest(result)
@@ -4253,6 +4499,12 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--candidate-head", required=True)
     prepare.add_argument("--repositories", required=True)
     prepare_reviewer = sub.add_parser("prepare-review")
+    validate_discovery_cli = sub.add_parser("validate-discovery")
+    record_discovery_cli = sub.add_parser("record-discovery")
+    prepare_critique_cli = sub.add_parser("prepare-critique")
+    validate_critique_cli = sub.add_parser("validate-critique")
+    record_critique_cli = sub.add_parser("record-critique")
+    prepare_adjudication_cli = sub.add_parser("prepare-adjudication")
     validate_provisional = sub.add_parser("validate-provisional-review")
     record_provisional = sub.add_parser("record-provisional-review")
     reveal_profile = sub.add_parser("reveal-qualification-profile")
@@ -4350,10 +4602,17 @@ def parser() -> argparse.ArgumentParser:
     activate.add_argument("--campaign-root", required=True)
     activate.add_argument("--repository-class", choices=CLASSES, required=True)
     prepare_reviewer.add_argument("--descriptor", required=True)
-    for command in (validate_provisional, record_provisional):
+    for command in (validate_discovery_cli, record_discovery_cli,
+                    prepare_critique_cli, validate_critique_cli, record_critique_cli,
+                    prepare_adjudication_cli, validate_provisional, record_provisional):
         command.add_argument("--campaign-root", required=True)
         command.add_argument("--candidate-head", required=True)
         command.add_argument("--review-slot-id", required=True)
+    for command in (validate_discovery_cli, record_discovery_cli):
+        command.add_argument("--discovery", required=True)
+    for command in (validate_critique_cli, record_critique_cli):
+        command.add_argument("--critique", required=True)
+    for command in (validate_provisional, record_provisional):
         command.add_argument("--provisional-review", required=True)
     reveal_profile.add_argument("--campaign-root", required=True)
     reveal_profile.add_argument("--candidate-head", required=True)
@@ -4406,6 +4665,15 @@ def main() -> int:
             args.work,
             Path(args.descriptor),
         )
+    elif args.command in {"validate-discovery", "record-discovery", "prepare-critique",
+                          "validate-critique", "record-critique", "prepare-adjudication"}:
+        operation = {"validate-discovery": validate_discovery, "record-discovery": record_discovery,
+            "prepare-critique": prepare_critique, "validate-critique": validate_critique,
+            "record-critique": record_critique, "prepare-adjudication": prepare_adjudication}[args.command]
+        extra = ([Path(args.discovery)] if args.command in {"validate-discovery", "record-discovery"}
+                 else [Path(args.critique)] if args.command in {"validate-critique", "record-critique"}
+                 else [])
+        value = operation(root, args.candidate_head, args.review_slot_id, *extra)
     elif args.command == "validate-provisional-review":
         value = validate_provisional_review(
             root,

@@ -48,7 +48,8 @@ def contract():
         "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
         "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
         "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
-        "blind_coverage": "Every counted evaluator obligation requires a distinct independently fixed pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review; reviewer-correct applicability blocks qualification as evaluator_obligation_invalid.",
+        "blind_coverage": "Every counted evaluator obligation requires a distinct adjudicated pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review; reviewer-correct applicability blocks qualification as evaluator_obligation_invalid.",
+        "blind_pipeline": "All five final provisionals require intact discovery, critique, adjudication dispositions and dimension lineage before profile reveal and later qualification.",
         "campaign_topology": TOPOLOGY,
         "cli_scope": {"repository_classes": 3, "criteria_per_class": 7, "required_assessments": 21}}
 

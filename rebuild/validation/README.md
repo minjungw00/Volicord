@@ -357,46 +357,55 @@ and assignments, and creates three revision-pinned journey workspaces with
 fresh Runtime Homes. The three Volicord Works share that journey's workspace,
 Runtime Home, and Project; the other journeys each contain Work A. Evaluator descriptor/review inputs live
 under the private evaluator plane; the run sheet and separate campaign-level
-human-review artifact live under the operator plane. A preparation/control
-agent completes an evaluator input and invokes `prepare-review`. The
-independent reviewer records the provisional review from that bounded artifact
-before receiving the evaluator basis. `prepare-review` points to the hash-bound
-`reviewer/provisional-review-contract.json`, which owns every allowed field,
-fixed value, classification, class-dependent conclusion, reasoning bound,
-provenance rule, and preparation binding. Its generated template carries an
-explicit removable incomplete marker and null/empty conclusions, so it is not a
-recordable artifact as generated. Before handing the review back, the reviewer runs:
+human-review artifact live under the operator plane. A preparation/control agent completes an evaluator input and invokes `prepare-review`.
+The hash-bound `reviewer/provisional-review-contract.json` supplies the blind assessment,
+critique, and adjudication vocabulary and decomposition guidance.
 
-```text
-rebuild/scripts/dogfood-campaign validate-provisional-review \
-  --campaign-root /absolute/private/campaign \
-  --candidate-head <candidate> \
-  --review-slot-id <opaque-id> \
-  --provisional-review <path>
+A fresh primary blind reviewer fills the mutable `reviewer/drafts/<slot>.json` discovery draft
+from the reviewer-safe preparation and workspace. `validate-discovery` checks its bounded
+assessments and reviewer-visible provenance without changing campaign state;
+`record-discovery` fixes its exact bytes at `reviewer/discovery/<slot>.json` and advances the
+Work to `discovery_recorded`. The reviewer keeps the evaluator/profile plane closed.
+
+An independent fresh blind critic uses `prepare-critique`, the same reviewer-safe surfaces,
+and the immutable discovery. The critic may propose a missing or split scope, equivalence,
+reclassification, authority or applicability correction, or removal of implementation-detail
+inflation. Each bounded proposal cites reviewer-visible evidence. `validate-critique` and
+`record-critique` fix the critique at `reviewer/critique/<slot>.json`, advancing the Work to
+`critique_recorded`. A fresh blind adjudicator then calls `prepare-adjudication`, edits the
+mutable final draft, and records an evidence-backed disposition for every proposal. Accepted
+or partially accepted concerns enter final assessments only through explicit lineage; rejected
+concerns do not enter, and equivalent concerns do not duplicate an assessment.
+
+`validate-provisional-review` checks the adjudicated final against both immutable hashes,
+all dispositions, and every final dimension's discovery/critic lineage. It cannot publish.
+`record-provisional-review` alone fixes its exact bytes at
+`reviewer/provisional/<slot>.json` and increments `provisional_count`. All three roles remain
+blind to evaluator descriptors and the qualification profile. The campaign owns opaque role
+artifacts and hashes; actual fresh conversation independence is an operator procedure, not a
+machine-attested identity claim. Five complete pipelines and intact inventory bindings are
+required before `reveal-qualification-profile`. A scope missed by both blind roles remains a
+real `blind_coverage_gap` after reveal; explicit `not_applicable` remains a distinct fixed
+negative assessment.
+
+For each opaque slot, use the current candidate and campaign root with these operations
+in order. The generated critique and adjudication drafts carry their campaign-owned run
+identities; a fresh conversation is still required for each role.
+
+```sh
+campaign=/absolute/private/campaign
+candidate="<exact-current-clean-head>"
+slot="<opaque-review-slot-id>"
+rebuild/scripts/dogfood-campaign validate-discovery --campaign-root "$campaign" --candidate-head "$candidate" --review-slot-id "$slot" --discovery "$campaign/reviewer/drafts/$slot.json"
+rebuild/scripts/dogfood-campaign record-discovery --campaign-root "$campaign" --candidate-head "$candidate" --review-slot-id "$slot" --discovery "$campaign/reviewer/drafts/$slot.json"
+rebuild/scripts/dogfood-campaign prepare-critique --campaign-root "$campaign" --candidate-head "$candidate" --review-slot-id "$slot"
+rebuild/scripts/dogfood-campaign validate-critique --campaign-root "$campaign" --candidate-head "$candidate" --review-slot-id "$slot" --critique "$campaign/reviewer/critique-drafts/$slot.json"
+rebuild/scripts/dogfood-campaign record-critique --campaign-root "$campaign" --candidate-head "$candidate" --review-slot-id "$slot" --critique "$campaign/reviewer/critique-drafts/$slot.json"
+rebuild/scripts/dogfood-campaign prepare-adjudication --campaign-root "$campaign" --candidate-head "$candidate" --review-slot-id "$slot"
+rebuild/scripts/dogfood-campaign validate-provisional-review --campaign-root "$campaign" --candidate-head "$candidate" --review-slot-id "$slot" --provisional-review "$campaign/reviewer/drafts/$slot.json"
+rebuild/scripts/dogfood-campaign record-provisional-review --campaign-root "$campaign" --candidate-head "$candidate" --review-slot-id "$slot" --provisional-review "$campaign/reviewer/drafts/$slot.json"
 ```
 
-Preflight reads only the reviewer-visible contract, exact preparation, and proposed
-review. It uses the same reviewer-visible validation boundary as recording and never
-changes campaign state, counts, reveal state, artifacts, or inventory. The control
-agent then invokes:
-
-```text
-rebuild/scripts/dogfood-campaign record-provisional-review \
-  --campaign-root /absolute/private/campaign \
-  --candidate-head <candidate> \
-  --review-slot-id <opaque-id> \
-  --provisional-review <path>
-```
-
-This successful reviewer-plane operation verifies
-the exact campaign candidate, opaque preparation identity and strict provisional
-schema/self-consistency from the reviewer's own classification without reading an
-evaluator descriptor or comparing evaluator truth, then atomically fixes the private
-artifact, hash inventory and `provisional_recorded` state. Correct and evaluator-wrong
-well-formed classifications have the same successful non-oracle result shape.
-After all five successful recordings, the control agent invokes
-`reveal-qualification-profile`; partial completion is rejected. The reveal verifies
-`provisional_count = 5`, all provisional hashes, and the private campaign profile.
 Only then may the steward invoke `prepare-reconciliation --repository-class <class>
 --work <A|B|C>`, edit the returned campaign-owned draft, and invoke
 `validate-reconciliation` with the same campaign/class/Work arguments. `seal-work`

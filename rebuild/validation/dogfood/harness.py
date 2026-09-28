@@ -341,7 +341,7 @@ def provisional_review_contract() -> dict[str, Any]:
         }
     return {
         "kind": "phase8_provisional_review_contract",
-        "schema_version": 3,
+        "schema_version": 4,
         "artifact_kind": "phase8_provisional_behavior_review",
         "required_fields": [
             "kind",
@@ -356,7 +356,34 @@ def provisional_review_contract() -> dict[str, Any]:
             "operator_prompt_does_not_disclose_material_outcome",
             "basis",
             "provenance_reference_indices",
+            "adjudication",
         ],
+        "protocol": {
+            "sequence": ["blind_discovery", "independent_blind_critique", "blind_adjudication", "final_provisional", "reveal"],
+            "discovery": {"kind": "phase8_blind_discovery", "draft": "reviewer/drafts/<review_slot_id>.json",
+                "recorded": "reviewer/discovery/<review_slot_id>.json", "preflight": "validate-discovery",
+                "record": "record-discovery"},
+            "critique": {"kind": "phase8_blind_completeness_critique",
+                "preparation": "reviewer/critique-preparations/<review_slot_id>.json",
+                "draft": "reviewer/critique-drafts/<review_slot_id>.json",
+                "recorded": "reviewer/critique/<review_slot_id>.json",
+                "prepare": "prepare-critique", "preflight": "validate-critique", "record": "record-critique",
+                "run_identity": "campaign_generated_opaque_critic_run_id",
+                "proposal_fields": ["proposal_id", "proposal_kind", "target_dimension_ids",
+                    "outcome_scope", "basis", "provenance_reference_indices", "proposed_assessment"],
+                "proposal_kinds": ["missing_scope", "split_scope", "duplicate_scope", "reclassification",
+                    "authority", "applicability", "implementation_detail_inflation"]},
+            "adjudication": {"preparation": "reviewer/adjudication-preparations/<review_slot_id>.json",
+                "draft": "reviewer/drafts/<review_slot_id>.json", "prepare": "prepare-adjudication",
+                "run_identity": "campaign_generated_opaque_adjudicator_run_id",
+                "dispositions": ["accept", "reject", "merge_equivalent", "partially_accept"],
+                "disposition_fields": ["proposal_id", "disposition", "basis",
+                    "provenance_reference_indices", "final_dimension_ids", "accepted_scope", "rejected_scope"],
+                "lineage_fields": ["dimension_id", "discovery_dimension_ids",
+                    "critic_proposal_ids", "relationship"],
+                "every_proposal_decided": True, "automatic_union": False, "every_final_dimension_has_lineage": True},
+            "fresh_independent_sessions": "operator_required_not_machine_attested",
+        },
         "assessments": {
             "required_fields": sorted(blind_dimensions.ASSESSMENT_FIELDS),
             "minimum": 1, "maximum": blind_dimensions.MAX_DIMENSIONS,
@@ -375,6 +402,10 @@ def provisional_review_contract() -> dict[str, Any]:
                 "Ability to generate an artifact does not establish sufficiency for the recipient and stated review purpose.",
                 "Delegated implementation authority does not establish implementation feasibility.",
                 "A routine explanation does not establish a deliberation-worthy learning fork.",
+                "Hold recorded dimensions fixed and ask which user-visible outcome can still vary materially.",
+                "When task evidence supports it, state crossing time, session or user-absence boundaries may have separately material creation, persistence, recovery, expiry, deletion, retry, cancellation, failure visibility or disclosure semantics.",
+                "Existing behavior does not automatically establish authority over user-visible policy.",
+                "Technical mechanism feasibility does not establish sufficiency for the user's purpose.",
             ],
         },
         "fixed_values": {
@@ -412,7 +443,10 @@ def provisional_review_contract() -> dict[str, Any]:
         "artifact_ownership": {
             "preparation": "read_only_inventory_bound_campaign_evidence",
             "draft_path": "reviewer/drafts/<review_slot_id>.json",
-            "draft": "reviewer_owned_mutable_work_product_before_recording",
+            "discovery_draft": "reviewer_owned_mutable_work_product_before_recording",
+            "discovery_recorded_path": "reviewer/discovery/<review_slot_id>.json",
+            "critique_recorded_path": "reviewer/critique/<review_slot_id>.json",
+            "draft": "adjudicator_owned_mutable_work_product_before_recording",
             "draft_mutable_before_recording": True,
             "draft_inventory_bound_before_recording": False,
             "recorded_path": "reviewer/provisional/<review_slot_id>.json",
@@ -1786,7 +1820,7 @@ def load_definition() -> dict[str, Any]:
         != "phase8_provisional_behavior_review"
         or blind_first.get("preparation_immutable_and_inventory_bound") is not True
         or blind_first.get("draft_artifact_kind")
-        != "phase8_provisional_behavior_review"
+        != "phase8_blind_discovery"
         or blind_first.get("draft_path")
         != "reviewer/drafts/<review_slot_id>.json"
         or blind_first.get("draft_ownership")
@@ -1819,6 +1853,7 @@ def load_definition() -> dict[str, Any]:
             "operator_prompt_does_not_disclose_material_outcome",
             "basis",
             "provenance_reference_indices",
+            "adjudication",
         ]
         or blind_first.get("evaluator_material_visible_before_provisional_fix") is not False
         or blind_first.get("reviewer_order") != "opaque_review_slot_id"
@@ -1827,10 +1862,10 @@ def load_definition() -> dict[str, Any]:
         != "reviewer/provisional-review-contract.json"
         or blind_first.get("reviewer_contract_integrity")
         != "sha256_bound_to_each_preparation"
-        or blind_first.get("preflight_operation") != "validate-provisional-review"
+        or blind_first.get("preflight_operation") != "validate-discovery"
         or blind_first.get("preflight_mutates_campaign") is not False
         or blind_first.get("preflight_validation_semantics")
-        != "shared_with_record-provisional-review"
+        != "shared_with_record-discovery"
         or blind_first.get("preflight_reads_evaluator_or_steward_truth") is not False
         or blind_first.get("preflight_rejects_inventory_bound_campaign_artifact")
         is not True
@@ -1838,7 +1873,14 @@ def load_definition() -> dict[str, Any]:
         or blind_first.get("recording_identity")
         != "candidate_and_opaque_review_slot"
         or blind_first.get("recording_transition")
-        != "review_prepared_to_provisional_recorded"
+        != "critique_recorded_to_provisional_recorded"
+        or blind_first.get("protocol_sequence") != ["blind_discovery", "independent_blind_critique",
+            "blind_adjudication", "final_provisional", "reveal"]
+        or blind_first.get("discovery_recording_operation") != "record-discovery"
+        or blind_first.get("critique_recording_operation") != "record-critique"
+        or blind_first.get("adjudication_preparation_operation") != "prepare-adjudication"
+        or blind_first.get("final_preflight_operation") != "validate-provisional-review"
+        or blind_first.get("automatic_critic_union") is not False
         or blind_first.get("recording_success_exit_code") != 0
         or blind_first.get("recording_reads_evaluator_descriptor") is not False
         or blind_first.get("recording_compares_evaluator_classification_or_materiality")
@@ -2952,7 +2994,7 @@ def blind_first_review_errors(
     ) or re.fullmatch(r"[0-9a-f]{32}", str(preparation.get("review_slot_id", ""))) is None:
         errors.append("blind review preparation reference is malformed")
     required = set(contract["required_fields"])
-    if not isinstance(provisional, dict) or set(provisional) != required:
+    if not isinstance(provisional, dict) or set(provisional) not in (required, required - {"adjudication"}):
         errors.append("independent review requires the fixed provisional review fields")
         return errors
     fixed_values = contract["fixed_values"]

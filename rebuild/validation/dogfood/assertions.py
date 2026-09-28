@@ -514,11 +514,21 @@ def validate_corrected_evidence_contracts(definition, campaign_source):
         raise AssertionError("campaign-owned private reconciliation boundary changed")
     import harness
     contract = harness.provisional_review_contract()
+    if (contract["protocol"]["sequence"] != ["blind_discovery", "independent_blind_critique",
+            "blind_adjudication", "final_provisional", "reveal"]
+        or contract["protocol"]["adjudication"]["automatic_union"] is not False
+        or "adjudication" not in contract["required_fields"]):
+        raise AssertionError("blind completeness protocol contract changed")
     if ("assessments" not in contract["required_fields"]
         or contract["assessments"]["maximum"] != 32
         or contract["assessments"]["summary_classification"] != "summary_only_never_independent_coverage"):
         raise AssertionError("independent multi-dimension blind coverage contract changed")
     import inspect, campaign
+    for operation in ("validate_discovery", "record_discovery", "prepare_critique",
+                      "validate_critique", "record_critique", "prepare_adjudication",
+                      "validate_final_lineage"):
+        if not hasattr(campaign, operation):
+            raise AssertionError("blind completeness campaign operation missing")
     if tuple(inspect.signature(campaign.seal_work).parameters) != ("root", "kind", "work"):
         raise AssertionError("seal-work admits an external descriptor path")
     tree = ast.parse(campaign_source)
@@ -1216,7 +1226,7 @@ def main() -> int:
         or blind_first.get("reviewer_order") != "opaque_review_slot_id"
         or blind_first.get("preparation_immutable_and_inventory_bound") is not True
         or blind_first.get("draft_artifact_kind")
-        != "phase8_provisional_behavior_review"
+        != "phase8_blind_discovery"
         or blind_first.get("draft_path")
         != "reviewer/drafts/<review_slot_id>.json"
         or blind_first.get("draft_ownership")
@@ -1227,7 +1237,14 @@ def main() -> int:
         or blind_first.get("recording_identity")
         != "candidate_and_opaque_review_slot"
         or blind_first.get("recording_transition")
-        != "review_prepared_to_provisional_recorded"
+        != "critique_recorded_to_provisional_recorded"
+        or blind_first.get("protocol_sequence") != ["blind_discovery", "independent_blind_critique",
+            "blind_adjudication", "final_provisional", "reveal"]
+        or blind_first.get("discovery_recording_operation") != "record-discovery"
+        or blind_first.get("critique_recording_operation") != "record-critique"
+        or blind_first.get("adjudication_preparation_operation") != "prepare-adjudication"
+        or blind_first.get("final_preflight_operation") != "validate-provisional-review"
+        or blind_first.get("automatic_critic_union") is not False
         or blind_first.get("recording_success_exit_code") != 0
         or blind_first.get("recording_reads_evaluator_descriptor") is not False
         or blind_first.get("recording_compares_evaluator_classification_or_materiality")
@@ -1261,10 +1278,10 @@ def main() -> int:
         != "reviewer/provisional-review-contract.json"
         or blind_first.get("reviewer_contract_integrity")
         != "sha256_bound_to_each_preparation"
-        or blind_first.get("preflight_operation") != "validate-provisional-review"
+        or blind_first.get("preflight_operation") != "validate-discovery"
         or blind_first.get("preflight_mutates_campaign") is not False
         or blind_first.get("preflight_validation_semantics")
-        != "shared_with_record-provisional-review"
+        != "shared_with_record-discovery"
         or blind_first.get("preflight_reads_evaluator_or_steward_truth") is not False
         or blind_first.get("preflight_rejects_inventory_bound_campaign_artifact")
         is not True
