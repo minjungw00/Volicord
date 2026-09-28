@@ -976,7 +976,9 @@
         "consequences",
         "facts_not_for_user",
         "current_relevance",
-        "learning_deliberation_basis"
+        "learning_deliberation_basis",
+        "learning_routine_basis",
+        "exploratory_uncertainty_basis"
       ],
       "visibility": "evaluator_input_only",
       "possible_material_concerns_are_exhaustive": false,

@@ -330,12 +330,19 @@ def fixture_for(
     descriptor["work_label"] = cycle
     descriptor["materiality_obligations"] = list(obligations)
     descriptor["evaluation_basis"]["materiality_obligations"] = list(obligations)
-    descriptor["evaluation_basis"]["learning_deliberation_basis"] = (
-        harness.fixture_evaluation_basis("learning_deliberation")["learning_deliberation_basis"]
-        if "learning_deliberation" in obligations else None
-    )
-    if descriptor["evaluation_basis"]["learning_deliberation_basis"] is not None:
-        descriptor["evaluation_basis"]["learning_deliberation_basis"]["affected_paths"] = descriptor["work_scope"]["affected_paths"][:1]
+    for obligation, key in (
+        ("learning_deliberation", "learning_deliberation_basis"),
+        ("learning_routine_control", "learning_routine_basis"),
+        ("exploratory_uncertainty", "exploratory_uncertainty_basis"),
+    ):
+        claim = harness.fixture_evaluation_basis(obligation)[key] if obligation in obligations else None
+        if claim is not None:
+            claim["affected_paths"] = descriptor["work_scope"]["affected_paths"][:1]
+        descriptor["evaluation_basis"][key] = claim
+    if "exploratory_uncertainty" in obligations and not descriptor["evaluation_basis"]["possible_material_concerns"]:
+        descriptor["evaluation_basis"]["possible_material_concerns"] = [
+            "A specific adapter transition remains uncertain until repository inspection."
+        ]
     if "delegated_implementation_choice" in obligations:
         descriptor["evaluation_basis"]["delegated_boundaries"] = [
             "The user delegated bounded internal implementation choices."
@@ -1473,6 +1480,15 @@ def assert_learning_obligation_grounded_before_review(parent: Path, binary: Path
         raise AssertionError("ungrounded positive Learning obligation reached blind preparation")
     assert campaign.work_state(root, "volicord", "C")["state"] == "prepared"
     assert not campaign.reviewer_preparation_path(root, "volicord", "C").exists()
+    invalid = copy.deepcopy(descriptor)
+    invalid["evaluation_basis"]["learning_routine_basis"] = None
+    campaign.write_json(source, invalid)
+    try:
+        campaign.prepare_review(root, "volicord", "C", source)
+    except campaign.CampaignError as error:
+        assert "learning_routine_control" in str(error)
+    else:
+        raise AssertionError("ungrounded routine-learning obligation reached blind preparation")
     for field in ("non_obvious_tradeoff", "transferable_principle", "interruption_necessity"):
         invalid = copy.deepcopy(descriptor)
         invalid["evaluation_basis"]["learning_deliberation_basis"][field] = "REPLACE with generic text"
@@ -1483,9 +1499,53 @@ def assert_learning_obligation_grounded_before_review(parent: Path, binary: Path
             pass
         else:
             raise AssertionError(f"incomplete Learning {field} reached blind preparation")
+    invalid = copy.deepcopy(descriptor)
+    invalid["evaluation_basis"]["learning_deliberation_basis"]["outcome_scope"] = invalid["evaluation_basis"]["learning_routine_basis"]["outcome_scope"]
+    campaign.write_json(source, invalid)
+    try:
+        campaign.prepare_review(root, "volicord", "C", source)
+    except campaign.CampaignError as error:
+        assert "distinct outcome scopes" in str(error)
+    else:
+        raise AssertionError("collapsed learning scopes reached blind preparation")
     campaign.write_json(source, descriptor)
     campaign.prepare_review(root, "volicord", "C", source)
     assert campaign.work_state(root, "volicord", "C")["state"] == "review_prepared"
+
+
+
+def assert_other_positive_obligations_grounded_before_review(parent: Path, binary: Path) -> None:
+    root = parent / "positive-semantic-grounding-campaign"
+    prepare(root, parent / "positive-semantic-grounding-sources", binary)
+    descriptor, _work, _resume, _bundle = fixture_for(
+        parent / "positive-semantic-grounding-fixture", "small-python", "A", campaign_root=root
+    )
+    descriptor.pop("_evidence_directory", None)
+    descriptor.pop("_evidence_file_sha256", None)
+    descriptor.pop("evidence", None)
+    source = parent / "positive-semantic-grounding-descriptor.json"
+    invalid = copy.deepcopy(descriptor)
+    invalid["evaluation_basis"]["exploratory_uncertainty_basis"] = None
+    campaign.write_json(source, invalid)
+    try:
+        campaign.prepare_review(root, "small-python", "A", source)
+    except campaign.CampaignError as error:
+        assert "exploratory_uncertainty" in str(error)
+    else:
+        raise AssertionError("ungrounded positive exploratory obligation reached blind preparation")
+    invalid = copy.deepcopy(descriptor)
+    counterfactual = invalid["behavior_review"]["independent_review"]["counterfactual_review"]
+    counterfactual["specific_unresolved_outcome"] = "REPLACE with generic text"
+    campaign.write_json(source, invalid)
+    try:
+        campaign.prepare_review(root, "small-python", "A", source)
+    except campaign.CampaignError as error:
+        assert "counterfactual" in str(error)
+    else:
+        raise AssertionError("unfinished positive user-owned counterfactual reached blind preparation")
+    campaign.write_json(source, descriptor)
+    campaign.prepare_review(root, "small-python", "A", source)
+    assert campaign.work_state(root, "small-python", "A")["state"] == "review_prepared"
 
 
 def assert_blind_recording_non_oracle(parent: Path, binary: Path) -> None:
@@ -3873,6 +3933,7 @@ def main() -> int:
             assert_default_document_process_evidence(parent, binary)
             assert_opaque_slot_preparation(parent, binary)
             assert_learning_obligation_grounded_before_review(parent, binary)
+            assert_other_positive_obligations_grounded_before_review(parent, binary)
             assert_blind_recording_non_oracle(parent, binary)
             assert_blockers(parent, binary)
             assert_batch_failure_atomicity(parent, binary)
@@ -3892,6 +3953,7 @@ def main() -> int:
             "activation_environment_evidence_validation_internal_attribution",
             "same_path_and_superseded_candidate_mutation_guards",
             "learning_semantic_grounding_before_blind_preparation",
+            "exploratory_and_user_owned_grounding_before_blind_preparation",
             "blind_review_non_oracle_and_five_review_reveal_boundary",
             "seal_work_provenance_and_fixed_review_immutability",
             "early_blockers_preserve_truthful_non_success",

@@ -1239,7 +1239,13 @@ alternatives, technical consequence, non-obvious tradeoff, transferable principl
 explanation 대신 pre-work participation이 필요한 이유와 typed owner/repository provenance를
 기록한다. 명시적 learning request나 generic explanation만으로는 충분하지 않다. Assigned
 obligation을 실현하지 못하면 `prepare-review`는 blind recording 전에 거부하며 profile을
-수정하거나 positive obligation을 제거하지 않는다.
+수정하거나 positive obligation을 제거하지 않는다. `learning_routine_control`은 별도 routine
+outcome scope와 낮은 learning value/non-interruption 근거를 요구한다. `exploratory_uncertainty`는
+특정 unsettled technical scope, evidence gap, 필요한 research/prototype/defer 및 immediate user
+choice가 이른 이유를 요구한다. 두 claim은 affected Work path와 typed provenance에 묶인다.
+User-owned positive control은 no-question counterfactual의 bounded semantic fields를 blind
+preparation 전에 완성해야 한다. Repository fact, settled/no-question, delegated choice는 기존
+repository fact/accepted contract/delegated-boundary 근거를 유지한다.
 
 Campaign preparation은 exact realized Work assignment와 release-qualification profile을
 evaluator/steward-private integrity-bound state에만 보존한다. Profile은 campaign-wide minimum으로

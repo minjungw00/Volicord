@@ -1152,6 +1152,22 @@ def descriptor_skeleton(
             "consequences": ["REPLACE with a plausible consequence"],
             "facts_not_for_user": ["REPLACE with a fact the agent must research"],
             "current_relevance": "REPLACE with why this behavior class is relevant now",
+            "learning_routine_basis": ({
+                "outcome_scope": "REPLACE with a routine explanatory detail distinct from the deliberation fork",
+                "participation_basis": "REPLACE with active learning participation relevant to this detail",
+                "limited_learning_value": "REPLACE with why this detail has no meaningful transferable fork",
+                "non_interruption_basis": "REPLACE with why routine explanation is enough",
+                "affected_paths": ["REPLACE/with-real-path"],
+                "evidence_provenance_reference_indices": [0],
+            } if harness.has_obligation(materiality_obligations, "learning_routine_control") else None),
+            "exploratory_uncertainty_basis": ({
+                "outcome_scope": "REPLACE with the specific unsettled technical outcome",
+                "uncertainty_basis": "REPLACE with the exact evidence gap",
+                "investigation_or_prototype": "REPLACE with research, prototype, or evidence-backed deferment needed",
+                "why_user_choice_premature": "REPLACE with why immediate user choice would be uninformed",
+                "affected_paths": ["REPLACE/with-real-path"],
+                "evidence_provenance_reference_indices": [0],
+            } if harness.has_obligation(materiality_obligations, "exploratory_uncertainty") else None),
             "learning_deliberation_basis": ({
                 "outcome_scope": "REPLACE with the specific agent-owned fork and affected work scope",
                 "affected_paths": ["REPLACE/with-real-path"],
@@ -1613,7 +1629,7 @@ def review_preparation_draft_errors(
     )
     basis = descriptor.get("evaluation_basis")
     errors.extend(harness.evaluation_basis_errors(basis, materiality_obligations))
-    errors.extend(harness.learning_basis_reference_errors(basis, descriptor.get("behavior_review"), descriptor.get("work_scope")))
+    errors.extend(harness.semantic_basis_reference_errors(basis, descriptor.get("behavior_review"), descriptor.get("work_scope")))
     if not harness.evaluation_basis_errors(basis, materiality_obligations):
         errors.extend(
             harness.naturalistic_prompt_errors(
@@ -1630,6 +1646,12 @@ def review_preparation_draft_errors(
                 )
             )
     review = descriptor.get("behavior_review")
+    if harness.is_user_owned_behavior(materiality_obligations):
+        independent = review.get("independent_review") if isinstance(review, dict) else None
+        counterfactual = independent.get("counterfactual_review") if isinstance(independent, dict) else None
+        errors.extend(harness.counterfactual_review_errors(counterfactual, materiality_obligations))
+        if isinstance(counterfactual, dict) and "REPLACE" in json.dumps(counterfactual):
+            errors.append("positive user-owned obligation requires a completed no-question counterfactual before reviewer preparation")
     references = review.get("provenance_references") if isinstance(review, dict) else None
     if not isinstance(references, list) or not references:
         errors.append("review draft requires reviewer-visible owner locations")

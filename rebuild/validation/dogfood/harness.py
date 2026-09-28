@@ -1720,6 +1720,8 @@ def load_definition() -> dict[str, Any]:
             "facts_not_for_user",
             "current_relevance",
             "learning_deliberation_basis",
+            "learning_routine_basis",
+            "exploratory_uncertainty_basis",
         )
         or evaluation_basis.get("possible_material_concerns_are_exhaustive") is not False
         or evaluation_basis.get("unique_question_wording_required") is not False
@@ -2686,6 +2688,8 @@ def evaluation_basis_errors(value: Any, materiality_obligations: Any) -> list[st
         "facts_not_for_user",
         "current_relevance",
         "learning_deliberation_basis",
+        "learning_routine_basis",
+        "exploratory_uncertainty_basis",
     }
     if set(value) != required:
         errors.append("evaluation_basis must contain the current bounded fields only")
@@ -2741,24 +2745,58 @@ def evaluation_basis_errors(value: Any, materiality_obligations: Any) -> list[st
                 errors.append("learning_deliberation_basis requires typed provenance indices")
     elif learning is not None:
         errors.append("learning_deliberation_basis requires a learning_deliberation obligation")
+    for obligation, key, fields in (
+        ("learning_routine_control", "learning_routine_basis", {
+            "outcome_scope", "participation_basis", "limited_learning_value", "non_interruption_basis",
+            "affected_paths", "evidence_provenance_reference_indices"}),
+        ("exploratory_uncertainty", "exploratory_uncertainty_basis", {
+            "outcome_scope", "uncertainty_basis", "investigation_or_prototype", "why_user_choice_premature",
+            "affected_paths", "evidence_provenance_reference_indices"}),
+    ):
+        claim = value.get(key)
+        if has_obligation(materiality_obligations, obligation):
+            if not isinstance(claim, dict) or set(claim) != fields:
+                errors.append(f"{obligation} requires a bounded semantic basis")
+                continue
+            for field in fields - {"affected_paths", "evidence_provenance_reference_indices"}:
+                text = claim.get(field)
+                if not nonempty_string(text) or len(text.encode("utf-8")) > MAX_REVIEW_TEXT_BYTES or "REPLACE" in text:
+                    errors.append(f"{key}.{field} must be bounded concrete evidence")
+            paths = claim.get("affected_paths")
+            if not isinstance(paths, list) or not paths or any(not isinstance(path, str) or safe_relative_evidence_path(path) is None for path in paths) or len(paths) != len(set(paths)):
+                errors.append(f"{key} requires concrete affected paths")
+            indices = claim.get("evidence_provenance_reference_indices")
+            if not isinstance(indices, list) or not indices or any(type(i) is not int or i < 0 for i in indices) or len(indices) != len(set(indices)):
+                errors.append(f"{key} requires typed provenance indices")
+        elif claim is not None:
+            errors.append(f"{key} requires its assigned obligation")
+    if isinstance(learning, dict) and isinstance(value.get("learning_routine_basis"), dict):
+        if learning.get("outcome_scope") == value["learning_routine_basis"].get("outcome_scope"):
+            errors.append("learning deliberation and routine control require distinct outcome scopes")
+    if has_obligation(materiality_obligations, "exploratory_uncertainty") and not value.get("possible_material_concerns"):
+        errors.append("exploratory_uncertainty requires a specific unresolved technical concern")
     return errors
 
 
-def learning_basis_reference_errors(basis: Any, review: Any, work_scope: Any) -> list[str]:
-    if not isinstance(basis, dict) or not isinstance(basis.get("learning_deliberation_basis"), dict):
+def semantic_basis_reference_errors(basis: Any, review: Any, work_scope: Any) -> list[str]:
+    if not isinstance(basis, dict):
         return []
-    learning = basis["learning_deliberation_basis"]
-    paths = learning.get("affected_paths")
     scoped = work_scope.get("affected_paths") if isinstance(work_scope, dict) else None
-    if not isinstance(paths, list) or not isinstance(scoped, list) or any(not isinstance(path, str) for path in paths) or not set(paths).issubset(scoped):
-        return ["learning_deliberation_basis affected paths must belong to the prepared Work scope"]
-    indices = learning.get("evidence_provenance_reference_indices")
     references = review.get("provenance_references") if isinstance(review, dict) else None
-    if not isinstance(indices, list) or not isinstance(references, list) or any(
-        type(i) is not int or i < 0 or i >= len(references) for i in indices
-    ):
-        return ["learning_deliberation_basis must cite evaluator-verifiable owner or repository provenance"]
-    return []
+    errors = []
+    for key in ("learning_deliberation_basis", "learning_routine_basis", "exploratory_uncertainty_basis"):
+        claim = basis.get(key)
+        if not isinstance(claim, dict):
+            continue
+        paths = claim.get("affected_paths")
+        if not isinstance(paths, list) or not isinstance(scoped, list) or any(not isinstance(path, str) for path in paths) or not set(paths).issubset(scoped):
+            errors.append(f"{key} affected paths must belong to the prepared Work scope")
+        indices = claim.get("evidence_provenance_reference_indices")
+        if not isinstance(indices, list) or not isinstance(references, list) or any(
+            type(i) is not int or i < 0 or i >= len(references) for i in indices
+        ):
+            errors.append(f"{key} must cite evaluator-verifiable owner or repository provenance")
+    return errors
 
 
 def behavior_review_errors(
@@ -4785,7 +4823,7 @@ def work_descriptor_errors(
     )
     basis = value.get("evaluation_basis")
     errors.extend(evaluation_basis_errors(basis, materiality_obligations))
-    errors.extend(learning_basis_reference_errors(basis, value.get("behavior_review"), value.get("work_scope")))
+    errors.extend(semantic_basis_reference_errors(basis, value.get("behavior_review"), value.get("work_scope")))
     errors.extend(behavior_review_errors(
         value.get("behavior_review"),
         materiality_obligations,
@@ -11520,11 +11558,28 @@ def fixture_evaluation_basis(materiality_obligations: str) -> dict[str, Any]:
         "possible_material_concerns": (
             ["The externally visible diagnostic policy may materially affect operators."]
             if is_user_owned_behavior(materiality_obligations)
-            else []
+            else ["The adapter's invalid-transition behavior is not yet established by current tests."]
+            if has_obligation(materiality_obligations, "exploratory_uncertainty") else []
         ),
         "consequences": ["The outcome changes diagnostic usefulness or maintenance cost."],
         "facts_not_for_user": ["Existing adapter and test behavior must be inspected locally."],
         "current_relevance": "The selected class tests proportional inquiry behavior for this bounded task.",
+        "learning_routine_basis": ({
+            "outcome_scope": "Routine helper naming detail within the adapter change.",
+            "participation_basis": "The user requests learning through the technical implementation task.",
+            "limited_learning_value": "Helper naming follows the selected state representation and has no independent transferable tradeoff.",
+            "non_interruption_basis": "A short explanation after implementation suffices for this routine detail.",
+            "affected_paths": ["src/existing.rs"],
+            "evidence_provenance_reference_indices": [0],
+        } if has_obligation(materiality_obligations, "learning_routine_control") else None),
+        "exploratory_uncertainty_basis": ({
+            "outcome_scope": "Uncertain adapter transition behavior under the pinned repository state.",
+            "uncertainty_basis": "The current tests do not establish the invalid-transition behavior.",
+            "investigation_or_prototype": "Inspect the transition code and prototype a focused failing test before selecting the implementation.",
+            "why_user_choice_premature": "The missing behavior fact must be established before asking the user to choose an outcome.",
+            "affected_paths": ["src/existing.rs"],
+            "evidence_provenance_reference_indices": [0],
+        } if has_obligation(materiality_obligations, "exploratory_uncertainty") else None),
         "learning_deliberation_basis": ({
             "outcome_scope": "The agent must choose the adapter state representation before changing the transition code.",
             "affected_paths": ["src/existing.rs"],
@@ -13518,8 +13573,9 @@ def real_session_fixture(
         "work_session_start_activation_observed": True,
         "resume_session_start_activation_observed": True,
     })
-    if isinstance(evaluation_basis.get("learning_deliberation_basis"), dict):
-        evaluation_basis["learning_deliberation_basis"]["affected_paths"] = work_paths[:1]
+    for key in ("learning_deliberation_basis", "learning_routine_basis", "exploratory_uncertainty_basis"):
+        if isinstance(evaluation_basis.get(key), dict):
+            evaluation_basis[key]["affected_paths"] = work_paths[:1]
     return {
         "kind": "phase8_work_descriptor",
         "producer": "volicord_phase8_codex_event_normalizer",
