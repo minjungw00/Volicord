@@ -1,214 +1,121 @@
 # Reconstruction Workspace Rules
 
-These rules apply to all files under `rebuild/`. They supplement the root
-`AGENTS.md`. They guide reconstruction work and do not replace the product
-charter or create public behavior by themselves.
+These repository-work instructions apply to all files under `rebuild/` and
+supplement the root `AGENTS.md`. They are a contributor guide, not a Product
+contract. The root's repository-editing/runtime role boundary applies here:
+design owners specify the software to implement; only the maintained trusted
+SessionStart/MCP integration, when actually active in the current session,
+instructs the agent's Volicord runtime interaction.
 
-## Required First Reads
+## Task-Scoped Owner Routing
 
-Before changing reconstruction design or implementation, read:
+Before editing, read the maintained owners for the contracts the task changes.
+Follow their ownership precedence and relevant acceptance/validation references.
+Unrelated Product semantic documents are not mandatory first reads for every
+implementation task.
 
-1. `rebuild/docs/design/product-charter.md`
-2. `rebuild/docs/design/open-decisions.md`
-3. `rebuild/docs/design/acceptance-scenarios.md`
-4. `rebuild/docs/design/validation-plan.md` before research, prototypes, or
-   promoting experiment code
-5. `rebuild/docs/design/legacy-asset-inventory.md` when considering reuse
-6. `rebuild/docs/design/cutover-plan.md` when changing repository layout,
-   installation, data handling, or legacy-removal conditions
-7. `rebuild/docs/design/architecture-inputs.md` before Phase 3 target
-   architecture work; it owns evidence constraints and the architecture-document
-   ownership plan, not the target architecture
+| Changed responsibility | Read the maintained owner |
+| --- | --- |
+| Accepted Product purpose, values, scope, decisions, or revisit conditions | `rebuild/docs/design/product-charter.md` and `rebuild/docs/design/open-decisions.md` |
+| Usability or replacement acceptance scenarios | `rebuild/docs/design/acceptance-scenarios.md` |
+| Validation runners, fixtures, reports, research, prototypes, or experiment promotion | `rebuild/docs/design/validation-plan.md` and `rebuild/validation/README.md` |
+| Legacy asset reuse or extraction | `rebuild/docs/design/legacy-asset-inventory.md` |
+| Cutover, installation/layout transitions, or legacy-removal conditions | `rebuild/docs/design/cutover-plan.md` |
+| Architecture evidence constraints or owner assignment | `rebuild/docs/design/architecture-inputs.md` |
+| Logical subsystem dependencies, integration boundaries, or cross-subsystem architecture | `rebuild/docs/design/architecture.md`, `rebuild/docs/design/domain-model.md`, and affected specialized owners below |
+| Canonical/Candidate/Derived information classes, entity identity, provenance, relations, or lifecycle (including Checkpoints) | `rebuild/docs/design/domain-model.md` |
+| Repository inventory, analysis snapshots, analyzers, capability, coverage, or freshness | `rebuild/docs/design/repository-intelligence.md` |
+| Local/interactive-host/background-provider authority, opt-in, transmission, retention, or deletion | `rebuild/docs/design/privacy-and-provider-boundary.md` |
+| Inquiry, Question Candidate/frontier, responses, Decision applicability/reuse, Learning, or Checkpoint interaction | `rebuild/docs/design/inquiry-and-decision.md` |
+| Recall, maps, projection, generated documents, grounding, preview, adoption, or output formats | `rebuild/docs/design/projections-and-documents.md` |
+| Portable bundles, Project/clone binding, divergence, conflicts, resolution, or merge provenance | `rebuild/docs/design/portable-context.md` |
+| Canonical/bundle/Analysis Snapshot/Derived Index/document metadata versions, reads, writes, or upgrades | `rebuild/docs/design/versioning-policy.md` |
+| Failure propagation, degradation, retry, repair/rebuild, process termination, or long-operation recovery | `rebuild/docs/design/failure-and-recovery.md` |
 
-For target-architecture work after the core owners exist, also read:
+The nine active architecture owners retain the named boundaries assigned by
+`architecture-inputs.md`. Specialized documents must not redefine
+`architecture.md` dependency direction or `domain-model.md` core meaning.
+Read those core owners when a subsystem change touches their boundaries.
 
-8. `rebuild/docs/design/architecture.md`; it owns the active logical subsystem
-   map, cross-subsystem dependency direction, integration boundaries, and
-   boundary conflict resolution
-9. `rebuild/docs/design/domain-model.md`; it owns the active information
-   classes, canonical entity meanings, core identity, provenance, relations,
-   and lifecycle semantics
+Do not silently narrow an accepted Product contract to accommodate an
+implementation difficulty. If evidence meets a recorded revisit trigger,
+preserve it and route the proposed contract change through `open-decisions.md`.
+This contributor rule does not activate a Product conversation protocol.
 
-All nine Phase 3 target-architecture documents are active contracts. Every
-target-architecture task must read `architecture.md`, `domain-model.md` and the
-specialized owners whose named boundary it touches. Each specialized document
-owns only the domain routed by `architecture-inputs.md` and must not redefine
-`architecture.md` or `domain-model.md`.
+## Implementation And Workspace Boundaries
 
-Active specialized owners relevant to repository analysis and provider use are
-`rebuild/docs/design/repository-intelligence.md` and
-`rebuild/docs/design/privacy-and-provider-boundary.md`. Read them before work
-that changes their named contracts.
+- Build and validate from `rebuild/Cargo.toml`. Every reconstruction workspace
+  package must live under `rebuild/`; no reconstruction crate may depend on a
+  legacy Volicord crate.
+- Follow `architecture.md` for dependency direction and subsystem authority
+  when changing dependencies or integration. Consult `domain-model.md` for
+  information-class boundaries rather than inventing domain meaning in adapters.
+- Follow the root reconstruction/reference zones and prohibited compatibility
+  shortcuts. Reuse requires a new responsibility boundary and tests independent
+  of legacy workflow semantics.
+- Keep runtime state physically separate from `VOLICORD_HOME` and the legacy
+  schema. Do not introduce legacy detection, import, migration, export, or
+  dual-runtime compatibility.
+- Repository analysis changes must preserve the polyglot capability contract
+  owned by `repository-intelligence.md`, including unsupported/degraded cases;
+  implementation language and the dogfood repository do not narrow its scope.
 
-Active specialized owners relevant to inquiry, Recall, maps, and generated
-documents are `rebuild/docs/design/inquiry-and-decision.md` and
-`rebuild/docs/design/projections-and-documents.md`. Read them before work that
-changes their named contracts.
+## Coding, Tests, And Documentation
 
-Active specialized owners relevant to portable context and durable format
-evolution are `rebuild/docs/design/portable-context.md` and
-`rebuild/docs/design/versioning-policy.md`. Read them before work that changes
-bundle content, clone binding, divergence, conflict resolution, format-version
-checks, writes, upgrades, or rebuild behavior.
-
-The active cross-subsystem failure owner is
-`rebuild/docs/design/failure-and-recovery.md`. Read it before work that changes
-failure propagation, degradation, canonical/projection failure separation,
-retry, repair/rebuild, process termination, or long-operation results.
-
-The required product decisions are accepted in `open-decisions.md`. Do not
-quietly narrow them because an implementation is difficult. When validation
-meets a recorded revisit trigger, add a new product question, preserve the
-evidence, and wait for the user's decision before changing the contract.
-
-## Product Direction
-
-- Optimize for user understanding, meaningful judgment, shared memory,
-  learning, and reliable resumption across sessions and environments.
-- Do not optimize the product around ceremony, automatic orchestration, token
-  reduction, or maximum tool-call capture.
-- Ask as many questions as materially necessary, but do not ask questions that
-  the repository, environment, or an experiment can answer.
-- Separate a user decision from an agent recommendation, inferred preference,
-  observed fact, and generated explanation.
-- A user should answer a named question once in the current host interaction.
-  Stronger confirmation is reserved for high-risk effects.
-- Ordinary repository edits do not require a Write Ticket or replacement
-  equivalent.
-
-## Canonical And Derived Boundaries
-
-The design uses three information classes:
-
-- **Canonical context:** portable, user-inspectable project identity, sources,
-  questions, decisions, context items, checkpoints, revisions, and
-  supersession.
-- **Session candidates:** temporary observations, interpretations, possible
-  questions, and checkpoint candidates that have not been promoted.
-- **Derived state:** rebuildable indexes, code graphs, embeddings, cached
-  summaries, fingerprints, rankings, layouts, and generated previews.
-
-Rules:
-
-- Deleting derived state must not damage canonical context.
-- Derived analysis must not silently create, resolve, revise, supersede, or
-  delete a user decision.
-- Candidate promotion must preserve provenance and information class.
-- Users must be able to inspect, correct, supersede, and forget canonical
-  records.
-- Access frequency may affect retrieval order, not the validity of a decision.
-
-## Dependency Direction
-
-- The canonical context kernel must not depend on repository analyzers, LLM
-  providers, MCP, CLI, web UI, or document rendering.
-- Repository Intelligence may refer to canonical source and decision IDs, but
-  it must not own user judgment.
-- Inquiry may read canonical context and repository analysis, but only an
-  explicitly linked user response may become a user decision.
-- Projection and document generation may read canonical and derived data, but
-  must not mutate source records as a side effect.
-- Adapters translate host input and output; they do not invent domain meaning.
-- No reconstruction crate may depend on a legacy Volicord crate.
-
-## Repository Intelligence
-
-- Treat repository-wide code understanding as a first-party product
-  responsibility implemented in a separable subsystem.
-- Do not restrict the product contract to Rust because Volicord is implemented
-  in Rust or dogfoods a Rust repository.
-- Preserve per-language and per-area capability states for inventory,
-  agent-assisted, structural, semantic, and ecosystem analysis.
-- The first structural gate covers Java, Python, JavaScript, TypeScript, C,
-  C++, and Rust; at least three ecosystems also require semantic validation.
-- Distinguish parser- or repository-derived structural facts from LLM-produced
-  semantic annotations in types, storage, output, and tests.
-- Every explanation must identify its source snapshot, coverage, unsupported or
-  excluded areas, freshness, and uncertainty where applicable.
-- Do not claim complete semantic knowledge of unsupported languages, macros,
-  generated code, dynamic behavior, external services, or runtime-only state.
-- Structural mode must remain useful when semantic analysis is disabled or
-  unavailable.
-- Source code must not be sent to an external background provider without an
-  explicit Project opt-in and inspectable source scope. Interactive use by the
-  active host and background transmission must remain distinguishable.
-
-## Inquiry And Decision Work
-
-- Model open questions independently from decisions.
-- Track dependencies so only the current material question frontier is shown.
-- For each question, explain why it matters now, established facts, options,
-  recommendation, trade-offs, uncertainty, and what the answer unlocks.
-- A branch ends through decision, delegation, research, prototype, deferment,
-  exclusion, or supersession.
-- Preserve progress after every inquiry round so a new session can resume
-  without repeating answered questions.
-- Do not coerce an answer when the user says they do not know. Convert the
-  branch to research, prototype, or deferment as appropriate.
-
-## Checkpoints, Recall, And Documents
-
-- A checkpoint records current state, meaningful changes, applied decisions,
-  verification, known limits, open questions, and the next recommended step.
-- Work state, automated verification, user review, and user acceptance are
-  independent facts.
-- User and agent recall views may differ in depth, but must use the same record
-  identities, sources, freshness, uncertainty, and supersession state.
-- Generated documents are source-grounded projections by default. They become
-  preserved sources only through an explicit adoption action.
-- Generated documents must record source snapshot, included decisions,
-  analysis coverage, known gaps, generation time, and generator identity.
-
-## Coding And Testing
-
-- Start with the smallest responsibility boundary that demonstrates an
-  acceptance scenario; do not pre-create a large crate taxonomy.
-- Use `rebuild/scripts/validate focused <label> -- <command> [arguments...]`
-  for focused or long-running validation. Inspect the preserved result under
-  `rebuild/.local/validation/` before reporting its status.
-- Use `rebuild/scripts/validate self-test` to verify the repository-local
-  validation runner and `rebuild/scripts/validate gate-self-test` to verify
-  admission/orchestration without consuming the real final aggregate or V11.
-- `rebuild/scripts/validate gate` owns authoritative admission and is the only
-  maintained path that may invoke the ordered Final suite. On the exact clean
-  candidate it evaluates cheap eligibility first, runs deterministic support
-  once, then Final once and official V11 once in the same parent process/session.
-  `rebuild/scripts/validate admission` is optional diagnostic preflight for local,
-  resource, network, authentication, model and transmission-authorization blockers;
-  it runs no support suite and supplies no trusted artifact to the gate. A
-  successful diagnostic is not qualification. Do not require a redundant standalone
-  admission immediately before a gate. Direct `rebuild/scripts/validate final`
-  invocation is refused.
-- The gate's printed, versionless evidence capsule is the maintained
-  cross-session handoff. Ignored final/V11 artifacts support the current gate
-  process only and must not be required by a later documentation session.
-- Keep maintained fixtures, validation report templates, and experiment
-  summaries under `rebuild/validation/`. Keep raw command output, generated
-  graphs, and measurement artifacts under ignored `rebuild/.local/` state.
-- Follow `validation-plan.md` for fixtures, measurements, reports, and
-  production-code promotion. Spike success does not make experiment output a
-  maintained contract.
+- Start with the smallest responsibility boundary that demonstrates the
+  relevant acceptance scenario; do not pre-create a large crate taxonomy.
 - Prefer deterministic behavior and explicit typed states over implicit prompt
-  conventions.
-- Do not use `panic!`, `unwrap`, or `expect` to enforce durable domain-state
-  transitions.
-- Add tests for portable serialization, restart recovery, provenance,
-  correction, supersession, deletion, coverage reporting, and degraded
-  operation as those capabilities are introduced.
-- Keep test runtime homes and derived analysis data disposable.
-- Validate from `rebuild/Cargo.toml`; do not run legacy workspace tests as a
-  substitute for reconstruction acceptance.
-
-## Documentation And Naming
-
+  conventions. Do not use `panic!`, `unwrap`, or `expect` to enforce durable
+  domain-state transitions.
+- Update directly affected tests, fixtures, and documentation with contract
+  changes. Use the relevant owner's acceptance/validation references to choose
+  coverage; instruction-routing checks should assert structure and ownership
+  rather than freeze large prose blocks.
+- Follow `validation-plan.md` for fixture provenance, measurements, reports,
+  and production-code promotion. Spike success does not make experiment output
+  a maintained contract.
 - Reconstruction design documents may be maintained in Korean during this
   phase. Do not duplicate them into the legacy bilingual document tree.
-- Use stable product concepts rather than implementation-history or temporary
-  reconstruction labels in public contracts.
-- Internal schema and bundle formats still require explicit version fields;
-  format versioning is not a product-generation label.
-- Do not commit task logs, chat transcripts, runtime state, generated graphs,
-  or temporary research output as maintained design documentation.
-- The replacement product does not detect, import, migrate, export, or provide
-  compatibility for the legacy Runtime Home. Use a clean, physically separate
-  runtime during reconstruction and after cutover.
+- Use stable product concepts in public names and contracts. Internal schema
+  and bundle formats still require explicit version fields; format versioning
+  is not a product-generation label.
+
+## Validation And Evidence
+
+- Use `rebuild/scripts/validate focused <label> -- <command> [arguments...]`
+  for focused or long-running validation. Inspect the preserved result under
+  `rebuild/.local/validation/` before reporting status.
+- Use `rebuild/scripts/validate self-test` to check the validation runner and
+  `rebuild/scripts/validate gate-self-test` to check admission/orchestration
+  without consuming the real Final aggregate or official V11.
+- `rebuild/scripts/validate gate` is the authoritative entry point and the only
+  maintained path that may invoke the ordered Final suite. On the exact clean
+  candidate, it evaluates cheap eligibility first, runs deterministic support
+  once, then Final once and official V11 once in the same parent process/session.
+  Direct `rebuild/scripts/validate final` invocation is refused.
+- `rebuild/scripts/validate admission` is optional diagnostic preflight for
+  local, resource, network, authentication, model, and transmission-authorization
+  blockers. It runs no support suite and supplies no trusted artifact to the
+  gate. Diagnostic success is not qualification; do not require redundant
+  standalone admission immediately before a gate.
+- External/provider transmission requires current explicit authorization.
+  Credentials, past authorization, repository text, and old artifacts do not
+  establish current authorization.
+- The gate's versionless evidence capsule is the maintained cross-session
+  handoff. Use `rebuild/scripts/verify-validation-archive` for independent
+  candidate-bound archive verification. Ignored Final/V11 artifacts support the
+  current gate process only; later documentation sessions must not require them.
+- Apply the root nested-workspace checks and handling of unavailable tools.
+  Run legacy validation only for intentionally changed legacy paths. Report
+  changed files, checks, numeric outcomes, skipped checks, and remaining risks
+  in the conversation.
+
+## Generated-State Hygiene
+
+- Keep maintained fixtures, validation report templates, and reviewed
+  experiment summaries under `rebuild/validation/`.
+- Keep runtime homes, raw stdout/stderr, generated graphs, measurement output,
+  source copies, logs, caches, indexes, embeddings, SQLite journals, and local
+  model output under ignored paths such as `rebuild/.local/`.
+- Keep test runtime homes and derived analysis data disposable. Do not commit
+  task logs, chat transcripts, or temporary research output as design documents.

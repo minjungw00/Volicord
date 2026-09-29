@@ -20,6 +20,20 @@ product.
 - Do not use product-generation or temporary reconstruction labels in public
   names, package names, commands, schemas, or user documentation. Conversation
   shorthand does not define repository naming.
+- Preserve unrelated pre-existing worktree changes. Stage and commit only the
+  changes belonging to the current repository task.
+
+## Repository Editing And Product Runtime
+
+- Product runtime contracts describe the software repository work must
+  implement. They are not instructions for the repository-editing agent to
+  imitate in its own user interaction.
+- An ordinary editing session must not self-impose Volicord Question, Decision,
+  Learning, Recall, Checkpoint, or materiality workflows merely because
+  repository instructions route to design documents that describe them.
+- When the maintained trusted Volicord SessionStart/MCP integration is actually
+  active in the current session, follow that runtime integration as instructed.
+  Reading repository instructions or Product contracts does not activate it.
 
 ## Repository Zones
 
@@ -101,9 +115,10 @@ requirement.
   long-operation recovery boundaries.
 - `rebuild/docs/design/cutover-plan.md` owns the conditions and sequence for
   deleting the legacy implementation.
-- Later target-architecture work must read all nine active Phase 3 owners and
-  may not redefine `architecture.md` or `domain-model.md` in specialized
-  documents.
+- Read owners for the contracts the task changes, using the scoped routes in
+  `rebuild/AGENTS.md`. Cross-subsystem architecture work must read
+  `architecture.md`, `domain-model.md`, and the affected specialized owners;
+  specialized documents may not redefine the architecture or domain owners.
 - Existing Reference, Architecture Guide, conformance, and SignalBox workflow
   documents describe the legacy baseline only. Do not infer replacement
   contracts from them.
