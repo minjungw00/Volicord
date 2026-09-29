@@ -1154,7 +1154,9 @@ before the first session.
 `collect-batch` maps all eight rollouts before publication. It checks host
 provenance, exact frozen first-turn transport identity, workspace and descendant
 revision, distinct session IDs, actual SessionStart activation, same-Work
-start/resume Project and Work identities, Volicord one-Project/three-Work
+start/resume Project and Work identities (a resume may use its structured
+canonical Recall checkpoint Work ID without writing a new Checkpoint; any new
+Checkpoint must agree), Volicord one-Project/three-Work
 continuity, cross-journey isolation, candidate artifacts, raw hashes and
 destination collisions. It retains final Git state without commit, reset, or
 clean; ignored content remains outside that attestation. Journey-final canonical

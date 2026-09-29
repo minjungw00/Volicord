@@ -11780,6 +11780,8 @@ def real_session_fixture(
                 "project_id": project,
                 "project_name": "Phase 8 fixture",
                 "goals": [work_user_task],
+                "goal_basis": [{"identity": context, "role": "goal",
+                    "statement": work_user_task, "source_ids": [goal_source]}],
                 "behaviorally_relevant_context": [],
                 "decisions": (
                     [{"identity": decision, "revision": 1, "state": "active", "choice": "concise", "rationale": None}]
@@ -11813,6 +11815,7 @@ def real_session_fixture(
                 "next_step": next_step,
                 "checkpoint": {
                     "identity": checkpoint,
+                    "work_item_id": context,
                     "revision": 1,
                     "kind": "handoff",
                     "goal": work_user_task,

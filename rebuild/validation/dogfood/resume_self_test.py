@@ -74,6 +74,42 @@ class ResumeTests(unittest.TestCase):
             tool_calls=tuple(checkpoint if c.call_id == checkpoint.call_id else c for c in self.capture.tool_calls)
                 + (inspection,))
 
+    def completed_no_write(self):
+        recall = self.capture.successful_calls("recall")[0]
+        checkpoint = {**recall.result["checkpoint"], "work_state": "completed"}
+        recalled = replace(recall, result={**recall.result, "checkpoint": checkpoint})
+        return replace(self.capture, path_observations=(), tool_calls=tuple(
+            recalled if call is recall else call for call in self.capture.tool_calls
+            if call.operation != "checkpoint_record"))
+
+    def test_completed_no_write_resume_uses_recalled_work_identity(self):
+        capture = self.completed_no_write()
+        self.assertEqual(self.inspect(capture), self.state["project_id"])
+        self.assertEqual(campaign.observed_work_item_ids(capture, "resume"), ["08" * 16])
+        self.assertFalse(capture.successful_calls("checkpoint_record"))
+        facts = h.resume_continuation_facts(capture, capture.successful_calls("recall")[0],
+            checkpoint_work_state="completed", recalled_work_state="completed",
+            common_identity_and_freshness_ok=True, change_baseline_ok=False,
+            executable_work_scope=None, descriptor_scope_paths=[])
+        self.assertEqual(facts["mode"], "verified_state_continuation")
+
+    def test_recalled_work_identity_rejects_wrong_missing_malformed_and_conflict(self):
+        capture = self.completed_no_write()
+        recall = capture.successful_calls("recall")[0]
+        for value in ("ff" * 16, None, "invalid"):
+            changed = replace(recall, result={**recall.result,
+                "checkpoint": {**recall.result["checkpoint"], "work_item_id": value}})
+            self.failure(replace(capture, tool_calls=tuple(changed if c is recall else c
+                for c in capture.tool_calls)), "recall_identity_or_project_invalid", "evidence")
+        checkpoint = self.capture.successful_calls("checkpoint_record")[0]
+        wrong = replace(checkpoint, arguments={**checkpoint.arguments, "goal_context_id": "ff" * 16})
+        self.failure(replace(self.capture, tool_calls=tuple(wrong if c is checkpoint else c
+            for c in self.capture.tool_calls)), "recall_identity_or_project_invalid", "evidence")
+        self.assertEqual(self.inspect(self.capture), self.state["project_id"])
+        changed = replace(recall, result={**recall.result, "project_id": "ff" * 16})
+        self.failure(replace(capture, tool_calls=tuple(changed if c is recall else c
+            for c in capture.tool_calls)), "recall_identity_or_project_invalid", "evidence")
+
     def test_no_write_exploratory_resume_uses_explicit_mode(self):
         capture = self.exploratory_capture()
         self.assertEqual(self.inspect(capture), "01" * 16)

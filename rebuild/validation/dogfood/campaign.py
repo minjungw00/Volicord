@@ -1269,14 +1269,33 @@ def observed_project_ids(capture: Any) -> list[str]:
     return sorted(values)
 
 
-def observed_work_item_ids(capture: Any) -> list[str]:
-    """Return durable Work identities exposed by successful checkpoint calls."""
-    values = {
-        str(call.arguments.get("goal_context_id"))
-        for call in capture.successful_calls("checkpoint_record")
-        if PROJECT_ID.fullmatch(str(call.arguments.get("goal_context_id", "")))
-    }
-    return sorted(values)
+def observed_work_item_ids(capture: Any, role: str) -> list[str]:
+    """Use durable start evidence or the resume's canonical Recall basis."""
+    checkpoint_ids = [call.arguments.get("goal_context_id")
+        for call in capture.successful_calls("checkpoint_record")]
+    if role == "start":
+        ids = checkpoint_ids
+    elif role == "resume":
+        recalls = capture.successful_calls("recall")
+        if len(recalls) != 1:
+            raise CampaignError("fresh resume must expose one canonical Recall")
+        result = recalls[0].result
+        checkpoint = result.get("checkpoint")
+        goals = result.get("goal_basis")
+        if not isinstance(checkpoint, dict) or not isinstance(goals, list):
+            raise CampaignError("fresh resume lacks structured Recall Work identity")
+        recalled = checkpoint.get("work_item_id")
+        matching_goals = [item for item in goals if isinstance(item, dict)
+            and item.get("role") == "goal" and item.get("identity") == recalled]
+        if len(matching_goals) != 1:
+            raise CampaignError("fresh resume Recall Work identity is absent or ambiguous")
+        ids = [recalled, *checkpoint_ids]
+    else:
+        raise CampaignError("unknown Work session role")
+    if not ids or any(not isinstance(value, str) or PROJECT_ID.fullmatch(value) is None
+            for value in ids) or len(set(ids)) != 1:
+        raise CampaignError("Work identity is absent, malformed, or conflicting")
+    return sorted(set(ids))
 
 
 def update_activation_summary(root: Path, kind: str, work: str, **updates: Any) -> Path:
@@ -1342,6 +1361,10 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         raise ResumeContractError(
             "recall_identity_or_project_invalid"
         )
+    try:
+        observed_work_item_ids(capture, "resume")
+    except CampaignError as error:
+        raise ResumeContractError("recall_identity_or_project_invalid") from error
     if any(
         command.sequence <= recall.completion_sequence and command_is_repository_inspection(command.parsed_command)
         for command in capture.commands
@@ -2403,7 +2426,7 @@ def normalize_batch(
             }
             start = captures["start"]
             start_projects = observed_project_ids(start)
-            start_work_ids = observed_work_item_ids(start)
+            start_work_ids = integrity_check("project_binding", observed_work_item_ids, start, "start")
             if len(start_projects) != 1 or len(start_work_ids) != 1:
                 raise IntegrityError(
                     "project_binding",
@@ -2420,7 +2443,8 @@ def normalize_batch(
             journey_work_ids[identity].append(work_item_id)
             if "resume" in captures:
                 resume_projects = observed_project_ids(captures["resume"])
-                resume_work_ids = observed_work_item_ids(captures["resume"])
+                resume_work_ids = integrity_check("project_binding", observed_work_item_ids,
+                    captures["resume"], "resume")
                 if resume_projects != [project_id] or resume_work_ids != [work_item_id]:
                     raise IntegrityError(
                         "project_binding",
