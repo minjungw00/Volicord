@@ -1,8 +1,10 @@
 use rusqlite::Connection;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeSet,
     fs,
+    path::Path,
     process::Command,
     sync::{Arc, Barrier},
     thread,
@@ -4128,6 +4130,48 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         .contains("first captured after the bounded work is conceptually invalid"));
 }
 
+fn read_analysis_metadata(path: &Path) -> Value {
+    let manifest: Value = serde_json::from_slice(&fs::read(path).expect("Analysis manifest"))
+        .expect("supported Analysis manifest");
+    let hash = manifest["metadata_blob"]
+        .as_str()
+        .expect("metadata blob identity");
+    let blob = fs::read(
+        path.parent()
+            .unwrap()
+            .join("blobs")
+            .join(format!("{hash}.metadata")),
+    )
+    .expect("published Analysis metadata blob");
+    let magic = b"VOLICORD-BLOB-ZSTD1\0";
+    assert!(blob.starts_with(magic));
+    let offset = magic.len();
+    let length = u64::from_le_bytes(blob[offset..offset + 8].try_into().unwrap());
+    let decoded = zstd::stream::decode_all(&blob[offset + 8..]).expect("Analysis metadata");
+    assert_eq!(decoded.len() as u64, length);
+    serde_json::from_slice(&decoded).expect("typed Analysis metadata")
+}
+
+fn write_analysis_metadata(path: &Path, metadata: &Value) {
+    let encoded = serde_json::to_vec(metadata).expect("metadata JSON");
+    let compressed = zstd::stream::encode_all(encoded.as_slice(), 9).expect("metadata compression");
+    let mut blob = b"VOLICORD-BLOB-ZSTD1\0".to_vec();
+    blob.extend_from_slice(&(encoded.len() as u64).to_le_bytes());
+    blob.extend_from_slice(&compressed);
+    let hash = format!("{:x}", Sha256::digest(&blob));
+    fs::write(
+        path.parent()
+            .unwrap()
+            .join("blobs")
+            .join(format!("{hash}.metadata")),
+        blob,
+    )
+    .expect("publish test metadata blob");
+    let mut manifest: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    manifest["metadata_blob"] = json!(hash);
+    fs::write(path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+}
+
 #[test]
 fn repository_analysis_exposes_its_canonical_source_identity_without_display_parsing() {
     use volicord_context::SourcePayload;
@@ -4166,15 +4210,15 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
         .analysis_project_dir(project_id)
         .join(format!("{analysis_id}.json"));
     let analysis: Value =
-        serde_json::from_slice(&fs::read(analysis_path).expect("published Analysis manifest"))
+        serde_json::from_slice(&fs::read(&analysis_path).expect("published Analysis manifest"))
             .expect("supported Analysis manifest");
     assert_eq!(analysis["identity"], analysis_id);
     assert_eq!(
-        analysis["metadata"]["repository_snapshot"],
+        read_analysis_metadata(&analysis_path)["repository_snapshot"],
         repository_snapshot_id
     );
     assert_eq!(
-        analysis["metadata"]["repository_source"]["identity"],
+        read_analysis_metadata(&analysis_path)["repository_source"]["identity"],
         repository_source_id
     );
 
@@ -4203,8 +4247,10 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
         .expect("same published Analysis manifest"),
     )
     .expect("same supported Analysis manifest");
+    assert_eq!(persisted_again["identity"], analysis_id);
     assert_eq!(
-        persisted_again["metadata"]["repository_source"]["identity"], repository_source_id,
+        read_analysis_metadata(&analysis_path)["repository_source"]["identity"],
+        repository_source_id,
         "the structured Source identity is stable for the returned analysis"
     );
 }
@@ -8127,11 +8173,11 @@ fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learni
         if path.extension().is_none_or(|e| e != "json") {
             continue;
         }
-        let mut analysis: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        for capability in analysis["metadata"]["capabilities"].as_array_mut().unwrap() {
+        let mut metadata = read_analysis_metadata(&path);
+        for capability in metadata["capabilities"].as_array_mut().unwrap() {
             capability["coverage"]["included"] = json!((0..6000).map(|i| json!({"kind":"file","path":format!("packages/service-{i}/src/repository_metadata.py")})).collect::<Vec<_>>());
         }
-        fs::write(path, serde_json::to_vec(&analysis).unwrap()).unwrap();
+        write_analysis_metadata(&path, &metadata);
     }
     let result = call(adapter, "recall", json!({"project_id":project}));
     let bytes = serde_json::to_vec(&result).unwrap();

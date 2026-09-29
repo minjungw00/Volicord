@@ -106,7 +106,9 @@ Adapter-native cache/version은 이 common Analysis Snapshot version과 별개�
 공통 consumer에게 native version만 노출해 normalized contract check를 생략할 수 없다.
 
 Current local persistence는 exact-current Analysis Snapshot JSON token stream을 normalized
-shape/value content-addressed blob과 lightweight manifest로 분할한다. Manifest는 current
+shape/value content-addressed blob, 별도 압축된 typed metadata blob과 lightweight manifest로
+분할한다. Metadata blob은 같은 current-only storage representation의 일부이며 manifest의
+content hash와 exact Project/Analysis identity에 bind한다. Manifest는 current
 Analysis Snapshot kind/version을 먼저 노출하고 blob integrity/binding을 검증하며, reader는
 복원 후 같은 단일 current domain decoder만 호출한다. Shape chunk, complete value base와
 value delta는 이 current representation 내부 storage strategy이지 서로 다른 숫자 version,

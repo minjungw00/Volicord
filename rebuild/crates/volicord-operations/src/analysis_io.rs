@@ -15,7 +15,7 @@ use volicord_repository_intelligence::{
     ANALYSIS_SNAPSHOT_FORMAT_VERSION, ANALYSIS_SNAPSHOT_KIND,
 };
 
-const STORAGE_FORMAT: &str = "volicord.normalized_analysis";
+const STORAGE_FORMAT: &str = "volicord.normalized_analysis.v2";
 const SHAPE_MAGIC: &[u8] = b"VOLICORD-JSON-SHAPE\0";
 const VALUES_MAGIC: &[u8] = b"VOLICORD-JSON-VALUES\0";
 const VALUES_DELTA_MAGIC: &[u8] = b"VOLICORD-JSON-DELTA2\0";
@@ -53,7 +53,7 @@ pub(crate) struct AnalysisManifest {
     pub inventory_entry_count: u64,
     pub entity_count: u64,
     pub relation_count: u64,
-    pub metadata: AnalysisMetadata,
+    pub metadata_blob: String,
 }
 
 pub(crate) struct EncodedAnalysis {
@@ -61,6 +61,8 @@ pub(crate) struct EncodedAnalysis {
     pub shapes: Vec<(String, Vec<u8>)>,
     pub values: Vec<u8>,
     pub values_hash: String,
+    pub metadata: Vec<u8>,
+    pub metadata_hash: String,
 }
 
 pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
@@ -110,6 +112,12 @@ pub(crate) fn encode_analysis(
         (complete_values, None)
     };
     let values_hash = digest(&values);
+    let metadata = pack_blob_at_level(
+        &serde_json::to_vec(&AnalysisMetadata::from(analysis))
+            .map_err(|error| Error::with_source("cannot encode Analysis metadata", error))?,
+        9,
+    )?;
+    let metadata_hash = digest(&metadata);
     let manifest = AnalysisManifest {
         format_kind: ANALYSIS_SNAPSHOT_KIND.into(),
         format_version: ANALYSIS_SNAPSHOT_FORMAT_VERSION,
@@ -130,7 +138,7 @@ pub(crate) fn encode_analysis(
             .map(|fact| fact.relations.len() as u64)
             .sum::<u64>()
             + analysis.semantic_results.len() as u64,
-        metadata: AnalysisMetadata::from(analysis),
+        metadata_blob: metadata_hash.clone(),
     };
     Ok(EncodedAnalysis {
         manifest: serde_json::to_vec(&manifest)
@@ -138,6 +146,8 @@ pub(crate) fn encode_analysis(
         shapes,
         values,
         values_hash,
+        metadata,
+        metadata_hash,
     })
 }
 
@@ -152,6 +162,26 @@ pub(crate) fn read_manifest(path: &Path) -> Result<AnalysisManifest, Error> {
         ));
     }
     Ok(manifest)
+}
+
+pub(crate) fn read_metadata(
+    path: &Path,
+    manifest: &AnalysisManifest,
+) -> Result<AnalysisMetadata, Error> {
+    let blobs = blob_dir(path)?;
+    let packed = read_verified_blob(
+        &blobs.join(format!("{}.metadata", manifest.metadata_blob)),
+        &manifest.metadata_blob,
+    )?;
+    let metadata: AnalysisMetadata = serde_json::from_slice(&unpack_blob(&packed)?)
+        .map_err(|error| Error::with_source("Analysis metadata is corrupt", error))?;
+    if metadata.identity != manifest.identity
+        || metadata.project != manifest.project
+        || metadata.generated_at_unix_micros != manifest.generated_at_unix_micros
+    {
+        return Err(Error::new("Analysis manifest and metadata bindings differ"));
+    }
+    Ok(metadata)
 }
 
 pub(crate) fn read_analysis(path: &Path) -> Result<AnalysisSnapshot, Error> {
@@ -172,6 +202,7 @@ fn read_analysis_from_manifest(
     path: &Path,
     manifest: AnalysisManifest,
 ) -> Result<AnalysisSnapshot, Error> {
+    read_metadata(path, &manifest)?;
     let blobs = blob_dir(path)?;
     if manifest.shape_blobs.is_empty() {
         return Err(Error::new("Analysis manifest has no shape blobs"));
@@ -245,6 +276,7 @@ pub(crate) fn analysis_cache_path(
 }
 
 fn verify_manifest_blobs(path: &Path, manifest: &AnalysisManifest) -> Result<(), Error> {
+    read_metadata(path, manifest)?;
     let blobs = blob_dir(path)?;
     for hash in &manifest.shape_blobs {
         read_verified_blob(&blobs.join(format!("{hash}.shape")), hash)?;
@@ -401,7 +433,11 @@ pub(crate) fn reusable_base_values(
 }
 
 fn pack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
-    let compressed = zstd::stream::encode_all(input, 1)
+    pack_blob_at_level(input, 1)
+}
+
+fn pack_blob_at_level(input: &[u8], level: i32) -> Result<Vec<u8>, Error> {
+    let compressed = zstd::stream::encode_all(input, level)
         .map_err(|error| Error::with_source("cannot compress Analysis blob", error))?;
     let mut packed = Vec::with_capacity(BLOB_ZSTD_MAGIC.len() + 8 + compressed.len());
     packed.extend_from_slice(BLOB_ZSTD_MAGIC);
@@ -1068,6 +1104,47 @@ mod tests {
             delta.len(),
             current.len()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn compressed_metadata_preserves_snapshot_and_rejects_corruption(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = tempfile::tempdir()?;
+        let repository = temporary.path().join("repository");
+        std::fs::create_dir_all(&repository)?;
+        std::fs::write(
+            repository.join("example.py"),
+            "def answer():\n    return 42\n",
+        )?;
+        let operations = crate::LocalOperations::new(crate::RuntimeLayout::new(
+            temporary.path().join("runtime"),
+        )?);
+        let project = operations
+            .initialize_project("Metadata roundtrip", Some(&repository))?
+            .project
+            .id;
+        let outcome = operations
+            .analyze(project, Vec::new())?
+            .value
+            .ok_or("analysis")?;
+        let manifest = read_manifest(&outcome.stored_at)?;
+        let metadata = read_metadata(&outcome.stored_at, &manifest)?;
+        assert_eq!(
+            metadata,
+            volicord_repository_intelligence::AnalysisMetadata::from(&outcome.analysis)
+        );
+        let durable = read_analysis_durable(&outcome.stored_at)?;
+        assert_eq!(
+            serde_json::to_value(&durable)?,
+            serde_json::to_value(&outcome.analysis)?,
+            "durable metadata relocation must preserve the complete semantic graph"
+        );
+        let metadata_path =
+            blob_dir(&outcome.stored_at)?.join(format!("{}.metadata", manifest.metadata_blob));
+        std::fs::write(metadata_path, b"corrupt metadata")?;
+        assert!(read_analysis(&outcome.stored_at).is_err());
+        assert!(read_analysis_durable(&outcome.stored_at).is_err());
         Ok(())
     }
 

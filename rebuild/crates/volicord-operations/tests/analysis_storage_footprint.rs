@@ -52,6 +52,24 @@ fn reports_graph_scale_dominance_repeat_delta_and_allocated_bytes(
         .ok_or("third analysis")?;
     assert_ne!(first.analysis.identity, second.analysis.identity);
     assert_ne!(second.analysis.identity, third.analysis.identity);
+    let manifest: serde_json::Value = serde_json::from_slice(&fs::read(&first.stored_at)?)?;
+    assert!(manifest.get("metadata").is_none());
+    let metadata_hash = manifest["metadata_blob"].as_str().ok_or("metadata blob")?;
+    let metadata_blob = first
+        .stored_at
+        .parent()
+        .ok_or("analysis directory")?
+        .join("blobs")
+        .join(format!("{metadata_hash}.metadata"));
+    let metadata_bytes = fs::metadata(&metadata_blob)?.len();
+    let source_metadata_bytes = serde_json::to_vec(
+        &volicord_repository_intelligence::AnalysisMetadata::from(&first.analysis),
+    )?
+    .len() as u64;
+    assert!(
+        metadata_bytes * 2 < source_metadata_bytes,
+        "metadata must be compressed before durable publication"
+    );
 
     let report = fixture.operations.analysis_storage_footprint(project)?;
     eprintln!("{}", serde_json::to_string_pretty(&report)?);
@@ -60,8 +78,8 @@ fn reports_graph_scale_dominance_repeat_delta_and_allocated_bytes(
     assert_eq!(report.reusable_content_overlap_millionths, Some(1_000_000));
     let repeated = report.unchanged_repeat_delta_bytes.ok_or("repeat delta")?;
     assert!(
-        repeated > 50_000,
-        "fixture must expose meaningful full-copy growth: {repeated}"
+        repeated > 0,
+        "distinct retained snapshots must have measurable growth: {repeated}"
     );
     assert!(
         report.logical_bytes

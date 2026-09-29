@@ -193,7 +193,10 @@ fn measure_file(path: &Path, analysis: &AnalysisSnapshot) -> Result<AnalysisFile
         .map_err(|error| Error::with_source("cannot measure Analysis Snapshot", error))?;
     let manifest = crate::analysis_io::read_manifest(path)?;
     let blobs = crate::analysis_io::blob_dir(path)?;
-    let mut paths = vec![path.to_path_buf()];
+    let mut paths = vec![
+        path.to_path_buf(),
+        blobs.join(format!("{}.metadata", manifest.metadata_blob)),
+    ];
     paths.extend(
         manifest
             .shape_blobs

@@ -49,6 +49,10 @@ _multi_work_test_spec = importlib.util.spec_from_file_location(
 assert _multi_work_test_spec is not None and _multi_work_test_spec.loader is not None
 multi_work_self_test = importlib.util.module_from_spec(_multi_work_test_spec)
 _multi_work_test_spec.loader.exec_module(multi_work_self_test)
+_metadata_spec = importlib.util.spec_from_file_location("v11_analysis_metadata", HERE / "analysis_metadata.py")
+assert _metadata_spec is not None and _metadata_spec.loader is not None
+analysis_metadata = importlib.util.module_from_spec(_metadata_spec)
+_metadata_spec.loader.exec_module(analysis_metadata)
 _performance_spec = importlib.util.spec_from_file_location("v11_performance", HERE / "performance.py")
 assert _performance_spec is not None and _performance_spec.loader is not None
 performance_module = importlib.util.module_from_spec(_performance_spec)
@@ -1072,21 +1076,16 @@ def bounded_projection_matches(full: Any, projected: Any) -> bool:
 
 
 def read_analysis_capabilities(path: Path, analysis_id: str, project_id: str) -> dict[str, Any]:
-    """Read the snapshot's metadata prefix without loading its large analysis graph."""
-    # Current normalized snapshots keep the complete typed metadata in their
-    # lightweight manifest. Read that directly so validation does not mistake
-    # the manifest for the former inline graph representation.
+    """Read verified, compressed metadata without loading the analysis graph."""
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         manifest = None
     if (
         isinstance(manifest, dict)
-        and manifest.get("storage_format") == "volicord.normalized_analysis"
+        and manifest.get("storage_format") == "volicord.normalized_analysis.v2"
     ):
-        metadata = manifest.get("metadata")
-        if not isinstance(metadata, dict):
-            raise ValueError("Analysis Snapshot manifest metadata is missing")
+        metadata = analysis_metadata.read_metadata(path, manifest.get("metadata_blob", ""))
         if (
             manifest.get("identity") != metadata.get("identity")
             or manifest.get("project") != metadata.get("project")
@@ -3652,11 +3651,16 @@ def assert_recovery_recall_contract() -> None:
         normalized = {
             "format_kind": "volicord.analysis_snapshot",
             "format_version": 1,
-            "storage_format": "volicord.normalized_analysis",
+            "storage_format": "volicord.normalized_analysis.v2",
             "identity": old_analysis,
             "project": {"identity": before["project_id"]},
-            "metadata": metadata,
+            "metadata_blob": None,
         }
+        packed = analysis_metadata.RAW_MAGIC + json.dumps(metadata).encode()
+        metadata_hash = hashlib.sha256(packed).hexdigest()
+        (path.parent / "blobs").mkdir(exist_ok=True)
+        (path.parent / "blobs" / f"{metadata_hash}.metadata").write_bytes(packed)
+        normalized["metadata_blob"] = metadata_hash
         path.write_text(json.dumps(normalized), encoding="utf-8")
         read = read_analysis_capabilities(path, old_analysis, before["project_id"])
         if read["capabilities"] != evidence[0]["capabilities"]:
@@ -4042,6 +4046,7 @@ def assert_qualification_publication() -> None:
 
 
 def self_check() -> int:
+    analysis_metadata.self_check()
     performance_module.self_check()
     restart_test_spec = importlib.util.spec_from_file_location(
         "v11_restart_recall_self_test", HERE / "restart_recall_self_test.py"

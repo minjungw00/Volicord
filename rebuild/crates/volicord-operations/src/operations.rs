@@ -1500,11 +1500,47 @@ impl LocalOperations {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let current = self
-            .analyze_with_previous(project_id, excluded_paths, Some(&baseline))?
-            .value
-            .ok_or_else(|| Error::new("executable-scope analysis produced no usable snapshot"))?
-            .analysis;
+        // The Review already published a fresh, Source-bound Analysis Snapshot.
+        // A scope inspection immediately after Review needs a new publication only
+        // when the repository observation or Git worktree state has changed.
+        let reviewed = self.load_analysis_snapshot(
+            project_id,
+            existing_review.current_review_analysis_snapshot_id,
+        );
+        let current = if let Ok(reviewed) = reviewed {
+            let canonical = self.canonical_basis(project_id)?;
+            let same_repository = self
+                .observe_projection_repository(
+                    &canonical,
+                    reviewed.repository_source.identity(),
+                    &reviewed.inventory.entries,
+                )
+                .is_ok_and(|observation| observation.identity == reviewed.repository_snapshot);
+            let same_worktree = self
+                .open_canonical()
+                .and_then(|store| {
+                    store.get_local_binding(project_id).map_err(|error| {
+                        Error::with_source("repository binding is unavailable", error)
+                    })
+                })
+                .and_then(|binding| self.observe_repository_worktree(&binding.absolute_path))
+                .is_ok_and(|observation| observation == reviewed.repository_worktree);
+            if same_repository && same_worktree {
+                reviewed
+            } else {
+                self.analyze_with_previous(project_id, excluded_paths, Some(&baseline))?
+                    .value
+                    .ok_or_else(|| {
+                        Error::new("executable-scope analysis produced no usable snapshot")
+                    })?
+                    .analysis
+            }
+        } else {
+            self.analyze_with_previous(project_id, excluded_paths, Some(&baseline))?
+                .value
+                .ok_or_else(|| Error::new("executable-scope analysis produced no usable snapshot"))?
+                .analysis
+        };
         let _mutation = self.layout.acquire_mutation_lock()?;
         let canonical = self.canonical_basis(project_id)?;
         let record = CandidateStore::open(self.layout.candidate_store())
@@ -4009,7 +4045,8 @@ impl LocalOperations {
         let Some((header, path)) = self.select_analysis(project_id)? else {
             return Ok(Vec::new());
         };
-        let mut value = crate::analysis_io::read_manifest(&path)?.metadata;
+        let manifest = crate::analysis_io::read_manifest(&path)?;
+        let mut value = crate::analysis_io::read_metadata(&path, &manifest)?;
         if value.project.identity() != project_id
             || value.identity != header.identity
             || value.generated_at_unix_micros != header.generated_at_unix_micros
@@ -4059,7 +4096,10 @@ fn analysis_validation_receipt(
         ));
     }
     let blobs = blob_dir(path)?;
-    let mut paths = vec![path.to_path_buf()];
+    let mut paths = vec![
+        path.to_path_buf(),
+        blobs.join(format!("{}.metadata", manifest.metadata_blob)),
+    ];
     paths.extend(
         manifest
             .shape_blobs
@@ -4437,6 +4477,10 @@ fn publish_analysis(
         &blob_directory.join(format!("{}.values", encoded.values_hash)),
         &encoded.values,
     )?;
+    publish_content_blob(
+        &blob_directory.join(format!("{}.metadata", encoded.metadata_hash)),
+        &encoded.metadata,
+    )?;
     let manifest = encoded.manifest.clone();
     drop(encoded);
     publish_analysis_cache(project_directory, analysis)?;
@@ -4551,6 +4595,7 @@ fn collect_orphan_analysis_blobs(project_directory: &Path) -> Result<u64, Error>
                 .into_iter()
                 .map(|hash| format!("{hash}.shape")),
         );
+        reachable.insert(format!("{}.metadata", manifest.metadata_blob));
         reachable.insert(format!("{}.values", manifest.values_blob));
         if let Some(base) = manifest.values_base_blob {
             reachable.insert(format!("{base}.values"));

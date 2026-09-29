@@ -477,6 +477,12 @@ status가 요구하는 exact fact, contract reference 또는 Decision identity�
 implementations라는 사실만으로 user ownership을 만들지는 않지만, 다른 exact authority가 없는
 material outcome은 unresolved user-owned lifecycle로 보낸다.
 
+Materiality scope inspection이 바로 앞의 fresh Review observation을 사용할 때는 현재
+repository inventory/Source/Project와 Git worktree observation이 그 snapshot과 동일함을
+다시 확인한다. 이 동등성이 성립하면 별도 Analysis Snapshot을 게시하지 않고 같은
+identity로 prospective scope를 bind한다. 변경 또는 확인 불가 상태는 기존처럼 fresh
+analysis를 게시한 뒤 authority와 late path를 평가한다.
+
 첫 authoritative review는 exact baseline과 fresh review observation 사이 meaningful repository
 delta가 없어야 한다. 이 transition은 typed Local Operations path만 만들 수 있으며 generic
 Candidate submission으로 timing을 주장할 수 없다. Timely first review 뒤 exploratory research나

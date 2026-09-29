@@ -1814,7 +1814,7 @@ fn review_with_learning(
     let artifact_review =
         coupled_artifact_review(&paths.iter().map(String::as_str).collect::<Vec<_>>());
     let review = record_review_with_learning(fixture, choices, dimensions, learning_participation)?;
-    fixture.operations.bind_executable_work_scope(
+    let bound = fixture.operations.bind_executable_work_scope(
         fixture.project_id,
         fixture.goal_id,
         fixture.baseline.identity,
@@ -1825,7 +1825,12 @@ fn review_with_learning(
             work_contexts: Vec::new(),
         },
         artifact_review,
-    )
+    )?;
+    assert_eq!(
+        bound.review_analysis_snapshot_id, review.review_analysis_snapshot_id,
+        "unchanged pre-write scope binding must reuse the fresh Review observation"
+    );
+    Ok(bound)
 }
 
 fn assess_learning_authority(dimension: &mut MaterialityDimension) {
@@ -2951,6 +2956,10 @@ fn later_coupled_artifact_can_be_added_prospectively_before_its_first_write(
         ]),
     )?;
     assert!(rebound.review_revision > recorded.review_revision);
+    assert_ne!(
+        rebound.review_analysis_snapshot_id, recorded.review_analysis_snapshot_id,
+        "changed repository content must produce a fresh scope observation"
+    );
     assert!(!workflow(expanded_paths.clone())?.blocks_ordinary_work);
 
     fs::create_dir_all(fixture.repository.join("tests"))?;

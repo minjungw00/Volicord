@@ -139,16 +139,11 @@ class Collector:
         if not isinstance(value, dict):
             return None
         project = {"identity": path.parent.name}
-        metadata = value.get("metadata")
         if (value.get("format_kind") != ANALYSIS_FORMAT_KIND
                 or type(value.get("format_version")) is not int or value["format_version"] != ANALYSIS_FORMAT_VERSION
-                or value.get("storage_format") != "volicord.normalized_analysis"
+                or value.get("storage_format") != "volicord.normalized_analysis.v2"
                 or value.get("identity") != path.stem or value.get("project") != project
-                or not isinstance(metadata, dict) or metadata.get("identity") != path.stem
-                or metadata.get("project") != project
-                or not isinstance(metadata.get("repository_snapshot"), str)
-                or not metadata["repository_snapshot"]
-                or not isinstance(metadata.get("capabilities"), list)):
+                or not isinstance(value.get("metadata_blob"), str)):
             return None
         count_keys = ("inventory_entry_count", "entity_count", "relation_count")
         if any(type(value.get(key)) is not int or value[key] < 0 for key in
@@ -157,7 +152,8 @@ class Collector:
         shapes = value.get("shape_blobs")
         if not isinstance(shapes, list) or not shapes or "values_base_blob" not in value:
             return None
-        references = [(item, "shape") for item in shapes] + [(value.get("values_blob"), "values")]
+        references = [(item, "shape") for item in shapes] + [(value.get("values_blob"), "values"),
+                                                               (value.get("metadata_blob"), "metadata")]
         if value["values_base_blob"] is not None:
             references.append((value["values_base_blob"], "values"))
         for digest, extension in references:
@@ -392,15 +388,16 @@ def storage_self_check():
         shape, values = "a" * 64, "b" * 64
         (blobs / f"{shape}.shape").write_bytes(b"s" * 100)
         (blobs / f"{values}.values").write_bytes(b"v" * 37)
+        metadata_digest = "c" * 64
+        (blobs / f"{metadata_digest}.metadata").write_bytes(b"m" * 23)
         value = {
             "format_kind": ANALYSIS_FORMAT_KIND, "format_version": ANALYSIS_FORMAT_VERSION,
-            "storage_format": "volicord.normalized_analysis", "identity": name,
+            "storage_format": "volicord.normalized_analysis.v2", "identity": name,
             "project": {"identity": project.name}, "generated_at_unix_micros": 1,
             "logical_json_bytes": 100, "scalar_count": 10,
             "shape_blobs": [shape], "values_blob": values, "values_base_blob": None,
             "inventory_entry_count": items, "entity_count": 0, "relation_count": 0,
-            "metadata": {"identity": name, "project": {"identity": project.name},
-                         "repository_snapshot": "c" * 64, "capabilities": []},
+            "metadata_blob": metadata_digest,
         }
         (project / f"{name}.json").write_text(json.dumps(value))
         return value
@@ -423,7 +420,7 @@ def storage_self_check():
         first = manifest(project, "first")
         for field, invalid in (("format_kind", "volicord.analysis_snapshot"),
                                ("inventory_entry_count", -1), ("entity_count", True),
-                               ("relation_count", "3"), ("metadata", {}),
+                               ("relation_count", "3"), ("metadata_blob", "../escape"),
                                ("shape_blobs", []), ("values_blob", "../escape"),
                                ("values_base_blob", "d" * 64), ("format_version", 99)):
             (project / "first.json").write_text(json.dumps({**first, field: invalid}))

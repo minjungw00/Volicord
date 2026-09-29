@@ -562,9 +562,10 @@ store 진단은 다른 책임이며, 최신 payload 실패를 과거 graph의 cu
 있다. 이 cache는 newest snapshot과 earliest retained baseline의 bounded 두 항목에만
 유지되고 canonical/Analysis history나
 corruption 판정의 근거가 아니며, 없거나 invalid하면 durable payload를 decode한다.
-Snapshot publication은 normalized JSON shape 조각과 value stream을 content
-identity로 먼저 no-replace 게시한 뒤 lightweight manifest를 마지막에 atomic/no-replace
-게시하고 sync 책임을 보존한다. 동일 shape blob과 complete value base는 snapshot 사이에서
+Snapshot publication은 normalized JSON shape 조각, value stream, typed capability metadata를
+각각 content identity의 압축 blob으로 먼저 no-replace 게시한 뒤 lightweight manifest를
+마지막에 atomic/no-replace 게시하고 sync 책임을 보존한다. Metadata blob의 hash와
+Project/Analysis identity를 확인한 뒤 Recall 및 V11 capability evidence에 사용한다. 동일 shape blob과 complete value base는 snapshot 사이에서
 공유하고, 이후 value stream은 complete base에 대한 bounded delta가 더 작을 때만 delta로
 게시한다. Manifest는 exact Analysis Snapshot identity/history와 payload blob identity를
 보존한다. Reader는 blob content identity를 확인하고 원래 JSON token stream을 복원한 뒤
@@ -580,7 +581,7 @@ complete base로 게시하고, 후속 snapshot은 가장 최신의 검증 가능
 않는다.
 
 Blob collection root는 성공적으로 게시된 모든 retained Analysis manifest가 명시한 shape,
-value 및 complete-value base다. Candidate, Checkpoint-derived work authority, provider request,
+value, metadata 및 complete-value base다. Candidate, Checkpoint-derived work authority, provider request,
 managed derived evidence가 명시한 historical Analysis identity는 그 immutable manifest가
 retained되는 동안 계속 reachable하다. Ordinary analysis와 forced reindex는 readable history를
 삭제하지 않는다. Repair는 새 complete root를 먼저 게시하고 이미 unreadable한 manifest만
