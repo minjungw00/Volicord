@@ -69,6 +69,10 @@ V11_CONTRACT = runpy.run_path(str(
     Path(__file__).resolve().parents[1] /
     "validation/end-to-end/multi-repository/result_contract.py"
 ))
+PERFORMANCE = runpy.run_path(str(
+    Path(__file__).resolve().parents[1] /
+    "validation/end-to-end/multi-repository/performance.py"
+))
 V11_TEST_FIXTURE = runpy.run_path(str(
     Path(__file__).resolve().parents[1] /
     "validation/end-to-end/multi-repository/multi_work_self_test.py"
@@ -522,6 +526,16 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         or official_ready is not False
     ):
         errors.append("capsule official-V11-not-run state contains official V11 evidence")
+
+    performance = official.get("performance")
+    if official_started and performance is None and official_ready is True:
+        errors.append("ready V11 lacks performance evidence")
+    if performance is not None:
+        observed = performance.get("observed") if isinstance(performance, dict) else None
+        if (not isinstance(observed, dict)
+                or performance != PERFORMANCE["qualify"](observed, PERFORMANCE["maintained_limits"]())
+                or (official_ready is True and performance["status"] != "passed")):
+            errors.append("V11 performance evidence disagrees with current limits")
 
     errors.extend(V11_CONTRACT["capsule_technical_errors"](
         official, capsule.get("authenticated_codex_outcomes")))
@@ -1167,6 +1181,12 @@ def self_test_capsule() -> dict[str, Any]:
             "multi_work_continuity": V11_TEST_FIXTURE["contract_fixture"](
                 SimpleNamespace(**V11_CONTRACT))[2],
             "phase_8_ready": True,
+            "performance": PERFORMANCE["qualify"]({
+                **{key: 1 for key in PERFORMANCE["METRICS"]},
+                "mcp_sample_count": 1, "mcp_call_count": 1,
+                "sampling_error_count": 0, "analysis_snapshot_count": 1,
+                "analysis_graph_item_count": 1,
+            }, PERFORMANCE["maintained_limits"]()),
         },
         "required_identities": {"candidate_head": head, "fixtures": [{"id": "fixture-one", "validation_id": "V11", "content_sha256": "1" * 64}]},
         "credential_retention_audit": {"status": "passed", "auth_named_file_count": 0, "credential_content_match_count": 0, "scan_error_count": 0},
@@ -1333,6 +1353,17 @@ def self_test() -> int:
     fully_passed_report = self_test_report(fully_passed)
     assert check_shape_text(fully_passed_report) == []
     assert check_capsule_semantics(fully_passed_report, fully_passed) == []
+
+    for metric in ("v11_duration_ms", "post_warmup_analysis_growth_bytes"):
+        invalid = copy.deepcopy(fully_passed)
+        invalid["official_v11"]["performance"]["observed"][metric] = (
+            PERFORMANCE["maintained_limits"]()[metric] + 1
+        )
+        assert capsule_contract_errors(invalid)
+        invalid["official_v11"]["performance"] = PERFORMANCE["qualify"](
+            invalid["official_v11"]["performance"]["observed"], PERFORMANCE["maintained_limits"]()
+        )
+        assert capsule_contract_errors(invalid)
 
     def without_official_v11(capsule: dict[str, Any]) -> None:
         capsule["official_v11"] = {

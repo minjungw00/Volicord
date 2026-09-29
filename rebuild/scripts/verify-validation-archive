@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 from pathlib import Path, PurePosixPath
 import re
 import runpy
@@ -31,28 +30,16 @@ def verify_performance(capsule):
         return
     if not isinstance(report, dict):
         fail("invalid V11 performance evidence")
-    metrics = {
-        "mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms",
-        "analysis_storage_logical_bytes", "analysis_storage_physical_bytes",
-        "post_warmup_analysis_growth_bytes", "analysis_storage_bytes_per_graph_item",
-    }
-    limits, observed = report.get("limits", {}), report.get("observed", {})
-    if not isinstance(limits, dict) or not isinstance(observed, dict) or set(limits) != metrics:
-        fail("invalid V11 performance metric schema")
-    valid = all(type(limits[key]) is int and limits[key] > 0
-                and type(observed.get(key)) in (int, float)
-                and math.isfinite(observed[key]) and observed[key] >= 0 for key in metrics)
-    measured = valid and all(type(observed.get(key)) is int and observed[key] > 0
-                            for key in ("mcp_sample_count", "mcp_call_count"))
-    measured = measured and observed.get("sampling_error_count") == 0 and observed.get("max_snapshot_bytes", 0) > 0
-    measured = measured and observed.get("analysis_snapshot_count", 0) > 0 and observed.get("analysis_graph_item_count", 0) > 0
-    exceeded = sorted(key for key in metrics if valid and observed[key] > limits[key])
-    passed = bool(measured and not exceeded)
-    if (report.get("measurement_complete") is not bool(measured)
-            or report.get("exceeded") != exceeded
-            or report.get("status") != ("passed" if passed else "failed")
-            or (official.get("phase_8_ready") is True and not passed)):
-        fail("V11 performance verdict disagrees with measurements")
+    performance = runpy.run_path(str(
+        Path(__file__).resolve().parents[1] /
+        "validation/end-to-end/multi-repository/performance.py"
+    ))
+    observed = report.get("observed")
+    if (not isinstance(observed, dict)
+            or report != performance["qualify"](observed, performance["maintained_limits"]())
+            or (official.get("phase_8_ready") is True and report["status"] != "passed")):
+        fail("V11 performance verdict or current limits disagree with measurements")
+
 
 
 MAX_ARCHIVE_BYTES = 512 * 1024

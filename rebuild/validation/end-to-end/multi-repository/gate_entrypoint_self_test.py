@@ -209,7 +209,7 @@ def assert_maintained_preflight(parent: Path) -> None:
     shutil.copy2(HARNESS, harness)
     for name in ("performance.py", "performance-budgets.json", "final_evidence.py",
                  "restart_recall.py", "multi_work.py", "result_contract.py",
-                 "multi_work_self_test.py"):
+                 "multi_work_self_test.py", "analysis_metadata.py"):
         shutil.copy2(HARNESS.with_name(name), harness.with_name(name))
     runner = candidate / "rebuild/scripts/validate"
     runner.parent.mkdir(parents=True)

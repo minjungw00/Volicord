@@ -495,8 +495,15 @@ def storage_self_check():
 def self_check():
     policy = json.loads(Path(__file__).with_name("performance-budgets.json").read_text())
     current_limits = maintained_limits()
-    assert current_limits["v11_duration_ms"] == 20 * 60 * 1000
-    assert current_limits["post_warmup_analysis_growth_bytes"] == 800 * 1024 * 1024
+    assert current_limits["v11_duration_ms"] == 15 * 60 * 1000
+    assert current_limits["post_warmup_analysis_growth_bytes"] == 512 * 1024 * 1024
+    accepted_observed = {key: 1 for key in METRICS}
+    accepted_observed.update(mcp_sample_count=1, mcp_call_count=1,
+                             sampling_error_count=0, analysis_snapshot_count=1,
+                             analysis_graph_item_count=1)
+    for metric in ("v11_duration_ms", "post_warmup_analysis_growth_bytes"):
+        assert qualify({**accepted_observed, metric: current_limits[metric]}, current_limits)["status"] == "passed"
+        assert qualify({**accepted_observed, metric: current_limits[metric] + 1}, current_limits)["status"] == "failed"
     for invalid in ({**policy, "workload_identity": "previous-v11-workload"},
                     {**policy, "policy_version": 1},
                     {**policy, "limits": {**current_limits, "v11_duration_ms": 0}}):

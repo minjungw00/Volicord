@@ -1,15 +1,15 @@
 {
   "policy_version": 2,
   "workload_identity": "three-target-installed-journey-volicord-three-work-1",
-  "basis": "The 54-leaf Linux V11 journey used a 15-minute duration and 512 MiB post-warmup growth ceiling; its recorded duration was 703,027.593 ms. The current 55-leaf journey adds a real Volicord A-to-B-to-C Work continuity leaf with eight B/C Analysis Snapshots. Its first clean-HEAD run passed all 55 leaves and measured 1,026,151.145 ms and 763,064,961 bytes of post-warmup growth. The new workload allowance is five minutes for the B/C analysis and interaction sequence and eight times 36 MiB for retained snapshots, giving 20 minutes and 800 MiB. This budget applies only to the named workload; the 4 GiB RSS, 2 GiB manifest and logical storage, 2.125 GiB physical storage, 90-second RPC, and 2,048-byte-per-graph-item ceilings remain unchanged. The original 48-file storage fixture measured 691,245 logical bytes and 332,517 bytes of unchanged growth after normalization, compared with 1,656,908 and 828,454 bytes before it; these regression checks remain in force.",
+  "basis": "The named 55-leaf Linux V11 workload includes Volicord A-to-B-to-C Work continuity and eight B/C Analysis Snapshots. Its independent regression ceilings are 15 minutes total duration and 512 MiB post-warmup analysis growth. These values are retained as acceptance criteria for this workload, not inferred from the older 54-leaf workload. A clean-HEAD focused rehearsal of the 55-leaf workload measured 836,349.979 ms and 525,260,967 bytes after the analysis-storage optimization; the authoritative gate must still measure and qualify its exact candidate. The 4 GiB RSS, 2 GiB manifest and logical storage, 2.125 GiB physical storage, 90-second RPC, and 2,048-byte-per-graph-item ceilings remain unchanged. The original 48-file storage fixture measured 691,245 logical bytes and 332,517 bytes of unchanged growth after normalization, compared with 1,656,908 and 828,454 bytes before it; these regression checks remain in force.",
   "limits": {
     "mcp_peak_rss_bytes": 4294967296,
     "max_snapshot_bytes": 2147483648,
-    "v11_duration_ms": 1200000,
+    "v11_duration_ms": 900000,
     "max_mcp_call_ms": 90000,
     "analysis_storage_logical_bytes": 2147483648,
     "analysis_storage_physical_bytes": 2281701376,
-    "post_warmup_analysis_growth_bytes": 838860800,
+    "post_warmup_analysis_growth_bytes": 536870912,
     "analysis_storage_bytes_per_graph_item": 2048
   }
 }

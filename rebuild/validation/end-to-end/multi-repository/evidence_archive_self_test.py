@@ -7,6 +7,7 @@ import copy
 import importlib.util
 import io
 import json
+import runpy
 from pathlib import Path
 import subprocess
 import sys
@@ -23,6 +24,7 @@ PROVIDER_EVALUATION = (
     ROOT
     / "rebuild/validation/privacy/background-provider-qualification/evaluation.json"
 )
+PERFORMANCE = runpy.run_path(str(HERE / "performance.py"))
 HEAD = "a" * 40
 PROMPT_SENTINEL = "PROMPT_SENTINEL_MUST_NOT_SURVIVE_7f91"
 SENSITIVE_OPERANDS = (
@@ -97,10 +99,7 @@ def payloads() -> dict[str, object]:
                 "phase_8_ready": True,
                 "performance": {
                     "status": "passed", "measurement_complete": True, "exceeded": [],
-                    "limits": {key: 100 for key in (
-                        "mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms",
-                        "analysis_storage_logical_bytes", "analysis_storage_physical_bytes",
-                        "post_warmup_analysis_growth_bytes", "analysis_storage_bytes_per_graph_item")},
+                    "limits": PERFORMANCE["maintained_limits"](),
                     "observed": {"mcp_peak_rss_bytes": 100, "max_snapshot_bytes": 100,
                         "v11_duration_ms": 100, "max_mcp_call_ms": 100,
                         "analysis_storage_logical_bytes": 100,
@@ -1191,12 +1190,17 @@ def main() -> int:
                 "evidence"
             ]["retained_evidence"]
 
-        for metric in ("mcp_peak_rss_bytes", "max_snapshot_bytes", "v11_duration_ms", "max_mcp_call_ms",
-                       "analysis_storage_logical_bytes", "analysis_storage_physical_bytes",
-                       "post_warmup_analysis_growth_bytes", "analysis_storage_bytes_per_graph_item"):
+        for metric in PERFORMANCE["METRICS"]:
             rejected_attestation(
                 f"falsified-performance-{metric}",
-                lambda values: values["capsule.json"]["official_v11"]["performance"]["observed"].__setitem__(metric, 101),
+                lambda values, metric=metric: values["capsule.json"]["official_v11"]["performance"]["observed"].__setitem__(
+                    metric, PERFORMANCE["maintained_limits"]()[metric] + 1),
+            )
+        for metric in ("v11_duration_ms", "post_warmup_analysis_growth_bytes"):
+            rejected_attestation(
+                f"relaxed-limit-{metric}",
+                lambda values, metric=metric: values["capsule.json"]["official_v11"]["performance"]["limits"].__setitem__(
+                    metric, PERFORMANCE["maintained_limits"]()[metric] + 1),
             )
         rejected_attestation("missing-performance", lambda values:
             values["capsule.json"]["official_v11"].pop("performance"))
