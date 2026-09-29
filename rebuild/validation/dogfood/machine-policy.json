@@ -116,7 +116,7 @@
     "naturalistic_prompt_integrity": {
       "authority": "qualitative_review_required",
       "uncertainty": "qualitative_review_required",
-      "owner": "validation-plan.md/blind campaign",
+      "owner": "validation-plan.md/naturalistic observation",
       "rationale": "Exact task transport is separately integrity-checked; lexical coaching and naturalness are semantic signals.",
       "review_groups": [
         "authority",

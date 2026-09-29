@@ -563,7 +563,7 @@ class WorkflowTests(unittest.TestCase):
         manifest = c.load_evidence_set(self.root)
         self.assertFalse((self.root / "evaluator/qualification-profile.json").exists())
         for state in manifest["works"].values():
-            descriptor = c.read_json(c.evaluator_descriptor_path(
+            descriptor = c.read_json(c.frozen_descriptor_path(
                 self.root, state["repository_class"], state["work_label"]))
             self.assertEqual(descriptor["contract"], "naturalistic-observation-1")
             self.assertFalse({"materiality_obligations", "evaluation_basis", "behavior_review"} & set(descriptor))

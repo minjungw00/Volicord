@@ -40,10 +40,8 @@ from codex_events import EvidenceError, command_is_repository_inspection, load_c
 
 ROOT = Path(__file__).resolve().parents[3]
 CLASSES = harness.CLASSES
-MATERIALITY_OBLIGATIONS = harness.MATERIALITY_OBLIGATIONS
 WORK_SLOTS_BY_REPOSITORY = harness.WORK_SLOTS_BY_REPOSITORY
 QUALIFICATION_WORK_COUNT = harness.QUALIFICATION_WORK_COUNT
-PRIVATE_OBLIGATION_MINIMUMS = harness.PRIVATE_OBLIGATION_MINIMUMS
 DOCUMENT_KINDS = (
     "project-architecture-guide",
     "decision-report",
@@ -65,7 +63,7 @@ RAW_NAMES = {"start.rollout.jsonl", "resume.rollout.jsonl"}
 PROHIBITED_ARCHIVE_SUFFIXES = (".sqlite", ".sqlite3", ".db", "-wal", "-shm", "-journal")
 PROJECT_ID = re.compile(r"[0-9a-f]{32}")
 BATCH_CAPTURE_COUNT = harness.QUALIFICATION_SESSION_COUNT
-REVIEW_SLOT_ID = re.compile(r"[0-9a-f]{32}")
+WORK_SLOT_ID = re.compile(r"journey-(?:volicord|small-python|polyglot-medium)-work-[abc]")
 CANDIDATE_ARTIFACTS = ("volicord", "volicord-mcp", "volicord-viewer")
 
 
@@ -176,7 +174,7 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
         )
     value = read_json(campaign_file(root))
     if (value.get("kind") != "phase8_dogfood_campaign"
-            or value.get("schema_version") != 6):
+            or value.get("schema_version") != 7):
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
@@ -453,121 +451,22 @@ def verify_retained_repository_states(root: Path, manifest: dict[str, Any]) -> N
     verify_final_repository_states(root, manifest, live=False)
 
 
-def work_blind_coverage(root: Path, state: dict[str, Any], descriptor: dict[str, Any]) -> dict[str, Any]:
-    fixed = read_json(slot_artifact_path(root, "reviewer", "provisional", state["review_slot_id"]))
-    independent = descriptor.get("behavior_review", {}).get("independent_review", {})
-    errors = harness.blind_first_review_errors(independent.get("review_preparation"), fixed,
-        len(descriptor.get("behavior_review", {}).get("provenance_references", [])))
-    errors += harness.classification_comparison_errors(independent.get("classification_comparison"),
-        fixed, descriptor.get("materiality_obligations"),
-        len(descriptor.get("behavior_review", {}).get("provenance_references", [])))
-    if independent.get("provisional_review") != fixed:
-        errors.append("fixed provisional review changed in sealed descriptor")
-    obligations = harness.obligation_set(descriptor.get("materiality_obligations"))
-    comparison = independent.get("classification_comparison")
-    coverage_rows = comparison.get("obligation_coverage", []) if isinstance(comparison, dict) else []
-    reviewer_correct = any(isinstance(row, dict) and row.get("applicability_resolution") == "reviewer_correct"
-                           for row in coverage_rows) if isinstance(coverage_rows, list) else False
-    status = "blind_coverage_gap" if errors else "evaluator_obligation_invalid" if reviewer_correct else "passed"
-    return {"status": status, "obligation_count": len(obligations),
-            "assessed_count": 0 if errors else len(obligations),
-            "blind_coverage_gaps": sorted(set(errors))}
 
 
-def new_review_slot_id() -> str:
-    return secrets.token_hex(16)
 
 
-def opaque_order_exposes_logical_work_order(
-    assignments: list[tuple[str, str, tuple[str, ...], str]],
-) -> bool:
-    for kind in CLASSES:
-        if len(work_labels(kind)) < 2:
-            continue
-        ordered = sorted(
-            (item for item in assignments if item[0] == kind),
-            key=lambda item: item[3],
-        )
-        if [label for _kind, label, _obligations, _slot in ordered] == list(
-            work_labels(kind)
-        ):
-            return True
-    return False
 
 
-def new_private_work_obligation_assignments() -> list[tuple[str, str, tuple[str, ...]]]:
-    positions = [
-        (kind, work)
-        for kind in CLASSES
-        for work in work_labels(kind)
-    ]
-    profiles = [
-        ("explicit_user_owned_decision", "delegated_implementation_choice"),
-        ("hidden_user_owned_decision",),
-        ("hidden_user_owned_decision", "exploratory_uncertainty"),
-        ("research_or_no_question", "repository_or_environment_fact"),
-        ("learning_deliberation", "learning_routine_control"),
-    ]
-    generator = secrets.SystemRandom()
-    for _attempt in range(128):
-        generator.shuffle(profiles)
-        assignments = [
-            (kind, work, tuple(sorted(obligations)))
-            for (kind, work), obligations in zip(positions, profiles, strict=True)
-        ]
-        hidden_repositories = {
-            kind
-            for kind, _work, obligations in assignments
-            if "hidden_user_owned_decision" in obligations
-        }
-        if len(hidden_repositories) >= 2:
-            return assignments
-    raise CampaignError("private Work obligations could not satisfy repository-separation constraints")
 
 
-def validate_private_work_obligation_assignments(
-    assignments: list[tuple[str, str, tuple[str, ...]]],
-) -> None:
-    positions = [(kind, work) for kind, work, _obligations in assignments]
-    expected_positions = [
-        (kind, work)
-        for kind in CLASSES
-        for work in work_labels(kind)
-    ]
-    obligation_counts = Counter(
-        obligation
-        for _kind, _work, obligations in assignments
-        for obligation in obligations
-    )
-    hidden_repositories = {
-        kind
-        for kind, _work, obligations in assignments
-        if "hidden_user_owned_decision" in obligations
-    }
-    if (
-        positions != expected_positions
-        or any(
-            obligation_counts[obligation] < minimum
-            for obligation, minimum in PRIVATE_OBLIGATION_MINIMUMS.items()
-        )
-        or any(
-            obligation not in MATERIALITY_OBLIGATIONS
-            for _kind, _work, obligations in assignments
-            for obligation in obligations
-        )
-        or len(hidden_repositories) < 2
-    ):
-        raise CampaignError("private Work obligations violate qualification constraints")
 
 
-def slot_mapping_path(root: Path) -> Path:
-    return root / "evaluator/slot-mapping.json"
 
 
-def slot_root(root: Path, review_slot_id: str) -> Path:
-    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
+def slot_root(root: Path, work_slot_id: str) -> Path:
+    if WORK_SLOT_ID.fullmatch(work_slot_id) is None:
         raise CampaignError("review slot identity is malformed")
-    return root / "slots" / review_slot_id
+    return root / "slots" / work_slot_id
 
 
 def work_state(
@@ -586,200 +485,27 @@ def work_root(
     work_label: str,
     campaign: dict[str, Any] | None = None,
 ) -> Path:
-    return slot_root(root, work_state(root, kind, work_label, campaign)["review_slot_id"])
+    return slot_root(root, work_state(root, kind, work_label, campaign)["work_slot_id"])
 
 
-def slot_artifact_path(root: Path, plane: str, directory: str, review_slot_id: str) -> Path:
-    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
+def slot_artifact_path(root: Path, plane: str, directory: str, work_slot_id: str) -> Path:
+    if WORK_SLOT_ID.fullmatch(work_slot_id) is None:
         raise CampaignError("review slot identity is malformed")
-    path = root / plane / directory / f"{review_slot_id}.json"
+    path = root / plane / directory / f"{work_slot_id}.json"
     for candidate in (root / plane, root / plane / directory, path):
         if candidate.is_symlink() or not candidate.resolve(strict=False).is_relative_to(root.resolve()):
             raise CampaignError("campaign-owned artifact path escaped the private root")
     return path
 
 
-def slot_mapping_value(
-    works: dict[str, Any],
-    obligations_by_slot: dict[str, tuple[str, ...]],
-    commitment_nonce: str,
-) -> dict[str, Any]:
-    entries = []
-    for key, state in works.items():
-        entries.append({
-            "review_slot_id": state["review_slot_id"],
-            "journey_id": state["journey_id"],
-            "repository_class": state["repository_class"],
-            "work_slot_id": state["work_slot_id"],
-            "work_label": state["work_label"],
-            "materiality_obligations": list(obligations_by_slot[state["review_slot_id"]]),
-            "repository_revision": state["repository_revision"],
-            "authoritative_workspace": state["repository_path"],
-            "reviewer_workspace": state["reviewer_repository_path"],
-            "evaluator_input": f"evaluator/inputs/{state['review_slot_id']}.json",
-            "authoritative_descriptor": f"evaluator/descriptors/{state['review_slot_id']}.json",
-            "private_work_key": key,
-        })
-    return {
-        "kind": "phase8_dogfood_opaque_slot_mapping",
-        "visibility": "evaluator_steward_private",
-        "commitment_nonce": commitment_nonce,
-        "entries": sorted(entries, key=lambda item: item["review_slot_id"]),
-    }
 
 
-def qualification_profile_path(root: Path) -> Path:
-    return root / "evaluator/qualification-profile.json"
 
 
-def qualification_profile_value(
-    campaign_id: str,
-    candidate_head: str,
-    mapping: dict[str, Any],
-) -> dict[str, Any]:
-    obligation_counts = Counter(
-        obligation
-        for entry in mapping["entries"]
-        for obligation in entry["materiality_obligations"]
-    )
-    hidden_repositories = sorted({
-        entry["repository_class"]
-        for entry in mapping["entries"]
-        if "hidden_user_owned_decision" in entry["materiality_obligations"]
-    })
-    return {
-        "kind": "phase8_dogfood_private_qualification_profile",
-        "visibility": "evaluator_steward_private",
-        "campaign_id": campaign_id,
-        "candidate_head": candidate_head,
-        "commitment_nonce": mapping["commitment_nonce"],
-        "assignment_count": len(mapping["entries"]),
-        "obligation_coverage": dict(sorted(obligation_counts.items())),
-        "obligation_minimums": PRIVATE_OBLIGATION_MINIMUMS,
-        "hidden_repository_classes": hidden_repositories,
-        "slot_mapping_sha256": hashlib.sha256(json_bytes(mapping)).hexdigest(),
-    }
 
 
-def validate_private_qualification_profile(
-    root: Path, campaign: dict[str, Any]
-) -> dict[str, Any]:
-    path = slot_mapping_path(root)
-    if not path.is_file():
-        raise CampaignError("campaign-private opaque slot mapping is unavailable")
-    expected_hash = campaign.get("opaque_slot_mapping_sha256")
-    if not isinstance(expected_hash, str) or harness.sha256(path) != expected_hash:
-        raise CampaignError("campaign-private opaque slot mapping hash mismatch")
-    mapping = read_json(path)
-    works = campaign.get("works")
-    if not isinstance(mapping, dict) or not isinstance(works, dict):
-        raise CampaignError("campaign-private opaque slot mapping is malformed")
-    entries = mapping.get("entries")
-    if (
-        set(mapping) != {"kind", "visibility", "commitment_nonce", "entries"}
-        or mapping.get("kind") != "phase8_dogfood_opaque_slot_mapping"
-        or mapping.get("visibility") != "evaluator_steward_private"
-        or not isinstance(mapping.get("commitment_nonce"), str)
-        or re.fullmatch(r"[0-9a-f]{64}", mapping["commitment_nonce"]) is None
-        or not isinstance(entries, list)
-    ):
-        raise CampaignError("campaign-private opaque slot mapping is malformed")
-    public_works_by_slot = {
-        state.get("review_slot_id"): (key, state)
-        for key, state in works.items()
-        if isinstance(state, dict)
-    }
-    for entry in entries:
-        if not isinstance(entry, dict):
-            raise CampaignError("campaign-private opaque slot mapping is malformed")
-        matched = public_works_by_slot.get(entry.get("review_slot_id"))
-        if matched is None:
-            raise CampaignError("campaign-private opaque slot mapping is ambiguous or changed")
-        key, state = matched
-        if entry != {
-            "review_slot_id": state.get("review_slot_id"),
-            "journey_id": state.get("journey_id"),
-            "repository_class": state.get("repository_class"),
-            "work_slot_id": state.get("work_slot_id"),
-            "work_label": state.get("work_label"),
-            "materiality_obligations": entry.get("materiality_obligations"),
-            "repository_revision": state.get("repository_revision"),
-            "authoritative_workspace": state.get("repository_path"),
-            "reviewer_workspace": state.get("reviewer_repository_path"),
-            "evaluator_input": f"evaluator/inputs/{state.get('review_slot_id')}.json",
-            "authoritative_descriptor": f"evaluator/descriptors/{state.get('review_slot_id')}.json",
-            "private_work_key": key,
-        }:
-            raise CampaignError("campaign-private opaque slot mapping is ambiguous or changed")
-    ids = [entry.get("review_slot_id") for entry in mapping.get("entries", [])]
-    if (
-        len(ids) != QUALIFICATION_WORK_COUNT
-        or len(ids) != len(set(ids))
-        or any(not isinstance(value, str) or REVIEW_SLOT_ID.fullmatch(value) is None for value in ids)
-    ):
-        raise CampaignError("campaign-private opaque slot mapping is duplicate or malformed")
-    repository_counts = {
-        kind: sum(entry.get("repository_class") == kind for entry in mapping["entries"])
-        for kind in CLASSES
-    }
-    obligation_counts = Counter(
-        obligation
-        for entry in mapping["entries"]
-        for obligation in entry.get("materiality_obligations", [])
-    )
-    hidden_repositories = {
-        entry.get("repository_class")
-        for entry in mapping["entries"]
-        if "hidden_user_owned_decision" in entry.get("materiality_obligations", [])
-    }
-    if (
-        repository_counts != {
-            kind: len(labels) for kind, labels in WORK_SLOTS_BY_REPOSITORY.items()
-        }
-        or any(
-            obligation_counts[obligation] < minimum
-            for obligation, minimum in PRIVATE_OBLIGATION_MINIMUMS.items()
-        )
-        or len(hidden_repositories) < 2
-    ):
-        raise CampaignError("campaign-private behavior assignment violates qualification constraints")
-    profile_path = qualification_profile_path(root)
-    expected_profile_hash = campaign.get("qualification_profile_sha256")
-    if (
-        not profile_path.is_file()
-        or not isinstance(expected_profile_hash, str)
-        or harness.sha256(profile_path) != expected_profile_hash
-    ):
-        raise CampaignError("campaign-private qualification profile hash mismatch")
-    profile = read_json(profile_path)
-    expected_profile = qualification_profile_value(
-        campaign["campaign_id"], campaign["candidate_head"], mapping
-    )
-    if profile != expected_profile:
-        raise CampaignError("campaign-private qualification profile is malformed or incomplete")
-    return profile
 
 
-def private_materiality_obligations(
-    root: Path,
-    state: dict[str, Any],
-    campaign: dict[str, Any] | None = None,
-) -> tuple[str, ...]:
-    campaign = campaign or load_campaign(root)
-    mapping = read_json(slot_mapping_path(root))
-    matches = [
-        entry.get("materiality_obligations")
-        for entry in mapping.get("entries", [])
-        if entry.get("review_slot_id") == state.get("review_slot_id")
-    ]
-    if (
-        len(matches) != 1
-        or not isinstance(matches[0], list)
-        or not matches[0]
-        or any(item not in MATERIALITY_OBLIGATIONS for item in matches[0])
-    ):
-        raise CampaignError("private Work obligations are unavailable")
-    return tuple(matches[0])
 
 
 def inventory_path(root: Path) -> Path:
@@ -829,186 +555,31 @@ def copy_exact(source: Path, destination: Path) -> None:
         raise CampaignError("raw capture copy did not preserve source bytes")
 
 
-def evaluator_input_path(root: Path, kind: str, work: str) -> Path:
+
+
+def frozen_descriptor_path(root: Path, kind: str, work: str) -> Path:
     state = work_state(root, kind, work)
-    return slot_artifact_path(root, "evaluator", "inputs", state["review_slot_id"])
+    return slot_artifact_path(root, "tasks", "descriptors", state["work_slot_id"])
 
 
-def evaluator_descriptor_path(root: Path, kind: str, work: str) -> Path:
-    state = work_state(root, kind, work)
-    return slot_artifact_path(root, "tasks", "descriptors", state["review_slot_id"])
 
 
-def reviewer_preparation_path(root: Path, kind: str, work: str) -> Path:
-    state = work_state(root, kind, work)
-    return slot_artifact_path(root, "reviewer", "preparations", state["review_slot_id"])
 
 
-def reviewer_provisional_draft_path(root: Path, kind: str, work: str) -> Path:
-    state = work_state(root, kind, work)
-    return slot_artifact_path(root, "reviewer", "drafts", state["review_slot_id"])
 
 
-def reviewer_provisional_path(root: Path, kind: str, work: str) -> Path:
-    state = work_state(root, kind, work)
-    return slot_artifact_path(root, "reviewer", "provisional", state["review_slot_id"])
 
 
-def reviewer_index_path(root: Path) -> Path:
-    return root / "reviewer/index.json"
 
 
-def reviewer_provisional_contract_path(root: Path) -> Path:
-    return root / "reviewer/provisional-review-contract.json"
 
 
-def reviewer_provisional_contract_reference(root: Path) -> dict[str, str]:
-    path = reviewer_provisional_contract_path(root)
-    try:
-        value = read_json(path)
-    except CampaignError as error:
-        raise CampaignError("reviewer provisional-review contract is unavailable") from error
-    if value != harness.provisional_review_contract():
-        raise CampaignError("reviewer provisional-review contract is stale or contradictory")
-    return {
-        "path": relative(root, path),
-        "sha256": harness.sha256(path),
-    }
 
 
-def private_work_for_review_slot(
-    campaign: dict[str, Any], review_slot_id: str
-) -> dict[str, Any]:
-    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
-        raise CampaignError("review slot identity is malformed")
-    matches = [
-        state
-        for state in campaign.get("works", {}).values()
-        if state.get("review_slot_id") == review_slot_id
-    ]
-    if len(matches) != 1:
-        raise CampaignError("review slot does not identify one current campaign preparation")
-    return matches[0]
 
 
-def render_reviewer_index(root: Path) -> Path:
-    campaign = load_campaign(root)
-    contract = reviewer_provisional_contract_reference(root)
-    entries = []
-    for state in sorted(
-        campaign["works"].values(), key=lambda item: item["review_slot_id"]
-    ):
-        review_slot_id = state["review_slot_id"]
-        entries.append({
-            "review_slot_id": review_slot_id,
-            "preparation": f"preparations/{review_slot_id}.json",
-            "discovery_draft": f"drafts/{review_slot_id}.json",
-            "reviewer_workspace": f"workspaces/{review_slot_id}/repository",
-        })
-    path = reviewer_index_path(root)
-    write_json(path, {
-        "kind": "phase8_blind_review_index",
-        "ordering": "opaque_review_slot_id",
-        "provisional_review_contract": contract,
-        "preflight_operation": "validate-discovery",
-        "preflight_mutates_campaign": False,
-        "operation_sequence": ["prepare-review", "validate-discovery", "record-discovery",
-            "prepare-critique", "validate-critique", "record-critique",
-            "prepare-adjudication", "validate-provisional-review", "record-provisional-review",
-            "reveal-qualification-profile"],
-        "fresh_independent_sessions": "operator_required_not_machine_attested",
-        "entries": entries,
-    })
-    return path
 
 
-def json_keys(value: Any) -> set[str]:
-    if isinstance(value, dict):
-        return set(value).union(*(json_keys(item) for item in value.values()))
-    if isinstance(value, list):
-        return set().union(*(json_keys(item) for item in value)) if value else set()
-    return set()
-
-
-def assert_reviewer_artifacts_are_behavior_opaque(root: Path) -> None:
-    index = read_json(reviewer_index_path(root))
-    entries = index.get("entries") if isinstance(index, dict) else None
-    if (
-        not isinstance(index, dict)
-        or index.get("kind") != "phase8_blind_review_index"
-        or index.get("ordering") != "opaque_review_slot_id"
-        or index.get("provisional_review_contract")
-        != reviewer_provisional_contract_reference(root)
-        or index.get("preflight_operation") != "validate-discovery"
-        or index.get("preflight_mutates_campaign") is not False
-        or index.get("operation_sequence") != ["prepare-review", "validate-discovery", "record-discovery",
-            "prepare-critique", "validate-critique", "record-critique", "prepare-adjudication",
-            "validate-provisional-review", "record-provisional-review", "reveal-qualification-profile"]
-        or index.get("fresh_independent_sessions") != "operator_required_not_machine_attested"
-        or not isinstance(entries, list)
-        or [item.get("review_slot_id") for item in entries]
-        != sorted(item.get("review_slot_id") for item in entries)
-    ):
-        raise CampaignError("blind reviewer index does not use opaque-slot ordering")
-    contract = read_json(reviewer_provisional_contract_path(root))
-    if contract != harness.provisional_review_contract():
-        raise CampaignError("reviewer provisional-review contract is stale or contradictory")
-    prohibited_keys = {
-        "materiality_obligations",
-        "work",
-        "logical_cycle",
-        "journey_id",
-        "work_slot_id",
-        "work_label",
-        "repository_class",
-        "evaluation_basis",
-        "possible_material_concerns",
-        "counterfactual_review",
-        "evaluator_recommendation",
-        "evaluator_classification",
-        "expected_question",
-        "expected_decision",
-        "hidden_behavior_review_conclusion",
-        "slot_to_behavior_mapping",
-        "behavior_histogram",
-        "hidden_repository_classes",
-        "qualification_profile",
-        "qualification_profile_truth",
-    }
-    if json_keys(contract).intersection(prohibited_keys):
-        raise CampaignError("reviewer provisional-review contract exposes evaluator material")
-    for directory in ("preparations", "drafts", "discovery", "critique-preparations",
-                      "critique-drafts", "critique", "adjudication-preparations", "provisional"):
-        for path in sorted((root / "reviewer" / directory).glob("*.json")):
-            if REVIEW_SLOT_ID.fullmatch(path.stem) is None:
-                raise CampaignError("blind reviewer filename exposes a non-opaque identity")
-            if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
-                raise CampaignError("blind reviewer artifact path escaped the private root")
-            value = read_json(path)
-            if json_keys(value).intersection(prohibited_keys):
-                raise CampaignError("blind reviewer artifact exposes evaluator identity or material")
-            if directory == "preparations" and any(
-                materiality_obligations in path.read_text(encoding="utf-8")
-                for materiality_obligations in MATERIALITY_OBLIGATIONS
-            ):
-                raise CampaignError("blind reviewer artifact exposes a behavior class")
-    for entry in entries:
-        review_slot_id = entry.get("review_slot_id")
-        if not isinstance(review_slot_id, str) or REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
-            raise CampaignError("blind reviewer index contains a malformed opaque slot")
-        expected = {
-            "review_slot_id": review_slot_id,
-            "preparation": f"preparations/{review_slot_id}.json",
-            "discovery_draft": f"drafts/{review_slot_id}.json",
-            "reviewer_workspace": f"workspaces/{review_slot_id}/repository",
-        }
-        if entry != expected:
-            raise CampaignError("blind reviewer index contains a logical identity mapping")
-        workspace = root / "reviewer" / entry["reviewer_workspace"]
-        if workspace.resolve(strict=False) != (
-            root / "reviewer/workspaces" / review_slot_id / "repository"
-        ).resolve(strict=False):
-            raise CampaignError("blind reviewer workspace path is not opaque")
 
 
 def descriptor_semantic_sha256(value: dict[str, Any]) -> str:
@@ -1018,10 +589,10 @@ def descriptor_semantic_sha256(value: dict[str, Any]) -> str:
     ).hexdigest()
 
 
-def operator_task_artifact_path(root: Path, review_slot_id: str, role: str) -> Path:
-    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None or role not in {"start", "resume"}:
+def operator_task_artifact_path(root: Path, work_slot_id: str, role: str) -> Path:
+    if WORK_SLOT_ID.fullmatch(work_slot_id) is None or role not in {"start", "resume"}:
         raise CampaignError("sealed operator task identity is malformed")
-    return root / "operator/tasks" / f"{review_slot_id}.{role}.txt"
+    return root / "operator/tasks" / f"{work_slot_id}.{role}.txt"
 
 
 def write_operator_task_artifacts(
@@ -1036,7 +607,7 @@ def write_operator_task_artifacts(
         fields.append(("resume", "fresh_resume_user_task"))
     for role, field in fields:
         content = descriptor[field].encode("utf-8")
-        path = operator_task_artifact_path(root, state["review_slot_id"], role)
+        path = operator_task_artifact_path(root, state["work_slot_id"], role)
         if path.exists():
             raise CampaignError(
                 f"sealed operator task artifact already exists: {relative(root, path)}"
@@ -1066,7 +637,7 @@ def verify_operator_task_artifacts(
     if "resume" in expected_roles:
         fields.append(("resume", "fresh_resume_user_task"))
     for role, field in fields:
-        expected_path = operator_task_artifact_path(root, state["review_slot_id"], role)
+        expected_path = operator_task_artifact_path(root, state["work_slot_id"], role)
         record = artifacts.get(role)
         expected_content = descriptor[field].encode("utf-8")
         expected_sha256 = hashlib.sha256(expected_content).hexdigest()
@@ -1086,253 +657,24 @@ def verify_operator_task_artifacts(
     return artifacts
 
 
-def descriptor_skeleton(
-    kind: str,
-    work_label: str,
-    materiality_obligations: tuple[str, ...],
-    revision: str,
-    candidate_head: str,
-) -> dict[str, Any]:
-    owner_path = "rebuild/docs/design/inquiry-and-decision.md"
-    if harness.is_user_owned_behavior(materiality_obligations):
-        counterfactual_review = {
-            "applicability": "required_for_material_user_owned_decision",
-            "specific_unresolved_outcome": "REPLACE with the exact externally meaningful unresolved outcome",
-            "frozen_task_necessity": "REPLACE with why the exact frozen task necessarily encounters the outcome",
-            "repository_research_cannot_settle": "REPLACE with why repository/environment research cannot settle it",
-            "repository_facts_settle_outcome": False,
-            "accepted_decision_or_contract_cannot_settle": "REPLACE with why no accepted Decision or contract settles it",
-            "accepted_decision_or_contract_settles_outcome": False,
-            "not_delegated_basis": "REPLACE with why the outcome is not delegated",
-            "outcome_within_delegated_authority": False,
-            "materially_different_consequences": [
-                "REPLACE with one material consequence",
-                "REPLACE with a materially different consequence",
-            ],
-            "no_question_approaches": [{
-                "approach": "REPLACE with a no-question approach considered",
-                "task_satisfaction": "fails_frozen_task",
-                "assessment": "REPLACE with why it fails the frozen task or still chooses the same user-owned outcome",
-            }],
-            "material_outcome_unavoidable": True,
-            "operator_prompt_does_not_disclose_material_outcome": (
-                harness.has_obligation(materiality_obligations, "hidden_user_owned_decision")
-            ),
-            "conclusion": "unavoidable_user_owned_outcome",
-        }
-    else:
-        counterfactual_review = {
-            "applicability": "not_required_for_behavior_class",
-            "specific_unresolved_outcome": None,
-            "frozen_task_necessity": None,
-            "repository_research_cannot_settle": None,
-            "repository_facts_settle_outcome": None,
-            "accepted_decision_or_contract_cannot_settle": None,
-            "accepted_decision_or_contract_settles_outcome": None,
-            "not_delegated_basis": None,
-            "outcome_within_delegated_authority": None,
-            "materially_different_consequences": [],
-            "no_question_approaches": [],
-            "material_outcome_unavoidable": False,
-            "operator_prompt_does_not_disclose_material_outcome": None,
-            "conclusion": "not_applicable",
-        }
-    return {
-        "kind": "phase8_work_descriptor",
-        "producer": "volicord_phase8_codex_event_normalizer",
-        "journey_id": journey_id(kind),
-        "repository_class": kind,
-        "work_slot_id": work_key(kind, work_label),
-        "work_label": work_label,
-        "materiality_obligations": list(materiality_obligations),
-        "repository_revision": revision,
-        "work_user_task": "REPLACE with the frozen naturalistic work task",
-        "fresh_resume_user_task": (
-            "REPLACE with the frozen naturalistic resume task"
-            if "resume" in session_roles(kind, work_label)
-            else None
-        ),
-        "work_scope": {
-            "affected_paths": ["REPLACE/with-real-path", "REPLACE/with-second-real-path"],
-            "user_visible_behavior": False,
-            "boundary_kind": "component",
-        },
-        "evaluation_basis": {
-            "materiality_obligations": list(materiality_obligations),
-            "repository_facts": ["REPLACE with an established repository fact"],
-            "accepted_contract_constraints": [],
-            "delegated_boundaries": [],
-            "possible_material_concerns": [],
-            "consequences": ["REPLACE with a plausible consequence"],
-            "facts_not_for_user": ["REPLACE with a fact the agent must research"],
-            "current_relevance": "REPLACE with why this behavior class is relevant now",
-            "learning_routine_basis": ({
-                "outcome_scope": "REPLACE with a routine explanatory detail distinct from the deliberation fork",
-                "participation_basis": "REPLACE with active learning participation relevant to this detail",
-                "limited_learning_value": "REPLACE with why this detail has no meaningful transferable fork",
-                "non_interruption_basis": "REPLACE with why routine explanation is enough",
-                "affected_paths": ["REPLACE/with-real-path"],
-                "evidence_provenance_reference_indices": [0],
-            } if harness.has_obligation(materiality_obligations, "learning_routine_control") else None),
-            "exploratory_uncertainty_basis": ({
-                "outcome_scope": "REPLACE with the specific unsettled technical outcome",
-                "uncertainty_basis": "REPLACE with the exact evidence gap",
-                "investigation_or_prototype": "REPLACE with research, prototype, or evidence-backed deferment needed",
-                "why_user_choice_premature": "REPLACE with why immediate user choice would be uninformed",
-                "affected_paths": ["REPLACE/with-real-path"],
-                "evidence_provenance_reference_indices": [0],
-            } if harness.has_obligation(materiality_obligations, "exploratory_uncertainty") else None),
-            "learning_deliberation_basis": ({
-                "outcome_scope": "REPLACE with the specific agent-owned fork and affected work scope",
-                "affected_paths": ["REPLACE/with-real-path"],
-                "agent_owned_authority": "REPLACE with the exact delegated authority and active learning participation",
-                "alternatives": ["REPLACE with credible alternative one", "REPLACE with credible alternative two"],
-                "meaningful_consequence": "REPLACE with the technical consequence of this choice",
-                "non_obvious_tradeoff": "REPLACE with the non-obvious tradeoff or uncertainty",
-                "transferable_principle": "REPLACE with why this teaches a principle beyond routine wording",
-                "interruption_necessity": "REPLACE with why pre-work participation is justified over routine explanation",
-                "evidence_provenance_reference_indices": [0],
-            } if harness.has_obligation(materiality_obligations, "learning_deliberation") else None),
-        },
-        "behavior_review": {
-            "kind": "phase8_behavior_review",
-            "classification": list(materiality_obligations),
-            "provenance_references": [{
-                "scope": "volicord_active_owner",
-                "path": owner_path,
-                "sha256": harness.sha256(ROOT / owner_path),
-                "repository_revision": candidate_head,
-            }],
-            "outcome_rationale": "REPLACE after independent review",
-            "user_ownership_assessment": "REPLACE after independent review",
-            "silent_choice_risk_assessment": "REPLACE after independent review",
-            "unresolved_material_user_outcome": harness.is_user_owned_behavior(materiality_obligations),
-            "independent_review": {
-                "status": "pending",
-                "reviewer_role": "campaign_preparation_independent_reviewer",
-                "basis": "REPLACE after independent review",
-                "review_preparation": None,
-                "provisional_review": None,
-                "classification_comparison": {
-                    "status": "unresolved_conflict",
-                    "provisional_classification": "REPLACE with the immutable provisional classification",
-                    "evaluator_classification": list(materiality_obligations),
-                    "obligation_coverage": [],
-                    "disagreements": ["REPLACE with exact disagreement field names"],
-                    "resolution_basis": "REPLACE with inspectable source/owner evidence resolving the comparison",
-                    "provenance_reference_indices": [0],
-                },
-                "fact_authority_agreement": {
-                    "status": "unresolved_conflict",
-                    "evaluator_conclusions": ["REPLACE with the evaluator fact and authority conclusion"],
-                    "reviewer_conclusions": ["REPLACE with the independent reviewer conclusion"],
-                    "conflicts": ["REPLACE with any unresolved disagreement or clear this list after agreement"],
-                    "resolution_basis": "REPLACE with inspectable source/owner evidence resolving agreement",
-                    "provenance_reference_indices": [0],
-                },
-                "counterfactual_review": counterfactual_review,
-            },
-        },
-    }
 
 
-def hidden_evaluator_strings(descriptor: dict[str, Any]) -> set[str]:
-    hidden: set[str] = set()
-    basis = descriptor.get("evaluation_basis", {})
-    for field, value in (basis.items() if isinstance(basis, dict) else ()):
-        if field == "materiality_obligations":
-            continue
-        values = value if isinstance(value, list) else [value]
-        hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
-    review = descriptor.get("behavior_review", {})
-    for field in (
-        "outcome_rationale",
-        "user_ownership_assessment",
-        "silent_choice_risk_assessment",
-    ):
-        value = review.get(field) if isinstance(review, dict) else None
-        values = value if isinstance(value, list) else [value]
-        hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
-    independent = review.get("independent_review", {}) if isinstance(review, dict) else {}
-    basis = independent.get("basis") if isinstance(independent, dict) else None
-    if isinstance(basis, str) and len(basis) >= 8:
-        hidden.add(basis)
-    comparison = (
-        independent.get("classification_comparison", {})
-        if isinstance(independent, dict)
-        else {}
-    )
-    comparison_basis = (
-        comparison.get("resolution_basis") if isinstance(comparison, dict) else None
-    )
-    if isinstance(comparison_basis, str) and len(comparison_basis) >= 8:
-        hidden.add(comparison_basis)
-    coverage = comparison.get("obligation_coverage", []) if isinstance(comparison, dict) else []
-    for row in coverage if isinstance(coverage, list) else []:
-        if isinstance(row, dict):
-            hidden.update(value for field in ("basis", "evaluator_outcome_scope")
-                if isinstance((value := row.get(field)), str) and len(value) >= 8)
-    agreement = (
-        independent.get("fact_authority_agreement", {})
-        if isinstance(independent, dict)
-        else {}
-    )
-    for field in (
-        "evaluator_conclusions",
-        "reviewer_conclusions",
-        "conflicts",
-        "resolution_basis",
-    ):
-        value = agreement.get(field) if isinstance(agreement, dict) else None
-        values = value if isinstance(value, list) else [value]
-        hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
-    counterfactual = (
-        independent.get("counterfactual_review", {})
-        if isinstance(independent, dict)
-        else {}
-    )
-    for field in (
-        "specific_unresolved_outcome",
-        "frozen_task_necessity",
-        "repository_research_cannot_settle",
-        "accepted_decision_or_contract_cannot_settle",
-        "not_delegated_basis",
-        "materially_different_consequences",
-    ):
-        value = counterfactual.get(field) if isinstance(counterfactual, dict) else None
-        values = value if isinstance(value, list) else [value]
-        hidden.update(item for item in values if isinstance(item, str) and len(item) >= 8)
-    approaches = (
-        counterfactual.get("no_question_approaches", [])
-        if isinstance(counterfactual, dict)
-        else []
-    )
-    for approach in approaches if isinstance(approaches, list) else []:
-        if not isinstance(approach, dict):
-            continue
-        hidden.update(
-            value
-            for field in ("approach", "assessment")
-            if isinstance((value := approach.get(field)), str) and len(value) >= 8
-        )
-    return hidden
+
+
 
 
 def assert_operator_artifacts_do_not_leak(root: Path) -> None:
-    descriptors = [read_json(path) for path in sorted((root / "evaluator/descriptors").glob("*.json"))]
-    hidden = set().union(*(hidden_evaluator_strings(value) for value in descriptors)) if descriptors else set()
+    """Operator projections contain only frozen tasks and bounded execution aids."""
+    forbidden = ("EVALUATOR_ONLY", "evaluator/qualification-profile",
+                 "reviewer/provisional", "qualification_profile_truth")
     for path in sorted((root / "operator").rglob("*")):
-        if not path.is_file():
+        if not path.is_file() or path.suffix == ".txt":
             continue
         text = path.read_text(encoding="utf-8")
-        if (
-            "EVALUATOR_ONLY" in text
-            or any(value in text for value in hidden)
-            or any(materiality_obligations in text for materiality_obligations in MATERIALITY_OBLIGATIONS)
-            or re.search(r"\bcycle\s+[1-5]\b", text, flags=re.IGNORECASE)
-            or re.search(r"(?:^|[/\\])works(?:[/\\]|$)", text)
-        ):
-            raise CampaignError(f"operator-facing artifact exposes evaluator-only material: {relative(root, path)}")
+        if any(marker in text for marker in forbidden):
+            raise CampaignError(
+                f"operator-facing artifact exposes private review material: {relative(root, path)}"
+            )
 
 
 def render_operator_run_sheet(root: Path) -> Path:
@@ -1347,16 +689,16 @@ def render_operator_run_sheet(root: Path) -> Path:
             if not sequence_complete:
                 continue
             work = state["work_label"]
-            descriptor = read_json(evaluator_descriptor_path(root, kind, work))
-            review_slot_id = state["review_slot_id"]
+            descriptor = read_json(frozen_descriptor_path(root, kind, work))
+            work_slot_id = state["work_slot_id"]
             task_artifacts = verify_operator_task_artifacts(root, state, descriptor)
             for role in session_roles(kind, work):
                 task = task_artifacts[role]
                 entries_by_repository[kind].append(
-                    f"### Session `{review_slot_id}.{role}`\n\n"
+                    f"### Session `{work_slot_id}.{role}`\n\n"
                     f"- Repository: `{state['repository_path']}`\n"
                     f"- Runtime Home: `{state['runtime_home']}`\n"
-                    f"- Capture destination: `{slot_root(root, review_slot_id) / 'evidence' / f'{role}.rollout.jsonl'}`\n"
+                    f"- Capture destination: `{slot_root(root, work_slot_id) / 'evidence' / f'{role}.rollout.jsonl'}`\n"
                     f"- Frozen task artifact: `{root / task['path']}`\n"
                     f"- Frozen task SHA-256: `{task['sha256']}`\n\n"
                     "Copy the exact UTF-8 bytes from the raw `.txt` artifact. Do not copy or "
@@ -1560,7 +902,7 @@ def clone_repository(source: Path, destination: Path, revision: str) -> None:
         raise CampaignError("disposable work repository revision could not be pinned cleanly")
 
 
-def load_sealed_descriptor(
+def load_frozen_descriptor(
     root: Path,
     kind: str,
     work: str,
@@ -1568,11 +910,13 @@ def load_sealed_descriptor(
 ) -> tuple[Path, dict[str, Any]]:
     campaign = campaign or load_campaign(root)
     state = campaign["works"][work_key(kind, work)]
-    path = evaluator_descriptor_path(root, kind, work)
+    path = frozen_descriptor_path(root, kind, work)
     if state.get("state") not in {"frozen", "evidence_collected", "resume_collected"} or not path.is_file():
         raise CampaignError("work requires a complete frozen task descriptor")
     descriptor = read_json(path)
-    if descriptor.get("contract") == "naturalistic-observation-1" and any(
+    if descriptor.get("contract") != "naturalistic-observation-1":
+        raise CampaignError("frozen task descriptor uses a retired contract")
+    if any(
         field in descriptor for field in ("materiality_obligations", "evaluation_basis", "behavior_review")
     ):
         raise CampaignError("frozen task descriptor contains semantic admission fields")
@@ -1590,930 +934,61 @@ def load_sealed_descriptor(
     return path, descriptor
 
 
-def review_preparation_draft_errors(
-    descriptor: Any,
-    kind: str,
-    work_label: str,
-    state: dict[str, Any],
-    candidate_head: str,
-) -> list[str]:
-    if not isinstance(descriptor, dict) or descriptor.get("kind") != "phase8_work_descriptor":
-        return ["review preparation requires a Phase 8 Work descriptor draft"]
-    errors: list[str] = []
-    materiality_obligations = state["materiality_obligations"]
-    if (
-        descriptor.get("repository_class") != kind
-        or descriptor.get("journey_id") != journey_id(kind)
-        or descriptor.get("work_slot_id") != work_key(kind, work_label)
-        or descriptor.get("work_label") != work_label
-    ):
-        errors.append("review draft is bound to a different Work slot")
-    if harness.obligation_set(descriptor.get("materiality_obligations")) != harness.obligation_set(materiality_obligations):
-        errors.append("review draft is bound to the wrong materiality obligations")
-    if descriptor.get("repository_revision") != state.get("repository_revision"):
-        errors.append("review draft is bound to the wrong pinned revision")
-    fields = ["work_user_task"]
-    if "resume" in session_roles(kind, work_label):
-        fields.append("fresh_resume_user_task")
-    elif descriptor.get("fresh_resume_user_task") is not None:
-        errors.append("non-resume Work must not define a resume task")
-    for field in fields:
-        error = harness.plain_user_task_error(descriptor.get(field), field)
-        if error:
-            errors.append(error)
-    if kind == "volicord" and work_label in {"B", "C"}:
-        task = descriptor.get("work_user_task")
-        if isinstance(task, str) and re.search(
-            r"\b(?:work\s+[ab]|previous\s+(?:work|task|implementation)|"
-            r"prior\s+(?:work|task)|implementation\s+chosen\s+earlier)\b",
-            task,
-            flags=re.IGNORECASE,
-        ):
-            errors.append(
-                "later Volicord Work task depends on a specific earlier Work outcome"
-            )
-    errors.extend(
-        harness.work_scope_errors(
-            descriptor.get("work_scope"),
-            kind,
-            state.get("repository_revision"),
-            Path(state["repository_path"]),
-            True,
-        )
-    )
-    basis = descriptor.get("evaluation_basis")
-    errors.extend(harness.evaluation_basis_errors(basis, materiality_obligations))
-    errors.extend(harness.semantic_basis_reference_errors(basis, descriptor.get("behavior_review"), descriptor.get("work_scope")))
-    if not harness.evaluation_basis_errors(basis, materiality_obligations):
-        errors.extend(
-            harness.naturalistic_prompt_errors(
-                descriptor.get("work_user_task"),
-                descriptor.get("fresh_resume_user_task"),
-                basis,
-            )
-        )
-        if harness.has_obligation(materiality_obligations, "hidden_user_owned_decision"):
-            errors.extend(
-                harness.hidden_prompt_static_disclosure_errors(
-                    descriptor.get("work_user_task"),
-                    descriptor.get("fresh_resume_user_task"),
-                )
-            )
-    review = descriptor.get("behavior_review")
-    if harness.is_user_owned_behavior(materiality_obligations):
-        independent = review.get("independent_review") if isinstance(review, dict) else None
-        counterfactual = independent.get("counterfactual_review") if isinstance(independent, dict) else None
-        errors.extend(harness.counterfactual_review_errors(counterfactual, materiality_obligations))
-        if isinstance(counterfactual, dict) and "REPLACE" in json.dumps(counterfactual):
-            errors.append("positive user-owned obligation requires a completed no-question counterfactual before reviewer preparation")
-    references = review.get("provenance_references") if isinstance(review, dict) else None
-    if not isinstance(references, list) or not references:
-        errors.append("review draft requires reviewer-visible owner locations")
-    else:
-        for reference in references:
-            if not isinstance(reference, dict):
-                errors.append("review draft contains a malformed owner location")
-                continue
-            expected_revision = (
-                candidate_head
-                if reference.get("scope") == "volicord_active_owner"
-                else state.get("repository_revision")
-            )
-            if (
-                reference.get("scope") not in harness.BEHAVIOR_REVIEW_PROVENANCE_SCOPES
-                or harness.safe_relative_evidence_path(reference.get("path")) is None
-                or not harness.valid_capture_sha256(reference.get("sha256"))
-                or reference.get("repository_revision") != expected_revision
-            ):
-                errors.append("review draft contains a malformed owner location")
-    return sorted(set(errors))
 
 
-def prepare_review(
-    root: Path,
-    kind: str,
-    work: str,
-    draft_descriptor: Path,
-) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root)
-    verify_inventory(root)
-    state = campaign["works"][work_key(kind, work)]
-    if state.get("state") != "prepared":
-        raise CampaignError("review preparation requires one unprepared work")
-    descriptor = read_json(draft_descriptor.resolve())
-    materiality_obligations = private_materiality_obligations(root, state, campaign)
-    if harness.obligation_set(descriptor.get("materiality_obligations")) != harness.obligation_set(materiality_obligations):
-        raise CampaignError("review draft is bound to the wrong materiality obligations")
-    errors = review_preparation_draft_errors(
-        descriptor,
-        kind,
-        work,
-        {**state, "materiality_obligations": materiality_obligations},
-        campaign["candidate_head"],
-    )
-    if errors:
-        raise CampaignError("review draft does not qualify: " + "; ".join(errors))
-    references = descriptor["behavior_review"]["provenance_references"]
-    review_slot_id = state["review_slot_id"]
-    reviewer_repository = Path(state["reviewer_repository_path"])
-    validate_reviewer_workspace(root, review_slot_id, str(reviewer_repository))
-    preparation = {
-        "kind": "phase8_blind_review_preparation",
-        "review_slot_id": review_slot_id,
-        "candidate_head": campaign["candidate_head"],
-        "repository_revision": state["repository_revision"],
-        "reviewer_repository_path": str(reviewer_repository),
-        "work_user_task": descriptor["work_user_task"],
-        "fresh_resume_user_task": descriptor["fresh_resume_user_task"],
-        "work_scope": descriptor["work_scope"],
-        "owner_document_locations": [
-            {
-                "scope": reference["scope"],
-                "path": reference["path"],
-                "repository_revision": reference["repository_revision"],
-            }
-            for reference in references
-        ],
-        "provisional_review_contract": reviewer_provisional_contract_reference(root),
-        "preflight": {
-            "operation": "validate-discovery",
-            "mutation": "none",
-        },
-    }
-    preparation_path = reviewer_preparation_path(root, kind, work)
-    write_json(preparation_path, preparation)
-    preparation_sha256 = harness.sha256(preparation_path)
-    provisional_draft = {
-        "_draft_state": "INCOMPLETE_REMOVE_THIS_FIELD_BEFORE_PREFLIGHT",
-        "kind": "phase8_blind_discovery",
-        "review_slot_id": review_slot_id,
-        "status": "recorded",
-        "reviewer_role": "primary_blind_discovery",
-        "preparation_sha256": preparation_sha256,
-        "assessments": [],
-        "classification": None,
-        "materiality_conclusion": None,
-        "material_outcome_unavoidable": None,
-        "operator_prompt_does_not_disclose_material_outcome": None,
-        "basis": "",
-        "provenance_reference_indices": [],
-    }
-    provisional_draft_path = reviewer_provisional_draft_path(root, kind, work)
-    write_json(provisional_draft_path, provisional_draft)
-    state["state"] = "review_prepared"
-    state["review_preparation_sha256"] = preparation_sha256
-    save_campaign(root, campaign)
-    register_artifact(root, preparation_path)
-    assert_reviewer_artifacts_are_behavior_opaque(root)
-    return {
-        "kind": "phase8_blind_review_preparation_result",
-        "review_slot_id": review_slot_id,
-        "preparation": relative(root, preparation_path),
-        "preparation_sha256": preparation_sha256,
-        "discovery_draft": relative(root, provisional_draft_path),
-        "discovery_draft_ownership": "reviewer_owned_mutable_before_recording",
-        "discovery_draft_inventory_bound": False,
-        "provisional_review_contract": reviewer_provisional_contract_reference(root),
-        "preflight_operation": "validate-discovery",
-        "preflight_mutates_campaign": False,
-        "evaluator_material_exposed": False,
-    }
 
 
-def blind_stage_path(root: Path, directory: str, review_slot_id: str) -> Path:
-    return slot_artifact_path(root, "reviewer", directory, review_slot_id)
 
 
-def validate_reviewer_workspace(root: Path, review_slot_id: str, workspace: str) -> None:
-    expected = root / "reviewer/workspaces" / review_slot_id / "repository"
-    for path in (root / "reviewer", root / "reviewer/workspaces",
-                 root / "reviewer/workspaces" / review_slot_id, expected):
-        if path.is_symlink() or not path.resolve(strict=False).is_relative_to(root.resolve()):
-            raise CampaignError("reviewer workspace escaped the campaign private root")
-    if not isinstance(workspace, str) or (Path(workspace) != expected and
-            Path(workspace).resolve(strict=False) != expected.resolve(strict=False)):
-        raise CampaignError("reviewer workspace is not bound to its opaque slot")
 
 
-def blind_preparation(root: Path, candidate_head: str, review_slot_id: str) -> tuple[dict[str, Any], str]:
-    path = blind_stage_path(root, "preparations", review_slot_id)
-    preparation = read_json(path)
-    digest = harness.sha256(path)
-    if (preparation.get("kind") != "phase8_blind_review_preparation"
-            or preparation.get("candidate_head") != candidate_head
-            or preparation.get("review_slot_id") != review_slot_id
-            or preparation.get("provisional_review_contract") != reviewer_provisional_contract_reference(root)):
-        raise CampaignError("blind preparation identity or contract changed")
-    validate_reviewer_workspace(root, review_slot_id, preparation.get("reviewer_repository_path"))
-    entry = load_inventory(root)["artifacts"].get(relative(root, path))
-    if not isinstance(entry, dict) or entry.get("sha256") != digest:
-        raise CampaignError("blind preparation is not inventory bound")
-    return preparation, digest
 
 
-def reviewer_owned_input(root: Path, source: Path) -> tuple[bytes, dict[str, Any]]:
-    resolved = source.resolve()
-    if resolved in {(root / name).resolve() for name in load_inventory(root)["artifacts"]}:
-        raise CampaignError("inventory-bound reviewer artifact cannot be mutable input")
-    try:
-        payload = resolved.read_bytes()
-        value = json.loads(payload)
-    except (OSError, json.JSONDecodeError) as error:
-        raise CampaignError("reviewer-owned input is not readable JSON") from error
-    return payload, value
 
 
-def fixed_blind_artifact(root: Path, directory: str, review_slot_id: str, expected_hash: str | None = None) -> tuple[dict[str, Any], str]:
-    path = blind_stage_path(root, directory, review_slot_id)
-    value = read_json(path)
-    digest = harness.sha256(path)
-    entry = load_inventory(root)["artifacts"].get(relative(root, path))
-    if not isinstance(entry, dict) or entry.get("sha256") != digest or entry.get("bytes") != path.stat().st_size \
-            or (expected_hash is not None and digest != expected_hash):
-        raise CampaignError(f"immutable {directory} hash or inventory binding changed")
-    return value, digest
 
 
-def publish_blind_artifact(root: Path, campaign: dict[str, Any], review_slot_id: str,
-                           directory: str, payload: bytes, new_state: str, state_hash_field: str) -> dict[str, Any]:
-    destination = blind_stage_path(root, directory, review_slot_id)
-    if destination.exists() or destination.is_symlink():
-        raise CampaignError("blind stage artifact already exists")
-    name = relative(root, destination)
-    inventory = load_inventory(root)
-    if name in inventory["artifacts"]:
-        raise CampaignError("blind stage artifact is already inventory bound")
-    digest = hashlib.sha256(payload).hexdigest()
-    updated_inventory = copy.deepcopy(inventory)
-    updated_inventory["artifacts"][name] = {"bytes": len(payload), "sha256": digest}
-    updated_campaign = copy.deepcopy(campaign)
-    state = private_work_for_review_slot(updated_campaign, review_slot_id)
-    state["state"] = new_state
-    state[state_hash_field] = digest
-    if new_state == "provisional_recorded":
-        updated_campaign["provisional_count"] = sum(
-            item.get("state") in {"provisional_recorded", "sealed"}
-            for item in updated_campaign["works"].values())
-    campaign_path, evidence_path = campaign_file(root), inventory_path(root)
-    old_campaign, old_inventory = campaign_path.read_bytes(), evidence_path.read_bytes()
-    assert_reviewer_artifacts_are_behavior_opaque(root)
-    try:
-        atomic_write_bytes(destination, payload)
-        atomic_write_bytes(evidence_path, json_bytes(updated_inventory))
-        atomic_write_bytes(campaign_path, json_bytes(updated_campaign))
-    except BaseException:
-        destination.unlink(missing_ok=True)
-        atomic_write_bytes(evidence_path, old_inventory)
-        atomic_write_bytes(campaign_path, old_campaign)
-        raise
-    return {"review_slot_id": review_slot_id, "state": new_state, "artifact": name,
-            "bytes": len(payload), "sha256": digest,
-            "provisional_count": updated_campaign["provisional_count"],
-            "evaluator_material_exposed": False, "qualification_profile_exposed": False}
 
 
-def validated_discovery_payload(root: Path, candidate_head: str, review_slot_id: str,
-                                discovery_path: Path) -> bytes:
-    import blind_protocol
-    preparation, digest = blind_preparation(root, candidate_head, review_slot_id)
-    payload, discovery = reviewer_owned_input(root, discovery_path)
-    errors = blind_protocol.discovery_errors(discovery,
-        {"kind": "phase8_blind_review_preparation_reference", "review_slot_id": review_slot_id,
-         "sha256": digest}, len(preparation["owner_document_locations"]))
-    if errors:
-        raise CampaignError("blind discovery does not qualify: " + "; ".join(errors))
-    return payload
 
 
-def validate_discovery(root: Path, candidate_head: str, review_slot_id: str,
-                       discovery_path: Path) -> dict[str, Any]:
-    validated_discovery_payload(root, candidate_head, review_slot_id, discovery_path)
-    return {"kind": "phase8_blind_discovery_preflight", "status": "passed",
-            "review_slot_id": review_slot_id, "campaign_mutated": False,
-            "evaluator_material_exposed": False}
 
 
-def record_discovery(root: Path, candidate_head: str, review_slot_id: str,
-                     discovery_path: Path) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root, validate_private=False)
-    verify_inventory(root)
-    if campaign["candidate_head"] != candidate_head or private_work_for_review_slot(campaign, review_slot_id)["state"] != "review_prepared":
-        raise CampaignError("discovery requires one review-prepared opaque slot")
-    payload = validated_discovery_payload(root, candidate_head, review_slot_id, discovery_path)
-    if blind_preparation(root, candidate_head, review_slot_id)[1] != \
-            private_work_for_review_slot(campaign, review_slot_id)["review_preparation_sha256"]:
-        raise CampaignError("blind preparation state hash changed")
-    result = publish_blind_artifact(root, campaign, review_slot_id, "discovery", payload,
-                                    "discovery_recorded", "discovery_sha256")
-    result["kind"] = "phase8_blind_discovery_recorded"
-    return result
 
 
-def prepare_critique(root: Path, candidate_head: str, review_slot_id: str) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root, validate_private=False)
-    verify_inventory(root)
-    state = private_work_for_review_slot(campaign, review_slot_id)
-    if campaign["candidate_head"] != candidate_head or state["state"] != "discovery_recorded":
-        raise CampaignError("critique preparation requires immutable discovery")
-    preparation, preparation_sha = blind_preparation(root, candidate_head, review_slot_id)
-    discovery, discovery_sha = fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
-    import blind_protocol
-    errors = blind_protocol.discovery_errors(discovery,
-        {"kind": "phase8_blind_review_preparation_reference", "review_slot_id": review_slot_id,
-         "sha256": preparation_sha}, len(preparation["owner_document_locations"]))
-    if errors:
-        raise CampaignError("recorded discovery is invalid: " + "; ".join(errors))
-    path = blind_stage_path(root, "critique-preparations", review_slot_id)
-    if path.exists() or path.is_symlink():
-        raise CampaignError("critique preparation already exists")
-    critic_run_id = secrets.token_hex(16)
-    write_json(path, {"kind": "phase8_blind_critique_preparation", "review_slot_id": review_slot_id,
-                      "critic_run_id": critic_run_id,
-                      "next_operations": ["validate-critique", "record-critique"],
-                      "review_preparation": {"path": relative(root, blind_stage_path(root, "preparations", review_slot_id)), "sha256": preparation_sha},
-                      "reviewer_workspace": preparation["reviewer_repository_path"],
-                      "contract": reviewer_provisional_contract_reference(root),
-                      "discovery": {"path": relative(root, blind_stage_path(root, "discovery", review_slot_id)), "sha256": discovery_sha}})
-    register_artifact(root, path)
-    draft = blind_stage_path(root, "critique-drafts", review_slot_id)
-    write_json(draft, {"kind": "phase8_blind_completeness_critique", "review_slot_id": review_slot_id,
-                       "preparation_sha256": preparation_sha, "discovery_sha256": discovery_sha,
-                       "critic_run_id": critic_run_id, "proposals": []})
-    assert_reviewer_artifacts_are_behavior_opaque(root)
-    return {"kind": "phase8_blind_critique_prepared", "review_slot_id": review_slot_id,
-            "preparation": relative(root, path), "draft": relative(root, draft),
-            "discovery_sha256": discovery_sha, "evaluator_material_exposed": False}
 
 
-def validated_critique_payload(root: Path, candidate_head: str, review_slot_id: str,
-                               critique_path: Path) -> bytes:
-    import blind_protocol
-    preparation, preparation_sha = blind_preparation(root, candidate_head, review_slot_id)
-    discovery, discovery_sha = fixed_blind_artifact(root, "discovery", review_slot_id)
-    critique_preparation, _ = fixed_blind_artifact(root, "critique-preparations", review_slot_id)
-    if (critique_preparation.get("next_operations") != ["validate-critique", "record-critique"]
-            or critique_preparation.get("discovery") != {"path": relative(root, blind_stage_path(root, "discovery", review_slot_id)), "sha256": discovery_sha}):
-        raise CampaignError("critique preparation discovery binding changed")
-    payload, critique = reviewer_owned_input(root, critique_path)
-    errors = blind_protocol.critique_errors(critique, review_slot_id, preparation_sha,
-        discovery_sha, critique_preparation["critic_run_id"], discovery,
-        len(preparation["owner_document_locations"]))
-    if errors:
-        raise CampaignError("blind critique does not qualify: " + "; ".join(errors))
-    return payload
 
 
-def validate_critique(root: Path, candidate_head: str, review_slot_id: str,
-                      critique_path: Path) -> dict[str, Any]:
-    validated_critique_payload(root, candidate_head, review_slot_id, critique_path)
-    return {"kind": "phase8_blind_critique_preflight", "status": "passed",
-            "review_slot_id": review_slot_id, "campaign_mutated": False,
-            "evaluator_material_exposed": False}
 
 
-def record_critique(root: Path, candidate_head: str, review_slot_id: str,
-                    critique_path: Path) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root, validate_private=False)
-    verify_inventory(root)
-    state = private_work_for_review_slot(campaign, review_slot_id)
-    if campaign["candidate_head"] != candidate_head or state["state"] != "discovery_recorded":
-        raise CampaignError("critique requires recorded discovery")
-    fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
-    payload = validated_critique_payload(root, candidate_head, review_slot_id, critique_path)
-    result = publish_blind_artifact(root, campaign, review_slot_id, "critique", payload,
-                                    "critique_recorded", "critique_sha256")
-    result["kind"] = "phase8_blind_critique_recorded"
-    return result
 
 
-def prepare_adjudication(root: Path, candidate_head: str, review_slot_id: str) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root, validate_private=False)
-    verify_inventory(root)
-    state = private_work_for_review_slot(campaign, review_slot_id)
-    if campaign["candidate_head"] != candidate_head or state["state"] != "critique_recorded":
-        raise CampaignError("adjudication preparation requires immutable critique")
-    discovery, discovery_sha = fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
-    critique, critique_sha = fixed_blind_artifact(root, "critique", review_slot_id, state["critique_sha256"])
-    preparation, preparation_sha = blind_preparation(root, candidate_head, review_slot_id)
-    path = blind_stage_path(root, "adjudication-preparations", review_slot_id)
-    if path.exists() or path.is_symlink():
-        raise CampaignError("adjudication preparation already exists")
-    adjudicator_run_id = secrets.token_hex(16)
-    write_json(path, {"kind": "phase8_blind_adjudication_preparation", "review_slot_id": review_slot_id,
-                      "adjudicator_run_id": adjudicator_run_id,
-                      "next_operations": ["validate-provisional-review", "record-provisional-review"],
-                      "review_preparation": {"path": relative(root, blind_stage_path(root, "preparations", review_slot_id)), "sha256": preparation_sha},
-                      "reviewer_workspace": preparation["reviewer_repository_path"],
-                      "contract": reviewer_provisional_contract_reference(root),
-                      "discovery": {"path": relative(root, blind_stage_path(root, "discovery", review_slot_id)), "sha256": discovery_sha},
-                      "critique": {"path": relative(root, blind_stage_path(root, "critique", review_slot_id)), "sha256": critique_sha}})
-    register_artifact(root, path)
-    draft = blind_stage_path(root, "drafts", review_slot_id)
-    provisional = copy.deepcopy(discovery)
-    provisional["kind"] = "phase8_provisional_behavior_review"
-    provisional["reviewer_role"] = "campaign_preparation_independent_reviewer"
-    provisional["adjudication"] = {"discovery_sha256": discovery_sha, "critique_sha256": critique_sha,
-        "adjudicator_run_id": adjudicator_run_id,
-        "dispositions": [], "lineage": [{"dimension_id": item["dimension_id"],
-            "discovery_dimension_ids": [item["dimension_id"]], "critic_proposal_ids": [],
-            "relationship": "discovery"} for item in discovery["assessments"]]}
-    write_json(draft, provisional)
-    assert_reviewer_artifacts_are_behavior_opaque(root)
-    return {"kind": "phase8_blind_adjudication_prepared", "review_slot_id": review_slot_id,
-            "preparation": relative(root, path), "draft": relative(root, draft),
-            "proposal_count": len(critique["proposals"]), "evaluator_material_exposed": False}
 
 
-def validate_final_lineage(root: Path, candidate_head: str, review_slot_id: str,
-                           provisional: dict[str, Any], references: int) -> None:
-    import blind_protocol
-    discovery, discovery_sha = fixed_blind_artifact(root, "discovery", review_slot_id)
-    critique, critique_sha = fixed_blind_artifact(root, "critique", review_slot_id)
-    critique_preparation, _ = fixed_blind_artifact(root, "critique-preparations", review_slot_id)
-    adjudication_preparation, _ = fixed_blind_artifact(root, "adjudication-preparations", review_slot_id)
-    preparation, preparation_sha = blind_preparation(root, candidate_head, review_slot_id)
-    if (adjudication_preparation.get("next_operations") != ["validate-provisional-review", "record-provisional-review"]
-            or adjudication_preparation.get("discovery", {}).get("sha256") != discovery_sha
-            or adjudication_preparation.get("critique", {}).get("sha256") != critique_sha
-            or adjudication_preparation.get("review_preparation", {}).get("sha256") != preparation_sha):
-        raise CampaignError("adjudication preparation predecessor binding changed")
-    errors = blind_protocol.discovery_errors(discovery,
-        {"kind": "phase8_blind_review_preparation_reference", "review_slot_id": review_slot_id,
-         "sha256": preparation_sha}, references)
-    errors += blind_protocol.critique_errors(critique, review_slot_id, preparation_sha,
-        discovery_sha, critique_preparation["critic_run_id"], discovery, references)
-    if errors:
-        raise CampaignError("blind predecessor does not qualify: " + "; ".join(errors))
-    errors = blind_protocol.adjudication_errors(provisional, discovery, critique,
-        discovery_sha, critique_sha, adjudication_preparation["adjudicator_run_id"], references)
-    if errors:
-        raise CampaignError("blind adjudication does not qualify: " + "; ".join(errors))
-
-def load_and_validate_reviewer_provisional_review(
-    root: Path,
-    candidate_head: str,
-    review_slot_id: str,
-    provisional_review_path: Path,
-) -> tuple[bytes, dict[str, Any], dict[str, Any], str, dict[str, str]]:
-    """Apply only the reviewer-visible validation shared by preflight and recording."""
-    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
-        raise CampaignError("review slot identity is malformed")
-    preparation_path = slot_artifact_path(
-        root, "reviewer", "preparations", review_slot_id
-    )
-    preparation = read_json(preparation_path)
-    preparation_sha256 = harness.sha256(preparation_path)
-    contract_reference = reviewer_provisional_contract_reference(root)
-    expected_preparation_fields = {
-        "kind",
-        "review_slot_id",
-        "candidate_head",
-        "repository_revision",
-        "reviewer_repository_path",
-        "work_user_task",
-        "fresh_resume_user_task",
-        "work_scope",
-        "owner_document_locations",
-        "provisional_review_contract",
-        "preflight",
-    }
-    if (
-        not isinstance(preparation, dict)
-        or set(preparation) != expected_preparation_fields
-        or preparation.get("kind") != "phase8_blind_review_preparation"
-        or preparation.get("review_slot_id") != review_slot_id
-        or preparation.get("candidate_head") != candidate_head
-        or preparation.get("provisional_review_contract") != contract_reference
-        or preparation.get("preflight")
-        != {"operation": "validate-discovery", "mutation": "none"}
-    ):
-        raise CampaignError("blind reviewer preparation identity, candidate, or contract changed")
-    source = provisional_review_path.resolve()
-    inventory = load_inventory(root)
-    for artifact_name in inventory.get("artifacts", {}):
-        artifact_path = (root / artifact_name).resolve()
-        if source == artifact_path:
-            raise CampaignError(
-                "provisional review input is an inventory-bound campaign artifact; "
-                "use the mutable reviewer draft or a reviewer-owned file outside the campaign root"
-            )
-    try:
-        source_bytes = source.read_bytes()
-        provisional = json.loads(source_bytes)
-    except (OSError, json.JSONDecodeError) as error:
-        raise CampaignError(f"cannot read JSON: {source}") from error
-    provisional_errors = harness.blind_first_review_errors(
-        {
-            "kind": "phase8_blind_review_preparation_reference",
-            "review_slot_id": review_slot_id,
-            "sha256": preparation_sha256,
-        },
-        provisional,
-        len(preparation.get("owner_document_locations", [])),
-    )
-    if provisional_errors:
-        raise CampaignError(
-            "provisional review does not qualify: " + "; ".join(provisional_errors)
-        )
-    validate_final_lineage(root, candidate_head, review_slot_id, provisional,
-                           len(preparation.get("owner_document_locations", [])))
-    return (
-        source_bytes,
-        provisional,
-        preparation,
-        preparation_sha256,
-        contract_reference,
-    )
 
 
-def validate_provisional_review(
-    root: Path,
-    candidate_head: str,
-    review_slot_id: str,
-    provisional_review_path: Path,
-) -> dict[str, Any]:
-    _, _, _, preparation_sha256, contract_reference = (
-        load_and_validate_reviewer_provisional_review(
-            root,
-            candidate_head,
-            review_slot_id,
-            provisional_review_path,
-        )
-    )
-    return {
-        "kind": "phase8_provisional_review_preflight_result",
-        "status": "passed",
-        "candidate_head": candidate_head,
-        "review_slot_id": review_slot_id,
-        "preparation_sha256": preparation_sha256,
-        "provisional_review_contract": contract_reference,
-        "validation_semantics": "shared_with_record-provisional-review",
-        "campaign_mutated": False,
-        "evaluator_material_exposed": False,
-        "qualification_profile_exposed": False,
-    }
 
 
-def record_provisional_review(
-    root: Path, candidate_head: str, review_slot_id: str,
-    provisional_review_path: Path,
-) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root, validate_private=False)
-    verify_inventory(root)
-    if campaign.get("candidate_head") != candidate_head:
-        raise CampaignError("provisional review is bound to a different campaign candidate")
-    state = private_work_for_review_slot(campaign, review_slot_id)
-    if state.get("state") != "critique_recorded":
-        raise CampaignError("final provisional requires recorded discovery and critique")
-    fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
-    fixed_blind_artifact(root, "critique", review_slot_id, state["critique_sha256"])
-    payload, _provisional, preparation, preparation_sha, _contract = (
-        load_and_validate_reviewer_provisional_review(root, candidate_head, review_slot_id,
-                                                       provisional_review_path))
-    if (preparation.get("repository_revision") != state.get("repository_revision")
-            or preparation.get("reviewer_repository_path") != state.get("reviewer_repository_path")
-            or preparation_sha != state.get("review_preparation_sha256")):
-        raise CampaignError("blind reviewer preparation identity or hash changed")
-    result = publish_blind_artifact(root, campaign, review_slot_id, "provisional", payload,
-                                    "provisional_recorded", "provisional_review_sha256")
-    result.update({"kind": "phase8_dogfood_provisional_review_recorded",
-                   "candidate_head": candidate_head,
-                   "provisional_review": result["artifact"],
-                   "provisional_review_bytes": result["bytes"],
-                   "provisional_review_sha256": result["sha256"]})
-    return result
 
 
-def verify_all_provisional_reviews_fixed(
-    root: Path, campaign: dict[str, Any], *, post_collection: bool = False
-) -> None:
-    states = list(campaign.get("works", {}).values())
-    allowed_states = {"evidence_collected", "sealed"} if post_collection else {"provisional_recorded", "sealed"}
-    if (
-        len(states) != QUALIFICATION_WORK_COUNT
-        or campaign.get("provisional_count") != QUALIFICATION_WORK_COUNT
-        or any(state.get("state") not in allowed_states for state in states)
-    ):
-        raise CampaignError(
-            "qualification profile and evaluator reveal require all five provisional reviews"
-        )
-    inventory = load_inventory(root)
-    for state in states:
-        review_slot_id = state.get("review_slot_id")
-        path = slot_artifact_path(root, "reviewer", "provisional", review_slot_id)
-        entry = inventory.get("artifacts", {}).get(relative(root, path))
-        if (
-            not path.is_file()
-            or harness.sha256(path) != state.get("provisional_review_sha256")
-            or not isinstance(entry, dict)
-            or entry.get("sha256") != state.get("provisional_review_sha256")
-            or entry.get("bytes") != path.stat().st_size
-        ):
-            raise CampaignError("fixed provisional review hash or inventory binding changed")
-        preparation, preparation_sha = blind_preparation(root, campaign["candidate_head"], review_slot_id)
-        if preparation_sha != state.get("review_preparation_sha256"):
-            raise CampaignError("blind preparation state hash changed")
-        for field in ("discovery_sha256", "critique_sha256"):
-            if not harness.valid_capture_sha256(state.get(field)):
-                raise CampaignError("blind predecessor state hash is missing")
-        fixed_blind_artifact(root, "discovery", review_slot_id, state["discovery_sha256"])
-        fixed_blind_artifact(root, "critique", review_slot_id, state["critique_sha256"])
-        final = read_json(path)
-        final_errors = harness.blind_first_review_errors(
-            {"kind": "phase8_blind_review_preparation_reference", "review_slot_id": review_slot_id,
-             "sha256": preparation_sha}, final, len(preparation["owner_document_locations"]))
-        if final_errors:
-            raise CampaignError("fixed provisional review is invalid: " + "; ".join(final_errors))
-        validate_final_lineage(root, campaign["candidate_head"], review_slot_id, final,
-                               len(preparation["owner_document_locations"]))
 
 
-def reveal_qualification_profile(root: Path, candidate_head: str) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root, validate_private=False)
-    verify_inventory(root)
-    if campaign.get("candidate_head") != candidate_head:
-        raise CampaignError("qualification profile reveal is bound to a different candidate")
-    if campaign.get("qualification_profile_state") != "hidden":
-        raise CampaignError("qualification profile has already been revealed")
-    verify_all_provisional_reviews_fixed(root, campaign)
-    profile = validate_private_qualification_profile(root, campaign)
-    campaign["qualification_profile_state"] = "revealed"
-    campaign["qualification_profile_revealed_sha256"] = harness.sha256(
-        qualification_profile_path(root)
-    )
-    save_campaign(root, campaign)
-    return {
-        "kind": "phase8_dogfood_qualification_profile_revealed",
-        "candidate_head": candidate_head,
-        "provisional_count": QUALIFICATION_WORK_COUNT,
-        "qualification_profile_state": "revealed",
-        "qualification_profile_sha256": harness.sha256(qualification_profile_path(root)),
-        "assignment_count": profile["assignment_count"],
-        "profile_validation": "passed",
-        "evaluator_material_available": True,
-    }
 
 
-def reconciliation_paths(root: Path, state: dict[str, Any]) -> tuple[Path, Path]:
-    """Only campaign-owned steward paths; symlink staging is never accepted."""
-    review_slot_id = state["review_slot_id"]
-    if REVIEW_SLOT_ID.fullmatch(review_slot_id) is None:
-        raise CampaignError("reconciliation slot identity is malformed")
-    directory = root / "evaluator/reconciliation" / review_slot_id
-    draft, receipt = directory / "draft.json", directory / "validation.json"
-    for path in (root / "evaluator", root / "evaluator/reconciliation", directory, draft, receipt):
-        if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
-            raise CampaignError("reconciliation must remain under the campaign private root")
-    return draft, receipt
 
 
-def prepare_reconciliation(root: Path, kind: str, work: str) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root)
-    verify_inventory(root)
-    verify_all_provisional_reviews_fixed(root, campaign)
-    if campaign.get("qualification_profile_state") != "revealed":
-        raise CampaignError("reconciliation requires qualification-profile reveal")
-    state = campaign["works"][work_key(kind, work)]
-    if state.get("state") != "provisional_recorded":
-        raise CampaignError("reconciliation preparation requires an unsealed recorded Work")
-    draft, receipt = reconciliation_paths(root, state)
-    if draft.parent.exists():
-        raise CampaignError("reconciliation already prepared; edit its campaign-owned mutable draft")
-    descriptor = read_json(evaluator_input_path(root, kind, work))
-    independent = descriptor["behavior_review"]["independent_review"]
-    independent["provisional_review"] = read_json(reviewer_provisional_path(root, kind, work))
-    independent["review_preparation"] = {"kind": "phase8_blind_review_preparation_reference",
-        "review_slot_id": state["review_slot_id"], "sha256": state["review_preparation_sha256"]}
-    comparison = independent["classification_comparison"]
-    comparison["provisional_classification"] = harness.blind_dimensions.classifications(independent["provisional_review"])
-    if not comparison.get("obligation_coverage"):
-        comparison["obligation_coverage"] = [{"obligation": obligation, "dimension_id": None,
-            "reviewer_outcome_scope": None, "evaluator_outcome_scope": "REPLACE with bounded evaluator scope",
-            "status": "blind_coverage_gap", "applicability_resolution": "not_applicable",
-            "basis": "REPLACE after comparison to fixed pre-reveal dimensions",
-            "provenance_reference_indices": []}
-            for obligation in private_materiality_obligations(root, state, campaign)]
-    draft.parent.mkdir(parents=True, mode=0o700)
-    draft.parent.chmod(0o700)
-    try:
-        atomic_write_bytes(draft, json_bytes(descriptor))
-        state["reconciliation_state"] = "prepared"
-        state["reconciliation_validation_sha256"] = None
-        save_campaign(root, campaign)
-    except BaseException:
-        shutil.rmtree(draft.parent)
-        raise
-    return {"kind": "phase8_reconciliation_preparation", "review_slot_id": state["review_slot_id"],
-        "draft": relative(root, draft), "validation": relative(root, receipt),
-        "visibility": "steward_private", "ownership": "mutable_before_seal_not_inventory_bound"}
 
 
-def reconciliation_receipt(campaign, state, descriptor, source_bytes):
-    return {"kind": "phase8_reconciliation_validation", "status": "passed",
-        "candidate_head": campaign["candidate_head"], "review_slot_id": state["review_slot_id"],
-        "draft_sha256": hashlib.sha256(source_bytes).hexdigest(),
-        "descriptor_semantic_sha256": descriptor_semantic_sha256(descriptor),
-        "preparation_sha256": state["review_preparation_sha256"],
-        "provisional_sha256": state["provisional_review_sha256"]}
 
 
-def validate_reconciliation(root: Path, kind: str, work: str) -> dict[str, Any]:
-    campaign, state, descriptor, source_bytes = reconciliation_descriptor(root, kind, work)
-    draft, receipt_path = reconciliation_paths(root, state)
-    receipt = reconciliation_receipt(campaign, state, descriptor, source_bytes)
-    if draft.read_bytes() != source_bytes:
-        raise CampaignError("reconciliation draft changed before validation publication")
-    before = receipt_path.read_bytes() if receipt_path.exists() else None
-    try:
-        atomic_write_bytes(receipt_path, json_bytes(receipt))
-        state["reconciliation_state"] = "validated"
-        state["reconciliation_validation_sha256"] = harness.sha256(receipt_path)
-        save_campaign(root, campaign)
-    except BaseException:
-        if before is None:
-            receipt_path.unlink(missing_ok=True)
-        else:
-            atomic_write_bytes(receipt_path, before)
-        raise
-    return {**receipt, "validation": relative(root, receipt_path),
-        "draft": relative(root, draft), "inventory_bound": False}
 
 
-def inspect_reconciliation(root: Path, kind: str, work: str) -> dict[str, Any]:
-    campaign = load_campaign(root)
-    state = campaign["works"][work_key(kind, work)]
-    draft, receipt = reconciliation_paths(root, state)
-    status = "not_prepared"
-    if state["state"] == "sealed":
-        verify_inventory(root)
-        status = "sealed"
-    elif draft.exists():
-        status = "unvalidated"
-        if receipt.is_file() and harness.sha256(receipt) == state.get("reconciliation_validation_sha256"):
-            status = "validated" if read_json(receipt).get("draft_sha256") == harness.sha256(draft) else "stale_validation"
-    return {"kind": "phase8_reconciliation_status", "review_slot_id": state["review_slot_id"],
-        "state": status, "draft": relative(root, draft), "validation": relative(root, receipt),
-        "draft_authority": "mutable_non_authoritative_staging",
-        "cleanup": "draft_may_be_removed_after_seal; retained_validation_and_descriptor_are_immutable"}
 
 
-def reconciliation_descriptor(
-    root: Path,
-    kind: str,
-    work: str,
-) -> dict[str, Any]:
-    campaign = load_campaign_for_mutation(root)
-    verify_inventory(root)
-    verify_all_provisional_reviews_fixed(root, campaign)
-    if campaign.get("qualification_profile_state") != "revealed":
-        raise CampaignError(
-            "evaluator reveal requires the all-provisionals qualification-profile reveal"
-        )
-    state = campaign["works"][work_key(kind, work)]
-    if state.get("state") != "provisional_recorded":
-        raise CampaignError("work sealing requires one recorded provisional review")
-    preparation_path = reviewer_preparation_path(root, kind, work)
-    preparation = read_json(preparation_path)
-    if (
-        preparation.get("kind") != "phase8_blind_review_preparation"
-        or preparation.get("review_slot_id") != state.get("review_slot_id")
-        or harness.sha256(preparation_path) != state.get("review_preparation_sha256")
-    ):
-        raise CampaignError("blind reviewer preparation identity or hash changed")
-    provisional_destination = reviewer_provisional_path(root, kind, work)
-    provisional = read_json(provisional_destination)
-    provisional_errors = harness.blind_first_review_errors(
-        {
-            "kind": "phase8_blind_review_preparation_reference",
-            "review_slot_id": state["review_slot_id"],
-            "sha256": state["review_preparation_sha256"],
-        },
-        provisional,
-        len(preparation.get("owner_document_locations", [])),
-    )
-    if provisional_errors:
-        raise CampaignError("provisional review does not qualify: " + "; ".join(provisional_errors))
-    inventory_entry = load_inventory(root).get("artifacts", {}).get(
-        relative(root, provisional_destination)
-    )
-    if (
-        not provisional_destination.is_file()
-        or harness.sha256(provisional_destination)
-        != state.get("provisional_review_sha256")
-        or not isinstance(inventory_entry, dict)
-        or inventory_entry.get("sha256") != state.get("provisional_review_sha256")
-        or inventory_entry.get("bytes") != provisional_destination.stat().st_size
-    ):
-        raise CampaignError("fixed provisional review hash or inventory binding changed")
-    assert_reviewer_artifacts_are_behavior_opaque(root)
-
-    draft, _receipt = reconciliation_paths(root, state)
-    if not draft.is_file():
-        raise CampaignError("reconciliation requires its campaign-owned prepared draft")
-    source_bytes = draft.read_bytes()
-    try:
-        descriptor = json.loads(source_bytes)
-    except json.JSONDecodeError as error:
-        raise CampaignError("cannot read reconciliation draft") from error
-    if "evidence" in descriptor:
-        raise CampaignError("evaluator-prepared descriptor must not contain collection evidence")
-    if (
-        descriptor.get("repository_class") != kind
-        or descriptor.get("journey_id") != journey_id(kind)
-        or descriptor.get("work_slot_id") != work_key(kind, work)
-        or descriptor.get("work_label") != work
-    ):
-        raise CampaignError("evaluator descriptor is bound to a different Work slot")
-    if harness.obligation_set(descriptor.get("materiality_obligations")) != harness.obligation_set(private_materiality_obligations(root, state, campaign)):
-        raise CampaignError("evaluator descriptor is bound to the wrong materiality obligations")
-    if descriptor.get("repository_revision") != state["repository_revision"]:
-        raise CampaignError("evaluator descriptor is bound to the wrong pinned revision")
-    if (
-        preparation.get("work_user_task") != descriptor.get("work_user_task")
-        or preparation.get("fresh_resume_user_task")
-        != descriptor.get("fresh_resume_user_task")
-        or preparation.get("work_scope") != descriptor.get("work_scope")
-    ):
-        raise CampaignError("sealed descriptor changed the blind reviewer preparation basis")
-    references = descriptor.get("behavior_review", {}).get("provenance_references", [])
-    independent = descriptor.get("behavior_review", {}).get("independent_review")
-    if not isinstance(independent, dict):
-        raise CampaignError("evaluator descriptor has no independent review comparison")
-    supplied_provisional = independent.get("provisional_review")
-    conclusion_fields = {
-        "kind",
-        "status",
-        "reviewer_role",
-        "assessments",
-        "classification",
-        "materiality_conclusion",
-        "material_outcome_unavoidable",
-        "operator_prompt_does_not_disclose_material_outcome",
-        "basis",
-        "provenance_reference_indices",
-    }
-    if not isinstance(supplied_provisional, dict) or any(
-        supplied_provisional.get(field) != provisional.get(field)
-        for field in conclusion_fields
-    ):
-        raise CampaignError("final comparison cannot rewrite the fixed provisional review")
-    independent["review_preparation"] = {
-        "kind": "phase8_blind_review_preparation_reference",
-        "review_slot_id": state["review_slot_id"],
-        "sha256": state["review_preparation_sha256"],
-    }
-    independent["provisional_review"] = provisional
-    errors = harness.work_descriptor_errors(
-        descriptor,
-        candidate_revision=campaign["candidate_head"],
-        target_repository=Path(state["repository_path"]),
-        verify_provenance=True,
-    )
-    if errors:
-        raise CampaignError("evaluator descriptor does not qualify: " + "; ".join(errors))
-    operator_text = f"{descriptor['work_user_task']}\n{descriptor['fresh_resume_user_task']}"
-    if "EVALUATOR_ONLY" in operator_text or any(
-        value in operator_text for value in hidden_evaluator_strings(descriptor)
-    ):
-        raise CampaignError("operator-facing task would expose evaluator-only material")
-    if draft.read_bytes() != source_bytes:
-        raise CampaignError("reconciliation draft changed during validation")
-    return campaign, state, descriptor, source_bytes
 
 
-def seal_work(root: Path, kind: str, work: str) -> dict[str, Any]:
-    campaign, state, descriptor, source_bytes = reconciliation_descriptor(root, kind, work)
-    _draft, receipt_path = reconciliation_paths(root, state)
-    if (state.get("reconciliation_state") != "validated" or not receipt_path.is_file()
-        or harness.sha256(receipt_path) != state.get("reconciliation_validation_sha256")
-        or read_json(receipt_path) != reconciliation_receipt(campaign, state, descriptor, source_bytes)):
-        raise CampaignError("seal-work requires the campaign-owned validated reconciliation artifact")
-    destination = evaluator_descriptor_path(root, kind, work)
-    if destination.exists():
-        raise CampaignError("authoritative evaluator descriptor already exists")
-    write_json(destination, descriptor)
-    state["state"] = "sealed"
-    state["reconciliation_state"] = "sealed"
-    state["sealed_semantic_sha256"] = descriptor_semantic_sha256(descriptor)
-    state["operator_task_artifacts"] = write_operator_task_artifacts(
-        root, state, descriptor
-    )
-    save_campaign(root, campaign)
-    register_artifact(root, destination)
-    register_artifact(root, receipt_path)
-    for task in state["operator_task_artifacts"].values():
-        register_artifact(root, root / task["path"])
-    run_sheet = render_operator_run_sheet(root)
-    register_artifact(root, run_sheet, replace=True)
-    assert_reviewer_artifacts_are_behavior_opaque(root)
-    return {
-        "kind": "phase8_dogfood_sealed_work",
-        "review_slot_id": state["review_slot_id"],
-        "repository_revision": state["repository_revision"],
-        "sealed_semantic_sha256": state["sealed_semantic_sha256"],
-        "operator_task_artifacts": state["operator_task_artifacts"],
-        "operator_run_sheet": relative(root, run_sheet),
-    }
+
 
 
 def verify_frozen_campaign(root: Path, campaign: dict[str, Any]) -> None:
@@ -2560,8 +1035,8 @@ def verify_frozen_campaign(root: Path, campaign: dict[str, Any]) -> None:
                     or state.get("session_slot_ids") != [
                         session_slot_id(kind, label, role) for role in session_roles(kind, label)]):
                 raise CampaignError("frozen Work identity or topology changed")
-            slot_ids.append(state["review_slot_id"])
-            _path, descriptor = load_sealed_descriptor(root, kind, label, campaign)
+            slot_ids.append(state["work_slot_id"])
+            _path, descriptor = load_frozen_descriptor(root, kind, label, campaign)
             for role, artifact in state["operator_task_artifacts"].items():
                 if task_hashes.get(session_slot_id(kind, label, role)) != artifact["sha256"]:
                     raise CampaignError("frozen task differs from preparation receipt")
@@ -2661,7 +1136,6 @@ def prepare_campaign(
     repository_input: Path, task_manifest: Path, *,
     candidate_binary: Path | None = None, enable: bool = False,
     cloner: Callable[[Path, Path, str], None] = clone_repository,
-    slot_id_factory: Callable[[], str] = new_review_slot_id,
 ) -> dict[str, Any]:
     root = root.resolve()
     if root.exists() and any(root.iterdir()):
@@ -2685,9 +1159,6 @@ def prepare_campaign(
     _, identities = harness.load_repository_specs(repository_input, candidate_head, definition)
     if any(item["status"] != "passed" for item in identities):
         raise CampaignError("one or more source repository identities do not qualify")
-    slots = [slot_id_factory() for _ in range(QUALIFICATION_WORK_COUNT)]
-    if len(set(slots)) != QUALIFICATION_WORK_COUNT or any(not isinstance(slot, str) or REVIEW_SLOT_ID.fullmatch(slot) is None for slot in slots):
-        raise CampaignError("Work slot generation produced duplicate or malformed identities")
     root.mkdir(parents=True, exist_ok=True)
     root.chmod(0o700)
     binary = candidate_binary.resolve() if candidate_binary else install_candidate(root)
@@ -2711,12 +1182,11 @@ def prepare_campaign(
         (journey_root / "runtime").mkdir(parents=True)
         cloner(Path(spec["path"]).resolve(), Path(journeys[identity]["repository_path"]), revision)
     works = {}
-    for (kind, label), slot in zip(
-        [(kind, label) for kind in CLASSES for label in work_labels(kind)], slots, strict=True
-    ):
+    for kind, label in [(kind, label) for kind in CLASSES for label in work_labels(kind)]:
+        slot = work_key(kind, label)
         journey = journeys[journey_id(kind)]
         state = {
-            "review_slot_id": slot, "journey_id": journey["journey_id"],
+            "journey_id": journey["journey_id"],
             "work_slot_id": work_key(kind, label), "repository_class": kind,
             "work_label": label,
             "session_slot_ids": [session_slot_id(kind, label, role) for role in session_roles(kind, label)],
@@ -2749,7 +1219,7 @@ def prepare_campaign(
         works[state["work_slot_id"]] = state
         (slot_root(root, slot) / "evidence").mkdir(parents=True)
     campaign = {
-        "kind": "phase8_dogfood_campaign", "schema_version": 6,
+        "kind": "phase8_dogfood_campaign", "schema_version": 7,
         "campaign_id": campaign_id, "campaign_root": str(root),
         "candidate_head": candidate_head, "candidate_binary": str(binary),
         "candidate_artifacts": candidate_artifacts,
@@ -3323,9 +1793,9 @@ def write_operator_document_review_index(
     summary: dict[str, Any],
 ) -> Path:
     state = work_state(root, kind, work)
-    review_slot_id = state["review_slot_id"]
+    work_slot_id = state["work_slot_id"]
     lines = [
-        f"# Generated document review: {kind} slot {review_slot_id}",
+        f"# Generated document review: {kind} slot {work_slot_id}",
         "",
         f"Language: `{summary['language']}`",
         "",
@@ -3340,7 +1810,7 @@ def write_operator_document_review_index(
             else:
                 lines.append(f"- {format_name}: unavailable ({evidence['basis']})")
         lines.append("")
-    path = root / "operator/document-review" / f"{review_slot_id}.md"
+    path = root / "operator/document-review" / f"{work_slot_id}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
     assert_operator_artifacts_do_not_leak(root)
@@ -3363,7 +1833,7 @@ def extract_resume_evidence(
     campaign = load_campaign(root)
     key = work_key(kind, work)
     state = campaign["works"][key]
-    descriptor_path, descriptor = load_sealed_descriptor(root, kind, work, campaign)
+    descriptor_path, descriptor = load_frozen_descriptor(root, kind, work, campaign)
     project_id = state["project_id"] if integrity_only else inspect_resume(capture, descriptor, state)
     binary = Path(campaign["candidate_binary"])
     runtime = Path(state["runtime_home"])
@@ -3521,7 +1991,7 @@ def map_batch_rollouts(
     slots: dict[tuple[str, str, str], tuple[dict[str, Any], dict[str, Any]]] = {}
     for kind in CLASSES:
         for work in work_labels(kind):
-            _descriptor_path, descriptor = load_sealed_descriptor(root, kind, work, campaign)
+            _descriptor_path, descriptor = load_frozen_descriptor(root, kind, work, campaign)
             state = campaign["works"][work_key(kind, work)]
             for role in session_roles(kind, work):
                 slots[(kind, work, role)] = (state, descriptor)
@@ -3614,7 +2084,7 @@ def map_batch_rollouts(
                 )
             matching_roles = [
                 {
-                    "review_slot_id": slots[slot][0]["review_slot_id"],
+                    "work_slot_id": slots[slot][0]["work_slot_id"],
                     "role": slot[2],
                 }
                 for slot in candidates[:8]
@@ -3655,7 +2125,7 @@ def nonempty_session_id(value: Any) -> bool:
 def activation_failure_diagnostic(
     source: Path,
     capture: Any,
-    review_slot_id: str,
+    work_slot_id: str,
     role: str,
 ) -> dict[str, Any]:
     failure = harness.activation_failure(capture)
@@ -3673,7 +2143,7 @@ def activation_failure_diagnostic(
         "source_file": str(source.resolve()),
         "source_sha256": capture.source_sha256,
         "session_id": capture.session_id,
-        "review_slot_id": review_slot_id,
+        "work_slot_id": work_slot_id,
         "role": role,
         "volicord_mcp_calls_observed": bool(capture.tool_calls),
         "runtime_session_start_activation_observed": False,
@@ -3784,7 +2254,7 @@ def collect_batch(
         if failure is not None:
             raise CampaignError("required session activation is invalid",
                 diagnostic=activation_failure_diagnostic(rollout.source, rollout.capture,
-                    campaign["works"][work_key(*slot[:2])]["review_slot_id"], slot[2]))
+                    campaign["works"][work_key(*slot[:2])]["work_slot_id"], slot[2]))
     for (kind, work, role), rollout in mapped.items():
         destination = work_root(root, kind, work) / "evidence" / f"{role}.rollout.jsonl"
         if destination.exists() or rollout.source.resolve() == destination.resolve():
@@ -3890,7 +2360,7 @@ def publish_batch(root: Path, stage: Path, baseline: dict[str, bytes]) -> None:
 def extract_batch_resume(root: Path, kind: str, work: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
     """Rollback a failed derived extraction inside the unpublished batch stage."""
     before = {path for path in root.rglob("*") if path.is_file()}
-    mutable = [campaign_file(root), inventory_path(root), evaluator_descriptor_path(root, kind, work),
+    mutable = [campaign_file(root), inventory_path(root), frozen_descriptor_path(root, kind, work),
                work_root(root, kind, work) / "activation-summary.json"]
     saved = {path: path.read_bytes() for path in mutable if path.is_file()}
     try:
@@ -4007,7 +2477,7 @@ def normalize_batch(
             campaign = load_campaign(root)
             campaign["works"][key]["state"] = "evidence_collected"
             if work_label == "A":
-                descriptor = read_json(evaluator_descriptor_path(root, kind, work_label))
+                descriptor = read_json(frozen_descriptor_path(root, kind, work_label))
                 bundle_binding = descriptor.get("evidence", {}).get("canonical_bundle")
                 if not isinstance(bundle_binding, dict):
                     raise IntegrityError(
@@ -4057,9 +2527,9 @@ def normalize_batch(
                 journey_final_evidence.append(final_entry)
 
             if work_label != "A":
-                descriptor_path = evaluator_descriptor_path(root, kind, work_label)
+                descriptor_path = frozen_descriptor_path(root, kind, work_label)
                 descriptor = read_json(descriptor_path)
-                journey_descriptor = read_json(evaluator_descriptor_path(root, kind, "A"))
+                journey_descriptor = read_json(frozen_descriptor_path(root, kind, "A"))
                 descriptor["evidence"] = copy.deepcopy(journey_descriptor["evidence"])
                 start_path = work_root(root, kind, work_label) / "evidence/start.rollout.jsonl"
                 descriptor["evidence"]["captures"] = {"work": {
@@ -4169,7 +2639,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     for item in manifest["raw_inputs"]:
         kind, work, role = item["session_slot"]
         state = manifest["works"][work_key(kind, work)]
-        raw = root / "slots" / state["review_slot_id"] / "evidence" / f"{role}.rollout.jsonl"
+        raw = root / "slots" / state["work_slot_id"] / "evidence" / f"{role}.rollout.jsonl"
         if (not nonempty_session_id(item.get("session_id")) or item["session_id"] in sessions
             or item["session_id"] != state.get(f"{role}_session_id")
             or item.get("sha256") != harness.sha256(raw)):
@@ -4181,7 +2651,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         raise CampaignError("evidence-set preparation receipt changed")
     for state in manifest["works"].values():
         kind, label = state["repository_class"], state["work_label"]
-        _path, descriptor = load_sealed_descriptor(root, kind, label, campaign)
+        _path, descriptor = load_frozen_descriptor(root, kind, label, campaign)
         verify_operator_task_artifacts(root, state, descriptor)
         for role, artifact in state["operator_task_artifacts"].items():
             if task_hashes.get(session_slot_id(kind, label, role)) != artifact["sha256"]:
@@ -4196,7 +2666,7 @@ def evaluate_works(root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]
     for kind in CLASSES:
         for work in work_labels(kind):
             state = manifest["works"][work_key(kind, work)]
-            descriptor_path = root / "tasks/descriptors" / f"{state['review_slot_id']}.json"
+            descriptor_path = root / "tasks/descriptors" / f"{state['work_slot_id']}.json"
             descriptor = read_json(descriptor_path)
             descriptor["_evidence_directory"] = str(root)
             descriptor["_evidence_file_sha256"] = harness.sha256(descriptor_path)
@@ -4337,7 +2807,7 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
         "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
                 "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py",
-                "blind_dimensions.py", "blind_protocol.py")},
+                "evaluation.json")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "works": works,
@@ -4364,78 +2834,42 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
 
 
 def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
-    """Read-only diagnostic of existing artifacts; never manufacture a collection receipt."""
-    import evaluation_runs
+    """Inspect a historical inventory without replay, repair, or qualification."""
     campaign = read_json(campaign_file(root))
-    if (
-        campaign.get("kind") != "phase8_dogfood_campaign"
-        or campaign.get("schema_version") not in {1, 2, 3, 4, 5, 6}
-        or Path(campaign.get("campaign_root", "")).resolve() != root.resolve()
-    ):
+    if (campaign.get("kind") != "phase8_dogfood_campaign"
+            or campaign.get("schema_version") not in {1, 2, 3, 4, 5, 6, 7}
+            or Path(campaign.get("campaign_root", "")).resolve() != root.resolve()):
         raise CampaignError("unexpected dogfood campaign metadata")
     verify_inventory(root)
     names = set(load_inventory(root)["artifacts"]) | {"campaign.json", "evidence-inventory.json"}
-    names.update(relative(root, p) for p in (root / "raw-rollouts").glob("*.jsonl"))
+    names.update(relative(root, path) for path in (root / "raw-rollouts").glob("*.jsonl"))
     def snapshot():
         return {name: {"sha256": harness.sha256(root / name), "bytes": (root / name).stat().st_size}
             for name in sorted(names)}
     before = snapshot()
-    if campaign["schema_version"] != 5:
-        result = {
-            "kind": "dogfood_historical_campaign_diagnostic",
-            "schema_version": 1,
-            "historical_campaign_schema_version": campaign["schema_version"],
-            "candidate_head": campaign.get("candidate_head"),
-            "historical_campaign_sha256": before["campaign.json"]["sha256"],
-            "historical_terminal_outcome": campaign.get("terminal_outcome"),
-            "artifacts": before,
-            "inspection_state": "identity_and_inventory_only",
-            "qualification_state": "not_run",
-            "replacement_pass_candidate": False,
-            "phase_9_ready": False,
-            "limitation": (
-                "Superseded campaign artifacts are preserved read-only; they are not "
-                "upgraded, mutated, or evaluated as the current blind-pipeline campaign."
-            ),
-        }
-        result["run_id"] = machine_findings.digest(result)
-        if snapshot() != before:
-            raise CampaignError("historical evidence changed during diagnostic inspection")
-        if output.resolve().is_relative_to(root.resolve()):
-            raise CampaignError("diagnostic output must be outside historical campaign")
-        review_operations.publish_directory(output, {"diagnostic.json": json_bytes(result)})
-        return {
-            "diagnostic": str(output / "diagnostic.json"),
-            "run_id": result["run_id"],
-            "candidate_head": result["candidate_head"],
-            "inspection_state": result["inspection_state"],
-            "qualification_state": "not_run",
-            "phase_9_ready": False,
-        }
-    campaign = load_campaign(root)
-    # The original descriptors are consumed as stored. Absent raw/support links
-    # stay absent even when unrelated files elsewhere might look like replacements.
-    works = evaluate_works(root, campaign)
-    result = {"kind": "dogfood_evaluation_diagnostic", "schema_version": 1,
-        "candidate_head": campaign["candidate_head"],
-        "evidence_set": {"state": "historical_inventory_only", "sha256": machine_findings.digest(before)},
-        "evaluator_revision": harness.git_head(ROOT),
-        "policy": evaluation_runs.policy_identity(),
-        "evaluation_run_nonce": secrets.token_hex(16), "qualitative_review_runs": [],
+    result = {
+        "kind": "dogfood_historical_campaign_diagnostic",
+        "schema_version": 1,
+        "historical_campaign_schema_version": campaign["schema_version"],
+        "candidate_head": campaign.get("candidate_head"),
         "historical_campaign_sha256": before["campaign.json"]["sha256"],
         "historical_terminal_outcome": campaign.get("terminal_outcome"),
-        "artifacts": before, "works": works,
-        "finding_state": machine_findings.evaluation_state([f for c in works for f in c["findings"]]),
-        "qualification_state": "not_run", "replacement_pass_candidate": False, "phase_9_ready": False,
-        "limitation": "Diagnostic inventory is not an immutable collection receipt; missing historical evidence is not synthesized."}
+        "artifacts": before,
+        "inspection_state": "identity_and_inventory_only",
+        "qualification_state": "not_run",
+        "replacement_pass_candidate": False,
+        "phase_9_ready": False,
+        "limitation": "Inventory inspection cannot create or upgrade collected campaign evidence.",
+    }
     result["run_id"] = machine_findings.digest(result)
     if snapshot() != before:
-        raise CampaignError("historical evidence changed during diagnostic replay")
+        raise CampaignError("historical evidence changed during diagnostic inspection")
     if output.resolve().is_relative_to(root.resolve()):
         raise CampaignError("diagnostic output must be outside historical campaign")
     review_operations.publish_directory(output, {"diagnostic.json": json_bytes(result)})
-    return {"diagnostic": str(output / "diagnostic.json"), "run_id": result["run_id"],
-        "candidate_head": result["candidate_head"], "finding_state": result["finding_state"],
+    return {"diagnostic": str(output / "diagnostic.json"),
+        "run_id": result["run_id"], "candidate_head": result["candidate_head"],
+        "inspection_state": result["inspection_state"],
         "qualification_state": "not_run", "phase_9_ready": False}
 
 
@@ -4455,7 +2889,7 @@ def finalize_manifest(root: Path, output: Path | None = None) -> Path:
             state = campaign["works"][work_key(kind, number)]
             if state["state"] not in {"resume_collected", "evidence_collected"}:
                 raise CampaignError("all five Works must have collected evidence before finalization")
-            descriptor, _ = load_sealed_descriptor(root, kind, number, campaign)
+            descriptor, _ = load_frozen_descriptor(root, kind, number, campaign)
             real[work_key(kind, number)] = relative(root, descriptor)
         repositories.append({
             **{key: spec[key] for key in ("class", "path", "origin", "revision", "license_file", "license_spdx", "provider_source_path") if key in spec},

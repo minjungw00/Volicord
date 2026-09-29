@@ -300,7 +300,7 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             journey_sample_id, sample_ids=[journey_sample_id, *work_sample_ids])
         projection_slot = final["projection_source_work_slot_id"]
         projection_state = manifest["works"][projection_slot]
-        projection_prefix = f"slots/{projection_state['review_slot_id']}"
+        projection_prefix = f"slots/{projection_state['work_slot_id']}"
         journey_scope = [journey_sample_id, *work_sample_ids]
         bundle_name = final["artifact_inventory"]["canonical_bundle"]["file"]
         bundle_id = source(journey_sample_id + "-bundle", bundle_name, "canonical_bundle", journey_sample_id,
@@ -310,7 +310,7 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
         for work in c.work_labels(kind):
             work_slot = c.work_key(kind, work)
             state = manifest["works"][work_slot]
-            slot = state["review_slot_id"]
+            slot = state["work_slot_id"]
             sample_id = work_slot
             prefix = f"slots/{slot}"
             descriptor_name = f"tasks/descriptors/{slot}.json"

@@ -115,7 +115,7 @@ class DocumentRealizationTests(unittest.TestCase):
             index = c.read_json(root / result["index"])
             self.assertEqual(len(index["documents"]), 12)
             visible = "\n".join(p.read_text() for p in (root / "realizer").rglob("*.json"))
-            for secret in (*c.MATERIALITY_OBLIGATIONS, "expected_qualification", "evaluation_basis", "work_slot_id", "raw_inputs"):
+            for secret in (*h.MATERIALITY_OBLIGATIONS, "expected_qualification", "evaluation_basis", "work_slot_id", "raw_inputs"):
                 self.assertNotIn(secret, visible)
             before = snapshot(root)
             with self.assertRaises(c.CampaignError):
