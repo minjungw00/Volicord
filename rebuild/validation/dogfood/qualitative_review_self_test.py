@@ -337,16 +337,34 @@ class ContractTests(unittest.TestCase):
         finding["assessment"] = "violated"
         self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "violated")
 
-    def test_all_behavior_rubric_criteria_preserved(self):
+    def test_behavior_opportunities_are_available_without_profile_assignment(self):
         p = preparation()
-        seen = set()
-        for behavior in {b for rule in p["rubric"]["behavior_criteria"].values() for b in rule["applies_to"]}:
-            p["index"]["samples"][0]["materiality_obligations"] = [behavior]
-            names = {s["name"] for s in q.criterion_specs(p["index"], p["rubric"])}
-            for name, rule in p["rubric"]["behavior_criteria"].items():
-                self.assertEqual(name in names, behavior in rule["applies_to"])
-            seen |= names
-        self.assertTrue(set(p["rubric"]["behavior_criteria"]) <= seen)
+        p["index"]["samples"][0].pop("materiality_obligations", None)
+        names = {s["name"] for s in q.criterion_specs(p["index"], p["rubric"])}
+        self.assertTrue(set(p["rubric"]["behavior_criteria"]) <= names)
+
+    def test_not_observed_learning_requires_inactive_runtime_evidence(self):
+        p = preparation()
+        value = completed(p)
+        finding = next(a for a in value["assessments"]
+            if a["criterion_id"].endswith("/learning_fork_value"))
+        finding["assessment"] = "not_observed"
+        finding["evidence"] = []
+        finding["criterion_observations"] = []
+        sample = finding["criterion_id"].split("/")[0]
+        identity = sample + "/learning_participation"
+        import machine_findings as machine
+        p["index"]["machine_findings"][identity] = {
+            "sample_id": sample, "finding": machine.finding(
+                "learning_participation", "indeterminate",
+                {"reason": "runtime_learning_active_requires_post_hoc_review"})}
+        with self.assertRaisesRegex(ValueError, "active or uncertain Learning"):
+            q.validate_value(p, "d" * 64, value)
+        p["index"]["machine_findings"][identity] = {
+            "sample_id": sample, "finding": machine.finding(
+                "learning_participation", "not_observed",
+                {"reason": "runtime_learning_participation_not_active"})}
+        self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "not_observed")
 
     def test_cli_criteria_are_repository_class_scoped_once(self):
         p = preparation()

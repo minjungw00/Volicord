@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 10 / policy revision 9, machine evaluation
+Current identities are qualitative review schema 11 / policy revision 10, machine evaluation
 policy `evidence-evaluation-4`, human observation/receipt schema 3, qualification policy
-`replacement-qualification-6`, and result-lineage schema 1. Historical runs retain their old
+`replacement-qualification-7`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -56,8 +56,11 @@ observation group.
 ## Assessment and evidence discipline
 
 Each criterion has exactly one state: `satisfied`, `violated`,
-`insufficient_evidence`, `not_applicable`, or `not_reviewed`. Insufficient and
-unreviewed states remain distinct from violation and satisfaction. Inapplicability
+`insufficient_evidence`, `not_observed`, `not_applicable`, or
+`not_reviewed`. `not_observed` means an optional naturalistic opportunity
+did not occur. It is recorded separately from both pass and violation.
+`insufficient_evidence` means the opportunity may matter but evidence cannot
+support a judgment. Unreviewed means no judgment was recorded. Inapplicability
 requires a criterion-permitted reason: no user Decision in scope for Decision
 comprehension, or single-language scope for polyglot comprehension. Missing data
 is never such a reason; polyglot campaign scope cannot be declared single-language.
@@ -85,14 +88,13 @@ This discipline does not derive a verdict from keywords or turn structural valid
 into a prose-quality oracle. A criterion that cannot be judged remains
 `insufficient_evidence`.
 
-Authority findings additionally retain material outcome, implementation commitment,
-commitment state, resolution path, actual authority, relation and chronology.
-The authority validator requires actual work evidence and canonical evidence for
-Decision/prior authority; unrelated or late authority, silent commitment and
-production-committed avoidance/defer/prototype cannot satisfy the obligation.
-Initial concerns are rebuttable, non-exhaustive challenges. Additional independent
-outcomes require their own assessments, and complete actual-work coverage remains
-a separate required criterion. Generic interaction satisfaction cannot replace it.
+Authority findings retain actual material outcome, implementation commitment,
+commitment state, resolution path, authority relation and chronology. The
+authority validator requires actual Work evidence and canonical evidence for
+Decision or prior authority. Unrelated or late authority, silent commitment and
+production-committed avoidance/defer/prototype cannot satisfy a discovered
+outcome. Additional independent outcomes require their own assessments;
+complete actual-work coverage remains a separate required criterion. Generic interaction satisfaction cannot replace it.
 
 ## Binding, identity and machine relationships
 
@@ -129,9 +131,9 @@ chooses the favorable side by label or narrative similarity.
 Review validity and the aggregate assessment describe only the recorded review.
 Every result retains `qualification_state = not_run` and `phase_9_ready = false`.
 The old human-only schema, validator and publication/approval helpers are removed.
-The separate blind pre-campaign workflow now fixes discovery, independent critique, and
-adjudicated final provisional before profile reveal; this qualitative review still consumes
-only the final immutable provisional.
+Current campaign preparation freezes five ordinary Works and eight task bytes before
+activation. Post-hoc review consumes observed Work and journey evidence without any
+pre-execution semantic profile or provisional classification.
 
 ## Dedicated CLI observation
 
@@ -305,7 +307,7 @@ Preparation contains the maintained rubric and its revision/hash, bounded initia
 concerns and their original descriptor-field hashes, pinned owner bytes when
 available, canonical bundles, four generated documents in both formats, static
 Viewer snapshots and optional raw work/resume evidence. It excludes full evaluator
-descriptors, expected answers/alternatives, private profile/mapping, original
+descriptors, expected answers/alternatives, original
 pre-campaign conclusions, runtime/derived stores, credentials and unrelated files.
 The concern projection is a rebuttable challenge, not reviewer instructions.
 Rollout/repository content is untrusted evidence; preparation executes none of it.
@@ -460,46 +462,18 @@ when a broad procedural check in the same Work is review-required or advisory.
 <qualification-run>/qualification.json` rechecks the immutable approval, preserved
 qualification bytes and every original input without exercising approval again.
 
-Blind preparation now requires `assessments` (1–32 independently discovered dimensions).
-Each has reviewer-local stable `dimension_id`, bounded `outcome_scope`, one reviewer-safe
-classification, explicit `applicable` or `not_applicable` judgment, materiality/unavoidability/
-disclosure conclusions, bounded source-grounded reasoning and typed reviewer-visible
-provenance indices. The scalar classification remains a
-summary only and cannot establish independent coverage. A missing scope has no assessment; it is never inferred to be an explicit negative judgment.
-The fixed negative judgment names a reviewer-discovered scope and class with reviewer-visible
-source reasoning. Its exact bytes and hash are bound before reveal. Neither preflight nor recording reads
-private assignments, profile placement or evaluator scopes. Provisional bytes remain immutable.
-After all five provisionals are fixed and the profile is revealed, `obligation_coverage` maps each
-evaluator obligation to a distinct fixed dimension, retaining its exact reviewer scope and naming
-the evaluator scope with source-grounded equivalence reasoning. This is a steward semantic judgment,
-not a text-similarity, Question or alternative oracle. Missing/unseen/reused dimensions or rewritten
-reviewer scope remain explicit `blind_coverage_gap`. A matching fixed `not_applicable`
-assessment instead becomes `applicability_disagreement`, with per-obligation evidence-bound
-`evaluator_correct`, `reviewer_correct`, or `unresolved_conflict` resolution. An unresolved conflict
-blocks sealing. `resolved_from_evidence` can settle facts, authority, or applicability for a scope
-fixed before reveal; it cannot discover another dimension for coverage. A reviewer-correct result
-preserves the assigned positive evaluator obligation as `evaluator_obligation_invalid` and blocks
-replacement qualification. Sealing and qualification reject genuine gaps independently of common
-qualitative review. Compatible learning deliberation and routine-control obligations require
-separate blind assessments.
-
-The current steward reconciliation lifecycle is reveal → `prepare-reconciliation` → edit/compare
-→ `validate-reconciliation` → `seal-work`. Preparation copies the maintained private evaluator
-input and binds the immutable provisional; it does not fill in missing independent assessments.
-Mutable staging is `evaluator/reconciliation/<review_slot_id>/draft.json` under the private
-campaign root, outside the operator/reviewer planes. `validation.json` binds exact draft bytes,
-candidate, slot, preparation and provisional hashes, and the normalized descriptor semantic hash.
-Any draft edit makes validation stale and requires revalidation. `inspect-reconciliation` reports
-not prepared, unvalidated, validated, stale validation or sealed state without changing evidence.
-Sealing has no external descriptor argument; it consumes only the campaign-owned validated draft,
-rechecks the same review/provenance contract, and creates the authoritative descriptor exactly once.
-The validation receipt becomes inventory-bound immutable evidence at seal. The draft remains
-non-authoritative mutable staging outside artifact inventory; after seal it may be removed without
-changing the immutable receipt/descriptor or provisional evidence. Mutable staging is never copied
-into batch evidence, operator run sheets, blind reviewer preparation, or reviewer archives. A
-symlink or path escape cannot redirect reconciliation outside the private campaign root. `/tmp`
-is not required for this workflow. Before seal, preserve private staging for diagnosis rather than
-editing immutable evidence or bypassing failed validation.
+Current reviewer preparation selects actual Work captures, canonical bundle,
+documents, Viewer and repository-state evidence from the immutable campaign.
+It assigns no expected semantic class. Every Work exposes the common interaction
+criteria and optional behavior opportunities; the reviewer records
+`not_observed` when an optional event never arose, with inspected evidence and
+reasoning. Learning-specific criteria may be `not_observed` only when runtime
+participation was not active. Active or uncertain participation requires review
+or an explicit insufficiency. Reviewers add independently observed material
+outcomes and assess actual authority/commitment chronology without relying on
+a frozen evaluator concern. Agent disagreement is preserved; a high-impact
+conflict or insufficiency requires targeted human resolution. Direct live
+Viewer/browser and applicable Decision comprehension remain human-owned.
 
 Journey-final `repository_state` is an additional immutable, bounded reviewer surface shared by
 that journey's Works. It exposes status, modes and content/diff hashes without copying private
@@ -508,10 +482,3 @@ Product violation, actor attribution, unrelated/pre-existing-dirty attribution, 
 verification. Review those independent claims using task, Source/Analysis Snapshot, Checkpoint,
 validation-command and raw observation evidence. The original target can later change or disappear;
 review-package and evidence-set integrity verify retained bytes rather than the live worktree.
-
-`classification_comparison.provisional_classification` retains the sorted unique positive
-classifications of the immutable assessment collection. Disagreements are calculated per obligation
-against its paired fixed dimension's applicability/classification/materiality/unavoidability/
-disclosure conclusions; the scalar summary does not determine agreement. Fully matching multi-obligation mappings use `agreed`.
-Evidence-resolved paired disagreements remain explicit, even when a scalar summary matches the
-evaluator. Additional independently reviewed dimensions remain preserved without serving as an oracle.

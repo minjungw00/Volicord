@@ -19,8 +19,7 @@ def evaluation():
     works = [
         {"repository_class": repository_class, "work": work,
          "work_slot_id": work_slot_id, "resume_pair": resume_pair, "findings": [],
-         "materiality_obligations": ["research_or_no_question"],
-         "blind_coverage": {"status": "passed", "obligation_count": 1, "assessed_count": 1, "blind_coverage_gaps": []}}
+         }
         for repository_class, work, work_slot_id, resume_pair in sorted(policy.EXPECTED_WORKS)
     ]
     journeys = []
@@ -108,22 +107,28 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.result()["replacement_qualification"], "qualified")
         self.assertFalse(self.result()["phase_9_ready"])
 
-    def test_blind_coverage_gap_is_not_overridden_by_complete_reviews(self):
-        work = self.evaluation["works"][0]
-        work["materiality_obligations"].append("repository_or_environment_fact")
-        self.assertEqual(self.result()["replacement_qualification"], "blocked")
-        self.assertEqual(self.result()["campaign_control_coverage"]["state"], "blind_coverage_gap")
-        work["blind_coverage"] = {"status": "blind_coverage_gap", "obligation_count": 2,
-            "assessed_count": 1, "blind_coverage_gaps": ["unseen repository fact dimension"]}
-        self.assertEqual(self.result()["replacement_qualification"], "blocked")
-
-    def test_reviewer_correct_evaluator_obligation_is_not_a_blind_gap_or_qualification(self):
-        work = self.evaluation["works"][0]
-        work["blind_coverage"] = {"status": "evaluator_obligation_invalid", "obligation_count": 1,
-            "assessed_count": 1, "blind_coverage_gaps": []}
+    def test_semantic_disagreement_does_not_invalidate_campaign_integrity(self):
+        criterion = next(a for a in self.agent["assessments"]
+            if a["criterion_id"].endswith("/hidden_material_discovery_quality"))
+        criterion["assessment"] = "violated"
         result = self.result()
-        self.assertEqual(result["campaign_control_coverage"]["state"], "evaluator_obligation_invalid")
-        self.assertEqual(result["replacement_qualification"], "blocked")
+        self.assertEqual(result["replacement_qualification"], "unresolved")
+        self.assertNotIn("campaign_control_coverage", result)
+
+    def test_not_observed_opportunity_is_distinct_and_nonblocking(self):
+        criterion = next(a for a in self.agent["assessments"]
+            if a["criterion_id"].endswith("/hidden_material_discovery_quality"))
+        criterion["assessment"] = "not_observed"
+        criterion["evidence"] = []
+        criterion["criterion_observations"] = []
+        human_criterion = next(a for a in self.human["assessments"]
+            if a["criterion_id"] == criterion["criterion_id"])
+        self.human["assessments"][self.human["assessments"].index(human_criterion)] = review.observation(criterion["criterion_id"])
+        result = self.result()
+        self.assertEqual(result["replacement_qualification"], "qualified")
+        self.assertIn(criterion["criterion_id"], result["qualitative_review"]["not_observed_criteria"])
+        self.assertNotIn(criterion["criterion_id"], result["qualitative_review"]["resolved_criteria"])
+        self.assertNotIn(criterion["criterion_id"], result["qualitative_review"]["violated_criteria"])
 
     def test_hard_integrity_neither_agent_nor_human_can_override(self):
         self.evaluation["works"][0]["findings"] = [m.finding("raw_hash", "confirmed_violation", {"mismatch": True})]
@@ -131,24 +136,14 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(self.result(reviews)["replacement_qualification"], "blocked")
         self.assertEqual(policy.combine(self.evaluation, self.specs, [], self.technical, evidence_validity="invalid")["replacement_qualification"], "blocked")
 
-    def test_indeterminate_is_unresolved_and_valid_agent_evidence_can_clarify(self):
+    def test_semantic_machine_indeterminacy_is_review_support(self):
         finding = m.finding("appropriate_inquiry_outcome", "indeterminate", {"observed": "ambiguous"})
-        next(item for item in self.evaluation["works"]
-             if item["work_slot_id"] == "journey-volicord-work-a")["findings"] = [finding]
+        self.evaluation["works"][0]["findings"] = [finding]
         value = self.result()
-        self.assertEqual(value["replacement_qualification"], "unresolved")
-        cid = 'journey-volicord-work-a/appropriate_inquiry_outcome'
-        self.prep["index"]["machine_findings"][cid] = {"sample_id": "journey-volicord-work-a", "finding": finding}
-        self.prep["binding"]["machine_evaluation"] = {"run_id": self.evaluation["run_id"], "sha256": "f" * 64}
-        self.agent["binding"] = copy.deepcopy(self.prep["binding"])
-        a = next(a for a in self.agent["assessments"] if a["criterion_id"].endswith('/correct_no_question_behavior'))
-        a["machine_relationships"] = [{"finding_id": cid, "relationship": "clarifies_indeterminate", "reasoning": "Bounded source-backed observation resolves the classifier ambiguity."}]
-        review.validate_value(self.prep, "d" * 64, self.agent)
-        self.assertEqual(self.result()["replacement_qualification"], "qualified")
-        a["assessment"] = "insufficient_evidence"
-        a["evidence"] = []
-        a["machine_relationships"] = []
-        self.assertEqual(self.result()["replacement_qualification"], "unresolved")
+        self.assertEqual(value["replacement_qualification"], "qualified")
+        self.assertIn(self.evaluation["works"][0]["work_slot_id"] + "/appropriate_inquiry_outcome",
+            value["machine_summary"]["review_support_findings"])
+
 
     def test_structural_continuity_and_viewer_comprehension_are_independent(self):
         value = self.result()

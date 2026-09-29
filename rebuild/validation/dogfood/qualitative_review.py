@@ -13,8 +13,19 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 10
-STATES = ["satisfied", "violated", "insufficient_evidence", "not_applicable", "not_reviewed"]
+SCHEMA_VERSION = 11
+STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
+NOT_OBSERVED_OPPORTUNITIES = frozenset({
+    "explicit_material_handling_quality", "hidden_material_discovery_quality",
+    "learning_fork_value", "learning_alternatives_and_tradeoffs",
+    "pre_response_recommendation_anchoring", "post_response_feedback_quality",
+    "learning_implementation_fidelity", "routine_detail_omission",
+    "proportional_learning_cost",
+})
+LEARNING_OPPORTUNITIES = frozenset(name for name in NOT_OBSERVED_OPPORTUNITIES
+    if name.startswith("learning_") or name in {
+        "pre_response_recommendation_anchoring", "post_response_feedback_quality",
+        "routine_detail_omission", "proportional_learning_cost"})
 RELATIONSHIPS = ["agrees", "clarifies_indeterminate", "probable_false_positive",
                  "probable_false_negative", "cannot_resolve"]
 DOCUMENT_KINDS = {"project-architecture-guide", "decision-report", "implementation-plan", "handoff-resume"}
@@ -159,8 +170,7 @@ def criterion_specs(index, policy):
             names = policy["criteria"][group]
             names = list(names)
             if group == "interaction":
-                names += [name for name, rule in sorted(policy["behavior_criteria"].items())
-                          if set(sample["materiality_obligations"]).intersection(rule["applies_to"])]
+                names += sorted(policy["behavior_criteria"])
             for name in names:
                 specs.append({"criterion_id": f"{sample_id}/{group}/{name}",
                     "sample_id": sample_id, "group": group, "name": name, "locale": None})
@@ -382,7 +392,7 @@ def validate_assessment(value, spec, preparation, inspected):
         require(entry is not None and evidence_applies(entry, spec["sample_id"]),
             "per-criterion inspected evidence belongs to another sample")
     validate_references(value["evidence"], index, criterion_inspected, spec,
-        allow_empty=state == "insufficient_evidence")
+        allow_empty=state in {"insufficient_evidence", "not_observed"})
     counter = value["counterevidence"]
     require(isinstance(counter, dict) and set(counter) == {"state", "reasoning", "evidence"}
         and counter["state"] in {"cited", "none_found", "not_observable"}
@@ -391,6 +401,19 @@ def validate_assessment(value, spec, preparation, inspected):
     require(counter["state"] == "cited" or not counter["evidence"], "absence cannot contain counterevidence")
     require(state != "insufficient_evidence" or not value["evidence"],
         "insufficient evidence records inspection and missing information without fabricated citations")
+    require(state != "not_observed" or not value["evidence"], "not_observed cannot fabricate event citations")
+    require(state != "not_observed" or (spec["group"] == "interaction"
+        and spec["name"] in NOT_OBSERVED_OPPORTUNITIES),
+        "not_observed requires an optional naturalistic opportunity")
+    if state == "not_observed" and spec["name"] in LEARNING_OPPORTUNITIES:
+        learning = preparation["index"]["machine_findings"].get(
+            spec["sample_id"] + "/learning_participation")
+        if learning is not None:
+            require(learning["finding"]["basis"].get("reason")
+                == "runtime_learning_participation_not_active",
+                "active or uncertain Learning participation cannot be marked not_observed")
+
+    require(state != "not_observed" or spec["group"] not in {"live_viewer", "cli"}, "required direct observations cannot be not_observed")
     require(state != "satisfied" or counter["state"] != "not_observable", "unobservable counterevidence cannot satisfy a criterion")
     observations = value["criterion_observations"]
     required_observations = preparation["rubric"]["criterion_observations"].get(spec["name"], [])
@@ -471,7 +494,7 @@ def validate_assessment(value, spec, preparation, inspected):
             require(f["status"] == "confirmed_pass" and state == "violated", "false negative requires an observed violation")
         if relation["relationship"] == "agrees":
             expected = {"confirmed_pass": "satisfied", "confirmed_violation": "violated",
-                "indeterminate": "insufficient_evidence", "not_observed": "insufficient_evidence", "not_applicable": "not_applicable"}
+                "indeterminate": "insufficient_evidence", "not_observed": "not_observed", "not_applicable": "not_applicable"}
             require(state == expected[f["status"]], "machine/reviewer disagreement cannot be labeled agreement")
     return state
 
@@ -587,7 +610,8 @@ def _validate_value(preparation, preparation_sha256, value):
             and len(set(runs)) == len(runs) and all(re.fullmatch(r"[0-9a-f]{32}", str(r))
                 and r != value["reviewer"]["run_id"] for r in runs), "invalid resolved criterion/review run identities")
     assessment_state = ("violated" if "violated" in states else "insufficient_evidence" if "insufficient_evidence" in states
-        else "not_reviewed" if "not_reviewed" in states else "satisfied")
+        else "not_reviewed" if "not_reviewed" in states
+        else "not_observed" if "not_observed" in states else "satisfied")
     return {"state": "valid", "assessment_state": assessment_state,
         "counts": {s: states.count(s) for s in STATES},
         "hard_machine_findings": sorted(k for k, v in preparation["index"]["machine_findings"].items()

@@ -559,23 +559,20 @@ class WorkflowTests(unittest.TestCase):
             "exact_semantic_judgment")
         self.assertEqual(ops.validate(target, target / "draft.json")["counts"]["satisfied"], 2)
 
-    def test_evaluator_private_answers_are_not_selected(self):
-        manifest = copy.deepcopy(c.load_evidence_set(self.root))
-        slot = next(iter(manifest["works"].values()))["review_slot_id"]
-        name = f"evaluator/descriptors/{slot}.json"
-        path = self.root / name
-        descriptor = c.read_json(path)
-        descriptor["evaluation_basis"]["private_expected_answer"] = "EVALUATOR-PRIVATE-ANSWER-SENTINEL"
-        descriptor["behavior_review"]["independent_review"]["secret_instructions"] = "EVALUATOR-PRIVATE-INSTRUCTION-SENTINEL"
-        data = ops.encoded(descriptor)
-        manifest["artifacts"][name] = {"bytes": len(data), "sha256": ops.digest(data)}
-        original = ops.bounded_read
-        with patch.object(ops, "bounded_read", side_effect=lambda p, *args: data if p == path else original(p, *args)):
-            files, index, unavailable = ops.select_evidence(self.root, manifest, None, include_raw=False)
-        content = b"".join(files.values()) + ops.encoded(index) + ops.encoded(unavailable)
-        self.assertNotIn(b"EVALUATOR-PRIVATE-ANSWER-SENTINEL", content)
-        self.assertNotIn(b"EVALUATOR-PRIVATE-INSTRUCTION-SENTINEL", content)
-        self.assertNotIn(b"private_expected_answer", content)
+    def test_no_preexecution_semantic_profile_enters_review(self):
+        manifest = c.load_evidence_set(self.root)
+        self.assertFalse((self.root / "evaluator/qualification-profile.json").exists())
+        for state in manifest["works"].values():
+            descriptor = c.read_json(c.evaluator_descriptor_path(
+                self.root, state["repository_class"], state["work_label"]))
+            self.assertEqual(descriptor["contract"], "naturalistic-observation-1")
+            self.assertFalse({"materiality_obligations", "evaluation_basis", "behavior_review"} & set(descriptor))
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="agent", session_id="review-session")
+        preparation, _, package = ops.load_package(target)
+        self.assertTrue(all(not sample["authority_obligations"]
+            for sample in preparation["index"]["samples"]))
+        self.assertFalse(any(name.startswith("evaluator/") for name in package["artifacts"]))
         self.assertIn(b"never instructions", ops.INSTRUCTIONS)
 
     def test_mismatched_and_mutated_evidence_rejected(self):

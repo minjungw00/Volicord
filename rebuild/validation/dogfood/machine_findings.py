@@ -119,11 +119,14 @@ def from_observation(observation):
             status, reason = Status.INDETERMINATE, "terminal_validation_indeterminate"
         elif check == "engineering_choice_discovery" and observed == "failed":
             status, reason = Status.NOT_OBSERVED, "discovery_identity_not_observed"
-        if (check.startswith("learning_")
-                and not set(observation.get("materiality_obligations", ()))
-                    .intersection({"learning_deliberation", "learning_routine_control"})
-                and observed == "passed"):
-            status, reason = Status.NOT_APPLICABLE, "learning_not_required_for_behavior_class"
+        if check.startswith("learning_"):
+            participation = observation.get("learning_basis", {}).get("participation_state")
+            if participation == "active":
+                status, reason = Status.INDETERMINATE, "runtime_learning_active_requires_post_hoc_review"
+            elif participation == "inactive":
+                status, reason = Status.NOT_OBSERVED, "runtime_learning_participation_not_active"
+            else:
+                status, reason = Status.INDETERMINATE, "runtime_learning_participation_uncertain"
         findings.append(finding(check, status, {"observed_check_status": observed,
             "reason": reason, "observation_pointer": "/observation"}))
     for rule, fact in sorted(observation.get("machine_facts", {}).items()):

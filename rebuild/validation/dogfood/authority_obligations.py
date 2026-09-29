@@ -2,7 +2,7 @@
 
 Machine evidence establishes provenance and chronology of recorded operations.
 A reviewer must establish whether that authority actually covers the observable
-implementation commitment. The initial evaluator challenge is rebuttable.
+implementation commitment. Material outcomes are discovered from actual Work evidence.
 """
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def assessment_contract() -> dict[str, Any]:
         "maximum_text_utf8_bytes": MAX_TEXT_BYTES,
         "semantic_judgment_owner": "bounded_campaign_qualitative_review",
         "interaction_review_instruction": "Challenge independently material reference/context, composition/precedence, multi-item ordering/partial durability, and failure/retry/recovery results in actual implementation, tests and contracts. A resolved rejection policy does not itself resolve durable partial effects. Inspect current Discovery interaction identities and pre-write commitment bindings, then seek further uncovered outcomes in actual work. These are semantic completeness prompts, never ownership classifiers or mandatory Questions.",
-        "instruction": "Inspect the actual commitment and cited authority for this outcome. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Rebut the initial concern with stronger evidence, or record avoidance/defer/prototype without production commitment. Resolve each obligation ID against the indexed bounded concern projection and its descriptor field/hash binding; review all other actual-work outcomes as well. Use additional_outcomes for further independent outcomes and the authority/coverage criterion to explain complete coverage of actual work, including tests, documents and other coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle.",
+        "instruction": "Inspect actual commitments and cited authority for each material outcome observed in the Work. A different Question, trivial ceremony, recommendation or implementation preference is not its authority. Record avoidance/defer/prototype only without production commitment. Use additional_outcomes for each independent outcome and authority/coverage to explain complete coverage of actual work, including tests, documents and coupled artifacts. Evidence locators name exact call/turn, Decision revision, file/line or diff hunk in the immutable evidence index. No Question wording, answer, count or similarity is an oracle.",
     }
 
 

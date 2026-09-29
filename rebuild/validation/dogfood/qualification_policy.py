@@ -9,7 +9,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-6"
+REVISION = "replacement-qualification-7"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
 HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable",
     "journey-volicord/viewer_snapshot/multiple_work_organization"}
@@ -48,8 +48,6 @@ def contract():
         "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
         "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
         "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
-        "blind_coverage": "Every counted evaluator obligation requires a distinct adjudicated pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review; reviewer-correct applicability blocks qualification as evaluator_obligation_invalid.",
-        "blind_pipeline": "All five final provisionals require intact discovery, critique, adjudication dispositions and dimension lineage before profile reveal and later qualification.",
         "campaign_topology": TOPOLOGY,
         "cli_scope": {"repository_classes": 3, "criteria_per_class": 7, "required_assessments": 21}}
 
@@ -142,22 +140,14 @@ def naturalistic_summary(result, evaluation, memory=None):
     }
 
 
-def campaign_control_coverage(evaluation):
-    states = {}
-    for work in evaluation["works"]:
-        coverage = work.get("blind_coverage", {})
-        obligations = work.get("materiality_obligations", [])
-        passed = (coverage.get("status") == "passed" and bool(obligations)
-            and coverage.get("obligation_count") == len(set(obligations))
-            and coverage.get("assessed_count") == coverage.get("obligation_count")
-            and coverage.get("blind_coverage_gaps") == [])
-        states[work["work_slot_id"]] = "passed" if passed else (
-            "evaluator_obligation_invalid" if coverage.get("status") == "evaluator_obligation_invalid"
-            else "blind_coverage_gap")
-    overall = "blind_coverage_gap" if "blind_coverage_gap" in states.values() else (
-        "evaluator_obligation_invalid" if "evaluator_obligation_invalid" in states.values() else "passed")
-    return {"state": overall,
-            "works": dict(sorted(states.items()))}
+# An absent naturalistic opportunity is recorded without claiming a pass. These
+# criterion names describe optional events; core Work quality and direct human
+# observations still require a judgment or remain incomplete.
+OPTIONAL_OPPORTUNITY_CRITERIA = review.NOT_OBSERVED_OPPORTUNITIES
+
+
+def nonblocking_not_observed(spec):
+    return spec["group"] == "interaction" and spec["name"] in OPTIONAL_OPPORTUNITY_CRITERIA
 
 
 def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
@@ -168,7 +158,6 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
     A machine observation is never erased by semantic adjudication.
     """
     topology = validate_topology(evaluation)
-    control_coverage = campaign_control_coverage(evaluation)
     scopes = [*evaluation["works"], *evaluation["journeys"]]
     findings = {finding_id(scope, n): f for scope in scopes for n, f in enumerate(scope["findings"])}
     hard = sorted(k for k, f in findings.items() if f["disposition"] == "hard_blocking")
@@ -180,13 +169,15 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
             if a["criterion_id"] not in criteria:
                 criteria[a["criterion_id"]] = {"criterion_id": a["criterion_id"], "group": "authority", "name": "additional"}
             assessments.setdefault(a["criterion_id"], []).append((value, a))
-    resolved, unresolved, escalated, violated = [], [], [], []
+    resolved, unresolved, escalated, violated, not_observed = [], [], [], [], []
     accepted = {}
     for cid, spec in sorted(criteria.items()):
         entries = [(r, a) for r, a in assessments.get(cid, []) if a["assessment"] != "not_reviewed"]
         humans = [(r, a) for r, a in entries if r["reviewer"]["kind"] == "human"]
         decisive = [(r, a) for r, a in entries if a["assessment"] in {"satisfied", "not_applicable", "violated"}]
-        conflict = len({a["assessment"] == "violated" for _, a in decisive}) > 1
+        conflict = (len({a["assessment"] == "violated" for _, a in decisive}) > 1
+            or ("not_observed" in {a["assessment"] for _, a in entries}
+                and bool(decisive)))
         impact_gap = spec["group"] in {"authority", "context_recovery"} and any(a["assessment"] == "insufficient_evidence" for _, a in entries)
         inapplicable_comprehension = (spec["group"] == "interaction" and spec["name"] == "decision_comprehension_when_applicable"
             and bool(entries) and all(a["assessment"] == "not_applicable" for _, a in entries))
@@ -202,34 +193,27 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
         elif states & {"satisfied", "not_applicable"}:
             resolved.append(cid)
             accepted[cid] = [(r, a) for r, a in eligible if a["assessment"] in {"satisfied", "not_applicable"}]
+        elif "not_observed" in states and nonblocking_not_observed(spec) and not requires_human:
+            not_observed.append(cid)
         else:
             unresolved.append(cid)
             if requires_human:
                 escalated.append(cid)
+    # Semantic machine findings are inspectable support. Recorded qualitative
+    # judgments own their interpretation; only deterministic hard findings block.
+    review_support_findings = sorted(fid for fid, finding in findings.items()
+        if finding["disposition"] == "qualitative_review_required")
     unresolved_findings = []
-    for fid, finding in findings.items():
-        if finding["disposition"] != "qualitative_review_required":
-            continue
-        # Only the policy-owned semantic group can resolve a finding; no unrelated
-        # positive criterion may launder a negative observation.
-        groups = machine.review_groups(finding["check"])
-        addressed = any(spec["group"] in groups and any(
-            (r["binding"].get("machine_evaluation") or {}).get("run_id") == evaluation["run_id"]
-            and any(rel["finding_id"] == fid and rel["relationship"] in
-                {"clarifies_indeterminate", "probable_false_positive"} for rel in a["machine_relationships"])
-            for r, a in accepted.get(cid, [])) for cid, spec in criteria.items())
-        if not addressed:
-            unresolved_findings.append(fid)
     complete = not unresolved and not unresolved_findings and not violated
-    blocked = control_coverage["state"] != "passed" or evidence_validity != "valid" or bool(hard) or technical["state"] in {"failed", "candidate_mismatch", "invalid"} or bool(violated)
+    blocked = evidence_validity != "valid" or bool(hard) or technical["state"] in {"failed", "candidate_mismatch", "invalid"} or bool(violated)
     status = "blocked" if blocked else "qualified" if complete and technical["state"] == "passed" else "unresolved"
     result = {"evidence_validity": evidence_validity, "campaign_topology": topology,
-        "campaign_control_coverage": control_coverage,
         "technical_gate": technical,
         "machine_summary": {"counts": dict(sorted(Counter(f["disposition"] for f in findings.values()).items())),
-            "hard_findings": hard, "unresolved_findings": sorted(unresolved_findings)},
+            "hard_findings": hard, "review_support_findings": review_support_findings,
+            "unresolved_findings": unresolved_findings},
         "qualitative_review": {"state": "complete" if complete else "incomplete", "resolved_criteria": resolved,
-            "violated_criteria": violated, "unresolved_criteria": unresolved, "human_escalations": escalated},
+            "violated_criteria": violated, "not_observed_criteria": not_observed, "unresolved_criteria": unresolved, "human_escalations": escalated},
         "operator_approval": {"state": "not_provided"}, "replacement_qualification": status,
         "replacement_pass_candidate": status == "qualified", "phase_9_ready": False}
     result["naturalistic_evidence"] = naturalistic_summary(result, evaluation, naturalistic_resource)
@@ -280,11 +264,6 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
     import campaign
     manifest = campaign.load_evidence_set(root)
     evaluation = evaluation_runs.load(evaluation_path)
-    for work in evaluation["works"]:
-        state = manifest["works"][work["work_slot_id"]]
-        descriptor = campaign.read_json(campaign.slot_artifact_path(root, "evaluator", "descriptors", state["review_slot_id"]))
-        review.require(work.get("blind_coverage") == campaign.work_blind_coverage(root, state, descriptor),
-            "machine evaluation blind coverage differs from immutable pre-reveal evidence")
     evidence_hash = campaign.harness.sha256(root / "evidence-set.json")
     review.require(candidate == manifest["candidate_head"] == evaluation["candidate_head"], "Product candidate mismatch")
     review.require(evaluation["evidence_set"] == {"path": "evidence-set.json", "sha256": evidence_hash}, "evaluation evidence mismatch")
@@ -365,15 +344,11 @@ def validate_result(value):
             in {"unsupported_current_architecture", "not_provided", "measured"},
         "naturalistic evidence scope or qualification relationship changed")
     complete = not (q["unresolved_criteria"] or q["violated_criteria"] or q["human_escalations"] or m["unresolved_findings"])
-    coverage = value.get("campaign_control_coverage", {})
-    review.require(set(coverage.get("works", {})) == {w[2] for w in EXPECTED_WORKS}
-        and set(coverage["works"].values()) <= {"passed", "blind_coverage_gap", "evaluator_obligation_invalid"}
-        and coverage.get("state") == (
-            "blind_coverage_gap" if "blind_coverage_gap" in coverage["works"].values()
-            else "evaluator_obligation_invalid" if "evaluator_obligation_invalid" in coverage["works"].values()
-            else "passed"),
-        "invalid blind obligation control coverage")
-    blocked = coverage["state"] != "passed" or value["evidence_validity"] != "valid" or bool(m["hard_findings"]) or bool(q["violated_criteria"]) or t["state"] in {"failed", "invalid", "candidate_mismatch"}
+    review.require("campaign_control_coverage" not in value
+        and isinstance(q.get("not_observed_criteria"), list)
+        and not set(q["not_observed_criteria"]) & (set(q["resolved_criteria"]) | set(q["violated_criteria"]) | set(q["unresolved_criteria"])),
+        "qualitative not-observed state is not distinct")
+    blocked = value["evidence_validity"] != "valid" or bool(m["hard_findings"]) or bool(q["violated_criteria"]) or t["state"] in {"failed", "invalid", "candidate_mismatch"}
     expected = "blocked" if blocked else "qualified" if complete and t["state"] == "passed" else "unresolved"
     review.require(value["replacement_qualification"] == expected and value["replacement_pass_candidate"] is (expected == "qualified")
         and q["state"] == ("complete" if complete else "incomplete"), "qualification state contradicts mandatory evidence")

@@ -49,6 +49,16 @@ class MachineFindingTests(unittest.TestCase):
         self.assertTrue(all(f["disposition"] == m.Disposition.REVIEW for f in findings))
         self.assertNotIn("human_observed", str(findings))
 
+    def test_learning_status_uses_runtime_participation_not_task_class(self):
+        for state, expected in (("inactive", "not_observed"),
+                                ("active", "indeterminate"),
+                                ("uncertain", "indeterminate")):
+            observation = {"checks": {"learning_deliberation_order": "passed"},
+                "learning_basis": {"participation_state": state},
+                "capture_sha256": {"work": "a" * 64}}
+            finding = m.from_observation(observation)[0]
+            self.assertEqual(finding["status"], expected)
+
     def test_impossible_combinations_rejected(self):
         valid = m.finding("raw_hash", m.Status.VIOLATION, {"actual": "different"})
         for key, value in (("disposition", "qualitative_review_required"), ("status", "passed"),

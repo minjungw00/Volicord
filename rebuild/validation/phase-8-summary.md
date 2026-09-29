@@ -3,17 +3,34 @@
 ## Current campaign authority
 
 <!-- phase8-active-operations:start -->
-A new campaign uses the current clean Git `HEAD` only when an independently
-verified exact-candidate technical-gate capsule and archive name that same
-commit. No hash recorded in this tracked document selects a current candidate.
-The maintained campaign is exactly three repository journeys, five Works,
-three Work A resume pairs, eight fresh sessions, and five opaque provisional
-Work reviews before reveal. The steward uses `prepare-reconciliation`, edits the
-campaign-local private draft, runs `validate-reconciliation` and `seal-work`, then
-`activate-journey` or `activate-all`, supplies eight raw rollouts once to
-`collect-batch`, and continues through append-only evaluation, five-Work and
-three-journey qualitative review, qualification, optional approval, and durable
-result-lineage publication.
+A new Naturalistic campaign binds the current clean Git `HEAD`, three actual
+pinned repositories, and eight UTF-8 task files before activation. The task
+manifest contains exactly five Work-slot mappings with `start` files and
+`resume` files for the three Work A slots. `prepare --repositories <json>
+--tasks <json>` creates three independent journeys and an eight-entry run
+sheet. Volicord A → Resume A → B → C shares one Project, workspace and Runtime
+Home while retaining three Work identities. Small-Python and Polyglot each
+have their own Project, workspace and Runtime Home.
+
+The operator explicitly controls repository and SessionStart-hook trust,
+runs eight distinct fresh VS Code Codex sessions with the frozen task bytes,
+and preserves their raw rollouts. `activate-all` requires complete frozen
+preparation. `collect-batch` verifies candidate, task, repository/revision,
+session, Project/Work, resume and raw hash integrity, then publishes one
+immutable evidence set with journey-final bundle, documents, Viewer and Git
+state. `evaluate` appends factual machine findings. Semantic observations
+remain available for post-hoc `prepare-qualitative-review`, agent/human
+review, and `qualify`; no evaluator-private profile, provisional review,
+reveal, reconciliation or Work seal is needed to execute.
+
+A `not_observed` assessment records an optional opportunity that did not
+arise and is separate from satisfied, violated and insufficient evidence.
+Learning review depends on observed runtime participation. Exact-candidate
+technical and evidence-integrity failures remain hard; direct human Viewer,
+browser and applicable Decision comprehension cannot be supplied by agents.
+Qualification never grants Phase 9 readiness. Only explicit
+`approve-phase-9` authorization can do so. Result-lineage publication and
+verification preserve the exact evidence and decision chain.
 <!-- phase8-active-operations:end -->
 
 Technical V11 observes deterministic invariants, including a disposable ordinary
@@ -140,7 +157,7 @@ actual Git `HEAD` exactly matches the candidate identified by its own successful
 maintained gate and independently verified capsule/archive. Supplying the historical
 candidate `6031641c46cf014a754442dcee3137caf265882e`, or any other candidate
 argument, cannot qualify a different worktree HEAD. The fresh campaign must
-retain the maintained three-journey/five-Work/eight-session reviewer-blind obligation profile, distinct session-slot, automated,
+retain the maintained three-journey/five-Work/eight-session frozen-task topology, distinct session-slot, automated,
 common qualitative-review, targeted human escalation and explicit operator approval contract.
 The campaign worktree itself must be the sealed candidate; a different
 support-branch HEAD cannot qualify by supplying only a candidate argument.
@@ -162,26 +179,14 @@ campaign definition.
 | `work_slots_by_repository` | `volicord=A/B/C, small-python=A, polyglot-medium=A` |
 | `fresh_resume_pairs` | `3` |
 | `fresh_sessions` | `8` |
-| `provisional_reviews_before_reveal` | `5` |
-| `sealed_descriptors_and_reviews` | `5` |
+| `frozen_works_before_activation` | `5` |
+| `frozen_task_artifacts_before_activation` | `8` |
 | `complete_batch_raw_rollouts` | `8` |
 <!-- phase8-public-campaign-contract:end -->
 
-Use `rebuild/scripts/dogfood-campaign` for routine campaign preparation and
-evidence handling. The evaluator/control agent researches the repositories,
-creates all five bounded blind-first Work reviewer preparations. Each Work then follows
-immutable discovery, independent blind critique, and evidence-backed blind adjudication
-before `record-provisional-review` fixes one final provisional. The hash-bound reviewer
-contract and non-mutating preflight operations enforce the visible schema and lineage.
-`provisional_count = 5` counts only adjudicated final provisionals; reveal checks every
-precursor artifact and hash before exposing the private qualification profile. Recording
-uses reviewer-visible identity, provenance and self-consistency only, so a well-formed
-evaluator disagreement can still reach `provisional_recorded`. Fresh role conversations
-remain an operator requirement because the campaign has no trustworthy conversation ID.
-After reveal, a structured comparison must mark
-matching conclusions `agreed`, resolve every classification/materiality/disclosure
-difference from inspectable evidence, or block sealing as `unresolved_conflict`.
-The original provisional bytes and hash are never rewritten by that comparison.
+Use `rebuild/scripts/dogfood-campaign prepare --repositories <input>
+--tasks <manifest>` to freeze all eight task bytes before `activate-all`.
+No pre-execution semantic review or evaluator profile controls admission.
 Repository and SessionStart
 hook trust remain explicit user actions. `activate-all` verifies the owned static manifest, MCP entry,
 SessionStart hook and exact candidate-local executable/Runtime binding, but this does not prove VS Code
@@ -211,7 +216,7 @@ inherit or replace the capsule's candidate authority.
 
 ## Remaining Phase 8 risks
 
-- Campaign schema 4 collection, machine evaluation, qualitative review-package
+- Campaign schema 5 collection, machine evaluation, qualitative review-package
   sampling, and qualification all consume the same journey/Work/session
   structure. A fresh naturalistic campaign is still required; historical
   evidence must not be rewritten or rebound to supply it.

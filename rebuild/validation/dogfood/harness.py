@@ -1298,6 +1298,51 @@ def load_definition() -> dict[str, Any]:
         "session_count": QUALIFICATION_SESSION_COUNT,
     }:
         raise ValueError("Phase 8 requires the maintained journey/Work/session topology")
+    if value.get("naturalistic_contract") != {
+        "preparation": "five_frozen_works_eight_exact_task_bytes",
+        "semantic_admission": False,
+        "review": "post_hoc_observation_driven",
+    }:
+        raise ValueError("the current Naturalistic contract changed")
+    if tuple(value.get("repository_classes", {})) != CLASSES:
+        raise ValueError("the Phase 8 repository classes changed")
+    if value.get("technical_evidence_dependency") != TECHNICAL_EVIDENCE_DEPENDENCY:
+        raise ValueError("the exact-candidate technical evidence dependency changed")
+    if value.get("qualification_policy") != __import__("qualification_policy").contract():
+        raise ValueError("the maintained replacement qualification policy changed")
+    qualitative = value.get("qualitative_review_contract", {})
+    if qualitative.get("states") != __import__("qualitative_review").STATES:
+        raise ValueError("the qualitative assessment vocabulary changed")
+    if any(key in value for key in ("qualification_profile_contract", "materiality_obligations", "materiality_obligation_minimums")):
+        raise ValueError("current Naturalistic definition contains semantic admission controls")
+    small_rules = value["repository_classes"]["small-python"]
+    if (small_rules.get("minimum_files", 0) < 8
+            or small_rules.get("maximum_files", 0) > 250
+            or small_rules.get("official_structural_language_count") != 1
+            or small_rules.get("application_structure_required") is not True
+            or small_rules.get("production_source_files_required", 0) < 3
+            or small_rules.get("test_files_required", 0) < 2
+            or small_rules.get("configuration_required") is not True
+            or small_rules.get("behavioral_boundary_required") is not True
+            or small_rules.get("trivial_arithmetic_or_example_disallowed") is not True
+            or small_rules.get("multi_file_or_user_visible_work_required") is not True):
+        raise ValueError("the realistic small-Python repository contract changed")
+    polyglot_rules = value["repository_classes"]["polyglot-medium"]
+    if (polyglot_rules.get("minimum_files", 0) < 100
+            or polyglot_rules.get("minimum_official_structural_languages", 0) < 3
+            or polyglot_rules.get("documentation_required") is not True
+            or polyglot_rules.get("component_boundary_required") is not True
+            or polyglot_rules.get("cross_language_config_api_or_process_work_required") is not True):
+        raise ValueError("the realistic polyglot work-boundary contract changed")
+    evidence = value.get("real_session_evidence", {})
+    if (evidence.get("mode") != "verify_repository_normalized_codex_rollout_and_canonical_bundle"
+            or evidence.get("harness_performs_or_authorizes_transmission") is not False
+            or evidence.get("required_capture_format") != "codex_mcp_completion_rollout_jsonl"
+            or evidence.get("batch_campaign_contract", {}).get("required_raw_rollout_count") != QUALIFICATION_SESSION_COUNT
+            or any(key in evidence for key in ("work_session_contract", "resume_session_contract"))):
+        raise ValueError("the current Naturalistic evidence contract changed")
+    qualitative_review.criteria_contract(qualitative)
+    return value
     profile_contract = value.get("qualification_profile_contract", {})
     if profile_contract != {
         "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
@@ -4822,6 +4867,35 @@ def work_descriptor_errors(
 ) -> list[str]:
     if not isinstance(value, dict) or value.get("kind") != "phase8_work_descriptor":
         return ["descriptor kind must be phase8_work_descriptor"]
+    if value.get("contract") == "naturalistic-observation-1":
+        errors = []
+        required = {"kind", "contract", "producer", "journey_id", "repository_class",
+            "work_slot_id", "work_label", "repository_revision", "work_user_task",
+            "fresh_resume_user_task"}
+        actual = set(value) - {"_evidence_directory", "_evidence_file_sha256",
+            "materiality_obligations", "evaluation_basis", "behavior_review"}
+        if actual != required and actual != required | {"evidence"}:
+            errors.append("frozen task descriptor contains missing or unexpected fields")
+        kind, label = value.get("repository_class"), value.get("work_label")
+        if kind not in CLASSES or label not in work_slots(kind):
+            errors.append("unknown Work slot")
+        else:
+            if value.get("journey_id") != journey_id(kind) or value.get("work_slot_id") != work_slot_id(kind, label):
+                errors.append("frozen task Work identity changed")
+            if "resume" in session_roles(kind, label):
+                problem = plain_user_task_error(value.get("fresh_resume_user_task"), "fresh_resume_user_task")
+                if problem:
+                    errors.append(problem)
+            elif value.get("fresh_resume_user_task") is not None:
+                errors.append("non-resume Work has a resume task")
+        problem = plain_user_task_error(value.get("work_user_task"), "work_user_task")
+        if problem:
+            errors.append(problem)
+        if value.get("producer") != "volicord_phase8_codex_event_normalizer":
+            errors.append("frozen task producer changed")
+        if not isinstance(value.get("repository_revision"), str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value["repository_revision"]):
+            errors.append("invalid frozen repository revision")
+        return errors
     errors: list[str] = []
     for obsolete in ("objective", "resume_change_scope", "work_session_contract", "resume_session_contract"):
         if obsolete in value:
@@ -10084,6 +10158,11 @@ def real_session_evidence(
             "basis": "externally supplied sanitized real-session evidence was absent",
         }
 
+    if raw.get("contract") == "naturalistic-observation-1":
+        # Legacy semantic probes remain inspectable, but no expected behavior
+        # class is assigned to an ordinary Work before execution.
+        raw = {**raw, "materiality_obligations": [],
+            "evaluation_basis": {}, "behavior_review": {}}
     evidence_directory_value = raw.get("_evidence_directory")
     evidence_directory = (
         Path(evidence_directory_value) if nonempty_string(evidence_directory_value) else None
@@ -10218,6 +10297,27 @@ def real_session_evidence(
         first_work_change,
         materiality_basis,
     )
+    # Naturalistic Learning is conditional on runtime participation actually
+    # recorded by Product operations, never inferred from a task label.
+    if raw.get("contract") == "naturalistic-observation-1":
+        participation_states = sorted({
+            call.arguments.get("learning_participation", {}).get("state")
+            for call in (work_capture.successful_calls("materiality_review") if work_capture else [])
+            if isinstance(call.arguments.get("learning_participation"), dict)
+            and call.arguments["learning_participation"].get("state") in {"active", "inactive"}
+        })
+        learning_calls = len(work_capture.successful_calls("learning_deliberation")) if work_capture else 0
+        participation_state = (
+            "active" if "active" in participation_states else
+            "inactive" if participation_states == ["inactive"] and learning_calls == 0 else
+            "uncertain"
+        )
+        learning_basis = {**learning_basis,
+            "participation_state": participation_state,
+            "observed_participation_states": participation_states,
+            "observed_learning_call_count": learning_calls,
+            "participation_source": "materiality_review_runtime_arguments",
+        }
     (
         checkpoint_ok,
         checkpoint_goal_ok,

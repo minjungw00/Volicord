@@ -37,32 +37,6 @@
     "resume_pair_count": 3,
     "session_count": 8
   },
-  "qualification_profile_contract": {
-    "visibility": "evaluator_steward_private_until_all_provisionals_recorded",
-    "reveal_requires_provisional_count": 5,
-    "validation_phase": "post_reveal_before_sealing",
-    "reviewer_safe_profile_disclosure": false
-  },
-  "materiality_obligations": [
-    "explicit_user_owned_decision",
-    "hidden_user_owned_decision",
-    "research_or_no_question",
-    "repository_or_environment_fact",
-    "delegated_implementation_choice",
-    "exploratory_uncertainty",
-    "learning_deliberation",
-    "learning_routine_control"
-  ],
-  "materiality_obligation_minimums": {
-    "explicit_user_owned_decision": 1,
-    "hidden_user_owned_decision": 2,
-    "research_or_no_question": 1,
-    "repository_or_environment_fact": 1,
-    "delegated_implementation_choice": 1,
-    "exploratory_uncertainty": 1,
-    "learning_deliberation": 1,
-    "learning_routine_control": 1
-  },
   "repository_classes": {
     "volicord": {
       "actual_repository_required": true,
@@ -265,6 +239,7 @@
       "satisfied",
       "violated",
       "insufficient_evidence",
+      "not_observed",
       "not_applicable",
       "not_reviewed"
     ],
@@ -323,9 +298,6 @@
     ],
     "interaction_behavior_criterion_contracts": {
       "explicit_material_handling_quality": {
-        "applies_to": [
-          "explicit_user_owned_decision"
-        ],
         "review_prompt": "Pass only when every independently material outcome in the actual implementation has prospective authority, or the work avoids, defers, or prototypes without production commitment. Review the material outcome, observable commitment, actual resolution path and supporting authority separately. A current user Decision, applicable prior authority, exact delegation, or repository/contract settlement may resolve it; stronger inspectable authority may disprove the initial evaluator concern. If user choice remains necessary, independent dimensions must be presented separately or truthfully coupled with all material consequences disclosed. An unrelated or trivial Question, recommendation, preferred API shape, or implementation preference cannot authorize a silent independent commitment. Exact evaluator wording, alternatives, expected answer, similarity and Question counts are not semantic proof.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -333,9 +305,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "hidden_material_discovery_quality": {
-        "applies_to": [
-          "hidden_user_owned_decision"
-        ],
         "review_prompt": "Pass only when every independently material outcome in the actual implementation has prospective authority, or the work avoids, defers, or prototypes without production commitment. Review the material outcome, observable commitment, actual resolution path and supporting authority separately. A current user Decision, applicable prior authority, exact delegation, or repository/contract settlement may resolve it; stronger inspectable authority may disprove the initial evaluator concern. If user choice remains necessary, independent dimensions must be presented separately or truthfully coupled with all material consequences disclosed. An unrelated or trivial Question, recommendation, preferred API shape, or implementation preference cannot authorize a silent independent commitment. Exact evaluator wording, alternatives, expected answer, similarity and Question counts are not semantic proof.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -343,12 +312,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "unnecessary_interruption": {
-        "applies_to": [
-          "research_or_no_question",
-          "delegated_implementation_choice",
-          "exploratory_uncertainty",
-          "learning_routine_control"
-        ],
         "review_prompt": "Pass when the agent did not manufacture a user Question for repository-settled research, accepted delegation, exploration, or trivial implementation detail; fail only for a genuinely unnecessary interruption under the maintained materiality and ownership boundary.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -356,9 +319,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_fork_value": {
-        "applies_to": [
-          "learning_deliberation"
-        ],
         "review_prompt": "Pass only when the surfaced agent-owned technical fork was genuinely meaningful and worth deliberate user reasoning.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -366,9 +326,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_alternatives_and_tradeoffs": {
-        "applies_to": [
-          "learning_deliberation"
-        ],
         "review_prompt": "Pass only when the alternatives and their consequences were complete enough for the user to reason about the technical fork.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -376,9 +333,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "pre_response_recommendation_anchoring": {
-        "applies_to": [
-          "learning_deliberation"
-        ],
         "review_prompt": "Pass only when the agent did not leak or strongly anchor its recommendation before the user's initial reasoning.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -386,9 +340,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "post_response_feedback_quality": {
-        "applies_to": [
-          "learning_deliberation"
-        ],
         "review_prompt": "Pass only when feedback after the user's response was educational, accurate, and responsive to that reasoning.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -396,9 +347,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_implementation_fidelity": {
-        "applies_to": [
-          "learning_deliberation"
-        ],
         "review_prompt": "Pass only when the implemented result matched the user's learning choice or the explicitly delegated outcome.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -406,10 +354,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "routine_detail_omission": {
-        "applies_to": [
-          "learning_deliberation",
-          "learning_routine_control"
-        ],
         "review_prompt": "Pass only when routine technical details were omitted from learning interruption.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -417,10 +361,6 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "proportional_learning_cost": {
-        "applies_to": [
-          "learning_deliberation",
-          "learning_routine_control"
-        ],
         "review_prompt": "Pass only when learning interaction cost remained proportionate to the technical consequence and user request.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
@@ -432,15 +372,16 @@
       "available_only_after_naturalistic_execution": true,
       "operator_task_or_work_resume_session_visibility": false,
       "bounded_sources": [
-        "evaluation_basis.possible_material_concerns",
-        "evaluation_basis.consequences",
-        "behavior_review.independent_review.counterfactual_review"
+        "work_capture",
+        "canonical_bundle",
+        "repository_state",
+        "documents"
       ],
       "possible_material_concerns_are_exhaustive": false,
-      "purpose": "Ground the bounded reviewer completeness judgment without prescribing evaluator wording, alternatives, answer, or one decomposition."
+      "purpose": "Review independently material outcomes observed in actual Work and coupled artifacts."
     },
     "qualification_authority": false,
-    "policy_revision": 9,
+    "policy_revision": 10,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -778,11 +719,6 @@
       "late_scope_binding_can_certify_earlier_work": false
     },
     "work_descriptor_contract": {
-      "work_user_task_field": "work_user_task",
-      "fresh_resume_user_task_field": "fresh_resume_user_task",
-      "materiality_obligations_field": "materiality_obligations",
-      "evaluation_basis_field": "evaluation_basis",
-      "behavior_review_field": "behavior_review",
       "identity_fields": [
         "journey_id",
         "repository_class",
@@ -790,9 +726,12 @@
         "work_label",
         "repository_revision"
       ],
-      "evidence_reference_field": "evidence",
-      "prompt_boundary": "user tasks state repository outcomes and ordinary safety or scope constraints without solution choreography",
-      "continuation_boundary": "the Checkpoint identifies the next meaningful state and actual post-Recall work is evaluated against that state"
+      "task_fields": [
+        "work_user_task",
+        "fresh_resume_user_task"
+      ],
+      "task_identity": "exact_utf8_bytes_and_sha256_frozen_before_activation",
+      "evidence_reference_field": "evidence"
     },
     "codex_user_turn_normalization": {
       "accepted_representations": [
@@ -846,54 +785,6 @@
       "fresh_recall_requires_recorded_behaviorally_relevant_context": true,
       "goal_only_requires_additional_context": false
     },
-    "work_session_contract": [
-      "repository-scoped SessionStart activation is observed before product inquiry behavior is judged",
-      "the first captured user turn matches the descriptor plain work_user_task under the directional fail-closed transport-equivalence contract",
-      "after Project initialization source the authoritative canonical Goal and any bounded behaviorally relevant Learning, Preference, or Constraint Context Items from the byte-exact raw first host turn while checking descriptor transport identity against that complete turn; bind every behaviorally consequential non-Goal item used by Materiality to its canonical Context identity, and keep unused Goal records as bounded diagnostics",
-      "establish the repository baseline through repository_analyze before ordinary work",
-      "record Engineering Choice Discovery with current Goal, baseline, source-grounded alternatives, effect categories, independent or coupled relationships, and exactly one source-grounded material-boundary conclusion for every maintained effect category before Materiality Review",
-      "record a typed Materiality Review bound to the exact Goal and pre-work Analysis Snapshot before the first affected ordinary write, then review every maintained coupled-artifact category and evaluate each path's first supported write against the latest valid executable-scope binding that existed before that write",
-      "select inquiry behavior appropriate to the sealed behavior class and current evidence without prescribed Question choreography",
-      "for currently unresolved user-owned dimensions, source-ground and promote every genuinely material Question needed by the independent or truthfully coupled review dimensions, present the exact current revision through inquiry_frontier, and record each explicit current-host user Decision with that presentation receipt",
-      "for currently unresolved user-owned dimensions, correlate every unresolved review dimension through its Question Candidate and current Question revision to its explicit Decision, revise the same review to executable-scope-required, and bind typed executable scope through inspect before the affected write",
-      "for explicit_user_owned_decision, a disclosed material choice may submit a ready-to-ask Question Candidate and promote it without hidden-discovery repository-research ceremony",
-      "for hidden_user_owned_decision, observe meaningful repository investigation before discovery; when user choice remains required, sufficient investigated evidence may submit ready-to-ask, otherwise complete repository research before promotion; resolve the actual outcome before its first affected write",
-      "for research, delegated, or exploratory classes, correct non-interruption may pass without a Candidate, Question, or Decision, but discovery-owned research or prototype requirements remain blocking until matching bounded evidence completion is recorded",
-      "for learning_deliberation, prove complete explicit participation scope, agent-owned authority, deliberation-worthy value with a meaningful interruption counterfactual, current-host response before feedback, terminal learning state, executable-scope inspect readiness, and no manufactured Decision",
-      "for learning_routine_control, prove complete explicit participation scope including non-interruption limits and routine value without a Learning Deliberation, Candidate, Question, or Decision for routine detail",
-      "perform real repository work after the baseline",
-      "commands used only for incidental inspection need not become Checkpoint verification facts",
-      "every command referenced by checkpoint_record passed or failed verification has a numeric exit_code from the same captured command result, through either complete-result forwarding or exact same-result output/status forwarding; output-only forwarding is outcome-unknown",
-      "permit one or more successful work Checkpoints while preserving pause and handoff history",
-      "select the latest terminal Checkpoint candidate after the last meaningful repository change without falling back past a malformed final candidate",
-      "require the selected terminal Checkpoint to use the Goal Context identity, baseline, applicable Decision or evidence-backed no-Decision behavior basis, truthful numeric-exit verification, limits, and next meaningful state or step"
-    ],
-    "behavior_specific_work_intake_contract": {
-      "explicit_user_owned_decision": [
-        "when current evidence leaves a pre-work unresolved user-owned Materiality Review dimension",
-        "for each recorded unresolved dimension, ready-to-ask or fully researched material Question Candidate and presented Question",
-        "for a required Question, exact current-host response linked to the current Question revision",
-        "for a required Question, canonical Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work"
-      ],
-      "hidden_user_owned_decision_additional": [
-        "successful meaningful repository investigation after baseline and before Engineering Choice Discovery",
-        "when a Question remains required and evidence is insufficient, repository research attachment and ready-to-ask transition before Question promotion; sufficient investigated evidence may submit ready-to-ask",
-        "when a Question remains required, Decision, executable-scope-required Materiality revision, and typed inspect readiness before affected work"
-      ],
-      "non_user_owned_classes": {
-        "research_or_no_question": "evidence-backed repository/environment fact, settled authority, resolved research, or another maintained non-user-owned ready basis with no manufactured Candidate, Question, or Decision",
-        "repository_or_environment_fact": "repository or environment inspection establishes the independent fact dimension with no manufactured Candidate, Question, or Decision",
-        "delegated_implementation_choice": "current Goal delegation for internal detail may coexist with settled public authority, with no manufactured Candidate, Question, or Decision",
-        "exploratory_uncertainty": "discovery-owned research or prototype requirements remain blocking until a same-review revision supplies matching bounded evidence completion, then typed inspect readiness precedes affected work, with no manufactured Candidate, Question, or Decision",
-        "learning_deliberation": "legal current-host Learning Deliberation state transitions, including valid reconsideration and repeated response/feedback rounds, then typed executable-scope inspect readiness before affected work with no canonical Decision from learning-only selection",
-        "learning_routine_control": "complete active participation scope including explicit non-interruption limits, routine value, and any truthful maintained non-user-owned ready basis with no Learning Deliberation, Candidate, Question, or Decision for routine detail"
-      },
-      "materiality_correlation": "Goal Context, baseline Analysis Snapshot, Engineering Choice Discovery identity, review_candidate_id, dimension_id, and ordered review_revision",
-      "initial_concern_is_rebuttable": true,
-      "semantic_authority_requires_bounded_evidence_review": true,
-      "behavior_class_exact_disposition_oracle": false,
-      "all_behavior_classes_require_inquiry": false
-    },
     "question_lifecycle_stages": [
       "candidate_created_from_materiality",
       "required_research_complete",
@@ -907,19 +798,6 @@
       "post_decision_materiality_resolved_before_affected_work"
     ],
     "question_stage_failure_attribution": "a missing required stage fails the overall lifecycle without erasing independently supported later response or Decision authenticity",
-    "resume_session_contract": [
-      "repository-scoped SessionStart activation is observed before continuation behavior is judged",
-      "the first captured user turn matches the descriptor plain fresh_resume_user_task under the directional fail-closed transport-equivalence contract, and does not disclose Recall",
-      "a fresh resume session resolves the repository-bound existing Project through project_resolve before Recall without initializing a replacement Project",
-      "a fresh resume session invokes Recall after project_resolve and before repository inspection or continued work, and Recall exposes every recorded behaviorally relevant Learning, Preference, or Constraint item with canonical identity, role, statement, and Source basis",
-      "Recall preserves completed learning context as learning participation rather than a canonical Decision",
-      "when ordinary work continues after Recall, the fresh resume session establishes and retains a repository_analyze baseline before the first ordinary repository write",
-      "for change continuation, recompute Materiality Review/work authority from the fresh baseline before continued ordinary work rather than treating the recalled Checkpoint as current frontier authority",
-      "change continuation produces a repository change correlated to the strongest available typed executable or descriptor scope after the retained pre-write baseline plus separate terminal numeric-exit validation after that change; next_step remains descriptive handoff text",
-      "verified-state continuation requires a recalled completed Checkpoint, repository inspection, successful terminal post-inspection verification, and no unresolved terminal behavior contradicting the completed state; recovered intermediate diagnostics do not contradict it",
-      "paused or in-progress recalled work with an unfinished next step cannot use verified-state continuation",
-      "Recall without repository inspection and post-inspection numeric-exit verification cannot qualify"
-    ],
     "command_forwarding_contract": {
       "complete_result_evidence": "one statically bound exec_command result forwards its complete structured result",
       "correlated_split_evidence": "one statically bound exec_command result forwards its output and an exact numeric exit_code projection from that same result",
@@ -946,218 +824,6 @@
         "checkpoint_goal_context_identity",
         "fresh_session_recall_same_goal_identity_and_materially_consistent_statement"
       ]
-    },
-    "bounded_evaluation_basis": {
-      "required_fields": [
-        "materiality_obligations",
-        "repository_facts",
-        "accepted_contract_constraints",
-        "delegated_boundaries",
-        "possible_material_concerns",
-        "consequences",
-        "facts_not_for_user",
-        "current_relevance",
-        "learning_deliberation_basis",
-        "learning_routine_basis",
-        "exploratory_uncertainty_basis"
-      ],
-      "visibility": "evaluator_input_only",
-      "possible_material_concerns_are_exhaustive": false,
-      "unique_question_wording_required": false,
-      "unique_alternatives_required": false,
-      "unique_recommendation_required": false,
-      "prescribed_user_selection_required": false
-    },
-    "behavior_review": {
-      "kind": "phase8_behavior_review",
-      "accepted_classifications": [
-        "explicit_user_owned_decision",
-        "hidden_user_owned_decision",
-        "research_or_no_question",
-        "repository_or_environment_fact",
-        "delegated_implementation_choice",
-        "exploratory_uncertainty",
-        "learning_deliberation",
-        "learning_routine_control"
-      ],
-      "required_independent_review_status": "accepted",
-      "required_independent_review_fields": [
-        "status",
-        "reviewer_role",
-        "basis",
-        "review_preparation",
-        "provisional_review",
-        "classification_comparison",
-        "fact_authority_agreement",
-        "counterfactual_review"
-      ],
-      "blind_first_review": {
-        "preparation_artifact_kind": "phase8_blind_review_preparation",
-        "preparation_immutable_and_inventory_bound": true,
-        "draft_artifact_kind": "phase8_blind_discovery",
-        "draft_path": "reviewer/drafts/<review_slot_id>.json",
-        "draft_ownership": "reviewer_owned_mutable_work_product_before_recording",
-        "draft_mutable_before_recording": true,
-        "draft_inventory_bound_before_recording": false,
-        "provisional_artifact_kind": "phase8_provisional_behavior_review",
-        "preparation_visibility": "reviewer_input_without_evaluator_material",
-        "preparation_fields": [
-          "review_slot_id",
-          "candidate_head",
-          "repository_revision",
-          "reviewer_repository_path",
-          "work_user_task",
-          "fresh_resume_user_task",
-          "work_scope",
-          "owner_document_locations",
-          "provisional_review_contract",
-          "preflight"
-        ],
-        "provisional_fields": [
-          "review_slot_id",
-          "status",
-          "reviewer_role",
-          "preparation_sha256",
-          "assessments",
-          "classification",
-          "materiality_conclusion",
-          "material_outcome_unavoidable",
-          "operator_prompt_does_not_disclose_material_outcome",
-          "basis",
-          "provenance_reference_indices",
-          "adjudication"
-        ],
-        "evaluator_material_visible_before_provisional_fix": false,
-        "reviewer_order": "opaque_review_slot_id",
-        "logical_identity_visible_before_provisional_fix": false,
-        "reviewer_contract_path": "reviewer/provisional-review-contract.json",
-        "reviewer_contract_integrity": "sha256_bound_to_each_preparation",
-        "preflight_operation": "validate-discovery",
-        "preflight_mutates_campaign": false,
-        "preflight_validation_semantics": "shared_with_record-discovery",
-        "preflight_reads_evaluator_or_steward_truth": false,
-        "preflight_rejects_inventory_bound_campaign_artifact": true,
-        "recording_operation": "record-provisional-review",
-        "recording_identity": "candidate_and_opaque_review_slot",
-        "recording_transition": "critique_recorded_to_provisional_recorded",
-        "recording_success_exit_code": 0,
-        "recording_reads_evaluator_descriptor": false,
-        "recording_compares_evaluator_classification_or_materiality": false,
-        "recording_failure_atomic": true,
-        "recording_preserves_exact_accepted_input_bytes": true,
-        "recorded_destination": "reviewer/provisional/<review_slot_id>.json",
-        "recorded_independent_of_later_draft_mutation": true,
-        "sealed_provisional_immutable_and_inventory_bound": true,
-        "all_provisionals_required_before_any_reveal": true,
-        "qualification_profile_reveal_operation": "reveal-qualification-profile",
-        "evaluator_reveal_operation": "seal-work",
-        "required_provisional_count_before_reveal": 5,
-        "sealing_accepts_provisional_payload": false,
-        "independent_assessment_contract": "bounded_reviewer_local_dimensions_source_grounded_before_reveal",
-        "protocol_sequence": [
-          "blind_discovery",
-          "independent_blind_critique",
-          "blind_adjudication",
-          "final_provisional",
-          "reveal"
-        ],
-        "discovery_recording_operation": "record-discovery",
-        "critique_recording_operation": "record-critique",
-        "adjudication_preparation_operation": "prepare-adjudication",
-        "final_preflight_operation": "validate-provisional-review",
-        "automatic_critic_union": false
-      },
-      "fact_authority_agreement": {
-        "accepted_statuses": [
-          "agreed",
-          "resolved_from_evidence"
-        ],
-        "sealing_blocked_status": "unresolved_conflict",
-        "required_fields": [
-          "status",
-          "evaluator_conclusions",
-          "reviewer_conclusions",
-          "conflicts",
-          "resolution_basis",
-          "provenance_reference_indices"
-        ],
-        "resolution_evidence": "inspectable source or active-owner provenance references"
-      },
-      "classification_comparison": {
-        "accepted_statuses": [
-          "agreed",
-          "resolved_from_evidence"
-        ],
-        "sealing_blocked_status": "unresolved_conflict",
-        "required_fields": [
-          "status",
-          "provisional_classification",
-          "evaluator_classification",
-          "obligation_coverage",
-          "disagreements",
-          "resolution_basis",
-          "provenance_reference_indices"
-        ],
-        "mechanical_disagreement_fields": [
-          "applicability",
-          "classification",
-          "materiality_conclusion",
-          "material_outcome_unavoidable",
-          "operator_prompt_disclosure"
-        ],
-        "resolution_evidence": "inspectable source or active-owner provenance references",
-        "provisional_artifact_rewritten": false,
-        "coverage_gap": "blind_coverage_gap_blocks_sealing_and_qualification",
-        "resolution_scope": "already_independently_assessed_dimension_only",
-        "provisional_classification_basis": "sorted_unique_immutable_positive_assessment_classifications_not_scalar_summary",
-        "applicability_resolution": "per_fixed_negative_scope_evaluator_correct_reviewer_correct_or_unresolved_conflict",
-        "disagreement_basis": "per_obligation_paired_fixed_dimension"
-      },
-      "material_user_owned_counterfactual_review": {
-        "applicability": "required_for_material_user_owned_decision",
-        "required_fields": [
-          "specific_unresolved_outcome",
-          "frozen_task_necessity",
-          "repository_research_cannot_settle",
-          "repository_facts_settle_outcome",
-          "accepted_decision_or_contract_cannot_settle",
-          "accepted_decision_or_contract_settles_outcome",
-          "not_delegated_basis",
-          "outcome_within_delegated_authority",
-          "materially_different_consequences",
-          "no_question_approaches",
-          "material_outcome_unavoidable",
-          "operator_prompt_does_not_disclose_material_outcome",
-          "conclusion"
-        ],
-        "no_question_sources": [
-          "repository_facts",
-          "accepted_decisions_or_contracts",
-          "delegated_authority",
-          "narrower_full_task_implementation"
-        ],
-        "accepted_conclusion": "unavoidable_user_owned_outcome",
-        "rejecting_task_satisfaction": "fully_satisfies_without_user_owned_outcome",
-        "question_wording_prescribed": false,
-        "alternatives_prescribed": false,
-        "user_selection_prescribed": false
-      },
-      "non_user_decision_counterfactual_applicability": "not_required_for_behavior_class",
-      "purpose": "bounded independent evidence and no-question counterfactual review without prescribing one Question expression or user selection",
-      "visibility": "evaluator_input_only"
-    },
-    "opaque_slot_contract": {
-      "identity_generation": "campaign_time_cryptographic_random_128_bit_token",
-      "stable_for_prepared_campaign": true,
-      "unique_within_campaign": true,
-      "derived_from_repository_or_work": false,
-      "physical_workspace_layout": "journeys/<journey_id>/{repository,runtime}",
-      "reviewer_workspace_layout": "reviewer/workspaces/<review_slot_id>/repository",
-      "reviewer_artifact_naming": "review_slot_id_only",
-      "operator_ordering": "opaque_review_slot_id_with_optional_repository_grouping",
-      "private_mapping_visibility": "evaluator_steward_private_until_all_provisional_reviews_are_fixed",
-      "private_mapping_integrity": "campaign_bound_sha256_and_evidence_inventory",
-      "numeric_compatibility_branch": false
     },
     "batch_campaign_contract": {
       "operation": "collect-batch",
@@ -1227,12 +893,7 @@
       "candidate_mutation_guard": {
         "required_state": "campaign candidate equals current HEAD and qualifying worktree is clean",
         "operations": [
-          "prepare-review",
-          "record-provisional-review",
-          "reveal-qualification-profile",
-          "prepare-reconciliation",
-          "validate-reconciliation",
-          "seal-work",
+          "prepare",
           "activate-journey",
           "activate-all",
           "collect-batch",
@@ -1249,7 +910,7 @@
         "activation_summary",
         "four_document_kinds_markdown_and_html",
         "read_only_static_viewer_snapshot",
-        "descriptor_evidence_references_and_sha256"
+        "frozen_task_descriptor_evidence_references_and_sha256"
       ]
     },
     "naturalistic_prompt_integrity": {
@@ -1280,7 +941,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-6",
+    "revision": "replacement-qualification-7",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "journey-volicord/viewer_snapshot/multiple_work_organization",
@@ -1293,8 +954,6 @@
     "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
     "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
     "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
-    "blind_coverage": "Every counted evaluator obligation requires a distinct adjudicated pre-reveal dimension; blind_coverage_gap cannot be resolved by post-reveal discovery or qualitative review; reviewer-correct applicability blocks qualification as evaluator_obligation_invalid.",
-    "blind_pipeline": "All five final provisionals require intact discovery, critique, adjudication dispositions and dimension lineage before profile reveal and later qualification.",
     "campaign_topology": {
       "repository_journeys": 3,
       "work_items": 5,
@@ -1317,21 +976,6 @@
       "required_assessments": 21
     }
   },
-  "reconciliation_contract": {
-    "prepare_operation": "prepare-reconciliation",
-    "validate_operation": "validate-reconciliation",
-    "inspect_operation": "inspect-reconciliation",
-    "seal_operation": "seal-work",
-    "draft_path": "evaluator/reconciliation/<review_slot_id>/draft.json",
-    "validation_path": "evaluator/reconciliation/<review_slot_id>/validation.json",
-    "visibility": "steward_private",
-    "draft_inventory_bound": false,
-    "validation_inventory_bound_after_seal": true,
-    "external_descriptor_input_allowed": false,
-    "seal_requires_exact_validated_draft": true,
-    "sealed_descriptor_create_only": true,
-    "provisional_bytes_immutable": true
-  },
   "repository_state_attestation_contract": {
     "target_state": "observed_committed_or_naturally_dirty_without_mutation",
     "candidate_state": "clean_and_exact_head_bound",
@@ -1348,5 +992,10 @@
     "actor_attribution_or_verification_success_implied": false,
     "analysis_or_checkpoint_replaced": false,
     "target_git_mutation_allowed": false
+  },
+  "naturalistic_contract": {
+    "preparation": "five_frozen_works_eight_exact_task_bytes",
+    "semantic_admission": false,
+    "review": "post_hoc_observation_driven"
   }
 }

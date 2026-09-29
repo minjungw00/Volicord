@@ -270,15 +270,15 @@ clean Linux install
 소유하지 않는다.
 
 <!-- phase8-public-campaign-contract:start -->
-| 공개 campaign 항목 | 현재 요구값 |
+| Public campaign field | Current requirement |
 | --- | --- |
 | `repository_journeys` | `3` |
 | `work_items` | `5` |
 | `work_slots_by_repository` | `volicord=A/B/C, small-python=A, polyglot-medium=A` |
 | `fresh_resume_pairs` | `3` |
 | `fresh_sessions` | `8` |
-| `provisional_reviews_before_reveal` | `5` |
-| `sealed_descriptors_and_reviews` | `5` |
+| `frozen_works_before_activation` | `5` |
+| `frozen_task_artifacts_before_activation` | `8` |
 | `complete_batch_raw_rollouts` | `8` |
 <!-- phase8-public-campaign-contract:end -->
 
@@ -292,39 +292,15 @@ violation cannot be overridden. Collection and evaluation alone do not qualify a
 candidate. The technical gate remains separate. The common agent/human review
 contract is maintained in `qualitative-review.md`; final replacement policy remains
 outside that contract, and no agent review grants Phase 9 authority.
-Dogfood passage는 unique expected Question/Decision/user choice를 가정하지 않는다. Maintained
-behavior vocabulary는 mutually exclusive Work type이 아니라 Work별 독립 materiality obligation으로
-사용한다. Exact obligation profile과 Work assignment는 evaluator/steward-private state에
-integrity-bound되고, 모든 five blind provisional review가 고정된 뒤에만
-reveal·validation·comparison에 사용한다. 세 repository journey는 각각 하나의 workspace, Runtime
-Home과 Project를 사용한다. Volicord journey는 같은 Project에 세 distinct Work를 누적하고,
-각 repository class의 Work A만 fresh-session same-Work resume을 수행한다. 따라서 current campaign은
-3 journeys, 5 Works, 3 resume pairs와 8 fresh sessions를 요구한다. 모든 collected Work의
-qualitative review와 current production background semantic-provider의
-별도로 authorized real success path가 필요하다. Final exact validation은 `rebuild/scripts/validate gate`의
-단일 owner/run을 유지하고 clippy result는 warning-clean이어야 한다.
-Technical V11은 세 maintained repository와 fresh Runtime Home의 deterministic
-invariant rehearsal다. Current technical contract는 Volicord의 installed public
-operation A → exact Resume A → B → C 경로와 Work-scoped Decision의 cross-Work
-rejection, CLI/MCP/portable history를 필수로 소유한다. 이는 naturalistic 3 journey /
-5 Work / 3 resume pair / 8 fresh session evidence를 대체하지 않는다. `ordinary_work`의 disposable marker write와 unchanged Guarded
-store는 ordinary-write non-blocking을 관측하며 meaningful source/test/config behavior
-변경을 대신하지 않는다. Work quality, practical context recovery, Question relevance,
-interruption cost와 document usefulness는 Phase 8 repeated Dogfood/qualitative review가
-소유한다. Archive verifier는 membership/hash/mode/candidate/prohibited-content integrity를
-검사하며 technical 또는 semantic execution을 재실행하지 않는다. Gate의 자체 authoritative
-admission이 local support와 Final을 소유하며 standalone admission은 optional cheap diagnostic이다.
-Deterministic one-Project/multiple-Work fixture는 regression support이며 naturalistic passage가 아니다.
-Volicord의 four naturalistic sessions가 하나의 candidate-bound Project에서 세 distinct Work identity와
-state/history를 chronological하게 유지한 direct evidence, `en`/`ko` live accessibility와 browser input/resulting-paint observation이
-없으면 qualification은 unresolved다. Snapshot-export request timing은 browser latency로 재명명하지 않는다.
-최종 evaluation/review/qualification과 optional approval은 immutable Campaign 안을 고치지 않고
-`<campaign-parent>/results/<qualification-run-id>`의 create-only result lineage로 publish한다.
-Lineage index/receipt는 exact Product candidate, evidence-set bytes, evaluator revision/policy,
-review run, qualification과 approval identity를 relative copied artifacts에 bind한다. 복사된
-package의 독립 verifier가 원래 staging path 없이 통과해야 하며 `/tmp` 경로는 cutover evidence의
-authoritative discovery dependency가 될 수 없다. Later run은 새 lineage이며 historical execution을
-재작성하거나 relabel하지 않는다.
+Dogfood passage uses ordinary frozen tasks without a pre-execution semantic
+profile. Post-hoc review judges actual Questions, Decisions, Learning,
+grounding, interruption, documents and recovery; an opportunity that did not
+occur may be recorded as `not_observed` under criterion policy. Three
+journeys own separate Project, workspace and Runtime Home identities.
+Volicord retains A/Resume A/B/C in one Project with three distinct Works.
+Exact technical gate verification, immutable evidence integrity, required
+direct-human observations and explicit Phase 9 approval remain independent.
+A changed Product candidate requires a fresh 3/5/3/8 campaign.
 
 ### Phase 9 — Cutover
 
@@ -393,7 +369,7 @@ authoritative discovery dependency가 될 수 없다. Later run은 새 lineage�
 - [ ] Decision reuse와 revisit trigger
 - [ ] explicit/hidden user-owned Decision discovery와 no-question/research/delegation/prototype/defer qualification
 - [ ] hidden task semantic non-disclosure와 unavoidable-outcome counterfactual independent review
-- [ ] blind reviewer/operator preparation의 opaque slot, non-matrix ordering과 private mapping integrity
+- [ ] frozen Work/task bytes, run-sheet topology와 operator-controlled repository/hook trust
 
 ### Recall, UI와 documents
 
@@ -524,28 +500,24 @@ reconstruction workspace package가 legacy crate를 의존하지 않는지도 Ca
 
 ### Naturalistic qualification authority
 
-The active Phase 8 combination is `qualification_policy.py`: exact Product candidate
-technical gate/capsule/archive, immutable evidence integrity, typed machine authority,
-common agent/human review completion and targeted human escalations. Evaluation policy
-and evaluator HEAD are distinct from the Product candidate; old evidence never binds a
-new candidate. Procedural uncertainty is unresolved until supported review resolves it.
-Only an explicit `approve-phase-9` operator action over the fully qualified state opens
-Phase 9. Approval cannot substitute for evidence or waive hard facts. Cutover remains
-out of scope until this complete state exists. The 3-journey/5-Work/8-fresh-session
-requirement and five-Work pre-campaign blind provisional boundary remain unchanged.
-The approved qualification must also have a verified durable result lineage; an approval
-reachable only through an ephemeral staging path is not a discoverable cutover record.
+The current Phase 8 qualification combines exact-candidate technical
+capsule/archive verification, immutable evidence and deterministic 3/5/3/8
+topology, hard machine findings, recorded post-hoc agent/human judgments and
+required direct-human observations. Semantic disagreement remains review
+evidence; unresolved high-impact authority or recovery findings may require
+targeted human resolution. `not_observed` is distinct from satisfied,
+violated, insufficient and structurally not applicable. Missing optional
+hidden-materiality or Learning opportunities do not alone block qualification.
+The candidate's actual Learning participation, if active, is reviewed for
+fork value, alternatives/trade-offs, chronology, fidelity and interruption.
+Hard evidence failures cannot be overridden by review prose.
 
-Phase 8 collection observes target journey end state without automatically committing or cleaning
-it. Immutable Git attestation binds baseline/session/final HEADs, staged/unstaged patches, tracked
-content and nonignored untracked hashes to the evidence set. The Product candidate must still be
-clean and exact-HEAD-bound. Dirty target state alone is not a Product failure or proof of correct
-verification/actor attribution. Every counted qualification obligation requires a distinct fixed
-pre-reveal blind dimension; an evaluator-only newly discovered dimension remains a blocking
-`blind_coverage_gap`. Explicit fixed negative applicability is reconciled as a disagreement;
-reviewer-correct resolution keeps the assigned evaluator obligation invalid and blocks qualification.
-Steward reconciliation uses the campaign-local private prepare/edit/validate/
-seal lifecycle, and only a validated campaign-owned artifact may create an immutable descriptor.
-Diagnostic failed rollout captures are not qualification evidence for a changed candidate. Such a
-candidate requires a fresh 3-journey/5-Work/3-resume/8-session naturalistic campaign, independent
-review and replacement qualification. Technical passage alone does not approve Phase 9.
+Collection observes target Git state without automatically committing or
+cleaning it. The immutable attestation binds baseline/session/final HEADs,
+staged/unstaged patches, tracked content and nonignored untracked hashes.
+The Product candidate remains clean and exact-HEAD-bound. A dirty target
+state alone does not establish Product failure, actor attribution or truthful
+verification. Qualification leaves `phase_9_ready = false`; only an explicit
+`approve-phase-9` operator action over a qualified result can open Phase 9.
+The approved result needs a verified durable result lineage. Historical
+failed captures remain diagnostic and cannot qualify a changed candidate.

@@ -334,8 +334,8 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
     c = campaign_api()
     campaign = c.load_campaign_for_mutation(root)
     c.verify_inventory(root)
-    if campaign.get("terminal_outcome") is not None or any(s.get("state") != "sealed" for s in campaign["works"].values()):
-        raise c.CampaignError("realization preparation requires an untouched sealed campaign")
+    if campaign.get("terminal_outcome") is not None or any(s.get("state") != "frozen" for s in campaign["works"].values()):
+        raise c.CampaignError("realization preparation requires an untouched frozen campaign")
     if not required(campaign["document_language"], campaign["viewer_locale"]):
         return {"state": "fixed_locale", "qualification_state": "not_run"}
     verify_route(campaign)
@@ -457,8 +457,8 @@ def record(root: Path, identity: str, draft_path: Path,
     c = campaign_api()
     campaign = c.load_campaign_for_mutation(root)
     c.verify_inventory(root)
-    if campaign.get("terminal_outcome") is not None or any(s.get("state") != "sealed" for s in campaign["works"].values()):
-        raise c.CampaignError("realization recording requires an untouched sealed campaign")
+    if campaign.get("terminal_outcome") is not None or any(s.get("state") != "frozen" for s in campaign["works"].values()):
+        raise c.CampaignError("realization recording requires an untouched frozen campaign")
     verify_route(campaign)
     validate(root, identity, draft_path, runtime_rollout)
     data = draft_path.read_bytes()

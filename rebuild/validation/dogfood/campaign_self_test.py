@@ -271,6 +271,27 @@ def prepare(
         campaign.repository_spec_map(json.loads(source.read_text(encoding="utf-8"))),
         fake_identities(),
     )
+    task_files = {}
+    task_directory = root.parent / f"{root.name}-tasks"
+    for kind in campaign.CLASSES:
+        for label in campaign.work_labels(kind):
+            obligation = next(value[2][0] for value in TEST_ASSIGNMENTS
+                if value[:2] == (kind, label))
+            revision = harness.git_head(campaign.ROOT) if kind == "volicord" else REVISION
+            fixture_directory = root.parent / f"{root.name}-task-fixtures" / f"{kind}-{label}"
+            fixture_directory.mkdir(parents=True, exist_ok=True)
+            fixture = harness.real_session_fixture(kind, label, revision,
+                fixture_directory, materiality_obligations=obligation)
+            entry = {}
+            for role in campaign.session_roles(kind, label):
+                field = "work_user_task" if role == "start" else "fresh_resume_user_task"
+                path = task_directory / f"{kind}-{label}-{role}.txt"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(fixture[field].encode("utf-8"))
+                entry[role] = str(path)
+            task_files[campaign.work_key(kind, label)] = entry
+    task_manifest = root.parent / f"{root.name}-tasks.json"
+    task_manifest.write_text(json.dumps({"tasks": task_files}), encoding="utf-8")
     try:
         def fake_clone(_source: Path, destination: Path, _revision: str) -> None:
             destination.mkdir(parents=True)
@@ -281,11 +302,11 @@ def prepare(
             root.name,
             harness.git_head(campaign.ROOT),
             source,
+            task_manifest,
             candidate_binary=binary,
             enable=False,
             cloner=fake_clone,
             slot_id_factory=slot_id_factory,
-            obligation_assignment_factory=lambda: list(TEST_ASSIGNMENTS),
         )
     finally:
         harness.git_clean = original_clean
@@ -307,14 +328,8 @@ def fixture_for(
         if campaign_root is not None
         else None
     )
-    obligations = (
-        campaign.private_materiality_obligations(
-            campaign_root,
-            campaign.work_state(campaign_root, kind, cycle),
-        )
-        if campaign_root is not None
-        else ("explicit_user_owned_decision",)
-    )
+    obligations = next(value[2] for value in TEST_ASSIGNMENTS
+        if value[:2] == (kind, cycle))
     descriptor = harness.real_session_fixture(
         kind,
         cycle,
@@ -762,24 +777,16 @@ def prepared_batch(
     prepare(root, parent / f"{name}-sources", binary)
     captures: list[Path] = []
     bundles: dict[str, Path] = {}
-    descriptors: dict[tuple[str, int], Path] = {}
     for kind in campaign.CLASSES:
         for cycle in campaign.work_labels(kind):
-            descriptor, work, resume, bundle = fixture_for(
-                parent / f"{name}-fixtures",
-                kind,
-                cycle,
-                campaign_root=root,
-            )
-            descriptors[(kind, cycle)] = record_descriptor_review(
-                root, kind, cycle, descriptor
+            _descriptor, work, resume, bundle = fixture_for(
+                parent / f"{name}-fixtures", kind, cycle, campaign_root=root,
             )
             captures.append(work)
             if "resume" in campaign.session_roles(kind, cycle):
                 captures.append(resume)
             state = campaign.work_state(root, kind, cycle)
             bundles[state["review_slot_id"]] = bundle
-    reveal_and_seal_descriptors(root, descriptors)
     return root, captures, bundles
 
 
@@ -2995,23 +3002,161 @@ def assert_historical_campaign_is_inspection_only(parent: Path, binary: Path) ->
     }
 
 
+def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
+    root, captures, bundles = prepared_batch(parent, "current-campaign", binary)
+    state = campaign.load_campaign(root)
+    assert len(state["journeys"]) == 3 and len(state["works"]) == 5
+    assert sum(len(work["operator_task_artifacts"]) for work in state["works"].values()) == 8
+    assert all(work["state"] == "frozen" for work in state["works"].values())
+    assert not (root / "evaluator/qualification-profile.json").exists()
+    assert not (root / "reviewer/provisional-review-contract.json").exists()
+    assert (root / "operator/RUN-SHEET.md").read_text().count("### Session `") == 8
+    volicord = [state["works"][campaign.work_key("volicord", label)] for label in ("A", "B", "C")]
+    assert len({work["repository_path"] for work in volicord}) == 1
+    assert len({work["runtime_home"] for work in volicord}) == 1
+    assert len({work["repository_path"] for work in state["works"].values()}) == 3
+    assert len({work["runtime_home"] for work in state["works"].values()}) == 3
+
+    task_manifest = campaign.read_json(parent / "current-campaign-tasks.json")
+    incomplete = copy.deepcopy(task_manifest)
+    incomplete["tasks"].pop(campaign.work_key("volicord", "C"))
+    missing = parent / "missing-work-tasks.json"
+    campaign.write_json(missing, incomplete)
+    try:
+        campaign.frozen_tasks(missing)
+    except campaign.CampaignError:
+        pass
+    else:
+        raise AssertionError("missing frozen Work was accepted")
+    incomplete = copy.deepcopy(task_manifest)
+    incomplete["tasks"][campaign.work_key("volicord", "A")].pop("resume")
+    campaign.write_json(missing, incomplete)
+    try:
+        campaign.frozen_tasks(missing)
+    except campaign.CampaignError:
+        pass
+    else:
+        raise AssertionError("missing resume task was accepted")
+    try:
+        campaign.require_current_candidate("0" * 40)
+    except campaign.CampaignError:
+        pass
+    else:
+        raise AssertionError("wrong Product candidate was accepted")
+    original = campaign.campaign_file(root).read_bytes()
+    changed = campaign.load_campaign(root)
+    changed["works"][campaign.work_key("volicord", "C")]["state"] = "prepared"
+    campaign.save_campaign(root, changed)
+    try:
+        try:
+            campaign.activate_all(root)
+        except campaign.CampaignError:
+            pass
+        else:
+            raise AssertionError("activation accepted incomplete frozen preparation")
+    finally:
+        campaign.campaign_file(root).write_bytes(original)
+
+    start = next(path for path in captures
+        if "volicord-A-work" in path.name)
+    descriptor = campaign.read_json(campaign.evaluator_descriptor_path(root, "volicord", "A"))
+    mismatched = replaced_capture(start, parent / "wrong-first-task.jsonl",
+        descriptor["work_user_task"], descriptor["work_user_task"] + " changed")
+    try:
+        campaign.map_batch_rollouts(root, [mismatched if path == start else path for path in captures])
+    except campaign.CampaignError as error:
+        assert "frozen_task_mismatch" in str(error.diagnostic)
+    else:
+        raise AssertionError("task-byte mismatch mapped as a frozen session")
+
+    first, second = captures[:2]
+    first_id = campaign.load_codex_capture(first).session_id
+    second_id = campaign.load_codex_capture(second).session_id
+    duplicate = replaced_capture(second, parent / "duplicate-session.jsonl", second_id, first_id)
+    try:
+        campaign.map_batch_rollouts(root, [duplicate if path == second else path for path in captures])
+    except campaign.CampaignError as error:
+        assert "session identity" in str(error)
+    else:
+        raise AssertionError("duplicate fresh session identity was accepted")
+    assert len(campaign.map_batch_rollouts(root, captures)) == 8
+
+    original_run_checked = campaign.run_checked
+    campaign.run_checked = fake_enable_command
+    try:
+        assert campaign.activate_all(root)["journey_count"] == 3
+    finally:
+        campaign.run_checked = original_run_checked
+
+    def reject_identity(source: Path, old: str, new: str, label: str) -> None:
+        changed = replaced_capture(source, parent / f"{label}.jsonl", old, new)
+        before = campaign.campaign_file(root).read_bytes()
+        try:
+            campaign.collect_batch(root,
+                [changed if path == source else path for path in captures],
+                exporter=batch_exporter(bundles), documenter=documenter,
+                snapshotter=snapshotter)
+        except campaign.CampaignError:
+            pass
+        else:
+            raise AssertionError(f"{label} was accepted")
+        assert campaign.campaign_file(root).read_bytes() == before
+        assert not (root / "evidence-set.json").exists()
+
+    reject_identity(captures[1],
+        hashlib.sha256(b"work:volicord:A").hexdigest()[:32],
+        hashlib.sha256(b"work:volicord:B").hexdigest()[:32],
+        "wrong-same-work-resume")
+    reject_identity(captures[2],
+        hashlib.sha256(b"project:volicord").hexdigest()[:32],
+        hashlib.sha256(b"project:small-python").hexdigest()[:32],
+        "wrong-volicord-project")
+    reject_identity(captures[4],
+        hashlib.sha256(b"project:small-python").hexdigest()[:32],
+        hashlib.sha256(b"project:volicord").hexdigest()[:32],
+        "cross-journey-project-mixing")
+
+    summary = campaign.collect_batch(root, captures,
+        exporter=batch_exporter(bundles), documenter=documenter,
+        snapshotter=snapshotter)
+    assert summary["collection_state"] == "collected"
+    assert len(summary["works"]) == 5 and len(summary["journey_final_evidence"]) == 3
+    assert len({work["sessions"]["start"]["session_id"] for work in summary["works"]}) == 5
+    assert len({work["project_id"] for work in summary["works"]}) == 3
+    volicord = [work for work in summary["works"] if work["repository_class"] == "volicord"]
+    assert len({work["project_id"] for work in volicord}) == 1
+    assert len({work["work_item_id"] for work in volicord}) == 3
+    for work in summary["works"]:
+        if work["work_label"] == "A":
+            assert work["sessions"]["start"]["session_id"] != work["sessions"]["resume"]["session_id"]
+    manifest = campaign.load_evidence_set(root)
+    assert manifest["schema_version"] == 5 and len(manifest["raw_inputs"]) == 8
+    raw = root / manifest["work_evidence"][0]["sessions"]["start"]["relative_evidence_path"]
+    original_raw = raw.read_bytes()
+    raw.write_bytes(original_raw + b"\n")
+    try:
+        try:
+            campaign.load_evidence_set(root)
+        except campaign.CampaignError:
+            pass
+        else:
+            raise AssertionError("raw evidence tampering was accepted")
+    finally:
+        raw.write_bytes(original_raw)
+    campaign.load_evidence_set(root)
+    evaluation = campaign.evaluate_campaign(root, parent / "current-evaluation")
+    assert evaluation["qualification_state"] == "not_run"
+
+
 def main() -> int:
     from resume_self_test import check_resume_regressions
     from document_realization_self_test import check_document_realization_regressions
     from long_lived_project_self_test import check_long_lived_project_regressions
+    from repository_state_self_test import check_repository_state_regressions
     check_resume_regressions()
     check_long_lived_project_regressions()
     check_document_realization_regressions()
-    from repository_state_self_test import check_repository_state_regressions
     check_repository_state_regressions()
-    from blind_dimensions_self_test import check_blind_dimension_regressions
-    check_blind_dimension_regressions()
-    from blind_protocol_self_test import check_blind_protocol_regressions
-    check_blind_protocol_regressions()
-    from reconciliation_self_test import check_reconciliation_regressions
-    check_reconciliation_regressions()
-    from evidence_controls_self_test import check_evidence_control_regressions
-    check_evidence_control_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
     try:
@@ -3019,68 +3164,16 @@ def main() -> int:
             parent = Path(temporary)
             binary = parent / "candidate/bin/volicord"
             write_fake_binary(binary)
-            assert all(
-                status in {"A", "B", "C"} and owner
-                for status, owner in PREDECESSOR_INVARIANT_COVERAGE.values()
-            )
-            assert_session_start_ordering(parent)
-            assert_production_session_start(parent, binary)
-            assert_activation_failure_attribution(parent, binary)
-            assert_same_path_candidate_replacement_rejected(parent, binary)
-            assert_strict_cli_contract(parent, binary)
-            assert_default_document_process_evidence(parent, binary)
-            assert_opaque_slot_preparation(parent, binary)
-            assert_learning_obligation_grounded_before_review(parent, binary)
-            assert_other_positive_obligations_grounded_before_review(parent, binary)
-            assert_blind_recording_non_oracle(parent, binary)
-            assert_blockers(parent, binary)
-            assert_batch_failure_atomicity(parent, binary)
-            assert_failed_document_kind_is_machine_failure(parent, binary)
-            assert_resume_baseline_identity_and_ordering(parent)
-            assert_superseded_candidate_mutation_guard(parent, binary)
-            assert_journey_campaign_contract(parent, binary)
-            assert_historical_campaign_is_inspection_only(parent, binary)
+            assert_current_campaign_contract(parent, binary)
     finally:
         harness.git_clean = original_clean
-    print(json.dumps({
-        "status": "passed",
-        "checks": [
-            "three_journeys_five_works_three_resume_pairs_eight_sessions",
-            "predecessor_integrity_invariant_inventory_A_subsumed_B_ported_C_superseded",
-            "production_session_start_across_eight_current_session_slots",
-            "activation_environment_evidence_validation_internal_attribution",
-            "same_path_and_superseded_candidate_mutation_guards",
-            "learning_semantic_grounding_before_blind_preparation",
-            "exploratory_and_user_owned_grounding_before_blind_preparation",
-            "blind_review_non_oracle_and_five_review_reveal_boundary",
-            "seal_work_provenance_and_fixed_review_immutability",
-            "early_blockers_preserve_truthful_non_success",
-            "failed_required_document_is_machine_failure",
-            "three_resume_pair_identity_plus_baseline_ordering_regression",
-            "independent_overlapping_materiality_obligation_coverage",
-            "five_opaque_reviews_and_profile_blindness",
-            "complete_task_freeze_before_journey_activation",
-            "later_volicord_work_rejects_exact_prior_outcome_dependency",
-            "shared_volicord_workspace_runtime_and_isolated_other_journeys",
-            "eight_entry_leak_free_operator_run_sheet",
-            "unordered_eight_capture_mapping_and_global_session_distinctness",
-            "wrong_project_duplicate_missing_work_and_cross_journey_contamination_rejected",
-            "same_work_resume_project_and_work_identity",
-            "same_project_distinct_volicord_work_identities",
-            "cross_journey_project_isolation",
-            "immutable_session_slot_manifest_and_raw_hash_binding",
-            "collection_failure_rollback_and_post_publication_raw_immutability",
-            "real_git_dirty_staged_unstaged_untracked_and_committed_collection",
-            "target_attestation_tamper_rejection_and_non_mutating_atomic_publication",
-            "independent_blind_dimensions_and_unseen_obligation_gap",
-            "blind_discovery_critique_adjudication_and_lineage_controls",
-            "campaign_owned_reconciliation_validation_privacy_and_create_only_seal",
-            "batch_publication_failure_atomicity_and_read_barrier",
-            "journey_final_document_realization_inventory",
-            "historical_cycle_schema_identity_inventory_inspection_only",
-            "resume_frontier_and_long_lived_project_regressions",
-        ],
-    }, indent=2, sort_keys=True))
+    print(json.dumps({"status": "passed", "checks": [
+        "three_journeys_five_works_three_resumes_eight_frozen_tasks",
+        "activation_requires_complete_preparation",
+        "candidate_task_session_project_work_and_raw_identity",
+        "current_prepare_activate_collect_evaluate_without_semantic_profile",
+        "document_realization_resume_and_repository_state_support",
+    ]}, indent=2, sort_keys=True))
     return 0
 
 
