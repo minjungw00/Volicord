@@ -1211,6 +1211,25 @@ resource measurements. Synthetic campaign, resume, document, repository-state,
 machine, review and qualification fixtures are regression support, never a
 substitute for the eight naturalistic sessions.
 
+### Deterministic behavior owners outside Naturalistic Dogfood
+
+These tests exercise typed Product transitions or evidence chronology. They are
+technical regressions, not assigned behavior opportunities in a naturalistic Work.
+
+| Durable boundary | Existing executing owner | Naturalistic review limit |
+| --- | --- | --- |
+| User authority before affected commitment | `volicord-operations/tests/work_authority.rs`: `late_user_authority_correction_preserves_prospective_only_work_state`, `user_owned_and_hidden_material_signals_require_question_lifecycle`; `dogfood/frontier_self_test.py`: `test_late_revision_cannot_authorize_earlier_write` | Whether an unanticipated outcome is material or user-owned remains evidence-bound review. |
+| Repository facts and settled outcomes do not create unnecessary Questions | `work_authority.rs`: `settled_contract_and_repository_fact_are_ready_without_question_and_survive_restart`, `settled_choice_does_not_manufacture_a_second_user_question`; `frontier_self_test.py`: `test_source_evidence_settles_initial_user_uncertainty_without_question` | The adequacy of actual research is judged after execution. |
+| Delegated implementation choices retain their scope | `work_authority.rs`: `current_goal_explicit_delegation_is_ready_and_checkpoints_without_a_decision`, `discovery_evidence_precedes_delegated_or_agent_owned_implementation_authority`; `frontier_self_test.py`: `test_delegated_behavior_does_not_hide_independent_user_owned_policy` | Whether a real change exceeds delegation requires review of its effect. |
+| Inquiry provenance and repeated-question avoidance | `frontier_self_test.py`: `test_discovery_binds_current_sources_exact_goal_baseline_and_chronology`, `test_answered_question_repeat_is_distinct_from_lifecycle`; `work_authority.rs`: `independent_user_owned_outcomes_cannot_share_question_authority` | Relevance and necessity of actual wording remain qualitative. |
+| Learning participation and non-canonical choice | `work_authority.rs`: `provenance_representation_learning_selection_never_becomes_product_authority`, `active_learning_keeps_routine_and_user_owned_choices_on_their_existing_paths`, `current_user_can_withdraw_learning_without_creating_a_decision`; `resume_self_test.py`: `test_selected_state_chronology_and_non_decision_invariants` | Meaningful fork value, alternatives, trade-offs, fidelity and proportional interruption are reviewed only when participation is active. |
+| Routine detail does not force an authority Question | `work_authority.rs`: `materially_atomic_private_details_terminate_without_question`; `frontier_self_test.py`: `test_non_user_authority_is_not_a_behavior_label` | Whether a specific interruption was useful remains qualitative. |
+| Same-Work Recall and continuation | `dogfood/campaign_self_test.py`: `assert_current_campaign_contract`; `dogfood/resume_self_test.py`: `test_recall_transport_and_identity_are_evidence_failures` | Comprehension and usefulness of recovered context remain qualitative. |
+| Decision applicability and scope | `work_authority.rs`: `relevant_evidence_cannot_claim_exact_authority_while_credible_alternatives_remain`, `settling_dispositions_require_explicit_exact_authority_sufficiency`; `frontier_self_test.py`: `test_settlement_rejects_stale_response_and_inapplicable_decision` | A reviewer assesses disputed meaning and high-impact disagreement. |
+
+No row establishes a semantic pass for any of the five ordinary Works. The
+post-hoc rubric records `not_observed` when an optional opportunity did not occur.
+
 ## 16. Architecture 확정 gate
 
 다음이 완료되면 production architecture 문서를 확정할 수 있다.
