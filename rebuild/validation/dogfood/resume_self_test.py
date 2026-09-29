@@ -3,6 +3,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 import shlex
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -21,7 +22,8 @@ class ResumeTests(unittest.TestCase):
         self.path = self.root / self.descriptor["evidence"]["captures"]["resume"]["file"]
         self.capture = h.load_codex_capture(self.path)
         self.state = {"repository_revision": "0" * 40, "repository_path": "/phase8/repository",
-            "project_id": "01" * 16, "work_session_id": "other"}
+            "project_id": "01" * 16, "work_item_id": "08" * 16,
+            "work_session_id": "other"}
         self.verification = next(c for c in self.capture.commands if not command_is_repository_inspection(c.parsed_command))
 
     def inspect(self, capture=None):
@@ -93,6 +95,28 @@ class ResumeTests(unittest.TestCase):
             executable_work_scope=None, descriptor_scope_paths=[])
         self.assertEqual(facts["mode"], "verified_state_continuation")
 
+    def test_completed_no_write_resume_can_start_on_committed_descendant(self):
+        repository = self.root / "repository"
+        repository.mkdir()
+        def git(*args):
+            return subprocess.run(["git", *args], cwd=repository, check=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode().strip()
+        git("init", "-q")
+        git("config", "user.name", "Fixture")
+        git("config", "user.email", "fixture@example.invalid")
+        (repository / "work.txt").write_text("start\n")
+        git("add", "work.txt")
+        git("commit", "-qm", "start")
+        baseline = git("rev-parse", "HEAD")
+        (repository / "work.txt").write_text("complete\n")
+        git("commit", "-qam", "completed Work")
+        capture = replace(self.completed_no_write(), cwd=repository,
+            git_revision=git("rev-parse", "HEAD"))
+        state = {**self.state, "repository_revision": baseline,
+            "repository_path": str(repository)}
+        self.assertEqual(campaign.inspect_resume(capture, self.descriptor, state),
+            self.state["project_id"])
+
     def test_recalled_work_identity_rejects_wrong_missing_malformed_and_conflict(self):
         capture = self.completed_no_write()
         recall = capture.successful_calls("recall")[0]
@@ -101,6 +125,19 @@ class ResumeTests(unittest.TestCase):
                 "checkpoint": {**recall.result["checkpoint"], "work_item_id": value}})
             self.failure(replace(capture, tool_calls=tuple(changed if c is recall else c
                 for c in capture.tool_calls)), "recall_identity_or_project_invalid", "evidence")
+        for goals in (None, [], [{"identity": "08" * 16, "role": "goal"}] * 2,
+                [{"identity": "invalid", "role": "goal"}]):
+            changed = replace(recall, result={**recall.result, "goal_basis": goals})
+            self.failure(replace(capture, tool_calls=tuple(changed if c is recall else c
+                for c in capture.tool_calls)), "recall_identity_or_project_invalid", "evidence")
+        other_work = "ff" * 16
+        changed = replace(recall, result={**recall.result,
+            "checkpoint": {**recall.result["checkpoint"], "work_item_id": other_work},
+            "goal_basis": [{"identity": other_work, "role": "goal"}]})
+        wrong_work = replace(capture, tool_calls=tuple(changed if c is recall else c
+            for c in capture.tool_calls))
+        self.assertEqual(campaign.observed_work_item_ids(wrong_work, "resume"), [other_work])
+        self.failure(wrong_work, "recall_identity_or_project_invalid", "evidence")
         checkpoint = self.capture.successful_calls("checkpoint_record")[0]
         wrong = replace(checkpoint, arguments={**checkpoint.arguments, "goal_context_id": "ff" * 16})
         self.failure(replace(self.capture, tool_calls=tuple(wrong if c is checkpoint else c

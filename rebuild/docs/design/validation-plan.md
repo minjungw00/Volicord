@@ -1158,8 +1158,11 @@ start/resume Project and Work identities (a resume may use its structured
 canonical Recall checkpoint Work ID without writing a new Checkpoint; any new
 Checkpoint must agree), Volicord one-Project/three-Work
 continuity, cross-journey isolation, candidate artifacts, raw hashes and
-destination collisions. It retains final Git state without commit, reset, or
-clean; ignored content remains outside that attestation. Journey-final canonical
+destination collisions. Captured Work mutations require a committed descendant
+before a distinct Work begins, while an incomplete start may carry dirty state into
+its paired same-Work resume. Each journey must be clean and committed at collection;
+a no-change session needs no empty commit. Collection observes and retains the
+final Git state without changing it; ignored content remains outside attestation. Journey-final canonical
 bundle, documents, Viewer snapshot, Runtime and activation summaries, and
 repository-state evidence are inventory-bound. Publication is immutable and
 atomic. A failed collection cannot be converted to qualified evidence by

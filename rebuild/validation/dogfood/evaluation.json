@@ -977,9 +977,9 @@
     }
   },
   "repository_state_attestation_contract": {
-    "target_state": "observed_committed_or_naturally_dirty_without_mutation",
+    "target_state": "committed_work_boundaries_and_clean_final_without_git_mutation",
     "candidate_state": "clean_and_exact_head_bound",
-    "session_history": "pinned_baseline_and_ordered_descendant_heads",
+    "session_history": "pinned_baseline_ordered_descendant_heads_and_per_work_committed_boundaries",
     "artifacts": [
       "repository-state.json",
       "staged.patch",
@@ -989,6 +989,7 @@
     "publication_verification": "reobserve_exact_state_before_and_during_atomic_publication",
     "historical_verification": "immutable_retained_attestation_and_patch_bytes_without_live_target",
     "dirty_state_is_product_failure": false,
+    "dirty_state_blocks_collection": true,
     "actor_attribution_or_verification_success_implied": false,
     "analysis_or_checkpoint_replaced": false,
     "target_git_mutation_allowed": false

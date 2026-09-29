@@ -413,7 +413,40 @@ def verify_journey_revision_chronology(
                     "journey workspace HEAD must descend from its chronological sessions"
                 ),
             )
+        if not attestation["workspace_clean"]:
+            raise IntegrityError("project_binding", CampaignError(
+                f"{kind} journey has uncommitted final repository state"))
+        work_boundaries = []
+        labels = work_labels(kind)
+        for work_index, work_label in enumerate(labels):
+            roles = session_roles(kind, work_label)
+            captures = [mapped[(kind, work_label, role)].capture for role in roles]
+            next_label = labels[work_index + 1] if work_index + 1 < len(labels) else None
+            boundary_revision = (mapped[(kind, next_label, "start")].capture.git_revision
+                if next_label is not None else final_revision)
+            for index, capture in enumerate(captures):
+                changed_paths = sorted({path
+                    for observation in harness.meaningful_work_path_observations(capture)
+                    for path in observation.paths}) if hasattr(capture, "path_observations") else []
+                if not changed_paths:
+                    continue
+                if index == 0 and len(captures) > 1:
+                    resume_revision = captures[1].git_revision
+                    checkpoints = capture.successful_calls("checkpoint_record")
+                    incomplete = bool(checkpoints and checkpoints[-1].arguments.get("work_state")
+                        in {"paused", "in_progress"})
+                    if not incomplete and resume_revision == capture.git_revision:
+                        raise IntegrityError("project_binding", CampaignError(
+                            f"{kind} Work {work_label} dirty start lacks incomplete state at resume"))
+                if boundary_revision == capture.git_revision:
+                    raise IntegrityError("project_binding", CampaignError(
+                        f"{kind} Work {work_label} {roles[index]} changes lack a committed boundary "
+                        f"before {'Work ' + next_label if next_label else 'collection'}"))
+                work_boundaries.append({"work_label": work_label, "role": roles[index],
+                    "changed_paths": changed_paths, "session_revision": capture.git_revision,
+                    "committed_boundary_revision": boundary_revision})
         evidence[journey_id(kind)] = {
+            "work_commit_boundaries": work_boundaries,
             "baseline_revision": baseline,
             "ordered_session_revisions": [
                 {
@@ -437,6 +470,8 @@ def verify_final_repository_states(root: Path, manifest: dict[str, Any], *, live
         state = read_json(root / binding["state"])
         patches = {key: (root / binding[key]).read_bytes() for key in ("staged", "unstaged")}
         repository_state.verify_retained(state, patches)
+        if not state["workspace_clean"]:
+            raise CampaignError("journey repository-state evidence is not clean")
         if state != lineage["repository_state"] or state["final_head"] != lineage["final_revision"]:
             raise CampaignError("journey repository-state binding changed")
         if live:
@@ -726,6 +761,13 @@ def render_operator_run_sheet(root: Path) -> Path:
         "to the steward. For cross-locale documents the steward runs `prepare-document-realizations`, "
         "has an active host complete and fix the private drafts, and then runs `collect-batch`. "
         "Same-locale evidence uses `collect-batch` directly. No per-chat control-session collection is required.\n\n"
+        "After an agent reports a repository-changing Work complete, keep that thread and ask it "
+        "to make an atomic Conventional Commit containing only that Work's changes. An incomplete "
+        "start may carry dirty changes into its scheduled same-Work resume. Before starting a distinct "
+        "Work, commit the completed Work and check that the worktree is clean. Commit the final "
+        "repository-changing Work and check for a clean worktree before `collect-batch`. A genuine "
+        "no-change session needs no empty commit. Keep these instructions outside the frozen first "
+        "user turn.\n\n"
         "Naturalistic MCP memory is currently unmeasured: VS Code/Codex launches the configured "
         "candidate MCP directly outside the campaign helper's process tree, and this integration has "
         "no candidate-bound PID/lifecycle observer. Harness-tree RSS remains technical-gate evidence "
@@ -1322,7 +1364,8 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         capture.source != "vscode"
         or capture.originator != "codex_vscode"
         or not capture.fresh_user_thread
-        or capture.git_revision != state["repository_revision"]
+        or not revision_is_bound(Path(state["repository_path"]),
+            state["repository_revision"], capture.git_revision)
         or capture.cwd.resolve(strict=False) != Path(state["repository_path"]).resolve(strict=False)
         or not capture.user_turns
         or not harness.codex_user_turn_transport_identity_matches(
@@ -1362,9 +1405,11 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
             "recall_identity_or_project_invalid"
         )
     try:
-        observed_work_item_ids(capture, "resume")
+        resumed_work_ids = observed_work_item_ids(capture, "resume")
     except CampaignError as error:
         raise ResumeContractError("recall_identity_or_project_invalid") from error
+    if state.get("work_item_id") is not None and resumed_work_ids != [state["work_item_id"]]:
+        raise ResumeContractError("recall_identity_or_project_invalid")
     if any(
         command.sequence <= recall.completion_sequence and command_is_repository_inspection(command.parsed_command)
         for command in capture.commands

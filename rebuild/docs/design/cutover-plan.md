@@ -512,12 +512,14 @@ The candidate's actual Learning participation, if active, is reviewed for
 fork value, alternatives/trade-offs, chronology, fidelity and interruption.
 Hard evidence failures cannot be overridden by review prose.
 
-Collection observes target Git state without automatically committing or
-cleaning it. The immutable attestation binds baseline/session/final HEADs,
-staged/unstaged patches, tracked content and nonignored untracked hashes.
-The Product candidate remains clean and exact-HEAD-bound. A dirty target
-state alone does not establish Product failure, actor attribution or truthful
-verification. Qualification leaves `phase_9_ready = false`; only an explicit
+Collection observes target Git state without changing it. An incomplete Work
+start may carry dirty state into its paired resume; captured changes must be
+committed before the next distinct Work. Every journey must end clean and
+committed, with no empty commit required for no-change continuation. The immutable
+attestation binds baseline/session/final HEADs, staged/unstaged patches, tracked
+content and nonignored untracked hashes. The Product candidate remains clean
+and exact-HEAD-bound. Dirty target state blocks collection but alone does not
+establish Product failure, actor attribution or truthful verification. Qualification leaves `phase_9_ready = false`; only an explicit
 `approve-phase-9` operator action over a qualified result can open Phase 9.
 The approved result needs a verified durable result lineage. Historical
 failed captures remain diagnostic and cannot qualify a changed candidate.

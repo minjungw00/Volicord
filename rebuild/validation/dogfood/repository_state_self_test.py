@@ -96,9 +96,10 @@ class RepositoryStateTests(unittest.TestCase):
         state.verify(self.repo, captured)
         retained = json.loads(state.encoded(captured))
         state.verify_retained(retained, patches)
-        c, mapped = self.mapping()
-        lineage = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]
-        self.assertEqual(lineage["repository_state"], captured)
+        with self.assertRaisesRegex(campaign.IntegrityError, "uncommitted final"):
+            c, mapped = self.mapping()
+            campaign.verify_journey_revision_chronology(c, mapped)
+        lineage = {"repository_state": captured, "final_revision": captured["final_head"]}
         evidence = self.root / "retained"
         evidence.mkdir()
         binding = {"state": "repository-state.json", "staged": "staged.patch", "unstaged": "unstaged.patch"}
@@ -109,7 +110,8 @@ class RepositoryStateTests(unittest.TestCase):
             "journey_final_evidence": [{"journey_id": "journey-volicord",
                 "repository_revision_lineage": {**lineage, "attestation_artifacts": binding}}]}
         (evidence / "evidence-set.json").write_bytes(state.encoded(manifest))
-        campaign.verify_final_repository_states_for_publication(evidence)
+        with self.assertRaisesRegex(campaign.CampaignError, "not clean"):
+            campaign.verify_final_repository_states_for_publication(evidence)
         self.assertEqual(self.git("rev-parse", "HEAD"), head_before)
         self.assertEqual((self.repo / ".git/index").read_bytes(), index_before)
         self.assertEqual(self.git("status", "--porcelain=v1", "-z", "--untracked-files=all"), status_before)
@@ -119,17 +121,19 @@ class RepositoryStateTests(unittest.TestCase):
             (self.repo / name).write_bytes(original + b"ignored change")
             self.assertEqual(state.observe(self.repo), (captured, patches))
             state.verify(self.repo, captured)
-            campaign.verify_final_repository_states_for_publication(evidence)
+            with self.assertRaisesRegex(campaign.CampaignError, "not clean"):
+                campaign.verify_final_repository_states_for_publication(evidence)
             (self.repo / name).write_bytes(original)
         name, original = next(iter(replacements.items()), (".gitignore", b"ignored\n"))
         (self.repo / name).write_bytes(original + b"tampered")
         with self.assertRaisesRegex(state.StateError, "changed before publication"):
             state.verify(self.repo, captured)
-        with self.assertRaisesRegex(state.StateError, "changed before publication"):
+        with self.assertRaisesRegex(campaign.CampaignError, "not clean"):
             campaign.verify_final_repository_states_for_publication(evidence)
         # Historical verification remains independent of the mutated live target.
         state.verify_retained(retained, patches)
-        campaign.verify_retained_repository_states(evidence, manifest)
+        with self.assertRaisesRegex(campaign.CampaignError, "not clean"):
+            campaign.verify_retained_repository_states(evidence, manifest)
         (self.repo / name).write_bytes(original)
         damaged = copy.deepcopy(retained)
         next(item for item in damaged["tracked"] if item["path"] in historical)["state"] = "file"
@@ -276,18 +280,18 @@ class RepositoryStateTests(unittest.TestCase):
             state.verify(self.repo, captured)
         state.verify_retained(json.loads(state.encoded(captured)), patches)
         c, mapped = self.mapping()
-        self.assertEqual(campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]["repository_state"], captured)
+        with self.assertRaisesRegex(campaign.IntegrityError, "uncommitted final"):
+            campaign.verify_journey_revision_chronology(c, mapped)
         self.assertEqual(self.git("rev-parse", "HEAD"), head_before)
         self.assertEqual((self.repo / ".git/index").read_bytes(), index_before)
         self.assertEqual(self.git("status", "--porcelain=v1", "-z", "--untracked-files=all"), status_before)
         self.assertEqual(self.worktree_bytes(), files_before)
         self.assertEqual(os.readlink(self.repo / "tracked.txt"), targets[0])
 
-    def test_ignored_symlink_target_change_preserves_fingerprint_and_publication(self):
+    def test_ignored_symlink_target_change_preserves_fingerprint_but_dirty_collection_rejects(self):
         targets = self.replace_leaf_with_symlink(staged=True, ignored=True)
         captured, patches = state.observe(self.repo)
-        c, mapped = self.mapping()
-        lineage = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]
+        lineage = {"repository_state": captured, "final_revision": captured["final_head"]}
         evidence = self.root / "retained"
         evidence.mkdir()
         binding = {"state": "repository-state.json", "staged": "staged.patch", "unstaged": "unstaged.patch"}
@@ -307,8 +311,10 @@ class RepositoryStateTests(unittest.TestCase):
                 self.assertEqual((observed, observed_patches), (captured, patches))
                 state.verify(self.repo, captured)
                 state.verify_retained(captured, patches)
-                campaign.verify_final_repository_states_for_publication(evidence)
-                campaign.verify_retained_repository_states(evidence, manifest)
+                with self.assertRaisesRegex(campaign.CampaignError, "not clean"):
+                    campaign.verify_final_repository_states_for_publication(evidence)
+                with self.assertRaisesRegex(campaign.CampaignError, "not clean"):
+                    campaign.verify_retained_repository_states(evidence, manifest)
 
     def test_nonignored_same_path_symlink_is_still_attested(self):
         targets = self.replace_leaf_with_symlink(staged=True, ignored=False)
@@ -554,11 +560,85 @@ class RepositoryStateTests(unittest.TestCase):
         self.assertEqual(captured["status"][-2], {"path": "tracked.txt", "index": "M", "worktree": "M"})
         state.verify_retained(captured, patches)
         c, mapped = self.mapping()
-        result = campaign.verify_journey_revision_chronology(c, mapped)
-        self.assertEqual(result["journey-volicord"]["repository_state"], captured)
+        with self.assertRaisesRegex(campaign.IntegrityError, "uncommitted final"):
+            campaign.verify_journey_revision_chronology(c, mapped)
         self.assertEqual(self.git("rev-parse", "HEAD").strip().decode(), self.baseline)
         self.assertEqual((self.repo / ".git/index").read_bytes(), index_before)
         self.assertEqual(self.git("status", "--porcelain=v1", "-z"), status_before)
+
+    def mark_change(self, mapped, kind, work, role, *, completed=False):
+        capture = mapped[(kind, work, role)].capture
+        capture.path_observations = (SimpleNamespace(sequence=1, paths=("tracked.txt",)),)
+        capture.successful_calls = lambda operation: ([SimpleNamespace(
+            arguments={"work_state": "completed" if completed else "paused"})]
+            if operation == "checkpoint_record" else [])
+
+    def commit_change(self, content):
+        (self.repo / "tracked.txt").write_bytes(content)
+        self.git("commit", "-qam", "fixture Work")
+        return self.git("rev-parse", "HEAD").strip().decode()
+
+    def test_completed_work_boundaries_and_clean_collection(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "volicord", "A", "start")
+        self.mark_change(mapped, "volicord", "A", "resume")
+        self.mark_change(mapped, "volicord", "B", "start")
+        self.mark_change(mapped, "volicord", "C", "start")
+        a = self.commit_change(b"A complete\n")
+        mapped[("volicord", "B", "start")].capture.git_revision = a
+        b = self.commit_change(b"B complete\n")
+        mapped[("volicord", "C", "start")].capture.git_revision = b
+        self.commit_change(b"C complete\n")
+        result = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]
+        self.assertTrue(result["workspace_clean"])
+        self.assertEqual(len(result["work_commit_boundaries"]), 4)
+        self.assertEqual([item["committed_boundary_revision"] for item in result["work_commit_boundaries"]],
+            [a, a, b, result["final_revision"]])
+
+    def test_completed_a_committed_before_no_change_resume_and_b(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "volicord", "A", "start", completed=True)
+        a = self.commit_change(b"A complete before resume\n")
+        mapped[("volicord", "A", "resume")].capture.git_revision = a
+        mapped[("volicord", "B", "start")].capture.git_revision = a
+        mapped[("volicord", "C", "start")].capture.git_revision = a
+        result = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]
+        self.assertEqual(len(result["work_commit_boundaries"]), 1)
+        self.assertEqual(result["final_revision"], a)
+
+    def test_dirty_a_cannot_cross_into_b_even_if_committed_later(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "volicord", "A", "start")
+        self.commit_change(b"A and B bundled\n")
+        with self.assertRaisesRegex(campaign.IntegrityError, "Work A start.*before Work B"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_b_and_c_cannot_be_bundled_into_final_commit(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "volicord", "B", "start")
+        self.mark_change(mapped, "volicord", "C", "start")
+        self.commit_change(b"B and C bundled\n")
+        with self.assertRaisesRegex(campaign.IntegrityError, "Work B start.*before Work C"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_same_work_dirty_continuation_and_final_commit(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "small-python", "A", "start")
+        self.mark_change(mapped, "small-python", "A", "resume")
+        self.commit_change(b"same Work completed\n")
+        result = campaign.verify_journey_revision_chronology(c, mapped)
+        self.assertEqual(len(result["journey-small-python"]["work_commit_boundaries"]), 2)
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "small-python", "A", "start", completed=True)
+        with self.assertRaisesRegex(campaign.IntegrityError, "dirty start lacks incomplete state"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_final_dirty_mutation_is_rejected(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "polyglot-medium", "A", "resume")
+        (self.repo / "tracked.txt").write_bytes(b"uncommitted\n")
+        with self.assertRaisesRegex(campaign.IntegrityError, "uncommitted final"):
+            campaign.verify_journey_revision_chronology(c, mapped)
 
     def test_clean_and_naturally_committed_descendant(self):
         c, mapped = self.mapping()

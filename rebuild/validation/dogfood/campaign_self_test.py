@@ -142,7 +142,19 @@ def fake_identities() -> list[dict[str, object]]:
 # Explicit test double for the pre-existing lightweight (non-Git) cloner.
 # Real Git attestation is exercised separately by repository_state_self_test.
 FIXTURE_REPOSITORY_REVISIONS: dict[Path, str] = {}
+FIXTURE_COMMIT_LINES: dict[Path, tuple[str, ...]] = {}
 REAL_OBSERVE = repository_state.observe
+REAL_REVISION_IS_BOUND = campaign.revision_is_bound
+
+
+def fixture_revision_is_bound(repository, baseline, observed):
+    line = FIXTURE_COMMIT_LINES.get(repository.resolve())
+    if line is None:
+        return REAL_REVISION_IS_BOUND(repository, baseline, observed)
+    return baseline in line and observed in line and line.index(baseline) <= line.index(observed)
+
+
+campaign.revision_is_bound = fixture_revision_is_bound
 
 
 def observe_fixture_repository(repository):
@@ -151,7 +163,8 @@ def observe_fixture_repository(repository):
         return REAL_OBSERVE(repository)
     patches = {"staged": b"", "unstaged": b""}
     state = {"kind": "dogfood_journey_repository_state", "schema_version": 1,
-             "final_head": revision, "status": [], "index": [], "tracked": [], "untracked": [],
+             "final_head": FIXTURE_COMMIT_LINES[repository.resolve()][-1],
+             "status": [], "index": [], "tracked": [], "untracked": [],
              "diffs": {key: {"bytes": 0, "sha256": repository_state.digest(data)} for key, data in patches.items()},
              "workspace_clean": True,
              "boundary": "HEAD_index_tracked_and_nonignored_untracked; ignored_content_excluded"}
@@ -202,6 +215,11 @@ def prepare(
         def fake_clone(_source: Path, destination: Path, _revision: str) -> None:
             destination.mkdir(parents=True)
             FIXTURE_REPOSITORY_REVISIONS[destination.resolve()] = _revision
+            FIXTURE_COMMIT_LINES[destination.resolve()] = tuple([
+                _revision,
+                *(hashlib.sha256(f"{_revision}:{i}".encode()).hexdigest()[:40]
+                  for i in range(1, 4 if destination.parent.name == "journey-volicord" else 2)),
+            ])
 
         campaign.prepare_campaign(
             root,
@@ -252,6 +270,12 @@ def fixture_for(
         descriptor["fresh_resume_user_task"] = None
     work = fixture_root / f"{kind}-{cycle}-work-events.jsonl"
     resume = fixture_root / f"{kind}-{cycle}-resume-events.jsonl"
+    if campaign_root is not None and kind == "volicord" and cycle in {"B", "C"}:
+        line = FIXTURE_COMMIT_LINES[repository.resolve()]
+        descendant = line[1 if cycle == "B" else 2]
+        text = work.read_text(encoding="utf-8")
+        work.write_text(text.replace(f'"commit_hash":"{revision}"',
+            f'"commit_hash":"{descendant}"'), encoding="utf-8")
     bundle = fixture_root / f"{kind}-{cycle}-context.bundle.json"
     project_id = hashlib.sha256(f"project:{kind}".encode()).hexdigest()[:32]
     work_item_id = hashlib.sha256(f"work:{kind}:{cycle}".encode()).hexdigest()[:32]
@@ -496,6 +520,10 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
     assert all(work["state"] == "frozen" for work in state["works"].values())
     assert (root / "operator/RUN-SHEET.md").read_text().count("### Session `") == 8
     run_sheet = root / "operator/RUN-SHEET.md"
+    guidance = run_sheet.read_text()
+    assert "atomic Conventional Commit" in guidance
+    assert "incomplete start may carry dirty changes into its scheduled same-Work resume" in guidance
+    assert "no-change session needs no empty commit" in guidance
     original_run_sheet = run_sheet.read_bytes()
     run_sheet.write_bytes(original_run_sheet + b"\nEVALUATOR_ONLY\n")
     try:
