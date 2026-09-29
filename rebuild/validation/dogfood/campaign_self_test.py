@@ -672,6 +672,53 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
     assert evaluation["qualification_state"] == "not_run"
 
 
+def assert_checkpoint_free_completed_resume_collects(parent: Path, binary: Path) -> None:
+    root, captures, bundles = prepared_batch(parent, "checkpoint-free-resume", binary)
+    start = next(path for path in captures if "volicord-A-work" in path.name)
+    resume = next(path for path in captures if "volicord-A-resume" in path.name)
+    start.write_text(start.read_text(encoding="utf-8").replace("paused", "completed"),
+        encoding="utf-8")
+    repository = Path(campaign.work_state(root, "volicord", "A")["repository_path"])
+    baseline, committed = FIXTURE_COMMIT_LINES[repository.resolve()][:2]
+    lines = []
+    for line in resume.read_text(encoding="utf-8").splitlines():
+        event = json.loads(line)
+        call_id = event.get("payload", {}).get("call_id", "")
+        if "resume-patch-" in call_id or "resume-checkpoint-call" in call_id:
+            continue
+        lines.append(line.replace("paused", "completed").replace(
+            f'"commit_hash":"{baseline}"', f'"commit_hash":"{committed}"'))
+    resume.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    bundle = bundles[campaign.work_key("volicord", "A")]
+    envelope = json.loads(bundle.read_text(encoding="utf-8").replace("paused", "completed"))
+    payload = envelope["payload"]
+    envelope["checksum"] = hashlib.sha256(json.dumps(payload, ensure_ascii=False,
+        separators=(",", ":")).encode()).hexdigest()
+    campaign.write_json(bundle, envelope)
+    original_run_checked = campaign.run_checked
+    campaign.run_checked = fake_enable_command
+    try:
+        campaign.activate_all(root)
+    finally:
+        campaign.run_checked = original_run_checked
+    no_write = campaign.load_codex_capture(resume)
+    assert not no_write.successful_calls("checkpoint_record")
+    assert not harness.meaningful_work_path_observations(no_write)
+    descriptor = campaign.read_json(campaign.frozen_descriptor_path(root, "volicord", "A"))
+    state = {**campaign.work_state(root, "volicord", "A"),
+        "project_id": hashlib.sha256(b"project:volicord").hexdigest()[:32],
+        "work_item_id": hashlib.sha256(b"work:volicord:A").hexdigest()[:32],
+        "start_session_id": campaign.load_codex_capture(start).session_id}
+    assert campaign.inspect_resume(no_write, descriptor, state) == state["project_id"]
+    summary = campaign.collect_batch(root, captures,
+        exporter=batch_exporter(bundles), documenter=documenter,
+        snapshotter=snapshotter)
+    assert summary["collection_state"] == "collected"
+    work = next(item for item in summary["works"]
+        if item["repository_class"] == "volicord" and item["work_label"] == "A")
+    assert work["work_item_id"] == hashlib.sha256(b"work:volicord:A").hexdigest()[:32]
+
+
 def main() -> int:
     from resume_self_test import check_resume_regressions
     from document_realization_self_test import check_document_realization_regressions
@@ -690,6 +737,7 @@ def main() -> int:
             write_fake_binary(binary)
             assert_inventory_diagnostic(parent, binary)
             assert_current_campaign_contract(parent, binary)
+            assert_checkpoint_free_completed_resume_collects(parent, binary)
     finally:
         harness.git_clean = original_clean
     print(json.dumps({"status": "passed", "checks": [
