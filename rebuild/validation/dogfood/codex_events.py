@@ -1430,8 +1430,18 @@ class CodexCapture:
         ]
 
     def turn_for_call(self, call: ToolCall) -> UserTurn | None:
-        matches = [turn for turn in self.user_turns if turn.turn_id == call.turn_id]
-        return matches[0] if len(matches) == 1 else None
+        # A task can contain multiple distinct user messages (for example an
+        # asynchronous Question reply). The normalizer preserves their client
+        # identities; task turn_id alone is not the response identity. Select
+        # the unique latest message before invocation, never by matching text
+        # or by searching past a more recent user message.
+        preceding = [turn for turn in self.user_turns if turn.sequence < call.sequence]
+        if not preceding:
+            return None
+        latest_sequence = max(turn.sequence for turn in preceding)
+        matches = [turn for turn in preceding if turn.sequence == latest_sequence]
+        return (matches[0] if len(matches) == 1
+                and matches[0].turn_id == call.turn_id else None)
 
     def paths_before(self, sequence: int) -> list[str]:
         return sorted({path for item in self.path_observations if item.sequence < sequence for path in item.paths})

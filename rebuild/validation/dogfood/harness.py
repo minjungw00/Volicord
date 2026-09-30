@@ -5236,6 +5236,8 @@ def decision_facts(
                     **response_transport,
                     "raw_capture_sha256": work.source_sha256,
                     "captured_turn_id": turn.turn_id,
+                    "captured_user_turn_id": turn.user_turn_id,
+                    "captured_turn_sequence": turn.sequence,
                     "canonical_response_source_id": str(source_id),
                     "canonical_source_text_sha256": hashlib.sha256(source["locator"].encode("utf-8")).hexdigest(),
                 },

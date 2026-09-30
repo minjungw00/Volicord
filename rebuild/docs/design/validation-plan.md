@@ -1667,6 +1667,17 @@ and permitted semantic review groups. `machine_findings.py` validates complete c
 - Question necessity, authority applicability, learning proportionality and source-grounded
   document/interpretation usefulness use the common rubric. Structural HTML checks are
   observations and never direct human-observed accessibility or usability evidence.
+Current-host response attribution uses the unique latest captured user message
+before the tool invocation, in the same task `turn_id`. A Codex task can retain
+multiple distinct user `client_id` messages, including an asynchronous Question
+reply; uniqueness of task `turn_id` is not a response requirement. The current
+response must still match caller and canonical Source text using the maintained
+directional transport comparison and exact Project/Question/revision/receipt,
+response-link, Decision and history-witness predicates. No text-based search for
+an older answer, future answer, cross-task message or ambiguous latest message
+can supply authority. Machine basis retains both task and user-message identity
+and capture sequence/hash; the internal HostAdapter session remains distinct.
+
 - Canonical Decision response/Source/Question/receipt/witness integrity, measured Project
   and session provenance, raw mutation, credentials/privacy and candidate binding remain
   hard. An evidence-attributable numeric failed required validation after the last material

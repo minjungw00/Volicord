@@ -34,6 +34,75 @@ class DecisionTransportTests(unittest.TestCase):
         bundle = h.load_canonical_bundle(root / descriptor["evidence"]["canonical_bundle"]["file"])
         return capture, bundle
 
+    def async_response_fixture(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        descriptor = h.real_session_fixture("volicord", 1, "0" * 40, root)
+        path = root / descriptor["evidence"]["captures"]["work"]["file"]
+        events = [json.loads(line) for line in path.read_text().splitlines()]
+        task = next(e["payload"]["turn_id"] for e in events
+                    if e.get("payload", {}).get("type") == "task_started")
+        joined = []
+        for event in events:
+            payload = event.get("payload", {})
+            if payload.get("type") == "task_complete" and payload.get("turn_id") == task:
+                continue
+            if payload.get("type") == "task_started" and payload.get("turn_id") != task:
+                continue
+            if "turn_id" in payload:
+                payload["turn_id"] = task
+            joined.append(event)
+        path.write_text("".join(json.dumps(e) + "\n" for e in joined))
+        return h.load_codex_capture(path), h.load_canonical_bundle(
+            root / descriptor["evidence"]["canonical_bundle"]["file"])
+
+    def test_async_reply_in_same_task_has_exact_current_schema_authority(self):
+        capture, bundle = self.async_response_fixture()
+        decision = capture.successful_calls("decision_record")[0]
+        self.assertEqual(len(capture.user_turns), 2)
+        self.assertEqual(len({t.turn_id for t in capture.user_turns}), 1)
+        self.assertEqual(len({t.user_turn_id for t in capture.user_turns}), 2)
+        latest = capture.user_turns[-1]
+        self.assertEqual(capture.turn_for_call(decision), latest)
+        facts = h.decision_facts(capture, bundle)
+        self.assertTrue(facts[0])
+        transport = facts[-1][facts[1]]["current_host_response_transport"]
+        self.assertEqual(transport["captured_user_turn_id"], latest.user_turn_id)
+        self.assertEqual(transport["captured_turn_sequence"], latest.sequence)
+        self.assertEqual(transport["raw_capture_sha256"], capture.source_sha256)
+
+    def test_async_reply_cannot_reuse_old_future_cross_task_or_ambiguous_authority(self):
+        capture, bundle = self.async_response_fixture()
+        decision = capture.successful_calls("decision_record")[0]
+        latest = capture.user_turns[-1]
+        for turns in (
+            capture.user_turns[:-1],
+            (*capture.user_turns[:-1], replace(latest, sequence=decision.sequence + 1)),
+            (*capture.user_turns[:-1], replace(latest, turn_id="other-task")),
+            (*capture.user_turns, replace(latest, user_turn_id="ambiguous-client")),
+            (*capture.user_turns, replace(latest, sequence=decision.sequence - 1,
+                user_turn_id="newer-client", text="A new response replaces the earlier answer")),
+        ):
+            self.assertFalse(h.decision_facts(replace(capture, user_turns=turns), bundle)[0])
+        for table in ("sources", "question_response_sources", "decisions",
+                      "question_decision_history_witnesses", "question_revisions"):
+            tables = deepcopy(bundle.tables)
+            tables[table] = ()
+            self.assertFalse(h.decision_facts(capture, replace(bundle, tables=tables))[0])
+        for table, field, value in (
+            ("question_response_sources", "question_revision", 99),
+            ("question_decision_history_witnesses", "root_decision_id", "f" * 32),
+            ("question_decision_history_witnesses", "response_source_id", "f" * 32),
+            ("question_decision_history_witnesses", "response_authority", "agent"),
+            ("decisions", "user_authority", "agent"),
+            ("question_revisions", "material_scope", "malformed"),
+        ):
+            tables = deepcopy(bundle.tables)
+            for row in tables[table]:
+                row[field] = value
+            self.assertFalse(h.decision_facts(capture, replace(bundle, tables=tables))[0])
+
     def test_internal_host_session_is_not_raw_codex_session(self):
         capture, bundle = self.fixture()
         self.assertTrue(h.decision_facts(capture, bundle)[0])
