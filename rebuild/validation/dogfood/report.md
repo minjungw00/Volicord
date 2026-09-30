@@ -361,6 +361,27 @@ journey-final review sampling, and exact-topology qualification path. Common qua
 remains independently owned.
 No tracked historical hash is a substitute for that executable rule.
 
+Completed repository-changing Work boundaries require both exact observed-path
+coverage in the net committed tree delta from session HEAD to boundary HEAD and
+a terminal structured clean-status check bound to that boundary HEAD. In the same
+chat, atomically commit only the completed Work's changes, exclude unrelated
+pre-existing changes, then run exactly
+`git --no-optional-locks -c core.fsmonitor=false status --porcelain=v1 --untracked-files=all && git rev-parse HEAD`
+from the repository root after all mutations and other commands. Preserve its
+numeric success; its only output must be HEAD and a newline. Do this before a
+completed start's resume, a distinct Work, or terminal collection. An incomplete
+start may defer dirty changes and the check to its paired same-Work resume.
+Checkpoint-free no-write continuation remains valid; no-change sessions require
+no empty commit. This operator guidance never changes the frozen first task.
+
+Retained lineage includes observed/proven paths, base/boundary HEADs, boundary kind,
+and hash-bound raw session/execution/sequence cleanliness evidence. Net tree paths
+cover modifications, additions, deletions and both observed rename leaves without
+pathspec expansion. Ambiguous full reverts fail conservatively; path coverage does
+not establish semantic hunk ownership. Raw-session cleanliness cannot attest
+unobserved later external edits; the separate live final-state attestation remains
+required. See `validation-plan.md` for the executing proof and limits.
+
 ## Rejected alternatives and reasons
 
 - Do not qualify a support branch by passing a different commit only as a

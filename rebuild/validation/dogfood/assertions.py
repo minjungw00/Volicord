@@ -45,6 +45,8 @@ def main() -> int:
             "evaluate", "prepare-qualitative-review", "qualify",
             "approve-phase-9"} <= commands:
         raise AssertionError("current campaign CLI exposes a superseded semantic gate")
+    if definition["repository_state_attestation_contract"]["cleanliness_command"] != campaign.WORK_BOUNDARY_CHECK:
+        raise AssertionError("operator cleanliness command differs from the executing boundary proof")
     prepare = campaign.parser()._subparsers._group_actions[0].choices["prepare"]
     if not any("--tasks" in action.option_strings and action.required
             for action in prepare._actions):

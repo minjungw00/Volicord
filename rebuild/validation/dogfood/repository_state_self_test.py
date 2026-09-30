@@ -1,5 +1,6 @@
 """Deterministic real-Git collection regressions, never naturalistic evidence."""
 import copy
+from dataclasses import replace
 import json
 import os
 import socket
@@ -13,6 +14,7 @@ from unittest import mock
 import campaign
 import harness
 import repository_state as state
+from codex_events import CommandObservation, command_role, normalized_file_changes
 
 
 class RepositoryStateTests(unittest.TestCase):
@@ -41,7 +43,9 @@ class RepositoryStateTests(unittest.TestCase):
             journeys[campaign.journey_id(kind)] = {"repository_path": str(self.repo),
                 "repository_revision": self.baseline}
         for slot in harness.current_session_slots():
-            mapped[slot] = SimpleNamespace(capture=SimpleNamespace(git_revision=self.baseline))
+            mapped[slot] = SimpleNamespace(capture=SimpleNamespace(git_revision=self.baseline,
+                path_observations=(), commands=(), cwd=self.repo, session_id=str(slot),
+                source_sha256=state.digest(str(slot).encode())))
         return {"journeys": journeys}, mapped
 
     def worktree_bytes(self):
@@ -566,12 +570,21 @@ class RepositoryStateTests(unittest.TestCase):
         self.assertEqual((self.repo / ".git/index").read_bytes(), index_before)
         self.assertEqual(self.git("status", "--porcelain=v1", "-z"), status_before)
 
-    def mark_change(self, mapped, kind, work, role, *, completed=False):
+    def mark_change(self, mapped, kind, work, role, *, completed=False, paths=("tracked.txt",)):
         capture = mapped[(kind, work, role)].capture
-        capture.path_observations = (SimpleNamespace(sequence=1, paths=("tracked.txt",)),)
+        capture.path_observations = (SimpleNamespace(sequence=1, paths=paths),)
         capture.successful_calls = lambda operation: ([SimpleNamespace(
             arguments={"work_state": "completed" if completed else "paused"})]
             if operation == "checkpoint_record" else [])
+
+    def boundary_check(self, mapped, kind, work, role, *, sequence=10):
+        capture = mapped[(kind, work, role)].capture
+        result = subprocess.run(campaign.WORK_BOUNDARY_CHECK, shell=True, cwd=self.repo,
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        capture.commands = (CommandObservation(sequence, sequence + 1, "fixture-turn", 0,
+            {"cmd": campaign.WORK_BOUNDARY_CHECK, "workdir": str(self.repo)},
+            result.returncode, "exited", result.stdout.decode(), False,
+            "fixture-boundary-check", "completed"),)
 
     def commit_change(self, content):
         (self.repo / "tracked.txt").write_bytes(content)
@@ -585,10 +598,13 @@ class RepositoryStateTests(unittest.TestCase):
         self.mark_change(mapped, "volicord", "B", "start")
         self.mark_change(mapped, "volicord", "C", "start")
         a = self.commit_change(b"A complete\n")
+        self.boundary_check(mapped, "volicord", "A", "resume")
         mapped[("volicord", "B", "start")].capture.git_revision = a
         b = self.commit_change(b"B complete\n")
+        self.boundary_check(mapped, "volicord", "B", "start")
         mapped[("volicord", "C", "start")].capture.git_revision = b
         self.commit_change(b"C complete\n")
+        self.boundary_check(mapped, "volicord", "C", "start")
         result = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]
         self.assertTrue(result["workspace_clean"])
         self.assertEqual(len(result["work_commit_boundaries"]), 4)
@@ -599,6 +615,7 @@ class RepositoryStateTests(unittest.TestCase):
         c, mapped = self.mapping()
         self.mark_change(mapped, "volicord", "A", "start", completed=True)
         a = self.commit_change(b"A complete before resume\n")
+        self.boundary_check(mapped, "volicord", "A", "start")
         mapped[("volicord", "A", "resume")].capture.git_revision = a
         mapped[("volicord", "B", "start")].capture.git_revision = a
         mapped[("volicord", "C", "start")].capture.git_revision = a
@@ -626,6 +643,7 @@ class RepositoryStateTests(unittest.TestCase):
         self.mark_change(mapped, "small-python", "A", "start")
         self.mark_change(mapped, "small-python", "A", "resume")
         self.commit_change(b"same Work completed\n")
+        self.boundary_check(mapped, "small-python", "A", "resume")
         result = campaign.verify_journey_revision_chronology(c, mapped)
         self.assertEqual(len(result["journey-small-python"]["work_commit_boundaries"]), 2)
         c, mapped = self.mapping()
@@ -638,6 +656,198 @@ class RepositoryStateTests(unittest.TestCase):
         self.mark_change(mapped, "polyglot-medium", "A", "resume")
         (self.repo / "tracked.txt").write_bytes(b"uncommitted\n")
         with self.assertRaisesRegex(campaign.IntegrityError, "uncommitted final"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def changed_b(self, paths=("tracked.txt",)):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "volicord", "B", "start", completed=True, paths=paths)
+        return c, mapped
+
+    def close_b(self, mapped):
+        boundary = self.git("rev-parse", "HEAD").strip().decode()
+        mapped[("volicord", "C", "start")].capture.git_revision = boundary
+        self.boundary_check(mapped, "volicord", "B", "start")
+        return boundary
+
+    def test_two_paths_fully_committed_and_retained_proofs(self):
+        c, mapped = self.changed_b(("tracked.txt", "new path\nZ.txt"))
+        (self.repo / "tracked.txt").write_bytes(b"B\n")
+        (self.repo / "new path\nZ.txt").write_bytes(b"Z\n")
+        self.git("add", "--", "tracked.txt", "new path\nZ.txt")
+        self.git("commit", "-qm", "B complete")
+        boundary = self.close_b(mapped)
+        proof = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]["work_commit_boundaries"][0]
+        self.assertEqual(proof["proven_committed_paths"], sorted(("tracked.txt", "new path\nZ.txt")))
+        self.assertEqual(proof["boundary_kind"], "distinct_work_transition")
+        self.assertEqual(proof["session_revision"], self.baseline)
+        self.assertEqual(proof["cleanliness"]["head"], boundary)
+        self.assertEqual(proof["cleanliness"]["source_sha256"],
+            mapped[("volicord", "B", "start")].capture.source_sha256)
+
+    def test_unrelated_only_commit_and_later_work_commit_rejected(self):
+        c, mapped = self.changed_b()
+        (self.repo / "tracked.txt").write_bytes(b"B dirty\n")
+        (self.repo / "unrelated.txt").write_bytes(b"unrelated\n")
+        self.git("add", "--", "unrelated.txt")
+        self.git("commit", "-qm", "unrelated only")
+        self.close_b(mapped)
+        self.git("commit", "-qam", "B bundled with C later")
+        with self.assertRaisesRegex(campaign.IntegrityError, "observed paths absent.*tracked.txt"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_partial_path_commit_before_next_work_rejected(self):
+        c, mapped = self.changed_b(("tracked.txt", "Z.txt"))
+        self.commit_change(b"X committed\n")
+        (self.repo / "Z.txt").write_bytes(b"Z dirty\n")
+        self.close_b(mapped)
+        self.git("add", "--", "Z.txt")
+        self.git("commit", "-qm", "Z too late")
+        with self.assertRaisesRegex(campaign.IntegrityError, "observed paths absent.*Z.txt"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_residual_hunk_at_completed_boundary_rejected_even_after_later_commit(self):
+        c, mapped = self.changed_b()
+        self.commit_change(b"committed hunk\n")
+        (self.repo / "tracked.txt").write_bytes(b"committed hunk\nresidual hunk\n")
+        self.close_b(mapped)
+        self.git("commit", "-qam", "residual too late")
+        with self.assertRaisesRegex(campaign.IntegrityError, "terminal clean Git status"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_clean_check_before_last_mutation_rejected(self):
+        c, mapped = self.changed_b()
+        self.commit_change(b"B\n")
+        self.close_b(mapped)
+        mapped[("volicord", "B", "start")].capture.path_observations += (
+            SimpleNamespace(sequence=20, paths=("tracked.txt",)),)
+        with self.assertRaisesRegex(campaign.IntegrityError, "terminal clean Git status"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_missing_wrong_head_cwd_and_indeterminate_cleanliness_rejected(self):
+        c, mapped = self.changed_b()
+        self.commit_change(b"B\n")
+        self.close_b(mapped)
+        capture = mapped[("volicord", "B", "start")].capture
+        commands = capture.commands
+        for field, value in (("output", self.baseline + "\n"), ("exit_code", None),
+                ("evidence_state", "indeterminate"), ("termination", None),
+                ("parsed_command", {"cmd": campaign.WORK_BOUNDARY_CHECK, "workdir": str(self.root)}),
+                ("parsed_command", {"cmd": campaign.WORK_BOUNDARY_CHECK + " | cat"}),
+                ("parsed_command", {"cmd": "git status --porcelain=v1 --untracked-files=no"})):
+            with self.subTest(field=field, value=value):
+                capture.commands = (replace(commands[0], **{field: value}),)
+                with self.assertRaisesRegex(campaign.IntegrityError, "terminal clean Git status"):
+                    campaign.verify_journey_revision_chronology(c, mapped)
+        capture.commands = ()
+        with self.assertRaisesRegex(campaign.IntegrityError, "terminal clean Git status"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_later_or_overlapping_command_cannot_follow_cleanliness(self):
+        c, mapped = self.changed_b()
+        self.commit_change(b"B\n")
+        self.close_b(mapped)
+        capture = mapped[("volicord", "B", "start")].capture
+        clean = capture.commands[0]
+        for sequence, completion in ((20, 21), (2, 11)):
+            capture.commands = (clean, replace(clean, sequence=sequence,
+                completion_sequence=completion, parsed_command={"cmd": "arbitrary writer"}))
+            with self.assertRaisesRegex(campaign.IntegrityError, "terminal clean Git status"):
+                campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_final_clean_check_cannot_bind_an_earlier_head(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "polyglot-medium", "A", "resume")
+        self.commit_change(b"first hunk\n")
+        self.boundary_check(mapped, "polyglot-medium", "A", "resume")
+        self.commit_change(b"final mutation committed after check\n")
+        with self.assertRaisesRegex(campaign.IntegrityError, "terminal clean Git status"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_clean_reset_or_full_revert_is_not_commit_proof(self):
+        c, mapped = self.changed_b()
+        # Raw observation remains, but content was fully restored. No semantic
+        # inference can substitute for a net tree delta at that exact path.
+        (self.repo / "unrelated.txt").write_bytes(b"Y\n")
+        self.git("add", "--", "unrelated.txt")
+        self.git("commit", "-qm", "unrelated with reverted X")
+        self.close_b(mapped)
+        with self.assertRaisesRegex(campaign.IntegrityError, "observed paths absent"):
+            campaign.verify_journey_revision_chronology(c, mapped)
+
+    def test_rename_add_delete_and_literal_path_coverage(self):
+        added = ":(glob)*.txt"
+        self.git("mv", "tracked.txt", "renamed space.txt")
+        (self.repo / added).write_bytes(b"literal addition\n")
+        (self.repo / ".gitignore").unlink()
+        self.git("add", "-A")
+        self.git("commit", "-qm", "rename addition deletion")
+        changes = normalized_file_changes({"tracked.txt": {"type": "update",
+            "unified_diff": "@@\n-baseline\n+renamed\n", "move_path": "renamed space.txt"}}, self.repo)
+        self.assertEqual(changes[0], ("renamed space.txt", "tracked.txt"))
+        paths = (*changes[0], added, ".gitignore")
+        c, mapped = self.changed_b(paths)
+        self.close_b(mapped)
+        proof = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]["work_commit_boundaries"][0]
+        self.assertEqual(proof["proven_committed_paths"], sorted(paths))
+
+    def test_genuine_no_change_resume_needs_no_commit_or_status_command(self):
+        c, mapped = self.mapping()
+        result = campaign.verify_journey_revision_chronology(c, mapped)
+        for lineage in result.values():
+            self.assertEqual(lineage["final_revision"], self.baseline)
+            self.assertEqual(lineage["work_commit_boundaries"], [])
+
+    def test_boundary_check_is_inspection_and_never_product_validation(self):
+        self.assertEqual(command_role({"cmd": campaign.WORK_BOUNDARY_CHECK}), "inspection")
+        self.assertEqual(command_role({"cmd": "git -c alias.status=writer status"}), "unknown")
+        self.assertEqual(command_role({"cmd": "git add -- tracked.txt && git commit -m 'Work'"}),
+            "repository_maintenance")
+        c, mapped = self.mapping()
+        capture = mapped[("volicord", "B", "start")].capture
+        capture.commands = (CommandObservation(2, 3, "turn", 0,
+            {"cmd": "git add -- tracked.txt && git commit -m 'Work'"},
+            0, "exited", "committed\n", False, "commit", "completed"),)
+        self.assertFalse(harness.meaningful_resume_validation(capture, 0)["qualified"])
+
+    def test_incomplete_start_and_resume_commit_distinct_paths_before_next_work(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "volicord", "A", "start")
+        (self.repo / "tracked.txt").write_bytes(b"start X dirty\n")
+        self.assertTrue(self.git("status", "--porcelain=v1"))
+        self.assertEqual(mapped[("volicord", "A", "resume")].capture.git_revision, self.baseline)
+        self.mark_change(mapped, "volicord", "A", "resume", completed=True, paths=("Z.txt",))
+        (self.repo / "Z.txt").write_bytes(b"resume Z\n")
+        self.git("add", "--", "tracked.txt", "Z.txt")
+        self.git("commit", "-qm", "A X and Z complete")
+        a = self.git("rev-parse", "HEAD").strip().decode()
+        self.boundary_check(mapped, "volicord", "A", "resume")
+        for label in ("B", "C"):
+            mapped[("volicord", label, "start")].capture.git_revision = a
+        lineage = campaign.verify_journey_revision_chronology(c, mapped)["journey-volicord"]
+        self.assertEqual([p["proven_committed_paths"] for p in lineage["work_commit_boundaries"]],
+            [["tracked.txt"], ["Z.txt"]])
+        self.assertTrue(lineage["same_work_continuations"][0]["dirty_continuation_permitted"])
+        self.assertEqual({p["cleanliness"]["session_id"] for p in lineage["work_commit_boundaries"]},
+            {mapped[("volicord", "A", "resume")].capture.session_id})
+
+    def test_incomplete_start_no_write_resume_still_proves_completed_work(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "small-python", "A", "start")
+        self.commit_change(b"A completed during resume\n")
+        self.boundary_check(mapped, "small-python", "A", "resume")
+        proof = campaign.verify_journey_revision_chronology(c, mapped)["journey-small-python"]["work_commit_boundaries"][0]
+        self.assertEqual(proof["boundary_kind"], "final_collection")
+        self.assertEqual(proof["cleanliness"]["last_meaningful_mutation_sequence"], 0)
+
+    def test_completed_start_residual_hunk_cannot_cross_checkpoint_free_resume(self):
+        c, mapped = self.mapping()
+        self.mark_change(mapped, "small-python", "A", "start", completed=True)
+        a = self.commit_change(b"committed hunk\n")
+        (self.repo / "tracked.txt").write_bytes(b"committed hunk\nresidual\n")
+        self.boundary_check(mapped, "small-python", "A", "start")
+        mapped[("small-python", "A", "resume")].capture.git_revision = a
+        self.git("commit", "-qam", "residual after resume started")
+        with self.assertRaisesRegex(campaign.IntegrityError, "terminal clean Git status"):
             campaign.verify_journey_revision_chronology(c, mapped)
 
     def test_clean_and_naturally_committed_descendant(self):

@@ -145,6 +145,7 @@ FIXTURE_REPOSITORY_REVISIONS: dict[Path, str] = {}
 FIXTURE_COMMIT_LINES: dict[Path, tuple[str, ...]] = {}
 REAL_OBSERVE = repository_state.observe
 REAL_REVISION_IS_BOUND = campaign.revision_is_bound
+REAL_COMMITTED_WORK_PATHS = campaign.committed_work_paths
 
 
 def fixture_revision_is_bound(repository, baseline, observed):
@@ -155,6 +156,59 @@ def fixture_revision_is_bound(repository, baseline, observed):
 
 
 campaign.revision_is_bound = fixture_revision_is_bound
+
+
+def fixture_committed_work_paths(repository, base, boundary):
+    if repository.resolve() not in FIXTURE_COMMIT_LINES or (repository / ".git").exists():
+        return REAL_COMMITTED_WORK_PATHS(repository, base, boundary)
+    # Explicit counterpart to the non-Git cloner's synthetic revision line.
+    # Coverage/rejection semantics are tested against real Git by RepositoryStateTests.
+    return ["src/existing.rs", "tests/existing.rs", "src/resume.rs",
+        "backend/src/existing.rs", "frontend/src/existing.ts"] if base != boundary else []
+
+
+campaign.committed_work_paths = fixture_committed_work_paths
+
+
+def append_boundary_check(path, revision):
+    """Synthetic structured transport, inside the terminal task lifecycle."""
+    events = [json.loads(line) for line in path.read_text().splitlines()]
+    terminal = events.pop()
+    assert terminal["payload"]["type"] == "task_complete"
+    turn = terminal["payload"]["turn_id"]
+    call_id = f"boundary-{path.stem}"
+    arguments = {"cmd": campaign.WORK_BOUNDARY_CHECK,
+        "workdir": events[0]["payload"]["cwd"]}
+    metadata = {"turn_id": turn}
+    # Model the actual operator follow-up, including commit housekeeping after
+    # the Product checkpoint/verification and before terminal status.
+    maintenance_id = f"commit-{path.stem}"
+    maintenance = {"cmd": "git add -- src/existing.rs && git commit -m 'fixture Work'",
+        "workdir": arguments["workdir"]}
+    events.extend([
+        {"type": "response_item", "payload": {"type": "custom_tool_call",
+            "call_id": maintenance_id, "name": "exec", "status": "completed",
+            "input": "const commit=await tools.exec_command(" + json.dumps(maintenance)
+                + "); text(JSON.stringify(commit));",
+            "internal_chat_message_metadata_passthrough": metadata}},
+        {"type": "response_item", "payload": {"type": "custom_tool_call_output",
+            "call_id": maintenance_id, "output": [
+                {"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+                {"type": "input_text", "text": json.dumps({"output": "fixture commit\n", "exit_code": 0})}],
+            "internal_chat_message_metadata_passthrough": metadata}}])
+    events.extend([
+        {"type": "response_item", "payload": {"type": "custom_tool_call",
+            "call_id": call_id, "name": "exec", "status": "completed",
+            "input": "const boundary=await tools.exec_command(" + json.dumps(arguments)
+                + "); text(JSON.stringify(boundary));",
+            "internal_chat_message_metadata_passthrough": metadata}},
+        {"type": "response_item", "payload": {"type": "custom_tool_call_output",
+            "call_id": call_id, "output": [
+                {"type": "input_text", "text": "Script completed\nWall time 0.1 seconds\nOutput:\n"},
+                {"type": "input_text", "text": json.dumps({"output": revision + "\n", "exit_code": 0})}],
+            "internal_chat_message_metadata_passthrough": metadata}},
+        terminal])
+    path.write_text("\n".join(json.dumps(event, separators=(",", ":")) for event in events) + "\n")
 
 
 def observe_fixture_repository(repository):
@@ -286,6 +340,9 @@ def fixture_for(
             .replace("08" * 16, work_item_id),
             encoding="utf-8",
         )
+        if campaign_root is not None:
+            line = FIXTURE_COMMIT_LINES[repository.resolve()]
+            append_boundary_check(path, line[{"A": 1, "B": 2, "C": 3}[cycle]])
     envelope = json.loads(
         bundle.read_text(encoding="utf-8")
         .replace("01" * 16, project_id)
@@ -524,6 +581,8 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
     assert "atomic Conventional Commit" in guidance
     assert "incomplete start may carry dirty changes into its scheduled same-Work resume" in guidance
     assert "no-change session needs no empty commit" in guidance
+    assert campaign.WORK_BOUNDARY_CHECK in guidance
+    assert "Never include unrelated pre-existing changes" in guidance
     original_run_sheet = run_sheet.read_bytes()
     run_sheet.write_bytes(original_run_sheet + b"\nEVALUATOR_ONLY\n")
     try:
@@ -631,6 +690,9 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
         hashlib.sha256(b"work:volicord:A").hexdigest()[:32],
         hashlib.sha256(b"work:volicord:B").hexdigest()[:32],
         "wrong-same-work-resume")
+    reject_identity(captures[1],
+        hashlib.sha256(b"work:volicord:A").hexdigest()[:32], "",
+        "missing-same-work-identity-with-valid-git-boundary")
     reject_identity(captures[2],
         hashlib.sha256(b"project:volicord").hexdigest()[:32],
         hashlib.sha256(b"project:small-python").hexdigest()[:32],
@@ -684,7 +746,8 @@ def assert_checkpoint_free_completed_resume_collects(parent: Path, binary: Path)
     for line in resume.read_text(encoding="utf-8").splitlines():
         event = json.loads(line)
         call_id = event.get("payload", {}).get("call_id", "")
-        if "resume-patch-" in call_id or "resume-checkpoint-call" in call_id:
+        if ("resume-patch-" in call_id or "resume-checkpoint-call" in call_id
+                or call_id.startswith("commit-")):
             continue
         lines.append(line.replace("paused", "completed").replace(
             f'"commit_hash":"{baseline}"', f'"commit_hash":"{committed}"'))
@@ -717,6 +780,14 @@ def assert_checkpoint_free_completed_resume_collects(parent: Path, binary: Path)
     work = next(item for item in summary["works"]
         if item["repository_class"] == "volicord" and item["work_label"] == "A")
     assert work["work_item_id"] == hashlib.sha256(b"work:volicord:A").hexdigest()[:32]
+    lineage = next(entry["repository_revision_lineage"]
+        for entry in summary["journey_final_evidence"] if entry["journey_id"] == "journey-volicord")
+    proof = next(entry for entry in lineage["work_commit_boundaries"] if entry["work_label"] == "A")
+    assert proof["boundary_kind"] == "same_work_continuation"
+    assert proof["committed_boundary_revision"] == committed
+    assert proof["proven_committed_paths"] == ["src/existing.rs", "tests/existing.rs"]
+    assert proof["cleanliness"]["source_sha256"] == campaign.load_codex_capture(start).source_sha256
+    assert proof["cleanliness"]["session_id"] != no_write.session_id
 
 
 def main() -> int:

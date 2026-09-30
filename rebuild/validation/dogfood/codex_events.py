@@ -290,9 +290,10 @@ def normalized_file_changes(
     paths = tuple(
         sorted(
             {
-                path
-                for path, _change_type, _body_sha256, _move_path in changes
-                if not generated_repository_path(path)
+                leaf
+                for path, _change_type, _body_sha256, move_path in changes
+                for leaf in (path, move_path)
+                if leaf is not None and not generated_repository_path(leaf)
             }
         )
     )
@@ -1650,8 +1651,11 @@ def command_is_repository_inspection(value: Any) -> bool:
             while args:
                 if args[0] == "-C" and len(args) >= 2:
                     args = args[2:]
-                elif args[0] in {"--no-pager", "--literal-pathspecs"}:
+                elif args[0] in {"--no-pager", "--literal-pathspecs", "--no-optional-locks"}:
                     args = args[1:]
+                elif args[:2] == ["-c", "core.fsmonitor=false"]:
+                    # The campaign's terminal status disables external fsmonitor.
+                    args = args[2:]
                 else:
                     break
             return bool(args) and args[0] in git_inspections and not any(
@@ -1734,6 +1738,14 @@ def command_role(value: Any, depth: int = 0) -> str:
     argvs = command_argvs(value)
     if not argvs:
         return "unknown"
+    raw = value.get("cmd") if isinstance(value, dict) else value
+    if (all(len(argv) >= 2 and argv[0] == "git" and argv[1] in {"add", "commit"}
+            for argv in argvs)
+            and (len(argvs) == 1 or isinstance(raw, str)
+                and not any(c in raw for c in (";", "|", "\n")))):
+        # Campaign operator commit housekeeping is known execution, never a
+        # repository validator or evidence of committed content by itself.
+        return "repository_maintenance"
     if all(argv and Path(argv[0]).name in {"echo", "printf", "true"} for argv in argvs):
         return "report"
     if len(argvs) != 1:

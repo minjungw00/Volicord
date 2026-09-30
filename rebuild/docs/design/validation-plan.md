@@ -1158,10 +1158,45 @@ start/resume Project and Work identities (a resume may use its structured
 canonical Recall checkpoint Work ID without writing a new Checkpoint; any new
 Checkpoint must agree), Volicord one-Project/three-Work
 continuity, cross-journey isolation, candidate artifacts, raw hashes and
-destination collisions. Captured Work mutations require a committed descendant
-before a distinct Work begins, while an incomplete start may carry dirty state into
-its paired same-Work resume. Each journey must be clean and committed at collection;
-a no-change session needs no empty commit. Collection observes and retains the
+destination collisions. A descendant commit alone does not prove a Work boundary.
+Every meaningful observed repository-relative path must occur in the net committed
+tree delta from that session's HEAD to its completed boundary HEAD (`git diff
+--name-only -z --no-renames --no-ext-diff --no-textconv <base> <boundary> --`);
+additions/deletions and both observed rename leaves are exact paths, never pathspecs.
+The completed capture must also retain successful structured execution of exactly
+`git --no-optional-locks -c core.fsmonitor=false status --porcelain=v1 --untracked-files=all && git rev-parse HEAD`
+at the repository root. Its only output is that same boundary HEAD and a newline,
+proving empty tracked/nonignored-untracked status. The check must start after the
+last meaningful mutation and every other command's completion; a later or overlapping
+command invalidates it. This prevents partial staging or dirty same-file carryover
+from passing merely because that file occurs in a commit.
+Known `git add`/`git commit` operator housekeeping is classified as repository
+maintenance, never as Product verification; the terminal check is inspection.
+Neither supplies a requested test's successful numeric execution.
+
+An incomplete start (`paused`/`in_progress` structured Checkpoint state) may carry
+dirty changes into its paired same-Work resume: its path proof defers to the Work's
+distinct-Work/final boundary and its cleanliness proof to the terminal resume.
+A completed start proves both at the paired resume's HEAD; a checkpoint-free,
+no-write `verified_state_continuation` adds no commit or new Checkpoint requirement.
+Other completed mutations must be committed and checked before a distinct Work
+starts, or before collection for the terminal Work. Each journey must be clean at
+collection. A genuinely no-change session needs no empty commit.
+
+The run sheet asks for an atomic Work-only commit, excluding unrelated pre-existing
+changes, and this terminal check in the same naturalistic chat; frozen first-turn
+bytes remain unchanged. Retained lineage records session/base and boundary revisions,
+observed and proven paths, boundary kind, same-Work dirty-continuation permission,
+and the cleanliness command's raw-rollout SHA-256, session/execution identity,
+sequence/completion, output hash and numeric success. Both proofs are necessary.
+Path observations establish path coverage, not semantic hunk ownership. They cannot
+distinguish intentionally fully reverted paths from discarded work; any observed
+path absent from the net tree delta conservatively fails, including a committed
+change later reverted by its boundary. Shell-only changes without meaningful
+FileChange/path evidence do not gain invented path ownership. Ignored content and
+out-of-session mutations after the recorded boundary check are outside raw-session
+cleanliness proof; live final attestation independently checks collection state.
+Collection observes and retains the
 final Git state without changing it; ignored content remains outside attestation. Journey-final canonical
 bundle, documents, Viewer snapshot, Runtime and activation summaries, and
 repository-state evidence are inventory-bound. Publication is immutable and

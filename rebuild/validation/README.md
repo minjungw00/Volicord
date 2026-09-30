@@ -203,6 +203,15 @@ Qualification never grants Phase 9 readiness. Only explicit
 verification preserve the exact evidence and decision chain.
 <!-- phase8-active-operations:end -->
 
+Completed Work Git boundaries require exact observed-path coverage in the committed
+net tree delta and a terminal structured clean-status/HEAD check from that same chat.
+Follow the generated run sheet's exact command after the Work-only atomic commit,
+before another distinct Work or collection; exclude unrelated pre-existing changes.
+An incomplete start may continue dirty into its same-Work resume. No-change sessions
+need no empty commit. The check and its boundary HEAD, raw hash and execution sequence
+are retained alongside proven paths; fully reverted paths conservatively fail.
+The executing proof and evidence limits are owned by `validation-plan.md`.
+
 ## Historical Phase 8 result record
 
 The maintained Phase 8 candidate-authority summary is `phase-8-summary.md`.

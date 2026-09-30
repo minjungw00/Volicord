@@ -63,6 +63,11 @@ RAW_NAMES = {"start.rollout.jsonl", "resume.rollout.jsonl"}
 PROHIBITED_ARCHIVE_SUFFIXES = (".sqlite", ".sqlite3", ".db", "-wal", "-shm", "-journal")
 PROJECT_ID = re.compile(r"[0-9a-f]{32}")
 BATCH_CAPTURE_COUNT = harness.QUALIFICATION_SESSION_COUNT
+# One closed command/result envelope binds empty nonignored status to HEAD.
+WORK_BOUNDARY_CHECK = (
+    "git --no-optional-locks -c core.fsmonitor=false status "
+    "--porcelain=v1 --untracked-files=all && git rev-parse HEAD"
+)
 WORK_SLOT_ID = re.compile(r"journey-(?:volicord|small-python|polyglot-medium)-work-[abc]")
 CANDIDATE_ARTIFACTS = ("volicord", "volicord-mcp", "volicord-viewer")
 
@@ -377,11 +382,55 @@ def revision_is_bound(repository: Path, baseline: str, observed: str) -> bool:
     return completed.returncode == 0
 
 
+def committed_work_paths(repository: Path, base: str, boundary: str) -> list[str]:
+    """Exact net tree delta, including both rename leaves, without pathspec parsing."""
+    return sorted(repository_state.path_text(path) for path in repository_state.git(
+        repository, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff",
+        "--no-textconv", base, boundary, "--").split(b"\0") if path)
+
+
+def completed_work_cleanliness(capture: Any, revision: str) -> dict[str, Any]:
+    """Use retained structured execution, never prose or a pre-mutation status."""
+    mutations = harness.meaningful_work_path_observations(capture)
+    last_mutation = max((item.sequence for item in mutations), default=0)
+    for command in capture.commands:
+        value = command.parsed_command
+        if not isinstance(value, dict) or value.get("cmd") != WORK_BOUNDARY_CHECK:
+            continue
+        workdir = value.get("workdir", str(capture.cwd))
+        if (not isinstance(workdir, str)
+                or Path(workdir).resolve(strict=False) != capture.cwd.resolve(strict=False)
+                or set(value) - {"cmd", "workdir", "max_output_tokens", "yield_time_ms",
+                    "login", "shell", "tty", "sandbox_permissions", "justification", "prefix_rule"}
+                or value.get("shell") not in {None, "/bin/sh", "/bin/bash", "/bin/zsh"}):
+            continue
+        if (command.evidence_state != "completed" or type(command.exit_code) is not int
+                or command.exit_code != 0 or command.termination != "exited"
+                or command.output != revision + "\n" or command.sequence <= last_mutation
+                or command.completion_sequence < command.sequence):
+            continue
+        # A later or still-running command may mutate content without a FileChange.
+        # Require this to be the terminal command envelope, not merely the last status.
+        if any(other is not command and other.completion_sequence >= command.sequence
+               for other in capture.commands):
+            continue
+        return {"kind": "structured_terminal_git_status_and_head",
+            "source_sha256": capture.source_sha256, "session_id": capture.session_id,
+            "sequence": command.sequence, "completion_sequence": command.completion_sequence,
+            "execution_identity": command.execution_identity,
+            "last_meaningful_mutation_sequence": last_mutation,
+            "command": WORK_BOUNDARY_CHECK, "head": revision,
+            "output_sha256": repository_state.digest(command.output.encode()),
+            "exit_code": command.exit_code, "workspace_clean": True,
+            "boundary": "tracked_and_nonignored_untracked"}
+    raise CampaignError("completed Work lacks terminal clean Git status bound to its boundary HEAD")
+
+
 def verify_journey_revision_chronology(
     campaign: dict[str, Any],
     mapped: dict[tuple[str, str, str], MappedRollout],
 ) -> dict[str, Any]:
-    """Prove chronological journey-local HEADs; observe final work without mutation."""
+    """Prove observed path coverage AND terminal cleanliness at completed boundaries."""
     evidence: dict[str, Any] = {}
     for kind in CLASSES:
         journey = campaign["journeys"][journey_id(kind)]
@@ -417,6 +466,7 @@ def verify_journey_revision_chronology(
             raise IntegrityError("project_binding", CampaignError(
                 f"{kind} journey has uncommitted final repository state"))
         work_boundaries = []
+        continuations = []
         labels = work_labels(kind)
         for work_index, work_label in enumerate(labels):
             roles = session_roles(kind, work_label)
@@ -438,15 +488,45 @@ def verify_journey_revision_chronology(
                     if not incomplete and resume_revision == capture.git_revision:
                         raise IntegrityError("project_binding", CampaignError(
                             f"{kind} Work {work_label} dirty start lacks incomplete state at resume"))
-                if boundary_revision == capture.git_revision:
+                    if incomplete:
+                        continuations.append({"work_label": work_label, "role": roles[index],
+                            "boundary_kind": "same_work_continuation",
+                            "session_revision": capture.git_revision, "resume_revision": resume_revision,
+                            "changed_paths": changed_paths, "dirty_continuation_permitted": True})
+                else:
+                    incomplete = False
+                # Completed starts close before their paired resume. Incomplete starts
+                # defer to the terminal same-Work capture, including a no-write resume.
+                proof_capture = captures[-1] if incomplete else capture
+                proof_revision = (captures[1].git_revision
+                    if index == 0 and len(captures) > 1 and not incomplete else boundary_revision)
+                boundary_kind = ("same_work_continuation"
+                    if index == 0 and len(captures) > 1 and not incomplete else
+                    "distinct_work_transition" if next_label else "final_collection")
+                if proof_revision == capture.git_revision:
                     raise IntegrityError("project_binding", CampaignError(
                         f"{kind} Work {work_label} {roles[index]} changes lack a committed boundary "
                         f"before {'Work ' + next_label if next_label else 'collection'}"))
+                proven_paths = sorted(set(changed_paths) & set(committed_work_paths(
+                    repository, capture.git_revision, proof_revision)))
+                missing_paths = sorted(set(changed_paths) - set(proven_paths))
+                if missing_paths:
+                    raise IntegrityError("project_binding", CampaignError(
+                        f"{kind} Work {work_label} {roles[index]} observed paths absent from "
+                        f"committed boundary tree delta: {missing_paths!r}"))
+                try:
+                    cleanliness = completed_work_cleanliness(proof_capture, proof_revision)
+                except CampaignError as error:
+                    raise IntegrityError("project_binding", CampaignError(
+                        f"{kind} Work {work_label} {roles[index]}: {error}")) from error
                 work_boundaries.append({"work_label": work_label, "role": roles[index],
                     "changed_paths": changed_paths, "session_revision": capture.git_revision,
-                    "committed_boundary_revision": boundary_revision})
+                    "boundary_kind": boundary_kind, "cleanliness": cleanliness,
+                    "proven_committed_paths": proven_paths,
+                    "committed_boundary_revision": proof_revision})
         evidence[journey_id(kind)] = {
             "work_commit_boundaries": work_boundaries,
+            "same_work_continuations": continuations,
             "baseline_revision": baseline,
             "ordered_session_revisions": [
                 {
@@ -764,8 +844,12 @@ def render_operator_run_sheet(root: Path) -> Path:
         "After an agent reports a repository-changing Work complete, keep that thread and ask it "
         "to make an atomic Conventional Commit containing only that Work's changes. An incomplete "
         "start may carry dirty changes into its scheduled same-Work resume. Before starting a distinct "
-        "Work, commit the completed Work and check that the worktree is clean. Commit the final "
-        "repository-changing Work and check for a clean worktree before `collect-batch`. A genuine "
+        "Work, commit the completed Work and check that the worktree is clean. Never include unrelated "
+        "pre-existing changes. In the same chat, after all mutations and other commands, run exactly "
+        f"`{WORK_BOUNDARY_CHECK}` from the repository root and preserve its structured numeric result. "
+        "Its only output must be the committed HEAD followed by a newline. Do this before closing a "
+        "completed start, before crossing to a distinct Work, and for the final repository-changing "
+        "Work before `collect-batch`; an incomplete start defers this check to its same-Work resume. A genuine "
         "no-change session needs no empty commit. Keep these instructions outside the frozen first "
         "user turn.\n\n"
         "Naturalistic MCP memory is currently unmeasured: VS Code/Codex launches the configured "

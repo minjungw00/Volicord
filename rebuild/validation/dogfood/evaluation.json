@@ -979,7 +979,7 @@
   "repository_state_attestation_contract": {
     "target_state": "committed_work_boundaries_and_clean_final_without_git_mutation",
     "candidate_state": "clean_and_exact_head_bound",
-    "session_history": "pinned_baseline_ordered_descendant_heads_and_per_work_committed_boundaries",
+    "session_history": "pinned_baseline_ordered_descendant_heads_exact_observed_path_coverage_and_terminal_clean_boundaries",
     "artifacts": [
       "repository-state.json",
       "staged.patch",
@@ -992,7 +992,21 @@
     "dirty_state_blocks_collection": true,
     "actor_attribution_or_verification_success_implied": false,
     "analysis_or_checkpoint_replaced": false,
-    "target_git_mutation_allowed": false
+    "target_git_mutation_allowed": false,
+    "committed_path_proof": "every_observed_path_in_net_session_head_to_completed_boundary_tree_delta_no_rename_or_pathspec_expansion",
+    "completed_boundary_cleanliness": "structured_terminal_git_status_all_nonignored_paths_and_head_output_after_mutations_and_other_command_completions",
+    "cleanliness_command": "git --no-optional-locks -c core.fsmonitor=false status --porcelain=v1 --untracked-files=all && git rev-parse HEAD",
+    "incomplete_same_work_continuation": "paused_or_in_progress_start_defers_path_and_cleanliness_proofs_to_terminal_resume",
+    "no_change_session": "no_empty_commit_required",
+    "path_evidence_limit": "net_path_coverage_not_semantic_hunk_ownership_fully_reverted_observed_paths_rejected",
+    "retained_boundary_facts": [
+      "session_revision",
+      "committed_boundary_revision",
+      "changed_paths",
+      "proven_committed_paths",
+      "boundary_kind",
+      "cleanliness_raw_hash_session_execution_sequence_numeric_result"
+    ]
   },
   "naturalistic_contract": {
     "preparation": "five_frozen_works_eight_exact_task_bytes",
