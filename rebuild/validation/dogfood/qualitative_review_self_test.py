@@ -98,6 +98,40 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_high_impact_handoff_uses_groups_and_includes_additional_authority(self):
+        p = preparation()
+        value = completed(p)
+        specs = q.criterion_specs(p["index"], p["rubric"])
+        expected = set()
+        for spec, item in zip(specs, value["assessments"]):
+            if spec["group"] in {"authority", "context_recovery", "campaign_interaction"}:
+                fill(item, p, "insufficient_evidence")
+                item["authority"] = None
+                expected.add(spec["criterion_id"])
+            elif spec["group"] == "cli":
+                fill(item, p, "insufficient_evidence")
+        additional_id = "journey-volicord-work-a/authority/additional-durability"
+        extra = fill(q.observation(additional_id), p, "insufficient_evidence")
+        extra["authority"] = None
+        value["additional_outcomes"] = [{"sample_id": "journey-volicord-work-a", "finding": extra}]
+        expected.add(additional_id)
+        progress = q.validate_value(p, "d" * 64, value)["completion_preflight"]
+        self.assertIn("campaign/campaign_interaction/interaction_coverage_adequacy", expected)
+        self.assertEqual(progress["targeted_escalations"]["high_impact_insufficient_criterion_ids"],
+            sorted(expected))
+
+        # Presentation IDs cannot add or remove structured high-impact authority.
+        for number, (spec, item) in enumerate(zip(specs, value["assessments"])):
+            old_id = spec["criterion_id"]
+            new_id = (f"opaque-{number}" if spec["group"] in q.HIGH_IMPACT_INSUFFICIENCY_GROUPS
+                else "misleading/authority/" + old_id)
+            spec["criterion_id"] = item["criterion_id"] = new_id
+            if old_id in expected:
+                expected.remove(old_id)
+                expected.add(new_id)
+        self.assertEqual(q.completion_progress(p, value, specs)["targeted_escalations"]
+            ["high_impact_insufficient_criterion_ids"], sorted(expected))
+
     def test_required_interaction_coverage_cannot_be_unobserved(self):
         p = preparation()
         value = completed(p)

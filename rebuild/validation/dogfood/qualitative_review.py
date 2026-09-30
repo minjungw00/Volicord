@@ -14,6 +14,8 @@ import identity_provenance
 import machine_findings as machine
 
 SCHEMA_VERSION = 12
+# Shared by completion/handoff reporting and replacement qualification.
+HIGH_IMPACT_INSUFFICIENCY_GROUPS = ("authority", "context_recovery", "campaign_interaction")
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
 NOT_OBSERVED_OPPORTUNITIES = frozenset({
     "explicit_material_handling_quality", "hidden_material_discovery_quality",
@@ -273,7 +275,7 @@ def completion_obligations(index, policy):
         "human_only_criteria": human_ids,
         "targeted_escalation_rules": {
             "machine_relationships": "qualitative_review_required findings need an evidence-backed permitted-group relationship",
-            "high_impact_insufficiency_groups": ["authority", "context_recovery", "campaign_interaction"],
+            "high_impact_insufficiency_groups": list(HIGH_IMPACT_INSUFFICIENCY_GROUPS),
             "review_conflicts": "human review must name each conflicting review run for the exact criterion",
         },
     }
@@ -310,9 +312,10 @@ def completion_progress(preparation, value, specs):
         completion_obligations(preparation["index"], preparation["rubric"]))["human_only_criteria"])
     human_remaining = sorted(human_ids if preparation["reviewer"]["kind"] != "human"
                              else human_ids - reviewed)
-    high_impact = sorted(item["criterion_id"] for item in value["assessments"]
+    high_impact = sorted(criterion_id for criterion_id, item in assessments.items()
         if item["assessment"] == "insufficient_evidence"
-        and any(marker in item["criterion_id"] for marker in ("/authority/", "/context_recovery/")))
+        and spec_by_id.get(criterion_id, {"group": "authority"})["group"]
+            in HIGH_IMPACT_INSUFFICIENCY_GROUPS)
     return {
         "semantic_correctness_assessed": False,
         "required_criterion_count": len(specs),

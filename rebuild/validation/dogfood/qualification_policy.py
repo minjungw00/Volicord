@@ -186,7 +186,7 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
         conflict = (len({a["assessment"] == "violated" for _, a in decisive}) > 1
             or ("not_observed" in {a["assessment"] for _, a in entries}
                 and bool(decisive)))
-        impact_gap = spec["group"] in {"authority", "context_recovery", "campaign_interaction"} and any(a["assessment"] == "insufficient_evidence" for _, a in entries)
+        impact_gap = spec["group"] in review.HIGH_IMPACT_INSUFFICIENCY_GROUPS and any(a["assessment"] == "insufficient_evidence" for _, a in entries)
         inapplicable_comprehension = (spec["group"] == "interaction" and spec["name"] == "decision_comprehension_when_applicable"
             and bool(entries) and all(a["assessment"] == "not_applicable" for _, a in entries))
         requires_human = (human_required(spec) and not inapplicable_comprehension) or conflict or impact_gap

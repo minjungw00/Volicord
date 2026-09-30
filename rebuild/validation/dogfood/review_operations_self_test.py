@@ -135,6 +135,13 @@ def assert_review_workflow(root, parent):
         recorded = ops.record(target, target / "draft.json")
     assert recorded["result"]["qualification_state"] == "not_run"
     assert recorded["result"]["phase_9_ready"] is False
+    expected_escalations = sorted(spec["criterion_id"]
+        for spec in q.criterion_specs(p["index"], p["rubric"])
+        if spec["group"] in {"authority", "context_recovery", "campaign_interaction"})
+    assert "campaign/campaign_interaction/interaction_coverage_adequacy" in expected_escalations
+    for result in (preflight, recorded["result"]):
+        assert result["completion_preflight"]["targeted_escalations"] \
+            ["high_impact_insufficient_criterion_ids"] == expected_escalations
     assert (target / "recorded/review.json").read_bytes() == original["draft.json"]
     fixed = snapshot(target)
     try:

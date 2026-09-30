@@ -105,10 +105,30 @@ class PolicyTests(unittest.TestCase):
 
     def test_coverage_gap_requires_targeted_human_resolution(self):
         cid = policy.COVERAGE_CRITERION
-        next(a for a in self.agent["assessments"] if a["criterion_id"] == cid)["assessment"] = "insufficient_evidence"
-        self.assertEqual(self.result()["replacement_qualification"], "unresolved")
+        criterion = next(a for a in self.agent["assessments"] if a["criterion_id"] == cid)
+        fixtures.fill(criterion, self.prep, "insufficient_evidence")
+        handoff = review.validate_value(self.prep, "d" * 64, self.agent)["completion_preflight"]
+        self.assertIn(cid, handoff["targeted_escalations"]["high_impact_insufficient_criterion_ids"])
+        other_cid = next(s["criterion_id"] for s in self.specs if s["group"] == "context_recovery")
+        for resolutions in ({}, {cid: ["f" * 32]},
+                {other_cid: [self.agent["reviewer"]["run_id"]]}):
+            self.human["resolves_review_runs"] = resolutions
+            result = self.result()
+            self.assertEqual(result["replacement_qualification"], "unresolved")
+            self.assertIn(cid, result["qualitative_review"]["human_escalations"])
+            self.assertIn(cid, result["qualitative_review"]["unresolved_criteria"])
+        self.human["resolves_review_runs"] = {}
         self.human["resolves_review_runs"][cid] = [self.agent["reviewer"]["run_id"]]
+        human_result = review.validate_value(self.human_prep, "d" * 64, self.human)
+        self.assertIn(cid, human_result["completion_preflight"]["targeted_escalations"]
+            ["declared_conflict_resolution_criterion_ids"])
         self.assertEqual(self.result()["replacement_qualification"], "qualified")
+        # Even an explicit resolution cannot supply the independent agent judgment.
+        self.agent["assessments"][self.agent["assessments"].index(criterion)] = review.observation(cid)
+        review.validate_value(self.prep, "d" * 64, self.agent)
+        result = self.result()
+        self.assertEqual(result["replacement_qualification"], "unresolved")
+        self.assertIn(cid, result["qualitative_review"]["unresolved_criteria"])
 
     def test_required_interaction_criterion_cannot_be_omitted(self):
         with self.assertRaisesRegex(ValueError, "requires interaction coverage"):
