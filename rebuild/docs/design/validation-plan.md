@@ -1258,9 +1258,9 @@ Each criterion is `satisfied`, `violated`, `insufficient_evidence`,
 means the optional opportunity did not occur; it is neither a pass nor a
 violation. `insufficient_evidence` means an opportunity may matter but the
 available evidence cannot establish a judgment. `not_applicable` requires a
-permitted structural reason. Optional hidden-materiality and Learning
-opportunities may be `not_observed` without invalidating the naturalistic
-campaign. Direct human Viewer/browser and applicable Decision-comprehension
+permitted structural reason. Genuinely optional opportunities outside required workload-intent coverage
+may be `not_observed`. Explicit learning/collaboration requires a recognition
+and meaningful-fork judgment, and campaign interaction coverage is always required. Direct human Viewer/browser and applicable Decision-comprehension
 observations remain required and cannot be supplied by agent prose or static
 markup. Review runs preserve identity, inspected evidence, reasoning,
 uncertainty, counterevidence and machine relationships; later runs are
@@ -1328,7 +1328,7 @@ technical regressions, not assigned behavior opportunities in a naturalistic Wor
 | Repository facts and settled outcomes do not create unnecessary Questions | `work_authority.rs`: `settled_contract_and_repository_fact_are_ready_without_question_and_survive_restart`, `settled_choice_does_not_manufacture_a_second_user_question`; `frontier_self_test.py`: `test_source_evidence_settles_initial_user_uncertainty_without_question` | The adequacy of actual research is judged after execution. |
 | Delegated implementation choices retain their scope | `work_authority.rs`: `current_goal_explicit_delegation_is_ready_and_checkpoints_without_a_decision`, `discovery_evidence_precedes_delegated_or_agent_owned_implementation_authority`; `frontier_self_test.py`: `test_delegated_behavior_does_not_hide_independent_user_owned_policy` | Whether a real change exceeds delegation requires review of its effect. |
 | Inquiry provenance and repeated-question avoidance | `frontier_self_test.py`: `test_discovery_binds_current_sources_exact_goal_baseline_and_chronology`, `test_answered_question_repeat_is_distinct_from_lifecycle`; `work_authority.rs`: `independent_user_owned_outcomes_cannot_share_question_authority` | Relevance and necessity of actual wording remain qualitative. |
-| Learning participation and non-canonical choice | `work_authority.rs`: `provenance_representation_learning_selection_never_becomes_product_authority`, `active_learning_keeps_routine_and_user_owned_choices_on_their_existing_paths`, `current_user_can_withdraw_learning_without_creating_a_decision`; `resume_self_test.py`: `test_selected_state_chronology_and_non_decision_invariants` | Meaningful fork value, alternatives, trade-offs, fidelity and proportional interruption are reviewed only when participation is active. |
+| Learning participation and non-canonical choice | `work_authority.rs`: `provenance_representation_learning_selection_never_becomes_product_authority`, `active_learning_keeps_routine_and_user_owned_choices_on_their_existing_paths`, `current_user_can_withdraw_learning_without_creating_a_decision`; `resume_self_test.py`: `test_selected_state_chronology_and_non_decision_invariants` | Meaningful fork value, alternatives, trade-offs, fidelity and proportional interruption are reviewed when participation is active; explicit learning intent additionally requires review of recognition and source-grounded absence, evidence gaps or failure when no interaction occurred. |
 | Routine detail does not force an authority Question | `work_authority.rs`: `materially_atomic_private_details_terminate_without_question`; `frontier_self_test.py`: `test_non_user_authority_is_not_a_behavior_label` | Whether a specific interruption was useful remains qualitative. |
 | Same-Work Recall and continuation | `dogfood/campaign_self_test.py`: `assert_current_campaign_contract`; `dogfood/resume_self_test.py`: `test_recall_transport_and_identity_are_evidence_failures` | Comprehension and usefulness of recovered context remain qualitative. |
 | Decision applicability and scope | `work_authority.rs`: `relevant_evidence_cannot_claim_exact_authority_while_credible_alternatives_remain`, `settling_dispositions_require_explicit_exact_authority_sufficiency`; `frontier_self_test.py`: `test_settlement_rejects_stale_response_and_inapplicable_decision` | A reviewer assesses disputed meaning and high-impact disagreement. |
@@ -1696,9 +1696,66 @@ qualify any candidate. An intact current collected campaign instead
 uses the ordinary `evaluate` append-only operation. Sanitized fresh fixtures prove the full
 re-evaluation contract; historical incomplete diagnostics prove only what was observable.
 
-Current Naturalistic preparation freezes task bytes and deterministic identities only.
+Current Naturalistic preparation freezes task bytes, workload-intent selection metadata
+and deterministic identities without semantic expected answers.
 No pre-execution semantic reviewer dimension, profile reveal, reconciliation,
 or Work seal is an admission condition. Post-hoc additional material outcomes
 are recorded in qualitative review against actual Work evidence. Semantic
 disagreement remains review evidence; it cannot alter immutable task,
 session, Project, candidate, or raw hash integrity.
+
+### Interaction diagnostics and coverage adequacy
+
+`interaction_diagnostics.py` projects raw normalized start/resume captures and
+canonical bundle identities into factual Work and campaign summaries. It reports
+user turns, observed Question Candidate/promoted Question identities, current-host
+turns matched to successful response operations, source-scoped canonical Decisions,
+Materiality Review activity, explicit participation observations and Learning Context
+identities, Learning Deliberation activity, fresh resumes/Recall and workload intent.
+Capture gaps remain unknown, with retained identity/hash/sequence basis and explicit
+limits. Successful-call counts do not attest correct recognition, authority, quality
+or adequate interaction coverage. Follow-up turns without matched response operations
+remain visible as user turns. The machine run and reviewer selection expose the same
+raw-derived summary, including when no machine run or raw-rollout selection was supplied.
+Private raw rollouts still require explicit review inclusion for semantic inspection.
+
+`campaign/campaign_interaction/interaction_coverage_adequacy` is a required campaign
+criterion. Review considers planned and actually executed intents, raw interactions,
+machine diagnostic facts, repository/source authority, and a separately recorded
+independent agent semantic review. Complete task/raw Work/resume inspection is required
+for a decisive coverage judgment. The reviewer authors semantic truth; structural
+validation checks inspection/citation discipline rather than semantic answers.
+
+- `satisfied`: all required intents actually executed and enough evidence assesses
+  important Question/Learning behavior, including correct non-question behavior.
+- `insufficient_evidence`: execution occurred but evidence cannot support a reliable
+  replacement judgment. Weak task selection or sparse interactions belong here;
+  qualification remains unresolved/incomplete, with no automatic Product failure.
+- `violated`: observed Product behavior substantively violates the interaction rubric.
+  Current high-impact qualitative blocking/conflict-resolution policy applies.
+
+Required campaign coverage cannot be `not_observed` or `not_applicable`. Missing review
+also remains unresolved. Conflicting judgments or high-impact coverage insufficiency
+need targeted human resolution naming the other reviewed runs; direct human observations
+remain required under their existing policy. A human review cannot replace the independent
+agent semantic inspection. No count threshold supplies a verdict or qualification.
+
+For `learning_collaborative`, inspect whether the full frozen explicit request was
+recognized in runtime Learning participation and relevant context survived fresh resume.
+No interaction does not automatically mean `not_observed`: distinguish a source-grounded
+absence of a meaningful agent-owned learning-worthy fork, missing evidence, and failure
+to honor participation. Learning criteria require a judgment or insufficiency in this Work.
+Routine details remain non-interrupting, and no fixed Learning call count is required.
+For decision-rich zero-Question work, inspect repository/source authority and actual
+commitments; satisfaction needs evidence that no user-owned material Question was needed.
+For routine bounded work, review unexpected Questions for necessity and interruption cost.
+Other genuinely optional opportunities retain `not_observed` under criterion rules.
+
+Focused regressions cover all five intents, missing intent/request rejection, actual
+Learning/resume evidence, absent Learning without silent not-observed, source-grounded
+zero-Question decision-rich review, routine Question review, zero-count non-failure,
+coverage insufficiency leaving qualification unresolved, substantive high-impact violation,
+independent agent review and required human observations. These remain synthetic support.
+A successful authoritative gate enables a wholly fresh campaign, never Dogfood success
+or Phase 9 approval. All prior failed campaigns remain historical evidence only and
+cannot be rebound to the changed candidate.

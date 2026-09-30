@@ -189,7 +189,7 @@ def _eligible_evidence(preparation, spec):
     required = preparation["rubric"]["required_surfaces"].get(spec["group"], [])
     entries = []
     for identity, entry in preparation["index"]["evidence"].items():
-        if entry["sample_id"] not in {None, spec["sample_id"]}:
+        if not review.evidence_applies(entry, spec["sample_id"]) or (spec["sample_id"] is None and entry["surface"] == "cli_observation"):
             continue
         rank = 0 if entry["surface"] in required else 1
         entries.append((rank, identity, entry))
@@ -402,6 +402,8 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
     trace = []
     output_fn(f"Criterion {position + 1}/{len(specs)}: {spec['criterion_id']}")
     output_fn(preparation["rubric"]["group_prompts"].get(spec["group"], "Inspect this bounded criterion."))
+    if spec.get("workload_intent") in preparation["rubric"]["workload_prompts"]:
+        output_fn(preparation["rubric"]["workload_prompts"][spec["workload_intent"]])
     if spec["name"] in preparation["rubric"]["criterion_prompts"]:
         output_fn(preparation["rubric"]["criterion_prompts"][spec["name"]])
     observation = _ask_multiline(

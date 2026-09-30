@@ -10,8 +10,10 @@ def policy_identity():
     import harness
     policy = {"machine_version": machine.POLICY_VERSION, "authority": machine.POLICY,
         "machine_policy_sha256": harness.sha256(Path(machine.__file__)),
+        "interaction_diagnostics_sha256": harness.sha256(Path(__file__).with_name("interaction_diagnostics.py")),
+        "workload_intents_sha256": harness.sha256(Path(__file__).with_name("workload_intents.py")),
         "rubric": qualitative_review.rubric(harness.load_definition())}
-    return {"revision": "evidence-evaluation-5", "sha256": machine.digest(policy)}
+    return {"revision": "evidence-evaluation-6", "sha256": machine.digest(policy)}
 
 
 def historical_reference(path, candidate, evidence):

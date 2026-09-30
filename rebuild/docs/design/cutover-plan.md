@@ -409,6 +409,7 @@ selection purpose rather than semantic answers or interaction counts.
 - [ ] medium polyglot repository journey
 - [ ] failure recovery rehearsal
 - [ ] 사용자가 raw protocol 없이 Project를 이해하고 판단·재개할 수 있음
+- [ ] required campaign `interaction_coverage_adequacy` and explicit learning-intent recognition review
 - [ ] 모든 qualifying Work의 fact/interpretation, analysis/polyglot, Viewer, documents,
       Question necessity·Decision comprehension와 interruption-cost common qualitative review
 - [ ] 세 repository class별 일곱 CLI usability criterion의 candidate-bound common qualitative review
@@ -509,8 +510,15 @@ topology, hard machine findings, recorded post-hoc agent/human judgments and
 required direct-human observations. Semantic disagreement remains review
 evidence; unresolved high-impact authority or recovery findings may require
 targeted human resolution. `not_observed` is distinct from satisfied,
-violated, insufficient and structurally not applicable. Missing optional
-hidden-materiality or Learning opportunities do not alone block qualification.
+violated, insufficient and structurally not applicable. Genuinely optional
+opportunities outside required workload-intent coverage may be not-observed. Explicit
+learning/collaboration needs review of participation recognition and meaningful-fork
+absence, evidence insufficiency or failure; absent Learning cannot silently skip review.
+Required `interaction_coverage_adequacy` consumes actual raw interactions, workload
+intents, diagnostics, source authority and independent agent review. Satisfaction may
+qualify; insufficient coverage leaves qualification unresolved rather than Product
+failure; substantive observed interaction violation blocks. Required coverage cannot
+be not-observed or inapplicable. No fixed Question/Learning counts apply.
 The candidate's actual Learning participation, if active, is reviewed for
 fork value, alternatives/trade-offs, chronology, fidelity and interruption.
 Hard evidence failures cannot be overridden by review prose.

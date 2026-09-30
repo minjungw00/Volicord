@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 11 / policy revision 10, machine evaluation
-policy `evidence-evaluation-5`, human observation/receipt schema 3, qualification policy
-`replacement-qualification-7`, and result-lineage schema 1. Historical runs retain their old
+Current identities are qualitative review schema 12 / policy revision 11, machine evaluation
+policy `evidence-evaluation-6`, human observation/receipt schema 3, qualification policy
+`replacement-qualification-8`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -467,8 +467,8 @@ documents, Viewer and repository-state evidence from the immutable campaign.
 It assigns no expected semantic class. Every Work exposes the common interaction
 criteria and optional behavior opportunities; the reviewer records
 `not_observed` when an optional event never arose, with inspected evidence and
-reasoning. Learning-specific criteria may be `not_observed` only when runtime
-participation was not active. Active or uncertain participation requires review
+reasoning. Learning-specific criteria may be `not_observed` only outside the required
+learning/collaborative Work when runtime participation was not active. Active or uncertain participation requires review
 or an explicit insufficiency. Reviewers add independently observed material
 outcomes and assess actual authority/commitment chronology without relying on
 a frozen evaluator concern. Agent disagreement is preserved; a high-impact
@@ -498,3 +498,59 @@ Journey-final `git-observations.json` is inventory/hash-bound and selected as a
 selection. It exposes the retained Git facts and limitations without patch/source
 bodies. Its content must agree with the evidence-set observation at publication and
 historical verification. The original Git workspace is not needed for later review.
+
+### Interaction diagnostics and coverage adequacy
+
+`interaction_diagnostics.py` projects raw normalized start/resume captures and
+canonical bundle identities into factual Work and campaign summaries. It reports
+user turns, observed Question Candidate/promoted Question identities, current-host
+turns matched to successful response operations, source-scoped canonical Decisions,
+Materiality Review activity, explicit participation observations and Learning Context
+identities, Learning Deliberation activity, fresh resumes/Recall and workload intent.
+Capture gaps remain unknown, with retained identity/hash/sequence basis and explicit
+limits. Successful-call counts do not attest correct recognition, authority, quality
+or adequate interaction coverage. Follow-up turns without matched response operations
+remain visible as user turns. The machine run and reviewer selection expose the same
+raw-derived summary, including when no machine run or raw-rollout selection was supplied.
+Private raw rollouts still require explicit review inclusion for semantic inspection.
+
+`campaign/campaign_interaction/interaction_coverage_adequacy` is a required campaign
+criterion. Review considers planned and actually executed intents, raw interactions,
+machine diagnostic facts, repository/source authority, and a separately recorded
+independent agent semantic review. Complete task/raw Work/resume inspection is required
+for a decisive coverage judgment. The reviewer authors semantic truth; structural
+validation checks inspection/citation discipline rather than semantic answers.
+
+- `satisfied`: all required intents actually executed and enough evidence assesses
+  important Question/Learning behavior, including correct non-question behavior.
+- `insufficient_evidence`: execution occurred but evidence cannot support a reliable
+  replacement judgment. Weak task selection or sparse interactions belong here;
+  qualification remains unresolved/incomplete, with no automatic Product failure.
+- `violated`: observed Product behavior substantively violates the interaction rubric.
+  Current high-impact qualitative blocking/conflict-resolution policy applies.
+
+Required campaign coverage cannot be `not_observed` or `not_applicable`. Missing review
+also remains unresolved. Conflicting judgments or high-impact coverage insufficiency
+need targeted human resolution naming the other reviewed runs; direct human observations
+remain required under their existing policy. A human review cannot replace the independent
+agent semantic inspection. No count threshold supplies a verdict or qualification.
+
+For `learning_collaborative`, inspect whether the full frozen explicit request was
+recognized in runtime Learning participation and relevant context survived fresh resume.
+No interaction does not automatically mean `not_observed`: distinguish a source-grounded
+absence of a meaningful agent-owned learning-worthy fork, missing evidence, and failure
+to honor participation. Learning criteria require a judgment or insufficiency in this Work.
+Routine details remain non-interrupting, and no fixed Learning call count is required.
+For decision-rich zero-Question work, inspect repository/source authority and actual
+commitments; satisfaction needs evidence that no user-owned material Question was needed.
+For routine bounded work, review unexpected Questions for necessity and interruption cost.
+Other genuinely optional opportunities retain `not_observed` under criterion rules.
+
+Focused regressions cover all five intents, missing intent/request rejection, actual
+Learning/resume evidence, absent Learning without silent not-observed, source-grounded
+zero-Question decision-rich review, routine Question review, zero-count non-failure,
+coverage insufficiency leaving qualification unresolved, substantive high-impact violation,
+independent agent review and required human observations. These remain synthetic support.
+A successful authoritative gate enables a wholly fresh campaign, never Dogfood success
+or Phase 9 approval. All prior failed campaigns remain historical evidence only and
+cannot be rebound to the changed candidate.

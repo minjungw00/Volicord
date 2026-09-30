@@ -9,7 +9,8 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-7"
+REVISION = "replacement-qualification-8"
+COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
 HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable",
     "journey-volicord/viewer_snapshot/multiple_work_organization"}
@@ -44,10 +45,14 @@ def contract():
         "human_rationale": "Live accessibility, browser input/paint responsiveness, Volicord Viewer multi-Work comprehension and the user's Decision comprehension require direct human observation.",
         "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
         "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
-        "insufficient": "Unresolved; high-impact authority/context recovery insufficiency escalates to human.",
+        "insufficient": "Unresolved; high-impact authority/context recovery and interaction-coverage insufficiency escalates to human.",
         "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
         "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
         "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
+        "interaction_coverage": {"criterion": COVERAGE_CRITERION,
+            "required": True, "independent_agent_semantic_review_required": True,
+            "satisfied": "may_qualify", "insufficient_evidence": "unresolved", "violated": "blocked",
+            "not_observed_allowed": False, "count_thresholds": False},
         "campaign_topology": TOPOLOGY,
         "cli_scope": {"repository_classes": 3, "criteria_per_class": 7, "required_assessments": 21}}
 
@@ -147,7 +152,9 @@ OPTIONAL_OPPORTUNITY_CRITERIA = review.NOT_OBSERVED_OPPORTUNITIES
 
 
 def nonblocking_not_observed(spec):
-    return spec["group"] == "interaction" and spec["name"] in OPTIONAL_OPPORTUNITY_CRITERIA
+    return (spec["group"] == "interaction" and spec["name"] in OPTIONAL_OPPORTUNITY_CRITERIA
+        and not (spec.get("workload_intent") == "learning_collaborative"
+            and spec["name"] in review.LEARNING_OPPORTUNITIES))
 
 
 def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
@@ -162,6 +169,7 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
     findings = {finding_id(scope, n): f for scope in scopes for n, f in enumerate(scope["findings"])}
     hard = sorted(k for k, f in findings.items() if f["disposition"] == "hard_blocking")
     criteria = {s["criterion_id"]: s for s in specs}
+    review.require(COVERAGE_CRITERION in criteria, "qualification requires interaction coverage assessment")
     assessments = {}
     for value in reviews:
         run = value["reviewer"]["run_id"]
@@ -178,7 +186,7 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
         conflict = (len({a["assessment"] == "violated" for _, a in decisive}) > 1
             or ("not_observed" in {a["assessment"] for _, a in entries}
                 and bool(decisive)))
-        impact_gap = spec["group"] in {"authority", "context_recovery"} and any(a["assessment"] == "insufficient_evidence" for _, a in entries)
+        impact_gap = spec["group"] in {"authority", "context_recovery", "campaign_interaction"} and any(a["assessment"] == "insufficient_evidence" for _, a in entries)
         inapplicable_comprehension = (spec["group"] == "interaction" and spec["name"] == "decision_comprehension_when_applicable"
             and bool(entries) and all(a["assessment"] == "not_applicable" for _, a in entries))
         requires_human = (human_required(spec) and not inapplicable_comprehension) or conflict or impact_gap
@@ -187,6 +195,12 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
             eligible = [(r, a) for r, a in humans if
                 {v["reviewer"]["run_id"] for v, _ in entries if v is not r}
                 <= set(r.get("resolves_review_runs", {}).get(cid, []))]
+        if spec["name"] == "interaction_coverage_adequacy":
+            # A direct human review can resolve conflict, but cannot replace the
+            # separately recorded independent agent semantic inspection.
+            if not any(r["reviewer"]["kind"] == "agent" and a["assessment"] in {"satisfied", "violated", "insufficient_evidence"}
+                       for r, a in entries):
+                eligible = [(r, a) for r, a in eligible if a["assessment"] == "violated"]
         states = {a["assessment"] for _, a in eligible}
         if "violated" in states:
             violated.append(cid)
@@ -318,6 +332,8 @@ def validate_result(value):
         review.require(re.fullmatch(f"[0-9a-f]{{{size}}}", str(value.get(field, ""))), "invalid qualification identity")
     review.require(value.get("run_id") == machine.digest({k: v for k, v in value.items() if k != "run_id"}), "qualification run hash changed")
     q, m, t = value["qualitative_review"], value["machine_summary"], value["technical_gate"]
+    review.require(COVERAGE_CRITERION in set(q["resolved_criteria"] + q["unresolved_criteria"] + q["violated_criteria"])
+        and COVERAGE_CRITERION not in q["not_observed_criteria"], "required interaction coverage was omitted or unobserved")
     naturalistic = value.get("naturalistic_evidence")
     structural = naturalistic.get("multi_work_structural_continuity") if isinstance(naturalistic, dict) else None
     comprehension = naturalistic.get("multi_work_viewer_comprehension") if isinstance(naturalistic, dict) else None

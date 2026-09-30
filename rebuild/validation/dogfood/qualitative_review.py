@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
 NOT_OBSERVED_OPPORTUNITIES = frozenset({
     "explicit_material_handling_quality", "hidden_material_discovery_quality",
@@ -32,7 +32,7 @@ DOCUMENT_KINDS = {"project-architecture-guide", "decision-report", "implementati
 CRITERION_GROUPS = (
     "interaction", "documents", "viewer_snapshot", "viewer_navigation",
     "repository_intelligence", "cli", "live_viewer",
-    "context_recovery",
+    "context_recovery", "campaign_interaction",
 )
 SURFACES = {
     "interaction": ["work_capture"], "documents": ["documents", "canonical_bundle"],
@@ -41,8 +41,10 @@ SURFACES = {
     "cli": ["cli_observation"], "live_viewer": ["live_viewer_observation"],
     "context_recovery": ["work_capture", "resume_capture", "canonical_bundle"],
     "authority": ["work_capture"],
+    "campaign_interaction": ["task_selection", "interaction_diagnostics", "work_capture", "canonical_bundle"],
 }
 GROUP_PROMPTS = {
+    "campaign_interaction": "Assess whether planned workload intents and actual interactions provide reliable evidence for replacement Question/Learning behavior. Inspect raw turns, diagnostic facts, source/authority evidence and independent agent semantic review. Correct no-question behavior counts as evidence. Weak selection or sparse evidence means insufficient_evidence; violated requires substantive observed Product behavior failure. No operation-count threshold applies.",
     "interaction": "Judge necessary and omitted Questions against actual material outcomes, user-owned authority and source evidence. Do not require evaluator wording, answers, counts or a manufactured Question. Assess comprehension, repetition and interruption cost; distinguish user judgment from agent recommendation.",
     "documents": "Inspect all four documents: architecture guide, Decision report, implementation plan and handoff/resume. Compare each with current Sources and Decisions; assess practical understanding/handoff value, accurate remaining work and gaps, and actual requested-language prose rather than metadata-only language claims.",
     "viewer_snapshot": "Assess whether Project Understanding explains completed/current/remaining work, next steps, Decision rationale, affected code and component/request/data flow. Distinguish source facts from generated interpretation; inspect evidence-grounded diagram topology and useful readability rather than raw record listings.",
@@ -52,7 +54,15 @@ GROUP_PROMPTS = {
     "live_viewer": "Assess actual observed keyboard reachability, visible focus, non-color-only meaning, narrow/zoom presentation and browser input/paint responsiveness in both en and ko. Static markup and snapshot-export timing cannot establish live interaction; use insufficient_evidence if the needed observation is absent.",
     "context_recovery": "Compare work with fresh resume: recover goal, applicable Decisions and rationale, current/completed/remaining state and open questions accurately without repeating answered judgments. A later repair does not make an earlier false completion claim truthful.",
 }
+WORKLOAD_PROMPTS = {
+    "learning_collaborative": "The frozen first turn explicitly requests learning/collaboration. Inspect whether runtime participation recognized the full request and whether fresh resume recovered it. If no Learning interaction occurred, assess source-grounded absence of a meaningful agent-owned learning-worthy fork, insufficient evidence, or failure to honor explicit participation. Do not silently mark Learning criteria not_observed. A satisfied judgment may reflect correctly omitted interaction when sources establish no meaningful fork and participation was honored. Routine details remain non-interrupting; no fixed call count applies.",
+    "decision_rich": "If zero Questions occurred, inspect current source/repository authority and actual commitments. Satisfaction requires evidence that no user-owned material Question was required. Do not fail from a zero count or preselect an outcome.",
+    "routine_bounded": "Review any unexpected Question for necessity and interruption cost against the clear task and current repository authority.",
+    "exploratory_debugging": "Review investigation, uncertainty, research and justified deferment against the evidence, without a desired Question outcome.",
+    "cross_stack_integration": "Review source grounding and understanding across relevant language/component boundaries, without a fixed semantic answer.",
+}
 CRITERION_PROMPTS = {
+    "interaction_coverage_adequacy": "satisfied requires executed required intents and enough evidence to assess important interaction behavior, including correct non-question behavior. insufficient_evidence leaves replacement unresolved when evidence is too sparse or unreliable. violated is reserved for substantive Product behavior violations, never weak task selection alone. This required campaign criterion cannot be not_observed or not_applicable.",
     "architecture_components_flow": "Inspect the actual component identities, relationships, direction and request/data flow. Judge topology independently from nearby prose about code behavior.",
     "code_behavior": "Inspect concrete affected code behavior and its code/source basis. Missing or weak architecture topology does not by itself make code behavior absent.",
     "diagram_usefulness": "Inspect the rendered diagram itself, its grounded nodes/edges and whether it materially explains this work. Artifact existence or adjacent prose is not diagram usefulness.",
@@ -68,6 +78,10 @@ CRITERION_PROMPTS = {
     "fidelity": "Compare the Decision Report and other affected documents with canonical Decision meaning. Explicitly distinguish user choice, recommended alternative, user rationale, recommendation rationale and alternative-specific consequences.",
 }
 CRITERION_OBSERVATIONS = {
+    "learning_fork_value": ["explicit_participation_scope", "runtime_recognition", "source_grounded_meaningful_fork_or_absence", "routine_noninterruption", "evidence_gap_vs_product_failure"],
+    "correct_no_question_behavior": ["repository_and_source_authority", "actual_implementation_commitments", "unresolved_user_owned_outcomes"],
+    "unnecessary_interruption": ["question_necessity", "repository_and_source_authority", "proportional_interruption_cost"],
+    "interaction_coverage_adequacy": ["planned_workload_intents", "actual_raw_interactions", "machine_diagnostic_facts", "source_and_authority", "independent_agent_semantic_review", "question_and_learning_assessability", "product_failure_vs_evidence_gap"],
     "architecture_components_flow": ["components", "relationships", "flow_direction", "separate_from_code_behavior"],
     "code_behavior": ["affected_code", "concrete_behavior", "source_basis", "separate_from_topology"],
     "diagram_usefulness": ["actual_diagram", "grounded_nodes_edges", "material_explanatory_value"],
@@ -110,7 +124,7 @@ def rubric(definition):
     contract = definition["qualitative_review_contract"]
     return {"schema_version": SCHEMA_VERSION, "policy_revision": contract["policy_revision"],
         "criteria": criteria_contract(contract), "group_prompts": GROUP_PROMPTS,
-        "criterion_prompts": CRITERION_PROMPTS,
+        "criterion_prompts": CRITERION_PROMPTS, "workload_prompts": WORKLOAD_PROMPTS,
         "criterion_observations": CRITERION_OBSERVATIONS,
         "required_surfaces": SURFACES,
         "behavior_criteria": contract["interaction_behavior_criterion_contracts"],
@@ -173,7 +187,8 @@ def criterion_specs(index, policy):
                 names += sorted(policy["behavior_criteria"])
             for name in names:
                 specs.append({"criterion_id": f"{sample_id}/{group}/{name}",
-                    "sample_id": sample_id, "group": group, "name": name, "locale": None})
+                    "sample_id": sample_id, "group": group, "name": name, "locale": None,
+                    "workload_intent": sample.get("workload_intent")})
         for obligation in sample["authority_obligations"]:
             specs.append({"criterion_id": f"{sample_id}/authority/{obligation}",
                 "sample_id": sample_id, "group": "authority", "name": obligation, "locale": None})
@@ -192,6 +207,8 @@ def criterion_specs(index, policy):
         for name in policy["criteria"]["cli"]:
             specs.append({"criterion_id": f"{sample['sample_id']}/cli/{name}",
                 "sample_id": sample["sample_id"], "group": "cli", "name": name, "locale": None})
+    specs.append({"criterion_id": "campaign/campaign_interaction/interaction_coverage_adequacy",
+        "sample_id": None, "group": "campaign_interaction", "name": "interaction_coverage_adequacy", "locale": None})
     return specs
 
 
@@ -256,7 +273,7 @@ def completion_obligations(index, policy):
         "human_only_criteria": human_ids,
         "targeted_escalation_rules": {
             "machine_relationships": "qualitative_review_required findings need an evidence-backed permitted-group relationship",
-            "high_impact_insufficiency_groups": ["authority", "context_recovery"],
+            "high_impact_insufficiency_groups": ["authority", "context_recovery", "campaign_interaction"],
             "review_conflicts": "human review must name each conflicting review run for the exact criterion",
         },
     }
@@ -405,7 +422,11 @@ def validate_assessment(value, spec, preparation, inspected):
     require(state != "not_observed" or (spec["group"] == "interaction"
         and spec["name"] in NOT_OBSERVED_OPPORTUNITIES),
         "not_observed requires an optional naturalistic opportunity")
+    if spec["name"] == "interaction_coverage_adequacy":
+        require(state not in {"not_observed", "not_applicable"}, "required interaction coverage cannot be unobserved or inapplicable")
     if state == "not_observed" and spec["name"] in LEARNING_OPPORTUNITIES:
+        require(spec.get("workload_intent") != "learning_collaborative",
+            "explicit Learning intent requires a judgment about recognition, meaningful forks or insufficient evidence")
         learning = preparation["index"]["machine_findings"].get(
             spec["sample_id"] + "/learning_participation")
         if learning is not None:
@@ -446,6 +467,12 @@ def validate_assessment(value, spec, preparation, inspected):
                 and preparation["reviewer"]["kind"] == "human"):
             required_surfaces.add("live_viewer_observation")
         require(required_surfaces <= surfaces, "criterion lacks its required observation surface; use insufficient_evidence")
+        if spec["name"] == "interaction_coverage_adequacy":
+            entries = [index["evidence"][identity] for identity in criterion_inspected]
+            for sample in index["samples"]:
+                required = {"task_selection", "work_capture"} | ({"resume_capture"} if sample["resume_pair"] else set())
+                present = {entry["surface"] for entry in entries if evidence_applies(entry, sample["sample_id"])}
+                require(required <= present, "interaction coverage requires inspection of every frozen task and raw Work/resume")
         if state == "satisfied" and spec["group"] == "documents":
             document_kinds = {index["evidence"][r["evidence_id"]].get("document_kind") for r in value["evidence"]}
             require(DOCUMENT_KINDS <= document_kinds, "document satisfaction must inspect all four required documents")

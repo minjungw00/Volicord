@@ -83,6 +83,44 @@ class PolicyTests(unittest.TestCase):
     def result(self, reviews=None, technical=None):
         return policy.combine(self.evaluation, self.specs, reviews if reviews is not None else [self.agent, self.human], technical or self.technical)
 
+    def test_sparse_interaction_coverage_is_unresolved_not_product_failure(self):
+        cid = "campaign/campaign_interaction/interaction_coverage_adequacy"
+        for value in (self.agent, self.human):
+            a = next(a for a in value["assessments"] if a["criterion_id"] == cid)
+            a["assessment"] = "insufficient_evidence"
+        result = self.result()
+        self.assertEqual(result["replacement_qualification"], "unresolved")
+        self.assertIn(cid, result["qualitative_review"]["unresolved_criteria"])
+        self.assertEqual(result["qualitative_review"]["violated_criteria"], [])
+        self.assertFalse(result["replacement_pass_candidate"])
+
+    def test_interaction_coverage_requires_independent_agent_review_and_blocks_violation(self):
+        cid = "campaign/campaign_interaction/interaction_coverage_adequacy"
+        a = next(a for a in self.agent["assessments"] if a["criterion_id"] == cid)
+        a["assessment"] = "not_reviewed"
+        self.assertEqual(self.result()["replacement_qualification"], "unresolved")
+        for value in (self.agent, self.human):
+            next(a for a in value["assessments"] if a["criterion_id"] == cid)["assessment"] = "violated"
+        self.assertEqual(self.result()["replacement_qualification"], "blocked")
+
+    def test_coverage_gap_requires_targeted_human_resolution(self):
+        cid = policy.COVERAGE_CRITERION
+        next(a for a in self.agent["assessments"] if a["criterion_id"] == cid)["assessment"] = "insufficient_evidence"
+        self.assertEqual(self.result()["replacement_qualification"], "unresolved")
+        self.human["resolves_review_runs"][cid] = [self.agent["reviewer"]["run_id"]]
+        self.assertEqual(self.result()["replacement_qualification"], "qualified")
+
+    def test_required_interaction_criterion_cannot_be_omitted(self):
+        with self.assertRaisesRegex(ValueError, "requires interaction coverage"):
+            policy.combine(self.evaluation, [s for s in self.specs if s["name"] != "interaction_coverage_adequacy"],
+                [self.agent, self.human], self.technical)
+
+    def test_learning_intent_is_not_an_optional_not_observed_shortcut(self):
+        spec = {"group": "interaction", "name": "learning_fork_value", "workload_intent": "learning_collaborative"}
+        self.assertFalse(policy.nonblocking_not_observed(spec))
+        spec["workload_intent"] = "routine_bounded"
+        self.assertTrue(policy.nonblocking_not_observed(spec))
+
     def test_declared_qualification_contract_matches_executable_policy(self):
         definition = json.loads(Path(__file__).with_name("evaluation.json").read_text())
         self.assertEqual(definition["qualification_policy"], policy.contract())

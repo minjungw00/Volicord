@@ -174,9 +174,9 @@ def validate_run(value):
     if not isinstance(value, dict) or set(value) != {"kind", "schema_version", "candidate_head", "evidence_set",
         "evaluator_revision", "policy_version", "evaluator_files", "policy", "qualitative_review_runs",
         "previous_evaluation", "run_nonce", "collection_state", "evaluation_state", "qualification_state",
-        "works", "journeys", "coverage", "finding_state", "run_id"}:
+        "works", "journeys", "interaction_diagnostics", "coverage", "finding_state", "run_id"}:
         raise ValueError("invalid machine evaluation shape")
-    if (value.get("kind") != "dogfood_machine_evaluation" or value.get("schema_version") != 3
+    if (value.get("kind") != "dogfood_machine_evaluation" or value.get("schema_version") != 4
         or value.get("qualification_state") != "not_run"
         or value.get("collection_state") != "collected"
         or value.get("policy_version") != POLICY_VERSION
@@ -213,6 +213,13 @@ def validate_run(value):
         "resume_repository_classes": ["polyglot-medium", "small-python", "volicord"],
     }:
         raise ValueError("evaluation topology coverage changed")
+    import interaction_diagnostics
+    import workload_intents
+    if {w["work_slot_id"]: w.get("workload_intent") for w in value["works"]} != workload_intents.WORKLOAD_INTENTS:
+        raise ValueError("evaluation workload intent coverage changed")
+    expected_diagnostics = interaction_diagnostics.campaign_summary({w["work_slot_id"]: w["observation"]["interaction_diagnostics"] for w in value["works"]})
+    if value.get("interaction_diagnostics") != expected_diagnostics:
+        raise ValueError("campaign diagnostics differ from Work facts")
     findings = []
     for work in value["works"]:
         expected_checks = WORK_OBSERVATION_RULES if work.get("resume_pair") else WORK_OBSERVATION_RULES - RESUME_RULES

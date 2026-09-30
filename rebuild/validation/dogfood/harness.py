@@ -26,6 +26,7 @@ from typing import Any, Callable
 
 import machine_findings
 import workload_intents
+import interaction_diagnostics
 import authority_obligations
 import qualitative_review
 
@@ -9685,6 +9686,7 @@ def real_session_evidence(
                 "resume_tool_call_count": len(resume_capture.tool_calls) if resume_capture else 0}},
     }
     observation = {
+        "interaction_diagnostics": interaction_diagnostics.work_summary(raw, work_capture, resume_capture, bundle),
         "machine_facts": facts,
         "evidence_class": "actual_repository_real_session",
         "status": status_from_steps(checks),
@@ -10336,7 +10338,7 @@ def fixture_work_user_task(kind: str, materiality_obligations: str) -> str:
         "research_or_no_question": "Correct repository configuration discovery and update the affected multi-file tests.",
         "delegated_implementation_choice": "Refactor the adapter while preserving behavior; choose the internal helper naming and module structure.",
         "exploratory_uncertainty": "Investigate the intermittent analysis latency and leave a tested prototype or a clear revisit basis.",
-        "learning_deliberation": "I want to learn through one meaningful agent-owned technical fork before implementation. Improve the adapter state model and add focused tests.",
+        "learning_deliberation": "I want to learn as we work: explain important alternatives and trade-offs, and make important choices with me. Handle routine implementation details without interrupting me. Improve the adapter state model and add focused tests.",
         "learning_routine_control": "I want to learn while you improve the adapter, but keep routine naming and local formatting choices non-interrupting. Add focused tests.",
     }
     repository_reference = (
@@ -10941,7 +10943,7 @@ def real_session_fixture(
                     "transferable_principles": ["Choose representations that make invariants explicit."],
                     "non_obvious_trade_offs": ["Direct lookup adds synchronization and ordering obligations."],
                     "interruption_counterfactual": "Without discussing this representation now, the user would lose a meaningful chance to reason about invariant placement before implementation fixes it.",
-                    "participation_scope_alignment": "The fork is the one meaningful agent-owned technical choice requested by the complete current Goal, and it excludes routine naming and formatting.",
+                    "participation_scope_alignment": "The fork concerns important technical alternatives within the complete learning request; routine naming and formatting remain non-interrupting.",
                 }
                 if has_obligation(materiality_obligations, "learning_deliberation")
                 else {
@@ -16241,7 +16243,7 @@ def self_test() -> int:
         raw_task = fixture["work_user_task"]
         goal_statement = "Improve the adapter state model and add focused tests."
         learning_statement = (
-            "I want to learn through one meaningful agent-owned technical fork before implementation."
+            "I want to learn as we work: explain important alternatives and trade-offs, and make important choices with me. Handle routine implementation details without interrupting me."
         )
         constraint_statement = "Keep the change bounded and do not add dependencies."
         for statement in (

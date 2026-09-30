@@ -195,7 +195,15 @@ reveal, reconciliation or Work seal is needed to execute.
 
 A `not_observed` assessment records an optional opportunity that did not
 arise and is separate from satisfied, violated and insufficient evidence.
-Learning review depends on observed runtime participation. Exact-candidate
+Five frozen workload intents intentionally vary ordinary user requests without semantic
+expected answers or Question/Learning count requirements. Explicit learning/collaboration
+in Volicord A requires review of runtime recognition, meaningful forks and recovery;
+absent Learning behavior cannot silently become `not_observed`. Campaign-level
+`interaction_coverage_adequacy` is required: satisfied may qualify, insufficient evidence
+leaves qualification unresolved, and substantive observed Product violation blocks.
+Review consumes raw interactions, factual diagnostics, source authority and independent
+agent semantic judgment. Optional opportunities outside required intent coverage may
+still be `not_observed`. Exact-candidate
 technical and evidence-integrity failures remain hard; direct human Viewer,
 browser and applicable Decision comprehension cannot be supplied by agents.
 Qualification never grants Phase 9 readiness. Only explicit

@@ -25,7 +25,15 @@ reveal, reconciliation or Work seal is needed to execute.
 
 A `not_observed` assessment records an optional opportunity that did not
 arise and is separate from satisfied, violated and insufficient evidence.
-Learning review depends on observed runtime participation. Exact-candidate
+Five frozen workload intents intentionally vary ordinary user requests without semantic
+expected answers or Question/Learning count requirements. Explicit learning/collaboration
+in Volicord A requires review of runtime recognition, meaningful forks and recovery;
+absent Learning behavior cannot silently become `not_observed`. Campaign-level
+`interaction_coverage_adequacy` is required: satisfied may qualify, insufficient evidence
+leaves qualification unresolved, and substantive observed Product violation blocks.
+Review consumes raw interactions, factual diagnostics, source authority and independent
+agent semantic judgment. Optional opportunities outside required intent coverage may
+still be `not_observed`. Exact-candidate
 technical and evidence-integrity failures remain hard; direct human Viewer,
 browser and applicable Decision comprehension cannot be supplied by agents.
 Qualification never grants Phase 9 readiness. Only explicit
@@ -288,3 +296,26 @@ The validation plan owns selection requirements and their structural tests.
 All prior failed campaigns remain historical evidence and cannot be rebound to
 a changed candidate. A successful candidate gate permits a wholly fresh campaign;
 it establishes neither Dogfood success nor Phase 9 approval.
+
+## Fresh campaign evidence prerequisites
+
+The Product Work identity remains independent of Git HEAD, commit counts and dirty
+Work boundaries, backed by the maintained real-Git authority test and collection
+regressions. Qualifying sessions use the maintained Codex-family rollout contract
+across CLI and VS Code extension; observed raw client/source/version/thread/model
+metadata is retained without inferring UI surface or authenticating authorship.
+Target Git observations are advisory; candidate, raw/session/task, repository,
+Runtime/activation, canonical Project/Work and privacy integrity remain hard.
+
+The current mapping and explicit learning request above are prerequisites for a
+wholly fresh 3/5/3/8 campaign. Review receives factual user-turn, Question Candidate,
+promotion, response, Decision, Materiality, Learning participation/Deliberation and
+fresh resume/Recall diagnostics. Required interaction coverage can remain unresolved
+when evidence is insufficient; substantive Product failure blocks. Required direct
+human observations and independent agent review retain their separate roles.
+
+The final session handoff identifies the exact clean candidate, preserved focused
+results, authoritative gate outcome, capsule/archive hashes and independent verification.
+A historical gate or prior failed campaign cannot certify that changed candidate.
+Gate success permits fresh Naturalistic execution; replacement qualification and
+Phase 9 approval remain separate and unestablished until their own evidence exists.

@@ -71,7 +71,7 @@ def insufficient_draft(root):
         for s in [*p["index"]["samples"], *p["index"]["journey_samples"], *p["index"]["cli_samples"]]]
     for spec, finding in zip(q.criterion_specs(p["index"], p["rubric"]), value["assessments"]):
         finding.update(assessment="insufficient_evidence", reasoning="Only the bounded evidence availability inventory was inspected.",
-            inspected_evidence=[spec["sample_id"] + "-availability"],
+            inspected_evidence=([spec["sample_id"] + "-availability"] if spec["sample_id"] is not None else []),
             evidence=[],
             uncertainty="No substantive judgment has been established from actual observations.",
             counterevidence={"state": "not_observable", "reasoning": "Missing inspection limits both positive and contrary observations.", "evidence": []},
@@ -179,6 +179,21 @@ class WorkflowTests(unittest.TestCase):
 
     def test_round_trip_isolated_deterministic_and_append_only(self):
         assert_review_workflow(self.root, self.parent)
+
+    def test_campaign_coverage_and_intents_are_visible_without_semantic_answers(self):
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="agent", session_id="coverage-reviewer", include_raw=True)
+        p, _, _ = ops.load_package(target)
+        specs = q.criterion_specs(p["index"], p["rubric"])
+        number = next(n for n, s in enumerate(specs, 1) if s["name"] == "interaction_coverage_adequacy")
+        inspection = ops.inspect_agent_criterion(target, number)
+        self.assertEqual(inspection["criterion"]["sample_id"], None)
+        self.assertFalse(inspection["semantic_judgment_suggested"])
+        self.assertEqual(sum(e["surface"] == "task_selection" for e in inspection["evidence"]), 5)
+        self.assertEqual(sum(e["surface"] in {"work_capture", "resume_capture"} for e in inspection["evidence"]), 8)
+        self.assertTrue(any(e["surface"] == "interaction_diagnostics" for e in inspection["evidence"]))
+        learning = next(n for n, s in enumerate(specs, 1) if s.get("workload_intent") == "learning_collaborative")
+        self.assertIn("explicitly requests", ops.inspect_agent_criterion(target, learning)["workload_prompt"])
 
     def test_raw_opt_in_and_machine_binding(self):
         target = self.target()

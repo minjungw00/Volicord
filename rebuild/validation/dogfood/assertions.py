@@ -59,6 +59,11 @@ def main() -> int:
         raise AssertionError("preparation does not require frozen task input")
     if qualification_policy.contract() != definition["qualification_policy"]:
         raise AssertionError("qualification policy differs from active definition")
+    coverage = qualification_policy.contract()["interaction_coverage"]
+    if not coverage["required"] or coverage["not_observed_allowed"] or coverage["count_thresholds"]:
+        raise AssertionError("interaction evidence coverage was weakened or replaced with count rules")
+    if definition["qualitative_review_contract"]["common_criteria"]["campaign_interaction"] != ["interaction_coverage_adequacy"]:
+        raise AssertionError("required campaign interaction criterion changed")
     if "campaign_control_coverage" in qualification_policy.contract():
         raise AssertionError("blind control coverage is still a qualification condition")
     if qualitative_review.STATES != definition["qualitative_review_contract"]["states"]:

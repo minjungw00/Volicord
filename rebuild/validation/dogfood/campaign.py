@@ -29,6 +29,7 @@ from typing import Any, Callable
 
 import harness
 import workload_intents
+import interaction_diagnostics
 import cli_observations
 import document_realization
 import machine_findings
@@ -2821,6 +2822,7 @@ def evaluate_works(root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]
             observation.pop("machine_findings", None)
             works.append({"journey_id": journey_id(kind), "repository_class": kind,
                 "work_slot_id": work_key(kind, work), "work": work, "resume_pair": resume_pair,
+                "workload_intent": descriptor["workload_intent"],
                 "observation": observation,
                 "findings": machine_findings.from_observation(observation)})
     return works
@@ -2942,17 +2944,18 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
     prior = historical_reference(previous, manifest["candidate_head"], campaign["evidence_set"]) if previous else None
     works = evaluate_works(root, manifest)
     journeys = evaluate_journeys(manifest)
-    result = {"kind": "dogfood_machine_evaluation", "schema_version": 3,
+    result = {"kind": "dogfood_machine_evaluation", "schema_version": 4,
         "candidate_head": manifest["candidate_head"], "evidence_set": campaign["evidence_set"],
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
         "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
                 "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py",
-                "evaluation.json")},
+                "evaluation.json", "interaction_diagnostics.py", "workload_intents.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "works": works,
         "journeys": journeys,
+        "interaction_diagnostics": interaction_diagnostics.campaign_summary({w["work_slot_id"]: w["observation"]["interaction_diagnostics"] for w in works}),
         "coverage": {"repository_journeys": 3, "work_items": 5, "resume_pairs": 3,
             "fresh_sessions": 8,
             "work_distribution": {"volicord": 3, "small-python": 1, "polyglot-medium": 1},

@@ -40,9 +40,11 @@ def main() -> int:
     definitions = [
         ("dogfood-machine-findings",
          ["finite_machine_authority", "confirmed_failure_attribution",
-          "immutable_evaluation_and_durable_result_lineage"],
+          "immutable_evaluation_and_durable_result_lineage",
+          "raw_interaction_diagnostic_facts_without_count_verdicts"],
          [sys.executable, "-B", "-m", "unittest", "-v",
-          "machine_findings_self_test.MachineFindingTests"], HERE),
+          "machine_findings_self_test.MachineFindingTests",
+          "interaction_diagnostics_self_test.InteractionDiagnosticTests"], HERE),
     ]
     results = [command(*definition) for definition in definitions]
     missing = sorted({item for result in results for item in result["coverage"]

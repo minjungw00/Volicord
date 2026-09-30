@@ -16,6 +16,7 @@ def preparation(kind="agent"):
     policy = q.rubric(definition)
     sample = {"sample_id": "journey-volicord-work-a", "journey_id": "journey-volicord",
         "repository_class": "volicord", "work": "A", "resume_pair": True,
+        "workload_intent": "decision_rich",
         "materiality_obligations": ["explicit_user_owned_decision"],
         "authority_obligations": ["all-material-outcomes"],
         "authority_evidence": {"work_capture": "work_capture", "canonical_bundle": "canonical_bundle"}}
@@ -62,7 +63,7 @@ def completed(p):
 
 
 def fill(value, p, state="satisfied"):
-    scope = value["criterion_id"].split("/", 1)[0]
+    scope = None if value["criterion_id"].startswith("campaign/") else value["criterion_id"].split("/", 1)[0]
     criterion = value["criterion_id"].rsplit("/", 1)[-1]
     value.update(assessment=state, reasoning=f"Synthetic reviewer independently inspected {criterion} in the cited artifact.",
         uncertainty="Fixture-only judgment; no actual Product qualification.",
@@ -76,7 +77,7 @@ def fill(value, p, state="satisfied"):
                    "criterion_id": value["criterion_id"],
                    "relevance": f"This cited location was inspected specifically for {criterion}."}
             for name, entry in sorted(p["index"]["evidence"].items())
-            if q.evidence_applies(entry, scope)])
+            if q.evidence_applies(entry, scope) and not (scope is None and entry["surface"] == "cli_observation")])
     value["inspected_evidence"] = sorted({reference["evidence_id"] for reference in value["evidence"]})
     if state == "insufficient_evidence":
         value["evidence"] = []
@@ -97,6 +98,49 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_required_interaction_coverage_cannot_be_unobserved(self):
+        p = preparation()
+        value = completed(p)
+        criterion = next(a for a in value["assessments"] if a["criterion_id"].endswith("/interaction_coverage_adequacy"))
+        fill(criterion, p, "insufficient_evidence")
+        self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "insufficient_evidence")
+        for state in ("not_observed", "not_applicable"):
+            fill(criterion, p, state)
+            criterion["evidence"] = []
+            with self.assertRaises(ValueError):
+                q.validate_value(p, "d" * 64, value)
+
+    def test_explicit_learning_without_runtime_evidence_requires_judgment(self):
+        for runtime in (None, "inactive", "active"):
+            p = preparation()
+            p["index"]["samples"][0]["workload_intent"] = "learning_collaborative"
+            if runtime is not None:
+                p["index"]["machine_findings"]["journey-volicord-work-a/learning_participation"] = {
+                    "sample_id": "journey-volicord-work-a", "finding": m.finding("learning_participation",
+                        "not_observed" if runtime == "inactive" else "indeterminate",
+                        {"reason": "runtime_learning_participation_not_active" if runtime == "inactive" else "runtime_learning_active_requires_post_hoc_review"})}
+            value = completed(p)
+            for name in q.LEARNING_OPPORTUNITIES:
+                criterion = next(a for a in value["assessments"] if a["criterion_id"].endswith("/" + name))
+                fill(criterion, p, "not_observed")
+                criterion["evidence"] = []
+                with self.assertRaisesRegex(ValueError, "explicit Learning intent"):
+                    q.validate_value(p, "d" * 64, value)
+                fill(criterion, p, "insufficient_evidence")
+                q.validate_value(p, "d" * 64, value)
+                # A source-grounded no-meaningful-fork judgment remains reviewer-owned.
+                fill(criterion, p, "satisfied")
+            q.validate_value(p, "d" * 64, value)
+
+    def test_decision_rich_zero_questions_and_routine_questions_are_reviewable(self):
+        for intent in ("decision_rich", "routine_bounded"):
+            p = preparation()
+            p["index"]["samples"][0]["workload_intent"] = intent
+            value = completed(p)
+            q.validate_value(p, "d" * 64, value)
+            self.assertIn("source", p["rubric"]["workload_prompts"][intent].lower()
+                if intent == "decision_rich" else p["rubric"]["group_prompts"]["interaction"].lower())
+
     def test_evaluation_contract_is_the_only_criterion_inventory(self):
         definition = json.loads(Path(__file__).with_name("evaluation.json").read_text())
         contract = definition["qualitative_review_contract"]
@@ -145,7 +189,8 @@ class ContractTests(unittest.TestCase):
                 finding["reasoning"] = case["evidence_summary"]
             result = q.validate_value(p, "d" * 64, value)
             self.assertEqual(result["assessment_state"],
-                "violated" if "violated" in case["assessments"].values() else "satisfied", case["id"])
+                "violated" if "violated" in case["assessments"].values() else
+                "insufficient_evidence" if "insufficient_evidence" in case["assessments"].values() else "satisfied", case["id"])
         mixed = completed(p)
         architecture = next(a for a in mixed["assessments"] if a["criterion_id"].endswith("/architecture_components_flow"))
         code = next(a for a in mixed["assessments"] if a["criterion_id"].endswith("/code_behavior"))

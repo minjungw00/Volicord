@@ -319,14 +319,14 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_fork_value": {
-        "review_prompt": "Pass only when the surfaced agent-owned technical fork was genuinely meaningful and worth deliberate user reasoning.",
+        "review_prompt": "When the relevant interaction occurred, pass only when the surfaced agent-owned technical fork was genuinely meaningful and worth deliberate user reasoning. For absent interaction, apply the workload-intent recognition and source-grounded meaningful-fork/absence review; no event count supplies a verdict.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
         "exact_expected_user_answer_required": false,
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_alternatives_and_tradeoffs": {
-        "review_prompt": "Pass only when the alternatives and their consequences were complete enough for the user to reason about the technical fork.",
+        "review_prompt": "When the relevant interaction occurred, pass only when the alternatives and their consequences were complete enough for the user to reason about the technical fork. For absent interaction, apply the workload-intent recognition and source-grounded meaningful-fork/absence review; no event count supplies a verdict.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
         "exact_expected_user_answer_required": false,
@@ -340,14 +340,14 @@
         "semantically_equivalent_decomposition_allowed": true
       },
       "post_response_feedback_quality": {
-        "review_prompt": "Pass only when feedback after the user's response was educational, accurate, and responsive to that reasoning.",
+        "review_prompt": "When the relevant interaction occurred, pass only when feedback after the user's response was educational, accurate, and responsive to that reasoning. For absent interaction, apply the workload-intent recognition and source-grounded meaningful-fork/absence review; no event count supplies a verdict.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
         "exact_expected_user_answer_required": false,
         "semantically_equivalent_decomposition_allowed": true
       },
       "learning_implementation_fidelity": {
-        "review_prompt": "Pass only when the implemented result matched the user's learning choice or the explicitly delegated outcome.",
+        "review_prompt": "When the relevant interaction occurred, pass only when the implemented result matched the user's learning choice or the explicitly delegated outcome. For absent interaction, apply the workload-intent recognition and source-grounded meaningful-fork/absence review; no event count supplies a verdict.",
         "exact_evaluator_wording_required": false,
         "exact_evaluator_alternatives_required": false,
         "exact_expected_user_answer_required": false,
@@ -381,7 +381,7 @@
       "purpose": "Review independently material outcomes observed in actual Work and coupled artifacts."
     },
     "qualification_authority": false,
-    "policy_revision": 10,
+    "policy_revision": 11,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -444,6 +444,9 @@
       ],
       "context_recovery": [
         "goal_decision_rationale_state_and_open_questions"
+      ],
+      "campaign_interaction": [
+        "interaction_coverage_adequacy"
       ]
     },
     "workflow": {
@@ -475,7 +478,8 @@
       "human_observations": "explicit_candidate_bound_direct_human_live_observations",
       "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
       "qualification_authority": false
-    }
+    },
+    "schema_version": 12
   },
   "fixture_regression_command": [
     "python3",
@@ -945,7 +949,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-7",
+    "revision": "replacement-qualification-8",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "journey-volicord/viewer_snapshot/multiple_work_organization",
@@ -954,10 +958,20 @@
     "human_rationale": "Live accessibility, browser input/paint responsiveness, Volicord Viewer multi-Work comprehension and the user's Decision comprehension require direct human observation.",
     "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
     "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
-    "insufficient": "Unresolved; high-impact authority/context recovery insufficiency escalates to human.",
+    "insufficient": "Unresolved; high-impact authority/context recovery and interaction-coverage insufficiency escalates to human.",
     "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
     "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
     "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
+    "interaction_coverage": {
+      "criterion": "campaign/campaign_interaction/interaction_coverage_adequacy",
+      "required": true,
+      "independent_agent_semantic_review_required": true,
+      "satisfied": "may_qualify",
+      "insufficient_evidence": "unresolved",
+      "violated": "blocked",
+      "not_observed_allowed": false,
+      "count_thresholds": false
+    },
     "campaign_topology": {
       "repository_journeys": 3,
       "work_items": 5,

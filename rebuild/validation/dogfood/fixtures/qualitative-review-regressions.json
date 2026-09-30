@@ -22,6 +22,34 @@
         "fidelity": "violated"
       },
       "evidence_summary": "The canonical user choice differs from the recommended alternative, while the document does not identify which rationale and consequences belong to which alternative."
+    },
+    {
+      "id": "learning-intent-without-runtime-learning",
+      "assessments": {
+        "learning_fork_value": "insufficient_evidence"
+      },
+      "evidence_summary": "The frozen first task explicitly requests learning/collaboration, but absent runtime participation cannot establish recognition or whether a meaningful agent-owned fork existed. not_observed is invalid for this intended Work."
+    },
+    {
+      "id": "decision-rich-zero-question-source-settled",
+      "assessments": {
+        "correct_no_question_behavior": "satisfied"
+      },
+      "evidence_summary": "Post-hoc source and commitment inspection supports no unresolved user-owned material outcome. Zero Questions alone supplies no verdict."
+    },
+    {
+      "id": "routine-question-interruption",
+      "assessments": {
+        "unnecessary_interruption": "violated"
+      },
+      "evidence_summary": "A reviewer finds an observed Question unnecessary against authoritative routine requirements; the count alone did not establish this violation."
+    },
+    {
+      "id": "sparse-campaign-interaction-coverage",
+      "assessments": {
+        "interaction_coverage_adequacy": "insufficient_evidence"
+      },
+      "evidence_summary": "All workload intents executed, but raw interactions and diagnostics do not support a reliable replacement Question/Learning judgment. Qualification is unresolved, with no Product failure inferred from selection weakness."
     }
   ]
 }

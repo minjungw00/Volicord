@@ -275,7 +275,7 @@ def prepare(
             fixture_directory.mkdir(parents=True, exist_ok=True)
             fixture = harness.real_session_fixture(kind, label, revision,
                 fixture_directory, materiality_obligations=obligation)
-            statement = ("I want to learn through one meaningful agent-owned technical fork before implementation."
+            statement = ("I want to learn as we work: explain important alternatives and trade-offs, and make important choices with me. Handle routine implementation details without interrupting me."
                 if (kind, label) == ("volicord", "A") else None)
             entry = {"workload_intent": campaign.workload_intents.WORKLOAD_INTENTS[campaign.work_key(kind, label)],
                 "learning_collaboration_statement": statement}
