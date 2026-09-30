@@ -767,12 +767,13 @@ struct Normalized {
 
 struct DenormalizingReader {
     shape: Vec<u8>,
-    symbols: Vec<Vec<u8>>,
-    references: Vec<u32>,
+    // Keep symbols and references in their verified value stream. Large graphs
+    // reuse these bytes millions of times; copying them is unnecessary.
+    values: Vec<u8>,
+    symbols: Vec<Range<usize>>,
     shape_at: usize,
     reference_at: usize,
-    pending: Vec<u8>,
-    pending_at: usize,
+    pending: Option<Range<usize>>,
 }
 
 impl DenormalizingReader {
@@ -783,7 +784,7 @@ impl DenormalizingReader {
             .checked_add(shape_len)
             .filter(|end| *end == shape.len())
             .ok_or_else(|| Error::new("Analysis shape length is corrupt"))?;
-        let shape = shape[shape_at..shape_end].to_vec();
+        debug_assert_eq!(shape_end, shape.len());
         let mut at = expect_magic(&values, VALUES_MAGIC)?;
         let symbol_count = take_u64(&values, &mut at)? as usize;
         let mut symbols = Vec::with_capacity(symbol_count);
@@ -793,28 +794,26 @@ impl DenormalizingReader {
                 .checked_add(length)
                 .filter(|end| *end <= values.len())
                 .ok_or_else(|| Error::new("Analysis symbol length is corrupt"))?;
-            symbols.push(values[at..end].to_vec());
+            symbols.push(at..end);
             at = end;
         }
         let reference_count = take_u64(&values, &mut at)?;
         if reference_count != expected_scalars {
             return Err(Error::new("Analysis scalar count differs from manifest"));
         }
-        let mut references = Vec::with_capacity(reference_count as usize);
-        for _ in 0..reference_count {
-            let end = at
-                .checked_add(4)
-                .filter(|end| *end <= values.len())
-                .ok_or_else(|| Error::new("Analysis scalar reference is truncated"))?;
-            references.push(u32::from_le_bytes(
-                values[at..end].try_into().expect("four bytes"),
-            ));
-            at = end;
+        let reference_bytes = usize::try_from(reference_count)
+            .ok()
+            .and_then(|count| count.checked_mul(4))
+            .and_then(|bytes| at.checked_add(bytes))
+            .ok_or_else(|| Error::new("Analysis scalar reference is truncated"))?;
+        if reference_bytes > values.len() {
+            return Err(Error::new("Analysis scalar reference is truncated"));
         }
-        if at != values.len()
-            || references
-                .iter()
-                .any(|index| *index as usize >= symbols.len())
+        if reference_bytes != values.len()
+            || values[at..].chunks_exact(4).any(|bytes| {
+                u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize
+                    >= symbols.len()
+            })
         {
             return Err(Error::new(
                 "Analysis values contain trailing or invalid references",
@@ -822,12 +821,11 @@ impl DenormalizingReader {
         }
         Ok(Self {
             shape,
+            values,
             symbols,
-            references,
-            shape_at: 0,
-            reference_at: 0,
-            pending: Vec::new(),
-            pending_at: 0,
+            shape_at,
+            reference_at: at,
+            pending: None,
         })
     }
 }
@@ -836,34 +834,41 @@ impl Read for DenormalizingReader {
     fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
         let mut written = 0;
         while written < output.len() {
-            if self.pending_at < self.pending.len() {
-                let count = (output.len() - written).min(self.pending.len() - self.pending_at);
+            if let Some(pending) = &mut self.pending {
+                let count = (output.len() - written).min(pending.len());
                 output[written..written + count]
-                    .copy_from_slice(&self.pending[self.pending_at..self.pending_at + count]);
-                self.pending_at += count;
+                    .copy_from_slice(&self.values[pending.start..pending.start + count]);
+                pending.start += count;
                 written += count;
+                if pending.start == pending.end {
+                    self.pending = None;
+                }
                 continue;
             }
-            self.pending.clear();
-            self.pending_at = 0;
             let Some(&token) = self.shape.get(self.shape_at) else {
                 break;
             };
             self.shape_at += 1;
             if token == b'$' {
-                let index = *self
-                    .references
-                    .get(self.reference_at)
-                    .ok_or_else(|| std::io::Error::other("missing Analysis scalar reference"))?
-                    as usize;
-                self.reference_at += 1;
-                self.pending.extend_from_slice(
-                    self.symbols.get(index).ok_or_else(|| {
-                        std::io::Error::other("invalid Analysis scalar reference")
-                    })?,
-                );
+                let bytes = self.values[self.reference_at..]
+                    .get(..4)
+                    .ok_or_else(|| std::io::Error::other("missing Analysis scalar reference"))?;
+                let index = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+                self.reference_at += 4;
+                let symbol = self
+                    .symbols
+                    .get(index)
+                    .ok_or_else(|| std::io::Error::other("invalid Analysis scalar reference"))?;
+                let count = (output.len() - written).min(symbol.len());
+                output[written..written + count]
+                    .copy_from_slice(&self.values[symbol.start..symbol.start + count]);
+                written += count;
+                if count < symbol.len() {
+                    self.pending = Some(symbol.start + count..symbol.end);
+                }
             } else {
-                self.pending.push(token);
+                output[written] = token;
+                written += 1;
             }
         }
         Ok(written)
@@ -1078,6 +1083,100 @@ mod tests {
             Error::with_source("cannot reconstruct scalar reuse fixture", error)
         })?;
         assert_eq!(decoded, original);
+        Ok(())
+    }
+
+    #[test]
+    fn normalized_reader_preserves_chunked_large_symbol_table(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let value = (0..120_000)
+            .map(|index| {
+                json!({"name": format!("repository-entity-{index:08}"),
+                    "repeat": "source-grounded", "unicode": "한글 λ",
+                    "escaped": "quote\"slash\\line\n", "number": index, "value": null})
+            })
+            .collect::<Vec<_>>();
+        let encoded = serde_json::to_vec(&value)
+            .map_err(|error| Error::with_source("cannot encode normalized read fixture", error))?;
+        let mut writer = NormalizingWriter::default();
+        writer
+            .write_all(&encoded)
+            .map_err(|error| Error::with_source("cannot normalize read fixture", error))?;
+        let normalized = writer.finish()?;
+        let started = std::time::Instant::now();
+        let reader =
+            DenormalizingReader::new(normalized.shape, normalized.values, normalized.scalar_count)?;
+        let decoded: Vec<serde_json::Value> =
+            serde_json::from_reader(BufReader::with_capacity(1024 * 1024, reader)).map_err(
+                |error| Error::with_source("cannot decode normalized read fixture", error),
+            )?;
+        println!(
+            "normalized large-symbol decode ms: {}",
+            started.elapsed().as_millis()
+        );
+        assert_eq!(decoded, value);
+
+        let encoded = r#"["a","long-한글","a",true,false,null,-12]"#.as_bytes();
+        for chunk_size in [1, 2, 7, 31, 1024] {
+            let mut writer = NormalizingWriter::default();
+            writer
+                .write_all(encoded)
+                .map_err(|error| Error::with_source("cannot normalize chunk fixture", error))?;
+            let normalized = writer.finish()?;
+            let mut reader = DenormalizingReader::new(
+                normalized.shape,
+                normalized.values,
+                normalized.scalar_count,
+            )?;
+            let mut decoded = Vec::new();
+            let mut buffer = vec![0; chunk_size];
+            assert_eq!(reader.read(&mut [])?, 0);
+            loop {
+                let count = reader.read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                decoded.extend_from_slice(&buffer[..count]);
+            }
+            assert_eq!(decoded, encoded);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn normalized_reader_rejects_corrupt_scalar_references() -> Result<(), Error> {
+        let mut writer = NormalizingWriter::default();
+        writer
+            .write_all(br#"["a","b","a"]"#)
+            .map_err(|error| Error::with_source("cannot normalize reference fixture", error))?;
+        let normalized = writer.finish()?;
+        let reader =
+            |values, count| DenormalizingReader::new(normalized.shape.clone(), values, count);
+        assert!(reader(normalized.values.clone(), normalized.scalar_count + 1).is_err());
+        assert!(reader(
+            normalized.values[..normalized.values.len() - 1].to_vec(),
+            normalized.scalar_count
+        )
+        .is_err());
+        let mut trailing = normalized.values.clone();
+        trailing.push(0);
+        assert!(reader(trailing, normalized.scalar_count).is_err());
+        let mut invalid_index = normalized.values.clone();
+        let last_reference = invalid_index.len() - 4;
+        invalid_index[last_reference..].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(reader(invalid_index, normalized.scalar_count).is_err());
+
+        let mut extra_scalar_shape = normalized.shape.clone();
+        extra_scalar_shape.push(b'$');
+        let length = extra_scalar_shape.len() - SHAPE_MAGIC.len() - 8;
+        extra_scalar_shape[SHAPE_MAGIC.len()..SHAPE_MAGIC.len() + 8]
+            .copy_from_slice(&(length as u64).to_le_bytes());
+        let mut missing_reference = DenormalizingReader::new(
+            extra_scalar_shape,
+            normalized.values,
+            normalized.scalar_count,
+        )?;
+        assert!(missing_reference.read_to_end(&mut Vec::new()).is_err());
         Ok(())
     }
 
