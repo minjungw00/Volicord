@@ -10,6 +10,7 @@ import campaign as c
 import campaign_self_test as fixtures
 import harness
 import machine_findings as m
+from support_evidence_self_test import SupportEvidenceTests
 
 
 class MachineFindingTests(unittest.TestCase):

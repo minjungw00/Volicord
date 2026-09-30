@@ -396,7 +396,7 @@
       "authority": "hard_blocking",
       "uncertainty": "hard_blocking",
       "owner": "privacy-and-provider-boundary.md",
-      "rationale": "Runtime content exclusion and measured activation summary identity are bounded integrity conditions.",
+      "rationale": "Runtime content exclusion, repository integration evidence and Work-specific start/required-resume activation summary identity are bounded integrity conditions.",
       "review_groups": []
     },
     "work_turn_lifecycle": {
@@ -469,7 +469,7 @@
       "authority": "hard_blocking",
       "uncertainty": "hard_blocking",
       "owner": "projections-and-documents.md/provenance",
-      "rationale": "Candidate, Project and cycle identity and nested file hashes in document/Viewer summaries are deterministic facts independent of quality or usability.",
+      "rationale": "Candidate, Project, repository journey, represented Work and projection-source identity and nested file hashes in document/Viewer summaries are deterministic facts independent of quality or usability.",
       "review_groups": []
     },
     "git_history_observation": {

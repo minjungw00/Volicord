@@ -1405,7 +1405,7 @@ def generated_document_summary_valid(
     project_id: str | None,
     candidate_revision: str | None,
     kind: str,
-    cycle: int,
+    work_label: str,
 ) -> bool:
     required_kinds = (
         "project-architecture-guide",
@@ -1422,7 +1422,7 @@ def generated_document_summary_valid(
         or documents.get("project_id") != project_id
         or documents.get("candidate_head") != candidate_revision
         or documents.get("repository_class") != kind
-        or documents.get("cycle") != cycle
+        or documents.get("work") != work_label
         or documents.get("locale") not in {"en", "ko"}
         or not nonempty_string(documents.get("language"))
         or documents.get("required_document_kinds") != list(required_kinds)
@@ -1464,7 +1464,8 @@ def campaign_support_evidence(
     project_id: str | None,
     candidate_revision: str | None,
     kind: str,
-    cycle: int,
+    work_label: str,
+    journey_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, bool], dict[str, Any]]:
     _runtime_path, runtime = verified_json_evidence(
         evidence.get("runtime_summary"), evidence_directory
@@ -1484,7 +1485,7 @@ def campaign_support_evidence(
         project_id=project_id,
         candidate_revision=candidate_revision,
         kind=kind,
-        cycle=cycle,
+        work_label="A" if journey_context is not None else work_label,
     )
     snapshot_file = (
         verified_evidence_path(
@@ -1497,40 +1498,27 @@ def campaign_support_evidence(
         if isinstance(snapshot, dict)
         else None
     )
-    projection_identity = (
-        "not_observed" if not isinstance(documents, dict) or not isinstance(snapshot, dict)
-        else "confirmed_pass" if all(
-            value.get("candidate_head") == candidate_revision and value.get("project_id") == project_id
-            and value.get("repository_class") == kind and value.get("cycle") == cycle
-            for value in (documents, snapshot)) else "confirmed_violation")
-    # File existence/availability does not prove quality, but an observed payload
-    # with a conflicting declared hash is an independently hard integrity fact.
-    references = []
-    if isinstance(snapshot, dict) and snapshot.get("relative_evidence_path"):
-        references.append(snapshot)
-    if isinstance(documents, dict):
-        document_entries = documents.get("documents", {})
-        if not isinstance(document_entries, dict):
-            projection_identity = "confirmed_violation"
-        else:
-            for document in document_entries.values():
-                formats = document.get("formats") if isinstance(document, dict) else None
-                if not isinstance(formats, dict):
-                    projection_identity = "confirmed_violation"
-                else:
-                    references.extend(formats.values())
-    if evidence_directory is not None:
-        for reference in references:
-            if not isinstance(reference, dict):
-                projection_identity = "confirmed_violation"
-                continue
-            name = reference.get("relative_evidence_path")
-            if name and safe_relative_evidence_path(name) is None:
-                projection_identity = "confirmed_violation"
-            if name and safe_relative_evidence_path(name) is not None:
-                path = evidence_directory / name
-                if path.is_file() and sha256(path) != reference.get("sha256"):
-                    projection_identity = "confirmed_violation"
+    projection_work = "A" if journey_context is not None else work_label
+    projection_valid = (
+        document_files_valid
+        and isinstance(snapshot, dict)
+        and snapshot.get("kind") == "phase8_viewer_snapshot_evidence_summary"
+        and snapshot.get("status") == "passed"
+        and snapshot.get("project_id") == project_id
+        and snapshot.get("candidate_head") == candidate_revision
+        and snapshot.get("repository_class") == kind
+        and snapshot.get("work") == projection_work
+        and snapshot_file is not None
+        and type(snapshot.get("bytes")) is int
+        and snapshot["bytes"] == snapshot_file.stat().st_size
+    )
+    if journey_context is not None:
+        from support_evidence import journey_projection_valid
+        projection_valid &= journey_projection_valid(
+            journey_context, evidence, bundle, project_id, candidate_revision,
+            kind, work_label, evidence_directory)
+    projection_identity = "confirmed_pass" if projection_valid else "confirmed_violation"
+    from support_evidence import runtime_activation_valid
     checks = {
         "canonical_bundle_and_provenance": (
             bundle is not None
@@ -1538,27 +1526,9 @@ def campaign_support_evidence(
             and bundle.project_id == project_id
         ),
         "generated_document_outputs": document_files_valid,
-        "static_viewer_snapshot": (
-            isinstance(snapshot, dict)
-            and snapshot.get("kind") == "phase8_viewer_snapshot_evidence_summary"
-            and snapshot.get("status") == "passed"
-            and snapshot.get("project_id") == project_id
-            and snapshot.get("candidate_head") == candidate_revision
-            and snapshot.get("repository_class") == kind
-            and snapshot.get("cycle") == cycle
-            and snapshot_file is not None
-        ),
-        "bounded_runtime_and_activation_evidence": (
-            isinstance(runtime, dict)
-            and runtime.get("kind") == "phase8_bounded_runtime_summary"
-            and runtime.get("content_included") is False
-            and isinstance(activation, dict)
-            and activation.get("kind") == "phase8_dogfood_activation_summary"
-            and activation.get("repository_class") == kind
-            and activation.get("cycle") == cycle
-            and activation.get("work_session_start_activation_observed") is True
-            and activation.get("resume_session_start_activation_observed") is True
-        ),
+        "static_viewer_snapshot": projection_valid,
+        "bounded_runtime_and_activation_evidence": runtime_activation_valid(
+            runtime, activation, kind, work_label),
     }
     return checks, {
         "projection_evidence_identity": projection_identity,
@@ -8941,7 +8911,8 @@ def real_session_evidence(
         project_id=bundle.project_id if bundle is not None else None,
         candidate_revision=candidate_revision or git_head(ROOT),
         kind=kind,
-        cycle=cycle,
+        work_label=work_label,
+        journey_context=raw.get("_journey_projection_context"),
     )
     support_references_present = {
         name: isinstance(evidence.get(reference), dict)
@@ -12255,7 +12226,7 @@ def real_session_fixture(
         "project_id": project,
         "candidate_head": git_head(ROOT),
         "repository_class": kind,
-        "cycle": cycle,
+        "work": work_label,
         "locale": "en",
         "language": "en",
         "status": "passed",
@@ -12275,7 +12246,7 @@ def real_session_fixture(
         "project_id": project,
         "candidate_head": git_head(ROOT),
         "repository_class": kind,
-        "cycle": cycle,
+        "work": work_label,
         "locale": "en",
         "requested_language": "en",
         "relative_evidence_path": snapshot_html_path.name,
@@ -12290,7 +12261,7 @@ def real_session_fixture(
         "managed_file_inventory": [],
         "repository_config_present": True,
         "repository_ownership_manifest_present": True,
-        "work_session_start_activation_observed": True,
+        "start_session_start_activation_observed": True,
         "resume_session_start_activation_observed": True,
         "content_included": False,
     })
@@ -12298,11 +12269,12 @@ def real_session_fixture(
     write_json(activation_summary_path, {
         "kind": "phase8_dogfood_activation_summary",
         "repository_class": kind,
-        "cycle": cycle,
+        "journey_id": journey_id(kind),
+        "work_slot_id": work_slot_id(kind, work_label),
         "repository_config_present": True,
         "repository_ownership_manifest_present": True,
-        "work_session_start_activation_observed": True,
-        "resume_session_start_activation_observed": True,
+        "start_session_start_activation_observed": True,
+        "resume_session_start_activation_observed": True if "resume" in session_roles(kind, work_label) else "not_applicable",
     })
     for key in ("learning_deliberation_basis", "learning_routine_basis", "exploratory_uncertainty_basis"):
         if isinstance(evaluation_basis.get(key), dict):

@@ -1237,6 +1237,19 @@ repository-state evidence are inventory-bound. Publication is immutable and
 atomic. A failed collection cannot be converted to qualified evidence by
 qualitative prose or retrying inside the same campaign.
 
+Support evaluation consumes the producer's Work-specific activation summary:
+`journey_id`, `work_slot_id`, repository class and start activation must agree;
+resume activation is true for the three Work A slots and exactly `not_applicable`
+for Volicord B/C. Bounded journey-final Runtime summaries exclude content and
+retain nonnegative size/inventory and repository config/ownership evidence.
+The immutable manifest has exactly three journey-final projections. Each binds
+one maintained source Work A, every represented slot in order, and the ordered
+canonical Work identities. Siblings consume that same canonical/document/Viewer
+binding; summary `work` identifies the projection source, not the consuming Work.
+Candidate/Project/repository/journey disagreement, omitted Work history, unsafe
+paths, missing artifacts and conflicting byte counts/hashes remain hard violations.
+No per-cycle projection identity or obsolete activation field is interpreted.
+
 `evaluate` reads the immutable evidence set and appends a machine run. The
 machine policy makes deterministic candidate, inventory, raw/session/task,
 repository, Project/Work, resume, privacy, credential, canonical provenance,

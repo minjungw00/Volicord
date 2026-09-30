@@ -2809,6 +2809,12 @@ def evaluate_works(root: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]
             state = manifest["works"][work_key(kind, work)]
             descriptor_path = root / "tasks/descriptors" / f"{state['work_slot_id']}.json"
             descriptor = read_json(descriptor_path)
+            descriptor["_journey_projection_context"] = {
+                "candidate_head": manifest["candidate_head"],
+                "journey": manifest["journeys"][journey_id(kind)],
+                "final_entries": manifest.get("journey_final_evidence", []),
+                "work_entries": manifest.get("work_evidence", []),
+            }
             descriptor["_evidence_directory"] = str(root)
             descriptor["_evidence_file_sha256"] = harness.sha256(descriptor_path)
             observation = harness.real_session_evidence(descriptor, kind=kind, cycle=work,
@@ -2950,7 +2956,7 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
         "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
                 "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py",
-                "evaluation.json", "interaction_diagnostics.py", "workload_intents.py")},
+                "evaluation.json", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "works": works,
