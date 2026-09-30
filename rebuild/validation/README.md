@@ -209,6 +209,38 @@ dirty cross-Work state and later combined commits remain collectible. The run sh
 follows task/repository-owned Git policy; compliance is assessed in post-hoc review.
 Canonical Work identity remains independent of commits, paths and HEAD intervals.
 
+### Naturalistic workload selection
+
+The existing 3 journeys / 5 Works / 3 resume pairs / 8 sessions fit five ordinary
+user intents. `workload_intents.py.contract()` owns the mapping:
+
+| Work (and fresh resume when present) | Workload intent | Selection requirement |
+| --- | --- | --- |
+| Volicord A + Resume A | `learning_collaborative` | The frozen first turn explicitly requests learning/collaboration on important alternatives and trade-offs, while permitting routine details without interruption. Resume recovers the relevant learning/context state. |
+| Volicord B | `decision_rich` | Ordinary user-facing policy or UX work leaves realistic materially different outcomes open; current source authority and commitments determine whether a Question was needed in post-hoc review. |
+| Volicord C | `routine_bounded` | Clear work with strong repository authority and routine implementation freedom supplies a control for unnecessary interruption. |
+| Small-Python A + Resume A | `exploratory_debugging` | Cause or viable implementation path is genuinely uncertain; investigation, research and deferment remain valid. |
+| Polyglot-Medium A + Resume A | `cross_stack_integration` | Useful work spans relevant language/component boundaries; review assesses source grounding and cross-component understanding. |
+
+Each task-manifest Work mapping contains `workload_intent`,
+`learning_collaboration_statement` (null outside the learning Work), and its exact
+`start`/`resume` file paths. The learning excerpt must be nonempty and verbatim in
+the first frozen task; its meaning remains reviewable, with no keyword classifier.
+These fields describe task selection, never expected answers, user ownership,
+Materiality dimensions, required Questions or Learning operation counts. They
+are frozen and hash-bound with the descriptor; only the exact task bytes become
+the user request. Tasks must use natural wording without internal operation names
+or evaluator vocabulary. No blind semantic preflight or semantic seal exists.
+
+The five Works need no additional sessions: one Work owns each intent and each
+A resume continues that Work with recovery, investigation or verification as
+appropriate to its actual state. Volicord B/C must remain independently useful
+under reasonable earlier outcomes; avoid a later task that assumes a particular
+choice in A/B. The maintained `fixtures/workload-tasks.json` demonstrates bounded,
+ordinary tasks under this topology, without semantic expected outcomes. It is
+regression support, not qualifying real-use evidence or a substitute for selecting
+tasks against the actual pinned repositories before preparation.
+
 ## Historical Phase 8 result record
 
 The maintained Phase 8 candidate-authority summary is `phase-8-summary.md`.

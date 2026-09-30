@@ -300,7 +300,10 @@ journeys own separate Project, workspace and Runtime Home identities.
 Volicord retains A/Resume A/B/C in one Project with three distinct Works.
 Exact technical gate verification, immutable evidence integrity, required
 direct-human observations and explicit Phase 9 approval remain independent.
-A changed Product candidate requires a fresh 3/5/3/8 campaign.
+A changed Product candidate requires a fresh 3/5/3/8 campaign. Task selection
+covers learning/collaborative, decision-rich, routine, exploratory and cross-stack
+intents using the mapping owned by the validation plan; frozen metadata specifies
+selection purpose rather than semantic answers or interaction counts.
 
 ### Phase 9 — Cutover
 
@@ -512,14 +515,14 @@ The candidate's actual Learning participation, if active, is reviewed for
 fork value, alternatives/trade-offs, chronology, fidelity and interruption.
 Hard evidence failures cannot be overridden by review prose.
 
-Collection observes target Git state without changing it. An incomplete Work
-start may carry dirty state into its paired resume; captured changes must be
-committed before the next distinct Work. Every journey must end clean and
-committed, with no empty commit required for no-change continuation. The immutable
-attestation binds baseline/session/final HEADs, staged/unstaged patches, tracked
-content and nonignored untracked hashes. The Product candidate remains clean
-and exact-HEAD-bound. Dirty target state blocks collection but alone does not
-establish Product failure, actor attribution or truthful verification. Qualification leaves `phase_9_ready = false`; only an explicit
+Collection observes target Git state without changing it. Zero or multiple
+commits, dirty carryover across Works and later combined commits remain valid
+observations; Work identity is independent of Git history. Task/repository Git
+policy is assessed post-hoc, with Git observations advisory and exact evidence
+integrity still hard. The immutable attestation binds known baseline/session/final
+HEADs, patches, tracked content and nonignored untracked hashes. The Product
+candidate remains clean and exact-HEAD-bound. Target dirtiness does not block
+collection or establish Product failure, actor attribution or verification. Qualification leaves `phase_9_ready = false`; only an explicit
 `approve-phase-9` operator action over a qualified result can open Phase 9.
 The approved result needs a verified durable result lineage. Historical
 failed captures remain diagnostic and cannot qualify a changed candidate.

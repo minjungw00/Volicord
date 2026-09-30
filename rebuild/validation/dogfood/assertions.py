@@ -15,6 +15,7 @@ HARNESS = Path(__file__).resolve().parent / "harness.py"
 def main() -> int:
     """Assert the one active Naturalistic contract and retained support engine."""
     import campaign
+    import workload_intents
     import harness
     import machine_findings
     import qualitative_review
@@ -22,6 +23,8 @@ def main() -> int:
     import review_operations
 
     definition = harness.load_definition()
+    if definition["naturalistic_contract"]["workload_intents"] != workload_intents.contract():
+        raise AssertionError("workload selection contract changed")
     topology = definition["campaign_topology"]
     if (topology["journey_count"], topology["work_count"],
             topology["resume_pair_count"], topology["session_count"]) != (3, 5, 3, 8):

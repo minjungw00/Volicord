@@ -273,3 +273,18 @@ Phase 9 after complete qualification.
 Existing historical failed campaigns above remain unchanged. The technical gate is separate;
 common qualitative workflow and final qualification policy are maintained in
 `qualitative-review.md` and `qualification_policy.py`.
+
+## Current workload preparation prerequisites
+
+The existing topology remains 3 journeys / 5 Works / 3 resume pairs / 8 fresh
+sessions. Volicord A/Resume A selects learning/collaborative work; B selects
+decision-rich user-facing work; C selects routine bounded work. Small-Python
+A/Resume A selects exploratory/debugging work, and Polyglot-Medium A/Resume A
+selects cross-stack integration. All task bytes and workload metadata freeze
+before execution. The first learning task explicitly requests collaboration on
+important alternatives/trade-offs and leaves routine details non-interrupting.
+No semantic expected answers or Question/Learning count quotas are assigned.
+The validation plan owns selection requirements and their structural tests.
+All prior failed campaigns remain historical evidence and cannot be rebound to
+a changed candidate. A successful candidate gate permits a wholly fresh campaign;
+it establishes neither Dogfood success nor Phase 9 approval.

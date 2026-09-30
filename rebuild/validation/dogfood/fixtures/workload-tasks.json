@@ -1,0 +1,32 @@
+{
+  "tasks": {
+    "journey-volicord-work-a": {
+      "workload_intent": "learning_collaborative",
+      "learning_collaboration_statement": "I want to learn as we work: explain important alternatives and trade-offs, and make important technical choices with me. Handle routine implementation details without interrupting me.",
+      "start": "Improve how repository analysis avoids repeating unchanged work, with focused tests. I want to learn as we work: explain important alternatives and trade-offs, and make important technical choices with me. Handle routine implementation details without interrupting me. Keep existing public contracts and dependency boundaries.",
+      "resume": "Continue the analysis work from where we left off. Recover our learning goals, choices and their reasons, then inspect the implementation and run relevant checks. If work remains, continue it."
+    },
+    "journey-volicord-work-b": {
+      "workload_intent": "decision_rich",
+      "learning_collaboration_statement": null,
+      "start": "Improve the operator experience when repository analysis is unavailable or partly degraded. Review the current CLI behavior and repository requirements, then improve the user-facing result and focused coverage. Keep the change bounded."
+    },
+    "journey-volicord-work-c": {
+      "workload_intent": "routine_bounded",
+      "learning_collaboration_statement": null,
+      "start": "Add focused regression coverage for portable bundle checksum rejection using the current import contract. Include valid input as a control, preserve behavior, and follow existing test conventions."
+    },
+    "journey-small-python-work-a": {
+      "workload_intent": "exploratory_debugging",
+      "learning_collaboration_statement": null,
+      "start": "Investigate whether configuration handling depends unexpectedly on the working directory. Establish the cause with a reproducer and relevant tests, then fix it if the evidence supports a bounded fix. If it needs broader work, explain what you found and what remains uncertain.",
+      "resume": "Continue the configuration investigation. Recover the evidence and unresolved hypotheses, verify the reproducer or existing fix, and take the next useful step supported by the results."
+    },
+    "journey-polyglot-medium-work-a": {
+      "workload_intent": "cross_stack_integration",
+      "learning_collaboration_statement": null,
+      "start": "Trace how a request moves through the client, service and worker components. Improve invalid-request handling consistently across the affected language boundaries and add relevant tests. Explain the source basis and any integration gaps you cannot verify.",
+      "resume": "Resume the invalid-request integration work. Recover the component contracts and current progress, trace the affected request flow again, and verify or complete the remaining work across the language boundaries."
+    }
+  }
+}

@@ -20,9 +20,9 @@ STRICT_FAKE = campaign.ROOT / "rebuild/validation/shared/strict_fake_volicord.py
 # Synthetic transport fixtures exercise existing technical branches; campaign preparation
 # never assigns these cases to ordinary Works.
 FIXTURE_BEHAVIOR_CASES = [
-    ("volicord", "A", ("explicit_user_owned_decision", "delegated_implementation_choice")),
+    ("volicord", "A", ("learning_deliberation",)),
     ("volicord", "B", ("hidden_user_owned_decision",)),
-    ("volicord", "C", ("learning_deliberation", "learning_routine_control")),
+    ("volicord", "C", ("delegated_implementation_choice",)),
     ("small-python", "A", ("hidden_user_owned_decision", "exploratory_uncertainty")),
     ("polyglot-medium", "A", ("research_or_no_question", "repository_or_environment_fact")),
 ]
@@ -275,7 +275,10 @@ def prepare(
             fixture_directory.mkdir(parents=True, exist_ok=True)
             fixture = harness.real_session_fixture(kind, label, revision,
                 fixture_directory, materiality_obligations=obligation)
-            entry = {}
+            statement = ("I want to learn through one meaningful agent-owned technical fork before implementation."
+                if (kind, label) == ("volicord", "A") else None)
+            entry = {"workload_intent": campaign.workload_intents.WORKLOAD_INTENTS[campaign.work_key(kind, label)],
+                "learning_collaboration_statement": statement}
             for role in campaign.session_roles(kind, label):
                 field = "work_user_task" if role == "start" else "fresh_resume_user_task"
                 path = task_directory / f"{kind}-{label}-{role}.txt"
@@ -592,10 +595,25 @@ def assert_inventory_diagnostic(parent: Path, binary: Path) -> None:
 
 
 def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
+    # These ordinary, outcome-open examples prove five intents fit eight frozen turns.
+    examples = campaign.read_json(Path(__file__).with_name("fixtures") / "workload-tasks.json")
+    manifest = copy.deepcopy(examples)
+    for slot, entry in manifest["tasks"].items():
+        for role in ("start", "resume"):
+            if role in entry:
+                path = parent / f"ordinary-{slot}-{role}.txt"
+                path.write_text(entry[role], encoding="utf-8")
+                entry[role] = str(path)
+    path = parent / "ordinary-workloads.json"
+    campaign.write_json(path, manifest)
+    tasks, metadata = campaign.frozen_tasks(path)
+    assert len(tasks) == 8
+    assert {slot: entry["workload_intent"] for slot, entry in metadata.items()} == campaign.workload_intents.WORKLOAD_INTENTS
     root, captures, bundles = prepared_batch(parent, "current-campaign", binary)
     state = campaign.load_campaign(root)
+    assert {slot: work["workload_intent"] for slot, work in state["works"].items()} == campaign.workload_intents.WORKLOAD_INTENTS
     assert len(state["journeys"]) == 3 and len(state["works"]) == 5
-    assert state["schema_version"] == 7
+    assert state["schema_version"] == 8
     assert all("review_slot_id" not in work and "provisional_review" not in work
         and "sealed_semantic_sha256" not in work for work in state["works"].values())
     assert all(work["work_slot_id"] == key for key, work in state["works"].items())
@@ -646,6 +664,19 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
         pass
     else:
         raise AssertionError("missing resume task was accepted")
+    for field, invalid in (("workload_intent", "routine_bounded"),
+                           ("workload_intent", None),
+                           ("learning_collaboration_statement", None),
+                           ("learning_collaboration_statement", "not in the user task")):
+        incomplete = copy.deepcopy(task_manifest)
+        incomplete["tasks"][campaign.work_key("volicord", "A")][field] = invalid
+        campaign.write_json(missing, incomplete)
+        try:
+            campaign.frozen_tasks(missing)
+        except campaign.CampaignError:
+            pass
+        else:
+            raise AssertionError("missing intent or explicit learning request was accepted")
     try:
         campaign.require_current_candidate("0" * 40)
     except campaign.CampaignError:

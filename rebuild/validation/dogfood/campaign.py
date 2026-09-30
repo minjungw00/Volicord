@@ -28,6 +28,7 @@ import tomllib
 from typing import Any, Callable
 
 import harness
+import workload_intents
 import cli_observations
 import document_realization
 import machine_findings
@@ -179,7 +180,7 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
         )
     value = read_json(campaign_file(root))
     if (value.get("kind") != "phase8_dogfood_campaign"
-            or value.get("schema_version") != 7):
+            or value.get("schema_version") != 8):
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
@@ -784,6 +785,7 @@ def render_operator_run_sheet(root: Path) -> Path:
                 task = task_artifacts[role]
                 entries_by_repository[kind].append(
                     f"### Session `{work_slot_id}.{role}`\n\n"
+                    f"- Workload intent: `{state['workload_intent']}`\n"
                     f"- Repository: `{state['repository_path']}`\n"
                     f"- Runtime Home: `{state['runtime_home']}`\n"
                     f"- Capture destination: `{slot_root(root, work_slot_id) / 'evidence' / f'{role}.rollout.jsonl'}`\n"
@@ -1018,6 +1020,8 @@ def load_frozen_descriptor(
         raise CampaignError("frozen task descriptor contains semantic admission fields")
     if descriptor_semantic_sha256(descriptor) != state.get("frozen_descriptor_sha256"):
         raise CampaignError("frozen task descriptor changed")
+    if descriptor.get("workload_intent") != state.get("workload_intent"):
+        raise CampaignError("frozen workload intent changed")
     errors = harness.work_descriptor_errors(
         descriptor,
         candidate_revision=campaign["candidate_head"],
@@ -1187,7 +1191,7 @@ def activate_all(root: Path) -> dict[str, Any]:
     }
 
 
-def frozen_tasks(task_manifest: Path) -> dict[tuple[str, str, str], bytes]:
+def frozen_tasks(task_manifest: Path) -> tuple[dict[tuple[str, str, str], bytes], dict[str, dict[str, Any]]]:
     """Read every operator-owned task before mutating the campaign."""
     value = read_json(task_manifest)
     if not isinstance(value, dict) or set(value) != {"tasks"} or not isinstance(value["tasks"], dict):
@@ -1200,7 +1204,7 @@ def frozen_tasks(task_manifest: Path) -> dict[tuple[str, str, str], bytes]:
     for kind, label in sorted(expected_works):
         roles = session_roles(kind, label)
         entry = value["tasks"][work_key(kind, label)]
-        if not isinstance(entry, dict) or set(entry) != set(roles):
+        if not isinstance(entry, dict) or set(entry) != set(roles) | {"workload_intent", "learning_collaboration_statement"}:
             raise CampaignError("task manifest must contain the exact start/resume role topology")
         for role in roles:
             source = Path(entry[role]).resolve()
@@ -1217,6 +1221,10 @@ def frozen_tasks(task_manifest: Path) -> dict[tuple[str, str, str], bytes]:
             if problem:
                 raise CampaignError(problem)
             tasks[(kind, label, role)] = content
+        errors = workload_intents.metadata_errors(work_key(kind, label), entry,
+            tasks[(kind, label, "start")].decode("utf-8"))
+        if errors:
+            raise CampaignError("; ".join(errors))
     if len(tasks) != BATCH_CAPTURE_COUNT or any(
         len({content for (repository_class, _work, _role), content in tasks.items()
             if repository_class == kind})
@@ -1224,7 +1232,9 @@ def frozen_tasks(task_manifest: Path) -> dict[tuple[str, str, str], bytes]:
         for kind in CLASSES
     ):
         raise CampaignError("frozen tasks must uniquely identify each role within its journey")
-    return tasks
+    return tasks, {slot: {field: entry[field] for field in
+        ("workload_intent", "learning_collaboration_statement")}
+        for slot, entry in value["tasks"].items()}
 
 
 def prepare_campaign(
@@ -1245,7 +1255,7 @@ def prepare_campaign(
     definition = harness.load_definition()
     raw_input = read_json(repository_input)
     specs = repository_spec_map(raw_input)
-    tasks = frozen_tasks(task_manifest)
+    tasks, selection = frozen_tasks(task_manifest)
     document_language = raw_input.get("document_language", "en")
     if not isinstance(document_language, str) or not document_language.strip() or document_language != document_language.strip() or len(document_language.encode("utf-8")) > 128:
         raise CampaignError("campaign document language must be bounded non-empty text")
@@ -1284,7 +1294,7 @@ def prepare_campaign(
         state = {
             "journey_id": journey["journey_id"],
             "work_slot_id": work_key(kind, label), "repository_class": kind,
-            "work_label": label,
+            "work_label": label, "workload_intent": selection[slot]["workload_intent"],
             "session_slot_ids": [session_slot_id(kind, label, role) for role in session_roles(kind, label)],
             "repository_path": journey["repository_path"],
             "repository_revision": journey["repository_revision"],
@@ -1296,6 +1306,7 @@ def prepare_campaign(
         descriptor = {
             "kind": "phase8_work_descriptor", "contract": "naturalistic-observation-1",
             "producer": "volicord_phase8_codex_event_normalizer",
+            **selection[slot],
             "journey_id": state["journey_id"], "repository_class": kind,
             "work_slot_id": state["work_slot_id"], "work_label": label,
             "repository_revision": state["repository_revision"],
@@ -1315,7 +1326,7 @@ def prepare_campaign(
         works[state["work_slot_id"]] = state
         (slot_root(root, slot) / "evidence").mkdir(parents=True)
     campaign = {
-        "kind": "phase8_dogfood_campaign", "schema_version": 7,
+        "kind": "phase8_dogfood_campaign", "schema_version": 8,
         "campaign_id": campaign_id, "campaign_root": str(root),
         "candidate_head": candidate_head, "candidate_binary": str(binary),
         "candidate_artifacts": candidate_artifacts,
@@ -1342,6 +1353,7 @@ def prepare_campaign(
         "naturalistic_memory_evidence": naturalistic_memory_evidence(candidate_artifacts),
         "live_evidence_obligations": live_evidence_obligations(candidate_artifacts),
         "repository_trust": "user_controlled_not_automated",
+        "workload_intents": workload_intents.WORKLOAD_INTENTS,
         "task_sha256_by_session_slot": {
             session_slot_id(*slot): hashlib.sha256(content).hexdigest()
             for slot, content in sorted(tasks.items())
@@ -2966,7 +2978,7 @@ def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
     """Inspect a historical inventory without replay, repair, or qualification."""
     campaign = read_json(campaign_file(root))
     if (campaign.get("kind") != "phase8_dogfood_campaign"
-            or campaign.get("schema_version") not in {1, 2, 3, 4, 5, 6, 7}
+            or campaign.get("schema_version") not in {1, 2, 3, 4, 5, 6, 7, 8}
             or Path(campaign.get("campaign_root", "")).resolve() != root.resolve()):
         raise CampaignError("unexpected dogfood campaign metadata")
     verify_inventory(root)

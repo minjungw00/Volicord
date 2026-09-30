@@ -731,7 +731,11 @@
         "fresh_resume_user_task"
       ],
       "task_identity": "exact_utf8_bytes_and_sha256_frozen_before_activation",
-      "evidence_reference_field": "evidence"
+      "evidence_reference_field": "evidence",
+      "selection_fields": [
+        "workload_intent",
+        "learning_collaboration_statement"
+      ]
     },
     "codex_user_turn_normalization": {
       "accepted_representations": [
@@ -1015,6 +1019,19 @@
   "naturalistic_contract": {
     "preparation": "five_frozen_works_eight_exact_task_bytes",
     "semantic_admission": false,
-    "review": "post_hoc_observation_driven"
+    "review": "post_hoc_observation_driven",
+    "workload_intents": {
+      "mapping": {
+        "journey-volicord-work-a": "learning_collaborative",
+        "journey-volicord-work-b": "decision_rich",
+        "journey-volicord-work-c": "routine_bounded",
+        "journey-small-python-work-a": "exploratory_debugging",
+        "journey-polyglot-medium-work-a": "cross_stack_integration"
+      },
+      "selection_authority": "ordinary_user_intent_not_expected_semantic_outcome",
+      "learning_request": "nonempty_verbatim_first_task_excerpt; meaning_reviewed_post_hoc",
+      "question_count_requirement": false,
+      "learning_call_count_requirement": false
+    }
   }
 }

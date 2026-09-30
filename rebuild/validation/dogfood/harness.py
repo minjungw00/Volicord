@@ -25,6 +25,7 @@ import threading
 from typing import Any, Callable
 
 import machine_findings
+import workload_intents
 import authority_obligations
 import qualitative_review
 
@@ -1106,6 +1107,7 @@ def load_definition() -> dict[str, Any]:
         "preparation": "five_frozen_works_eight_exact_task_bytes",
         "semantic_admission": False,
         "review": "post_hoc_observation_driven",
+        "workload_intents": workload_intents.contract(),
     }:
         raise ValueError("the current Naturalistic contract changed")
     if tuple(value.get("repository_classes", {})) != CLASSES:
@@ -3617,7 +3619,8 @@ def work_descriptor_errors(
         errors = []
         required = {"kind", "contract", "producer", "journey_id", "repository_class",
             "work_slot_id", "work_label", "repository_revision", "work_user_task",
-            "fresh_resume_user_task"}
+            "fresh_resume_user_task", "workload_intent", "learning_collaboration_statement"}
+        errors.extend(workload_intents.metadata_errors(value.get("work_slot_id"), value, value.get("work_user_task")))
         actual = set(value) - {"_evidence_directory", "_evidence_file_sha256",
             "materiality_obligations", "evaluation_basis", "behavior_review"}
         if actual != required and actual != required | {"evidence"}:
