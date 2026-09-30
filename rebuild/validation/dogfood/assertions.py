@@ -4,12 +4,34 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import subprocess
 import sys
 
 
 ROOT = Path(__file__).resolve().parents[3]
 HARNESS = Path(__file__).resolve().parent / "harness.py"
+
+
+def report_guidance_errors(text, definition):
+    """Check operator contract identifiers without freezing report prose/history."""
+    sections = dict(re.findall(r"^## ([^\n]+)\n(.*?)(?=^## |\Z)", text, re.M | re.S))
+    required_sections = {"Current next-campaign rule", "Current follow-up work"}
+    errors = ["missing current campaign guidance"] if not required_sections <= sections.keys() else []
+    current = "\n".join(body for name, body in sections.items() if name.startswith("Current "))
+    if re.search(r"opaque[- ]slot|evaluator descriptors?|seal-work|reveal-qualification-profile|"
+                 r"Work boundaries require|terminal structured clean-status check", current, re.I):
+        errors.append("current guidance retains retired campaign admission")
+    next_campaign = sections.get("Current next-campaign rule", "")
+    identifiers = set(definition["naturalistic_contract"]["workload_intents"]["mapping"].values()) | {
+        "verify-validation-archive", "qualification_policy.verify_technical()",
+        "--repositories", "--tasks", "activate-all", "collect-batch", "evaluate",
+        "prepare-qualitative-review", "--include-raw-rollouts", "resolves_review_runs",
+        "interaction_coverage_adequacy", "qualify", "approve-phase-9",
+    }
+    if any(identifier not in next_campaign for identifier in identifiers):
+        errors.append("current next-campaign guidance omits maintained workflow identifiers")
+    return errors
 
 
 def main() -> int:
@@ -23,6 +45,15 @@ def main() -> int:
     import review_operations
 
     definition = harness.load_definition()
+    report = Path(__file__).with_name("report.md").read_text(encoding="utf-8")
+    if errors := report_guidance_errors(report, definition):
+        raise AssertionError("; ".join(errors))
+    # Historical vocabulary is permitted; the same instruction in current
+    # guidance and omission of required review workflow must independently fail.
+    assert not report_guidance_errors(report + "\n## Historical admission\nopaque-slot\n", definition)
+    assert report_guidance_errors(report.replace("## Current follow-up work\n",
+        "## Current follow-up work\nopaque-slot\n"), definition)
+    assert report_guidance_errors(report.replace("`resolves_review_runs`", "resolution"), definition)
     if definition["naturalistic_contract"]["workload_intents"] != workload_intents.contract():
         raise AssertionError("workload selection contract changed")
     topology = definition["campaign_topology"]

@@ -305,8 +305,9 @@ evidence.
 Keep the campaign root and raw rollouts in private ignored state. Ordinary
 independent review requires two private artifacts: the byte-exact raw rollout
 archive and the bounded review package. The package contains bounded campaign
-metadata, descriptors and review views, hashes, canonical bundles, the
-campaign-level human review when provided, Runtime/activation summaries, blocker records when present, and
+metadata, frozen task-selection and review views, hashes, canonical bundles,
+recorded common qualitative reviews when provided, Runtime/activation summaries,
+blocker records when present, and
 all four generated document kinds in Markdown and self-contained HTML. Raw
 rollouts remain outside the default package.
 
@@ -360,35 +361,50 @@ separate private archive for the independent review handoff.
 
 ## Current next-campaign rule
 
-Use the maintained campaign helper to prepare a wholly fresh opaque-slot
-campaign in a separate clean worktree at the current clean `HEAD`, after an
-independently verified exact-candidate technical-gate capsule/archive names
-that same HEAD. Run all eight genuine sessions,
-publish the immutable evidence set, and then use the maintained Work/journey machine evaluation,
-journey-final review sampling, and exact-topology qualification path. Common qualitative review
-remains independently owned.
-No tracked historical hash is a substitute for that executable rule.
+1. Independently verify the current clean candidate HEAD's published technical-gate
+   archive with `verify-validation-archive`, and its capsule/archive binding with
+   `qualification_policy.verify_technical()`. Preserve the verification output and
+   numeric exits; historical technical evidence cannot qualify a changed HEAD.
+2. Use `prepare --repositories <json> --tasks <json>` for one wholly fresh,
+   candidate-bound Naturalistic campaign: 3 journeys / 5 Works / 3 resume pairs /
+   8 sessions. Freeze the eight ordinary task files and the five maintained workload
+   intents: `learning_collaborative`, `decision_rich`, `routine_bounded`,
+   `exploratory_debugging`, and `cross_stack_integration`. These describe selection
+   purpose without semantic expected-answer profiles or Question/Learning quotas.
+3. Explicitly grant repository and SessionStart-hook trust, then `activate-all`.
+   Execute the frozen tasks through supported current Codex CLI or VS Code extension
+   sessions under the shared Codex-family evidence contract. Preserve raw metadata
+   and exact session, candidate, workspace, Runtime Home, first-turn, activation,
+   Project/Work and resume integrity; no fixed source/originator pair identifies
+   the supported surface. Respond to actual Questions or Learning Deliberations
+   when they arise; their absence requires evidence-appropriate review.
+4. Collect all eight raw rollouts once through `collect-batch`, publishing the
+   immutable evidence set. Git commits, status, history and path correlations are
+   observed repository evidence. They never define Work identity or impose universal
+   completed-Work commit boundaries or terminal-clean target admission. Assess any
+   task/repository-owned Git requirements post-hoc; exact candidate and evidence
+   integrity remain strict.
+5. Run `evaluate` to append machine factual diagnostics, then perform an independent,
+   evidence-bound agent `prepare-qualitative-review` with `--include-raw-rollouts`.
+   Inspect actual task, Work/resume, source authority and diagnostic evidence before
+   recording judgments. Counts are facts, never numeric pass/fail quotas.
+6. Perform targeted direct human review for human-only criteria and high-impact
+   conflict or insufficiency. High-impact insufficiency groups are `authority`,
+   `context_recovery` and `campaign_interaction`; insufficient
+   `interaction_coverage_adequacy` leaves qualification unresolved. Human resolution
+   must name the other review run IDs for that exact criterion through
+   `resolves_review_runs`, and cannot replace the separately recorded independent
+   agent semantic review. Required coverage cannot be `not_observed` or
+   `not_applicable`; substantive violations and hard technical/integrity failures
+   retain their current blocking policy.
+7. Use `qualify` against the exact candidate's verified technical capsule/archive
+   and recorded reviews, then publish and verify the durable result lineage.
+   Phase 9 approval remains the separate explicit operator `approve-phase-9` action
+   over a qualified result. A successful technical gate enables a fresh campaign;
+   it establishes neither Dogfood success nor Phase 9 approval.
 
-Completed repository-changing Work boundaries require both exact observed-path
-coverage in the net committed tree delta from session HEAD to boundary HEAD and
-a terminal structured clean-status check bound to that boundary HEAD. In the same
-chat, atomically commit only the completed Work's changes, exclude unrelated
-pre-existing changes, then run exactly
-`git --no-optional-locks -c core.fsmonitor=false status --porcelain=v1 --untracked-files=all && git rev-parse HEAD`
-from the repository root after all mutations and other commands. Preserve its
-numeric success; its only output must be HEAD and a newline. Do this before a
-completed start's resume, a distinct Work, or terminal collection. An incomplete
-start may defer dirty changes and the check to its paired same-Work resume.
-Checkpoint-free no-write continuation remains valid; no-change sessions require
-no empty commit. This operator guidance never changes the frozen first task.
-
-Retained lineage includes observed/proven paths, base/boundary HEADs, boundary kind,
-and hash-bound raw session/execution/sequence cleanliness evidence. Net tree paths
-cover modifications, additions, deletions and both observed rename leaves without
-pathspec expansion. Ambiguous full reverts fail conservatively; path coverage does
-not establish semantic hunk ownership. Raw-session cleanliness cannot attest
-unobserved later external edits; the separate live final-state attestation remains
-required. See `validation-plan.md` for the executing proof and limits.
+Prior failed campaigns remain historical evidence only and cannot be rebound to
+this candidate. No tracked historical hash substitutes for fresh execution.
 
 ## Rejected alternatives and reasons
 
@@ -425,16 +441,14 @@ accepted Candidate/Inquiry/Decision model.
 
 ## Current follow-up work
 
-Prepare one completely fresh opaque-slot helper-owned campaign at the current
-clean HEAD after independently verifying its exact-candidate gate evidence,
-have the control agent research and seal the five evaluator descriptors, grant
-trust manually, activate all three repository journeys, run the eight
-required start/resume chats with only the frozen tasks, answer the actual
-material Questions and Learning Deliberations, provide all raw rollouts once to batch collection, assemble
-the manifest, and provide the raw rollout archive with the bounded default
-review package. If replacement qualification is requested, complete the
-common evidence-bound reviews and targeted human escalations, verify the candidate gate
-capsule/archive, then obtain explicit operator approval of the qualified state.
+Follow the current next-campaign rule after independently verifying exact-candidate
+technical evidence. Prepare one wholly fresh 3/5/3/8 workload-intent campaign, grant
+trust directly, activate all three journeys, and execute the eight frozen tasks in
+supported fresh Codex sessions. Collect the complete raw rollout batch once, append
+factual diagnostics, record independent agent qualitative review, and obtain targeted
+direct human observations and resolutions. Qualify with that candidate's verified
+capsule/archive and publish the durable result lineage. Any later Phase 9 approval
+requires a separate explicit operator action; it is not granted by this report.
 
 ## Historical artifacts (not current campaign inputs)
 
@@ -465,9 +479,10 @@ Use `prepare-qualitative-review --campaign-root ... --output ... --reviewer-kind
 --review-session-id ...` (or kind `human`) on an intact immutable evidence set.
 The output must be outside the Campaign. Optional `--machine-evaluation` binds a
 published run without requiring passage; explicit `--include-raw-rollouts` adds
-private exact work/resume bytes. Only bounded concern projections, pinned authority,
-bundles, documents, Viewer snapshots and selected observations enter the package.
-Evaluator-private expected answers and full descriptors are excluded.
+private exact work/resume bytes. Only bounded frozen task-selection metadata,
+factual diagnostics, pinned source authority, bundles, documents, Viewer snapshots
+and selected observations enter
+the package. The package assigns no semantic expected-answer profiles.
 
 The reviewer edits `draft.json`, calls `validate-qualitative-review --review-root ...
 --draft ...` for read-only preflight, and uses `record-qualitative-review` with the
