@@ -85,6 +85,13 @@ open Question을 제공한다. Goal만 있고 Checkpoint가 없으면 `open`이�
 없는 Decision/Checkpoint는 `unresolved_work_grouping`에 record identity와 이유를 표시하며
 chronology, equal text 또는 path overlap으로 임의 배치하지 않는다.
 
+Recall/continuation, Project Understanding, 네 generated document와 Viewer Work grouping은
+이 canonical identity를 그대로 사용한다. Git commit count, shared commit, HEAD 변경과
+repository chronology는 grouping key가 아니며 stale repository evidence도 Work identity를
+rewrite하지 않는다. Commit 없이 남긴 Checkpoint와 여러 commit을 거친 같은 Work의
+Checkpoint는 같은 history이고, 같은 path 또는 나중의 combined commit을 공유한 distinct
+Work는 별도 history다. Git evidence의 freshness/baseline/provenance는 계속 표시한다.
+
 `ProjectProjection.repository_map`은 계속 repository-wide entity/relation inventory에서
 고른 일반 Repository Map topology를 소유한다. 별도 `current_work_topology`는 같은 Analysis
 Snapshot의 실제 entity/relation 중 latest meaningful Checkpoint path/identity, Goal Context와

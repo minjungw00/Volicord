@@ -513,3 +513,468 @@ fn project_cli<'a>(
         String::from_utf8(error).expect("stderr UTF-8"),
     )
 }
+
+#[path = "support/git.rs"]
+mod git_support;
+
+struct ExpectedWork {
+    goal: volicord_context::ContextItemId,
+    source: volicord_context::SourceId,
+    decision: volicord_context::DecisionId,
+    checkpoints: Vec<volicord_context::CheckpointId>,
+}
+
+// Reopen every consumer at every boundary: stale repository evidence must not
+// silently alter canonical Work membership or manufacture another Goal.
+fn assert_git_work_consumers(
+    runtime: &std::path::Path,
+    repository: &std::path::Path,
+    project: ProjectId,
+    expected: &[ExpectedWork],
+    latest_work: volicord_context::ContextItemId,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let operations = LocalOperations::new(RuntimeLayout::new(runtime.to_owned())?);
+    let before = operations.canonical_basis(project)?;
+    let brief = operations.recall(project)?;
+    assert_eq!(brief.goals_and_why.len(), expected.len());
+    assert_eq!(
+        brief
+            .latest_meaningful_checkpoint
+            .as_ref()
+            .and_then(|c| c.work_item_id),
+        Some(latest_work)
+    );
+    let continued = operations.transition_work(
+        project,
+        volicord_operations::WorkTransition::Continue {
+            goal_context_id: latest_work,
+        },
+    )?;
+    assert_eq!(continued.context_item_id, latest_work);
+    let projection = operations.project_projection(project)?;
+    let understanding = build_project_understanding(
+        &projection,
+        UnderstandingBound {
+            max_items_per_section: 32,
+        },
+    );
+    assert_eq!(understanding.work_history.len(), expected.len());
+    assert!(understanding.unresolved_work_grouping.is_empty());
+    let documents = generate_documents(
+        &projection,
+        &DocumentRequest {
+            requested_language: "en".into(),
+            fixed_locale: FixedLocale::English,
+            generated_at: TimestampMicros::from_unix_micros(999_000),
+            generator: GeneratorIdentity {
+                generator: "work-git-test".into(),
+                agent: None,
+                model: None,
+            },
+            requested_destinations: Vec::new(),
+        },
+    )?;
+    for expected_work in expected {
+        let ExpectedWork {
+            goal,
+            source,
+            decision,
+            checkpoints,
+        } = expected_work;
+        let goal_basis = brief
+            .goals_and_why
+            .iter()
+            .find(|g| g.identity == *goal)
+            .ok_or("recalled Goal missing")?;
+        assert_eq!(goal_basis.source_basis, [*source]);
+        let canonical_goal = before
+            .context_items
+            .iter()
+            .find(|g| g.id == *goal)
+            .ok_or("canonical Goal missing")?;
+        assert_eq!(canonical_goal.role, ContextItemRole::Goal);
+        assert_eq!(canonical_goal.source_basis, [*source]);
+        assert!(brief
+            .decisions
+            .iter()
+            .any(|d| d.decision_id == *decision
+                && d.work_scope == DecisionWorkScope::WorkItem(*goal)));
+        let work = understanding
+            .work_history
+            .iter()
+            .find(|w| w.work_item_id == *goal)
+            .ok_or("Work missing")?;
+        assert_eq!(&work.checkpoint_ids, checkpoints);
+        assert_eq!(work.decision_ids, [*decision]);
+        assert_eq!(work.changed_paths, ["src/lib.rs"]);
+        assert!(!work.changed_paths.contains(&"unrelated.py".into()));
+        for id in checkpoints {
+            let canonical = before
+                .checkpoint_history
+                .iter()
+                .find(|c| c.id == *id)
+                .ok_or("Checkpoint missing")?;
+            assert_eq!(canonical.work_item_id, Some(*goal));
+            assert_eq!(canonical.applied_decisions, [*decision]);
+        }
+        for document in [
+            &documents.project_architecture_guide,
+            &documents.decision_report,
+            &documents.implementation_plan,
+            &documents.handoff_resume,
+        ] {
+            let summaries = document
+                .body
+                .sections
+                .iter()
+                .flat_map(|s| &s.claims)
+                .filter(|c| c.identity.starts_with("work-summary:"))
+                .collect::<Vec<_>>();
+            assert_eq!(summaries.len(), expected.len());
+            let summary = summaries
+                .iter()
+                .find(|c| c.identity == format!("work-summary:{goal}"))
+                .ok_or("document Work missing")?;
+            assert_eq!(summary.decision_basis, [*decision]);
+            assert!(summary.text.contains(&work.title));
+            assert!(summary.text.contains("src/lib.rs"));
+            assert!(!summary.text.contains("unrelated.py"));
+            assert!(document.markdown.content.contains(&work.title));
+            assert!(document.html.content.contains(&work.title));
+        }
+    }
+    for command in ["recall", "status"] {
+        let (exit, output, error) = project_cli(runtime, repository, vec!["--json", command]);
+        assert_eq!(exit, CliExit::SUCCESS, "{error}");
+        let output: Value = serde_json::from_str(&output)?;
+        if command == "recall" {
+            assert_eq!(
+                output["checkpoint"]["work_item_id"],
+                latest_work.to_string()
+            );
+            assert_eq!(
+                output["goal_basis"].as_array().map(Vec::len),
+                Some(expected.len())
+            );
+        } else {
+            assert_eq!(
+                output["work_history"].as_array().map(Vec::len),
+                Some(expected.len())
+            );
+        }
+        for work in expected {
+            if command == "recall" {
+                let goals = output["goal_basis"]
+                    .as_array()
+                    .ok_or("CLI Goal basis missing")?;
+                assert!(goals.iter().any(|g| g["identity"] == work.goal.to_string()));
+                let decisions = output["decisions"]
+                    .as_array()
+                    .ok_or("CLI Decisions missing")?;
+                let decision = decisions
+                    .iter()
+                    .find(|d| d["identity"] == work.decision.to_string())
+                    .ok_or("CLI Decision missing")?;
+                assert_eq!(
+                    decision["work_scope"]["work_item_id"],
+                    work.goal.to_string()
+                );
+            } else {
+                let history = output["work_history"]
+                    .as_array()
+                    .ok_or("CLI Work history missing")?;
+                let group = history
+                    .iter()
+                    .find(|g| g["work_item_id"] == work.goal.to_string())
+                    .ok_or("CLI Work missing")?;
+                assert_eq!(
+                    group["decision_ids"],
+                    serde_json::json!([work.decision.to_string()])
+                );
+                assert_eq!(
+                    group["checkpoint_ids"],
+                    serde_json::json!(work
+                        .checkpoints
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>())
+                );
+            }
+        }
+    }
+    assert_eq!(before, operations.canonical_basis(project)?);
+    Ok(())
+}
+
+#[test]
+fn work_identity_is_independent_of_real_git_commit_path_and_dirty_boundaries(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use git_support::git;
+    let temporary = tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let repository = temporary.path().join("repository");
+    fs::create_dir_all(repository.join("src"))?;
+    fs::write(repository.join("src/lib.rs"), "pub fn baseline() {}\n")?;
+    fs::write(repository.join("unrelated.py"), "value = 1\n")?;
+    git(&repository, &["init", "-q"]);
+    git(&repository, &["add", "."]);
+    git(
+        &repository,
+        &["commit", "-qm", "repository baseline before any Work"],
+    );
+    let initial_head = git(&repository, &["rev-parse", "HEAD"]);
+    fs::write(
+        repository.join("unrelated.py"),
+        "value = 2 # pre-existing\n",
+    )?;
+    let operations = LocalOperations::new(RuntimeLayout::new(runtime.clone())?);
+    let project = operations
+        .initialize_project("Work Git fixture", Some(&repository))?
+        .project;
+    let analysis = operations
+        .analyze(project.id, Vec::new())?
+        .value
+        .ok_or("analysis unavailable")?
+        .analysis;
+    assert!(build_project_understanding(
+        &operations.project_projection(project.id)?,
+        UnderstandingBound::default()
+    )
+    .work_history
+    .is_empty());
+    let start = |statement: &str| {
+        operations.transition_work(
+            project.id,
+            volicord_operations::WorkTransition::StartNew {
+                host: "test".into(),
+                session: statement.into(),
+                user_turn: statement.into(),
+                statement: statement.into(),
+            },
+        )
+    };
+    let alpha = start("Implement Alpha")?;
+    let mut store = Store::open(operations.layout().canonical_store())?;
+    let alpha_decision = decision_with_scope(
+        &mut store,
+        project.id,
+        project.revision,
+        alpha.source_id,
+        DecisionWorkScope::WorkItem(alpha.context_item_id),
+        121,
+    )?;
+    let mut expected = vec![ExpectedWork {
+        goal: alpha.context_item_id,
+        source: alpha.source_id,
+        decision: alpha_decision.id,
+        checkpoints: Vec::new(),
+    }];
+    let changed_source = analysis.repository_source.identity();
+    let record = |store: &mut Store,
+                  goal: &volicord_operations::UserContextRecordingOutcome,
+                  decision,
+                  id,
+                  state| {
+        checkpoint(
+            store,
+            project.id,
+            project.revision,
+            goal.context_item_id,
+            if goal.context_item_id == alpha.context_item_id {
+                "Implement Alpha"
+            } else {
+                "Implement Beta"
+            },
+            goal.source_id,
+            changed_source,
+            None,
+            decision,
+            id,
+            CheckpointKind::Pause,
+            state,
+            "src/lib.rs",
+            "Continue this exact bounded Goal",
+        )
+    };
+
+    // Zero commits under A, with unrelated dirt already present before A.
+    fs::write(repository.join("src/lib.rs"), "pub fn alpha_one() {}\n")?;
+    let first = record(
+        &mut store,
+        &alpha,
+        alpha_decision.id,
+        123,
+        WorkState::Paused,
+    )?;
+    expected[0].checkpoints.push(first.id);
+    assert_eq!(git(&repository, &["rev-parse", "HEAD"]), initial_head);
+    assert_git_work_consumers(
+        &runtime,
+        &repository,
+        project.id,
+        &expected,
+        alpha.context_item_id,
+    )?;
+    assert_eq!(
+        operations.recall(project.id)?.snapshots[0].freshness.state,
+        volicord_repository_intelligence::FreshnessState::Stale
+    );
+
+    // Two commits inside the same Goal; neither is a Work boundary.
+    for (id, contents) in [
+        (124, "pub fn alpha_two() {}\n"),
+        (125, "pub fn alpha_three() {}\n"),
+    ] {
+        fs::write(repository.join("src/lib.rs"), contents)?;
+        git(&repository, &["add", "src/lib.rs"]);
+        git(
+            &repository,
+            &["commit", "-qm", "another implementation step for Alpha"],
+        );
+        expected[0]
+            .checkpoints
+            .push(record(&mut store, &alpha, alpha_decision.id, id, WorkState::Paused)?.id);
+        assert_git_work_consumers(
+            &runtime,
+            &repository,
+            project.id,
+            &expected,
+            alpha.context_item_id,
+        )?;
+    }
+    assert_eq!(
+        git(&repository, &["rev-list", "--count", "HEAD"]).trim(),
+        "3"
+    );
+    let shared_head = git(&repository, &["rev-parse", "HEAD"]);
+
+    // A and B coexist dirty at one HEAD, with overlap in exactly the same file.
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn alpha_three() {}\npub fn alpha_pending() {}\n",
+    )?;
+    expected[0].checkpoints.push(
+        record(
+            &mut store,
+            &alpha,
+            alpha_decision.id,
+            126,
+            WorkState::Paused,
+        )?
+        .id,
+    );
+    let beta = start("Implement Beta")?;
+    assert_ne!(alpha.context_item_id, beta.context_item_id);
+    let beta_decision = decision_with_scope(
+        &mut store,
+        project.id,
+        project.revision,
+        beta.source_id,
+        DecisionWorkScope::WorkItem(beta.context_item_id),
+        127,
+    )?;
+    fs::write(
+        repository.join("src/lib.rs"),
+        "pub fn alpha_three() {}\npub fn alpha_pending() {}\npub fn beta_pending() {}\n",
+    )?;
+    let before_rejection = operations.canonical_basis(project.id)?;
+    assert!(record(&mut store, &beta, alpha_decision.id, 130, WorkState::Paused).is_err());
+    assert_eq!(before_rejection, operations.canonical_basis(project.id)?);
+    let beta_checkpoint = record(&mut store, &beta, beta_decision.id, 129, WorkState::Paused)?;
+    expected.push(ExpectedWork {
+        goal: beta.context_item_id,
+        source: beta.source_id,
+        decision: beta_decision.id,
+        checkpoints: vec![beta_checkpoint.id],
+    });
+    assert_eq!(git(&repository, &["rev-parse", "HEAD"]), shared_head);
+    assert_git_work_consumers(
+        &runtime,
+        &repository,
+        project.id,
+        &expected,
+        beta.context_item_id,
+    )?;
+
+    // A later commit contains both Works' changes. It cannot merge their records.
+    git(&repository, &["add", "src/lib.rs"]);
+    git(
+        &repository,
+        &["commit", "-qm", "combined repository changes"],
+    );
+    let combined = git(
+        &repository,
+        &["show", "--format=", "HEAD", "--", "src/lib.rs"],
+    );
+    assert!(combined.contains("+pub fn alpha_pending()"));
+    assert!(combined.contains("+pub fn beta_pending()"));
+    assert_git_work_consumers(
+        &runtime,
+        &repository,
+        project.id,
+        &expected,
+        beta.context_item_id,
+    )?;
+    let before = operations.canonical_basis(project.id)?;
+    git(
+        &repository,
+        &[
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "HEAD-only evidence change",
+        ],
+    );
+    assert_git_work_consumers(
+        &runtime,
+        &repository,
+        project.id,
+        &expected,
+        beta.context_item_id,
+    )?;
+    assert_eq!(before, operations.canonical_basis(project.id)?);
+    // Fresh analysis changes evidence, preserving all canonical Work associations.
+    operations.analyze(project.id, Vec::new())?;
+    assert_git_work_consumers(
+        &runtime,
+        &repository,
+        project.id,
+        &expected,
+        beta.context_item_id,
+    )?;
+    // Even moving HEAD back before either Work existed cannot replace either
+    // canonical identity or turn Git chronology into a Work interval.
+    git(
+        &repository,
+        &["checkout", "-q", "--detach", initial_head.trim()],
+    );
+    assert_git_work_consumers(
+        &runtime,
+        &repository,
+        project.id,
+        &expected,
+        beta.context_item_id,
+    )?;
+    assert_eq!(git(&repository, &["rev-parse", "HEAD"]), initial_head);
+    assert_eq!(
+        operations.recall(project.id)?.snapshots[0].freshness.state,
+        volicord_repository_intelligence::FreshnessState::Stale
+    );
+    operations.analyze(project.id, Vec::new())?;
+    assert_git_work_consumers(
+        &runtime,
+        &repository,
+        project.id,
+        &expected,
+        beta.context_item_id,
+    )?;
+    assert_eq!(
+        git(&repository, &["status", "--porcelain"]).trim(),
+        "M unrelated.py"
+    );
+    assert_eq!(
+        fs::read_to_string(repository.join("unrelated.py"))?,
+        "value = 2 # pre-existing\n"
+    );
+    Ok(())
+}

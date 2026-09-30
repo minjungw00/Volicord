@@ -53,7 +53,42 @@ fn print_viewer_profile(sample: &str, profile: ViewerRenderProfile) {
 
 #[test]
 fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy() {
-    let (_temporary, viewer, project) = setup();
+    assert_three_work_hierarchy(false);
+}
+
+#[path = "../../volicord-operations/tests/support/git.rs"]
+mod git_support;
+
+#[test]
+fn viewer_groups_overlapping_works_before_and_after_combined_git_commits() {
+    assert_three_work_hierarchy(true);
+}
+
+fn assert_three_work_hierarchy(with_git: bool) {
+    let (temporary, viewer, project) = if with_git {
+        let temporary = tempdir().expect("temporary directory");
+        let repository = temporary.path().join("repository");
+        fs::create_dir_all(repository.join("src")).expect("repository");
+        fs::write(repository.join("src/shared.rs"), "pub fn baseline() {}\n").expect("baseline");
+        fs::write(repository.join("unrelated.py"), "value = 1\n").expect("unrelated baseline");
+        git_support::git(&repository, &["init", "-q"]);
+        git_support::git(&repository, &["add", "."]);
+        git_support::git(&repository, &["commit", "-qm", "baseline before Work"]);
+        fs::write(repository.join("unrelated.py"), "value = 2\n").expect("pre-existing dirt");
+        let operations = LocalOperations::new(
+            RuntimeLayout::new(temporary.path().join("runtime")).expect("layout"),
+        );
+        let project = operations
+            .initialize_project("Viewer Git fixture", Some(&repository))
+            .expect("Project")
+            .project
+            .id;
+        operations.analyze(project, Vec::new()).expect("analysis");
+        (temporary, ViewerAdapter::new(operations), project)
+    } else {
+        setup()
+    };
+    let repository = temporary.path().join("repository");
     let mut store = Store::open(viewer.operations().layout().canonical_store()).expect("store");
     let revision = store.get_project(project).expect("Project").revision;
     let user = store
@@ -105,8 +140,6 @@ fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy()
         "Explain and preserve the project across sessions",
     );
     let alpha = context(&mut store, 103, ContextItemRole::Goal, "Finish Alpha");
-    let beta = context(&mut store, 104, ContextItemRole::Goal, "Continue Beta");
-    let _gamma = context(&mut store, 105, ContextItemRole::Goal, "Explore Gamma");
 
     let decision_for =
         |store: &mut Store, operation: u8, goal: volicord_context::ContextItemId, label: &str| {
@@ -172,7 +205,6 @@ fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy()
                 .expect("Decision")
         };
     let alpha_decision = decision_for(&mut store, 106, alpha.id, "Alpha");
-    let beta_decision = decision_for(&mut store, 108, beta.id, "Beta");
     let checkpoint = |store: &mut Store,
                       operation: u8,
                       goal: &volicord_context::ContextItem,
@@ -196,10 +228,11 @@ fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy()
                     state_change: Some(format!("{} changed", goal.statement)),
                     source_basis: vec![user.id],
                     changed_source_basis: Vec::new(),
-                    changed_paths: vec![format!(
-                        "src/{}.rs",
-                        goal.statement.to_lowercase().replace(' ', "-")
-                    )],
+                    changed_paths: vec![if with_git {
+                        "src/shared.rs".into()
+                    } else {
+                        format!("src/{}.rs", goal.statement.to_lowercase().replace(' ', "-"))
+                    }],
                     applied_decisions: vec![decision],
                     verification: Vec::new(),
                     user_review: UserReviewFact {
@@ -220,6 +253,13 @@ fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy()
             .expect("Checkpoint")
             .value
     };
+    if with_git {
+        fs::write(
+            repository.join("src/shared.rs"),
+            "pub fn baseline() {}\npub fn alpha() {}\n",
+        )
+        .expect("Alpha dirty progress");
+    }
     let alpha_checkpoint = checkpoint(
         &mut store,
         110,
@@ -228,6 +268,17 @@ fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy()
         WorkState::Completed,
         "Monitor Alpha",
     );
+    // B starts after A completes, while A's repository changes are still dirty.
+    let beta = context(&mut store, 104, ContextItemRole::Goal, "Continue Beta");
+    let beta_decision = decision_for(&mut store, 108, beta.id, "Beta");
+    let _gamma = context(&mut store, 105, ContextItemRole::Goal, "Explore Gamma");
+    if with_git {
+        fs::write(
+            repository.join("src/shared.rs"),
+            "pub fn baseline() {}\npub fn alpha() {}\npub fn beta() {}\n",
+        )
+        .expect("Beta changes the same path");
+    }
     let beta_checkpoint = checkpoint(
         &mut store,
         111,
@@ -238,43 +289,93 @@ fn project_understanding_renders_three_stable_work_items_as_separate_hierarchy()
     );
     drop(store);
 
-    let page = render_deep(&viewer, project);
-    let understanding = section_html(&page, "project-understanding");
-    assert!(understanding.contains("Explain and preserve the project across sessions"));
-    assert!(understanding.contains("data-primary-view=\"current-work\""));
-    assert!(understanding.contains("data-work-group=\"completed-work\""));
-    assert!(understanding.contains("data-work-group=\"current-work\""));
-    assert!(understanding.contains("data-work-group=\"remaining-work\""));
-    assert!(understanding.contains("data-work-group=\"recent-work\""));
-    let alpha_card = work_card_html(understanding, "Finish Alpha");
-    let beta_card = work_card_html(understanding, "Continue Beta");
-    let gamma_card = work_card_html(understanding, "Explore Gamma");
-    assert!(alpha_card.contains("data-work-state=\"completed\""));
-    assert!(alpha_card.contains(&format!("data-work-id=\"{}\"", alpha.id)));
-    assert!(alpha_card.contains("data-decision-scope=\"work-item\""));
-    assert!(alpha_card.contains("Decisions for this work"));
-    assert!(alpha_card.contains(&alpha_decision.id.to_string()));
-    assert!(alpha_card.contains(&alpha_checkpoint.id.to_string()));
-    assert!(!alpha_card.contains(&beta_decision.id.to_string()));
-    assert!(beta_card.contains("data-work-state=\"in-progress\""));
-    assert!(beta_card.contains(&beta_decision.id.to_string()));
-    assert!(beta_card.contains(&beta_checkpoint.id.to_string()));
-    assert!(!beta_card.contains(&alpha_decision.id.to_string()));
-    assert!(gamma_card.contains("data-work-state=\"open\""));
-    assert!(gamma_card.contains("0 Checkpoints · 0 Decisions"));
-    assert!(!work_card_html(understanding, "Finish Alpha").contains(&purpose.id.to_string()));
-    let primary_end = understanding
-        .find("<details class=\"work-history\"")
-        .expect("bounded history disclosure");
-    let primary = &understanding[..primary_end];
-    assert!(primary.contains("Continue Beta"));
-    assert!(primary.contains("Explore Gamma"));
-    assert!(!primary.contains("Finish Alpha"));
-    assert!(primary.find("Continue Beta").is_some_and(|current| {
-        primary
-            .find("Explore Gamma")
-            .is_some_and(|remaining| current < remaining)
-    }));
+    for boundary in 0..if with_git { 3 } else { 1 } {
+        if boundary == 1 {
+            git_support::git(&repository, &["add", "src/shared.rs"]);
+            git_support::git(
+                &repository,
+                &["commit", "-qm", "combined Alpha and Beta changes"],
+            );
+            let delta = git_support::git(&repository, &["show", "--format=", "HEAD"]);
+            assert!(delta.contains("+pub fn alpha()"));
+            assert!(delta.contains("+pub fn beta()"));
+        } else if boundary == 2 {
+            git_support::git(
+                &repository,
+                &[
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "HEAD changed without a Work boundary",
+                ],
+            );
+            viewer
+                .operations()
+                .analyze(project, Vec::new())
+                .expect("refresh repository evidence");
+        }
+        let canonical = viewer
+            .operations()
+            .canonical_basis(project)
+            .expect("canonical basis");
+        let reopened =
+            ViewerAdapter::new(LocalOperations::new(viewer.operations().layout().clone()));
+        let page = render_deep(&reopened, project);
+        let understanding = section_html(&page, "project-understanding");
+        assert!(understanding.contains("Explain and preserve the project across sessions"));
+        assert!(understanding.contains("data-primary-view=\"current-work\""));
+        assert!(understanding.contains("data-work-group=\"completed-work\""));
+        assert!(understanding.contains("data-work-group=\"current-work\""));
+        assert!(understanding.contains("data-work-group=\"remaining-work\""));
+        assert!(understanding.contains("data-work-group=\"recent-work\""));
+        let alpha_card = work_card_html(understanding, "Finish Alpha");
+        let beta_card = work_card_html(understanding, "Continue Beta");
+        let gamma_card = work_card_html(understanding, "Explore Gamma");
+        assert!(alpha_card.contains("data-work-state=\"completed\""));
+        assert!(alpha_card.contains(&format!("data-work-id=\"{}\"", alpha.id)));
+        assert!(alpha_card.contains("data-decision-scope=\"work-item\""));
+        assert!(alpha_card.contains("Decisions for this work"));
+        assert!(alpha_card.contains(&alpha_decision.id.to_string()));
+        assert!(alpha_card.contains(&alpha_checkpoint.id.to_string()));
+        assert!(!alpha_card.contains(&beta_decision.id.to_string()));
+        assert!(beta_card.contains("data-work-state=\"in-progress\""));
+        assert!(beta_card.contains(&beta_decision.id.to_string()));
+        assert!(beta_card.contains(&beta_checkpoint.id.to_string()));
+        assert!(!beta_card.contains(&alpha_decision.id.to_string()));
+        assert!(gamma_card.contains("data-work-state=\"open\""));
+        assert!(gamma_card.contains("0 Checkpoints · 0 Decisions"));
+        assert!(!work_card_html(understanding, "Finish Alpha").contains(&purpose.id.to_string()));
+        let primary_end = understanding
+            .find("<details class=\"work-history\"")
+            .expect("bounded history disclosure");
+        let primary = &understanding[..primary_end];
+        assert!(primary.contains("Continue Beta"));
+        assert!(primary.contains("Explore Gamma"));
+        assert!(!primary.contains("Finish Alpha"));
+        assert!(primary.find("Continue Beta").is_some_and(|current| {
+            primary
+                .find("Explore Gamma")
+                .is_some_and(|remaining| current < remaining)
+        }));
+        assert!(!beta_card.contains(&alpha_checkpoint.id.to_string()));
+        assert!(!alpha_card.contains(&beta_checkpoint.id.to_string()));
+        assert_eq!(
+            canonical,
+            reopened
+                .operations()
+                .canonical_basis(project)
+                .expect("read-only Viewer")
+        );
+        if with_git {
+            assert!(alpha_card.contains("src/shared.rs"));
+            assert!(beta_card.contains("src/shared.rs"));
+            assert!(!alpha_card.contains("unrelated.py"));
+            assert!(!beta_card.contains("unrelated.py"));
+            assert!(
+                git_support::git(&repository, &["status", "--porcelain"]).contains("unrelated.py")
+            );
+        }
+    }
 }
 
 #[test]

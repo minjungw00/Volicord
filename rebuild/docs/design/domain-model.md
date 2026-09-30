@@ -316,6 +316,16 @@ Fresh-session continuation은 exact recalled Goal identity를 그대로 사용�
 Continue는 read-only이고 original Goal/Source/revision을 반환한다. Start-new는 current-host의
 새 bounded verbatim Goal을 가진 distinct Work를 만든다. 문구로 이 전이를 추론하지 않는다.
 
+Work identity는 Git commit, changed path set 또는 repository revision interval이 아니다.
+Git HEAD, commit, dirty state, changed path와 repository fingerprint는 Source/repository
+evidence이며 freshness, baseline, provenance와 analysis에 사용해도 canonical Work를
+생성·병합·분리·대체하지 않는다. Work와 Git history의 관계는 many-to-many다. 한 Work는
+commit 없이 진행하거나 여러 commit에 걸칠 수 있고, 서로 다른 Work는 같은 HEAD와 dirty
+worktree에서 공존하거나 같은 path를 변경할 수 있다. 나중의 한 commit이 여러 Work의
+변경을 포함해도 각각의 Goal identity, Decision scope와 Checkpoint history는 유지한다.
+Pre-existing unrelated dirty state는 새 Work나 current Goal의 identity basis가 되지 않는다.
+이 의미는 사용자에게 commit 단위, 순서 또는 clean worktree workflow를 요구하지 않는다.
+
 하나의 current-host turn은 role이 다른 여러 bounded verbatim Context Item을 만들 수 있다.
 Fresh Recall에서 statement가 사라졌을 때 authority, Question behavior, learning interruption 또는
 bounded work가 달라질 수 있다면 해당 의미는 behaviorally relevant하며 Goal에 합치지 않고

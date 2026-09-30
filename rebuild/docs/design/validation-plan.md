@@ -795,6 +795,9 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - large context with truncation
 - stale Source와 superseded Decision
 - ordinary work with unrelated dirty changes
+- canonical Work/Git independence: zero commits (including unborn HEAD), multiple commits
+  inside one Goal, changing HEAD, distinct Works without an intervening commit, a later
+  combined commit, overlapping paths and pre-existing dirty state
 - fresh/resumed work에서 Recall 뒤 첫 ordinary repository write 전 Analysis Snapshot baseline
 - current Goal/baseline에 bind된 typed Materiality Review, dimension별 disposition과 explicit
   executable path/component/work-context scope 뒤의 `ready_for_work`
@@ -819,6 +822,18 @@ clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복
 - pending/promoted/dismissed/expired Candidate와 Candidate Inspection degradation
 
 ### 측정 항목
+
+Work/Git regression은 existing Production owners에서 disposable real Git repository를
+사용한다. `volicord-operations/tests/multi_work_project.rs`는 exact Goal continuation,
+work-scoped Decision/rejected cross-work application, Checkpoint history, fresh Recall,
+CLI, Project Understanding와 네 document의 Work identity/Decision grounding을 각 Git
+boundary 전후에 검증한다. `tests/work_authority.rs`의 grounded regression은 unborn HEAD와
+multi-commit A, same-HEAD dirty B, same-path delta와 combined commit에서 actual Checkpoint
+publication, baseline dirty evidence와 stable Goal identity를 검증한다.
+`volicord-viewer/tests/viewer.rs`는 shared-path A/B를 dirty, combined-commit와 refreshed
+HEAD 상태에서 읽어 separate Work card, state, Decision/Checkpoint membership과 no-mutation을
+검증한다. 이 focused Product evidence는 Naturalistic Git qualification 또는 authoritative
+Final/V11 gate를 실행하거나 그 결과를 대신하지 않는다.
 
 - Recall selection precision/recall
 - current-host turn의 behavior-changing Goal/Learning/Preference/Constraint decomposition과 fresh

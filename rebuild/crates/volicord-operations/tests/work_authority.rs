@@ -6700,3 +6700,222 @@ fn timed_key_rotation_reviews_independent_lifetime_and_binds_temporal_commitment
     }
     Ok(())
 }
+
+#[path = "support/git.rs"]
+mod git_support;
+
+#[test]
+fn grounded_work_identity_survives_unborn_head_commits_and_pre_existing_dirt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use git_support::git;
+    let mut fixture = fixture()?;
+    git(&fixture.repository, &["init", "-q"]);
+    // An unborn repository has no commit at all; unrelated untracked content
+    // predates the exact baseline and is not part of this Goal's delta.
+    fs::write(fixture.repository.join("unrelated.py"), "value = 1\n")?;
+    fixture.baseline = fixture
+        .operations
+        .analyze(fixture.project_id, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis;
+    let source = fixture.baseline.repository_source.identity();
+    let recorded = review(
+        &fixture,
+        vec![agent_owned_dimension(
+            "private-layout",
+            source,
+            LearningValueAssessment::Routine {
+                rationale: "private implementation organization".into(),
+            },
+        )],
+    )?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.disposition,
+        WorkAuthorityDisposition::ReadyForWork
+    );
+    let mut checkpoint_ids = Vec::new();
+    for (step, text) in [
+        (0, "pub fn value() -> u32 { 2 }\n"),
+        (1, "pub fn value() -> u32 { 3 }\n"),
+        (2, "pub fn value() -> u32 { 4 }\n"),
+    ] {
+        fs::write(fixture.repository.join("src/lib.rs"), text)?;
+        if step > 0 {
+            git(&fixture.repository, &["add", "src/lib.rs"]);
+            git(
+                &fixture.repository,
+                &["commit", "-qm", "step inside the same Work"],
+            );
+        } else {
+            assert!(git(&fixture.repository, &["rev-list", "--all"]).is_empty());
+        }
+        let reopened = LocalOperations::new(fixture.operations.layout().clone());
+        let outcome = reopened.record_grounded_checkpoint(checkpoint_draft(&fixture, vec![]))?;
+        assert_eq!(outcome.goal_context_id, fixture.goal_id);
+        assert_eq!(outcome.changed_paths, ["src/lib.rs"]);
+        assert!(outcome
+            .pre_existing_dirty_paths
+            .contains(&"unrelated.py".into()));
+        checkpoint_ids.push(outcome.checkpoint_id);
+        let canonical = reopened.canonical_basis(fixture.project_id)?;
+        assert_eq!(canonical.checkpoint_history.len(), checkpoint_ids.len());
+        assert!(canonical
+            .checkpoint_history
+            .iter()
+            .all(|c| c.work_item_id == Some(fixture.goal_id) && c.changed_paths == ["src/lib.rs"]));
+        let brief = reopened.recall(fixture.project_id)?;
+        assert_eq!(
+            brief
+                .latest_meaningful_checkpoint
+                .as_ref()
+                .and_then(|c| c.work_item_id),
+            Some(fixture.goal_id)
+        );
+        let continued = reopened.transition_work(
+            fixture.project_id,
+            volicord_operations::WorkTransition::Continue {
+                goal_context_id: fixture.goal_id,
+            },
+        )?;
+        assert_eq!(continued.context_item_id, fixture.goal_id);
+        assert_eq!(continued.source_id, fixture.goal_source_id);
+        assert_eq!(canonical, reopened.canonical_basis(fixture.project_id)?);
+    }
+    assert_eq!(
+        git(&fixture.repository, &["rev-list", "--count", "HEAD"]).trim(),
+        "2"
+    );
+    let understanding = volicord_projections::build_project_understanding(
+        &fixture.operations.project_projection(fixture.project_id)?,
+        volicord_projections::UnderstandingBound::default(),
+    );
+    assert_eq!(understanding.work_history.len(), 1);
+    assert_eq!(understanding.work_history[0].work_item_id, fixture.goal_id);
+    assert_eq!(understanding.work_history[0].checkpoint_ids, checkpoint_ids);
+    assert_eq!(
+        git(&fixture.repository, &["status", "--porcelain"]).trim(),
+        "?? unrelated.py"
+    );
+
+    // Complete another A step without committing, then start a distinct B at
+    // the same HEAD. B's exact baseline includes A's dirt in the shared file.
+    let alpha_id = fixture.goal_id;
+    let shared_head = git(&fixture.repository, &["rev-parse", "HEAD"]);
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 4 }\npub fn alpha_pending() {}\n",
+    )?;
+    let mut alpha_completion = checkpoint_draft(&fixture, vec![]);
+    alpha_completion.kind = CheckpointKind::Completion;
+    alpha_completion.work_state = WorkState::Completed;
+    alpha_completion.handoff_to = None;
+    checkpoint_ids.push(
+        fixture
+            .operations
+            .record_grounded_checkpoint(alpha_completion)?
+            .checkpoint_id,
+    );
+    let beta = fixture.operations.transition_work(
+        fixture.project_id,
+        volicord_operations::WorkTransition::StartNew {
+            host: "test".into(),
+            session: "beta".into(),
+            user_turn: "Implement Beta in the shared file".into(),
+            statement: "Implement Beta in the shared file".into(),
+        },
+    )?;
+    assert_ne!(beta.context_item_id, alpha_id);
+    fixture.goal_id = beta.context_item_id;
+    fixture.goal_source_id = beta.source_id;
+    fixture.baseline = fixture
+        .operations
+        .analyze(fixture.project_id, vec![])?
+        .value
+        .ok_or("B baseline")?
+        .analysis;
+    let recorded = review(
+        &fixture,
+        vec![agent_owned_dimension(
+            "beta-private-layout",
+            fixture.baseline.repository_source.identity(),
+            LearningValueAssessment::Routine {
+                rationale: "private organization inside Beta".into(),
+            },
+        )],
+    )?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.disposition,
+        WorkAuthorityDisposition::ReadyForWork
+    );
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 4 }\npub fn alpha_pending() {}\npub fn beta_pending() {}\n",
+    )?;
+    let beta_checkpoint = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, vec![]))?;
+    assert_eq!(beta_checkpoint.goal_context_id, beta.context_item_id);
+    assert_eq!(beta_checkpoint.changed_paths, ["src/lib.rs"]);
+    assert!(beta_checkpoint
+        .pre_existing_dirty_paths
+        .contains(&"src/lib.rs".into()));
+    assert!(beta_checkpoint
+        .pre_existing_dirty_paths
+        .contains(&"unrelated.py".into()));
+    assert_eq!(
+        git(&fixture.repository, &["rev-parse", "HEAD"]),
+        shared_head
+    );
+    for combined_commit in [false, true] {
+        if combined_commit {
+            git(&fixture.repository, &["add", "src/lib.rs"]);
+            git(
+                &fixture.repository,
+                &["commit", "-qm", "one commit contains A and B"],
+            );
+            let delta = git(&fixture.repository, &["show", "--format=", "HEAD"]);
+            assert!(delta.contains("+pub fn alpha_pending()"));
+            assert!(delta.contains("+pub fn beta_pending()"));
+        }
+        let restarted = LocalOperations::new(fixture.operations.layout().clone());
+        let brief = restarted.recall(fixture.project_id)?;
+        assert_eq!(
+            brief
+                .latest_meaningful_checkpoint
+                .as_ref()
+                .and_then(|c| c.work_item_id),
+            Some(beta.context_item_id)
+        );
+        let understanding = volicord_projections::build_project_understanding(
+            &restarted.project_projection(fixture.project_id)?,
+            volicord_projections::UnderstandingBound::default(),
+        );
+        assert_eq!(understanding.work_history.len(), 2);
+        let alpha = understanding
+            .work_history
+            .iter()
+            .find(|w| w.work_item_id == alpha_id)
+            .ok_or("Alpha missing")?;
+        assert_eq!(alpha.checkpoint_ids, checkpoint_ids);
+        assert_eq!(
+            alpha.state,
+            volicord_projections::UnderstandingWorkState::Completed
+        );
+        let beta = understanding
+            .work_history
+            .iter()
+            .find(|w| w.work_item_id == fixture.goal_id)
+            .ok_or("Beta missing")?;
+        assert_eq!(beta.checkpoint_ids, [beta_checkpoint.checkpoint_id]);
+        assert_eq!(
+            beta.state,
+            volicord_projections::UnderstandingWorkState::Paused
+        );
+    }
+    assert_eq!(
+        git(&fixture.repository, &["status", "--porcelain"]).trim(),
+        "?? unrelated.py"
+    );
+    Ok(())
+}
