@@ -225,7 +225,7 @@ def naturalistic_memory_evidence(
         "schema_version": 1,
         "status": "unsupported_current_architecture",
         "candidate_mcp_sha256": mcp.get("sha256"),
-        "process_ownership": "vscode_codex_host_external_to_campaign_harness",
+        "process_ownership": "codex_host_external_to_campaign_harness",
         "configured_launch": "direct_candidate_local_volicord_mcp_executable",
         "observer_lifecycle": "not_installed",
         "measurement": {
@@ -234,7 +234,7 @@ def naturalistic_memory_evidence(
             "sample_count": 0,
             "mechanism": None,
             "measurement_errors": [
-                "no_candidate_bound_pid_and_lifecycle_channel_for_external_vscode_mcp"
+                "no_candidate_bound_pid_and_lifecycle_channel_for_external_codex_mcp"
             ],
         },
         "attribution": "no_operation_or_session_memory_attribution_claimed",
@@ -819,7 +819,7 @@ def render_operator_run_sheet(root: Path) -> Path:
                     "Copy the exact UTF-8 bytes from the raw `.txt` artifact. Do not copy or "
                     "retype the task from Markdown, and do not add, remove, escape, or normalize "
                     "any character. Explicitly inspect and approve repository and hook trust in "
-                    "VS Code. Start this task in its own fresh thread, send only the frozen task, "
+                    "Codex CLI or the VS Code extension. Start this task in its own fresh thread, send only the frozen task, "
                     "and preserve the raw rollout file. Do not run campaign collection between chats.\n"
                 )
     entries = [
@@ -835,7 +835,7 @@ def render_operator_run_sheet(root: Path) -> Path:
         "Use this operator material after all five Works and eight session tasks are frozen. "
         "The campaign steward may run `activate-all`; activation never grants trust. The helper "
         "verifies the production-owned static MCP and SessionStart files, but that does not prove that "
-        "VS Code executed SessionStart; every raw session still requires runtime activation evidence. "
+        "Codex executed SessionStart; every raw session still requires runtime activation evidence. "
         "If trust or activation is uncertain, inspect it before sending any frozen task. Run all "
         "eight fresh start/resume chats, preserve their raw rollouts, and provide the eight files once "
         "to the steward. For cross-locale documents the steward runs `prepare-document-realizations`, "
@@ -852,7 +852,7 @@ def render_operator_run_sheet(root: Path) -> Path:
         "Work before `collect-batch`; an incomplete start defers this check to its same-Work resume. A genuine "
         "no-change session needs no empty commit. Keep these instructions outside the frozen first "
         "user turn.\n\n"
-        "Naturalistic MCP memory is currently unmeasured: VS Code/Codex launches the configured "
+        "Naturalistic MCP memory is currently unmeasured: Codex launches the configured "
         "candidate MCP directly outside the campaign helper's process tree, and this integration has "
         "no candidate-bound PID/lifecycle observer. Harness-tree RSS remains technical-gate evidence "
         "only and is not naturalistic MCP RSS.\n\n"
@@ -880,7 +880,7 @@ def verify_static_codex_integration(
     repository: Path,
     runtime: Path,
     binary: Path,
-    result: dict[str, Any],
+    result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Verify the production-owned repository integration after enable."""
     repository = repository.resolve()
@@ -901,7 +901,7 @@ def verify_static_codex_integration(
     }
     if not binary.is_file() or not os.access(binary, os.X_OK) or not mcp.is_file() or not os.access(mcp, os.X_OK):
         raise CampaignError("Codex owned static integration is not bound to candidate-local executables")
-    if result != expected_result:
+    if result is not None and result != expected_result:
         raise CampaignError("Codex enable result does not match the owned static integration contract")
     try:
         manifest = read_json(manifest_path)
@@ -1445,9 +1445,7 @@ def update_activation_summary(root: Path, kind: str, work: str, **updates: Any) 
 
 def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, Any]) -> str:
     if (
-        capture.source != "vscode"
-        or capture.originator != "codex_vscode"
-        or not capture.fresh_user_thread
+        not capture.fresh_user_thread
         or not revision_is_bound(Path(state["repository_path"]),
             state["repository_revision"], capture.git_revision)
         or capture.cwd.resolve(strict=False) != Path(state["repository_path"]).resolve(strict=False)
@@ -2167,9 +2165,7 @@ def map_batch_rollouts(
                 diagnostic=diagnostic,
             ) from error
         provenance_matches = (
-            capture.source == "vscode"
-            and capture.originator == "codex_vscode"
-            and capture.fresh_user_thread
+            capture.fresh_user_thread
             and bool(capture.user_turns)
         )
         if not nonempty_session_id(capture.session_id):
@@ -2394,6 +2390,12 @@ def collect_batch(
     campaign = integrity_check("candidate_binding", load_campaign_for_mutation, root)
     integrity_check("candidate_binding", verify_candidate_artifacts, campaign)
     integrity_check("campaign_inventory", verify_frozen_campaign, root, campaign)
+    for journey in campaign["journeys"].values():
+        if not journey.get("codex_enabled"):
+            raise CampaignError("candidate-owned Codex integration was not activated")
+        integrity_check("candidate_binding", verify_static_codex_integration,
+            Path(journey["repository_path"]), Path(journey["runtime_home"]),
+            Path(campaign["candidate_binary"]))
     if campaign.get("terminal_outcome") is not None:
         raise CampaignError("campaign already stopped; create a new campaign identity")
     if any(state.get("state") != "frozen" for state in campaign["works"].values()):
@@ -2713,6 +2715,7 @@ def normalize_batch(
                     "session_id": capture.session_id,
                     "relative_evidence_path": relative(root, work_root(root, kind, work_label) / "evidence" / f"{role}.rollout.jsonl"),
                     "sha256": capture.source_sha256,
+                    "provenance": capture.provenance_evidence(),
                     "turn_lifecycle": capture.turn_lifecycle.bounded_evidence(),
                     "task_transport_equivalence": mapped[(kind, work_label, role)].task_transport.bounded_evidence()}
             work_entries.append(entry)

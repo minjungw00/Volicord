@@ -4709,8 +4709,6 @@ def build_work_observation(
         capture.git_revision != descriptor.get("repository_revision")
         or (target_repository is not None
             and capture.cwd.resolve(strict=False) != target_repository.resolve(strict=False))
-        or capture.source != "vscode"
-        or capture.originator != "codex_vscode"
         or not capture.fresh_user_thread
         or not capture.user_turns
         or not codex_user_turn_transport_identity_matches(
@@ -9245,15 +9243,11 @@ def real_session_evidence(
 
     invocations_ok = (
         work_capture is not None
-        and work_capture.source == "vscode"
-        and work_capture.originator == "codex_vscode"
         and nonempty_string(work_capture.cli_version)
         and (
             not resume_required
             or resume_capture is not None
             and work_capture.session_id != resume_capture.session_id
-            and resume_capture.source == "vscode"
-            and resume_capture.originator == "codex_vscode"
             and nonempty_string(resume_capture.cli_version)
         )
     )
@@ -9673,6 +9667,8 @@ def real_session_evidence(
             else "confirmed_pass" if invocations_ok and work_capture.fresh_user_thread
                 and (not resume_required or resume_capture.fresh_user_thread) and activation_ok
             else "confirmed_violation", "basis": {"distinct_host_invocations": invocations_ok,
+                "work_provenance": work_capture.provenance_evidence() if work_capture else None,
+                "resume_provenance": resume_capture.provenance_evidence() if resume_capture else None,
                 "work_fresh_thread": work_capture.fresh_user_thread if work_capture else None,
                 "resume_required": resume_required,
                 "resume_fresh_thread": resume_capture.fresh_user_thread if resume_capture else None, "activation_observed": activation_ok}},
@@ -13277,10 +13273,6 @@ def assert_local_historical_rollout_interpretation() -> str:
         if (
             work.git_revision != descriptor.get("repository_revision")
             or work.session_id == resume.session_id
-            or work.source != "vscode"
-            or resume.source != "vscode"
-            or work.originator != "codex_vscode"
-            or resume.originator != "codex_vscode"
             or not work.user_turns
             or not resume.user_turns
             or not codex_user_turn_transport_identity_matches(

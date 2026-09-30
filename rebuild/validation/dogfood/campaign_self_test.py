@@ -452,6 +452,12 @@ def prepared_batch(
                 captures.append(resume)
             state = campaign.work_state(root, kind, cycle)
             bundles[state["work_slot_id"]] = bundle
+    original_run_checked = campaign.run_checked
+    campaign.run_checked = fake_enable_command
+    try:
+        campaign.activate_all(root)
+    finally:
+        campaign.run_checked = original_run_checked
     return root, captures, bundles
 
 
@@ -664,6 +670,17 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
         raise AssertionError("duplicate fresh session identity was accepted")
     assert len(campaign.map_batch_rollouts(root, captures)) == 8
 
+    # The exact same frozen campaign admits CLI and extension captures. Metadata
+    # remains observed; no filename or source/originator pair decides admission.
+    for index, path in enumerate(captures):
+        events = [json.loads(line) for line in path.read_text().splitlines()]
+        source, originator = (("cli", "codex_cli_rs") if index % 2 == 0 else
+                             ("vscode", "codex_vscode/alternate"))
+        events[0]["payload"].update(source=source, originator=originator,
+                                    client_version="observed-client", model_provider="openai")
+        path.write_text("".join(json.dumps(event) + "\n" for event in events))
+    assert len(campaign.map_batch_rollouts(root, captures)) == 8
+
     original_run_checked = campaign.run_checked
     campaign.run_checked = fake_enable_command
     try:
@@ -685,6 +702,34 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
             raise AssertionError(f"{label} was accepted")
         assert campaign.campaign_file(root).read_bytes() == before
         assert not (root / "evidence-set.json").exists()
+
+    start_capture = campaign.load_codex_capture(start)
+    reject_identity(start, str(start_capture.cwd), str(parent / "wrong-workspace"), "wrong-workspace")
+    from codex_events import activation_identity
+    reject_identity(start, activation_identity(start_capture.cwd, start_capture.session_id),
+                    "missing activation", "missing-activation")
+    reject_identity(start, activation_identity(start_capture.cwd, start_capture.session_id),
+                    activation_identity(start_capture.cwd, "wrong-session"), "wrong-activation")
+
+    journey = campaign.load_campaign(root)["journeys"][campaign.journey_id("volicord")]
+    repository = Path(journey["repository_path"])
+    # Live candidate-owned MCP/Runtime binding must still match at collection.
+    for old, new, label in ((journey["runtime_home"], str(parent / "wrong-runtime"), "wrong-runtime"),
+                            (str(binary.with_name("volicord-mcp")), str(parent / "other-mcp"), "wrong-candidate-mcp")):
+        config = repository / ".codex/config.toml"
+        original_config = config.read_bytes()
+        try:
+            config.write_text(config.read_text().replace(old, new))
+            try:
+                campaign.collect_batch(root, captures, exporter=batch_exporter(bundles),
+                                       documenter=documenter, snapshotter=snapshotter)
+            except campaign.CampaignError:
+                pass
+            else:
+                raise AssertionError(f"{label} was accepted")
+            assert not (root / "evidence-set.json").exists()
+        finally:
+            config.write_bytes(original_config)
 
     reject_identity(captures[1],
         hashlib.sha256(b"work:volicord:A").hexdigest()[:32],
@@ -717,6 +762,13 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
             assert work["sessions"]["start"]["session_id"] != work["sessions"]["resume"]["session_id"]
     manifest = campaign.load_evidence_set(root)
     assert manifest["schema_version"] == 5 and len(manifest["raw_inputs"]) == 8
+    observed_sources = set()
+    for work in manifest["work_evidence"]:
+        for session in work["sessions"].values():
+            retained = campaign.load_codex_capture(root / session["relative_evidence_path"])
+            assert session["provenance"] == retained.provenance_evidence()
+            observed_sources.add(session["provenance"]["observed_metadata"]["session_meta"]["source"])
+    assert observed_sources == {"cli", "vscode"}
     raw = root / manifest["work_evidence"][0]["sessions"]["start"]["relative_evidence_path"]
     original_raw = raw.read_bytes()
     raw.write_bytes(original_raw + b"\n")

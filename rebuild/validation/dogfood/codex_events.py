@@ -1394,6 +1394,8 @@ class CodexCapture:
     originator: str
     cli_version: str
     thread_source: str
+    capture_format: str
+    observed_metadata: dict[str, Any]
     fresh_user_thread: bool
     repository_scoped_activation_observed: bool
     activation_evidence_state: str
@@ -1407,6 +1409,11 @@ class CodexCapture:
     evidence_transport_issues: tuple[EvidenceTransportIssue, ...]
     path_observations: tuple[PathObservation, ...]
     commands: tuple[CommandObservation, ...]
+
+    def provenance_evidence(self) -> dict[str, Any]:
+        """Host-recorded observations; source/originator do not attest a UI."""
+        return {"host_family": "codex", "capture_format": self.capture_format,
+                "ui_surface": "unknown", "observed_metadata": self.observed_metadata}
 
     def calls(self, operation: str) -> list[ToolCall]:
         return [call for call in self.tool_calls if call.operation == operation]
@@ -1942,16 +1949,31 @@ def load_codex_capture(path: Path) -> CodexCapture:
     cli_version = meta.get("cli_version")
     thread_source = meta.get("thread_source")
     if (
-        source != "vscode"
-        or originator != "codex_vscode"
+        not nonempty(source)
+        or not nonempty(originator)
         or not nonempty(cli_version)
         or not nonempty(thread_source)
     ):
-        raise EvidenceError("Codex session source is unsupported")
+        raise EvidenceError("Codex session metadata is missing or malformed")
     git = meta.get("git") if isinstance(meta.get("git"), dict) else {}
     git_revision = git.get("commit_hash") if nonempty(git.get("commit_hash")) else None
 
     turn_lifecycle = normalize_turn_lifecycle(events)
+    # Recognize the maintained Codex rollout schema, not a filename or UI label.
+    # Admission separately requires a fresh user thread, exact first turn and
+    # candidate-owned activation; metadata alone never qualifies a capture.
+    if not turn_lifecycle.turns:
+        raise EvidenceError("unsupported capture format: Codex task lifecycle is absent")
+    observed_metadata = {
+        "session_meta": {key: value for key, value in meta.items() if key in {
+            "id", "session_id", "cwd", "source", "originator", "cli_version",
+            "client_version", "thread_source", "source_metadata", "forked_from_id",
+            "model", "model_provider", "provider", "git", "timestamp"}},
+        "turn_context": [{key: value for key, value in event["payload"].items()
+                          if key in {"turn_id", "cwd", "model", "model_provider", "provider"}}
+                         for event in events if event.get("type") == "turn_context"
+                         and isinstance(event.get("payload"), dict)],
+    }
     current_turn: str | None = None
     task_sequences: list[int] = []
     completed_task_sequences: list[int] = []
@@ -2506,6 +2528,8 @@ def load_codex_capture(path: Path) -> CodexCapture:
         originator=str(originator),
         cli_version=str(cli_version),
         thread_source=str(thread_source),
+        capture_format="codex_rollout_jsonl",
+        observed_metadata=observed_metadata,
         fresh_user_thread=fresh_user_thread,
         repository_scoped_activation_observed=repository_scoped_activation_observed,
         activation_evidence_state=activation_state,

@@ -13,7 +13,7 @@ Home while retaining three Work identities. Small-Python and Polyglot each
 have their own Project, workspace and Runtime Home.
 
 The operator explicitly controls repository and SessionStart-hook trust,
-runs eight distinct fresh VS Code Codex sessions with the frozen task bytes,
+runs eight distinct fresh Codex CLI or VS Code extension sessions with the frozen task bytes,
 and preserves their raw rollouts. `activate-all` requires complete frozen
 preparation. `collect-batch` verifies candidate, task, repository/revision,
 session, Project/Work, resume and raw hash integrity, then publishes one
@@ -189,10 +189,10 @@ Use `rebuild/scripts/dogfood-campaign prepare --repositories <input>
 No pre-execution semantic review or evaluator profile controls admission.
 Repository and SessionStart
 hook trust remain explicit user actions. `activate-all` verifies the owned static manifest, MCP entry,
-SessionStart hook and exact candidate-local executable/Runtime binding, but this does not prove VS Code
+SessionStart hook and exact candidate-local executable/Runtime binding, but this does not prove Codex
 executed SessionStart. If setup is uncertain, the operator inspects it before sending a frozen task;
 runtime SessionStart evidence remains required for every capture. The operator then runs all eight
-fresh naturalistic VS Code Codex chats using only the frozen tasks, answers
+fresh naturalistic Codex CLI or VS Code extension chats using only the frozen tasks, answers
 only genuine material Questions, preserves every raw rollout without
 per-session evidence-processing interruptions, and provides the eight files
 once for batch ingestion. The helper maps the maintained journey/Work/session slots, proves

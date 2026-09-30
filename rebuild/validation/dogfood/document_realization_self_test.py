@@ -58,7 +58,8 @@ def runtime_rollout(path, model="gpt-5.6-sol"):
             "session_id": "realizer-session", "cwd": str(path.parent.resolve()),
             "source": "vscode", "originator": "codex_vscode", "cli_version": "0.145.0",
             "thread_source": "user", "git": {"commit_hash": "a" * 40}}},
-        {"type": "turn_context", "payload": {"model": model}},
+        {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "realizer-turn"}},
+        {"type": "turn_context", "payload": {"model": model, "turn_id": "realizer-turn"}},
     ]
     path.write_text("".join(json.dumps(event) + "\n" for event in events))
     return path
@@ -286,7 +287,7 @@ class DocumentRealizationTests(unittest.TestCase):
             self.assertEqual(provenance["session"], {"state": "runtime_observed", "value": "realizer-session"})
             self.assertEqual(provenance["runtime"], {"state": "runtime_observed", "value": "codex-cli/0.145.0"})
             self.assertEqual(provenance["runtime_observation"], {
-                "state": "observed", "source": "codex_vscode_rollout",
+                "state": "observed", "source": "codex_rollout",
                 "rollout_sha256": h.sha256(rollout)})
             with self.assertRaisesRegex(c.CampaignError, "exact rollout"):
                 r.validate(root, entry["realization_id"], draft_path)

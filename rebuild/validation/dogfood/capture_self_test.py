@@ -15,6 +15,53 @@ from codex_events import (
 HERE = Path(__file__).resolve().parent
 
 
+class CaptureProvenanceTests(unittest.TestCase):
+    def load(self, events):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "arbitrary-name.jsonl"
+            raw = "".join(json.dumps(event) + "\n" for event in events).encode()
+            path.write_bytes(raw)
+            capture = load_codex_capture(path)
+            import hashlib
+            self.assertEqual(capture.source_sha256, hashlib.sha256(raw).hexdigest())
+            return capture
+
+    def test_supported_surface_metadata_is_verbatim_not_ui_authority(self):
+        for fixture in ("current-codex-execution-evidence.jsonl", "current-codex-cli-evidence.jsonl"):
+            events = [json.loads(line) for line in (HERE / "fixtures" / fixture).read_text().splitlines()]
+            for source, originator in (("cli", "codex_cli_rs"), ("vscode", "codex_vscode"),
+                                       ("terminal", "codex_cli_rs/alternate")):
+                with self.subTest(fixture=fixture, source=source):
+                    meta = events[0]["payload"]
+                    meta.update(source=source, originator=originator, client_version="0.153.0+observed",
+                                source_metadata={"client": "observed"}, model="fixture-model")
+                    capture = self.load(events)
+                    self.assertTrue(capture.fresh_user_thread)
+                    self.assertEqual(capture.capture_format, "codex_rollout_jsonl")
+                    self.assertEqual(capture.provenance_evidence()["ui_surface"], "unknown")
+                    self.assertEqual(capture.observed_metadata["session_meta"], meta)
+
+    def test_non_codex_and_malformed_capture_rejected(self):
+        events = [json.loads(line) for line in (HERE / "fixtures/current-codex-execution-evidence.jsonl").read_text().splitlines()]
+        invalid = [[], [{"type": "assistant", "message": "other host"}],
+                   [events[0]], [events[0], {"type": "message", "role": "user", "text": "native other host"}],
+                   [events[0], events[0], *events[1:]]]
+        for key, value in (("source", {}), ("originator", None), ("cli_version", 1),
+                           ("thread_source", []), ("session_id", "conflict"), ("cwd", "relative")):
+            changed = deepcopy(events)
+            changed[0]["payload"][key] = value
+            invalid.append(changed)
+        for value in invalid:
+            with self.subTest(value=value[:1]), self.assertRaises(EvidenceError):
+                self.load(value)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "codex.jsonl"
+            for raw in (b"{broken\n", b"\xff"):
+                path.write_bytes(raw)
+                with self.assertRaises(EvidenceError):
+                    load_codex_capture(path)
+
+
 class McpCompletionTests(unittest.TestCase):
     def setUp(self):
         self.payloads = [json.loads(line)["payload"] for line in
@@ -324,7 +371,7 @@ class CurrentExecutionTests(unittest.TestCase):
 
 def check_capture_regressions():
     suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls)
-                               for cls in (McpCompletionTests, CurrentExecutionTests))
+                               for cls in (CaptureProvenanceTests, McpCompletionTests, CurrentExecutionTests))
     result = unittest.TextTestRunner().run(suite)
     if not result.wasSuccessful():
         raise AssertionError("MCP completion transport regressions failed")

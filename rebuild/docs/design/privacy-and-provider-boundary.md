@@ -84,6 +84,13 @@ observation이지만 realization authorship attestation이나 `verified` identit
 Runtime observation과 충돌하는 덜 구체적 self-report는 stronger identity로 승격하지 않으며,
 exact identity가 없으면 계속 `unknown`을 허용한다. Model 이름은 allowlist로 qualification하지 않는다.
 
+Naturalistic Codex capture는 CLI와 VS Code extension에 같은 integrity contract를 적용한다.
+`source`, `originator`, client/CLI version, thread/source metadata, provider/model,
+session과 cwd는 immutable raw bytes 안에 그대로 보존한다. Bounded projection도 observed
+value를 바꾸지 않는다. UI surface는 independent evidence가 없으면 `unknown`이며 source나
+originator 문자열에서 UI/authorship를 추론하지 않는다. 이 local evidence contract는
+background transmission consent를 부여하지 않으며 현재 non-Codex capture support는 없다.
+
 Host가 제공하지 않는 권한을 Volicord가 발명하지 않는다. Current-host interaction의
 구체적 UI나 wire representation은 이 문서의 계약이 아니다.
 

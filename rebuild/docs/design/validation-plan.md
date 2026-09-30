@@ -1166,6 +1166,21 @@ The operator sends each exact task from the generated raw `.txt` artifact in
 its own fresh session and preserves eight raw rollouts. All task text is fixed
 before the first session.
 
+Current capture admission is Codex-only and recognizes the maintained JSONL rollout
+schema: one leading `session_meta`, consistent nonempty `id`/`session_id`, absolute
+cwd, typed source/originator/client-version/thread metadata and task lifecycle.
+Neither a filename nor one source/originator pair establishes Codex provenance.
+Both Codex CLI and the VS Code extension qualify through the same contract.
+Raw source, originator, versions, thread/source metadata, provider/model, session
+and cwd remain verbatim in immutable raw bytes; bounded metadata observations are
+also retained per session. UI surface remains `unknown`: these raw labels are not
+an independent UI oracle. No non-Codex parser or host abstraction is provided.
+Fresh user-thread identity, exact frozen first-turn transport identity, repository,
+Runtime Home, campaign/candidate-owned MCP and actual SessionStart activation remain
+required. Static integration is rechecked at collection; it does not attest that
+the host executed the hook. Native non-Codex or malformed captures remain rejected.
+This is cooperative host-recorded evidence, not a cryptographic host attestation.
+
 `collect-batch` maps all eight rollouts before publication. It checks host
 provenance, exact frozen first-turn transport identity, workspace and descendant
 revision, distinct session IDs, actual SessionStart activation, same-Work
@@ -1261,7 +1276,7 @@ A changed candidate requires a new campaign and independent qualification.
 
 Naturalistic MCP memory remains `unsupported_current_architecture` until a
 candidate-bound process/lifecycle observer exists; harness-tree RSS cannot be
-relabeled as VS Code's MCP memory. The exact technical gate retains its separate
+relabeled as Codex's MCP memory. The exact technical gate retains its separate
 resource measurements. Synthetic campaign, resume, document, repository-state,
 machine, review and qualification fixtures are regression support, never a
 substitute for the eight naturalistic sessions.

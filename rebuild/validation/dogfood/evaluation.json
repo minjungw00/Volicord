@@ -129,7 +129,7 @@
     "universal_product_ceiling_applied": false,
     "raw_evidence_retention": "ignored_local_state_only",
     "naturalistic_mcp_memory": {
-      "required_scope": "candidate_bound_external_vscode_mcp_process_or_process_tree",
+      "required_scope": "candidate_bound_external_codex_mcp_process_or_process_tree",
       "harness_descendant_measurement_may_substitute": false,
       "unsupported_state_is_explicit": true,
       "unsupported_state_qualifies_as_measured_pass": false,
@@ -862,8 +862,8 @@
         "frozen_first_user_task",
         "maintained_start_or_fresh_resume_session_slot",
         "repository_revision",
-        "source_vscode",
-        "originator_codex_vscode",
+        "recognized_codex_rollout_schema",
+        "raw_host_metadata_observed_without_ui_inference",
         "globally_distinct_session_id",
         "repository_scoped_session_start_activation"
       ],

@@ -172,7 +172,7 @@ def observed_runtime_provenance(binding: dict[str, Any], rollout: Path) -> dict[
             models.append(model)
     if not models or len(set(models)) != 1:
         raise c.CampaignError("runtime rollout does not provide one exact consistent model identity")
-    observation = {"state": "observed", "source": "codex_vscode_rollout",
+    observation = {"state": "observed", "source": "codex_rollout",
         "rollout_sha256": capture.source_sha256}
     return {"preparation_binding": binding, "runtime_observation": observation,
         "host": {"state": "runtime_observed", "value": capture.source},
@@ -208,7 +208,7 @@ def validate_provenance(preparation: dict[str, Any], provenance: Any, *,
     elif (isinstance(observation, dict)
           and set(observation) == {"state", "source", "rollout_sha256"}
           and observation.get("state") == "observed"
-          and observation.get("source") == "codex_vscode_rollout"
+          and observation.get("source") == "codex_rollout"
           and re.fullmatch(r"[0-9a-f]{64}", str(observation.get("rollout_sha256", "")))):
         allow_runtime = True
     else:
