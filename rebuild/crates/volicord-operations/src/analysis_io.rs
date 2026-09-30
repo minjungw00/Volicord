@@ -226,12 +226,7 @@ fn read_analysis_from_manifest(
         encoded_values
     };
     let reader = DenormalizingReader::new(shape, values, manifest.scalar_count)?;
-    // serde_json's generic reader path may request very small reads while it scans
-    // tokens. Buffer the reconstructed stream so a large normalized graph does not
-    // repeatedly cross the denormalizer boundary one byte at a time.
-    let reader = BufReader::with_capacity(1024 * 1024, reader);
-    let snapshot: AnalysisSnapshot = serde_json::from_reader(reader)
-        .map_err(|error| Error::with_source("normalized Analysis Snapshot is corrupt", error))?;
+    let snapshot: AnalysisSnapshot = decode_normalized_json(reader, manifest.logical_json_bytes)?;
     if snapshot.identity != manifest.identity
         || snapshot.project != manifest.project
         || snapshot.generated_at_unix_micros != manifest.generated_at_unix_micros
@@ -239,6 +234,31 @@ fn read_analysis_from_manifest(
         return Err(Error::new("Analysis manifest and payload bindings differ"));
     }
     Ok(snapshot)
+}
+
+fn decode_normalized_json<T: serde::de::DeserializeOwned>(
+    reader: impl Read,
+    logical_bytes: u64,
+) -> Result<T, Error> {
+    let length = usize::try_from(logical_bytes)
+        .map_err(|error| Error::with_source("Analysis JSON length is unsupported", error))?;
+    let mut json = Vec::new();
+    json.try_reserve_exact(length)
+        .map_err(|error| Error::with_source("cannot allocate Analysis JSON read buffer", error))?;
+    // Release shape/value buffers before allocating the typed graph. Slice decoding
+    // scans strings in bulk; even a BufReader leaves serde_json's generic reader
+    // parser visiting every byte individually in gigabyte-sized durable inspections.
+    {
+        let mut input = reader.take(logical_bytes.saturating_add(1));
+        input.read_to_end(&mut json).map_err(|error| {
+            Error::with_source("cannot reconstruct normalized Analysis JSON", error)
+        })?;
+    }
+    if json.len() != length {
+        return Err(Error::new("Analysis JSON length differs from manifest"));
+    }
+    serde_json::from_slice(&json)
+        .map_err(|error| Error::with_source("normalized Analysis Snapshot is corrupt", error))
 }
 
 pub(crate) fn write_analysis_cache(
@@ -1106,10 +1126,7 @@ mod tests {
         let started = std::time::Instant::now();
         let reader =
             DenormalizingReader::new(normalized.shape, normalized.values, normalized.scalar_count)?;
-        let decoded: Vec<serde_json::Value> =
-            serde_json::from_reader(BufReader::with_capacity(1024 * 1024, reader)).map_err(
-                |error| Error::with_source("cannot decode normalized read fixture", error),
-            )?;
+        let decoded: Vec<serde_json::Value> = decode_normalized_json(reader, encoded.len() as u64)?;
         println!(
             "normalized large-symbol decode ms: {}",
             started.elapsed().as_millis()
@@ -1139,6 +1156,19 @@ mod tests {
                 decoded.extend_from_slice(&buffer[..count]);
             }
             assert_eq!(decoded, encoded);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn normalized_json_decoder_rejects_length_schema_and_trailing_corruption() -> Result<(), Error>
+    {
+        let encoded = br#"["a","b"]"#;
+        for length in [encoded.len() as u64 - 1, encoded.len() as u64 + 1] {
+            assert!(decode_normalized_json::<Vec<String>>(encoded.as_slice(), length).is_err());
+        }
+        for corrupt in [br#"["a",2]"#.as_slice(), br#"["a"]true"#.as_slice()] {
+            assert!(decode_normalized_json::<Vec<String>>(corrupt, corrupt.len() as u64).is_err());
         }
         Ok(())
     }
@@ -1239,6 +1269,16 @@ mod tests {
             serde_json::to_value(&outcome.analysis)?,
             "durable metadata relocation must preserve the complete semantic graph"
         );
+        for length in [
+            manifest.logical_json_bytes - 1,
+            manifest.logical_json_bytes + 1,
+        ] {
+            let mut changed = manifest.clone();
+            changed.logical_json_bytes = length;
+            std::fs::write(&outcome.stored_at, serde_json::to_vec(&changed)?)?;
+            assert!(read_analysis_durable(&outcome.stored_at).is_err());
+        }
+        std::fs::write(&outcome.stored_at, serde_json::to_vec(&manifest)?)?;
         let metadata_path =
             blob_dir(&outcome.stored_at)?.join(format!("{}.metadata", manifest.metadata_blob));
         std::fs::write(metadata_path, b"corrupt metadata")?;
