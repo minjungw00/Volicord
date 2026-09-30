@@ -1,5 +1,6 @@
 """Collector/publication/reviewer integration over a real disposable Git target."""
 import copy
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -77,6 +78,25 @@ class EvidenceControlTests(unittest.TestCase):
         evidence = evidence_index["evidence"]["journey-small-python-repository-state"]
         self.assertEqual(c.read_json(self.root / lineage["attestation_artifacts"]["state"]), before)
         self.assertIn(b'"workspace_clean": false', files[evidence["path"]])
+        git_surface = evidence_index["evidence"]["journey-small-python-git-observations"]
+        git_evidence = json.loads(files[git_surface["path"]])["observation"]
+        self.assertFalse(git_evidence["workspace_clean"])
+        self.assertEqual(git_evidence["commits"]["commits"], [])
+        self.assertEqual(len(git_evidence["session_git_observations"]), 2)
+        self.assertFalse(any(item["surface"] in {"work_capture", "resume_capture"}
+                             for item in evidence_index["evidence"].values()))
+        git_path = self.root / lineage["attestation_artifacts"]["git_observations"]
+        original_git = git_path.read_bytes()
+        try:
+            damaged = json.loads(original_git)
+            damaged["observation"]["workspace_clean"] = True
+            c.write_json(git_path, damaged)
+            with self.assertRaisesRegex(c.CampaignError, "Git observation binding changed"):
+                c.verify_retained_repository_states(self.root, manifest)
+            with self.assertRaises(c.CampaignError):
+                c.load_evidence_set(self.root)
+        finally:
+            git_path.write_bytes(original_git)
         (self.repository / "tracked.txt").write_bytes(b"later ordinary task")
         # Historical inspection does not bind mutable current work to old evidence.
         self.assertEqual(c.load_evidence_set(self.root), manifest)
@@ -88,6 +108,87 @@ class EvidenceControlTests(unittest.TestCase):
         final = next(item for item in result["journey_final_evidence"] if item["journey_id"] == "journey-small-python")
         self.assertNotEqual(final["repository_revision_lineage"]["final_revision"], self.baseline)
         self.assertTrue(final["repository_revision_lineage"]["workspace_clean"])
+
+    def test_multi_commit_work_retains_history_without_terminal_check(self):
+        for content in (b"first\n", b"second\n"):
+            (self.repository / "tracked.txt").write_bytes(content)
+            self.git(self.repository, "commit", "-qam", "ordinary task")
+        result = self.collect()
+        final = next(item for item in result["journey_final_evidence"]
+                     if item["journey_id"] == "journey-small-python")
+        history = final["repository_revision_lineage"]["commits"]
+        self.assertEqual(len(history["commits"]), 2)
+        self.assertTrue(all(item["paths"] == ["tracked.txt"] for item in history["commits"]))
+
+    def test_absent_session_git_metadata_remains_unknown_in_collected_evidence(self):
+        for path in self.captures:
+            events = [json.loads(line) for line in path.read_text().splitlines()]
+            if events[0]["payload"]["cwd"] == str(self.repository):
+                events[0]["payload"].pop("git", None)
+                path.write_text("".join(json.dumps(event) + "\n" for event in events))
+        result = self.collect()
+        final = next(item for item in result["journey_final_evidence"]
+                     if item["journey_id"] == "journey-small-python")
+        for item in final["repository_revision_lineage"]["session_git_observations"]:
+            self.assertIsNone(item["start_head"])
+            self.assertEqual(item["path_correlation_to_final"]["state"], "not_computable")
+
+    def assert_distinct_works_git_collection(self, *, combined_before_collection):
+        # Keep the exact Product candidate as this journey's pinned baseline.
+        repository = Path(c.load_campaign(self.root)["journeys"]["journey-volicord"]["repository_path"])
+        clone = self.parent / "volicord-clone"
+        self.git(c.ROOT, "clone", "--quiet", "--shared", "--no-checkout", str(c.ROOT), str(clone))
+        shutil.move(str(clone / ".git"), repository / ".git")
+        self.git(repository, "reset", "--hard", "HEAD")
+        self.git(repository, "config", "user.name", "Fixture")
+        self.git(repository, "config", "user.email", "fixture@example.invalid")
+        with (repository / ".git/info/exclude").open("a") as stream:
+            stream.write("\n/.codex/\n")
+        baseline = self.git(repository, "rev-parse", "HEAD").strip().decode()
+        for path in self.captures:
+            events = [json.loads(line) for line in path.read_text().splitlines()]
+            if events[0]["payload"]["cwd"] != str(repository):
+                continue
+            events[0]["payload"]["git"]["commit_hash"] = baseline
+            # No synthetic commit or status commands: actual Git observations
+            # are collected, and the captured canonical identities stay intact.
+            events = [event for event in events if not event.get("payload", {}).get("call_id", "").startswith(("commit-", "boundary-"))]
+            path.write_text("".join(json.dumps(event) + "\n" for event in events))
+        (repository / "work-changes.txt").write_bytes(b"several Works before any commit\n")
+        mapped = c.map_batch_rollouts(self.root, self.captures)
+        dirty = c.collect_journey_git_evidence(c.load_campaign(self.root), mapped)["journey-volicord"]
+        self.assertFalse(dirty["workspace_clean"])
+        self.assertEqual(dirty["commits"]["commits"], [])
+        # Publish once while dirty. The earlier observation remains usable after
+        # a later combined commit; no Work is created or merged by that commit.
+        if combined_before_collection:
+            self.git(repository, "add", "work-changes.txt")
+            self.git(repository, "commit", "-qm", "combined changes")
+        self.collect()
+        manifest = c.load_evidence_set(self.root)
+        final = next(item for item in manifest["journey_final_evidence"] if item["journey_id"] == "journey-volicord")
+        self.assertEqual(final["repository_revision_lineage"]["workspace_clean"], combined_before_collection)
+        self.assertEqual(len(final["repository_revision_lineage"]["commits"]["commits"]), int(combined_before_collection))
+        works = [item for item in manifest["work_evidence"] if item["repository_class"] == "volicord"]
+        self.assertEqual(len({item["work_item_id"] for item in works}), 3)
+        if not combined_before_collection:
+            self.git(repository, "add", "work-changes.txt")
+            self.git(repository, "commit", "-qm", "combined changes")
+        later = c.collect_journey_git_evidence(c.load_campaign(self.root), mapped)["journey-volicord"]
+        self.assertEqual(len(later["commits"]["commits"]), 1)
+        self.assertTrue(later["workspace_clean"])
+        self.assertEqual(c.load_evidence_set(self.root), manifest)
+        evaluated = c.evaluate_campaign(self.root)
+        evaluation = c.read_json(self.root / evaluated["evaluation"])
+        git_findings = [finding for journey in evaluation["journeys"] for finding in journey["findings"]
+                        if finding["check"] == "git_history_observation"]
+        self.assertTrue(all(finding["disposition"] == "advisory" for finding in git_findings))
+
+    def test_distinct_works_at_dirty_zero_commit_head_are_collected(self):
+        self.assert_distinct_works_git_collection(combined_before_collection=False)
+
+    def test_distinct_works_before_later_combined_commit_are_collected(self):
+        self.assert_distinct_works_git_collection(combined_before_collection=True)
 
     def snapshot_campaign(self):
         return {p.relative_to(self.root).as_posix(): p.read_bytes() for p in self.root.rglob("*")

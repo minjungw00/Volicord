@@ -51,6 +51,10 @@ class CaptureProvenanceTests(unittest.TestCase):
             changed = deepcopy(events)
             changed[0]["payload"][key] = value
             invalid.append(changed)
+        for value in ([], "not-git", {"commit_hash": 123}, {"commit_hash": "broken"}):
+            changed = deepcopy(events)
+            changed[0]["payload"]["git"] = value
+            invalid.append(changed)
         for value in invalid:
             with self.subTest(value=value[:1]), self.assertRaises(EvidenceError):
                 self.load(value)

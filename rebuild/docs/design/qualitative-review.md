@@ -5,7 +5,7 @@ This contract owns review artifacts and operations, not Product behavior or fina
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 11 / policy revision 10, machine evaluation
-policy `evidence-evaluation-4`, human observation/receipt schema 3, qualification policy
+policy `evidence-evaluation-5`, human observation/receipt schema 3, qualification policy
 `replacement-qualification-7`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
@@ -482,3 +482,19 @@ Product violation, actor attribution, unrelated/pre-existing-dirty attribution, 
 verification. Review those independent claims using task, Source/Analysis Snapshot, Checkpoint,
 validation-command and raw observation evidence. The original target can later change or disappear;
 review-package and evidence-set integrity verify retained bytes rather than the live worktree.
+
+Git history/status and per-session path correlation are factual, advisory review
+support. A missing Work commit, dirty Work transition or dirty final target alone
+cannot invalidate a campaign or redefine Work identity. Zero/multiple commits and
+later commits spanning Works are collectible. Assess any commit/clean requirement
+against the actual user's task or repository/workflow instructions; current machine
+evidence contains no deterministic task Git-policy requirement and invents none.
+Uncorrelated/reverted paths and unknown session-end state remain visible limitations.
+Candidate-worktree cleanliness and immutable evidence/publication integrity are separate
+requirements and remain strict.
+
+Journey-final `git-observations.json` is inventory/hash-bound and selected as a
+`repository_state` reviewer surface even without a machine evaluation or raw-rollout
+selection. It exposes the retained Git facts and limitations without patch/source
+bodies. Its content must agree with the evidence-set observation at publication and
+historical verification. The original Git workspace is not needed for later review.

@@ -53,6 +53,19 @@ def ignored_path(repository, name):
         allowed_returncodes=(0, 1)))
 
 
+def commit_history(repository, base, end):
+    """Factual reachable revision interval; it assigns no commits to a Work."""
+    if base is None or end is None:
+        return {"state": "not_computable", "base": base, "end": end, "commits": []}
+    commits = []
+    for revision in git(repository, "rev-list", "--reverse", "--topo-order", f"{base}..{end}", "--").decode().splitlines():
+        parents = git(repository, "show", "-s", "--format=%P", revision, "--").decode().strip().split()
+        paths = sorted(path_text(path) for path in git(repository, "diff-tree", "--root", "-m",
+            "--no-commit-id", "--name-only", "-r", "-z", "--no-renames", revision, "--").split(b"\0") if path)
+        commits.append({"revision": revision, "parents": parents, "paths": sorted(set(paths))})
+    return {"state": "computed", "base": base, "end": end, "commits": commits}
+
+
 def check_replacement_directory(repository, name, replacement_leaves):
     # Git may omit special files from its untracked listing. Check metadata,
     # including empty containers, without turning excluded bytes into evidence.

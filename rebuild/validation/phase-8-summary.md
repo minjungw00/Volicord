@@ -33,6 +33,16 @@ Qualification never grants Phase 9 readiness. Only explicit
 verification preserve the exact evidence and decision chain.
 <!-- phase8-active-operations:end -->
 
+Naturalistic Git state/history is advisory review evidence: zero or multiple commits,
+dirty carryover across Works and later combined commits remain collectible. Git does
+not define canonical Work identity or target campaign validity. The collector retains
+baseline/session/final HEADs when known, optional structured status observations,
+captured baseline dirty paths, commit/path correlation and exact final state. Known
+revisions remain bound to the pinned repository history; raw/hash/candidate/session,
+workspace/Runtime/activation and canonical Project/Work integrity remain hard.
+Task and repository Git policy is assessed against actual authority in post-hoc review.
+The engineering Product candidate remains clean and exact-HEAD-bound.
+
 Technical V11 observes deterministic invariants, including a disposable ordinary
 write with an unchanged Guarded-store hash. Naturalistic source/test/config work,
 practical context recovery, Question relevance, interruption cost and document

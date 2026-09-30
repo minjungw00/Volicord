@@ -4706,7 +4706,7 @@ def build_work_observation(
     if not re.fullmatch(r"[0-9a-f]{40}", candidate_head):
         raise WorkCaptureContractError("invalid_candidate_head")
     if (
-        capture.git_revision != descriptor.get("repository_revision")
+        capture.git_revision is not None and capture.git_revision != descriptor.get("repository_revision")
         or (target_repository is not None
             and capture.cwd.resolve(strict=False) != target_repository.resolve(strict=False))
         or not capture.fresh_user_thread
@@ -9175,7 +9175,7 @@ def real_session_evidence(
         == work_slot_id(kind, work_label)
         and raw.get("repository_revision") == repository_revision
         and work_capture is not None
-        and work_capture.git_revision == repository_revision
+        and (work_capture.git_revision is None or work_capture.git_revision == repository_revision)
     )
     task_turns_ok = (
         work_capture is not None
@@ -9222,7 +9222,7 @@ def real_session_evidence(
         bundle is not None
         and work_capture is not None
         and work_frontier is not None
-        and work_capture.git_revision == repository_revision
+        and (work_capture.git_revision is None or work_capture.git_revision == repository_revision)
         and initialize_call is not None
         and initialize_call.result.get("project_id") == bundle.project_id
         and goal_call is not None

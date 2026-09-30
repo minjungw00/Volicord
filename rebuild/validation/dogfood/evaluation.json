@@ -977,35 +977,39 @@
     }
   },
   "repository_state_attestation_contract": {
-    "target_state": "committed_work_boundaries_and_clean_final_without_git_mutation",
+    "target_state": "observed_clean_or_dirty_without_git_mutation",
     "candidate_state": "clean_and_exact_head_bound",
-    "session_history": "pinned_baseline_ordered_descendant_heads_exact_observed_path_coverage_and_terminal_clean_boundaries",
+    "session_history": "known_heads_bound_to_pinned_repository_baseline; chronology_is_observation",
     "artifacts": [
       "repository-state.json",
       "staged.patch",
-      "unstaged.patch"
+      "unstaged.patch",
+      "git-observations.json"
     ],
     "content_boundary": "HEAD_index_tracked_and_nonignored_untracked",
     "publication_verification": "reobserve_exact_state_before_and_during_atomic_publication",
     "historical_verification": "immutable_retained_attestation_and_patch_bytes_without_live_target",
     "dirty_state_is_product_failure": false,
-    "dirty_state_blocks_collection": true,
+    "dirty_state_blocks_collection": false,
+    "work_commit_required": false,
+    "git_defines_work_identity": false,
     "actor_attribution_or_verification_success_implied": false,
     "analysis_or_checkpoint_replaced": false,
     "target_git_mutation_allowed": false,
-    "committed_path_proof": "every_observed_path_in_net_session_head_to_completed_boundary_tree_delta_no_rename_or_pathspec_expansion",
-    "completed_boundary_cleanliness": "structured_terminal_git_status_all_nonignored_paths_and_head_output_after_mutations_and_other_command_completions",
-    "cleanliness_command": "git --no-optional-locks -c core.fsmonitor=false status --porcelain=v1 --untracked-files=all && git rev-parse HEAD",
-    "incomplete_same_work_continuation": "paused_or_in_progress_start_defers_path_and_cleanliness_proofs_to_terminal_resume",
-    "no_change_session": "no_empty_commit_required",
-    "path_evidence_limit": "net_path_coverage_not_semantic_hunk_ownership_fully_reverted_observed_paths_rejected",
-    "retained_boundary_facts": [
-      "session_revision",
-      "committed_boundary_revision",
-      "changed_paths",
-      "proven_committed_paths",
-      "boundary_kind",
-      "cleanliness_raw_hash_session_execution_sequence_numeric_result"
+    "optional_status_command": "git --no-optional-locks -c core.fsmonitor=false status --porcelain=v1 --untracked-files=all && git rev-parse HEAD",
+    "path_evidence_limit": "net_path_correlation_not_semantic_hunk_or_actor_ownership; absent_or_reverted_paths_are_observations",
+    "git_policy_authority": "user_task_and_repository_workflow_only; post_hoc_qualitative_review_without_deterministic_requirement_evidence",
+    "machine_disposition": "advisory",
+    "retained_git_facts": [
+      "baseline_revision",
+      "repository_start_state",
+      "ordered_session_revisions",
+      "session_git_observations",
+      "dirty_carryover",
+      "commits",
+      "final_revision",
+      "workspace_clean",
+      "repository_state"
     ]
   },
   "naturalistic_contract": {

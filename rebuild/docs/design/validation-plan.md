@@ -1188,44 +1188,48 @@ start/resume Project and Work identities (a resume may use its structured
 canonical Recall checkpoint Work ID without writing a new Checkpoint; any new
 Checkpoint must agree), Volicord one-Project/three-Work
 continuity, cross-journey isolation, candidate artifacts, raw hashes and
-destination collisions. A descendant commit alone does not prove a Work boundary.
-Every meaningful observed repository-relative path must occur in the net committed
-tree delta from that session's HEAD to its completed boundary HEAD (`git diff
---name-only -z --no-renames --no-ext-diff --no-textconv <base> <boundary> --`);
-additions/deletions and both observed rename leaves are exact paths, never pathspecs.
-The completed capture must also retain successful structured execution of exactly
-`git --no-optional-locks -c core.fsmonitor=false status --porcelain=v1 --untracked-files=all && git rev-parse HEAD`
-at the repository root. Its only output is that same boundary HEAD and a newline,
-proving empty tracked/nonignored-untracked status. The check must start after the
-last meaningful mutation and every other command's completion; a later or overlapping
-command invalidates it. This prevents partial staging or dirty same-file carryover
-from passing merely because that file occurs in a commit.
-Known `git add`/`git commit` operator housekeeping is classified as repository
-maintenance, never as Product verification; the terminal check is inspection.
-Neither supplies a requested test's successful numeric execution.
+destination collisions. Git collection supplies factual review evidence and imposes no
+Work commit or clean-boundary policy. Zero commits, multiple commits within one Work,
+dirty state carried across distinct Works, a later combined commit, and fully reverted
+observed paths remain collectible. Work identities still come from exact canonical
+Goal/Recall/Checkpoint evidence; commit count, path overlap and revision intervals
+never create, merge or split Works. The pinned baseline and known session/final HEADs
+remain repository-history-bound; absent raw Git metadata is explicitly unknown, and
+session revision chronology is observed rather than enforced as Work lifecycle.
 
-An incomplete start (`paused`/`in_progress` structured Checkpoint state) may carry
-dirty changes into its paired same-Work resume: its path proof defers to the Work's
-distinct-Work/final boundary and its cleanliness proof to the terminal resume.
-A completed start proves both at the paired resume's HEAD; a checkpoint-free,
-no-write `verified_state_continuation` adds no commit or new Checkpoint requirement.
-Other completed mutations must be committed and checked before a distinct Work
-starts, or before collection for the terminal Work. Each journey must be clean at
-collection. A genuinely no-change session needs no empty commit.
+The retained `repository_revision_lineage` surface contains `baseline_revision`,
+`repository_start_state` from the pinned clean clone, `ordered_session_revisions`,
+`session_git_observations`, `dirty_carryover`, `commits`, `final_revision`,
+`workspace_clean` and exact `repository_state`. Per-session observations retain raw
+capture/session identity, start HEAD when supplied, optional structured status/HEAD
+execution with output hash and numeric outcome, terminal end HEAD/status when known,
+canonical-baseline dirty paths when observed, changed paths, commits to the next
+observation and net committed-path correlation to that observation and journey final.
+Commit records preserve revisions, parents and changed paths without assigning Work
+ownership. Correlation uses exact net tree delta with rename leaves and no pathspec
+expansion; missing or reverted paths are facts, not admission failures. Dirty carryover
+matches previous observed paths against the next captured baseline's dirty paths,
+with explicit unknown state when unavailable and no actor/hunk attribution claim.
+Journey-final `git-observations.json` is inventory/hash-bound and selected as a
+`repository_state` reviewer surface even without a machine evaluation or raw-rollout
+selection. It exposes the retained Git facts and limitations without patch/source
+bodies. Its content must agree with the evidence-set observation at publication and
+historical verification. The original Git workspace is not needed for later review.
 
-The run sheet asks for an atomic Work-only commit, excluding unrelated pre-existing
-changes, and this terminal check in the same naturalistic chat; frozen first-turn
-bytes remain unchanged. Retained lineage records session/base and boundary revisions,
-observed and proven paths, boundary kind, same-Work dirty-continuation permission,
-and the cleanliness command's raw-rollout SHA-256, session/execution identity,
-sequence/completion, output hash and numeric success. Both proofs are necessary.
-Path observations establish path coverage, not semantic hunk ownership. They cannot
-distinguish intentionally fully reverted paths from discarded work; any observed
-path absent from the net tree delta conservatively fails, including a committed
-change later reverted by its boundary. Shell-only changes without meaningful
-FileChange/path evidence do not gain invented path ownership. Ignored content and
-out-of-session mutations after the recorded boundary check are outside raw-session
-cleanliness proof; live final attestation independently checks collection state.
+An optional exact status/HEAD command is recognized:
+`git --no-optional-locks -c core.fsmonitor=false status --porcelain=v1 --untracked-files=all && git rev-parse HEAD`.
+It is never required. Dirty output is valid; malformed, indeterminate, wrong-cwd or
+stale observations cannot manufacture terminal cleanliness. Git inspection and
+commit housekeeping never substitute for Product verification.
+
+The run sheet delegates Git policy to the user's task and repository/workflow
+instructions. Current maintained evidence has no deterministic commit-requirement
+record, so the machine emits no "repository requested commit but none observed"
+claim. Post-hoc qualitative review assesses that compliance from actual authority
+and task-completion evidence. The `git_history_observation` finding is always
+`advisory`; confirmed Git observations and absent observations are distinct, and
+neither can override raw/candidate/session/Project/Work/privacy integrity failures.
+
 Collection observes and retains the
 final Git state without changing it; ignored content remains outside attestation. Journey-final canonical
 bundle, documents, Viewer snapshot, Runtime and activation summaries, and
@@ -1594,6 +1598,13 @@ cannot be promoted by publication. Before fresh Dogfood preparation, the real
 gate capsule/archive successfully, with its output and numeric exit preserved.
 Policy changes never trigger expensive technical execution.
 The engineering final HEAD requires its own gate-owned authoritative admission and maintained gate; standalone diagnostic admission is optional.
+
+Focused capture/campaign, real-Git repository-state, evidence-controls and machine
+self-tests exercise both Codex surfaces, strict negative provenance and activation
+bindings, dirty zero-commit multi-Work collection, multi-commit Work history, combined
+commits, partial/reverted path correlation, retained Git facts and atomic publication
+rejection on actual state/hash mutation. These fixtures are synthetic support and
+supply no fresh Naturalistic or authoritative-gate result.
 
 ### Machine authority audit
 

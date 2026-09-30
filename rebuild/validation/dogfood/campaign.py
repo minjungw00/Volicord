@@ -63,8 +63,8 @@ RAW_NAMES = {"start.rollout.jsonl", "resume.rollout.jsonl"}
 PROHIBITED_ARCHIVE_SUFFIXES = (".sqlite", ".sqlite3", ".db", "-wal", "-shm", "-journal")
 PROJECT_ID = re.compile(r"[0-9a-f]{32}")
 BATCH_CAPTURE_COUNT = harness.QUALIFICATION_SESSION_COUNT
-# One closed command/result envelope binds empty nonignored status to HEAD.
-WORK_BOUNDARY_CHECK = (
+# Optional closed command/result envelope observes status and HEAD without prescribing Git work.
+GIT_STATE_CHECK = (
     "git --no-optional-locks -c core.fsmonitor=false status "
     "--porcelain=v1 --untracked-files=all && git rev-parse HEAD"
 )
@@ -365,8 +365,10 @@ def session_slot_id(kind: str, work_label: str, role: str) -> str:
         raise CampaignError(str(error)) from error
 
 
-def revision_is_bound(repository: Path, baseline: str, observed: str) -> bool:
-    """Accept the pinned revision or a committed descendant in the journey clone."""
+def revision_is_bound(repository: Path, baseline: str, observed: str | None) -> bool:
+    """Known revisions corroborate pinned repository history; absence stays unknown."""
+    if observed is None:
+        return True  # cwd/canonical/integration binding remains required; Git metadata may be absent.
     if observed == baseline:
         return True
     if not re.fullmatch(r"[0-9a-f]{40}", str(observed or "")):
@@ -382,20 +384,22 @@ def revision_is_bound(repository: Path, baseline: str, observed: str) -> bool:
     return completed.returncode == 0
 
 
-def committed_work_paths(repository: Path, base: str, boundary: str) -> list[str]:
+def committed_delta_paths(repository: Path, base: str, boundary: str) -> list[str]:
     """Exact net tree delta, including both rename leaves, without pathspec parsing."""
     return sorted(repository_state.path_text(path) for path in repository_state.git(
         repository, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff",
         "--no-textconv", base, boundary, "--").split(b"\0") if path)
 
 
-def completed_work_cleanliness(capture: Any, revision: str) -> dict[str, Any]:
-    """Use retained structured execution, never prose or a pre-mutation status."""
+def session_git_state_observations(capture: Any) -> list[dict[str, Any]]:
+    """Optional structured status/HEAD evidence, never a completion requirement."""
+    observations = []
     mutations = harness.meaningful_work_path_observations(capture)
     last_mutation = max((item.sequence for item in mutations), default=0)
+    first_mutation = min((item.sequence for item in mutations), default=None)
     for command in capture.commands:
         value = command.parsed_command
-        if not isinstance(value, dict) or value.get("cmd") != WORK_BOUNDARY_CHECK:
+        if not isinstance(value, dict) or value.get("cmd") != GIT_STATE_CHECK:
             continue
         workdir = value.get("workdir", str(capture.cwd))
         if (not isinstance(workdir, str)
@@ -406,137 +410,100 @@ def completed_work_cleanliness(capture: Any, revision: str) -> dict[str, Any]:
             continue
         if (command.evidence_state != "completed" or type(command.exit_code) is not int
                 or command.exit_code != 0 or command.termination != "exited"
-                or command.output != revision + "\n" or command.sequence <= last_mutation
                 or command.completion_sequence < command.sequence):
             continue
-        # A later or still-running command may mutate content without a FileChange.
-        # Require this to be the terminal command envelope, not merely the last status.
-        if any(other is not command and other.completion_sequence >= command.sequence
-               for other in capture.commands):
+        match = re.fullmatch(r"(.*)([0-9a-f]{40})\n", command.output, re.DOTALL)
+        if match is None or any(len(line) < 4 or line[2] != " "
+                                for line in match[1].splitlines()):
             continue
-        return {"kind": "structured_terminal_git_status_and_head",
+        terminal = (command.sequence > last_mutation and not any(
+            other is not command and other.completion_sequence >= command.sequence
+            for other in capture.commands))
+        observations.append({"kind": "structured_git_status_and_head",
             "source_sha256": capture.source_sha256, "session_id": capture.session_id,
             "sequence": command.sequence, "completion_sequence": command.completion_sequence,
             "execution_identity": command.execution_identity,
-            "last_meaningful_mutation_sequence": last_mutation,
-            "command": WORK_BOUNDARY_CHECK, "head": revision,
+            "command": GIT_STATE_CHECK, "head": match[2], "status_porcelain": match[1],
             "output_sha256": repository_state.digest(command.output.encode()),
-            "exit_code": command.exit_code, "workspace_clean": True,
-            "boundary": "tracked_and_nonignored_untracked"}
-    raise CampaignError("completed Work lacks terminal clean Git status bound to its boundary HEAD")
+            "exit_code": command.exit_code, "workspace_clean": not match[1],
+            "before_observed_mutations": first_mutation is None or command.completion_sequence < first_mutation,
+            "terminal_after_observed_activity": terminal,
+            "boundary": "tracked_and_nonignored_untracked"})
+    return observations
 
 
-def verify_journey_revision_chronology(
+def git_path_correlation(repository: Path, base: str | None, end: str | None,
+                         observed_paths: list[str]) -> dict[str, Any]:
+    if base is None or end is None:
+        return {"state": "not_computable", "committed_paths": [],
+                "correlated_paths": [], "uncorrelated_paths": observed_paths}
+    paths = committed_delta_paths(repository, base, end)
+    return {"state": "computed", "committed_paths": paths,
+            "correlated_paths": sorted(set(observed_paths) & set(paths)),
+            "uncorrelated_paths": sorted(set(observed_paths) - set(paths))}
+
+
+def collect_journey_git_evidence(
     campaign: dict[str, Any],
     mapped: dict[tuple[str, str, str], MappedRollout],
 ) -> dict[str, Any]:
-    """Prove observed path coverage AND terminal cleanliness at completed boundaries."""
+    """Observe Git facts independently of canonical Work identity and completion."""
     evidence: dict[str, Any] = {}
     for kind in CLASSES:
         journey = campaign["journeys"][journey_id(kind)]
         repository = Path(journey["repository_path"])
         baseline = journey["repository_revision"]
-        ordered_slots = [
-            slot for slot in harness.current_session_slots() if slot[0] == kind
-        ]
-        revisions = [mapped[slot].capture.git_revision for slot in ordered_slots]
-        previous = baseline
-        for revision in revisions:
-            if not revision_is_bound(repository, previous, revision):
-                raise IntegrityError(
-                    "project_binding",
-                    CampaignError(
-                        "journey session revisions are not a chronological committed lineage"
-                    ),
-                )
-            previous = revision
+        ordered_slots = [slot for slot in harness.current_session_slots() if slot[0] == kind]
         attestation, _patches = repository_state.observe(repository)
         final_revision = attestation["final_head"]
-        if (
-            not isinstance(final_revision, str)
-            or not revision_is_bound(repository, previous, final_revision)
-        ):
-            raise IntegrityError(
-                "project_binding",
-                CampaignError(
-                    "journey workspace HEAD must descend from its chronological sessions"
-                ),
-            )
-        if not attestation["workspace_clean"]:
-            raise IntegrityError("project_binding", CampaignError(
-                f"{kind} journey has uncommitted final repository state"))
-        work_boundaries = []
-        continuations = []
-        labels = work_labels(kind)
-        for work_index, work_label in enumerate(labels):
-            roles = session_roles(kind, work_label)
-            captures = [mapped[(kind, work_label, role)].capture for role in roles]
-            next_label = labels[work_index + 1] if work_index + 1 < len(labels) else None
-            boundary_revision = (mapped[(kind, next_label, "start")].capture.git_revision
-                if next_label is not None else final_revision)
-            for index, capture in enumerate(captures):
-                changed_paths = sorted({path
-                    for observation in harness.meaningful_work_path_observations(capture)
-                    for path in observation.paths}) if hasattr(capture, "path_observations") else []
-                if not changed_paths:
-                    continue
-                if index == 0 and len(captures) > 1:
-                    resume_revision = captures[1].git_revision
-                    checkpoints = capture.successful_calls("checkpoint_record")
-                    incomplete = bool(checkpoints and checkpoints[-1].arguments.get("work_state")
-                        in {"paused", "in_progress"})
-                    if not incomplete and resume_revision == capture.git_revision:
-                        raise IntegrityError("project_binding", CampaignError(
-                            f"{kind} Work {work_label} dirty start lacks incomplete state at resume"))
-                    if incomplete:
-                        continuations.append({"work_label": work_label, "role": roles[index],
-                            "boundary_kind": "same_work_continuation",
-                            "session_revision": capture.git_revision, "resume_revision": resume_revision,
-                            "changed_paths": changed_paths, "dirty_continuation_permitted": True})
-                else:
-                    incomplete = False
-                # Completed starts close before their paired resume. Incomplete starts
-                # defer to the terminal same-Work capture, including a no-write resume.
-                proof_capture = captures[-1] if incomplete else capture
-                proof_revision = (captures[1].git_revision
-                    if index == 0 and len(captures) > 1 and not incomplete else boundary_revision)
-                boundary_kind = ("same_work_continuation"
-                    if index == 0 and len(captures) > 1 and not incomplete else
-                    "distinct_work_transition" if next_label else "final_collection")
-                if proof_revision == capture.git_revision:
-                    raise IntegrityError("project_binding", CampaignError(
-                        f"{kind} Work {work_label} {roles[index]} changes lack a committed boundary "
-                        f"before {'Work ' + next_label if next_label else 'collection'}"))
-                proven_paths = sorted(set(changed_paths) & set(committed_work_paths(
-                    repository, capture.git_revision, proof_revision)))
-                missing_paths = sorted(set(changed_paths) - set(proven_paths))
-                if missing_paths:
-                    raise IntegrityError("project_binding", CampaignError(
-                        f"{kind} Work {work_label} {roles[index]} observed paths absent from "
-                        f"committed boundary tree delta: {missing_paths!r}"))
-                try:
-                    cleanliness = completed_work_cleanliness(proof_capture, proof_revision)
-                except CampaignError as error:
-                    raise IntegrityError("project_binding", CampaignError(
-                        f"{kind} Work {work_label} {roles[index]}: {error}")) from error
-                work_boundaries.append({"work_label": work_label, "role": roles[index],
-                    "changed_paths": changed_paths, "session_revision": capture.git_revision,
-                    "boundary_kind": boundary_kind, "cleanliness": cleanliness,
-                    "proven_committed_paths": proven_paths,
-                    "committed_boundary_revision": proof_revision})
+        # Known revisions must still belong to the pinned repository history.
+        # Their chronological order and intervals are observations, not Work policy.
+        for revision in [*(mapped[slot].capture.git_revision for slot in ordered_slots), final_revision]:
+            if not revision_is_bound(repository, baseline, revision):
+                raise IntegrityError("project_binding", CampaignError(
+                    "observed journey HEAD does not descend from its pinned repository baseline"))
+        sessions = []
+        for index, slot in enumerate(ordered_slots):
+            capture = mapped[slot].capture
+            paths = sorted({path for item in harness.meaningful_work_path_observations(capture)
+                            for path in item.paths})
+            statuses = session_git_state_observations(capture)
+            terminal = next((item for item in reversed(statuses)
+                             if item["terminal_after_observed_activity"]), None)
+            start_status = next((item for item in statuses if item["before_observed_mutations"]), None)
+            checkpoints = capture.successful_calls("checkpoint_record") if hasattr(capture, "successful_calls") else []
+            dirty = harness.checkpoint_pre_existing_dirty_paths(checkpoints[0]) if checkpoints else None
+            next_head = (mapped[ordered_slots[index + 1]].capture.git_revision
+                         if index + 1 < len(ordered_slots) else final_revision)
+            sessions.append({"session_slot_id": session_slot_id(*slot),
+                "work_label": slot[1], "role": slot[2], "session_id": capture.session_id,
+                "source_sha256": capture.source_sha256, "start_head": capture.git_revision,
+                "end_head": terminal["head"] if terminal else None,
+                "pre_mutation_status": start_status, "end_status": terminal,
+                "git_state_observations": statuses, "baseline_dirty_paths": dirty,
+                "changed_paths": paths, "next_observation_head": next_head,
+                "commits_to_next_observation": repository_state.commit_history(repository, capture.git_revision, next_head),
+                "path_correlation_to_next_observation": git_path_correlation(repository, capture.git_revision, next_head, paths),
+                "path_correlation_to_final": git_path_correlation(repository, capture.git_revision, final_revision, paths)})
+        carryover = []
+        for previous, current in zip(sessions, sessions[1:]):
+            dirty = current["baseline_dirty_paths"]
+            carryover.append({"from_session_slot_id": previous["session_slot_id"],
+                "to_session_slot_id": current["session_slot_id"],
+                "state": "observed_baseline" if dirty is not None else "not_observed",
+                "next_baseline_dirty_paths": dirty,
+                "previous_observed_paths_still_dirty": sorted(set(previous["changed_paths"]) & set(dirty)) if dirty is not None else None,
+                "actor_or_hunk_attribution": False})
         evidence[journey_id(kind)] = {
-            "work_commit_boundaries": work_boundaries,
-            "same_work_continuations": continuations,
+            "disposition": "advisory", "work_identity_basis": False,
+            "git_policy_compliance": "post_hoc_task_and_repository_authority_review",
             "baseline_revision": baseline,
-            "ordered_session_revisions": [
-                {
-                    "session_slot_id": session_slot_id(*slot),
-                    "revision": mapped[slot].capture.git_revision,
-                }
-                for slot in ordered_slots
-            ],
-            "final_revision": final_revision,
-            "workspace_clean": attestation["workspace_clean"],
+            "repository_start_state": {"head": baseline, "workspace_clean": True, "basis": "pinned_clean_clone"},
+            "session_git_observations": sessions, "dirty_carryover": carryover,
+            "commits": repository_state.commit_history(repository, baseline, final_revision),
+            "ordered_session_revisions": [{"session_slot_id": session_slot_id(*slot),
+                "revision": mapped[slot].capture.git_revision} for slot in ordered_slots],
+            "final_revision": final_revision, "workspace_clean": attestation["workspace_clean"],
             "repository_state": attestation,
         }
     return evidence
@@ -550,12 +517,18 @@ def verify_final_repository_states(root: Path, manifest: dict[str, Any], *, live
         state = read_json(root / binding["state"])
         patches = {key: (root / binding[key]).read_bytes() for key in ("staged", "unstaged")}
         repository_state.verify_retained(state, patches)
-        if not state["workspace_clean"]:
-            raise CampaignError("journey repository-state evidence is not clean")
         if state != lineage["repository_state"] or state["final_head"] != lineage["final_revision"]:
             raise CampaignError("journey repository-state binding changed")
+        if "git_observations" in binding and read_json(root / binding["git_observations"]) != journey_git_projection(entry["journey_id"], lineage):
+            raise CampaignError("journey Git observation binding changed")
         if live:
             repository_state.verify(Path(manifest["journeys"][entry["journey_id"]]["repository_path"]), state)
+
+
+def journey_git_projection(identity: str, lineage: dict[str, Any]) -> dict[str, Any]:
+    return {"kind": "dogfood_journey_git_observations", "schema_version": 1,
+            "journey_id": identity, "observation": {key: value for key, value in lineage.items()
+                if key not in {"repository_state", "attestation_artifacts"}}}
 
 
 def verify_final_repository_states_for_publication(root: Path) -> None:
@@ -841,17 +814,14 @@ def render_operator_run_sheet(root: Path) -> Path:
         "to the steward. For cross-locale documents the steward runs `prepare-document-realizations`, "
         "has an active host complete and fix the private drafts, and then runs `collect-batch`. "
         "Same-locale evidence uses `collect-batch` directly. No per-chat control-session collection is required.\n\n"
-        "After an agent reports a repository-changing Work complete, keep that thread and ask it "
-        "to make an atomic Conventional Commit containing only that Work's changes. An incomplete "
-        "start may carry dirty changes into its scheduled same-Work resume. Before starting a distinct "
-        "Work, commit the completed Work and check that the worktree is clean. Never include unrelated "
-        "pre-existing changes. In the same chat, after all mutations and other commands, run exactly "
-        f"`{WORK_BOUNDARY_CHECK}` from the repository root and preserve its structured numeric result. "
-        "Its only output must be the committed HEAD followed by a newline. Do this before closing a "
-        "completed start, before crossing to a distinct Work, and for the final repository-changing "
-        "Work before `collect-batch`; an incomplete start defers this check to its same-Work resume. A genuine "
-        "no-change session needs no empty commit. Keep these instructions outside the frozen first "
-        "user turn.\n\n"
+        "Follow the user's task and repository-owned Git policy. Dogfood requires no Work commit "
+        "or clean Work boundary: zero or multiple commits, dirty carryover across distinct Works, "
+        "and later commits containing several Works are collectible. Preserve unrelated changes. "
+        "Git state and history remain factual review evidence and do not create or merge Work identity. "
+        "An optional structured status/HEAD observation can use "
+        f"`{GIT_STATE_CHECK}`; it is not required and dirty output is valid evidence. "
+        "Commit-policy compliance is assessed against the actual task and repository authority in "
+        "post-hoc review; the harness does not infer a commit obligation.\n\n"
         "Naturalistic MCP memory is currently unmeasured: Codex launches the configured "
         "candidate MCP directly outside the campaign helper's process tree, and this integration has "
         "no candidate-bound PID/lifecycle observer. Harness-tree RSS remains technical-gate evidence "
@@ -2257,7 +2227,7 @@ def map_batch_rollouts(
     missing = sorted(set(slots) - set(mapped))
     if missing:
         raise CampaignError("batch rollouts are missing one or more frozen task roles")
-    verify_journey_revision_chronology(campaign, mapped)
+    collect_journey_git_evidence(campaign, mapped)
     return mapped
 
 
@@ -2594,7 +2564,7 @@ def normalize_batch(
         campaign["journeys"][identity]["project_id"] = project_id
     save_campaign(root, campaign)
 
-    revision_evidence = verify_journey_revision_chronology(campaign, mapped)
+    revision_evidence = collect_journey_git_evidence(campaign, mapped)
     for identity, lineage in revision_evidence.items():
         repository = Path(campaign["journeys"][identity]["repository_path"])
         observed, patches = repository_state.observe(repository)
@@ -2603,8 +2573,10 @@ def normalize_batch(
         directory = root / "journeys" / identity / "evidence"
         bindings = {"state": relative(root, directory / "repository-state.json"),
                     "staged": relative(root, directory / "staged.patch"),
-                    "unstaged": relative(root, directory / "unstaged.patch")}
+                    "unstaged": relative(root, directory / "unstaged.patch"),
+                    "git_observations": relative(root, directory / "git-observations.json")}
         write_json(root / bindings["state"], observed)
+        write_json(root / bindings["git_observations"], journey_git_projection(identity, lineage))
         for key, data in patches.items():
             (root / bindings[key]).write_bytes(data)
         for name in bindings.values():
@@ -2942,6 +2914,7 @@ def evaluate_journeys(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                 "runtime_identities": runtime_ids,
             }),
         }}
+        observation["git_evidence"] = final_evidence[identity].get("repository_revision_lineage")
         result.append({"journey_id": identity, "repository_class": kind,
             "work_slot_ids": slots, "resume_work_slot_id": work_key(kind, "A"),
             "observation": observation,

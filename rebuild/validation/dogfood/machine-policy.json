@@ -1,5 +1,5 @@
 {
-  "revision": 4,
+  "revision": 5,
   "rules": {
     "activation_identity": {
       "authority": "hard_blocking",
@@ -470,6 +470,13 @@
       "uncertainty": "hard_blocking",
       "owner": "projections-and-documents.md/provenance",
       "rationale": "Candidate, Project and cycle identity and nested file hashes in document/Viewer summaries are deterministic facts independent of quality or usability.",
+      "review_groups": []
+    },
+    "git_history_observation": {
+      "authority": "advisory",
+      "uncertainty": "advisory",
+      "owner": "validation-plan.md/repository Git evidence",
+      "rationale": "Git state, commits and path correlation are factual observations independent of Work identity; task/repository Git-policy compliance requires actual authority and post-hoc review.",
       "review_groups": []
     }
   },

@@ -13,7 +13,7 @@ Home while retaining three Work identities. Small-Python and Polyglot each
 have their own Project, workspace and Runtime Home.
 
 The operator explicitly controls repository and SessionStart-hook trust,
-runs eight distinct fresh VS Code Codex sessions with the frozen task bytes,
+runs eight distinct fresh Codex CLI or VS Code extension sessions with the frozen task bytes,
 and preserves their raw rollouts. `activate-all` requires complete frozen
 preparation. `collect-batch` verifies candidate, task, repository/revision,
 session, Project/Work, resume and raw hash integrity, then publishes one

@@ -145,20 +145,23 @@ FIXTURE_REPOSITORY_REVISIONS: dict[Path, str] = {}
 FIXTURE_COMMIT_LINES: dict[Path, tuple[str, ...]] = {}
 REAL_OBSERVE = repository_state.observe
 REAL_REVISION_IS_BOUND = campaign.revision_is_bound
-REAL_COMMITTED_WORK_PATHS = campaign.committed_work_paths
+REAL_COMMITTED_WORK_PATHS = campaign.committed_delta_paths
+REAL_COMMIT_HISTORY = repository_state.commit_history
 
 
 def fixture_revision_is_bound(repository, baseline, observed):
     line = FIXTURE_COMMIT_LINES.get(repository.resolve())
-    if line is None:
+    if line is None or (repository / ".git").exists():
         return REAL_REVISION_IS_BOUND(repository, baseline, observed)
+    if observed is None:
+        return True
     return baseline in line and observed in line and line.index(baseline) <= line.index(observed)
 
 
 campaign.revision_is_bound = fixture_revision_is_bound
 
 
-def fixture_committed_work_paths(repository, base, boundary):
+def fixture_committed_delta_paths(repository, base, boundary):
     if repository.resolve() not in FIXTURE_COMMIT_LINES or (repository / ".git").exists():
         return REAL_COMMITTED_WORK_PATHS(repository, base, boundary)
     # Explicit counterpart to the non-Git cloner's synthetic revision line.
@@ -167,7 +170,24 @@ def fixture_committed_work_paths(repository, base, boundary):
         "backend/src/existing.rs", "frontend/src/existing.ts"] if base != boundary else []
 
 
-campaign.committed_work_paths = fixture_committed_work_paths
+campaign.committed_delta_paths = fixture_committed_delta_paths
+
+
+def fixture_commit_history(repository, base, end):
+    line = FIXTURE_COMMIT_LINES.get(repository.resolve())
+    if line is None or (repository / ".git").exists():
+        return REAL_COMMIT_HISTORY(repository, base, end)
+    if base is None or end is None:
+        return {"state": "not_computable", "base": base, "end": end, "commits": []}
+    commits = [{"revision": revision, "parents": [line[index - 1]],
+                "paths": fixture_committed_delta_paths(repository, line[index - 1], revision)}
+               for index, revision in enumerate(line)
+               if line.index(base) < index <= line.index(end)]
+    return {"state": "computed", "base": base, "end": end, "commits": commits}
+
+
+repository_state.commit_history = fixture_commit_history
+
 
 
 def append_boundary_check(path, revision):
@@ -177,7 +197,7 @@ def append_boundary_check(path, revision):
     assert terminal["payload"]["type"] == "task_complete"
     turn = terminal["payload"]["turn_id"]
     call_id = f"boundary-{path.stem}"
-    arguments = {"cmd": campaign.WORK_BOUNDARY_CHECK,
+    arguments = {"cmd": campaign.GIT_STATE_CHECK,
         "workdir": events[0]["payload"]["cwd"]}
     metadata = {"turn_id": turn}
     # Model the actual operator follow-up, including commit housekeeping after
@@ -584,11 +604,11 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
     assert (root / "operator/RUN-SHEET.md").read_text().count("### Session `") == 8
     run_sheet = root / "operator/RUN-SHEET.md"
     guidance = run_sheet.read_text()
-    assert "atomic Conventional Commit" in guidance
-    assert "incomplete start may carry dirty changes into its scheduled same-Work resume" in guidance
-    assert "no-change session needs no empty commit" in guidance
-    assert campaign.WORK_BOUNDARY_CHECK in guidance
-    assert "Never include unrelated pre-existing changes" in guidance
+    assert "repository-owned Git policy" in guidance
+    assert "dirty carryover across distinct Works" in guidance
+    assert "harness does not infer a commit obligation" in guidance
+    assert campaign.GIT_STATE_CHECK in guidance
+    assert "Dogfood requires no Work commit" in guidance
     original_run_sheet = run_sheet.read_bytes()
     run_sheet.write_bytes(original_run_sheet + b"\nEVALUATOR_ONLY\n")
     try:
@@ -784,6 +804,9 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
     campaign.load_evidence_set(root)
     evaluation = campaign.evaluate_campaign(root, parent / "current-evaluation")
     assert evaluation["qualification_state"] == "not_run"
+    evaluated = campaign.read_json(root / evaluation["evaluation"])
+    assert all(work["observation"]["machine_facts"]["measured_session_provenance"]["status"]
+               == "confirmed_pass" for work in evaluated["works"])
 
 
 def assert_checkpoint_free_completed_resume_collects(parent: Path, binary: Path) -> None:
@@ -834,12 +857,12 @@ def assert_checkpoint_free_completed_resume_collects(parent: Path, binary: Path)
     assert work["work_item_id"] == hashlib.sha256(b"work:volicord:A").hexdigest()[:32]
     lineage = next(entry["repository_revision_lineage"]
         for entry in summary["journey_final_evidence"] if entry["journey_id"] == "journey-volicord")
-    proof = next(entry for entry in lineage["work_commit_boundaries"] if entry["work_label"] == "A")
-    assert proof["boundary_kind"] == "same_work_continuation"
-    assert proof["committed_boundary_revision"] == committed
-    assert proof["proven_committed_paths"] == ["src/existing.rs", "tests/existing.rs"]
-    assert proof["cleanliness"]["source_sha256"] == campaign.load_codex_capture(start).source_sha256
-    assert proof["cleanliness"]["session_id"] != no_write.session_id
+    observation = next(entry for entry in lineage["session_git_observations"]
+                       if entry["work_label"] == "A" and entry["role"] == "start")
+    assert observation["next_observation_head"] == committed
+    assert observation["path_correlation_to_next_observation"]["correlated_paths"] == ["src/existing.rs", "tests/existing.rs"]
+    assert observation["end_status"]["source_sha256"] == campaign.load_codex_capture(start).source_sha256
+    assert observation["end_status"]["session_id"] != no_write.session_id
 
 
 def main() -> int:
@@ -847,10 +870,12 @@ def main() -> int:
     from document_realization_self_test import check_document_realization_regressions
     from long_lived_project_self_test import check_long_lived_project_regressions
     from repository_state_self_test import check_repository_state_regressions
+    from evidence_controls_self_test import check_evidence_control_regressions
     check_resume_regressions()
     check_long_lived_project_regressions()
     check_document_realization_regressions()
     check_repository_state_regressions()
+    check_evidence_control_regressions()
     original_clean = harness.git_clean
     harness.git_clean = lambda _path: True
     try:

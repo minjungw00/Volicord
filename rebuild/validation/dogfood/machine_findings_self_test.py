@@ -13,6 +13,16 @@ import machine_findings as m
 
 
 class MachineFindingTests(unittest.TestCase):
+    def test_git_history_never_invents_admission_or_task_commit_policy(self):
+        for status in m.Status:
+            finding = m.finding("git_history_observation", status,
+                {"commits": [], "workspace_clean": False,
+                 "git_policy_compliance": "post_hoc_task_and_repository_authority_review"})
+            self.assertEqual(finding["disposition"], m.Disposition.ADVISORY)
+            self.assertEqual(m.evaluation_state([finding]), "observations_complete")
+        for rule in ("raw_hash", "project_binding", "candidate_binding", "session_mapping"):
+            self.assertEqual(m.disposition(rule, m.Status.VIOLATION), m.Disposition.HARD)
+
     def test_status_and_disposition_are_independent(self):
         for status in m.Status:
             value = m.finding("meaningful_recalled_continuation", status, {"sequence": 42})

@@ -1955,8 +1955,15 @@ def load_codex_capture(path: Path) -> CodexCapture:
         or not nonempty(thread_source)
     ):
         raise EvidenceError("Codex session metadata is missing or malformed")
-    git = meta.get("git") if isinstance(meta.get("git"), dict) else {}
-    git_revision = git.get("commit_hash") if nonempty(git.get("commit_hash")) else None
+    git = meta.get("git")
+    if git is None:
+        git = {}
+    if not isinstance(git, dict):
+        raise EvidenceError("Codex Git metadata is malformed")
+    git_revision = git.get("commit_hash")
+    if git_revision is not None and (not isinstance(git_revision, str)
+            or re.fullmatch(r"[0-9a-f]{40}", git_revision) is None):
+        raise EvidenceError("Codex Git revision metadata is malformed")
 
     turn_lifecycle = normalize_turn_lifecycle(events)
     # Recognize the maintained Codex rollout schema, not a filename or UI label.

@@ -45,8 +45,11 @@ def main() -> int:
             "evaluate", "prepare-qualitative-review", "qualify",
             "approve-phase-9"} <= commands:
         raise AssertionError("current campaign CLI exposes a superseded semantic gate")
-    if definition["repository_state_attestation_contract"]["cleanliness_command"] != campaign.WORK_BOUNDARY_CHECK:
-        raise AssertionError("operator cleanliness command differs from the executing boundary proof")
+    git_contract = definition["repository_state_attestation_contract"]
+    if (git_contract["dirty_state_blocks_collection"] or git_contract["work_commit_required"]
+            or git_contract["git_defines_work_identity"]
+            or git_contract["optional_status_command"] != campaign.GIT_STATE_CHECK):
+        raise AssertionError("Dogfood invented Git workflow admission or Work identity")
     prepare = campaign.parser()._subparsers._group_actions[0].choices["prepare"]
     if not any("--tasks" in action.option_strings and action.required
             for action in prepare._actions):
@@ -62,6 +65,9 @@ def main() -> int:
     machine_findings.validate_policy()
     if machine_findings.disposition("raw_hash", "confirmed_violation") != machine_findings.Disposition.HARD:
         raise AssertionError("raw hash tampering lost hard authority")
+    for status in machine_findings.Status:
+        if machine_findings.disposition("git_history_observation", status) != machine_findings.Disposition.ADVISORY:
+            raise AssertionError("Git observation became a machine admission requirement")
     if machine_findings.disposition("learning_deliberation_order", "confirmed_violation") == machine_findings.Disposition.HARD:
         raise AssertionError("semantic Learning observation became a hard machine gate")
     if review_operations.workflow_contract()["qualification_authority"] is not False:

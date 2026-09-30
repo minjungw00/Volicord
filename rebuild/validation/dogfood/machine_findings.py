@@ -24,6 +24,7 @@ POLICY = json.loads(Path(__file__).with_name("machine-policy.json").read_text())
 POLICY_VERSION = POLICY["revision"]
 FACT_RULES = frozenset({"recorded_decision_integrity", "measured_project_identity",
     "measured_session_provenance", "required_validation_execution", "procedure_invocation_counts", "projection_evidence_identity"})
+GIT_RULES = frozenset({"git_history_observation"})
 # Integrity uncertainty cannot admit evidence either. Review cannot waive it.
 INTEGRITY_RULES = frozenset({
     "candidate_binding", "campaign_inventory", "session_mapping", "activation_identity",
@@ -146,6 +147,12 @@ def from_journey_observation(observation):
         if not isinstance(item, dict) or set(item) != {"status", "basis"}:
             raise ValueError("journey observation omitted structural continuity evidence")
         findings.append(finding(rule, item["status"], item["basis"]))
+    git_evidence = observation.get("git_evidence")
+    findings.append(finding("git_history_observation",
+        Status.PASS if git_evidence else Status.NOT_OBSERVED,
+        {"git_evidence": git_evidence,
+         "work_identity_basis": False,
+         "git_policy_compliance": "post_hoc_task_and_repository_authority_review"}))
     return findings
 
 
@@ -231,7 +238,7 @@ def review_groups(rule):
 
 
 def validate_policy():
-    if set(POLICY["rules"]) != INTEGRITY_RULES | BEHAVIOR_RULES | FACT_RULES:
+    if set(POLICY["rules"]) != INTEGRITY_RULES | BEHAVIOR_RULES | FACT_RULES | GIT_RULES:
         raise ValueError("finite policy coverage changed")
     for value in POLICY["rules"].values():
         if (set(value) != {"authority", "uncertainty", "owner", "rationale", "review_groups"}

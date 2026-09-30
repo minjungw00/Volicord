@@ -203,14 +203,11 @@ Qualification never grants Phase 9 readiness. Only explicit
 verification preserve the exact evidence and decision chain.
 <!-- phase8-active-operations:end -->
 
-Completed Work Git boundaries require exact observed-path coverage in the committed
-net tree delta and a terminal structured clean-status/HEAD check from that same chat.
-Follow the generated run sheet's exact command after the Work-only atomic commit,
-before another distinct Work or collection; exclude unrelated pre-existing changes.
-An incomplete start may continue dirty into its same-Work resume. No-change sessions
-need no empty commit. The check and its boundary HEAD, raw hash and execution sequence
-are retained alongside proven paths; fully reverted paths conservatively fail.
-The executing proof and evidence limits are owned by `validation-plan.md`.
+Naturalistic target Git state is factual review evidence. Dogfood requires no Work
+commit, clean distinct-Work boundary or clean final target. Zero/multiple commits,
+dirty cross-Work state and later combined commits remain collectible. The run sheet
+follows task/repository-owned Git policy; compliance is assessed in post-hoc review.
+Canonical Work identity remains independent of commits, paths and HEAD intervals.
 
 ## Historical Phase 8 result record
 
@@ -472,15 +469,24 @@ creating another approval. The original qualification input references must rema
 available for this independent check.
 
 Naturalistic target journey collection observes Git state without changing it.
-The pinned baseline and chronological descendant session HEADs remain required. An incomplete
-Work start may carry dirty state into its paired resume; captured changes require a committed
-boundary before a distinct Work starts, and every journey must finish clean and committed. A
-no-change continuation needs no empty commit. Journey-final evidence retains repository-state.json,
+The pinned baseline and known session/final HEADs remain repository-history-bound.
+Missing raw Git metadata remains unknown. Session chronology, optional structured
+status/HEAD, canonical-baseline dirty paths, observed changes, commits and net path
+correlation are retained as advisory facts. Dirty target state and absent commits
+never block collection or create/merge Work identity. Task/repository-owned Git policy
+remains reviewable; no machine commit obligation is invented without maintained
+deterministic requirement evidence. Journey-final evidence retains repository-state.json,
 staged.patch and unstaged.patch with deterministic content/mode hashes and an overall fingerprint;
 ignored files are outside this Git observation boundary. Publication
 rechecks the final target state and rolls back on change. Historical inspection verifies retained
 bytes without requiring the original workspace. This does not establish actor attribution or
 verification success. The Product candidate workspace remains strictly clean and exact-HEAD-bound.
+
+Journey-final `git-observations.json` is inventory/hash-bound and selected as a
+`repository_state` reviewer surface even without a machine evaluation or raw-rollout
+selection. It exposes the retained Git facts and limitations without patch/source
+bodies. Its content must agree with the evidence-set observation at publication and
+historical verification. The original Git workspace is not needed for later review.
 
 Current preparation freezes the five Work mappings and eight task files.
 Machine evaluation retains raw observations; post-hoc reviewers assess actual

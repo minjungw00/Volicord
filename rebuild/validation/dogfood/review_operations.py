@@ -298,6 +298,10 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
         state_binding = final["repository_revision_lineage"]["attestation_artifacts"]["state"]
         source(journey_sample_id + "-repository-state", state_binding, "repository_state",
             journey_sample_id, sample_ids=[journey_sample_id, *work_sample_ids])
+        git_binding = final["repository_revision_lineage"]["attestation_artifacts"].get("git_observations")
+        if git_binding:
+            source(journey_sample_id + "-git-observations", git_binding, "repository_state",
+                journey_sample_id, sample_ids=[journey_sample_id, *work_sample_ids])
         projection_slot = final["projection_source_work_slot_id"]
         projection_state = manifest["works"][projection_slot]
         projection_prefix = f"slots/{projection_state['work_slot_id']}"
