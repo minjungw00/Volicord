@@ -32,6 +32,46 @@ def evaluation():
         "coverage": copy.deepcopy(policy.TOPOLOGY)}
 
 
+def rehash_lineage_qualification(root, value):
+    """Coherent internal rewrite: semantic controls must get past every hash."""
+    import result_lineage
+    ops = policy.operations
+    value["run_id"] = m.digest({k: v for k, v in value.items() if k != "run_id"})
+    policy.validate_result(value)
+    data = ops.encoded(value)
+    path = root / "qualification/qualification.json"
+    path.chmod(0o600)
+    path.write_bytes(data)
+    index = json.loads((root / "index.json").read_bytes())
+    index["qualification"].update(run_id=value["run_id"], sha256=ops.digest(data),
+        replacement_qualification=value["replacement_qualification"], phase_9_ready=value["phase_9_ready"])
+    index["lineage_id"] = m.digest({k: v for k, v in index.items() if k != "lineage_id"})
+    index_data = ops.encoded(index)
+    receipt = json.loads((root / "receipt.json").read_bytes())
+    receipt.update(lineage_id=index["lineage_id"], index_sha256=ops.digest(index_data))
+    receipt["artifacts"] = {name: result_lineage._binding((root / name).read_bytes())
+        for name in receipt["artifacts"]}
+    for name, content in (("index.json", index_data), ("receipt.json", ops.encoded(receipt))):
+        (root / name).chmod(0o600)
+        (root / name).write_bytes(content)
+
+
+def promote_lineage_qualification(value, evaluation):
+    """Structurally consistent success claim with no supporting review changes."""
+    qualitative = value["qualitative_review"]
+    qualitative["resolved_criteria"] = sorted(set(qualitative["resolved_criteria"]
+        + qualitative["unresolved_criteria"] + qualitative["violated_criteria"]))
+    for field in ("unresolved_criteria", "violated_criteria", "human_escalations"):
+        qualitative[field] = []
+    qualitative["state"] = "complete"
+    value["machine_summary"]["hard_findings"] = []
+    value["technical_gate"] = {"state": "passed", "candidate_head": value["candidate_head"]}
+    value.update(evidence_validity="valid", replacement_qualification="qualified",
+        replacement_pass_candidate=True)
+    value["naturalistic_evidence"] = policy.naturalistic_summary(value, evaluation,
+        value["naturalistic_evidence"]["naturalistic_resource"])
+
+
 class DefinitionDependencyTests(unittest.TestCase):
     def test_definition_is_independent_of_v11_leaf_names_and_count(self):
         for leaves in (('new_v11_only_leaf',), ('renamed_technical_leaf', 'another_new_leaf')):
@@ -690,12 +730,42 @@ class FileBoundaryTests(unittest.TestCase):
             verified = result_lineage.verify(copied)
         self.assertEqual(verified['qualification_run_id'], value['run_id'])
         self.assertFalse(verified['external_staging_paths_used'])
+        # Physically hide the whole original campaign/staging tree, not just
+        # its campaign API, while independently verifying a detached copy.
+        with tempfile.TemporaryDirectory() as directory:
+            detached = Path(directory) / 'lineage'
+            shutil.copytree(lineage_root, detached)
+            hidden = self.parent.with_name(self.parent.name + '-unavailable')
+            self.parent.rename(hidden)
+            try:
+                self.assertEqual(result_lineage.verify(detached)['qualification_run_id'], value['run_id'])
+            finally:
+                hidden.rename(self.parent)
         lineage_qualification = json.loads(
             (copied / 'qualification/qualification.json').read_bytes())
         lineage_evidence = json.loads((copied / 'source/evidence-set.json').read_bytes())
         self.assertEqual(
             lineage_qualification['naturalistic_evidence']['naturalistic_resource'],
             lineage_evidence['naturalistic_memory_evidence'])
+        # Change only a derived criterion, then also try a complete success claim.
+        # Neither control changes the immutable recorded insufficient review.
+        for promoted in (False, True):
+            with self.subTest(promoted=promoted):
+                tampered = self.parent / f'semantic-tamper-{promoted}'
+                shutil.copytree(lineage_root, tampered)
+                changed = copy.deepcopy(lineage_qualification)
+                if promoted:
+                    promote_lineage_qualification(changed, json.loads(self.evaluation.read_bytes()))
+                else:
+                    cid = policy.MULTI_WORK_CRITERION
+                    changed['qualitative_review']['unresolved_criteria'].remove(cid)
+                    changed['qualitative_review']['human_escalations'].remove(cid)
+                    changed['qualitative_review']['resolved_criteria'].append(cid)
+                    changed['qualitative_review']['resolved_criteria'].sort()
+                    changed['naturalistic_evidence']['multi_work_viewer_comprehension']['state'] = 'satisfied'
+                rehash_lineage_qualification(tampered, changed)
+                with self.assertRaisesRegex(ValueError, 'contradicts evaluation and recorded reviews'):
+                    result_lineage.verify(tampered)
         evaluation_copy = copied / 'evaluation/evaluation.json'
         evaluation_copy.chmod(0o600)
         evaluation_copy.write_bytes(evaluation_copy.read_bytes() + b' ')
@@ -709,6 +779,31 @@ class FileBoundaryTests(unittest.TestCase):
         (output / 'qualification.json').write_bytes(ops.encoded(changed))
         with self.assertRaises(ValueError):
             policy.verify_qualification(output / 'qualification.json')
+
+    def test_no_review_lineage_replays_all_required_gaps_without_source_access(self):
+        import campaign
+        import result_lineage
+        import review_operations as ops
+        output = self.parent / 'no-review-qualification'
+        value = policy.qualify(self.root, self.evaluation, output,
+            candidate=campaign.load_campaign(self.root)['candidate_head'])
+        self.assertEqual(value['qualitative_review_runs'], [])
+        self.assertTrue(value['qualitative_review']['unresolved_criteria'])
+        self.assertFalse(value['replacement_pass_candidate'])
+        published = result_lineage.publish(self.root, self.evaluation, [], output / 'qualification.json')
+        copied = self.parent / 'copied-no-review-lineage'
+        shutil.copytree(published['lineage_root'], copied)
+        with patch.object(campaign, 'load_evidence_set', side_effect=AssertionError('original campaign access')), \
+                patch.object(policy, 'qualify', side_effect=AssertionError('original qualification input access')), \
+                patch.object(ops, 'select_evidence', side_effect=AssertionError('campaign selection access')):
+            verified = result_lineage.verify(copied)
+            self.assertEqual(verified['review_run_ids'], [])
+            self.assertFalse(verified['external_staging_paths_used'])
+            changed = copy.deepcopy(value)
+            promote_lineage_qualification(changed, json.loads(self.evaluation.read_bytes()))
+            rehash_lineage_qualification(copied, changed)
+            with self.assertRaisesRegex(ValueError, 'contradicts evaluation and recorded reviews'):
+                result_lineage.verify(copied)
 
     def test_agent_cannot_supply_human_observation(self):
         import review_operations as ops

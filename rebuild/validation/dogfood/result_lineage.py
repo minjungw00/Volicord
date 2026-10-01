@@ -27,6 +27,27 @@ def _relative_files(root, names):
     return result
 
 
+def _evaluation_specs(evaluation):
+    """Reconstruct current naturalistic scope without campaign/source access.
+
+    Naturalistic selection has no preassigned authority obligations; reviewers
+    declare additional actual outcomes in their recorded reviews. All other
+    criterion-generating fields are already preserved in the machine run.
+    """
+    import harness
+    qualification_policy.validate_topology(evaluation)
+    index = {
+        "samples": [{"sample_id": work["work_slot_id"],
+            "resume_pair": work["resume_pair"], "workload_intent": work["workload_intent"],
+            "authority_obligations": []} for work in evaluation["works"]],
+        "journey_samples": [{"sample_id": journey["journey_id"]}
+            for journey in evaluation["journeys"]],
+        "cli_samples": [{"sample_id": kind} for kind in harness.CLASSES],
+        "live_viewer_sample": "journey-volicord",
+    }
+    return review.criterion_specs(index, review.rubric(harness.load_definition()))
+
+
 def publish(campaign_root, evaluation_path, review_roots, qualification_path,
             output=None, approval_path=None):
     """Copy exact immutable results into a discoverable sibling package."""
@@ -179,13 +200,36 @@ def verify(root):
         "path": "evaluation/evaluation.json", "sha256": operations.digest(operations.bounded_read(evaluation_path)),
         "receipt_path": "evaluation/receipt.json", "evaluator_revision": evaluation["evaluator_revision"],
         "policy": evaluation["policy"]}, "result lineage evaluation binding changed")
+    review.require(evaluation["candidate_head"] == index["candidate_head"]
+        and evaluation["evidence_set"] == {"path": "evidence-set.json",
+            "sha256": index["campaign"]["evidence_set_sha256"]}
+        and evidence_set.get("campaign_id") == index["campaign"]["campaign_id"],
+        "result lineage evaluation candidate/evidence changed")
 
-    review_refs = []
+    specs = _evaluation_specs(evaluation)
+    review_refs, review_values = [], []
     for item in index["qualitative_reviews"]:
         review_root = operations.safe_path(root, item["root"] + "/package.json").parent
         preparation, sha, package = operations.load_package(review_root)
         recorded = operations.recorded_files(review_root, preparation, sha)
+        review.require(recorded, "result lineage requires recorded review evidence")
         value = json.loads(recorded["recorded/review.json"])
+        binding = value["binding"]
+        review.require(binding["candidate_head"] == index["candidate_head"]
+            and binding["evidence_set"] == {"sha256": index["campaign"]["evidence_set_sha256"]},
+            "result lineage review candidate/evidence changed")
+        if binding["machine_evaluation"] is not None:
+            review.require(binding["machine_evaluation"] == {
+                "run_id": evaluation["run_id"], "sha256": index["evaluation"]["sha256"],
+                "recorded_policy": evaluation["policy"],
+                "policy_verification": "recorded_identity_not_current_equivalence"},
+                "result lineage review binds a different machine run")
+        review.require(operations.encoded(sorted(
+            review.criterion_specs(preparation["index"], preparation["rubric"]),
+            key=lambda spec: spec["criterion_id"])) == operations.encoded(sorted(
+                specs, key=lambda spec: spec["criterion_id"])),
+            "result lineage review criterion coverage differs from evaluation")
+        review_values.append(value)
         expected = {"run_id": value["reviewer"]["run_id"], "kind": value["reviewer"]["kind"],
             "review_sha256": operations.digest(recorded["recorded/review.json"]),
             "preparation_sha256": sha}
@@ -194,6 +238,11 @@ def verify(root):
             "review_path": item["root"] + "/recorded/review.json",
             "receipt_path": item["root"] + "/recorded/receipt.json",
             "package_id": package["package_id"]}, "result lineage review binding changed")
+    consumed_ids = {item["run_id"] for item in review_refs}
+    review.require(len(consumed_ids) == len(review_refs), "duplicate result lineage review run")
+    for value in review_values:
+        review.require(all(set(ids) <= consumed_ids for ids in value["resolves_review_runs"].values()),
+            "result lineage human resolution references an unconsumed review run")
 
     qualification_path = operations.safe_path(root, index["qualification"]["path"])
     qualification_data = operations.bounded_read(qualification_path)
@@ -216,6 +265,15 @@ def verify(root):
         "phase_9_ready": qualification["phase_9_ready"]}
     review.require(index["qualification"] == expected_qualification,
         "result lineage qualification binding changed")
+    # Replay the derived semantics, retaining the separately verified technical
+    # summary as input. This checks internal agreement, not review truth or
+    # external authentication, and never exercises operator authorization.
+    replayed = qualification_policy.combine(evaluation, specs, review_values,
+        qualification["technical_gate"], evidence_validity=qualification["evidence_validity"],
+        naturalistic_resource=evidence_set.get("naturalistic_memory_evidence"))
+    review.require(operations.encoded(replayed) == operations.encoded({
+        key: qualification[key] for key in replayed}),
+        "result lineage qualification contradicts evaluation and recorded reviews")
 
     approval = index["approval"]
     if approval is not None:

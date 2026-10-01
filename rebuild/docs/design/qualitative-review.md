@@ -532,6 +532,18 @@ byte. Verification uses only that copied package, so `/tmp` and arbitrary origin
 are neither serialized dependencies nor required for discovery. Publishing a later result creates
 a new lineage directory and never rewrites or relabels historical evidence.
 
+Verification also replays `qualification_policy.combine()` from the packaged evaluation and
+recorded reviews and compares every derived aggregate field with the preserved qualification.
+Required scope is reconstructed through the common `criterion_specs()` from the evaluation's
+Work identities, resume flags, workload intents and journey identities; current naturalistic
+scope has no preassigned authority obligations. Recorded review preparations must contain that
+same scope. Reviewer-declared additional outcomes and targeted human resolutions remain inputs
+to the existing policy. A no-review package replays with an empty review set and retains every
+required gap; missing or incompatible replay inputs fail closed, including for success claims.
+No additional artifact, external staging dependency or alternate schema reader is introduced.
+The preserved technical summary remains a separate input; this replay establishes internal
+consistency, not review truth, external authentication or new operator approval.
+
 A valid `not_applicable` assessment for Decision comprehension when no user Decision is
 in scope may be established by an agent from the permitted evidence; it does not require
 a human to experience a nonexistent Decision. Applicable comprehension remains human-only.

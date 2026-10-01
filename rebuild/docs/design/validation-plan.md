@@ -1668,7 +1668,11 @@ instead. `index.json` and its receipt bind the exact Product candidate, `evidenc
 evaluation run/evaluator revision/policy, every recorded qualitative review, qualification run and
 optional approval. The package copies the immutable artifacts with relative paths and excludes the
 qualification input file's absolute staging paths. `verify-result-lineage` performs independent
-hash/identity/policy/receipt verification using only copied contents. Therefore `/tmp` is allowed
+hash/identity/policy/receipt verification and replays the qualification aggregate from packaged
+evaluation and recorded reviews using only copied contents. The same common criterion scope
+also preserves unresolved required gaps when no review was recorded; insufficient replay input
+cannot support success. This checks semantic agreement, not external authentication or operator
+authorization. Therefore `/tmp` is allowed
 for transient preparation but is never the sole authoritative discovery path. A later evaluation,
 review, qualification or approval publishes a new lineage; it cannot mutate Campaign evidence or
 claim that a later run belonged to the original candidate execution.
