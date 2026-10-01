@@ -264,6 +264,14 @@ System/developer/skill/plugin instructions, reasoning, environment bodies, arbit
 repository source, command stdout/stderr and generic tool/MCP payloads are excluded.
 No repository name, credential spelling or test-token convention is allowlisted.
 
+Current `item_completed.AgentMessage` content uses `Text` parts with string `text`
+bodies. Projection preserves these bodies and checks agreement with duplicate
+`response_item` messages; unsupported content still fails closed.
+Host-owned daemon recovery context is excluded only with its exact
+`daemon_recovery.internal_context` content-kind metadata, known turn identity and
+`codex_internal_context` / `daemon_recovery` wrapper. It is not an actual user turn;
+unbound user prose or ambiguous recovery transports still fail closed.
+
 Text proposed for retention passes the unchanged review-plane sensitive-payload policy.
 An unsafe body is wholly omitted with `body.state = omitted`, reason `sensitive_payload`,
 source body bytes/SHA-256 and immutable coordinates, without retaining its value. A body

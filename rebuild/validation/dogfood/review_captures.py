@@ -40,6 +40,18 @@ def body_projection(value):
             "value": None if reason else value}
 
 
+def daemon_recovery_context(payload, segments, capture):
+    """Exclude only the current host-owned recovery transport, never user turns."""
+    metadata = payload.get("internal_chat_message_metadata_passthrough")
+    return (isinstance(metadata, dict)
+        and metadata.get("content_item_kinds") == ["daemon_recovery.internal_context"]
+        and metadata.get("turn_id") in {turn.turn_id for turn in capture.turn_lifecycle.turns}
+        and len(segments) == 1
+        and plane().re.fullmatch(
+            r'<codex_internal_context source="daemon_recovery">\n.+\n</codex_internal_context>',
+            segments[0], plane().re.DOTALL) is not None)
+
+
 def agent_records(events, capture):
     """Recognize current item and response transports; reject conflicting copies.
 
@@ -64,7 +76,7 @@ def agent_records(events, capture):
             identity, phase = item.get("id"), item.get("phase")
             content = item.get("content")
             if not isinstance(content, list) or len(content) > codex.MAX_USER_MESSAGE_CONTENT_ITEMS or any(
-                not isinstance(part, dict) or part.get("type") != "text" or not isinstance(part.get("text"), str)
+                not isinstance(part, dict) or part.get("type") != "Text" or not isinstance(part.get("text"), str)
                 for part in content):
                 raise ValueError("unsupported review agent message content")
             text = "".join(part["text"] for part in content)
@@ -139,7 +151,9 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
         p = event["payload"]
         if event["type"] == "response_item" and p.get("type") == "message" and p.get("role") == "user":
             segments = codex.message_text_segments(p)
-            if segments is None or ("".join(segments) not in user_texts and not codex.host_setup_message(segments)):
+            if segments is None or ("".join(segments) not in user_texts
+                    and not codex.host_setup_message(segments)
+                    and not daemon_recovery_context(p, segments, capture)):
                 raise ValueError("unsupported unnormalized review user interaction")
         if event["type"] == "event_msg" and p.get("type") == "user_message" and not any(
             t.text == p.get("message") and t.user_turn_id == p.get("client_id") for t in capture.user_turns):

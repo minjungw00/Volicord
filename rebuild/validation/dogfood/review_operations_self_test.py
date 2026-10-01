@@ -174,7 +174,7 @@ def synthetic_rollout(user="Please inspect the integration boundary.", agent="I 
         {"type": "event_msg", "payload": {"type": "user_message", "message": user, "client_id": "fixture-client"}},
         {"type": "event_msg", "payload": {"type": "item_completed", "thread_id": "fixture-session",
             "turn_id": "fixture-turn", "item": {"type": "AgentMessage", "id": "fixture-agent",
-            "phase": "final_answer", "content": [{"type": "text", "text": agent}]}}},
+            "phase": "final_answer", "content": [{"type": "Text", "text": agent}]}}},
         {"type": "response_item", "payload": {"type": "message", "role": "assistant",
             "id": "fixture-agent", "phase": "final_answer", "content": [{"type": "output_text", "text": agent}],
             "internal_chat_message_metadata_passthrough": {"turn_id": "fixture-turn"}}},
@@ -213,6 +213,39 @@ class ProjectionTests(unittest.TestCase):
                 self.assertIn({"text": "I inspected the boundary and validation passed.", "questions": None}, texts)
                 agent = next(r for r in value["records"] if r["semantic_role"] == "agent_message")
                 self.assertEqual(agent["source_sequences"], [3, 4])
+
+    def test_current_agent_text_transport_rejects_unsupported_content(self):
+        for content in ([{"type": "Image", "text": "untrusted content"}],
+                        [{"type": "Text", "text": {"unexpected": "body"}}]):
+            with self.subTest(content=content):
+                events = synthetic_rollout()
+                events[3]["payload"]["item"]["content"] = content
+                with self.assertRaisesRegex(ValueError, "unsupported review agent message content"):
+                    self.project(events)
+
+    def test_daemon_recovery_context_requires_current_host_binding(self):
+        body = ('<codex_internal_context source="daemon_recovery">\n'
+                'Synthetic host recovery instructions.\n</codex_internal_context>')
+        event = {"type": "response_item", "payload": {"type": "message", "role": "user",
+            "content": [{"type": "input_text", "text": body}],
+            "internal_chat_message_metadata_passthrough": {"turn_id": "fixture-turn",
+                "content_item_kinds": ["daemon_recovery.internal_context"]}}}
+        events = synthetic_rollout()
+        events.insert(3, event)
+        projected, metadata = self.project(events)
+        self.assertTrue(metadata["semantic_complete"])
+        self.assertNotIn(body.encode(), projected)
+        self.assertEqual(json.loads(projected)["excluded_records"][1],
+                         {"sequence": 3, "reason": "non_semantic_by_design"})
+        for key, value in (("turn_id", "unknown-turn"), ("content_item_kinds", ["user"])):
+            invalid = copy.deepcopy(events)
+            invalid[3]["payload"]["internal_chat_message_metadata_passthrough"][key] = value
+            with self.assertRaisesRegex(ValueError, "unnormalized review user interaction"):
+                self.project(invalid)
+        invalid = copy.deepcopy(events)
+        invalid[3]["payload"]["content"][0]["text"] = "Actual unbound user response."
+        with self.assertRaisesRegex(ValueError, "unnormalized review user interaction"):
+            self.project(invalid)
 
     def test_nonsemantic_payloads_are_excluded_without_literal_allowlisting(self):
         # Synthetic values are deliberately varied; no real campaign literal is stored.
