@@ -1440,6 +1440,18 @@ fn unresolved_relation_narrative(
 }
 
 fn declared_scope(decision: &UnderstandingDecision, korean: bool) -> String {
+    // Fine-grained applicability narrows the declaration; it cannot supply or
+    // broaden canonical Work grouping. Only the Work identity is available here.
+    let work_scope = match (&decision.decision.work_scope, korean) {
+        (DecisionWorkScope::ProjectWide, false) => "Project-wide applicability".to_owned(),
+        (DecisionWorkScope::ProjectWide, true) => "프로젝트 전체".to_owned(),
+        (DecisionWorkScope::WorkItem(id), false) => {
+            format!("Work-bounded applicability to Work Item `{id}`")
+        }
+        (DecisionWorkScope::WorkItem(id), true) => format!("Work Item `{id}`에 한정된 적용"),
+        (DecisionWorkScope::Unresolved, false) => "Unresolved work applicability".to_owned(),
+        (DecisionWorkScope::Unresolved, true) => "작업 적용 범위 미확정".to_owned(),
+    };
     let mut values = decision
         .declared_paths
         .iter()
@@ -1450,15 +1462,14 @@ fn declared_scope(decision: &UnderstandingDecision, korean: bool) -> String {
     values.sort();
     values.dedup();
     if values.is_empty() {
-        if korean {
-            "프로젝트 전체".to_owned()
-        } else {
-            "Project-wide applicability".to_owned()
-        }
+        work_scope
     } else if korean {
-        format!("범위 {}", quoted_names(&values))
+        format!("{work_scope}, 세부 선언 범위 {}", quoted_names(&values))
     } else {
-        format!("scope {}", quoted_names(&values))
+        format!(
+            "{work_scope}, with declared fine-grained scope {}",
+            quoted_names(&values)
+        )
     }
 }
 
@@ -1676,6 +1687,119 @@ mod tests {
         AnalysisSnapshotId, CodeEntityKind, FreshnessBasis, FreshnessState, Language,
         RepositorySnapshotId, Uncertainty,
     };
+
+    #[test]
+    fn decision_explanations_preserve_typed_work_scope_and_fine_grained_applicability() {
+        let work_id = ContextItemId::from_bytes([7; 16]);
+        let decision_id = DecisionId::from_bytes([3; 16]);
+        for work_scope in [
+            DecisionWorkScope::ProjectWide,
+            DecisionWorkScope::WorkItem(work_id),
+            DecisionWorkScope::Unresolved,
+        ] {
+            // Empty, each independent dimension, and all three together.
+            for dimensions in [0, 1, 2, 4, 7] {
+                for code_linked in [false, true] {
+                    let mut projection = projection(
+                        vec![entity("policy", "core/policy.rs", Language::Rust)],
+                        Vec::new(),
+                        checkpoint(CheckpointId::from_bytes([2; 16]), Vec::new(), Vec::new()),
+                        Some((decision_id, "policy")),
+                    );
+                    projection.resume.decisions[0].work_scope = work_scope;
+                    let link = &mut projection.decision_context_code[0];
+                    link.declared_paths = if dimensions & 1 != 0 {
+                        vec!["core/policy.rs".into()]
+                    } else {
+                        Vec::new()
+                    };
+                    link.declared_components = if dimensions & 2 != 0 {
+                        vec!["policy-component".into()]
+                    } else {
+                        Vec::new()
+                    };
+                    link.declared_work_contexts = if dimensions & 4 != 0 {
+                        vec!["release-context".into()]
+                    } else {
+                        Vec::new()
+                    };
+                    if !code_linked {
+                        link.related_code_entities.clear();
+                    }
+                    let original = projection.clone();
+                    let understanding =
+                        build_project_understanding(&projection, UnderstandingBound::default());
+                    let explanation = understanding
+                        .deterministic_explanations
+                        .iter()
+                        .find(|item| item.kind == UnderstandingExplanationKind::DecisionImpact)
+                        .unwrap_or_else(|| panic!("missing Decision explanation"));
+                    for (text, project_wide, work_bounded, unresolved) in [
+                        (
+                            &explanation.english,
+                            "Project-wide applicability",
+                            "Work-bounded applicability",
+                            "Unresolved work applicability",
+                        ),
+                        (
+                            &explanation.korean,
+                            "프로젝트 전체",
+                            "한정된 적용",
+                            "작업 적용 범위 미확정",
+                        ),
+                    ] {
+                        assert_eq!(
+                            text.contains(project_wide),
+                            work_scope == DecisionWorkScope::ProjectWide
+                        );
+                        assert_eq!(
+                            text.contains(work_bounded),
+                            matches!(work_scope, DecisionWorkScope::WorkItem(_))
+                        );
+                        assert_eq!(
+                            text.contains(unresolved),
+                            work_scope == DecisionWorkScope::Unresolved
+                        );
+                        assert_eq!(
+                            text.contains(&format!("`{work_id}`")),
+                            matches!(work_scope, DecisionWorkScope::WorkItem(_))
+                        );
+                        for (mask, declared) in [
+                            (1, "core/policy.rs"),
+                            (2, "policy-component"),
+                            (4, "release-context"),
+                        ] {
+                            assert_eq!(
+                                text.contains(&format!("`{declared}`")),
+                                dimensions & mask != 0
+                            );
+                        }
+                    }
+                    if code_linked {
+                        assert!(explanation.english.contains("not proof of implementation"));
+                        assert!(explanation.korean.contains("구현 완료의 증거가 아닙니다"));
+                    } else {
+                        assert!(explanation.english.contains("no code effect is inferred"));
+                        assert!(explanation.korean.contains("코드 영향을 추론하지 않습니다"));
+                    }
+                    assert_eq!(explanation.decision_basis, vec![decision_id]);
+                    assert_eq!(
+                        explanation.source_basis,
+                        vec![SourceId::from_bytes([8; 16])]
+                    );
+                    assert_eq!(
+                        explanation.analysis_snapshot_basis,
+                        if code_linked {
+                            vec![analysis_snapshot()]
+                        } else {
+                            Vec::new()
+                        }
+                    );
+                    assert_eq!(projection, original);
+                }
+            }
+        }
+    }
 
     #[test]
     fn current_work_seeds_outrank_disconnected_high_connectivity() {
