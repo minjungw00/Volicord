@@ -221,6 +221,60 @@ class PolicyTests(unittest.TestCase):
             "satisfied")
         self.assertEqual(value["replacement_qualification"], "blocked")
 
+    def test_summary_uses_only_exact_volicord_multi_work_criterion(self):
+        cid = policy.MULTI_WORK_CRITERION
+        other = "journey-small-python/viewer_snapshot/multiple_work_organization"
+        spec = copy.deepcopy(next(s for s in self.specs if s["criterion_id"] == cid))
+        spec.update(criterion_id=other, sample_id="journey-small-python")
+        self.specs.append(spec)
+        assessment = copy.deepcopy(next(a for a in self.agent["assessments"] if a["criterion_id"] == cid))
+        assessment.update(criterion_id=other, assessment="satisfied")
+        self.agent["assessments"].append(assessment)
+        for value in (self.agent, self.human):
+            next(a for a in value["assessments"] if a["criterion_id"] == cid)["assessment"] = "not_reviewed"
+        result = self.result()
+        self.assertIn("journey-small-python/viewer_snapshot/multiple_work_organization",
+            result["qualitative_review"]["resolved_criteria"])
+        self.assertEqual(result["naturalistic_evidence"]["multi_work_viewer_comprehension"]["state"],
+            "unresolved")
+        self.assert_valid_summary(result, "multi_work_viewer_comprehension")
+
+    def test_browser_summary_requires_every_exact_locale_and_preserves_violation(self):
+        ids = policy.browser_criteria()
+        self.assertEqual(set(ids), {s["criterion_id"] for s in self.specs
+            if s["group"] == "live_viewer" and s["name"] == "browser_input_and_paint_responsiveness"})
+        for cid in ids:
+            next(a for a in self.agent["assessments"] if a["criterion_id"] == cid)["assessment"] = "not_reviewed"
+        for states, expected in ((("satisfied", "not_reviewed"), "unresolved"),
+                (("satisfied", "violated"), "violated"),
+                (("not_reviewed", "violated"), "violated"),
+                (("satisfied", "satisfied"), "satisfied")):
+            with self.subTest(states=states):
+                for cid, state in zip(ids, states):
+                    next(a for a in self.human["assessments"] if a["criterion_id"] == cid)["assessment"] = state
+                result = self.result()
+                self.assertEqual(result["naturalistic_evidence"]["live_browser_input_and_paint"]["state"], expected)
+                self.assert_valid_summary(result, "live_browser_input_and_paint")
+        # Neither another repository nor a similar locale can supply a required ID.
+        for impostor in (ids[1].replace("journey-volicord", "journey-small-python"),
+                ids[1].replace("/ko/", "/ko-extra/")):
+            result = self.result()
+            result["qualitative_review"]["resolved_criteria"].remove(ids[1])
+            result["qualitative_review"]["resolved_criteria"].append(impostor)
+            self.assertEqual(policy._criterion_state(result, ids), "unresolved")
+
+    def assert_valid_summary(self, result, summary):
+        value = {"kind": "phase8_dogfood_result", "schema_version": 3,
+            "policy": policy.identity(), "candidate_head": "a" * 40,
+            "evaluator_revision": "b" * 40, "run_nonce": "c" * 32, **result}
+        value["run_id"] = m.digest(value)
+        policy.validate_result(value)
+        value["naturalistic_evidence"][summary]["state"] = "satisfied" if (
+            value["naturalistic_evidence"][summary]["state"] != "satisfied") else "unresolved"
+        value["run_id"] = m.digest({k: v for k, v in value.items() if k != "run_id"})
+        with self.assertRaisesRegex(ValueError, "naturalistic evidence"):
+            policy.validate_result(value)
+
     def test_exact_journey_work_resume_and_session_topology_is_mandatory(self):
         mutations = []
         duplicate = copy.deepcopy(self.evaluation)

@@ -481,6 +481,13 @@ explicit human assessment whose `resolves_review_runs` maps the criterion ID to 
 review run IDs addressed. Agent reviews must leave that map empty. This is evidence-bound
 judgment, not voting or statistical independence.
 
+Naturalistic summaries use exact criterion identities. Multi-Work Viewer comprehension
+uses only `journey-volicord/viewer_snapshot/multiple_work_organization`; browser input/paint
+requires every locale listed in the maintained definition's `live_viewer_locales`.
+A required violation makes the summary violated, all required criteria resolved makes it
+satisfied, and any remaining required gap keeps it unresolved. Result validation uses
+the same aggregation rule.
+
 For direct live observations, human preparation additionally accepts `--human-observations`
 pointing to the conversational capture directory. The lower-level JSON-file input remains
 available for automation. The object has kind `dogfood_human_observations`, original `candidate_head`,

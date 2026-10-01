@@ -11,6 +11,7 @@ import review_operations as operations
 
 REVISION = "replacement-qualification-8"
 COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
+MULTI_WORK_CRITERION = "journey-volicord/viewer_snapshot/multiple_work_organization"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
 HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable",
     "journey-volicord/viewer_snapshot/multiple_work_organization"}
@@ -93,13 +94,23 @@ def validate_topology(evaluation):
     return dict(TOPOLOGY)
 
 
-def _criterion_state(result, marker):
+def _criterion_state(result, required_ids):
+    """A required exact set passes only when every member is resolved."""
     qualitative = result["qualitative_review"]
-    if any(marker in value for value in qualitative["violated_criteria"]):
+    required = set(required_ids)
+    review.require(required, "summary requires at least one exact criterion")
+    if required & set(qualitative["violated_criteria"]):
         return "violated"
-    if any(marker in value for value in qualitative["resolved_criteria"]):
+    if required <= set(qualitative["resolved_criteria"]):
         return "satisfied"
     return "unresolved"
+
+
+def browser_criteria():
+    import harness
+    locales = harness.load_definition()["qualitative_review_contract"]["live_viewer_locales"]
+    return [f"journey-volicord/live_viewer/{locale}/browser_input_and_paint_responsiveness"
+        for locale in locales]
 
 
 def structural_state(checks):
@@ -133,12 +144,12 @@ def naturalistic_summary(result, evaluation, memory=None):
         },
         "multi_work_viewer_comprehension": {
             "state": _criterion_state(result,
-                "/viewer_snapshot/multiple_work_organization"),
+                [MULTI_WORK_CRITERION]),
             "evidence_class": "direct_human_live_viewer_observation",
-            "criterion_id": "journey-volicord/viewer_snapshot/multiple_work_organization",
+            "criterion_id": MULTI_WORK_CRITERION,
         },
         "live_browser_input_and_paint": {
-            "state": _criterion_state(result, "/browser_input_and_paint_responsiveness"),
+            "state": _criterion_state(result, browser_criteria()),
             "snapshot_export_proxy_may_substitute": False,
         },
         "naturalistic_resource": resource,
@@ -351,12 +362,12 @@ def validate_result(value):
         and structural.get("deterministic_fixture") == "supporting_regression_only"
         and isinstance(comprehension, dict)
         and comprehension.get("state")
-            == _criterion_state(value, "/viewer_snapshot/multiple_work_organization")
+            == _criterion_state(value, [MULTI_WORK_CRITERION])
         and comprehension.get("evidence_class") == "direct_human_live_viewer_observation"
         and comprehension.get("criterion_id")
-            == "journey-volicord/viewer_snapshot/multiple_work_organization"
+            == MULTI_WORK_CRITERION
         and naturalistic["live_browser_input_and_paint"]["state"]
-            == _criterion_state(value, "/browser_input_and_paint_responsiveness")
+            == _criterion_state(value, browser_criteria())
         and naturalistic["live_browser_input_and_paint"]["snapshot_export_proxy_may_substitute"] is False
         and naturalistic["naturalistic_resource"].get("status")
             in {"unsupported_current_architecture", "not_provided", "measured"},
