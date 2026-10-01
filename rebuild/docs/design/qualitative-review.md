@@ -503,8 +503,10 @@ historical verification. The original Git workspace is not needed for later revi
 
 `interaction_diagnostics.py` projects raw normalized start/resume captures and
 canonical bundle identities into factual Work and campaign summaries. It reports
-user turns, observed Question Candidate/promoted Question identities, current-host
-turns matched to successful response operations, source-scoped canonical Decisions,
+user turns, observed Question Candidate/promoted Question identities,
+unique validated current-host response events matched to successful response operations
+(using the shared Decision provenance facts and Codex response interpretation),
+source-scoped canonical Decisions,
 Materiality Review activity, explicit participation observations and Learning Context
 identities, Learning Deliberation activity, fresh resumes/Recall and workload intent.
 Capture gaps remain unknown, with retained identity/hash/sequence basis and explicit

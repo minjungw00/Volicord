@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 import re
 import shlex
-from typing import Any
+from typing import Any, Callable
 
 
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
@@ -326,6 +326,73 @@ class UserTurn:
     turn_id: str
     user_turn_id: str
     text: str
+
+
+def strict_json(value: str) -> Any:
+    """Reject duplicate object members and non-JSON constants as ambiguous evidence."""
+    def object_pairs(pairs):
+        result = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON member")
+            result[key] = item
+        return result
+
+    def invalid_constant(_value):
+        raise ValueError("non-JSON constant")
+
+    return json.loads(value, object_pairs_hook=object_pairs, parse_constant=invalid_constant)
+
+
+@dataclass(frozen=True)
+class AsyncQuestionRequest:
+    session_id: str
+    turn_id: str
+    call_id: str
+    sequence: int
+    completion_sequence: int
+    questions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AsyncQuestionReply:
+    call_id: str
+    question_index: int
+    question: str
+    answer: str
+
+
+def parse_async_question_replies(text: str) -> tuple[AsyncQuestionReply, ...] | None:
+    """Only the complete current Codex envelope and its array-of-items JSON schema."""
+    opening = "<send_user_message_question_reply>"
+    closing = "</send_user_message_question_reply>"
+    if not text.startswith(opening) or not text.endswith(closing):
+        return None
+    try:
+        items = strict_json(text[len(opening):-len(closing)])
+        if not isinstance(items, list) or not 0 < len(items) <= MAX_PATHS:
+            return None
+        replies = []
+        identities = set()
+        for item in items:
+            if (not isinstance(item, dict)
+                or set(item) != {"answer", "question", "questionItemId"}
+                or not all(nonempty(item[field]) for field in item)):
+                return None
+            identity = strict_json(item["questionItemId"])
+            if (not isinstance(identity, list) or len(identity) != 3
+                or identity[0] != "request_user_input_async"
+                or not nonempty(identity[1]) or type(identity[2]) is not int
+                or not 0 <= identity[2] < MAX_PATHS):
+                return None
+            key = (identity[1], identity[2])
+            if key in identities:
+                return None
+            identities.add(key)
+            replies.append(AsyncQuestionReply(*key, item["question"], item["answer"]))
+        return tuple(replies)
+    except (ValueError, RecursionError):
+        return None
 
 
 @dataclass(frozen=True)
@@ -1409,6 +1476,7 @@ class CodexCapture:
     evidence_transport_issues: tuple[EvidenceTransportIssue, ...]
     path_observations: tuple[PathObservation, ...]
     commands: tuple[CommandObservation, ...]
+    async_question_requests: tuple[AsyncQuestionRequest, ...] = ()
 
     def provenance_evidence(self) -> dict[str, Any]:
         """Host-recorded observations; source/originator do not attest a UI."""
@@ -1442,6 +1510,57 @@ class CodexCapture:
         matches = [turn for turn in preceding if turn.sequence == latest_sequence]
         return (matches[0] if len(matches) == 1
                 and matches[0].turn_id == call.turn_id else None)
+
+    def response_transport_for_call(
+        self, call: ToolCall, compare: Callable[[Any, Any], dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Bind the latest response to its request without searching older answer text.
+
+        This proves raw transport only. Canonical Source and Decision provenance
+        remain independent checks in the evaluator.
+        """
+        turn = self.turn_for_call(call)
+        caller = call.arguments.get("user_turn")
+        result = {**compare(caller, None), "response_kind": "unverified"}
+        if turn is None:
+            return result
+        # XML-like host wrappers cannot acquire authority through the plain path.
+        wrapped = (turn.text.lstrip().startswith("<")
+            or "<send_user_message_question_reply>" in turn.text
+            or "</send_user_message_question_reply>" in turn.text)
+        if not wrapped:
+            return {**compare(caller, turn.text), "response_kind": "plain_user_message"}
+        replies = parse_async_question_replies(turn.text)
+        if replies is None:
+            return result
+        matched = []
+        for reply in replies:
+            requests = [request for request in self.async_question_requests
+                if request.call_id == reply.call_id]
+            if len(requests) != 1:
+                return result
+            request = requests[0]
+            if (request.session_id != self.session_id or request.turn_id != turn.turn_id
+                or not request.sequence < request.completion_sequence < turn.sequence < call.sequence
+                or reply.question_index >= len(request.questions)
+                or not compare(request.questions[reply.question_index], reply.question)["equivalent"]):
+                return result
+            comparison = compare(caller, reply.answer)
+            if comparison["equivalent"]:
+                matched.append((reply, request, comparison))
+        if len(matched) != 1:
+            return result
+        reply, request, comparison = matched[0]
+        return {**comparison, "response_kind": "async_question_reply",
+            "transport_equivalence_used": True,
+            "answer_transport_equivalence_used": comparison["transport_equivalence_used"],
+            "raw_host_text_sha256": sha256_bytes(turn.text.encode("utf-8")),
+            "answer_text_sha256": sha256_bytes(reply.answer.encode("utf-8")),
+            "async_request_call_id": request.call_id,
+            "async_request_sequence": request.sequence,
+            "async_request_completion_sequence": request.completion_sequence,
+            "async_question_index": reply.question_index,
+            "async_question_text_sha256": sha256_bytes(reply.question.encode("utf-8"))}
 
     def paths_before(self, sequence: int) -> list[str]:
         return sorted({path for item in self.path_observations if item.sequence < sequence for path in item.paths})
@@ -2005,6 +2124,8 @@ def load_codex_capture(path: Path) -> CodexCapture:
     evidence_transport_issues: list[EvidenceTransportIssue] = []
     raw_path_observations: list[_PathObservationEvidence] = []
     activation_states: list[tuple[int, str]] = []
+    async_calls: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    async_outputs: dict[str, list[tuple[int, dict[str, Any]]]] = {}
 
     for sequence, event in enumerate(events):
         payload = event.get("payload")
@@ -2120,6 +2241,12 @@ def load_codex_capture(path: Path) -> CodexCapture:
                             "malformed_file_change",
                         )
                     )
+        elif envelope == "response_item" and payload_type == "function_call" and payload.get("name") == "request_user_input_async":
+            if nonempty(payload.get("call_id")):
+                async_calls.setdefault(payload["call_id"], []).append((sequence, payload))
+        elif envelope == "response_item" and payload_type == "function_call_output":
+            if nonempty(payload.get("call_id")):
+                async_outputs.setdefault(payload["call_id"], []).append((sequence, payload))
         elif envelope == "response_item" and payload_type == "custom_tool_call":
             parsed = (
                 parse_custom_call(payload.get("input"))
@@ -2520,6 +2647,35 @@ def load_codex_capture(path: Path) -> CodexCapture:
         raise EvidenceError("Codex file change refers to an unknown turn identity")
     path_observations = merge_path_observation_evidence(raw_path_observations)
 
+    async_question_requests = []
+    for call_id, requests in async_calls.items():
+        outputs = async_outputs.get(call_id, [])
+        if len(requests) != 1 or len(outputs) != 1:
+            continue
+        sequence, request = requests[0]
+        completion_sequence, output = outputs[0]
+        try:
+            arguments = strict_json(request.get("arguments"))
+            accepted = strict_json(output.get("output"))
+            metadata = request.get("internal_chat_message_metadata_passthrough", {})
+            output_metadata = output.get("internal_chat_message_metadata_passthrough", {})
+            turn_id = metadata.get("turn_id")
+            questions = arguments.get("questions")
+            if (turn_id not in known_turn_ids or output_metadata.get("turn_id") != turn_id
+                or not isinstance(accepted, dict) or set(accepted) != {"accepted"}
+                or accepted["accepted"] is not True or set(arguments) != {"questions"}
+                or not turn_lifecycle.contains_completion(turn_id, sequence, completion_sequence)
+                or not isinstance(questions, list) or not 0 < len(questions) <= MAX_PATHS
+                or not all(isinstance(q, dict) and set(q) <= {"title", "options"}
+                    and nonempty(q.get("title")) and ("options" not in q
+                        or isinstance(q["options"], list) and 0 < len(q["options"]) <= MAX_PATHS
+                        and all(nonempty(option) for option in q["options"])) for q in questions)):
+                continue
+            async_question_requests.append(AsyncQuestionRequest(str(session_id), turn_id,
+                call_id, sequence, completion_sequence, tuple(q["title"] for q in questions)))
+        except (ValueError, TypeError, AttributeError, RecursionError):
+            continue
+
     user_turns = normalize_user_turn_evidence(user_turn_evidence, known_turn_ids)
     fresh_user_thread = (
         thread_source == "user"
@@ -2564,6 +2720,7 @@ def load_codex_capture(path: Path) -> CodexCapture:
         ),
         path_observations=tuple(path_observations),
         commands=tuple(commands),
+        async_question_requests=tuple(async_question_requests),
     )
 
 

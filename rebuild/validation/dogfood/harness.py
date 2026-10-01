@@ -1757,6 +1757,10 @@ def compare_current_host_response_transport(caller_text: Any, captured_text: Any
     }
 
 
+def current_host_response_transport(capture: CodexCapture, call: ToolCall) -> dict[str, Any]:
+    return capture.response_transport_for_call(call, compare_current_host_response_transport)
+
+
 CURRENT_HOST_CONTEXT_ROLES = {
     "goal",
     "assumption",
@@ -5111,15 +5115,14 @@ def decision_facts(
     if not calls:
         return False, None, None, None, None, {}
     evidence: dict[str, dict[str, Any]] = {}
+    ambiguous_decision_ids: set[str] = set()
     valid = True
     for call in calls:
         turn = work.turn_for_call(call)
         question_id = call.arguments.get("question_id")
         revision = call.arguments.get("question_revision")
         user_text = call.arguments.get("user_turn")
-        response_transport = compare_current_host_response_transport(
-            user_text, turn.text if turn is not None else None
-        )
+        response_transport = current_host_response_transport(work, call)
         source_id = call.result.get("user_response_source_id")
         source = (
             bundle.one("sources", id=source_id, project_id=bundle.project_id)
@@ -5145,6 +5148,10 @@ def decision_facts(
             and row.get("question_revision") == revision
             and row.get("user_turn_source_id") == source_id
             and row.get("user_authority") == "current_host_user_turn"
+            and ("work_scope" not in call.arguments
+                 or row.get("work_scope") == call.arguments["work_scope"])
+            and ("work_item_id" not in call.arguments
+                 or row.get("work_item_id") == call.arguments["work_item_id"])
         ]
         decision_id = decisions[0].get("id") if len(decisions) == 1 else None
         witness = (
@@ -5153,9 +5160,6 @@ def decision_facts(
                 project_id=bundle.project_id,
                 question_id=question_id,
                 question_revision=revision,
-                root_decision_id=decision_id,
-                response_source_id=source_id,
-                response_authority="current_host_user_turn",
             )
             if nonempty_string(decision_id)
             else None
@@ -5209,12 +5213,12 @@ def decision_facts(
             and source is not None
             and response is not None
             and witness is not None
+            and witness.get("root_decision_id") == decision_id
+            and witness.get("response_source_id") == source_id
+            and witness.get("response_authority") == "current_host_user_turn"
             and nonempty_string(decision_id)
             and source.get("source_kind") == "current_host_user_turn"
             and source.get("locator") == user_text
-            and compare_current_host_response_transport(
-                source.get("locator"), turn.text
-            )["equivalent"]
             and source.get("detail_one") == "codex"
             # Canonical session is internal HostAdapter provenance, not the
             # raw Codex thread ID. Exact call/result/turn links cross the layers.
@@ -5224,8 +5228,11 @@ def decision_facts(
         )
         valid &= bool(call_valid)
         if call_valid and nonempty_string(decision_id):
-            if decision_id in evidence:
+            if decision_id in evidence or decision_id in ambiguous_decision_ids:
                 valid = False
+                ambiguous_decision_ids.add(str(decision_id))
+                evidence.pop(str(decision_id), None)
+                continue
             evidence[str(decision_id)] = {
                 "question_id": str(question_id),
                 "question_revision": revision,

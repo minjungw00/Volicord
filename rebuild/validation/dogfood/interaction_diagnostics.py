@@ -10,12 +10,22 @@ COUNT_FIELDS = (
 
 
 def work_summary(descriptor, work, resume, bundle):
+    # Import at use time: harness owns canonical provenance and also consumes
+    # this projection. Decision counts use its validated facts, never a second
+    # envelope decoder or a search for matching answer text.
+    import harness
+
     sessions = []
     candidate_ids, question_ids, response_ids, observed_source_ids = set(), set(), set(), set()
     for role, capture in (("start", work), ("resume", resume)):
         if capture is None:
             continue
         calls = [c for c in capture.tool_calls if c.outcome == "succeeded"]
+        decision_facts = harness.decision_facts(capture, bundle)
+        for evidence in decision_facts[-1].values():
+            transport = evidence["current_host_response_transport"]
+            response_ids.add((capture.session_id, transport["captured_turn_id"],
+                transport["captured_user_turn_id"]))
         participation, deliberations = [], []
         for call in calls:
             for field in ("source_id", "user_response_source_id"):
@@ -36,10 +46,21 @@ def work_summary(descriptor, work, resume, bundle):
             if call.operation == "learning_deliberation":
                 deliberations.append({"sequence": call.sequence, "action": action,
                     "candidate_id": call.result.get("deliberation_candidate_id")})
-            if call.operation == "decision_record" or (call.operation == "learning_deliberation" and isinstance(action, str) and action.startswith("respond_")):
-                for turn in capture.user_turns:
-                    if turn.text == call.arguments.get("user_turn"):
-                        response_ids.add((capture.session_id, turn.turn_id, turn.user_turn_id))
+            if call.operation == "learning_deliberation" and isinstance(action, str) and action.startswith("respond_"):
+                turn = capture.turn_for_call(call)
+                source_ids = {call.result.get("user_response_source_id")}
+                source_ids.update(r.get("initial_response_source_id")
+                    for r in call.result.get("rounds", []) if isinstance(r, dict))
+                sources = [s for s in (bundle.rows("sources") if bundle else ())
+                    if s.get("id") in source_ids and s.get("project_id") == bundle.project_id
+                    and s.get("locator") == call.arguments.get("user_turn")]
+                source = sources[0] if len(sources) == 1 else None
+                if (turn and harness.current_host_response_transport(capture, call)["equivalent"]
+                    and source and source.get("source_kind") == "current_host_user_turn"
+                    and source.get("actor_kind") == "user" and source.get("detail_one") == "codex"
+                    and isinstance(source.get("detail_two"), str) and source["detail_two"]
+                    and source.get("locator") == call.arguments.get("user_turn")):
+                    response_ids.add((capture.session_id, turn.turn_id, turn.user_turn_id))
         sessions.append({"role": role, "session_id": capture.session_id,
             "capture_sha256": capture.source_sha256, "user_turn_count": len(capture.user_turns),
             "successful_operation_counts": dict(sorted(Counter(c.operation for c in calls).items())),

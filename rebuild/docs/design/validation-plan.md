@@ -1519,6 +1519,39 @@ reported escape/suffix normalization. Original source bytes are never rewritten.
 `decision_transport_self_test.py` exercises parser-to-canonical provenance, terminal whitespace and
 semantic-difference rejection and is included in the maintained harness self-test.
 
+The Codex event owner also interprets the complete
+`<send_user_message_question_reply>...</send_user_message_question_reply>` envelope.
+Its body must be a nonempty JSON array of objects containing exactly the nonempty
+string fields `answer`, `question`, and `questionItemId`. The identity string is
+itself a JSON array `["request_user_input_async", call_id, question_index]`, with a
+nonnegative integer index identifying an actual question in that request, never
+the reply array position. Duplicate JSON members and duplicate item identities,
+incomplete/unknown wrappers and malformed JSON fail closed; no substring recovery
+or legacy host decoder is provided. XML-like leading wrappers cannot use the plain
+message path. Ordinary unwrapped chat responses still use the existing comparison.
+
+A structured reply requires one captured direct `request_user_input_async`
+function call, its same-task `function_call_output` with `{"accepted":true}`, and
+the same raw session/task. Request and acceptance must precede the unique latest
+user event, which must precede Decision invocation. Each item's question matches
+its requested title through the maintained directional text-equivalence primitive;
+exactly one item's answer matches the caller through that same primitive. Duplicate
+requests, ambiguous matching answers, stale, future or cross-task/session responses
+cannot establish authority. The result preserves raw-envelope and answer hashes,
+request identity/index/order and the original user event identity. All canonical
+Source/actor/Project/Question/revision/response-relation/receipt/Decision/history
+requirements remain independent, including agreement with explicitly supplied
+Decision Work scope. No raw reply alone proves a canonical Decision.
+
+Interaction diagnostics consume the same canonical-validated Decision response
+facts. They count unique `(raw session, task turn, user client)` events, so one
+multi-item response used by multiple independently valid Decisions counts once.
+Learning response diagnostics use the same raw interpreter with current-host user
+Source evidence, retaining their distinct non-Decision meaning. Counts remain
+factual and supply no semantic threshold. Synthetic tests cover identity, exact
+text, request acceptance, ordering, ambiguity and canonical-provenance rejection;
+real conversation bytes are never maintained fixtures.
+
 Current-frontier evaluation also preserves legitimate historical Question lifecycles: each obsolete
 branch must prove its own dimension-linked pre-write resolution, while the current settled Review
 must independently pass authority/closure validation. Historical Decisions do not turn agent-owned
@@ -1732,8 +1765,10 @@ session, Project, candidate, or raw hash integrity.
 
 `interaction_diagnostics.py` projects raw normalized start/resume captures and
 canonical bundle identities into factual Work and campaign summaries. It reports
-user turns, observed Question Candidate/promoted Question identities, current-host
-turns matched to successful response operations, source-scoped canonical Decisions,
+user turns, observed Question Candidate/promoted Question identities,
+unique validated current-host response events matched to successful response operations
+(using the shared Decision provenance facts and Codex response interpretation),
+source-scoped canonical Decisions,
 Materiality Review activity, explicit participation observations and Learning Context
 identities, Learning Deliberation activity, fresh resumes/Recall and workload intent.
 Capture gaps remain unknown, with retained identity/hash/sequence basis and explicit
