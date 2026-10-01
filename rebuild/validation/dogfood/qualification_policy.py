@@ -293,7 +293,9 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
         review.require(binding["candidate_head"] == candidate and binding["evidence_set"] == {"sha256": evidence_hash}, "review candidate/evidence mismatch")
         if binding["machine_evaluation"] is not None:
             review.require(binding["machine_evaluation"] == {"run_id": evaluation["run_id"],
-                "sha256": campaign.harness.sha256(evaluation_path)}, "review binds a different machine run")
+                "sha256": campaign.harness.sha256(evaluation_path),
+                "recorded_policy": evaluation["policy"],
+                "policy_verification": "recorded_identity_not_current_equivalence"}, "review binds a different machine run")
         review.require(review.criterion_specs(prep["index"], prep["rubric"]) == specs, "review criterion coverage differs from evidence")
         reviews.append(value)
         references.append({"run_id": value["reviewer"]["run_id"], "kind": value["reviewer"]["kind"],

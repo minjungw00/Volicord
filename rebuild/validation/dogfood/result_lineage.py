@@ -23,8 +23,7 @@ def _relative_files(root, names):
     result = {}
     for name in names:
         path = operations.safe_path(root, name)
-        result[name] = operations.bounded_read(path,
-            operations.MAX_RAW_BYTES if name.startswith("private-rollouts/") else operations.MAX_FILE_BYTES)
+        result[name] = operations.bounded_read(path)
     return result
 
 
@@ -163,8 +162,7 @@ def verify(root):
     review.require(actual_names == {*inventory, "index.json", "receipt.json"},
         "result lineage contains missing or unindexed files")
     for name, binding in inventory.items():
-        data = operations.bounded_read(operations.safe_path(root, name),
-            operations.MAX_RAW_BYTES if "/private-rollouts/" in "/" + name else operations.MAX_FILE_BYTES)
+        data = operations.bounded_read(operations.safe_path(root, name))
         review.require(binding == _binding(data), "result lineage artifact changed")
 
     evidence_data = operations.bounded_read(operations.safe_path(

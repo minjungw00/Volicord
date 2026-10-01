@@ -4,7 +4,7 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 12 / policy revision 11, machine evaluation
+Current identities are qualitative review schema 13 / policy revision 12, machine evaluation
 policy `evidence-evaluation-6`, human observation/receipt schema 3, qualification policy
 `replacement-qualification-8`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
@@ -190,6 +190,11 @@ review-required runs. It does not require automated passage, finalize-manifest,
 the candidate binary, a Runtime Home, a provider, or a naturalistic session rerun.
 The output directory must be outside the Campaign. Historical candidates remain
 read-only inputs; a new review policy never relabels them as the current candidate.
+An optional machine run is validated against the current machine schema/finding semantics
+and its intact content-derived run ID and publication receipt, while retaining its recorded
+policy identity. Review binding explicitly states `recorded_identity_not_current_equivalence`;
+a changed review rubric does not rewrite or relabel that machine run. Qualification continues
+to require exact current policy equality. There is no numeric-version compatibility branch.
 
 Start a distinct review session, then prepare its declared identity and evidence:
 
@@ -222,10 +227,71 @@ finding and disposition remain immutable. Validation proves only shape, hashes, 
 membership, never that the reviewer's reasoning or conclusion is semantically true.
 
 Omit `--machine-evaluation` for an unevaluated evidence set. Omit
-`--include-raw-rollouts` for a bounded package without raw conversation contents;
-work/resume observations then remain unavailable. With the flag, exact raw bytes
-live in the separate `private-rollouts/` surface, and an archive containing that
-surface must remain private. No upload or background transmission is performed.
+`--include-raw-rollouts` to leave Work/resume observations unavailable. With the flag,
+immutable raw rollouts are projection inputs; the package contains bounded reviewer-safe
+`work_capture` / `resume_capture` JSON artifacts under `evidence/`, never byte-identical
+raw JSONL. Review packages still require private handling. No upload or background
+transmission is performed.
+
+### Naturalistic review-capture projection
+
+`review_captures.py` owns the one current `naturalistic_review_capture` schema 1 /
+`naturalistic-review-capture-1` policy. Preparation verifies source bytes/SHA-256 against
+both the immutable evidence-set member and session binding before parsing those exact
+bytes through the shared Codex normalizer. It rechecks immutable Campaign bindings before
+publication. Unsupported/malformed conversation transports, conflicting message copies,
+source mismatch, inconsistent projections and retained sensitive payload fail closed.
+The immutable Campaign and Product candidate identity remain unchanged.
+
+Each capture binds `origin.kind/path/raw_bytes/raw_sha256`, Codex `session_id`, `role`
+(`start` or `resume`), `candidate_head` and `evidence_set_sha256`. Ordered `records` retain
+source sequence(s), turn/message/user-turn/call identity as applicable, semantic role,
+operation and outcome. The evidence index separately binds whole-artifact
+`projection.review_bytes/review_sha256`, current schema/policy, limits and counts;
+`origin.raw_sha256` never identifies projected bytes. The artifact cannot include its own
+whole-artifact hash; that binding lives in the index and package inventory. Source-independent
+package validation rechecks artifact/index agreement and projection consistency; provenance
+hashes are integrity evidence, not authenticated capture authorship.
+
+The positive allowlist retains normalized actual user turns, user-visible agent messages,
+async Question titles/options, Volicord operation identity/sequence/outcome with scalar
+identity/action/state fields, turn start/terminal/interruption and compaction boundaries,
+normalized execution command-role/digest/exit/termination facts with explicit
+`output_retention = non_semantic_by_design`, and typed transport issues. Duplicate agent
+item/response transports must agree and retain their original source coordinates. Operation
+prose is inspected in actual conversation and the separately selected canonical bundle.
+System/developer/skill/plugin instructions, reasoning, environment bodies, arbitrary
+repository source, command stdout/stderr and generic tool/MCP payloads are excluded.
+No repository name, credential spelling or test-token convention is allowlisted.
+
+Text proposed for retention passes the unchanged review-plane sensitive-payload policy.
+An unsafe body is wholly omitted with `body.state = omitted`, reason `sensitive_payload`,
+source body bytes/SHA-256 and immutable coordinates, without retaining its value. A body
+above the 1 MiB bound is similarly omitted with `body_limit`. `source_body_encoding`
+distinguishes exact normalized user-turn `utf8_text` from `selected_json` encoding of
+selected agent/Question/operation structures. Body digests never identify entire raw events.
+The source limit is 64 MiB / 200,000 events and the projected artifact limit is 32 MiB.
+
+`retained_record_count` counts normalized records with their selected bodies/facts retained;
+`omitted_record_count` counts omitted selected bodies plus excluded raw records.
+`excluded_records` lists unused raw event sequences with `non_semantic_by_design`.
+Selected operation/execution records also exclude all unallowlisted payload fields by design.
+`semantic_omission_count` counts omitted required user, agent, async Question or selected
+Volicord operation identity/action/state bodies;
+`non_semantic_omission_count` accounts for the remaining omissions. `semantic_complete = true`
+means all required user/agent/Question bodies and selected operation fields were retained,
+not that the whole
+rollout was copied. Non-semantic exclusion alone leaves it true. Limits and omissions are
+available in the capture, evidence index, inspection presentation and Work availability view.
+
+A decisive `interaction_coverage_adequacy = satisfied|violated` requires inspection of every
+frozen task and every required semantically complete Work/resume projection. All other
+criteria whose required surfaces include Work/resume (interaction, authority, context recovery
+and Repository Intelligence) likewise require every applicable required capture to be complete;
+a journey-scoped criterion cannot inspect only a favorable Work. No current alternative path
+supplies omitted actual interaction. Privacy or size omissions require `insufficient_evidence`
+with explicit inspected omission/availability evidence and limits, never automatic Product
+failure or silent satisfaction. This changes structural admissibility, not semantic scoring.
 
 For human review use `--reviewer-kind human` without an agent session. Optional
 `--reviewer-identity <json-file>` supplies the five `host`, `agent`, `model`,
@@ -514,12 +580,12 @@ limits. Successful-call counts do not attest correct recognition, authority, qua
 or adequate interaction coverage. Follow-up turns without matched response operations
 remain visible as user turns. The machine run and reviewer selection expose the same
 raw-derived summary, including when no machine run or raw-rollout selection was supplied.
-Private raw rollouts still require explicit review inclusion for semantic inspection.
+Immutable raw rollouts require explicit selection as inputs to the reviewer-safe conversation projection.
 
 `campaign/campaign_interaction/interaction_coverage_adequacy` is a required campaign
-criterion. Review considers planned and actually executed intents, raw interactions,
+criterion. Review considers planned and actually executed intents, projected actual interactions,
 machine diagnostic facts, repository/source authority, and a separately recorded
-independent agent semantic review. Complete task/raw Work/resume inspection is required
+independent agent semantic review. Complete task and semantically complete Work/resume projection inspection is required
 for a decisive coverage judgment. The reviewer authors semantic truth; structural
 validation checks inspection/citation discipline rather than semantic answers.
 

@@ -381,7 +381,7 @@
       "purpose": "Review independently material outcomes observed in actual Work and coupled artifacts."
     },
     "qualification_authority": false,
-    "policy_revision": 11,
+    "policy_revision": 12,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -466,12 +466,13 @@
       "recorded": "recorded/review.json",
       "preflight_mutation": "none",
       "publication": "exclusive_atomic_directory",
-      "raw_rollouts": "explicit_opt_in_private_surface",
+      "raw_rollouts": "explicit_opt_in_reviewer_safe_capture_projection",
       "evaluator_private_answers": "excluded",
       "artifact_limits": {
         "files": 512,
         "file_bytes": 33554432,
-        "raw_file_bytes": 134217728,
+        "source_capture_bytes": 67108864,
+        "capture_body_bytes": 1048576,
         "package_bytes": 536870912,
         "draft_bytes": 8388608
       },
@@ -479,7 +480,7 @@
       "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
       "qualification_authority": false
     },
-    "schema_version": 12
+    "schema_version": 13
   },
   "fixture_regression_command": [
     "python3",

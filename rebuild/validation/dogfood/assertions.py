@@ -34,6 +34,36 @@ def report_guidance_errors(text, definition):
     return errors
 
 
+def check_review_capture_contract():
+    """Focused owner/schema/workflow checks without replaying the Dogfood suite."""
+    import campaign
+    import harness
+    import qualitative_review
+    import review_captures
+    import review_operations
+
+    definition = harness.load_definition()
+    contract = definition["qualitative_review_contract"]
+    assert contract["workflow"] == review_operations.workflow_contract()
+    assert contract["schema_version"] == qualitative_review.SCHEMA_VERSION
+    policy = qualitative_review.rubric(definition)
+    assert policy["criterion_observations"]["interaction_coverage_adequacy"][1] == "actual_projected_interactions"
+    docs = ROOT / "rebuild/docs/design"
+    for name in ("qualitative-review.md", "privacy-and-provider-boundary.md", "validation-plan.md"):
+        text = (docs / name).read_text()
+        assert review_captures.POLICY in text, name
+        assert "insufficient_evidence" in text, name
+    text = (docs / "qualitative-review.md").read_text()
+    assert f"schema {qualitative_review.SCHEMA_VERSION} / policy revision {policy['policy_revision']}" in text
+    for field in ("raw_bytes", "raw_sha256", "review_bytes", "review_sha256", "source_body_encoding",
+                  "semantic_omission_count", "semantic_complete", "non_semantic_by_design"):
+        assert field in text, field
+    assert not report_guidance_errors(Path(__file__).with_name("report.md").read_text(), definition)
+    parser = campaign.parser()._subparsers._group_actions[0].choices["prepare-qualitative-review"]
+    assert "reviewer-safe capture projections" in parser.format_help()
+    print("review capture owner/schema/workflow assertions passed")
+
+
 def main() -> int:
     """Assert the one active Naturalistic contract and retained support engine."""
     import campaign
@@ -44,6 +74,7 @@ def main() -> int:
     import qualification_policy
     import review_operations
 
+    check_review_capture_contract()
     definition = harness.load_definition()
     report = Path(__file__).with_name("report.md").read_text(encoding="utf-8")
     if errors := report_guidance_errors(report, definition):

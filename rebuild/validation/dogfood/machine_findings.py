@@ -170,7 +170,7 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def validate_run(value):
+def validate_run(value, *, require_current_policy=True):
     if not isinstance(value, dict) or set(value) != {"kind", "schema_version", "candidate_head", "evidence_set",
         "evaluator_revision", "policy_version", "evaluator_files", "policy", "qualitative_review_runs",
         "previous_evaluation", "run_nonce", "collection_state", "evaluation_state", "qualification_state",
@@ -192,7 +192,12 @@ def validate_run(value):
         or not re.fullmatch(r"[0-9a-f]{32}", str(value.get("run_nonce", "")))):
         raise ValueError("invalid evaluation evidence/candidate binding")
     from evaluation_runs import policy_identity
-    if (value.get("policy") != policy_identity() or value.get("qualitative_review_runs") != []
+    recorded_policy = value.get("policy")
+    if (not isinstance(recorded_policy, dict) or set(recorded_policy) != {"revision", "sha256"}
+        or recorded_policy["revision"] != policy_identity()["revision"]
+        or not re.fullmatch(r"[0-9a-f]{64}", str(recorded_policy["sha256"]))
+        or (require_current_policy and recorded_policy != policy_identity())
+        or value.get("qualitative_review_runs") != []
         or not isinstance(value.get("evaluator_files"), dict)):
         raise ValueError("evaluation policy or review identity mismatch")
     prior = value.get("previous_evaluation")

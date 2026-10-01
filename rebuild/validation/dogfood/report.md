@@ -31,7 +31,7 @@ in Volicord A requires review of runtime recognition, meaningful forks and recov
 absent Learning behavior cannot silently become `not_observed`. Campaign-level
 `interaction_coverage_adequacy` is required: satisfied may qualify, insufficient evidence
 leaves qualification unresolved, and substantive observed Product violation blocks.
-Review consumes raw interactions, factual diagnostics, source authority and independent
+Review consumes bounded projected actual interactions, factual diagnostics, source authority and independent
 agent semantic judgment. Optional opportunities outside required intent coverage may
 still be `not_observed`. Exact-candidate
 technical and evidence-integrity failures remain hard; direct human Viewer,
@@ -303,18 +303,19 @@ evidence.
 ## Privacy and external transmission
 
 Keep the campaign root and raw rollouts in private ignored state. Ordinary
-independent review requires two private artifacts: the byte-exact raw rollout
-archive and the bounded review package. The package contains bounded campaign
+independent review uses a bounded reviewer-safe review package. Immutable raw rollout
+bytes remain private Campaign evidence and supply verified projection origins.
+The package contains bounded campaign
 metadata, frozen task-selection and review views, hashes, canonical bundles,
 recorded common qualitative reviews when provided, Runtime/activation summaries,
 blocker records when present, and
 all four generated document kinds in Markdown and self-contained HTML. Raw
-rollouts remain outside the default package.
+rollouts remain outside every reviewer package; opt-in adds Work/resume projections.
 
 Do not package or request full Runtime Homes, SQLite files or sidecars, derived-analysis
 directories, installations, source repositories, credentials, prompts, source
-bodies, or provider payloads for ordinary review. Preserve raw rollouts in a
-separate private archive for the independent review handoff.
+bodies, or provider payloads for ordinary review. Raw origin hashes and projected hashes
+remain distinct; semantic omissions require evidence insufficiency under the current rubric.
 
 ## Historical acceptance results
 
@@ -479,7 +480,8 @@ Use `prepare-qualitative-review --campaign-root ... --output ... --reviewer-kind
 --review-session-id ...` (or kind `human`) on an intact immutable evidence set.
 The output must be outside the Campaign. Optional `--machine-evaluation` binds a
 published run without requiring passage; explicit `--include-raw-rollouts` adds
-private exact work/resume bytes. Only bounded frozen task-selection metadata,
+bounded reviewer-safe Work/resume projections with raw-origin binding and explicit
+semantic omission/completeness metadata. Only bounded frozen task-selection metadata,
 factual diagnostics, pinned source authority, bundles, documents, Viewer snapshots
 and selected observations enter
 the package. The package assigns no semantic expected-answer profiles.

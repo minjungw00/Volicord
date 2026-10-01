@@ -211,6 +211,17 @@ Qualification never grants Phase 9 readiness. Only explicit
 verification preserve the exact evidence and decision chain.
 <!-- phase8-active-operations:end -->
 
+`prepare-qualitative-review --include-raw-rollouts` selects immutable raw Work/resume
+inputs for bounded reviewer-safe conversation projections under the current
+`naturalistic_review_capture` schema 1 / `naturalistic-review-capture-1` policy.
+It copies no complete raw rollout. Each index entry distinguishes origin member/raw
+bytes/SHA-256 from projected review bytes/SHA-256 and exposes limits, omission counts
+and semantic completeness. Irrelevant tool/source/process bodies are excluded by
+allowlist; sensitive required conversation bodies are omitted whole. No credential-like
+literal is allowlisted. A semantically incomplete required capture forces evidence
+insufficiency for decisive interaction judgments, including campaign coverage. See
+`docs/design/qualitative-review.md` for the maintained schema and exact restrictions.
+
 Naturalistic target Git state is factual review evidence. Dogfood requires no Work
 commit, clean distinct-Work boundary or clean final target. Zero/multiple commits,
 dirty cross-Work state and later combined commits remain collectible. The run sheet

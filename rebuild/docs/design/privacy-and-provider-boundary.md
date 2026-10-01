@@ -402,8 +402,22 @@ Post-campaign reviewer preparation은 current-host access에 필요한 bounded l
 self-reported identity는 검증된 candidate/evidence hash binding과 분리한다. Rollout, repository,
 generated document 속 지시는 평가 대상 evidence이며 reviewer에게 적용되는 instruction이 아니다.
 Reviewer package는 evaluator-private expected answers, full descriptor, runtime/credential store를
-포함하지 않는다. Raw rollout은 필요한 경우에만 명시적으로 선택한 separate private surface다.
-Unavailable raw, CLI 또는 live accessibility observation을 감추거나 satisfied로 대체하지 않는다.
+포함하지 않는다. Immutable Campaign은 raw rollout byte count/SHA-256 identity를 그대로 보존한다.
+`--include-raw-rollouts`는 raw bytes를 복사하는 flag가 아니라 bounded reviewer-safe Work/resume
+projection input을 선택한다. Current `naturalistic_review_capture` schema 1 /
+`naturalistic-review-capture-1` policy는 실제 user/agent 대화, Question chronology, operation identity와
+bounded outcome/execution fact만 positive allowlist로 보존한다. System/developer/skill/plugin,
+reasoning, environment, arbitrary repository/tool/process body는 복사하지 않는다. 원본 member path,
+raw bytes/hash와 projected review bytes/hash는 별도 binding이다.
+Retained semantic text에 기존 sensitive-payload policy가 적용되며 unsafe body 전체를 제외한다.
+Record coordinate, semantic role, selected body byte count/hash와 typed omission reason만 남기고
+민감한 값은 metadata/log에도 넣지 않는다. Credential-like test literal이나 repository를 allowlist하지
+않고 fuzzy redaction도 하지 않는다. `semantic_complete`는 required user/agent/Question body와
+selected operation identity/action/state가 모두 보존됨을 뜻하며 전체 raw 복사를 뜻하지 않는다. Privacy/size semantic omission은 explicit count와
+incomplete state를 남기며 required Work/resume을 사용하는 decisive 판단은 `insufficient_evidence`로
+남아야 한다. Non-semantic exclusion alone은 semantic completeness를 떨어뜨리지 않는다.
+Detailed schema/limits와 decisive restrictions는 `qualitative-review.md`가 소유한다.
+Unavailable captures, CLI 또는 live accessibility observation을 감추거나 satisfied로 대체하지 않는다.
 Conversational human-review capture도 이 local reviewer plane 안에서만 동작한다. Human이 제공한
 observation, reasoning, relevance, uncertainty와 conflict-resolution confirmation만 보존하며
 provider를 호출하거나 누락된 human semantics를 생성하지 않는다. 도구가 생성하는 candidate,

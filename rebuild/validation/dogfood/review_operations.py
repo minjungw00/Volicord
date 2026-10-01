@@ -24,10 +24,11 @@ import cli_observations
 import machine_findings as machine
 import qualitative_review as review
 import interaction_diagnostics
+import codex_events
+import review_captures
 
 MAX_FILES = 512
 MAX_FILE_BYTES = 32 * 1024 * 1024
-MAX_RAW_BYTES = 128 * 1024 * 1024
 MAX_PACKAGE_BYTES = 512 * 1024 * 1024
 MAX_DRAFT_BYTES = 8 * 1024 * 1024
 
@@ -73,8 +74,9 @@ def workflow_contract():
         "input": "immutable_evidence_set_and_optional_machine_run", "campaign_mutation": False,
         "review_root": "separate_from_campaign", "draft": "draft.json", "recorded": "recorded/review.json",
         "preflight_mutation": "none", "publication": "exclusive_atomic_directory",
-        "raw_rollouts": "explicit_opt_in_private_surface", "evaluator_private_answers": "excluded",
-        "artifact_limits": {"files": MAX_FILES, "file_bytes": MAX_FILE_BYTES, "raw_file_bytes": MAX_RAW_BYTES,
+        "raw_rollouts": "explicit_opt_in_reviewer_safe_capture_projection", "evaluator_private_answers": "excluded",
+        "artifact_limits": {"files": MAX_FILES, "file_bytes": MAX_FILE_BYTES, "source_capture_bytes": review_captures.LIMITS["source_bytes"],
+            "capture_body_bytes": review_captures.MAX_BODY_BYTES,
             "package_bytes": MAX_PACKAGE_BYTES, "draft_bytes": MAX_DRAFT_BYTES},
         "human_observations": "explicit_candidate_bound_direct_human_live_observations",
         "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
@@ -267,11 +269,10 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
     files, evidence, samples, unavailable, findings = {}, {}, [], [], {}
     diagnostics = {}
 
-    def add(identity, data, surface, sample_id, origin, *, sample_ids=None, raw=False, suffix=".json"):
-        maximum = MAX_RAW_BYTES if raw else MAX_FILE_BYTES
-        review.require(len(data) <= maximum and len(files) < MAX_FILES, "review selection exceeds artifact bounds")
+    def add(identity, data, surface, sample_id, origin, *, sample_ids=None, suffix=".json"):
+        review.require(len(data) <= MAX_FILE_BYTES and len(files) < MAX_FILES, "review selection exceeds artifact bounds")
         require_review_artifact_safe(data)
-        name = ("private-rollouts/" if raw else "evidence/") + identity + (".jsonl" if raw else suffix)
+        name = "evidence/" + identity + suffix
         pointers, line_count = locators(data)
         files[name] = data
         evidence[identity] = {"path": name, "bytes": len(data), "sha256": digest(data),
@@ -280,15 +281,15 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             "locators": pointers, "line_count": line_count, "locale": None}
         return identity
 
-    def source(identity, name, surface, sample_id, *, sample_ids=None, raw=False):
+    def source(identity, name, surface, sample_id, *, sample_ids=None):
         binding = manifest["artifacts"].get(name)
         if binding is None:
             return None
-        data = bounded_read(safe_path(root, name), MAX_RAW_BYTES if raw else MAX_FILE_BYTES)
+        data = bounded_read(safe_path(root, name), MAX_FILE_BYTES)
         review.require(binding == {"bytes": len(data), "sha256": digest(data)}, "evidence-set source hash mismatch")
         return add(identity, data, surface, sample_id,
             {"kind": "evidence_set_member", "path": name, **binding},
-            sample_ids=sample_ids, raw=raw, suffix=Path(name).suffix)
+            sample_ids=sample_ids, suffix=Path(name).suffix)
 
     work_evidence = {item["work_slot_id"]: item for item in manifest["work_evidence"]}
     journey_final = {item["journey_id"]: item for item in manifest["journey_final_evidence"]}
@@ -330,8 +331,16 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                 and descriptor["work_slot_id"] == work_slot
                 and descriptor["work_label"] == work, "review sample mapping changed")
             source(sample_id + "-task", descriptor_name, "task_selection", sample_id)
-            captures = {role: c.load_codex_capture(safe_path(root, session["relative_evidence_path"]))
-                for role, session in work_evidence[work_slot]["sessions"].items()}
+            capture_sources, captures = {}, {}
+            for role, session in work_evidence[work_slot]["sessions"].items():
+                name = session["relative_evidence_path"]
+                data = bounded_read(safe_path(root, name), codex_events.MAX_CAPTURE_BYTES)
+                source_binding = {"bytes": len(data), "sha256": digest(data)}
+                review.require(manifest["artifacts"].get(name) == source_binding
+                    and session["sha256"] == source_binding["sha256"], "evidence-set source hash mismatch")
+                capture_sources[role] = data
+                captures[role] = codex_events.parse_codex_capture(data)
+                review.require(captures[role].session_id == session["session_id"], "review source session mismatch")
             bundle = c.harness.load_canonical_bundle(safe_path(root, bundle_name))
             diagnostics[sample_id] = interaction_diagnostics.work_summary(descriptor,
                 captures.get("start"), captures.get("resume"), bundle)
@@ -339,12 +348,17 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             entry = work_evidence[work_slot]
             for role, session in entry["sessions"].items():
                 if include_raw:
-                    target = source(sample_id + "-" + role,
-                        session["relative_evidence_path"],
-                        ("work_capture" if role == "start" else "resume_capture"), sample_id,
-                        sample_ids=[sample_id, journey_sample_id], raw=True)
-                    if target:
-                        aliases[("work_capture" if role == "start" else "resume_capture")] = target
+                    data = capture_sources[role]
+                    origin = {"kind": "evidence_set_member", "path": session["relative_evidence_path"],
+                        "raw_bytes": len(data), "raw_sha256": digest(data)}
+                    projected, projection = review_captures.project(data, origin=origin, role=role,
+                        session_id=session["session_id"], candidate_head=manifest["candidate_head"],
+                        evidence_set_sha256=digest(bounded_read(root / "evidence-set.json")))
+                    surface = "work_capture" if role == "start" else "resume_capture"
+                    target = add(sample_id + "-" + role, projected, surface, sample_id, origin,
+                        sample_ids=[sample_id, journey_sample_id])
+                    evidence[target]["projection"] = projection
+                    aliases[surface] = target
             sample = {"sample_id": sample_id, "journey_id": journey_sample_id,
                 "repository_class": kind, "work": work, "work_slot_id": work_slot,
                 "resume_pair": "resume" in entry["sessions"],
@@ -357,10 +371,12 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             work_surfaces = {"work_capture"} | ({"resume_capture", "canonical_bundle"} if sample["resume_pair"] else set())
             for surface in sorted(work_surfaces - surfaces):
                 unavailable.append({"sample_id": sample_id, "surface": surface,
-                    "reason": "Not present in selected immutable evidence; raw rollouts require explicit inclusion and live/CLI observations are not inferred."})
+                    "reason": "Not present in selected immutable evidence; raw rollout projection requires explicit inclusion and live/CLI observations are not inferred."})
             # Availability itself is citable evidence for an insufficient assessment.
             add(sample_id + "-availability", encoded({"sample": sample, "available_surfaces": sorted(surfaces),
-                "unavailable_surfaces": [u for u in unavailable if u["sample_id"] == sample_id]}), "availability", sample_id,
+                "unavailable_surfaces": [u for u in unavailable if u["sample_id"] == sample_id],
+                "capture_projections": {identity: entry["projection"] for identity, entry in evidence.items()
+                    if entry["sample_id"] == sample_id and entry["surface"] in review_captures.CAPTURE_SURFACES}}), "availability", sample_id,
                 {"kind": "evidence_set_selection"})
         source(journey_sample_id + "-viewer", f"{projection_prefix}/evidence/viewer-snapshot.html",
             "viewer_snapshot", journey_sample_id, sample_ids=journey_scope)
@@ -471,6 +487,9 @@ architecture flow and inspect primary document content, diagrams and Decision
 attribution rather than relying on existence or hashes. Record the evidence actually
 inspected for each criterion as well as the run-wide union,
 uncertainty and counterevidence/explicit absence.
+Work/resume files are bounded projections, never complete raw rollout bytes.
+Inspect origin hashes, projection limits and typed omissions. A required semantically
+incomplete capture cannot support satisfied or violated; use insufficient_evidence.
 Unavailable CLI or live accessibility surfaces require insufficient_evidence.
 Agent identity must remain agent; do not label an agent judgment as human review.
 Validate with validate-qualitative-review; record with record-qualitative-review.
@@ -495,6 +514,7 @@ def inspect_agent_criterion(root, criterion_number):
             continue
         evidence.append({"evidence_id": identity, "path": entry["path"],
             "sha256": entry["sha256"], "surface": entry["surface"],
+            "origin": entry["origin"], "projection": entry.get("projection"),
             "required_surface": entry["surface"] in required,
             "json_locators": entry["locators"], "line_count": entry["line_count"]})
     finding_ids = [identity for identity, item in preparation["index"]["machine_findings"].items()
@@ -532,10 +552,11 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         evaluation_path = evaluation_path.resolve()
         from evaluation_runs import load
         data = bounded_read(evaluation_path)
-        evaluation = load(evaluation_path)
+        evaluation = load(evaluation_path, for_review=True)
         review.require(evaluation["candidate_head"] == manifest["candidate_head"]
             and evaluation["evidence_set"] == {"path": "evidence-set.json", "sha256": evidence_hash}, "machine run evidence-set/candidate mismatch")
-        machine_binding = {"run_id": evaluation["run_id"], "sha256": digest(data)}
+        machine_binding = {"run_id": evaluation["run_id"], "sha256": digest(data),
+            "recorded_policy": evaluation["policy"], "policy_verification": "recorded_identity_not_current_equivalence"}
     policy = review.rubric(c.harness.load_definition())
     reviewer = review.reviewer(reviewer_kind, run_id or secrets.token_hex(16), session_id)
     if identity is not None:
@@ -617,7 +638,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         "completion_obligations": review.completion_obligations(index, policy),
         "preparer_revision": c.harness.git_head(c.ROOT),
         "preparer_files": {name: c.harness.sha256(Path(__file__).with_name(name)) for name in
-            ("review_operations.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
+            ("review_operations.py", "review_captures.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
              "authority_obligations.py", "interaction_diagnostics.py", "workload_intents.py", "evaluation.json")}}
     preparation_bytes = encoded(preparation)
     review.require(len(preparation_bytes) <= MAX_FILE_BYTES, "review index exceeds bound")
@@ -632,6 +653,8 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
     review.require(c.harness.sha256(root / "evidence-set.json") == evidence_hash, "evidence set changed during preparation")
     if evaluation_path is not None:
         review.require(c.harness.sha256(evaluation_path) == machine_binding["sha256"], "machine run changed during preparation")
+    for data in files.values():
+        require_review_artifact_safe(data)
     publish_directory(output, files)
     return {"state": "prepared", "review_root": str(output), "package_id": package_id,
         "review_run_id": reviewer["run_id"], "reviewer_kind": reviewer_kind,
@@ -657,7 +680,8 @@ def _load_package(root):
     contents, total = {}, 0
     for name, binding in artifacts.items():
         review.require(name not in {"draft.json", "package.json"} and not name.startswith("recorded/"), "mutable/recorded data cannot alter review preparation")
-        data = bounded_read(safe_path(root, name), MAX_RAW_BYTES if name.startswith("private-rollouts/") else MAX_FILE_BYTES)
+        data = bounded_read(safe_path(root, name))
+        require_review_artifact_safe(data)
         total += len(data)
         review.require(binding == {"bytes": len(data), "sha256": digest(data)}, "review package artifact hash mismatch")
         contents[name] = data
@@ -694,6 +718,15 @@ def _load_package(root):
         pointers, count = locators(content)
         review.require(entry["sha256"] == digest(content) and entry["bytes"] == len(content)
             and entry["locators"] == pointers and entry["line_count"] == count, "index locator/content mismatch")
+        if entry["surface"] in review_captures.CAPTURE_SURFACES:
+            projected = review_captures.validate(content)
+            review.require(entry.get("projection") == review_captures.metadata(content)
+                and projected["origin"] == entry["origin"]
+                and projected["candidate_head"] == binding["candidate_head"]
+                and projected["evidence_set_sha256"] == binding["evidence_set"]["sha256"]
+                and projected["session_id"] in preparation["evaluated_sessions"]
+                and entry["surface"] == ("work_capture" if projected["role"] == "start" else "resume_capture"),
+                "review capture projection binding mismatch")
     review.require(set(contents) == {"preparation.json", "REVIEW.md", *(e["path"] for e in index["evidence"].values())},
         "review package contains unindexed or private extra artifacts")
     for value in index["machine_findings"].values():
@@ -755,7 +788,7 @@ def package_review(root, output):
     preparation, sha, package = load_package(root)
     names = sorted({*package["artifacts"], "package.json", "draft.json"})
     files = {name: bounded_read(safe_path(root, name), MAX_DRAFT_BYTES if name == "draft.json" else
-        MAX_RAW_BYTES if name.startswith("private-rollouts/") else MAX_FILE_BYTES) for name in names}
+        MAX_FILE_BYTES) for name in names}
     for name, binding in package["artifacts"].items():
         review.require(binding == {"bytes": len(files[name]), "sha256": digest(files[name])}, "review evidence changed during archive preparation")
     review.require(json.loads(files["package.json"]) == package, "review package changed during archive preparation")

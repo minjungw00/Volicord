@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 # Shared by completion/handoff reporting and replacement qualification.
 HIGH_IMPACT_INSUFFICIENCY_GROUPS = ("authority", "context_recovery", "campaign_interaction")
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
@@ -46,7 +46,7 @@ SURFACES = {
     "campaign_interaction": ["task_selection", "interaction_diagnostics", "work_capture", "canonical_bundle"],
 }
 GROUP_PROMPTS = {
-    "campaign_interaction": "Assess whether planned workload intents and actual interactions provide reliable evidence for replacement Question/Learning behavior. Inspect raw turns, diagnostic facts, source/authority evidence and independent agent semantic review. Correct no-question behavior counts as evidence. Weak selection or sparse evidence means insufficient_evidence; violated requires substantive observed Product behavior failure. No operation-count threshold applies.",
+    "campaign_interaction": "Assess whether planned workload intents and actual interactions provide reliable evidence for replacement Question/Learning behavior. Inspect bounded projected conversation turns and explicit omissions, diagnostic facts, source/authority evidence and independent agent semantic review. Correct no-question behavior counts as evidence. Weak selection or sparse evidence means insufficient_evidence; violated requires substantive observed Product behavior failure. No operation-count threshold applies.",
     "interaction": "Judge necessary and omitted Questions against actual material outcomes, user-owned authority and source evidence. Do not require evaluator wording, answers, counts or a manufactured Question. Assess comprehension, repetition and interruption cost; distinguish user judgment from agent recommendation.",
     "documents": "Inspect all four documents: architecture guide, Decision report, implementation plan and handoff/resume. Compare each with current Sources and Decisions; assess practical understanding/handoff value, accurate remaining work and gaps, and actual requested-language prose rather than metadata-only language claims.",
     "viewer_snapshot": "Assess whether Project Understanding explains completed/current/remaining work, next steps, Decision rationale, affected code and component/request/data flow. Distinguish source facts from generated interpretation; inspect evidence-grounded diagram topology and useful readability rather than raw record listings.",
@@ -83,7 +83,7 @@ CRITERION_OBSERVATIONS = {
     "learning_fork_value": ["explicit_participation_scope", "runtime_recognition", "source_grounded_meaningful_fork_or_absence", "routine_noninterruption", "evidence_gap_vs_product_failure"],
     "correct_no_question_behavior": ["repository_and_source_authority", "actual_implementation_commitments", "unresolved_user_owned_outcomes"],
     "unnecessary_interruption": ["question_necessity", "repository_and_source_authority", "proportional_interruption_cost"],
-    "interaction_coverage_adequacy": ["planned_workload_intents", "actual_raw_interactions", "machine_diagnostic_facts", "source_and_authority", "independent_agent_semantic_review", "question_and_learning_assessability", "product_failure_vs_evidence_gap"],
+    "interaction_coverage_adequacy": ["planned_workload_intents", "actual_projected_interactions", "machine_diagnostic_facts", "source_and_authority", "independent_agent_semantic_review", "question_and_learning_assessability", "product_failure_vs_evidence_gap"],
     "architecture_components_flow": ["components", "relationships", "flow_direction", "separate_from_code_behavior"],
     "code_behavior": ["affected_code", "concrete_behavior", "source_basis", "separate_from_topology"],
     "diagram_usefulness": ["actual_diagram", "grounded_nodes_edges", "material_explanatory_value"],
@@ -470,12 +470,23 @@ def validate_assessment(value, spec, preparation, inspected):
                 and preparation["reviewer"]["kind"] == "human"):
             required_surfaces.add("live_viewer_observation")
         require(required_surfaces <= surfaces, "criterion lacks its required observation surface; use insufficient_evidence")
+        capture_surfaces = required_surfaces & {"work_capture", "resume_capture"}
+        if capture_surfaces:
+            # No current alternative surface supplies missing actual conversation.
+            # Check every applicable required capture, not only favorable citations.
+            applicable = [entry for entry in index["evidence"].values()
+                if evidence_applies(entry, spec["sample_id"]) and entry["surface"] in capture_surfaces]
+            require(all(entry.get("projection", {}).get("semantic_complete") is True for entry in applicable),
+                "required capture is semantically incomplete; use insufficient_evidence")
         if spec["name"] == "interaction_coverage_adequacy":
+            require(all(entry.get("projection", {}).get("semantic_complete") is True
+                for entry in index["evidence"].values() if entry["surface"] in {"work_capture", "resume_capture"}),
+                "interaction coverage requires every complete Work/resume projection; use insufficient_evidence")
             entries = [index["evidence"][identity] for identity in criterion_inspected]
             for sample in index["samples"]:
                 required = {"task_selection", "work_capture"} | ({"resume_capture"} if sample["resume_pair"] else set())
                 present = {entry["surface"] for entry in entries if evidence_applies(entry, sample["sample_id"])}
-                require(required <= present, "interaction coverage requires inspection of every frozen task and raw Work/resume")
+                require(required <= present, "interaction coverage requires inspection of every frozen task and Work/resume projection")
         if state == "satisfied" and spec["group"] == "documents":
             document_kinds = {index["evidence"][r["evidence_id"]].get("document_kind") for r in value["evidence"]}
             require(DOCUMENT_KINDS <= document_kinds, "document satisfaction must inspect all four required documents")

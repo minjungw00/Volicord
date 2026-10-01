@@ -2042,7 +2042,13 @@ def repository_operation_is_inspection(call: ToolCall) -> bool:
 def load_codex_capture(path: Path) -> CodexCapture:
     if not path.is_file() or path.stat().st_size > MAX_CAPTURE_BYTES:
         raise EvidenceError("Codex capture is absent or exceeds the bounded size")
-    raw_bytes = path.read_bytes()
+    return parse_codex_capture(path.read_bytes())
+
+
+def capture_events(raw_bytes: bytes) -> list[dict[str, Any]]:
+    """Shared bounded JSONL decoder for normalization and reviewer projection."""
+    if len(raw_bytes) > MAX_CAPTURE_BYTES:
+        raise EvidenceError("Codex capture exceeds the bounded size")
     try:
         lines = raw_bytes.decode("utf-8").splitlines()
     except UnicodeDecodeError as error:
@@ -2053,13 +2059,20 @@ def load_codex_capture(path: Path) -> CodexCapture:
     events: list[dict[str, Any]] = []
     for line in lines:
         try:
-            value = json.loads(line)
-        except json.JSONDecodeError as error:
+            value = strict_json(line)
+        except ValueError as error:
             raise EvidenceError("Codex capture contains invalid JSONL") from error
         if not isinstance(value, dict):
             raise EvidenceError("Codex capture event is not an object")
+        if not nonempty(value.get("type")) or not isinstance(value.get("payload"), dict):
+            raise EvidenceError("Codex capture event envelope is malformed")
         events.append(value)
+    return events
 
+
+def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
+    """Normalize the exact supplied bytes, without re-reading a mutable path."""
+    events = capture_events(raw_bytes)
     meta_events = [event for event in events if event.get("type") == "session_meta"]
     if len(meta_events) != 1 or events[0].get("type") != "session_meta":
         raise EvidenceError("Codex rollout requires one leading session_meta event")

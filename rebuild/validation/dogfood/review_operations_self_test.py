@@ -16,6 +16,8 @@ import harness
 import human_review
 import qualitative_review as q
 import review_operations as ops
+import review_captures as captures
+import codex_events
 
 
 def snapshot(root):
@@ -163,6 +165,191 @@ def assert_review_workflow(root, parent):
     return target
 
 
+def synthetic_rollout(user="Please inspect the integration boundary.", agent="I inspected the boundary and validation passed."):
+    events = [
+        {"type": "session_meta", "payload": {"id": "fixture-session", "session_id": "fixture-session",
+            "cwd": "/synthetic/repository", "source": "vscode", "originator": "fixture",
+            "cli_version": "fixture", "thread_source": "user"}},
+        {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "fixture-turn"}},
+        {"type": "event_msg", "payload": {"type": "user_message", "message": user, "client_id": "fixture-client"}},
+        {"type": "event_msg", "payload": {"type": "item_completed", "thread_id": "fixture-session",
+            "turn_id": "fixture-turn", "item": {"type": "AgentMessage", "id": "fixture-agent",
+            "phase": "final_answer", "content": [{"type": "text", "text": agent}]}}},
+        {"type": "response_item", "payload": {"type": "message", "role": "assistant",
+            "id": "fixture-agent", "phase": "final_answer", "content": [{"type": "output_text", "text": agent}],
+            "internal_chat_message_metadata_passthrough": {"turn_id": "fixture-turn"}}},
+        {"type": "event_msg", "payload": {"type": "task_completed", "turn_id": "fixture-turn"}},
+    ]
+    return events
+
+
+def rollout_bytes(events):
+    return b"".join(ops.encoded(e).replace(b"\n", b"") + b"\n" for e in events)
+
+
+class ProjectionTests(unittest.TestCase):
+    def project(self, events=None, *, role="start", data=None, origin=None):
+        data = data if data is not None else rollout_bytes(events or synthetic_rollout())
+        origin = origin or {"kind": "evidence_set_member", "path": "slots/fixture/evidence/" + role + ".rollout.jsonl",
+            "raw_bytes": len(data), "raw_sha256": ops.digest(data)}
+        return captures.project(data, origin=origin, role=role, session_id="fixture-session",
+            candidate_head="a" * 40, evidence_set_sha256="b" * 64)
+
+    def test_complete_work_resume_distinct_identity_and_reproducible_projection(self):
+        for role in ("start", "resume"):
+            with self.subTest(role=role):
+                data, metadata = self.project(role=role)
+                value = captures.validate(data)
+                self.assertEqual(value["role"], role)
+                self.assertTrue(metadata["semantic_complete"])
+                self.assertEqual(metadata["semantic_omission_count"], 0)
+                self.assertEqual(value["origin"]["raw_bytes"], len(rollout_bytes(synthetic_rollout())))
+                self.assertEqual(value["origin"]["raw_sha256"], ops.digest(rollout_bytes(synthetic_rollout())))
+                self.assertNotEqual(metadata["review_sha256"], value["origin"]["raw_sha256"])
+                self.assertEqual(metadata["review_bytes"], len(data))
+                self.assertEqual(self.project(role=role), (data, metadata))
+                texts = [r["body"]["value"] for r in value["records"] if r["semantic_role"] in captures.SEMANTIC_ROLES]
+                self.assertIn("Please inspect the integration boundary.", texts)
+                self.assertIn({"text": "I inspected the boundary and validation passed.", "questions": None}, texts)
+                agent = next(r for r in value["records"] if r["semantic_role"] == "agent_message")
+                self.assertEqual(agent["source_sequences"], [3, 4])
+
+    def test_nonsemantic_payloads_are_excluded_without_literal_allowlisting(self):
+        # Synthetic values are deliberately varied; no real campaign literal is stored.
+        for spelling in ("fixture-output-value-381957", "different-fixture-value-964201"):
+            events = synthetic_rollout()
+            secret = "access_token=" + spelling
+            for envelope, payload in (
+                ("response_item", {"type": "function_call_output", "call_id": "generic-tool", "output": secret}),
+                ("response_item", {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": secret}]}),
+                ("response_item", {"type": "reasoning", "encrypted_content": secret}),
+                ("event_msg", {"type": "item_completed", "item": {"type": "CommandExecution", "stdout": secret}}),
+            ):
+                events.insert(-1, {"type": envelope, "payload": payload})
+            data, metadata = self.project(events)
+            self.assertNotIn(spelling.encode(), data)
+            self.assertTrue(metadata["semantic_complete"])
+            self.assertGreater(metadata["non_semantic_omission_count"], 0)
+            ops.require_review_artifact_safe(data)
+
+    def test_sensitive_user_and_agent_bodies_are_omitted_with_safe_provenance(self):
+        for role in ("user", "agent"):
+            secret = "access_token=synthetic-sensitive-value-529163"
+            events = synthetic_rollout(**{role: secret})
+            data, metadata = self.project(events)
+            value = captures.validate(data)
+            self.assertNotIn(b"synthetic-sensitive-value-529163", data)
+            self.assertFalse(metadata["semantic_complete"])
+            self.assertEqual(metadata["semantic_omission_count"], 1)
+            omitted = next(r for r in value["records"] if r.get("body", {}).get("state") == "omitted")
+            self.assertEqual(omitted["body"]["reason"], "sensitive_payload")
+            self.assertIsNone(omitted["body"]["value"])
+            self.assertGreater(omitted["body"]["source_body_bytes"], 0)
+            self.assertEqual(len(omitted["body"]["source_body_sha256"]), 64)
+            self.assertIn("turn_id", omitted)
+            self.assertIn("sequence", omitted)
+
+    def test_question_operation_interruption_and_resume_coordinates_are_preserved(self):
+        events = synthetic_rollout()
+        events.insert(3, {"type": "response_item", "payload": {"type": "function_call",
+            "name": "request_user_input_async", "call_id": "fixture-question",
+            "arguments": json.dumps({"questions": [{"title": "Which behavior should apply?", "options": ["Preserve", "Change"]}]}),
+            "internal_chat_message_metadata_passthrough": {"turn_id": "fixture-turn"}}})
+        events.insert(4, {"type": "response_item", "payload": {"type": "function_call_output",
+            "call_id": "fixture-question", "output": json.dumps({"accepted": True}),
+            "internal_chat_message_metadata_passthrough": {"turn_id": "fixture-turn"}}})
+        events[-1]["payload"]["type"] = "turn_aborted"
+        events.extend([
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "resumed-turn"}},
+            {"type": "event_msg", "payload": {"type": "user_message", "client_id": "response-client", "message": "Preserve the behavior."}},
+            {"type": "event_msg", "payload": {"type": "context_compacted"}},
+            {"type": "event_msg", "payload": {"type": "task_completed", "turn_id": "resumed-turn"}},
+        ])
+        data, metadata = self.project(events, role="resume")
+        self.assertTrue(metadata["semantic_complete"])
+        records = json.loads(data)["records"]
+        question = next(r for r in records if r["semantic_role"] == "question_request")
+        self.assertEqual(question["body"]["value"], [{"title": "Which behavior should apply?", "options": ["Preserve", "Change"]}])
+        self.assertEqual(question["call_id"], "fixture-question")
+        self.assertEqual(question["source_sequences"], [3, 4])
+        self.assertTrue(any(r["semantic_role"] == "turn_terminal" and r["state"] == "interrupted" for r in records))
+        self.assertTrue(any(r["semantic_role"] == "context_compacted" for r in records))
+        self.assertTrue(any(r["semantic_role"] == "user_turn" and r["turn_id"] == "resumed-turn" for r in records))
+        path = Path(__file__).with_name("fixtures") / "current-codex-mcp-completion.jsonl"
+        raw = path.read_bytes()
+        capture = codex_events.parse_codex_capture(raw)
+        projected, _ = captures.project(raw, origin={"kind": "evidence_set_member", "path": "fixture.jsonl",
+            "raw_bytes": len(raw), "raw_sha256": ops.digest(raw)}, role="start", session_id=capture.session_id,
+            candidate_head="a" * 40, evidence_set_sha256="b" * 64)
+        operations = [r for r in json.loads(projected)["records"] if r["semantic_role"] == "volicord_operation"]
+        self.assertEqual(len(operations), len(capture.tool_calls))
+        for record, call in zip(operations, capture.tool_calls):
+            self.assertEqual((record["sequence"], record["completion_sequence"], record["turn_id"], record["call_id"], record["operation"], record["outcome"]),
+                (call.sequence, call.completion_sequence, call.turn_id, call.call_id, call.operation, call.outcome))
+
+    def test_normalized_execution_facts_exclude_command_and_output_bodies(self):
+        path = Path(__file__).with_name("fixtures") / "current-codex-execution-evidence.jsonl"
+        raw = path.read_bytes()
+        capture = codex_events.parse_codex_capture(raw)
+        projected, metadata = captures.project(raw, origin={"kind": "evidence_set_member", "path": "execution-fixture.jsonl",
+            "raw_bytes": len(raw), "raw_sha256": ops.digest(raw)}, role="start", session_id=capture.session_id,
+            candidate_head="a" * 40, evidence_set_sha256="b" * 64)
+        facts = [r for r in json.loads(projected)["records"] if r["semantic_role"] == "execution_fact"]
+        self.assertTrue(facts)
+        self.assertEqual(len(facts), len(capture.commands))
+        self.assertTrue(metadata["semantic_complete"])
+        for fact, command in zip(facts, capture.commands):
+            self.assertEqual(fact["command_role"], codex_events.command_role(command.parsed_command))
+            self.assertEqual(fact["exit_code"], command.exit_code)
+            self.assertEqual(fact["normalized_command_sha256"], ops.digest(ops.encoded(command.parsed_command)))
+            self.assertEqual(fact["output_retention"], "non_semantic_by_design")
+            self.assertNotIn("output", fact)
+            self.assertNotIn("parsed_command", fact)
+
+    def test_maintained_capture_owners_schema_and_help_agree(self):
+        import assertions
+        assertions.check_review_capture_contract()
+
+    def test_size_omission_is_explicit_and_semantically_incomplete(self):
+        events = synthetic_rollout(agent="safe " * (captures.MAX_BODY_BYTES // 5))
+        data, metadata = self.project(events)
+        self.assertFalse(metadata["semantic_complete"])
+        self.assertIn(b'"body_limit"', data)
+
+    def test_invalid_raw_capture_and_hash_mismatch_fail_closed(self):
+        for data in (b"not json", b'{}\n', b'{"type":"session_meta","payload":{}}\n',
+                     b'{"type":"session_meta","type":"other","payload":{}}\n'):
+            with self.subTest(data=data):
+                with self.assertRaises(ValueError):
+                    self.project(data=data)
+        origin = {"kind": "evidence_set_member", "path": "fixture.jsonl", "raw_bytes": 1, "raw_sha256": "0" * 64}
+        with self.assertRaisesRegex(ValueError, "source binding"):
+            self.project(origin=origin)
+        events = synthetic_rollout()
+        events[4]["payload"]["content"][0]["text"] = "Conflicting duplicate message."
+        with self.assertRaisesRegex(ValueError, "transports conflict"):
+            self.project(events)
+        events[2]["payload"].pop("client_id")
+        with self.assertRaisesRegex(ValueError, "user interaction"):
+            self.project(events)
+
+    def test_retained_sensitive_payload_and_projection_inconsistency_are_rejected(self):
+        data, _ = self.project()
+        value = json.loads(data)
+        agent = next(r for r in value["records"] if r["semantic_role"] == "agent_message")
+        agent["body"]["value"]["text"] = "access_token=synthetic-injected-value-718354"
+        with self.assertRaisesRegex(ValueError, "sensitive payload"):
+            captures.validate(ops.encoded(value))
+        value = json.loads(data)
+        value["semantic_omission_count"] = 2
+        with self.assertRaisesRegex(ValueError, "inconsistency"):
+            captures.validate(ops.encoded(value))
+        value = json.loads(data)
+        value["records"][0]["sequence"] = 10000
+        with self.assertRaisesRegex(ValueError, "coordinates"):
+            captures.validate(ops.encoded(value))
+
+
 class WorkflowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -202,20 +389,95 @@ class WorkflowTests(unittest.TestCase):
         learning = next(n for n, s in enumerate(specs, 1) if s.get("workload_intent") == "learning_collaborative")
         self.assertIn("explicitly requests", ops.inspect_agent_criterion(target, learning)["workload_prompt"])
 
+    def test_secret_like_excluded_tool_output_does_not_block_package_preparation(self):
+        binary = self.parent / "projection-fixture-bin/volicord"
+        fixtures.write_fake_binary(binary)
+        with patch.object(harness, "git_clean", return_value=True):
+            root, raw, bundles = fixtures.prepared_batch(self.parent, "projection-fixture-campaign", binary)
+            secret = "synthetic-third-party-value-637195"
+            events = codex_events.capture_events(raw[0].read_bytes())
+            events.insert(-1, {"type": "response_item", "payload": {"type": "function_call_output",
+                "call_id": "unrelated-tool", "output": "access_token=" + secret}})
+            # Publish the synthetic immutable campaign once, after fixture construction.
+            raw[0].write_bytes(rollout_bytes(events))
+            c.collect_batch(root, raw, exporter=fixtures.batch_exporter(bundles),
+                documenter=fixtures.documenter, snapshotter=fixtures.snapshotter)
+        before = snapshot(root)
+        ops.prepare(root, self.target(), reviewer_kind="agent", session_id="projection-fixture-reviewer", include_raw=True)
+        preparation, _, _ = ops.load_package(self.target())
+        for data in snapshot(self.target()).values():
+            self.assertNotIn(secret.encode(), data)
+            ops.require_review_artifact_safe(data)
+        self.assertEqual(snapshot(root), before)
+        self.assertTrue(all(e["projection"]["semantic_complete"] for e in preparation["index"]["evidence"].values()
+            if e["surface"] in captures.CAPTURE_SURFACES))
+        archive = self.target().with_suffix(".tar.gz")
+        ops.package_review(self.target(), archive)
+        with tarfile.open(archive, "r:gz") as opened:
+            for member in opened.getmembers():
+                self.assertNotIn(secret.encode(), opened.extractfile(member).read())
+
+    def test_review_selection_rejects_raw_hash_mismatch_before_projection(self):
+        manifest = copy.deepcopy(c.load_evidence_set(self.root))
+        session = manifest["work_evidence"][0]["sessions"]["start"]
+        manifest["artifacts"][session["relative_evidence_path"]]["sha256"] = "0" * 64
+        with patch.object(captures, "project", side_effect=AssertionError("projected before binding verification")):
+            with self.assertRaisesRegex(ValueError, "source hash mismatch"):
+                ops.select_evidence(self.root, manifest, None, include_raw=True)
+
+    def test_review_reads_recorded_machine_policy_without_current_qualification_claim(self):
+        from evaluation_runs import load
+        value = c.read_json(self.evaluation)
+        value["policy"]["sha256"] = "0" * 64
+        value["run_id"] = ops.machine.digest({k: v for k, v in value.items() if k != "run_id"})
+        run_root = self.parent / (self._testMethodName + "-machine")
+        ops.publish_directory(run_root, {"evaluation.json": ops.encoded(value),
+            "receipt.json": ops.encoded({"kind": "dogfood_evaluation_receipt", "run_id": value["run_id"],
+                "evaluation_sha256": ops.digest(ops.encoded(value))})})
+        with self.assertRaisesRegex(ValueError, "policy"):
+            load(run_root / "evaluation.json")
+        self.assertEqual(load(run_root / "evaluation.json", for_review=True), value)
+        ops.prepare(self.root, self.target(), reviewer_kind="agent", session_id="recorded-policy-reviewer",
+            evaluation_path=run_root / "evaluation.json", include_raw=True)
+        preparation, _, _ = ops.load_package(self.target())
+        self.assertEqual(preparation["binding"]["machine_evaluation"]["recorded_policy"], value["policy"])
+        self.assertEqual(preparation["binding"]["machine_evaluation"]["policy_verification"],
+            "recorded_identity_not_current_equivalence")
+        changed = copy.deepcopy(value)
+        changed["works"][0]["findings"][0]["status"] = "fabricated"
+        with self.assertRaises(ValueError):
+            ops.machine.validate_run(changed, require_current_policy=False)
+        changed = copy.deepcopy(value)
+        changed["run_id"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "identity"):
+            ops.machine.validate_run(changed, require_current_policy=False)
+        receipt = run_root / "receipt.json"
+        receipt.chmod(0o600)
+        receipt.write_bytes(ops.encoded({"kind": "dogfood_evaluation_receipt", "run_id": value["run_id"],
+            "evaluation_sha256": "0" * 64}))
+        with self.assertRaisesRegex(ValueError, "publication"):
+            load(run_root / "evaluation.json", for_review=True)
+
     def test_raw_opt_in_and_machine_binding(self):
         target = self.target()
         before = snapshot(self.root)
         ops.prepare(self.root, target, reviewer_kind="agent", session_id="reviewer", evaluation_path=self.evaluation, include_raw=True)
         p, _, package = ops.load_package(target)
         self.assertEqual(p["binding"]["machine_evaluation"]["run_id"], self.evaluation_result["run_id"])
-        self.assertEqual(len([n for n in package["artifacts"] if n.startswith("private-rollouts/")]), 8)
+        self.assertFalse(any(n.startswith("private-rollouts/") for n in package["artifacts"]))
+        self.assertEqual(sum(e["surface"] in captures.CAPTURE_SURFACES for e in p["index"]["evidence"].values()), 8)
         evaluation = c.read_json(self.evaluation)
         self.assertEqual(len(p["index"]["machine_findings"]),
             sum(len(item["findings"]) for item in [*evaluation["works"], *evaluation["journeys"]]))
         self.assertEqual(snapshot(self.root), before)
         for entry in p["index"]["evidence"].values():
             if entry["surface"] == "work_capture":
-                self.assertEqual((target / entry["path"]).read_bytes(), (self.root / entry["origin"]["path"]).read_bytes())
+                projected = (target / entry["path"]).read_bytes()
+                raw = (self.root / entry["origin"]["path"]).read_bytes()
+                self.assertNotEqual(projected, raw)
+                self.assertEqual(entry["origin"]["raw_sha256"], ops.digest(raw))
+                self.assertEqual(entry["projection"]["review_sha256"], ops.digest(projected))
+                self.assertTrue(entry["projection"]["semantic_complete"])
 
     def test_candidate_bound_cli_observations_are_isolated_hash_checked_and_reviewer_safe(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
@@ -728,7 +990,8 @@ class WorkflowTests(unittest.TestCase):
 
 
 def run_workflow_tests():
-    result = unittest.TextTestRunner(verbosity=1).run(unittest.defaultTestLoader.loadTestsFromTestCase(WorkflowTests))
+    result = unittest.TextTestRunner(verbosity=1).run(unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromTestCase(cls)
+        for cls in (ProjectionTests, WorkflowTests)]))
     if not result.wasSuccessful():
         raise AssertionError("qualitative review operations self-test failed")
 

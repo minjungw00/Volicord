@@ -37,13 +37,18 @@ def publish(destination, result):
     return destination.absolute() / "evaluation.json"
 
 
-def load(path):
+def load(path, *, for_review=False):
+    """Review verifies the recorded policy; qualification requires current policy.
+
+    Both use the same current machine schema, finding semantics and publication
+    integrity checks. Reading for review cannot attest current-policy equivalence.
+    """
     from review_operations import bounded_read, digest
     if path.name != "evaluation.json" or path.parent.with_name(path.parent.name + ".publication-lock").exists():
         raise ValueError("evaluation is not a completed immutable run")
     data = bounded_read(path)
     value = json.loads(data)
-    machine.validate_run(value)
+    machine.validate_run(value, require_current_policy=not for_review)
     receipt = json.loads(bounded_read(path.with_name("receipt.json")))
     if receipt != {"kind": "dogfood_evaluation_receipt", "run_id": value["run_id"],
         "evaluation_sha256": digest(data)}:

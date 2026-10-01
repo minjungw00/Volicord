@@ -3170,7 +3170,8 @@ def parser() -> argparse.ArgumentParser:
     prepare_qualitative.add_argument("--review-session-id")
     prepare_qualitative.add_argument("--reviewer-identity", help="JSON file with explicit unverified identity claims")
     prepare_qualitative.add_argument("--machine-evaluation")
-    prepare_qualitative.add_argument("--include-raw-rollouts", action="store_true")
+    prepare_qualitative.add_argument("--include-raw-rollouts", action="store_true",
+        help="Use immutable raw Work/resume rollouts as inputs to bounded reviewer-safe capture projections")
     prepare_qualitative.add_argument("--human-observations", help="Candidate/evidence-bound direct human en/ko live accessibility observations")
     prepare_qualitative.add_argument("--cli-observations", help="Candidate/evidence-bound repository-class CLI observation directory")
     inspect_agent.add_argument("--review-root", required=True)

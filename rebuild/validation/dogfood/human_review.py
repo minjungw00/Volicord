@@ -200,8 +200,7 @@ def _locator_for_phrase(root, entry, phrase):
     ops = _ops()
     if not phrase:
         return entry["locators"][0] if entry["locators"] else {"kind": "line", "value": 1}
-    data = ops.bounded_read(ops.safe_path(root, entry["path"]),
-        ops.MAX_RAW_BYTES if entry["path"].startswith("private-rollouts/") else ops.MAX_FILE_BYTES)
+    data = ops.bounded_read(ops.safe_path(root, entry["path"]))
     text = data.decode("utf-8", errors="replace")
     matches = [number for number, line in enumerate(text.splitlines(), 1) if phrase in line]
     review.require(len(matches) == 1,

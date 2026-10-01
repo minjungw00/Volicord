@@ -38,6 +38,9 @@ def preparation(kind="agent"):
                 "surface": surface,
                 "locale": locale, "sha256": "a" * 64, "path": name,
                 "locators": [{"kind": "json_pointer", "value": "/fact"}]}
+    for entry in index["evidence"].values():
+        if entry["surface"] in {"work_capture", "resume_capture"}:
+            entry["projection"] = {"semantic_complete": True, "semantic_omission_count": 0}
     index["evidence"].pop("cli_observation")
     for repository_class in ("volicord", "small-python", "polyglot-medium"):
         index["evidence"][repository_class + "-cli"] = {"sample_id": repository_class,
@@ -248,6 +251,36 @@ class ContractTests(unittest.TestCase):
 
     def test_later_repair_does_not_erase_work_judgment(self):
         self.assertEqual(compatibility_review_result(), "failed")
+
+    def test_semantic_omissions_require_insufficient_interaction_evidence(self):
+        for surface in ("work_capture", "resume_capture"):
+            for state in ("satisfied", "violated"):
+                with self.subTest(surface=surface, state=state):
+                    p = preparation()
+                    p["index"]["evidence"][surface]["projection"].update(
+                        semantic_complete=False, semantic_omission_count=1)
+                    value = q.template(p, "d" * 64)
+                    value["observation_scope"]["inspected_evidence"] = sorted(p["index"]["evidence"])
+                    target = next(a for a in value["assessments"] if a["criterion_id"].endswith("/interaction_coverage_adequacy"))
+                    fill(target, p, state)
+                    with self.assertRaisesRegex(ValueError, "complete Work/resume|semantically incomplete"):
+                        q.validate_value(p, "d" * 64, value)
+                    fill(target, p, "insufficient_evidence")
+                    target["reasoning"] = "Inspected the required capture omission metadata; actual interaction was omitted for privacy."
+                    self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "insufficient_evidence")
+
+    def test_all_decisive_direct_interaction_groups_require_complete_captures(self):
+        p = preparation()
+        p["index"]["evidence"]["work_capture"]["projection"]["semantic_complete"] = False
+        for spec in q.criterion_specs(p["index"], p["rubric"]):
+            if "work_capture" not in q.SURFACES[spec["group"]]:
+                continue
+            for state in ("satisfied", "violated"):
+                value = q.observation(spec["criterion_id"])
+                fill(value, p, state)
+                with self.subTest(criterion=spec["criterion_id"], state=state):
+                    with self.assertRaisesRegex(ValueError, "semantically incomplete"):
+                        q.validate_assessment(value, spec, p, list(p["index"]["evidence"]))
 
     def test_shared_rubric_and_immutable_kind(self):
         agent, human = preparation(), preparation("human")
