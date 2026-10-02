@@ -488,6 +488,23 @@ A required violation makes the summary violated, all required criteria resolved 
 satisfied, and any remaining required gap keeps it unresolved. Result validation uses
 the same aggregation rule.
 
+For a fresh campaign's direct Viewer observation, use the candidate-local launch
+and whole-snapshot export procedures in the [Viewer README](../../crates/volicord-viewer/README.md).
+Read Overview, select Work A/B through Work navigation (including pagination),
+follow a Decision's user rationale/recommendation and typed scope, then related
+code, relationship endpoints and retained Source details. Inspect failed,
+unverified, pending/rejected, review-due and stale/unavailable states and Purpose
+present/absent cases where evidence provides them. Preserve observed gaps rather
+than inventing missing events or interpreting summary-unavailable as comprehension.
+Use en/ko with keyboard/focus/non-color cues, narrow 390/768/1440 base widths and
+actual browser 200% zoom; record the actual input/paint experience and limits.
+The automated [browser supporting check](../../validation/README.md#browser-support-for-viewer-reading-v11-owner)
+can expose regressions but cannot supply these human observations. Multi-Work
+organization, applicable Decision comprehension, Learning/semantic value and
+Naturalistic-memory criteria retain their separate identities and authorities.
+No prior Campaign evidence is rewritten and implementation fixtures are not a
+fresh naturalistic campaign.
+
 For direct live observations, human preparation additionally accepts `--human-observations`
 pointing to the conversational capture directory. The lower-level JSON-file input remains
 available for automation. The object has kind `dogfood_human_observations`, original `candidate_head`,

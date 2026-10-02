@@ -47,8 +47,20 @@ fn verification_state(value: &str) -> VerificationState {
     }
 }
 pub fn fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_with_temporary(tempdir()?, false)
+}
+
+// Browser supporting checks retain only their explicitly selected disposable home.
+#[allow(dead_code)]
+pub fn fixture_in(parent: &std::path::Path) -> Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_with_temporary(tempfile::tempdir_in(parent)?, true)
+}
+
+fn fixture_with_temporary(
+    temporary: TempDir,
+    browser_fixture: bool,
+) -> Result<Fixture, Box<dyn std::error::Error>> {
     let input: Value = serde_json::from_str(SCENARIO)?;
-    let temporary = tempdir()?;
     let repository = temporary.path().join("repository");
     let fixture_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../validation/end-to-end/multi-repository/fixtures/viewer-reading/repository");
@@ -179,6 +191,29 @@ pub fn fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
             work["title"].as_str().ok_or("title")?,
             Vec::new(),
         )?;
+        // Display order is canonical identity order. Keep the old browser Work
+        // above enough generated distractors without relying on chance at the bound.
+        let id = if browser_fixture && work["key"] == "older" {
+            let mut selected = id;
+            for _ in 0..1024 {
+                if selected >= ContextItemId::from_bytes([0xf0; 16]) {
+                    break;
+                }
+                selected = record_goal(
+                    &mut store,
+                    &mut counter,
+                    ContextItemRole::Goal,
+                    work["title"].as_str().ok_or("title")?,
+                    Vec::new(),
+                )?;
+            }
+            if selected < ContextItemId::from_bytes([0xf0; 16]) {
+                return Err("could not construct browser identity ordering".into());
+            }
+            selected
+        } else {
+            id
+        };
         goals.insert(work["key"].as_str().ok_or("work key")?.to_owned(), id);
     }
     let mut decisions = BTreeMap::new();

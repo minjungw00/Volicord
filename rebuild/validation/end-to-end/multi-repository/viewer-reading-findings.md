@@ -233,3 +233,94 @@ on this workload. Count/stage ceilings remain unchanged. Latest test source
 `d3682c02b111ab8c0d7088fb56618549ede4e31d563f7dc1e579b1c400c9b005`;
 fixture and Cargo.lock identities above remain unchanged. These are focused
 synthetic checks and retain the same browser/human/long-history limitations.
+
+
+## Independent browser verification
+
+The maintained `viewer_browser.py` and coupled driver replace the earlier
+browser-tooling gap with bounded V11 supporting observations. They use freshly
+built sibling CLI/Viewer binaries, actual `viewer open` and `viewer export`, and
+real disposable Local Operations/Store records. The unchanged scenario and
+independent expectations drive exact Work/history/Decision assertions. Raw
+analysis identities, endpoints, Source and ranges supply the code basis; no
+production projection helper supplies the entire expected result. A canonical
+identity ordering fixture places the older Work past 64 other choices. A second
+Project tests missing Purpose without treating its Goal as Purpose.
+
+Browser inspection exposed two production defects: disclosed Work audit `dt`
+labels overflowed a 390 CSS-pixel page (510 px scroll width, also failing at
+native 200% zoom), and proportional-font SVG labels extended outside their node
+rectangles. The fixes add ordinary audit-label wrapping and use bounded
+monospace cell wrapping for diagram text, retaining long distinguishing endings
+and wide Korean labels. Coupled Rust/browser regressions cover these surfaces;
+the five copy mutations independently detect removed wrapping, prefix-only
+labels, missing fragment targets, cross-Work facts under a retained identity,
+and live links in snapshots. Originals and canonical facts are preserved.
+
+The verified tooling is full headless Chrome for Testing 151.0.7922.34,
+Playwright Core 1.62.1 and Node 24.19.0. Actual tab zoom uses a test-owned
+extension's `chrome.tabs.setZoom` and `getZoom`, with per-tab automatic settings,
+CSS zoom 1, visual viewport scale 1 and recorded width/pixel-ratio changes.
+Native Tab/Enter reaches views, paged Works, SVG fragments, relationships and
+Source disclosures. Scope-local native details, ordinary/root overflow and
+independent graph wheel scrolling are checked at 390/768/1440 base widths in
+both locales at 100% and 200%. Offline snapshots use real `file:` documents
+with networking disabled after listener shutdown and physical Runtime removal.
+
+Direct screenshot inspection found two environment/evidence limitations:
+Playwright surface captures could be blank at deep scroll offsets with native
+tab zoom, and the available fontconfig initially had no Korean font. The driver
+now captures the actual browser viewport through `Page.captureScreenshot` with
+`fromSurface=false`, scrolls to the relevant reading/disclosure surface and
+records geometry. Korean glyph coverage is a checked prerequisite; a separately
+prepared Noto Sans CJK KR font/configuration produced readable Korean captures.
+Fonts are local validation tooling, never embedded or remotely fetched by the
+Product or check. The runner records their paths/hashes and blocks missing
+coverage instead of treating tofu glyphs as locale verification.
+
+The final development positive control has 115 live and 17 offline checks,
+including all five restored negative controls, Purpose absence and actual
+stale/unavailable analysis. Server/child exits, termination and process cleanup
+are separately preserved. HTTP response completion (36 samples), automation
+input/two-animation-frame scheduling and Rust read-stage profiles (45 samples)
+remain distinct; no actual human-paint, accessibility-completeness, RSS or
+percentile claim follows. These development artifacts use an uncommitted runner
+and are not final candidate evidence; a clean committed run is required.
+
+The unchanged fixed debug workload budgets passed in the Korean-font control:
+Overview 32.968 ms cold / 31.788–34.983 ms warm; Work 33.205 / 30.710–32.780;
+Decision 32.164 / 32.787–36.025; Code 93.240 / 92.312–106.587; whole snapshot
+118.351 / 115.123–122.692. Ordinary reads decoded metadata only and did no
+Candidate/document work; Code decoded one graph and generated no documents;
+snapshot decoded one graph, read Candidate basis once and generated four
+previews. A preceding capture control failed Overview sample 2's understanding
+stage at 4.633 ms against 2 ms while total time was 37.669 ms. Its failed raw
+sample/log remains retained; the cause of that wall-time outlier is not
+established, ceilings were not relaxed, and a later pass does not erase it.
+
+The identified historical baseline was independently extracted using `git
+archive 8c81800f80e7afe292ccc7faa944caee57ff23ef rebuild` into an ignored copy.
+Its test and Cargo.lock hashes match the earlier recorded inputs exactly. The
+original named 192-module workload was compiled/run offline with a separate
+target directory: numeric exit 0, cold 94.327 ms and eight warm 90.032–92.831 ms,
+one projection/decode and zero health re-decodes. Python V11/Dogfood controls
+ran concurrently, so this is a reproducible diagnostic, not a controlled
+speedup comparison. The baseline and richer requested-section workloads also
+have different canonical input and reading surfaces.
+
+Existing V08 assertions stop at their historical `c17279bb` Production-drift
+guard before the integration journey. The unchanged guard belongs to V08;
+current Viewer executable/CLI tests are separate scoped evidence. A Dogfood
+campaign self-test initially failed restricted Unix-socket creation and cascaded
+fixture cleanup; permitting local sockets made the maintained suite pass. No
+historical evidence, gate policy, external authorization, human verdict or
+qualification criterion was rewritten. Complete local logs/results/screenshots
+remain ignored, while final browser and gate/archive evidence are reported
+separately in the conversation.
+
+Semantic summary-unavailable is still an observed comprehension limitation.
+Quotations and truthful missing rationale do not explain intent on their own.
+Fresh naturalistic Work A/B usage, Decision/Source comprehension, Learning and
+semantic value, Naturalistic-memory evidence and direct en/ko human observations
+remain separately required. Automated support and later gate execution cannot
+supply those judgments or open Phase 9.

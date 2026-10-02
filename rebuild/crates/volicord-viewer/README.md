@@ -139,3 +139,11 @@ in Work scope does not assert canonical Work ownership of that neighbor. Resolve
 relations retain both actual endpoints, unresolved targets remain evidence only,
 and omitted relationships keep exact counts. A generic repository explanation
 uses stored topology without claiming a canonical Work-seed link.
+
+
+Repeatable browser supporting checks and tool prerequisites are maintained in the
+[validation README](../../validation/README.md#browser-support-for-viewer-reading-v11-owner).
+They exercise the actual CLI/server/export path, both locales, narrow viewports,
+keyboard navigation, closed offline snapshots and real 200% tab zoom. Browser
+tools are validation dependencies only. Automated observations do not establish
+human comprehension or replace the authoritative technical gate.

@@ -101,7 +101,8 @@ def _live_observation_requests():
             "locale": locale,
             "prompt": (
                 f"For locale {locale}, describe what you personally observed for keyboard/focus/color/zoom "
-                "and live browser input/paint responsiveness, plus its limits, using OBSERVATION: and "
+                "(including narrow screens, non-color cues and actual browser 200% zoom), and live browser input/paint responsiveness. "
+                "Use Overview, Work selection, Decisions, related Code and Source disclosures; record observed gaps and limits using OBSERVATION: and "
                 "LIMITS: sections. Type SAME AS ENGLISH for an exact locale reference."
             ),
         }

@@ -196,7 +196,8 @@ reading records belong to [Projection과 document 계약](projections-and-docume
 Local Operations supplies complete canonical/analysis read bases before display
 bounds; adapters carry selectors without inventing canonical meaning. This
 read-side foundation adds no canonical model, provider service or Viewer database.
-Current routes and UI remain unchanged until the later production switch.
+Current purpose-oriented routes and CLI/export procedures are maintained in the
+[Viewer README](../../crates/volicord-viewer/README.md).
 
 #### Candidate Inspection read authority contract
 

@@ -986,7 +986,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   diagram relation의 basis를 찾을 수 있는가
 - 네 문서가 다른 agent의 실제 handoff와 사용자의 이해·판단에 충분한가
 
-### Next Viewer reading acceptance (target; routes unchanged)
+### Viewer reading acceptance
 
 Select two distinct Works with identical titles, paths and commit basis without
 merging them. Select a Goal-only Work and an old Work omitted from global lists.

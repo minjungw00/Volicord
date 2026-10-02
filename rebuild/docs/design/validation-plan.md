@@ -680,6 +680,35 @@ owner/fixture checks and affected projection/Operations/Viewer/V06 targets throu
 `validate focused`, inspect every result, and keep each commit coherent. This work
 invokes neither gate/direct final nor official V11/fresh naturalistic campaigns.
 
+### Browser supporting observations under V11
+
+The bounded `end-to-end/multi-repository/viewer_browser.py` runner and coupled
+`viewer_browser_driver.cjs`, self-tests and Rust Runtime fixture own repeatable
+browser support for current Viewer reading. Procedures/tool prerequisites are in
+[validation README](../../validation/README.md#browser-support-for-viewer-reading-v11-owner).
+This check uses actual CLI/server/snapshot entry points, independently authored
+canonical/source expectations, both locales, 390/768/1440 base CSS-pixel widths,
+native keyboard/disclosure/graph scrolling and actual 200% browser tab zoom.
+It retains executable/candidate/fixture/environment identity, screenshots and
+machine observations only under ignored paths. Five disposable HTML mutations
+must fail for their intended geometry, identity, fragment or snapshot boundary.
+Runtime-unavailable offline reads, canonical bundle equality and restored
+analysis/source copies remain separate supporting facts.
+
+Existing requested-section counts/stage ceilings are unchanged and fixed before
+final execution. Actual HTTP response completion, Rust server-render stage profiles
+and browser input/two-animation-frame scheduling are separate measurement classes.
+No browser observation claims human responsiveness, complete accessibility,
+semantic comprehension, a percentile SLA or Naturalistic MCP memory evidence.
+
+This additional focused check is not registered inside the gate. Final technical
+completion for this Viewer verification requires candidate-bound browser execution
+as well as the repository-authoritative gate; either missing execution stays
+blocked/unresolved. The gate remains the sole Final/provider/V11 owner with its
+two current explicit transmission authorizations, capsule/archive and independent
+archive verification. Fresh naturalistic sessions, independent semantic review,
+direct en/ko human observations and explicit Phase 9 approval remain unchanged.
+
 ## 11. V07 — Privacy와 local-only mode
 
 ### 목표

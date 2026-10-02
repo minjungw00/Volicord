@@ -568,3 +568,94 @@ without concurrent expensive validation. First-request cold means a fresh adapte
 not flushed operating-system caches. Neither these samples nor markup/semantic
 checks provide a population p95, universal SLA, browser interaction or human-review
 qualification. Existing V11/resource budgets are unchanged.
+
+### Browser support for Viewer reading (V11 owner)
+
+`end-to-end/multi-repository/viewer_browser.py` is an additional supporting
+check, invoked through the existing focused recorder. It is **not registered
+inside the authoritative gate** and supplies no human verdict. Final browser
+execution requires the exact clean committed candidate independently of the gate.
+
+Prerequisites are Python 3, Node >=20, a preinstalled `playwright-core` package,
+and Linux Chromium/Chrome for Testing with unpacked Manifest V3 extension support.
+The verified path uses Playwright 1.62.1 and Chrome for Testing 151.0.7922.34.
+The WSL2 environment additionally needs `libnspr4`, `libnss3` and `libasound2t64`;
+`--library-path` can identify already extracted shared libraries. Chromium and
+loopback socket access must be permitted. No display server is required: the
+maintained path uses full headless Chromium, not the separate headless shell.
+Fontconfig (`fc-list`) and a Korean-capable font are required; missing glyph coverage
+is recorded as `font_prerequisite_blocked`. Install a Korean font separately or
+set `FONTCONFIG_FILE` to an operator-prepared configuration with a local font
+directory. The runner records Korean font paths/hashes and any explicit configuration.
+The runner never installs tools, connects to providers or reads credentials.
+
+If tools are absent, explicitly install them **before** the check, using an
+operator-authorized network/bootstrap step. One driver/browser setup is:
+
+```text
+npm install --prefix rebuild/.local/viewer-browser-tools playwright-core@1.62.1
+PLAYWRIGHT_BROWSERS_PATH=rebuild/.local/viewer-browser-tools/browsers node rebuild/.local/viewer-browser-tools/node_modules/playwright-core/cli.js install chromium
+```
+
+Use the installed full Chromium executable's actual absolute path; resolve
+missing shared libraries separately. Existing authorized installations can be
+used directly. Neither setup step is a Product runtime dependency.
+
+```text
+rebuild/scripts/validate focused viewer-browser-self-tests -- python3 rebuild/validation/end-to-end/multi-repository/viewer_browser_self_test.py
+rebuild/scripts/validate focused viewer-browser -- python3 rebuild/validation/end-to-end/multi-repository/viewer_browser.py --chromium /absolute/chromium/chrome --playwright-module /absolute/node_modules/playwright-core --require-clean --enforce-read-budgets
+```
+
+Add `--library-path /absolute/extracted/usr/lib/x86_64-linux-gnu` if needed.
+Timing enforcement requires the unchanged environment in `viewer-read-budgets.json`;
+other hardware can run the counts/functional checks without that flag, retaining
+`timing_enforced = false`. This is an explicit limitation, not named-budget success.
+
+The runner builds the current nested-workspace CLI/Viewer, seeds real disposable
+Runtime records through a Rust integration fixture, then launches **`volicord
+viewer open`** and exports **`volicord viewer export`**. Expectations come from
+self-authored scenario/independent invariants and source facts, rather than the
+production projection helper. Canonical identity order deliberately places the
+old Work beyond the first page; equal title/path/commit Works remain distinct.
+It covers en/ko, 390/768/1440 CSS-pixel base viewports, Overview/Work/Decision/code
+and native evidence disclosures at 100% and actual 200% tab zoom. A test-owned
+extension calls `chrome.tabs.setZoom`/`getZoom`; factor, settings, CSS width and
+pixel ratio are recorded. No CSS zoom or device-scale substitution is permitted.
+
+Native Tab/Enter actions exercise views, paged Work selection, SVG fragments,
+relationship endpoints and retained Source details. DOM geometry checks ordinary
+page overflow separately from graph wheel scrolling and SVG label fit. Static
+and browser checks require closed snapshot fragments and reject scripts, forms,
+tokens, event handlers, live links and external assets. Snapshots are read as
+`file:` URLs with browser networking disabled after the server exits and Runtime
+is physically unavailable. Purpose absence, failed/unverified/rejected states,
+review-due Decisions and stale/unavailable analysis remain supporting observations.
+
+Controlled mutations operate on disposable copies of actual product HTML:
+removed wrapping, common-prefix truncation, missing fragment, another Work's
+facts with the selected identity retained, and an inserted live snapshot link.
+Each must fail for its intended assertion and the restored actual candidate must
+pass. Browser evaluation is test instrumentation, never shipped Product JavaScript.
+
+The V11 recorder preserves child argv, complete streams, numeric exits/signals,
+timeouts and process-group cleanup. Separate files retain actual HTTP completion
+samples (including loopback transport), browser navigation/input/two-frame samples,
+and the existing 45 cold/warm Rust stage profiles/counts on the maintained cost
+workload. Two animation frames are diagnostic scheduling observations, not complete
+paint measurement, human responsiveness or Naturalistic MCP memory evidence.
+Thresholds and existing V11/resource budgets are unchanged; no percentile guarantee
+is inferred. Cold means fresh adapter in the Rust workload, first route request in
+the HTTP samples, and never flushed OS caches.
+
+Every run gets a fresh ignored `rebuild/.local/validation/viewer-browser-*` root
+with `result.json`, candidate/input/environment/executable hashes, retained tested
+executables, fixture bindings, full logs, screenshots and screenshot hashes.
+Reading/disclosure screenshots use `Page.captureScreenshot` with `fromSurface=false`
+at the relevant section, recording scroll/viewport geometry; this avoids blank
+surface captures at deep offsets with native tab zoom. Inspect screenshots directly;
+DOM geometry and font presence alone do not establish visual comprehension.
+Browser and driver absence, loader/launch/loopback blocking, candidate drift and
+actual product assertions are distinct outcomes; no missing execution is passed.
+These local artifacts may contain original synthetic/source/audit text and absolute
+paths. Keep them out of portable gate summaries and reviewer packages. The existing
+gate capsule/archive remain a separate evidence class and use the existing verifier.
