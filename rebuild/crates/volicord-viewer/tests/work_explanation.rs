@@ -391,27 +391,50 @@ fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_public
     )
     .text()
     .contains("Fake decision lifecycle paragraph"));
-    let args = [
-        "--runtime".to_string(),
-        f.operations.layout().root().to_string_lossy().into_owned(),
-        "--project".into(),
-        f.project.to_string(),
-        "--locale".into(),
-        "ko".into(),
-        "status".into(),
-        "--language".into(),
-        "ko".into(),
-    ];
-    let (mut out, mut errors) = (Vec::new(), Vec::new());
-    assert_eq!(
-        run_cli(args, &mut out, &mut errors),
-        CliExit::SUCCESS,
-        "{}",
-        String::from_utf8_lossy(&errors)
-    );
-    let human = String::from_utf8(out)?;
-    assert!(human.contains("Fake unit-test paragraph"));
-    assert!(!human.contains("Audit record"));
+    for command in ["status", "recall", "decisions"] {
+        for locale in ["en", "ko"] {
+            let args = [
+                "--runtime".to_string(),
+                f.operations.layout().root().to_string_lossy().into_owned(),
+                "--project".into(),
+                f.project.to_string(),
+                "--locale".into(),
+                locale.into(),
+                command.into(),
+                "--language".into(),
+                "ko".into(),
+            ];
+            let (mut out, mut errors) = (Vec::new(), Vec::new());
+            assert_eq!(
+                run_cli(args, &mut out, &mut errors),
+                CliExit::SUCCESS,
+                "{}",
+                String::from_utf8_lossy(&errors)
+            );
+            let human = String::from_utf8(out)?;
+            assert!(human.contains(if command == "decisions" {
+                "Fake decision lifecycle paragraph"
+            } else {
+                "Fake unit-test paragraph"
+            }));
+            assert!(!human.contains("Audit record"));
+            assert!(!human.contains(&f.project.to_string()));
+            assert!(!human.contains(&work.to_string()));
+            assert!(!human.contains("source_details"));
+            assert!(!human.contains("NotRequested"));
+            assert!(human.contains("--json"));
+            assert!(human.contains(if locale == "ko" {
+                "호스트 해석"
+            } else {
+                "Host interpretation"
+            }));
+            assert!(human.contains(if locale == "ko" {
+                "기록된 사실과 파생 상태"
+            } else {
+                "Recorded facts and derived states"
+            }));
+        }
+    }
     let request = DocumentRequest {
         requested_language: "ko".into(),
         fixed_locale: FixedLocale::Korean,

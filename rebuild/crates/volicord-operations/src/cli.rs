@@ -1221,11 +1221,91 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
         .unwrap_or("result");
     writeln!(stdout, "{}", operation_title(operation, mode.locale))
         .map_err(|error| Error::with_source("cannot write CLI result", error))?;
+    // Explicit ordinary-reading fields; exact binding/audit stays in --json.
+    // Question/result/state selection is owned by the shared answer projection.
+    let reading_fields: Option<&[&str]> = match operation {
+        "project_status" => Some(&[
+            "project_name",
+            "health",
+            "project_purpose",
+            "work_category_counts",
+            "selected_work",
+            "current_work",
+            "completed_work",
+            "remaining_work",
+            "work_history",
+            "unresolved_work_grouping",
+            "next_steps",
+            "active_decisions",
+            "selected_work_decisions",
+            "open_questions",
+            "risks_assumptions_and_limits",
+            "architecture",
+            "omissions",
+        ]),
+        "recall" => Some(&[
+            "project_name",
+            "project_purpose",
+            "selected_work",
+            "decisions",
+            "open_questions",
+            "risks_assumptions_and_limits",
+            "declared_assumptions",
+            "known_limits",
+            "omissions",
+            "omitted_count",
+        ]),
+        "decisions" => Some(&["project_name", "decisions", "omissions"]),
+        _ => None,
+    };
+    if let Some(fields) = reading_fields {
+        for key in fields {
+            if let Some(field) = value.get(key) {
+                if [
+                    "project_purpose",
+                    "open_questions",
+                    "risks_assumptions_and_limits",
+                    "unresolved_work_grouping",
+                    "omissions",
+                ]
+                .contains(key)
+                {
+                    // Active canonical quotation/prompt consumers, with exact
+                    // identity and Source basis available in JSON inspection.
+                    let values = field
+                        .as_array()
+                        .map(|values| {
+                            values
+                                .iter()
+                                .map(|item| {
+                                    item.get("statement")
+                                        .or_else(|| item.get("prompt"))
+                                        .or_else(|| item.get("expandable_basis"))
+                                        .or_else(|| item.get("reason"))
+                                        .unwrap_or(item)
+                                        .clone()
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    render_field(stdout, key, &Value::Array(values), 0, mode.locale)?;
+                } else {
+                    render_field(stdout, key, field, 0, mode.locale)?;
+                }
+            }
+        }
+        write_line(
+            stdout,
+            match mode.locale {
+                CliLocale::English => "Exact evidence and audit: use --json.",
+                CliLocale::Korean => "정확한 근거와 감사 정보: --json으로 검사하세요.",
+            },
+        )?;
+        return Ok(());
+    }
     if let Some(object) = value.as_object() {
         for (key, field) in object {
-            if key != "operation"
-                && !(operation == "recall" && ["checkpoint", "next_step"].contains(&key.as_str()))
-            {
+            if key != "operation" {
                 render_field(stdout, key, field, 0, mode.locale)?;
             }
         }
@@ -1243,14 +1323,36 @@ fn render_field(
     let padding = "  ".repeat(indent);
     if let Some(answers) = value.get("answers") {
         write_line(stdout, format_args!("{padding}{key}:"))?;
-        for a in answers["prose"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .chain(answers["facts"].as_array().into_iter().flatten())
+        if answers
+            .get("provenance")
+            .is_some_and(|value| !value.is_null())
         {
-            if let Some(text) = a["text"].as_str() {
-                write_line(stdout, format_args!("{padding}  {text}"))?;
+            write_line(
+                stdout,
+                match locale {
+                    CliLocale::English => {
+                        "Host interpretation; grounded reports, not independent verification."
+                    }
+                    CliLocale::Korean => {
+                        "호스트 해석입니다. 근거 있는 보고이며 독립 검증을 뜻하지 않습니다."
+                    }
+                },
+            )?;
+        }
+        for (section, facts) in [("prose", false), ("facts", true)] {
+            if facts {
+                write_line(
+                    stdout,
+                    match locale {
+                        CliLocale::English => "Recorded facts and derived states:",
+                        CliLocale::Korean => "기록된 사실과 파생 상태:",
+                    },
+                )?;
+            }
+            for a in answers[section].as_array().into_iter().flatten() {
+                if let Some(text) = a["text"].as_str() {
+                    write_line(stdout, format_args!("{padding}  {text}"))?;
+                }
             }
         }
         return Ok(());
@@ -1296,9 +1398,9 @@ fn render_field(
     }
 }
 
-fn write_line(stdout: &mut dyn Write, args: std::fmt::Arguments<'_>) -> Result<(), Error> {
+fn write_line(stdout: &mut dyn Write, args: impl std::fmt::Display) -> Result<(), Error> {
     stdout
-        .write_fmt(args)
+        .write_fmt(format_args!("{args}"))
         .and_then(|()| stdout.write_all(b"\n"))
         .map_err(|error| Error::with_source("cannot write CLI result", error))
 }

@@ -271,3 +271,11 @@ export and unchanged provider/managed-record counts. It retains screenshots, fon
 hashes, full streams and numeric exits under ignored validation output. Inspect the
 Korean screenshot as well as DOM assertions. This proves the narrow implemented
 path; it establishes no human comprehension, official V11 or cutover qualification.
+
+
+Human CLI `status`, `recall` and `decisions` show the same shared question answers,
+with separate host-interpretation and recorded-fact/state labels. Root exact
+binding, source/snapshot and generator audit is available through `--json`;
+ordinary output preserves grouping gaps and omission counts. Checksum subject
+matter is unchanged. Administration/mutation command receipts retain their existing
+identity output.

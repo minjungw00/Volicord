@@ -1069,3 +1069,18 @@ Document set의 live-basis 검사는 네 preview에 포함된 provenance를 합�
 Candidate 저장소 장애는 unrelated store의 private-path 준비 실패로 승격하지 않는다.
 Publication은 계속 explicit Local Operations mutation boundary에서 별도로 current basis를
 검사한다. 이 최적화는 삭제·수정 이후 새 read/export의 stale text 차단을 약화하지 않는다.
+
+
+CLI `status`, `recall`, `decisions`의 ordinary text는 공통 answer prose와 독립적으로 선택된
+기록 fact/state를 별도 label로 출력한다. Project Purpose와 active Question prompt는 계속
+명시적인 canonical quotation/prompt consumer다. Root binding/revision, Source catalog,
+snapshot envelope와 generator audit는 `--json` inspection에서 정확히 제공하며 기본 text에
+함께 펼치지 않는다. Work grouping gap과 omitted counts는 기본 text에서 계속 보인다.
+이 presentation 구분은 result/state selection, source meaning 또는 checksum 내용을 다시
+해석하거나 삭제하는 renderer heuristic이 아니다.
+
+Supporting Source availability와 freshness gap은 shared answer의 독립 fact로 표시한다.
+Work는 Goal/Checkpoint/verification/review/acceptance의 전체 근거 Source를, Decision은
+user와 recommendation의 근거 Source를 사용한다. `Current` freshness도 unavailable
+Source를 usable로 만들지 않는다. Source identity/status의 상세값은 evidence inspection에
+보존하며, ordinary gap은 기록된 보고를 현재 저장소 동작으로 승격하지 않는다.

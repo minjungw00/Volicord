@@ -134,12 +134,39 @@ fn fact(question: &str, text: String, evidence_keys: Vec<String>) -> QuestionAns
     }
 }
 
+fn source_gap<'a>(
+    statuses: impl Iterator<Item = &'a ReadingSourceStatus>,
+    locale: FixedLocale,
+) -> Option<QuestionAnswer> {
+    let sources = statuses
+        .map(|s| (s.source_id, s))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let unavailable = sources
+        .values()
+        .filter(|s| s.availability != Some(volicord_context::Availability::Available))
+        .count();
+    let noncurrent = sources
+        .values()
+        .filter(|s| s.freshness != volicord_context::SourceFreshness::Current)
+        .count();
+    if unavailable == 0 && noncurrent == 0 {
+        return None;
+    }
+    Some(fact("SourceEvidenceGap", match locale {
+        FixedLocale::English => format!("Supporting sources unavailable or unknown: {unavailable}; stale or unknown freshness: {noncurrent}. Recorded reports do not establish current repository behavior."),
+        FixedLocale::Korean => format!("지원 근거 이용 불가 또는 미확인: {unavailable}; 오래됐거나 최신 여부 미확인: {noncurrent}. 기록된 보고로 현재 저장소 동작을 확정하지 않습니다."),
+    }, sources.values().filter(|s| s.availability != Some(volicord_context::Availability::Available) || s.freshness != volicord_context::SourceFreshness::Current).map(|s| format!("source:{}:availability,freshness", s.source_id)).collect()))
+}
+
 pub fn work_answers(
     work: &UnderstandingWork,
     language: &str,
     locale: FixedLocale,
 ) -> QuestionAnswers {
     let mut result = explanation_answers(&work.reading.explanations, language, locale);
+    if let Some(gap) = source_gap(work.reading.evidence_source_status.iter(), locale) {
+        result.facts.push(gap);
+    }
     if !work.changed_paths.is_empty() {
         result.facts.push(fact(
             "RecordedCodeScope",
@@ -344,6 +371,15 @@ pub fn decision_answers(
     locale: FixedLocale,
 ) -> QuestionAnswers {
     let mut result = explanation_answers(&decision.explanations, language, locale);
+    if let Some(gap) = source_gap(
+        decision
+            .user_source_status
+            .iter()
+            .chain(&decision.recommendation_source_status),
+        locale,
+    ) {
+        result.facts.push(gap);
+    }
     result.facts.push(fact(
         "Choice",
         crate::documents::decision_choice_attribution(decision, locale),

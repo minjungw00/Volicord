@@ -607,3 +607,37 @@ snapshot 154.328 / 15.327 / 28.651. These reruns confirm the same limited conclu
 thin-route timings remain variable. The rebuilt current browser passed all fourteen
 checks, including the timed regenerated checksum answer, without read mutation.
 Current workspace Clippy also passed with no compiler warnings.
+
+
+## CLI ordinary-reading disclosure completion
+
+A final consumer audit found that the generic human Recall renderer still expanded
+root Source/snapshot/audit fields beside shared answers. Dedicated ordinary-field
+routing for status/Recall/Decisions now uses the same answer payload, separates host
+interpretation from independently selected facts/states, quotes only active purpose/
+Question/context consumers and directs exact inspection to unchanged `--json`.
+Grouping gaps and omission counts remain visible; no hash/content heuristic is used.
+Administration and mutation receipts preserve their supported identity output.
+A six-command en/ko regression uses retained Work/Decision responses, checks that
+answer/state labels are visible and mixed original/root audit identities stay out
+of ordinary output; exact JSON provenance is still covered by existing assertions.
+Directly affected CLI/local-operations/reading tests, current CLI parity and an actual
+retained checksum status/Recall/Decision read are rerun for this correction.
+
+The disclosure review also found supporting-Source availability/freshness visible
+only in evidence on a no-realizer Work. Shared Work/Decision answer facts now show
+unavailable/unknown availability and stale/unknown freshness independently; a
+Current freshness value never makes an unavailable Source usable. Work grounding
+includes verification/review/acceptance Sources as well as Goal/Checkpoint Sources.
+The existing unavailable-but-current-source regression retains original text and
+Work identity, and now checks ordinary bilingual gap facts. This correction is
+upstream of all reading consumers, with exact statuses retained in evidence.
+
+
+Final disclosure validation: affected four-crate all-target/all-feature suite passed
+288 tests (exit 0, no termination; external live-provider test remained ignored),
+actual six human/JSON CLI reads passed, CLI parity retained ten maintained shapes
+and rejected twelve removed shapes, V06 passed, all fourteen actual browser checks
+passed, architecture ownership/formatting/workspace Clippy passed. Full preserved
+streams and corrected failed probes remain under ignored focused validation paths.
+No gate/final, official V11 or naturalistic campaign was invoked.

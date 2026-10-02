@@ -771,6 +771,26 @@ fn source_seeds_and_verification_only_latest_are_selected_before_timeline_trunca
     .facts
     .iter()
     .any(|a| a.question == "WorkState" && a.text.contains("open")));
+    for locale in [FixedLocale::English, FixedLocale::Korean] {
+        let answers = work_answers(
+            unavailable.selected_work.as_ref().ok_or("Work")?,
+            "en",
+            locale,
+        );
+        assert!(answers
+            .facts
+            .iter()
+            .any(|a| a.question == "SourceEvidenceGap"
+                && a.text.contains(if locale == FixedLocale::English {
+                    "unavailable or unknown: 1"
+                } else {
+                    "이용 불가 또는 미확인: 1"
+                })));
+        assert_eq!(
+            reading.evidence_source_status[0].freshness,
+            SourceFreshness::Current
+        );
+    }
     assert!(reading.states.is_empty());
     Ok(())
 }

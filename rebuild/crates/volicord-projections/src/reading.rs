@@ -145,6 +145,7 @@ pub struct WorkAnswers {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkReading {
+    pub evidence_source_status: Vec<ReadingSourceStatus>,
     pub explanations: Vec<crate::ExplanationReading>,
     pub answers: WorkAnswers,
     pub goal: ReadingText,
@@ -532,8 +533,9 @@ impl WorkHistory<'_> {
                 .flat_map(|cp| cp.open_questions.iter().map(|q| q.question_id))
                 .filter(|id| canonical.active_questions.iter().any(|q| q.id == *id))
                 .collect(),
-            source_basis,
+            source_basis: source_basis.clone(),
             reading: WorkReading {
+                evidence_source_status: reading_sources(canonical, &source_basis),
                 explanations: Vec::new(),
                 answers,
                 goal: quoted_reading(Some(&goal.statement), goal_basis, Some(canonical)),
