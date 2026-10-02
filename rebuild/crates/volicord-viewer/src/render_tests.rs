@@ -217,6 +217,26 @@ fn long_and_duplicate_symbols_use_distinguishing_suffixes_and_sized_geometry() {
 }
 
 #[test]
+fn diagram_labels_preserve_wide_names_and_distinguishing_endings() {
+    let mut left = map_entity("left".into());
+    left.display_name = format!("{}alpha", "W".repeat(60));
+    left.locator = "가나다라마바사아자차카타파하".repeat(3);
+    let mut right = map_entity("right".into());
+    right.display_name = format!("{}beta", "W".repeat(60));
+    right.locator = left.locator.clone();
+    let labels = super::diagram_node_labels(&[&left, &right]);
+    assert!(labels["left"].join("").contains(&left.display_name));
+    assert!(labels["right"].join("").contains(&right.display_name));
+    assert!(labels["left"].join("").contains(&left.locator));
+    assert_ne!(labels["left"], labels["right"]);
+    let nodes = [&left, &right];
+    let layout = layout_diagram_topology(&nodes, &[]);
+    for node in nodes {
+        assert!(layout.positions[&node.identity].height >= 34 + labels[&node.identity].len() * 19);
+    }
+}
+
+#[test]
 fn cycles_self_loops_and_parallel_relations_keep_each_constituent_identity() {
     let components = [map_entity("a".into()), map_entity("b".into())];
     let relationships = [
