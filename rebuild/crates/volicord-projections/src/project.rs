@@ -1204,7 +1204,7 @@ pub fn build_project_projection(
     resume.selected_work = resume_id.and_then(|id| materialized.get(&id).cloned());
     let mut selected_work = selection
         .work_item_id
-        .and_then(|id| materialized.get(&id).cloned());
+        .and_then(|id| materialized.remove(&id));
     if let Some(work) = &mut selected_work {
         work.reading.code_freshness = inputs
             .analyses

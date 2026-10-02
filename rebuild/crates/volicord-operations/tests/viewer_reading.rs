@@ -1266,3 +1266,88 @@ fn canonical_equality_binding_detects_content_status_history_and_scope_changes(
     );
     Ok(())
 }
+
+#[test]
+fn every_observation_keeps_later_path_source_and_prose_changes_in_order(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    let mut canonical = f.operations.canonical_basis(f.project)?;
+    let template = canonical
+        .checkpoint_history
+        .iter()
+        .find(|cp| cp.id == f.checkpoints["change"])
+        .ok_or("Checkpoint")?
+        .clone();
+    canonical.checkpoint_history.clear();
+    canonical.latest_checkpoint = None;
+    let ids: Vec<_> = (0_u128..5)
+        .map(|index| CheckpointId::from_bytes((900_000 + index).to_le_bytes()))
+        .collect();
+    for (index, id) in ids.iter().enumerate() {
+        let mut cp = template.clone();
+        cp.id = *id;
+        cp.recorded_at = TimestampMicros::from_unix_micros(100 + index as i64);
+        cp.state_change = match index {
+            0 => Some("Initial implementation".into()),
+            4 => Some("Later prose-only change".into()),
+            _ => None,
+        };
+        cp.changed_paths = if index == 2 {
+            vec!["native/query.c".into()]
+        } else {
+            Vec::new()
+        };
+        cp.changed_source_basis = if index == 3 {
+            template.source_basis.clone()
+        } else {
+            Vec::new()
+        };
+        canonical.checkpoint_history.push(cp);
+    }
+    let projection = build_project_projection(ProjectProjectionInputs {
+        canonical: &canonical,
+        analyses: &[],
+        metadata: &[],
+        analysis_issues: &[],
+        selection: WorkSelector::ExactWork(f.goals["older"]),
+        detail: ProjectionDetail::default(),
+        requirements: ProjectionReadRequirements {
+            code: false,
+            inspection: false,
+        },
+        applicability: volicord_inquiry::ApplicabilityQuery {
+            project_id: f.project,
+            paths: Vec::new(),
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+            current_assumptions: Vec::new(),
+            met_revisit_triggers: Vec::new(),
+        },
+        candidates: CandidateProjectionInput::Degraded {
+            usable_basis: None,
+            failure: CandidateDependencyFailure {
+                kind: CandidateDependencyFailureKind::Unavailable,
+                affected_scope: "not requested".into(),
+                reason: "not requested".into(),
+            },
+        },
+        candidate_content_access: CandidateContentAccess::PolicyWithheld,
+        observed_at: TimestampMicros::from_unix_micros(200),
+        bound: ProjectionBound::default(),
+    })?;
+    let selected = projection.selected_work.as_ref().ok_or("selected Work")?;
+    assert_eq!(selected.checkpoint_ids, ids);
+    let expected = [
+        vec![ids[2], ids[3], ids[4]],
+        vec![ids[2], ids[3], ids[4]],
+        vec![ids[3], ids[4]],
+        vec![ids[4]],
+        vec![],
+    ];
+    for (state, later) in selected.reading.states.iter().zip(expected) {
+        assert_eq!(state.later_changed_checkpoint_ids, later);
+    }
+    assert_eq!(selected.reading.states.len(), 5);
+    assert_eq!(projection.work_history[0], *selected);
+    Ok(())
+}

@@ -730,3 +730,30 @@ Workspace Clippy and architecture-owner routing were clean. These focused result
 precede final-candidate install/content/browser/gate/archive evidence, which is
 reported separately in the final session handoff. No human qualification or Phase 9
 approval follows from these scoped technical observations.
+
+The first clean installed-candidate general browser run
+`20261002T210338.888442Z-final-viewer-browser-enforced-jrin7nki` passed all
+115 live and 25 offline UI checks but failed overall: Decision adapter-cold
+projection was 5.256 ms against 5 ms (exit 101 in the cost child, wrapper exit 1).
+That run remains a failure. Same browser environment full diagnostic
+`20261002T210603.993135Z-final-browser-cost-full-diagnostic-jr8hsnyi` retained
+45 rows without timing enforcement; it did not reproduce the overrun and is not
+qualification. Further in-stage profiling found SHA-256 processing of the full
+105,319-byte equality stream remains about 1.3 ms, while history materialization
+and projection assembly also retain avoidable repeated work. No digest coverage,
+debug dependency profile, timing boundary or budget was changed to reduce that
+cryptographic cost.
+
+A follow-up production improvement classifies whether a Checkpoint reports a
+change once, retaining every later-change ID in each observation's original order.
+The required suffix output remains complete; only repeated semantic predicate
+scans are removed. The selected Work is moved out of request-local materialization
+before enrichment rather than cloned and later replaced; all other reading
+surfaces still receive their complete models. Independent expectations cover
+verification-only, path-only, source-only and prose-only coverage boundaries.
+Focused enforcement `20261002T210929.333771Z-linear-coverage-cost-enforced-dcp86te2`
+passed all 45 rows (exit 0). A fresh frozen probe produced 14/14 artifacts
+byte-identical to the preceding optimized candidate with no normalization.
+Temporary profiling/probe code was removed. Final installation, fresh host content,
+general browser enforcement and gate are rerun on the follow-up committed HEAD;
+no earlier candidate evidence substitutes for those results.

@@ -426,23 +426,39 @@ impl WorkHistory<'_> {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
+        // Every observation must retain its complete later-change IDs. Evaluate
+        // the semantic coverage predicate once per Checkpoint, then copy each
+        // suffix instead of rescanning and reclassifying all later records.
+        let changed_positions = checkpoints
+            .iter()
+            .enumerate()
+            .filter(|(_, cp)| has_reported_change(cp))
+            .map(|(index, cp)| (index, cp.id))
+            .collect::<Vec<_>>();
+        let mut next_changed = 0;
         let states: Vec<WorkStateObservation> = checkpoints
             .iter()
             .enumerate()
-            .map(|(index, cp)| WorkStateObservation {
-                checkpoint_id: cp.id,
-                checkpoint_revision: cp.revision,
-                observed_at: cp.recorded_at,
-                work_state: cp.work_state,
-                work_source_basis: cp.source_basis.clone(),
-                verification: cp.verification.clone(),
-                user_review: cp.user_review.clone(),
-                user_acceptance: cp.user_acceptance.clone(),
-                later_changed_checkpoint_ids: checkpoints[index + 1..]
-                    .iter()
-                    .filter(|later| has_reported_change(later))
-                    .map(|later| later.id)
-                    .collect(),
+            .map(|(index, cp)| {
+                while next_changed < changed_positions.len()
+                    && changed_positions[next_changed].0 <= index
+                {
+                    next_changed += 1;
+                }
+                WorkStateObservation {
+                    checkpoint_id: cp.id,
+                    checkpoint_revision: cp.revision,
+                    observed_at: cp.recorded_at,
+                    work_state: cp.work_state,
+                    work_source_basis: cp.source_basis.clone(),
+                    verification: cp.verification.clone(),
+                    user_review: cp.user_review.clone(),
+                    user_acceptance: cp.user_acceptance.clone(),
+                    later_changed_checkpoint_ids: changed_positions[next_changed..]
+                        .iter()
+                        .map(|(_, id)| *id)
+                        .collect(),
+                }
             })
             .collect();
         let goal_basis = reading_basis(
