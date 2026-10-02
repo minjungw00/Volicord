@@ -272,6 +272,16 @@ fn code_detail_selects_beyond_map_bounds_and_keeps_readable_real_endpoints(
         fixture.repository.join("unsafe<&>.py"),
         "def safe():\n    return 1\n",
     )?;
+    // More real Work-path seeds than the parent map can display. Omission is
+    // not evidence of scope exclusion, regardless of generated identity order.
+    let native = fixture.repository.join("native/query.c");
+    let mut native_code = std::fs::read_to_string(&native)?;
+    for n in 0..90 {
+        native_code.push_str(&format!(
+            "\nint scoped_symbol_{n}(void) {{ return {n}; }}\n"
+        ));
+    }
+    std::fs::write(native, native_code)?;
     let analysis = fixture
         .operations
         .analyze(fixture.project, Vec::new())?
@@ -286,11 +296,14 @@ fn code_detail_selects_beyond_map_bounds_and_keeps_readable_real_endpoints(
         .structural_facts
         .iter()
         .find(|f| {
-            !projection
-                .repository_map
-                .entities
-                .iter()
-                .any(|e| e.identity == f.entity.identity)
+            // Self-authored, disconnected paths are outside this Work; an
+            // arbitrary omitted entity can instead be one of its valid seeds.
+            f.entity.area.path.starts_with("long_shared_module_prefix_")
+                && !projection
+                    .repository_map
+                    .entities
+                    .iter()
+                    .any(|e| e.identity == f.entity.identity)
         })
         .ok_or("no omitted entity")?;
     let encode = |id: &str| id.bytes().map(|b| format!("%{b:02X}")).collect::<String>();
@@ -375,6 +388,31 @@ fn code_detail_selects_beyond_map_bounds_and_keeps_readable_real_endpoints(
     assert!(unsafe_page.starts_with("HTTP/1.1 200"));
     assert!(unsafe_page.contains("unsafe&lt;&amp;&gt;.py"));
     assert!(!unsafe_page.contains("unsafe<&>.py"));
+    let omitted_seed = analysis
+        .structural_facts
+        .iter()
+        .find(|f| {
+            f.entity.area.path == "native/query.c"
+                && !projection
+                    .repository_map
+                    .entities
+                    .iter()
+                    .any(|e| e.identity == f.entity.identity)
+        })
+        .ok_or("no omitted Work seed")?;
+    let seed_page = exchange(
+        &server,
+        &format!(
+            "/?view=code&scope=work&work={}&entity={}",
+            fixture.goals["older"],
+            encode(&omitted_seed.entity.identity)
+        ),
+    );
+    assert!(seed_page.starts_with("HTTP/1.1 200"));
+    assert!(seed_page.contains(&format!(
+        "data-selected=\"true\" data-entity-id=\"{}\"",
+        omitted_seed.entity.identity
+    )));
     assert!(exchange(
         &server,
         &format!(

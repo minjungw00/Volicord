@@ -334,3 +334,13 @@ is introduced. The authoritative gate exposed a separate contract-checker
 fixture defect: maintained relative links to the Viewer guide and budget JSON
 were not copied into its positive fixture. Copying tracked link targets and
 adding both missing-target controls preserves the existing link-check authority.
+
+The ordered Final suite also exposed an older HTTP regression fixture's invalid
+assumption that every entity omitted from the repository map is outside a Work.
+Identity ordering can omit a legitimate Work seed. The rejection counterexample
+now selects a disconnected generated-file entity independently of the display
+bound, retaining its 404 expectation. More real C Work-path seeds than the map
+can display provide a separate positive control: an omitted seed remains 200
+and the selected diagram node. Product scope/membership behavior is unchanged;
+the named cost workload's generator/count/stage ceilings are unchanged. The
+browser result now hashes the maintained reading-test source explicitly too.
