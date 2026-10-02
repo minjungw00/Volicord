@@ -89,6 +89,14 @@ pub fn rich_fixture_in(parent: &std::path::Path) -> Result<Fixture, Box<dyn std:
     fixture_with_temporary(tempfile::tempdir_in(parent)?, false, rich_scenario()?)
 }
 
+#[allow(dead_code)]
+pub fn scenario_in(
+    parent: &std::path::Path,
+    input: Value,
+) -> Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_with_temporary(tempfile::tempdir_in(parent)?, false, input)
+}
+
 // Browser supporting checks retain only their explicitly selected disposable home.
 #[allow(dead_code)]
 pub fn fixture_in(parent: &std::path::Path) -> Result<Fixture, Box<dyn std::error::Error>> {

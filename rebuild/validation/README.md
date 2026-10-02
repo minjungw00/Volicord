@@ -88,7 +88,11 @@ surface, not a Volicord product command or production architecture.
   tests. It rejects comments/literals, ordinary functions, ignored/conditional or
   nested declarations. The gate binds them to actual Final workspace targets and
   successful libtest records; static success alone does not prove execution or
-  the semantic adequacy of a test body. Its `--self-test` mode also rejects
+  the semantic adequacy of a test body. The question-scoped answer mapping covers
+  grounded history prefixes, public CLI lifecycle/document publication, both MCP
+  reading consumers and exact Viewer result/state basis. Labeled test interpretations
+  prove transport; the separate active-host browser run proves visible content.
+  Its `--self-test` mode also rejects
   internal-primitive-only coverage, missing entrypoints, canonical-only or
   over-broad forgetting, ignored cleanup/repair failure, Candidate
   error-to-empty conversion, and configured-provider failure reported as
@@ -580,7 +584,7 @@ qualification. Existing V11/resource budgets are unchanged.
 
 The narrow `end-to-end/multi-repository/work_explanation_browser.py` runner consumes
 a fresh canonical fixture after actual authorized active-host `work explain prepare/record` and `decision explain prepare/record`.
-It checks ordinary answers for five Work cases and two Decision cases in English and Korean,
+It checks ordinary answers for seven Work cases and two Decision cases in English and Korean,
 current provenance disclosure and mutation-free GETs; it never generates or preloads
 prose. Seed, response format and reproduction commands are maintained in the
 [Viewer README](../crates/volicord-viewer/README.md#reproduce-the-narrow-actual-host-reading-proof).

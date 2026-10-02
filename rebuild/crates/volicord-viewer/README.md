@@ -232,7 +232,7 @@ VOLICORD_EXPLANATION_FIXTURE_ROOT="$PWD/rebuild/.local/work-proof-fresh" \
 ```
 
 Read `work-proof-fresh/fixture.json` for `runtime`, `project` and `goals`. For each
-of `relay`, `relay_variant`, `export`, `older`, `checksum`, and each language `en`, `ko`, run
+of `relay`, `relay_variant`, `export`, `older`, `checksum`, `queue`, `unspecified`, and each language `en`, `ko`, run
 the actual sibling executable, substituting the manifest values:
 
 ```text
@@ -249,7 +249,7 @@ New source-rich input is synthetic and distinct from the preserved generic case.
 The manifest also contains `decisions`: generate `project` (audit-heavy offline reason)
 and `explicit` (missing user reason) in en/ko through `decision explain prepare/record`.
 Independent requirements are in `decision_cases` and `decision_browser_claim_terms`;
-the browser checks these four recordings alongside the ten Work recordings.
+the browser checks these four recordings alongside the fourteen Work recordings.
 
 Use the browser dependencies documented in the validation README and a Korean-capable
 font (`fc-list :lang=ko` must be nonempty). Then run:
@@ -279,3 +279,48 @@ binding, source/snapshot and generator audit is available through `--json`;
 ordinary output preserves grouping gaps and omission counts. Checksum subject
 matter is unchanged. Administration/mutation command receipts retain their existing
 identity output.
+
+The independent answer verifier extends the existing browser driver. Required claims
+are read from rendered text nodes outside all evidence disclosures and hidden/CSS
+suppressed content; exact provenance is checked separately after an explicit disclosure.
+The semantic controls delete/hide/replace a recent result, substitute another Work,
+hide current failure, promote historical pass, replace Korean state with a Debug enum,
+insert audit text into ordinary reading, and replace the current fingerprint. Each
+control must fail its named assertion and the restored actual page must pass. A
+meaningful SHA-256 result remains ordinary content. Category omissions are checked
+independently from exact-detail availability.
+
+For final candidate evidence, first commit the candidate and install it with the
+maintained installer into an ignored absolute prefix. Seed a fresh canonical fixture,
+prepare each subject/language with that installed CLI, and have the active host read
+the source plans and record its responses. Then add these options to the narrow
+browser command above:
+
+```text
+--bin-dir /absolute/install-prefix/bin --require-clean
+--lifecycle-response /absolute/fresh-fixture/response-lifecycle-relay-en.json
+```
+
+For the lifecycle response, export canonical context, copy that bundle to an ignored
+path, import the copy into a fresh Runtime, bind the same repository, and prepare
+`relay/en` with that Runtime. The active host reads this imported plan and authors
+its response, including any changed Source-availability limits. Import can change
+the fingerprint; the verifier rejects an original-runtime response with a different
+basis. It reproduces the import in another disposable Runtime, records that supplied
+response, checks partial/revision-mismatched rejection, correction-induced staleness,
+unchanged interpretation after punctuation-only correction, forgetting and new snapshot
+export through the public CLI. It never authors feature prose. Raw Runtime copies are
+unsuitable for forgetting controls because they retain managed bundle destinations and
+can scrub original exports. Canonical-before/after and provider/managed counts on the
+original Runtime must remain identical. The supported expression-only replay is lifecycle
+support; it does not establish a second independent semantic generation.
+
+Both browser runners accept `--bin-dir`; final runs use `--require-clean` and an
+immutable installation so a concurrent Cargo relink cannot substitute executable bytes.
+`content-summary.json` and `browser-summary.json` remain separate bounded review
+artifacts beside detailed local streams/screenshots. They are not gate capsules,
+Naturalistic MCP memory observations or human qualification. The general runner also
+exports and browser-reads Goal-only/change/null-verification/later-change prefixes in
+both locales; the grounded Operations test independently exercises supported authoring
+and whitespace rejection. Source conflict, deletion and format failures retain the
+separate Rust lifecycle coverage.

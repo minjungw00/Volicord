@@ -32,32 +32,69 @@ fn scenario() -> Value {
     input["later_checkpoint_count"] = json!(0);
     input
 }
-// Initially explicit baseline reproductions; now ordinary regression checks.
+// A disclosed quotation establishes selection/evidence, never ordinary-reading
+// explanation success. That separate claim is exercised by the actual-host browser.
 #[test]
-fn result_survives_null_and_blank_verification_prefixes() -> Result<(), Box<dyn std::error::Error>>
-{
-    {
+fn selected_result_and_state_have_independent_prefix_basis(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::{ExplanationSubject, ReadingRecord, WorkSelector};
+    for (prefix, result_key, state, verification) in [
+        (0, None, "Open", None),
+        (1, Some("change"), "Completed", Some("Passed")),
+        (2, Some("change"), "Paused", Some("Failed")),
+        (3, Some("later_change"), "Completed", Some("NotRun")),
+    ] {
         let mut input = scenario();
         input["works"][0]["checkpoints"]
             .as_array_mut()
             .ok_or("history")?
-            .truncate(2);
-        input["works"][0]["checkpoints"][0]["state_change"] =
-            json!("Reported relay implementation change");
-        input["works"][0]["checkpoints"][1]["state_change"] = Value::Null;
+            .truncate(prefix);
         let f = fixture_scenario(input)?;
-        let page = get(&server(&f), "/?view=overview");
-        let card = page
-            .split(&format!("data-work-id=\"{}\"", f.goals["older"]))
-            .nth(1)
-            .ok_or("Work omitted")?
-            .split("</article>")
-            .next()
-            .ok_or("card")?;
-        assert!(
-            card.contains("Reported relay implementation change"),
-            "recorded result disappeared: {card}"
-        );
+        let work = f.goals["older"];
+        let p = f
+            .operations
+            .project_projection_selected(f.project, WorkSelector::ExactWork(work))?;
+        let w = p.selected_work.ok_or("selected Work")?;
+        assert_eq!(format!("{:?}", w.state), state);
+        match result_key {
+            Some(key) => assert_eq!(
+                w.reading
+                    .answers
+                    .result
+                    .as_ref()
+                    .ok_or("selected result")?
+                    .basis
+                    .record,
+                ReadingRecord::Checkpoint(f.checkpoints[key])
+            ),
+            None => assert!(w.reading.answers.result.is_none()),
+        }
+        let observed = w
+            .reading
+            .answers
+            .verification
+            .as_ref()
+            .and_then(|s| s.verification.first())
+            .map(|v| format!("{:?}", v.state));
+        assert_eq!(observed.as_deref(), verification);
+        let plan =
+            f.operations
+                .prepare_explanation(f.project, ExplanationSubject::Work(work), "en")?;
+        if let Some(key) = result_key {
+            let basis = plan
+                .evidence
+                .iter()
+                .find(|e| e.key == "result")
+                .ok_or("result")?;
+            assert_eq!(basis.identity, f.checkpoints[key].to_string());
+            assert_eq!(basis.revision, 1);
+            assert_eq!(basis.field, "state_change");
+            assert!(!basis.sources.is_empty());
+        }
+        let page = get(&server(&f), &format!("/?view=work&work={work}"));
+        assert!(page.contains("Interpretation has not been generated"));
+        assert!(!page.contains("class=\"work-explanation\""));
+        assert_eq!(page.contains("class=\"result-evidence\""), prefix > 0);
     }
     Ok(())
 }
@@ -72,7 +109,7 @@ fn korean_visible_state_answers_are_localized() -> Result<(), Box<dyn std::error
         .split("class=\"fact-states\"")
         .nth(1)
         .ok_or("states")?
-        .split("</dl>")
+        .split("</div>")
         .next()
         .ok_or("state end")?;
     for expected in ["완료", "실행하지 않음", "요청하지 않음", "거부됨"] {
@@ -159,6 +196,11 @@ fn current_work_survives_a_catalog_full_of_completed_work() -> Result<(), Box<dy
         )?;
     }
     drop(store);
+    let history = f.operations.canonical_basis(f.project)?.checkpoint_history;
+    assert!(
+        history.windows(2).any(|p| p[0].id > p[1].id),
+        "fixture must reverse chronological and identity order"
+    );
     let page = get(&server(&f), "/?view=overview");
     let current_section = page
         .split("Current Work</h3>")
@@ -186,6 +228,11 @@ fn current_work_survives_a_catalog_full_of_completed_work() -> Result<(), Box<dy
         )?;
         let understanding = build_project_understanding(&projection, UnderstandingBound::default());
         assert_eq!(understanding.work_overview.current.total, 1);
+        assert_eq!(understanding.work_overview.current.omitted, 0);
+        assert!(understanding.work_overview.current.complete);
+        assert_eq!(understanding.work_overview.remaining.total, 1);
+        assert_eq!(understanding.work_overview.remaining.omitted, 0);
+        assert!(understanding.work_overview.remaining.complete);
         assert_eq!(understanding.work_overview.completed.total, 89);
         assert_eq!(understanding.work_overview.completed.items.len(), 8);
         assert_eq!(understanding.work_overview.completed.omitted, 81);

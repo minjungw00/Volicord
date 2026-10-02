@@ -110,6 +110,7 @@ def main():
     parser.add_argument("--playwright-module", required=True, type=Path,
                         help="Existing playwright-core package directory; never installed by this check")
     parser.add_argument("--library-path", type=Path, help="Optional preinstalled Chromium shared libraries")
+    parser.add_argument("--bin-dir", type=Path, help="Installed sibling executables from this candidate")
     parser.add_argument("--require-clean", action="store_true", help="Required for final candidate evidence")
     parser.add_argument("--enforce-read-budgets", action="store_true",
                         help="Use unchanged named debug workload timing ceilings on the documented hardware")
@@ -187,12 +188,12 @@ def main():
             ROOT / "rebuild/crates/volicord-viewer/tests/browser_fixture.rs",
             ROOT / "rebuild/crates/volicord-viewer/tests/reading.rs",
             ROOT / "rebuild/crates/volicord-operations/tests/support/reading_fixture.rs",
-            HERE / "viewer_browser.py", HERE / "viewer_browser_driver.cjs", HERE / "viewer-read-budgets.json",
+            HERE / "viewer_browser.py", HERE / "viewer_browser_driver.cjs", FIXTURE / "answer-cases.json", HERE / "viewer-read-budgets.json",
             HERE / "harness.py",
         ]}
         result["fixture_tree_sha256"] = harness.tree_hash(FIXTURE)
         run("build-candidate", ["cargo", "build", "--manifest-path", "rebuild/Cargo.toml", "-p", "volicord-operations", "-p", "volicord-viewer"])
-        binaries = ROOT / "rebuild/target/debug"
+        binaries = args.bin_dir.resolve() if args.bin_dir else ROOT / "rebuild/target/debug"
         run("seed-runtime", ["cargo", "test", "--manifest-path", "rebuild/Cargo.toml", "-p", "volicord-viewer", "--test", "browser_fixture", "seed_browser_runtime", "--", "--exact", "--nocapture"], extra={"VOLICORD_VIEWER_FIXTURE_ROOT": str(output)})
         run("rebuild-after-fixture", ["cargo", "build", "--manifest-path", "rebuild/Cargo.toml", "-p", "volicord-operations", "-p", "volicord-viewer"])
         result["executables"] = {name: {"path": str(binaries / name), "sha256": harness.sha256(binaries / name)} for name in ("volicord", "volicord-viewer")}
@@ -222,6 +223,14 @@ def main():
             if snapshot_boundary(absent_destination.read_text()):
                 raise RuntimeError("Purpose-absent snapshot boundary failed")
             absent_snapshots[locale] = str(absent_destination)
+        prefix_snapshots=[]
+        for prefix in fixture["prefixes"]:
+            for locale in ("en","ko"):
+                destination=output / f"prefix-{prefix['prefix']}-{locale}.html"
+                run(f"prefix-{prefix['prefix']}-{locale}", [binaries / "volicord", "--runtime", prefix["runtime"], "--project", prefix["project"], "--locale", locale, "viewer", "export", "--output", destination, "--language", locale])
+                if snapshot_boundary(destination.read_text()):
+                    raise RuntimeError("Prefix snapshot boundary failed")
+                prefix_snapshots.append({**prefix,"locale":locale,"snapshot":str(destination)})
         stdout = (output / "server.stdout.log").open("wb")
         stderr = (output / "server.stderr.log").open("wb")
         argv = [str(a) for a in [*base, "viewer", "open", "--view", "overview", "--bind", "127.0.0.1:0", "--language", "en"]]
@@ -250,7 +259,7 @@ def main():
         config = {"output": str(output), "fixture": fixture, "scenario": json.loads((FIXTURE / "scenario.json").read_text()),
                   "expected": json.loads((FIXTURE / "expected.json").read_text()), "url": url,
                   "chromium": str(args.chromium.resolve()), "playwright": str(args.playwright_module.resolve()),
-                  "extension": str(extension), "snapshots": snapshots, "absent_snapshots": absent_snapshots}
+                  "extension": str(extension), "snapshots": snapshots, "absent_snapshots": absent_snapshots, "prefix_snapshots":prefix_snapshots}
         harness.write_json(output / "browser-config.json", config)
         # Isolate actual HTTP completion from automation input/frame observations.
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -328,6 +337,10 @@ def main():
                 result.update(prior_status=result["status"], prior_detail=result.get("detail"), status="executable_changed", detail=name)
         result["screenshots"] = [{"path":p.name,"sha256":harness.sha256(p),"bytes":p.stat().st_size} for p in sorted(output.glob("*.png"))]
         result["duration_ms"] = round((time.monotonic() - started) * 1000, 3)
+        summary={"candidate_head":result["candidate_head"],"status":result["status"],"human_qualification":"not_established",
+                 "checks":{k:{"status":v.get("status"),"checks":[{"id":c["id"],"status":c["status"],**({"reason":c["reason"]} if "reason" in c else {})} for c in v.get("checks",[])]} for k,v in result["checks"].items()},
+                 "executables":result.get("executables"),"environment":result["environment"]}
+        harness.write_json(output / "browser-summary.json",summary)
         harness.write_json(output / "result.json", result)
         print(json.dumps({"status":result["status"], "candidate_head":result["candidate_head"], "result":str(output / "result.json"), "detail":result.get("detail")}, indent=2))
     return 0 if result["status"] == "passed" else 1

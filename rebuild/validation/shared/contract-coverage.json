@@ -194,6 +194,43 @@
           "project_understanding_renders_three_stable_work_items_as_separate_hierarchy"
         ]
       ]
+    },
+    {
+      "id": "question-scoped-answer-consumers",
+      "owners": [
+        "projections",
+        "local-operations",
+        "host-and-user-adapters"
+      ],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": [
+        "local_operations",
+        "cli",
+        "mcp",
+        "viewer"
+      ],
+      "evidence": [
+        [
+          "local_operations",
+          "rebuild/crates/volicord-operations/tests/work_authority.rs",
+          "answer_selection_tracks_every_grounded_history_prefix"
+        ],
+        [
+          "cli",
+          "rebuild/crates/volicord-viewer/tests/work_explanation.rs",
+          "shared_answers_survive_restart_and_block_deleted_document_and_snapshot_publication"
+        ],
+        [
+          "mcp",
+          "rebuild/crates/volicord-host/tests/answer_consumers.rs",
+          "mcp_consumers_preserve_question_answers_and_separate_original_evidence"
+        ],
+        [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/answer_contracts.rs",
+          "selected_result_and_state_have_independent_prefix_basis"
+        ]
+      ]
     }
   ]
 }

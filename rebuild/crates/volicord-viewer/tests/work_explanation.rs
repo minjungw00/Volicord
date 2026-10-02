@@ -323,7 +323,17 @@ fn seed_work_explanation_runtime() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_publication(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let mut input = reading_fixture::rich_scenario()?;
+    // Recall intentionally selects the latest Work. Arrange the subject last;
+    // unrelated source cases must not accidentally define this lifecycle test.
+    let works = input["works"].as_array_mut().ok_or("works")?;
+    let index = works
+        .iter()
+        .position(|w| w["key"] == "checksum")
+        .ok_or("checksum")?;
+    let subject_work = works.remove(index);
+    works.push(subject_work);
+    let f = reading_fixture::fixture_scenario(input)?;
     let work = f.goals["checksum"];
     let subject = ExplanationSubject::Work(work);
     let plan = f.operations.prepare_explanation(f.project, subject, "ko")?;
@@ -539,5 +549,129 @@ fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_public
             &f.repository.join("forgotten.md")
         )
         .is_err());
+    Ok(())
+}
+
+#[test]
+fn unrelated_work_pagination_and_failed_generation_preserve_exact_answers(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["relay"];
+    let subject = ExplanationSubject::Work(work);
+    let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+    f.operations
+        .record_explanation(f.project, subject, "en", fake(&plan))?;
+    let canonical = f.operations.canonical_basis(f.project)?;
+    // Independent source identity and exact selected revision, before reading output.
+    let cp = canonical
+        .checkpoint_history
+        .iter()
+        .find(|c| c.id == f.checkpoints["relay-change"])
+        .ok_or("checkpoint")?;
+    let result = plan
+        .evidence
+        .iter()
+        .find(|e| e.key == "result")
+        .ok_or("result")?;
+    assert_eq!(result.identity, cp.id.to_string());
+    assert_eq!(result.revision, cp.revision);
+    assert_eq!(result.field, "state_change");
+    assert_eq!(result.content, serde_json::json!(cp.state_change));
+    // A partial or failed attempt cannot replace the last successful realization.
+    for mutation in 0..3 {
+        let mut response = fake(&plan);
+        match mutation {
+            0 => {
+                response.paragraphs.pop();
+            }
+            1 => response.paragraphs[0].text.clear(),
+            _ => response.paragraphs[1].question = ExplanationQuestion::Purpose,
+        }
+        assert!(f
+            .operations
+            .record_explanation(f.project, subject, "en", response)
+            .is_err());
+    }
+    assert_eq!(
+        f.operations
+            .privacy_status(f.project)?
+            .managed_derived
+            .len(),
+        1
+    );
+    let mut store = Store::open(f.operations.layout().canonical_store())?;
+    let other = canonical
+        .checkpoint_history
+        .iter()
+        .find(|c| c.work_item_id == Some(f.goals["same_title"]))
+        .ok_or("other checkpoint")?;
+    store.record_checkpoint(
+        OperationId::from_bytes([0xa8; 16]),
+        f.project,
+        CheckpointDraft {
+            expected_project_revision: canonical.project.revision,
+            work_item_id: other.work_item_id,
+            kind: CheckpointKind::Handoff,
+            goal: other.goal.clone(),
+            work_state: WorkState::Completed,
+            state_change: Some("Unrelated completed Work: CSV bytes replaced.".into()),
+            source_basis: other.source_basis.clone(),
+            changed_source_basis: other.changed_source_basis.clone(),
+            changed_paths: other.changed_paths.clone(),
+            applied_decisions: other.applied_decisions.clone(),
+            verification: Vec::new(),
+            user_review: other.user_review.clone(),
+            user_acceptance: other.user_acceptance.clone(),
+            known_limits: Vec::new(),
+            non_goals: Vec::new(),
+            open_questions: Vec::new(),
+            next_step: "Other Work only".into(),
+            handoff_to: Some("next".into()),
+        },
+    )?;
+    drop(store);
+    assert_eq!(
+        f.operations.prepare_explanation(f.project, subject, "en")?,
+        plan
+    );
+    for page in [0, 1, 20] {
+        let (p, _) = f.operations.project_projection_detail_profiled(
+            f.project,
+            WorkSelector::ExactWork(work),
+            ProjectionDetail {
+                work_page: page,
+                ..Default::default()
+            },
+        )?;
+        let w = p.selected_work.ok_or("exact Work")?;
+        assert_eq!(
+            w.reading
+                .answers
+                .result
+                .as_ref()
+                .ok_or("result")?
+                .basis
+                .record,
+            ReadingRecord::Checkpoint(cp.id)
+        );
+        assert_eq!(
+            w.reading
+                .answers
+                .latest_state
+                .as_ref()
+                .ok_or("state")?
+                .checkpoint_id,
+            cp.id
+        );
+        for locale in [FixedLocale::English, FixedLocale::Korean] {
+            let answer = work_answers(&w, "en", locale);
+            assert_eq!(
+                answer.prose[1].text,
+                "Fake unit-test paragraph for ReportedChange"
+            );
+            assert_eq!(answer.explanation_state, ExplanationState::Current);
+            assert!(!answer.text().contains("CSV bytes replaced"));
+        }
+    }
     Ok(())
 }

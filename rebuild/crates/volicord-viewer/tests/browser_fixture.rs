@@ -147,8 +147,26 @@ fn seed_browser_runtime() -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .flat_map(|f| &f.relations)
         .collect();
+    let mut prefixes = Vec::new();
+    for prefix in 0..=3 {
+        let mut input: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+        input["prior_checkpoint_count"] = serde_json::json!(0);
+        input["later_checkpoint_count"] = serde_json::json!(0);
+        input["unassociated_checkpoint"] = serde_json::json!(false);
+        input["works"][0]["checkpoints"]
+            .as_array_mut()
+            .ok_or("history")?
+            .truncate(prefix);
+        let f = reading_fixture::scenario_in(&output, input)?;
+        prefixes.push(serde_json::json!({"prefix":prefix,"project":f.project.to_string(),
+            "runtime":f.operations.layout().root(),"work":f.goals["older"].to_string(),
+            "checkpoints":f.checkpoints.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>() }));
+        if disposable.is_none() {
+            let _retained = f._temporary.keep();
+        }
+    }
     let manifest = serde_json::json!({
-        "kind":"viewer_browser_runtime", "project": fixture.project.to_string(),
+        "kind":"viewer_browser_runtime", "prefixes":prefixes, "project": fixture.project.to_string(),
         "runtime": fixture.operations.layout().root(), "repository": fixture.repository,
         "goals": fixture.goals.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(), "checkpoints": fixture.checkpoints.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(), "decisions": fixture.decisions.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(),
         "purpose":fixture.purpose.to_string(), "purpose_absent_project":absent.id.to_string(), "analysis_directory":fixture.operations.layout().analysis_project_dir(fixture.project), "entities": entities, "relations":relations, "decision_sources":decision_sources,

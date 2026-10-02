@@ -6919,3 +6919,117 @@ fn grounded_work_identity_survives_unborn_head_commits_and_pre_existing_dirt(
     );
     Ok(())
 }
+
+/// Independent prefix oracle: every observation is authored through the
+/// supported grounded operation and read again after reopening Operations.
+#[test]
+fn answer_selection_tracks_every_grounded_history_prefix() -> Result<(), Box<dyn std::error::Error>>
+{
+    use volicord_projections::{ExplanationSubject, WorkSelector};
+    let fixture = fixture()?;
+    let settled = dimension(
+        "answer-prefix-contract",
+        MaterialityDisposition::SettledAuthority,
+        vec![WorkAuthorityBasisKind::AcceptedContract],
+        fixture.baseline.repository_source.identity(),
+    );
+    review(&fixture, vec![settled])?;
+    let subject = ExplanationSubject::Work(fixture.goal_id);
+    let read = || {
+        let restarted = LocalOperations::new(fixture.operations.layout().clone());
+        restarted.prepare_explanation(fixture.project_id, subject, "en")
+    };
+    assert!(!read()?.evidence.iter().any(|e| e.key == "result"));
+    let mut draft = checkpoint_draft(&fixture, Vec::new());
+    draft.state_change = Some("Reported: retry preserves the original request key.".into());
+    draft.work_state = WorkState::Completed;
+    draft.verification = vec![CommandVerificationDraft {
+        state: VerificationState::Passed,
+        command_label: Some("independent retry test".into()),
+        command_invocation: Some("fixture-retry-test".into()),
+        exit_code: Some(0),
+        termination: Some(volicord_context::CommandTermination::Exited),
+        outcome: Some("Original-key test passed; restart not tested.".into()),
+    }];
+    fixture
+        .operations
+        .record_grounded_checkpoint(draft.clone())?;
+    let initial = read()?;
+    let result = initial
+        .evidence
+        .iter()
+        .find(|e| e.key == "result")
+        .ok_or("result")?
+        .clone();
+    assert_eq!(result.content, serde_json::json!(draft.state_change));
+    assert_eq!(result.revision, 1);
+    assert!(!result.sources.is_empty());
+    // Null result and absent verification independently preserve earlier facts.
+    draft.state_change = None;
+    draft.work_state = WorkState::Paused;
+    draft.verification.clear();
+    draft.next_step = "Investigate restart before resuming.".into();
+    fixture
+        .operations
+        .record_grounded_checkpoint(draft.clone())?;
+    let metadata = read()?;
+    assert_eq!(
+        metadata.evidence.iter().find(|e| e.key == "result"),
+        Some(&result)
+    );
+    let verification = metadata
+        .evidence
+        .iter()
+        .find(|e| e.key == "verification")
+        .ok_or("verification")?;
+    assert_eq!(verification.content["verification"][0]["state"], "Passed");
+    assert_ne!(
+        verification.identity,
+        metadata
+            .evidence
+            .iter()
+            .find(|e| e.key == "latest_state")
+            .ok_or("state")?
+            .identity
+    );
+    // A whitespace report is rejected, and cannot mutate the readable prefix.
+    draft.state_change = Some(" \t ".into());
+    assert!(fixture
+        .operations
+        .record_grounded_checkpoint(draft.clone())
+        .is_err());
+    assert_eq!(read()?, metadata);
+    // Later meaningful change leaves the earlier pass historical, never current.
+    draft.state_change =
+        Some("Reported: the restart path changed; its behavior is unverified.".into());
+    draft.verification.clear();
+    fixture.operations.record_grounded_checkpoint(draft)?;
+    let later = read()?;
+    assert_ne!(
+        later.evidence.iter().find(|e| e.key == "result"),
+        Some(&result)
+    );
+    let verification = later
+        .evidence
+        .iter()
+        .find(|e| e.key == "verification")
+        .ok_or("verification")?;
+    assert!(!verification.content["later_changes"]
+        .as_array()
+        .ok_or("later changes")?
+        .is_empty());
+    let p = fixture.operations.project_projection_selected(
+        fixture.project_id,
+        WorkSelector::ExactWork(fixture.goal_id),
+    )?;
+    let w = p.selected_work.ok_or("selected")?;
+    let answers =
+        volicord_projections::work_answers(&w, "en", volicord_projections::FixedLocale::English);
+    assert!(answers
+        .text()
+        .contains("Earlier verification is historical"));
+    assert!(!answers
+        .text()
+        .contains("coverage of later changes is established"));
+    Ok(())
+}
