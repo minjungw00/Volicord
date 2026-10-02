@@ -203,3 +203,42 @@ fn current_work_survives_a_catalog_full_of_completed_work() -> Result<(), Box<dy
     }
     Ok(())
 }
+
+#[test]
+fn decision_facts_name_user_choice_and_agent_recommendation_independently(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture_scenario(scenario())?;
+    for (locale, choice, recommendation) in [
+        (
+            "en",
+            "User choice: Local [local]",
+            "Agent recommendation: Remote [remote]",
+        ),
+        (
+            "ko",
+            "사용자 선택: Local [local]",
+            "에이전트 권고: Remote [remote]",
+        ),
+    ] {
+        let page = get(
+            &server(&f),
+            &format!(
+                "/?view=decisions&decision={}&locale={locale}",
+                f.decisions["explicit"]
+            ),
+        );
+        let facts = page
+            .split("class=\"fact-states\"")
+            .nth(1)
+            .ok_or("facts")?
+            .split("</div>")
+            .next()
+            .ok_or("end")?;
+        assert!(facts.contains(choice), "unattributed user choice: {facts}");
+        assert!(
+            facts.contains(recommendation),
+            "unattributed agent recommendation: {facts}"
+        );
+    }
+    Ok(())
+}

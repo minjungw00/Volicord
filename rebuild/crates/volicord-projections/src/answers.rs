@@ -382,7 +382,11 @@ pub fn decision_answers(
     }
     result.facts.push(fact(
         "Choice",
-        crate::documents::decision_choice_attribution(decision, locale),
+        format!(
+            "{}: {}",
+            fixed(locale, "User choice", "사용자 선택"),
+            crate::documents::decision_choice_attribution(decision, locale)
+        ),
         vec![format!(
             "decision:{}@{}:choice",
             decision.decision_id, decision.revision
@@ -390,7 +394,11 @@ pub fn decision_answers(
     ));
     result.facts.push(fact(
         "RecommendedChoice",
-        crate::documents::recommendation_attribution(decision, locale),
+        format!(
+            "{}: {}",
+            fixed(locale, "Agent recommendation", "에이전트 권고"),
+            crate::documents::recommendation_attribution(decision, locale)
+        ),
         vec![format!(
             "decision:{}@{}:displayed_recommendation",
             decision.decision_id, decision.revision
@@ -398,7 +406,11 @@ pub fn decision_answers(
     ));
     result.facts.push(fact(
         "DeclaredConsequences",
-        crate::documents::alternative_consequences(decision, locale),
+        format!(
+            "{}: {}",
+            fixed(locale, "Declared consequences", "선언된 결과"),
+            crate::documents::alternative_consequences(decision, locale)
+        ),
         vec![format!(
             "decision:{}@{}:displayed_alternatives",
             decision.decision_id, decision.revision
@@ -406,7 +418,11 @@ pub fn decision_answers(
     ));
     result.facts.push(fact(
         "DecisionState",
-        crate::documents::brief_decision_state_label(decision.state, locale).into(),
+        format!(
+            "{}: {}",
+            fixed(locale, "Decision state", "결정 상태"),
+            crate::documents::brief_decision_state_label(decision.state, locale)
+        ),
         vec![format!(
             "decision:{}@{}:lifecycle",
             decision.decision_id, decision.revision

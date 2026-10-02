@@ -288,7 +288,8 @@ availability/diagnostic and exact provenance. State labels use `FixedLocale`;
 generated prose selects the exact requested language. Goal-only Open is derived,
 no verification record differs from NotRun, failed/rejected observations stay visible,
 and historical checks do not establish coverage of later changes. Decision user
-rationale and agent recommendation remain separate; missing user rationale is never
+rationale and agent recommendation remain separate; ordinary facts explicitly label
+user choice, agent recommendation, declared consequences and Decision state; missing user rationale is never
 supplied from recommendation. Declared Work/Project scope does not establish wider
 applicability. Original text is explicit supporting evidence.
 
