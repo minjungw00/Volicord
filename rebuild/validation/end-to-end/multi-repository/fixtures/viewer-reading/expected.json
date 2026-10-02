@@ -1,0 +1,57 @@
+{
+  "kind": "independent_expected_invariants",
+  "exact_older": {
+    "checkpoint_keys": [
+      "change",
+      "verification_only",
+      "later_change"
+    ],
+    "decision_keys": [
+      "explicit",
+      "project",
+      "unresolved",
+      "superseded"
+    ],
+    "excluded_decision_keys": [
+      "other_work"
+    ],
+    "paths": [
+      "native/query.c",
+      "python/worker.py",
+      "runtime/query_boundary.ts"
+    ],
+    "latest_work": "Completed",
+    "latest_verification": "NotRun",
+    "latest_review": "NotRequested",
+    "latest_acceptance": "Rejected"
+  },
+  "verification_only": {
+    "earlier_paths_survive": true
+  },
+  "goal_only": {
+    "state": "Open",
+    "code_gap": true
+  },
+  "identity": [
+    "same titles paths and commits stay distinct",
+    "unassociated remains unresolved",
+    "foreign non-Goal absent are not-found",
+    "malformed is invalid; never fallback"
+  ],
+  "reading": [
+    "Purpose never inferred from Goal",
+    "missing user rationale stays absent",
+    "excerpt is not semantic summary",
+    "hash-like substrings unchanged",
+    "earlier Passed does not cover later change",
+    "failed rejected stale unavailable remain inspectable",
+    "exact omitted byte and character counts",
+    "source text is not attested translated"
+  ],
+  "polyglot": [
+    "real local structural call retained",
+    "fixture-declared semantic native-to-runtime link retains snapshots",
+    "no invented cross-language edge",
+    "unresolved target remains no target entity"
+  ]
+}

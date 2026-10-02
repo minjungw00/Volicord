@@ -24,7 +24,11 @@
         "calls_syntactically|example.Greeter.greet|name",
         "tests|example.GreeterTest.greetsPerson|java"
       ],
-      "expected_unsupported": ["annotation processing", "reflection", "generated sources"],
+      "expected_unsupported": [
+        "annotation processing",
+        "reflection",
+        "generated sources"
+      ],
       "content_sha256": "5b3579bc2a073420d519528b89d39de143b1253ea843504ca1ada6d7ed36246f",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -48,7 +52,10 @@
         "calls_syntactically|src.greeter.core.Greeter.greet|format_name",
         "tests|tests.test_core.test_greet|python"
       ],
-      "expected_unsupported": ["dynamic dispatch", "runtime monkey-patching"],
+      "expected_unsupported": [
+        "dynamic dispatch",
+        "runtime monkey-patching"
+      ],
       "content_sha256": "7feb9a79db3c37b10399171c615294286531cb12e0265263df2e6ec5d50c5867",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -73,7 +80,12 @@
         "calls_syntactically|Greeter.greet|formatName",
         "tests|test/index.test.js.testGreeting|javascript"
       ],
-      "expected_unsupported": ["dynamic properties", "prototype mutation", "runtime module resolution", "unbalanced braces"],
+      "expected_unsupported": [
+        "dynamic properties",
+        "prototype mutation",
+        "runtime module resolution",
+        "unbalanced braces"
+      ],
       "content_sha256": "8dd3d47acf0f5ddef3d21d33cc7c869d36db8d59983a3a3f6df036b1b62996a4",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -103,7 +115,10 @@
         "calls_syntactically|Greeter.greet|this.name",
         "tests|test/index.test.ts.testGreeting|typescript"
       ],
-      "expected_unsupported": ["type-level evaluation", "declaration merging"],
+      "expected_unsupported": [
+        "type-level evaluation",
+        "declaration merging"
+      ],
       "content_sha256": "ddcb5f043dde8b5e406c5d2092771510c2f16071343e6f0a072a99be2f6abc18",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -127,7 +142,10 @@
         "calls_syntactically|tests/test_greeter.c.test_greeter|greeter_greet",
         "tests|tests/test_greeter.c.test_greeter|c"
       ],
-      "expected_unsupported": ["macro expansion", "conditional compilation"],
+      "expected_unsupported": [
+        "macro expansion",
+        "conditional compilation"
+      ],
       "content_sha256": "f8fa2b884bcd665bb592144d0023454fd276e310554946c9b5daa42e912db044",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -159,7 +177,11 @@
         "calls_syntactically|src/greeter.cpp.greet|name",
         "tests|tests/test_greeter.cpp.test_greeter|cpp"
       ],
-      "expected_unsupported": ["template instantiation", "macros", "conditional compilation"],
+      "expected_unsupported": [
+        "template instantiation",
+        "macros",
+        "conditional compilation"
+      ],
       "content_sha256": "6ec33083178041df947674b64d01602dd9e3ffbcc2cbc8726a9fc397a82a3ea4",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -188,7 +210,11 @@
         "calls_syntactically|Greeter.greet|format::normalize",
         "tests|crates/greeter/src/lib.rs.greets_person|rust"
       ],
-      "expected_unsupported": ["macro expansion", "cfg-disabled code", "trait resolution"],
+      "expected_unsupported": [
+        "macro expansion",
+        "cfg-disabled code",
+        "trait resolution"
+      ],
       "content_sha256": "8161bab1034f30b88012a4dcc4ffba5ccfb43c6023561c4d30f51afa6f2fb899",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -211,7 +237,9 @@
         "calls_syntactically|python.formatter.format_greeting|name.strip",
         "exports|typescript/client.ts|Reply"
       ],
-      "expected_unsupported": ["cross-process boundary is documented inventory evidence, not a syntax-level call"],
+      "expected_unsupported": [
+        "cross-process boundary is documented inventory evidence, not a syntax-level call"
+      ],
       "content_sha256": "21d9b78a1ff12838932aeabeea2b1c12c1a901cf9db238e4dd25584bcff0baff",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -223,7 +251,9 @@
       "purpose": "Verify that a text-based Go repository remains inventory-available while structural capability is explicitly unavailable in the first adapter set.",
       "expected_entities": [],
       "expected_relations": [],
-      "expected_unsupported": ["V01 has no Go structural adapter; inventory remains available"],
+      "expected_unsupported": [
+        "V01 has no Go structural adapter; inventory remains available"
+      ],
       "content_sha256": "addbe4831b61f30e56149051ab441347d0cbb7604ee2c914bb0b4ddaf12e3a41",
       "origin": "Self-authored deterministic fixture for V01.",
       "license": "CC0-1.0"
@@ -734,6 +764,31 @@
       ],
       "content_sha256": "13bd3a5d20d64636b24c5298b671e988662cb6d327c4649411ed0903d31ce97c",
       "origin": "Self-authored bounded non-sensitive fixture for the V07 production background semantic-provider qualification.",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "viewer-reading-adversarial",
+      "validation_id": "V11",
+      "path": "rebuild/validation/end-to-end/multi-repository/fixtures/viewer-reading",
+      "purpose": "Exact Work selection and evidence-linked reading regressions; focused synthetic support, never official V11 or human evidence",
+      "expected_entities": [
+        "three identity-distinct Works, including Goal-only",
+        "all selected older Work Checkpoints before display bounds",
+        "separate work/verification/review/acceptance",
+        "purpose present and absent"
+      ],
+      "expected_relations": [
+        "explicit Work scope and Checkpoint-applied Decision links",
+        "same-Work earlier paths after verification-only Checkpoint",
+        "real polyglot structural topology; declared semantic fixture basis"
+      ],
+      "expected_unsupported": [
+        "semantic Work prose realization",
+        "prototype human comprehension claims",
+        "invented cross-language relations"
+      ],
+      "content_sha256": "e681344273b8a0a64ea835b48da56745946cfa1d049384d8aedc74767aedb06f",
+      "origin": "Self-authored synthetic adversarial inputs; no user repositories, conversations or runtime data",
       "license": "CC0-1.0"
     }
   ]

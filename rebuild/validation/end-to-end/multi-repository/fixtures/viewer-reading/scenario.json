@@ -1,0 +1,125 @@
+{
+  "kind": "viewer_reading_fixture",
+  "origin": "self_authored_synthetic",
+  "purpose": "Adversarial read-side input; labels bind generated canonical identities, never title/path/commit grouping.",
+  "purpose_present": "Explain local repository decisions",
+  "shared_title": "Inspect the relay / 릴레이 점검",
+  "shared_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "prior_checkpoint_count": 80,
+  "later_checkpoint_count": 80,
+  "works": [
+    {
+      "key": "older",
+      "title": "Inspect the relay / 릴레이 점검",
+      "paths": [
+        "native/query.c",
+        "runtime/query_boundary.ts",
+        "python/worker.py"
+      ],
+      "checkpoints": [
+        {
+          "key": "change",
+          "work": "Completed",
+          "verification": "Passed",
+          "review": "Pending",
+          "acceptance": "Rejected",
+          "state_change": "The implementation changed. 검증과 사용자 수락은 별도입니다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. audit aabbccddeeff00112233445566778899; 원문 근거를 유지한다. ",
+          "next_step": "Ask for review of the relay"
+        },
+        {
+          "key": "verification_only",
+          "work": "Paused",
+          "verification": "Failed",
+          "review": "Reviewed",
+          "acceptance": "Pending",
+          "paths": [],
+          "state_change": null,
+          "next_step": "Investigate the failed verification"
+        },
+        {
+          "key": "later_change",
+          "work": "Completed",
+          "verification": "NotRun",
+          "review": "NotRequested",
+          "acceptance": "Rejected",
+          "paths": [
+            "native/query.c"
+          ],
+          "state_change": "Additional changes after the earlier successful check",
+          "next_step": "Verify the later change"
+        }
+      ]
+    },
+    {
+      "key": "same_title",
+      "title": "Inspect the relay / 릴레이 점검",
+      "paths": [
+        "native/query.c"
+      ],
+      "checkpoints": [
+        {
+          "key": "other",
+          "work": "InProgress",
+          "verification": "Passed",
+          "review": "NotRequested",
+          "acceptance": "Accepted",
+          "state_change": "Distinct Work despite equal title/path/commit",
+          "next_step": "Continue the distinct Work"
+        }
+      ]
+    },
+    {
+      "key": "goal_only",
+      "title": "Understand without code seeds / 코드 근거 없이 이해",
+      "paths": [],
+      "checkpoints": []
+    }
+  ],
+  "decisions": [
+    {
+      "key": "explicit",
+      "scope": "older",
+      "user_rationale": null,
+      "recommendation_rationale": "Prefer a bounded local boundary",
+      "state": "ReviewDue"
+    },
+    {
+      "key": "project",
+      "scope": "ProjectWide",
+      "user_rationale": "Apply across this Project",
+      "state": "Active"
+    },
+    {
+      "key": "unresolved",
+      "scope": "Unresolved",
+      "user_rationale": null,
+      "state": "Active"
+    },
+    {
+      "key": "superseded",
+      "scope": "older",
+      "user_rationale": "Earlier choice",
+      "state": "Superseded"
+    },
+    {
+      "key": "other_work",
+      "scope": "same_title",
+      "user_rationale": "Only the other Work",
+      "state": "Active"
+    }
+  ],
+  "analysis_variants": [
+    "current",
+    "stale",
+    "unavailable"
+  ],
+  "purpose_variants": [
+    "present",
+    "absent"
+  ],
+  "unassociated_checkpoint": true,
+  "prototype_annotation": {
+    "notice": "Hand-authored prototype annotation, not canonical explanation",
+    "purpose": "Explore a relay boundary while keeping validation distinct from acceptance"
+  }
+}
