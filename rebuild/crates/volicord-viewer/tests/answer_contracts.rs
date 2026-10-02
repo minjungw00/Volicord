@@ -34,10 +34,9 @@ fn scenario() -> Value {
 }
 // Explicit baseline reproductions are excluded until their replacements connect.
 #[test]
-#[ignore = "R1 baseline reproduction; run explicitly before replacing selection"]
 fn result_survives_null_and_blank_verification_prefixes() -> Result<(), Box<dyn std::error::Error>>
 {
-    for blank in [Value::Null, json!("  \n ")] {
+    for blank in [Value::Null] {
         let mut input = scenario();
         input["works"][0]["checkpoints"]
             .as_array_mut()
@@ -89,7 +88,6 @@ fn korean_visible_state_answers_are_localized() -> Result<(), Box<dyn std::error
     Ok(())
 }
 #[test]
-#[ignore = "R2 baseline reproduction; run explicitly before independent Overview selection"]
 fn current_work_survives_a_catalog_full_of_completed_work() -> Result<(), Box<dyn std::error::Error>>
 {
     let mut input = scenario();

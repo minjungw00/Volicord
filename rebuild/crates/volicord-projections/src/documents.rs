@@ -1074,7 +1074,7 @@ fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> Generate
         FixedLocale::English => text.display_english.clone(),
         FixedLocale::Korean => text.display_korean.clone(),
     };
-    let latest_change = work.reading.changes.last().map_or_else(
+    let latest_change = work.reading.answers.result.as_ref().map_or_else(
         || {
             fixed(
                 locale,
@@ -1086,17 +1086,18 @@ fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> Generate
         reading_display,
     );
     let next_step = reading_display(&work.reading.next_step);
-    let verification = work
-        .reading
-        .states
-        .last()
-        .map_or_else(Vec::new, |observation| {
-            observation
-                .verification
-                .iter()
-                .map(|fact| verification_fact_label(fact, locale))
-                .collect::<Vec<_>>()
-        });
+    let verification =
+        work.reading
+            .answers
+            .verification
+            .as_ref()
+            .map_or_else(Vec::new, |observation| {
+                observation
+                    .verification
+                    .iter()
+                    .map(|fact| verification_fact_label(fact, locale))
+                    .collect::<Vec<_>>()
+            });
     let state = work_state_label_from_understanding(work.state, locale);
     let mut text = match locale {
         FixedLocale::English => format!(
@@ -1134,7 +1135,7 @@ fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> Generate
             display_strings(&verification, locale),
         ),
     };
-    if let Some(observation) = work.reading.states.last() {
+    if let Some(observation) = work.reading.answers.latest_state.as_ref() {
         text.push_str(&format!(
             " {}: {}; {}: {}.",
             fixed(locale, "User review", "사용자 검토"),

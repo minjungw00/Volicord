@@ -642,7 +642,7 @@ fn render_work_card(
         escape(work_reading_display(&work.reading.goal, request.locale)),
         escape(understanding_work_state_label(work.state, request.locale))
     ));
-    if let Some(change) = work.reading.changes.last() {
+    if let Some(change) = work.reading.answers.result.as_ref() {
         html.push_str(&format!(
             "<p><strong>{}:</strong> {}</p>",
             escape(text(

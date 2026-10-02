@@ -827,6 +827,7 @@ pub struct ProjectProjection {
     /// Explicit selection is independent of bounded parent Work lists.
     pub selected_work: Option<crate::UnderstandingWork>,
     pub selected_work_decisions: Vec<crate::UnderstandingDecision>,
+    pub work_overview: crate::WorkOverview,
     pub work_history: Vec<crate::UnderstandingWork>,
     pub unresolved_work_grouping: Vec<crate::UnresolvedWorkGrouping>,
     pub overview: ProjectOverview,
@@ -1281,6 +1282,7 @@ pub fn build_project_projection(
             *work = selected.clone();
         }
     }
+    let work_overview = crate::WorkOverview::from_history(&work_history, 8);
     let work_count = work_history.len();
     let work_offset = inputs
         .detail
@@ -1364,6 +1366,7 @@ pub fn build_project_projection(
         selection,
         selected_work,
         selected_work_decisions,
+        work_overview,
         work_history,
         unresolved_work_grouping,
         overview,

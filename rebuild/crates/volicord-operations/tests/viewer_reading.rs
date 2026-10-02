@@ -17,6 +17,92 @@ const EXPECTED: &str = include_str!(
 );
 
 #[test]
+fn independent_question_answers_follow_every_history_prefix(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for prefix in 0..=3 {
+        let mut input: Value = serde_json::from_str(SCENARIO)?;
+        input["prior_checkpoint_count"] = serde_json::json!(0);
+        input["later_checkpoint_count"] = serde_json::json!(0);
+        input["works"][0]["checkpoints"]
+            .as_array_mut()
+            .ok_or("history")?
+            .truncate(prefix);
+        let f = reading_fixture::fixture_scenario(input)?;
+        let p = f
+            .operations
+            .project_projection_selected(f.project, WorkSelector::ExactWork(f.goals["older"]))?;
+        let answers = &p.selected_work.as_ref().ok_or("Work")?.reading.answers;
+        let result = answers.result.as_ref().map(|r| &r.basis.record);
+        let expected = match prefix {
+            0 => None,
+            1 | 2 => Some(ReadingRecord::Checkpoint(f.checkpoints["change"])),
+            _ => Some(ReadingRecord::Checkpoint(f.checkpoints["later_change"])),
+        };
+        assert_eq!(result, expected.as_ref());
+        assert_eq!(
+            answers.latest_state.as_ref().map(|s| s.work_state),
+            match prefix {
+                0 => None,
+                2 => Some(WorkState::Paused),
+                _ => Some(WorkState::Completed),
+            }
+        );
+        assert_eq!(
+            answers
+                .verification
+                .as_ref()
+                .map(|s| s.verification[0].state),
+            match prefix {
+                0 => None,
+                1 => Some(VerificationState::Passed),
+                2 => Some(VerificationState::Failed),
+                _ => Some(VerificationState::NotRun),
+            }
+        );
+        if prefix == 2 {
+            assert_ne!(
+                answers.result.as_ref().ok_or("result")?.basis.record,
+                ReadingRecord::Checkpoint(
+                    answers.latest_state.as_ref().ok_or("state")?.checkpoint_id
+                )
+            );
+        }
+    }
+    // Empty observation is absence, while NotRun is an explicit fact. A later
+    // prose-only change is enough to make earlier verification historical.
+    let mut input: Value = serde_json::from_str(SCENARIO)?;
+    input["works"][0]["checkpoints"][2]["verification"] = Value::Null;
+    input["works"][0]["checkpoints"][2]["paths"] = serde_json::json!([]);
+    let f = reading_fixture::fixture_scenario(input)?;
+    let p = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::ExactWork(f.goals["older"]))?;
+    let verification = p
+        .selected_work
+        .as_ref()
+        .ok_or("Work")?
+        .reading
+        .answers
+        .verification
+        .as_ref()
+        .ok_or("verification")?;
+    assert_eq!(
+        verification.checkpoint_id,
+        f.checkpoints["verification_only"]
+    );
+    assert_eq!(
+        verification.later_changed_checkpoint_ids,
+        [f.checkpoints["later_change"]]
+    );
+    // The canonical writer rejects blank change text; do not loosen this
+    // invariant to manufacture a supposedly supported history prefix.
+    let mut blank: Value = serde_json::from_str(SCENARIO)?;
+    blank["works"][0]["checkpoints"][1]["state_change"] = serde_json::json!("  \n ");
+    assert!(reading_fixture::fixture_scenario(blank).is_err());
+    Ok(())
+}
+
+#[test]
 fn exact_work_reads_complete_history_before_all_bounds_and_keeps_independent_states(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = fixture()?;

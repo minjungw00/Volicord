@@ -26,6 +26,7 @@ impl Default for UnderstandingBound {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnderstandingWork {
+    pub observed_at: volicord_context::TimestampMicros,
     pub reading: crate::WorkReading,
     pub work_item_id: ContextItemId,
     pub title: String,
@@ -187,8 +188,85 @@ pub struct UnderstandingOmission {
     pub omitted_count: usize,
 }
 
+/// The canonical reader supplies complete history; catalog paging has no role.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkSection {
+    pub items: Vec<UnderstandingWork>,
+    pub total: usize,
+    pub omitted: usize,
+    pub complete: bool,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkOverview {
+    pub current: WorkSection,
+    pub completed: WorkSection,
+    pub remaining: WorkSection,
+    pub next_steps: WorkSection,
+}
+impl WorkOverview {
+    pub(crate) fn from_history(history: &[UnderstandingWork], limit: usize) -> Self {
+        let section = |filter: fn(&UnderstandingWork) -> bool, result_time: bool| {
+            let mut items = history
+                .iter()
+                .filter(|w| filter(w))
+                .cloned()
+                .collect::<Vec<_>>();
+            items.sort_by_key(|w| {
+                (
+                    Reverse(if result_time {
+                        w.reading
+                            .answers
+                            .result_observed_at
+                            .unwrap_or(w.observed_at)
+                    } else {
+                        w.observed_at
+                    }),
+                    w.work_item_id,
+                )
+            });
+            let total = items.len();
+            items.truncate(limit);
+            WorkSection {
+                omitted: total - items.len(),
+                items,
+                total,
+                complete: true,
+            }
+        };
+        Self {
+            current: section(|w| w.state == UnderstandingWorkState::InProgress, false),
+            completed: section(|w| w.state == UnderstandingWorkState::Completed, true),
+            remaining: section(
+                |w| {
+                    matches!(
+                        w.state,
+                        UnderstandingWorkState::Open | UnderstandingWorkState::Paused
+                    )
+                },
+                false,
+            ),
+            next_steps: section(
+                |w| w.next_step.as_deref().is_some_and(|s| !s.trim().is_empty()),
+                false,
+            ),
+        }
+    }
+    fn bound(&mut self, limit: usize) {
+        for section in [
+            &mut self.current,
+            &mut self.completed,
+            &mut self.remaining,
+            &mut self.next_steps,
+        ] {
+            section.items.truncate(limit);
+            section.omitted = section.total - section.items.len();
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectUnderstanding {
+    pub work_overview: WorkOverview,
     pub selection: crate::WorkSelection,
     pub selected_work: Option<UnderstandingWork>,
     pub selected_work_decisions: Vec<UnderstandingDecision>,
@@ -259,31 +337,25 @@ pub fn build_project_understanding(
         &mut omissions,
     );
 
+    let mut work_overview = projection.work_overview.clone();
+    work_overview.bound(limit);
+    let current_work = work_overview.current.items.clone();
+    let completed_work = work_overview.completed.items.clone();
+    let remaining_work = work_overview.remaining.items.clone();
+    for (name, section) in [
+        ("current_work", &work_overview.current),
+        ("completed_work", &work_overview.completed),
+        ("remaining_work", &work_overview.remaining),
+        ("work_next_steps", &work_overview.next_steps),
+    ] {
+        if section.omitted > 0 {
+            omissions.push(UnderstandingOmission {
+                section: name.into(),
+                omitted_count: section.omitted,
+            });
+        }
+    }
     let mut work_history = projection.work_history.clone();
-    work_history.sort_by_key(|work| work.work_item_id);
-    let mut current_work = work_history
-        .iter()
-        .filter(|work| work.state == UnderstandingWorkState::InProgress)
-        .cloned()
-        .collect::<Vec<_>>();
-    let mut completed_work = work_history
-        .iter()
-        .filter(|work| work.state == UnderstandingWorkState::Completed)
-        .cloned()
-        .collect::<Vec<_>>();
-    let mut remaining_work = work_history
-        .iter()
-        .filter(|work| {
-            matches!(
-                work.state,
-                UnderstandingWorkState::Open | UnderstandingWorkState::Paused
-            )
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    bound_section(&mut current_work, limit, "current_work", &mut omissions);
-    bound_section(&mut completed_work, limit, "completed_work", &mut omissions);
-    bound_section(&mut remaining_work, limit, "remaining_work", &mut omissions);
     bound_section(&mut work_history, limit, "work_history", &mut omissions);
     let mut unresolved_work_grouping = projection.unresolved_work_grouping.clone();
     bound_section(
@@ -477,6 +549,7 @@ pub fn build_project_understanding(
         project_name: projection.overview.project_name.clone(),
         canonical_revision: projection.overview.canonical_revision,
         project_purpose,
+        work_overview,
         current_work,
         completed_work,
         remaining_work,
@@ -2075,6 +2148,7 @@ mod tests {
             selected_work: None,
             selected_work_decisions: Vec::new(),
             unresolved_work_grouping: Vec::new(),
+            work_overview: crate::WorkOverview::from_history(&[], 8),
             work_history: Vec::new(),
             overview: ProjectOverview {
                 project_id: project_id(),

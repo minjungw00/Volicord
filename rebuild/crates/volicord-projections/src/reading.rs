@@ -135,8 +135,20 @@ impl WorkCodeGap {
     }
 }
 
+/// Independently selected answers. History order is evidence, not a renderer API.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WorkAnswers {
+    pub result: Option<ReadingText>,
+    pub result_observed_at: Option<TimestampMicros>,
+    pub latest_state: Option<WorkStateObservation>,
+    pub verification: Option<WorkStateObservation>,
+    pub review: Option<WorkStateObservation>,
+    pub acceptance: Option<WorkStateObservation>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkReading {
+    pub answers: WorkAnswers,
     pub goal: ReadingText,
     pub changes: Vec<ReadingText>,
     pub next_step: ReadingText,
@@ -316,12 +328,12 @@ pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<Underst
                 .collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
             let changed_paths = checkpoints.iter().flat_map(|cp| cp.changed_paths.iter().cloned())
                 .collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
-            let states = checkpoints.iter().enumerate().map(|(index, cp)| WorkStateObservation {
+            let states: Vec<WorkStateObservation> = checkpoints.iter().enumerate().map(|(index, cp)| WorkStateObservation {
                 checkpoint_id: cp.id, checkpoint_revision: cp.revision, observed_at: cp.recorded_at,
                 work_state: cp.work_state, work_source_basis: cp.source_basis.clone(),
                 verification: cp.verification.clone(), user_review: cp.user_review.clone(), user_acceptance: cp.user_acceptance.clone(),
                 later_changed_checkpoint_ids: checkpoints[index + 1..].iter()
-                    .filter(|later| !later.changed_paths.is_empty() || !later.changed_source_basis.is_empty())
+                    .filter(|later| has_reported_change(later))
                     .map(|later| later.id).collect(),
             }).collect();
             let goal_basis = reading_basis(canonical, ReadingRecord::ContextItem(goal.id), goal.revision, "statement", goal.source_basis.clone());
@@ -343,8 +355,17 @@ pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<Underst
                 omitted_utf8_bytes: 0, omitted_characters: 0, semantic_summary_available: true,
                 original_language_preserved: false, gaps: Vec::new(),
             };
-            let changes = checkpoints.iter().map(|cp| quoted_reading(cp.state_change.as_deref(),
+            let changes: Vec<ReadingText> = checkpoints.iter().map(|cp| quoted_reading(cp.state_change.as_deref(),
                 reading_basis(canonical, ReadingRecord::Checkpoint(cp.id), cp.revision, "state_change", cp.source_basis.clone()), Some(canonical))).collect();
+            let result_index = checkpoints.iter().rposition(|cp| cp.state_change.as_deref().is_some_and(|text| !text.trim().is_empty()));
+            let answers = WorkAnswers {
+                result: result_index.map(|index| changes[index].clone()),
+                result_observed_at: result_index.map(|index| checkpoints[index].recorded_at),
+                latest_state: states.last().cloned(),
+                verification: states.iter().rev().find(|s| !s.verification.is_empty()).cloned(),
+                review: states.last().cloned(),
+                acceptance: states.last().cloned(),
+            };
             if latest.is_none() {
                 status.display_english = "Goal-only Work is open; no Checkpoint work state is recorded".into();
                 status.display_korean = "Goal만 있는 작업은 열림으로 읽습니다. Checkpoint 작업 상태는 기록되지 않았습니다".into();
@@ -358,8 +379,9 @@ pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<Underst
             let has_scope = !goal.applicability.paths.is_empty() || !goal.applicability.components.is_empty();
             UnderstandingWork {
                 work_item_id: goal.id, title: goal.statement.clone(), state,
+                observed_at: latest.map_or(goal.recorded_at, |cp| cp.recorded_at),
                 checkpoint_ids: checkpoints.iter().map(|cp| cp.id).collect(), decision_ids: decisions.iter().copied().collect(),
-                meaningful_changes: checkpoints.iter().filter_map(|cp| cp.state_change.clone()).collect(), changed_paths: changed_paths.clone(),
+                meaningful_changes: checkpoints.iter().filter_map(|cp| cp.state_change.clone().filter(|text| !text.trim().is_empty())).collect(), changed_paths: changed_paths.clone(),
                 changed_components: canonical.active_decisions.iter().chain(&canonical.superseded_decisions)
                     .filter(|d| decisions.contains(&d.decision.id)).flat_map(|d| d.decision.applicability.components.iter().cloned())
                     .collect::<BTreeSet<_>>().into_iter().collect(),
@@ -369,7 +391,7 @@ pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<Underst
                     .filter(|id| canonical.active_questions.iter().any(|q| q.id == *id)).collect(),
                 source_basis,
                 reading: WorkReading {
-                    goal: quoted_reading(Some(&goal.statement), goal_basis, Some(canonical)), changes, next_step, status, states,
+                    answers, goal: quoted_reading(Some(&goal.statement), goal_basis, Some(canonical)), changes, next_step, status, states,
                     code_availability: ReadingAvailability::Unknown,
                     code_freshness: Vec::new(), code_source_basis: Vec::new(),
                     analysis_snapshot_basis: Vec::new(), repository_snapshot_basis: Vec::new(),
@@ -377,6 +399,17 @@ pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<Underst
                 },
             }
         }).collect()
+}
+
+/// Any explicit reported change is a conservative coverage boundary. No kind or
+/// fixture label supplies verification applicability.
+fn has_reported_change(cp: &volicord_context::Checkpoint) -> bool {
+    !cp.changed_paths.is_empty()
+        || !cp.changed_source_basis.is_empty()
+        || cp
+            .state_change
+            .as_deref()
+            .is_some_and(|text| !text.trim().is_empty())
 }
 
 /// Shared full-history selection used by topology and exact Work reading.

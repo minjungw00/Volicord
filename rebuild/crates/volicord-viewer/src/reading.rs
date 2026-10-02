@@ -156,7 +156,7 @@ pub(super) fn warnings(
 fn overview(
     html: &mut String,
     request: &ViewerRequest,
-    p: &ProjectProjection,
+    _p: &ProjectProjection,
     u: &ProjectUnderstanding,
     snapshot: bool,
 ) {
@@ -184,19 +184,19 @@ fn overview(
     for (label, works) in [
         (
             text(request.locale, "Current Work", "현재 작업"),
-            &u.current_work,
+            &u.work_overview.current,
         ),
         (
             text(request.locale, "Recent outcomes", "최근 결과"),
-            &u.completed_work,
+            &u.work_overview.completed,
         ),
         (
             text(request.locale, "Remaining Work", "남은 작업"),
-            &u.remaining_work,
+            &u.work_overview.remaining,
         ),
     ] {
         heading(html, 3, label);
-        if works.is_empty() {
+        if works.items.is_empty() && works.complete {
             empty_state(
                 html,
                 text(
@@ -206,15 +206,32 @@ fn overview(
                 ),
             );
         }
-        for work in works.iter().take(8) {
+        html.push_str(&format!(
+            "<p class=\"category-count\">{}: {} · {}: {} · {}: {}</p>",
+            text(request.locale, "Total", "전체"),
+            if works.complete {
+                works.total.to_string()
+            } else {
+                text(request.locale, "unknown", "알 수 없음").into()
+            },
+            text(request.locale, "Displayed", "표시"),
+            works.items.len(),
+            text(request.locale, "Omitted", "생략"),
+            if works.complete {
+                works.omitted.to_string()
+            } else {
+                text(request.locale, "unknown", "알 수 없음").into()
+            }
+        ));
+        for work in &works.items {
             work_summary(html, request, work, snapshot);
         }
-        if works.len() > 8 {
+        if works.omitted > 0 {
             list_item(
                 html,
                 &format!(
                     "{} {}",
-                    works.len() - 8,
+                    works.omitted,
                     text(
                         request.locale,
                         "additional Works; open Work navigation",
@@ -229,12 +246,7 @@ fn overview(
         3,
         text(request.locale, "Recorded next steps", "기록된 다음 단계"),
     );
-    for work in u
-        .work_history
-        .iter()
-        .filter(|w| w.next_step.is_some())
-        .take(8)
-    {
+    for work in &u.work_overview.next_steps.items {
         html.push_str("<p class=\"next-action\">");
         html.push_str(&escape(work_reading_display(
             &work.reading.next_step,
@@ -242,7 +254,7 @@ fn overview(
         )));
         html.push_str("</p>");
     }
-    if p.work_history.iter().all(|w| w.next_step.is_none()) {
+    if u.work_overview.next_steps.total == 0 && u.work_overview.next_steps.complete {
         empty_state(
             html,
             text(
@@ -274,7 +286,7 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
         "<p>{}</p>",
         escape(understanding_work_state_label(w.state, r.locale))
     ));
-    if let Some(change) = w.reading.changes.last() {
+    if let Some(change) = w.reading.answers.result.as_ref() {
         html.push_str(&format!(
             "<p>{}: {}</p>",
             escape(text(
@@ -285,12 +297,17 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
             escape(work_reading_display(change, r.locale))
         ));
     }
-    if let Some(state) = w.reading.states.last() {
-        states(html, r, state);
+    if let Some(state) = w.reading.answers.latest_state.as_ref() {
+        states(html, r, state, w.reading.answers.verification.as_ref());
     }
     html.push_str("</article>");
 }
-fn states(html: &mut String, r: &ViewerRequest, s: &volicord_projections::WorkStateObservation) {
+fn states(
+    html: &mut String,
+    r: &ViewerRequest,
+    s: &volicord_projections::WorkStateObservation,
+    verification: Option<&volicord_projections::WorkStateObservation>,
+) {
     html.push_str("<dl class=\"fact-states\" data-statement-role=\"deterministic-derived\">");
     definition(
         html,
@@ -302,7 +319,7 @@ fn states(html: &mut String, r: &ViewerRequest, s: &volicord_projections::WorkSt
         text(r.locale, "Automated verification", "자동 검증"),
         &format!(
             "{:?}",
-            s.verification.iter().map(|v| v.state).collect::<Vec<_>>()
+            verification.map(|v| v.verification.iter().map(|v| v.state).collect::<Vec<_>>())
         ),
     );
     definition(
@@ -316,6 +333,16 @@ fn states(html: &mut String, r: &ViewerRequest, s: &volicord_projections::WorkSt
         &format!("{:?}", s.user_acceptance.state),
     );
     html.push_str("</dl>");
+    if verification.is_some_and(|v| !v.later_changed_checkpoint_ids.is_empty()) {
+        empty_state(
+            html,
+            text(
+                r.locale,
+                "Verification is historical; coverage of later changes is not established.",
+                "검증은 과거 관찰입니다. 이후 변경의 검증 범위는 확인되지 않았습니다.",
+            ),
+        );
+    }
 }
 fn work_detail(
     html: &mut String,
@@ -345,7 +372,7 @@ fn work_detail(
         3,
         text(r.locale, "Result and next step", "결과 및 다음 단계"),
     );
-    if w.reading.changes.is_empty() {
+    if w.reading.answers.result.is_none() {
         empty_state(
             html,
             text(
@@ -359,8 +386,8 @@ fn work_detail(
         "<p>{}</p>",
         escape(work_reading_display(&w.reading.next_step, r.locale))
     ));
-    if let Some(state) = w.reading.states.last() {
-        states(html, r, state);
+    if let Some(state) = w.reading.answers.latest_state.as_ref() {
+        states(html, r, state, w.reading.answers.verification.as_ref());
     }
     for state in &w.reading.states {
         if state
@@ -396,7 +423,7 @@ fn work_detail(
     ));
     html.push_str("</summary>");
     for state in &w.reading.states {
-        states(html, r, state);
+        states(html, r, state, Some(state));
         html.push_str(&format!("<p>{}</p>", escape(&format!("{state:?}"))));
     }
     html.push_str("</details>");

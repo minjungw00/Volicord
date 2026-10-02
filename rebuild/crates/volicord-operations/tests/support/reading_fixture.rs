@@ -378,13 +378,17 @@ fn fixture_with_temporary(
                     },
                     changed_paths: paths,
                     applied_decisions: applied,
-                    verification: vec![VerificationFact {
-                        state: verification_state(verification),
-                        source_id: commands.get(verification).copied(),
-                        outcome: commands
-                            .contains_key(verification)
-                            .then(|| "synthetic observed outcome".into()),
-                    }],
+                    verification: if cp["verification"].is_null() {
+                        Vec::new()
+                    } else {
+                        vec![VerificationFact {
+                            state: verification_state(verification),
+                            source_id: commands.get(verification).copied(),
+                            outcome: commands
+                                .contains_key(verification)
+                                .then(|| "synthetic observed outcome".into()),
+                        }]
+                    },
                     user_review: UserReviewFact {
                         state: review,
                         source_id: (review == UserReviewState::Reviewed).then_some(user),

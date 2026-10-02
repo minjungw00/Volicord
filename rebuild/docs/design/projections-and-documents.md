@@ -253,6 +253,20 @@ not proof that a Decision was implemented.
 
 `ProjectProjection` and `ProjectUnderstanding` expose `selection`, `selected_work`
 and `selected_work_decisions` independently of bounded parent lists.
+`ProjectProjection.work_overview` classifies the complete history before each
+independent category bound (eight), ordered by relevant observation/result time
+with Goal identity only as a tie-break. `WorkSection` retains complete/total/items/
+omitted; no catalog page participates. `ProjectUnderstanding.work_overview` applies
+its own tighter section bound while preserving totals. `WorkAnswers` selects
+nonblank recorded result and its observation time, latest state, latest nonempty
+verification, review and acceptance independently with exact Checkpoint revisions.
+A subsequent nonblank change, changed path or changed Source is a conservative
+verification coverage boundary. Blank state_change authoring is rejected by the
+current canonical writer; null history is supported and does not erase a result.
+The replaced renderer `changes.last()`/`states.last()` selections and the
+Understanding ID-sorted paginated-catalog categorization are removed. History
+vectors are evidence only.
+
 `ProjectProjection.work_history` aggregates complete history before its list bound;
 the selected Work's reading retains all its observations and quotations. Global
 Checkpoint timeline presentation keeps the recent suffix with exact omissions.
@@ -261,7 +275,7 @@ complete canonical input before their own bound. Work code links retain exact
 `CurrentWorkPathBasis { checkpoint_id, checkpoint_revision, path }` pairs, avoiding
 invented combinations between path and Checkpoint lists.
 
-`UnderstandingWork.reading: WorkReading` contains `goal`, `changes`, `next_step`,
+`UnderstandingWork.reading: WorkReading` contains `answers`, `goal`, `changes`, `next_step`,
 `status`, `states`, `code_gap`, `code_availability`, `code_freshness`, code Source
 and Repository/Analysis Snapshot basis. `ReadingText` contains original text,
 English/Korean display labels, representation, availability, gaps, exact omitted

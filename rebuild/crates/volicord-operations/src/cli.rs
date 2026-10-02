@@ -933,6 +933,12 @@ fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Err
         "project_purpose":understanding.project_purpose.into_iter().map(|item| json!({"statement":item.statement,"source_ids":item.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })).collect::<Vec<_>>(),
         "selection":work_selection_json(understanding.selection),
         "selected_work":understanding.selected_work.as_ref().map(work_json),
+        "work_category_counts": {
+            "current":section_count_json(&understanding.work_overview.current),
+            "completed":section_count_json(&understanding.work_overview.completed),
+            "remaining":section_count_json(&understanding.work_overview.remaining),
+            "next_steps":section_count_json(&understanding.work_overview.next_steps)
+        },
         "current_work":understanding.current_work.iter().map(work_json).collect::<Vec<_>>(),
         "completed_work":understanding.completed_work.iter().map(work_json).collect::<Vec<_>>(),
         "remaining_work":understanding.remaining_work.iter().map(work_json).collect::<Vec<_>>(),
@@ -949,9 +955,22 @@ fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Err
     }))
 }
 
+fn section_count_json(section: &volicord_projections::WorkSection) -> Value {
+    json!({"complete":section.complete,"total":section.complete.then_some(section.total),
+        "displayed":section.items.len(),"omitted":section.complete.then_some(section.omitted)})
+}
+
 fn work_json(work: &volicord_projections::UnderstandingWork) -> Value {
     json!({
         "reading": {
+            "answers": {
+                "result":work.reading.answers.result.as_ref().map(reading_text_json),
+                "result_observed_at":work.reading.answers.result_observed_at.map(|t| t.as_unix_micros()),
+                "latest_state":work.reading.answers.latest_state.as_ref().map(state_observation_json),
+                "verification":work.reading.answers.verification.as_ref().map(state_observation_json),
+                "review":work.reading.answers.review.as_ref().map(state_observation_json),
+                "acceptance":work.reading.answers.acceptance.as_ref().map(state_observation_json)
+            },
             "goal":reading_text_json(&work.reading.goal),
             "changes":work.reading.changes.iter().map(reading_text_json).collect::<Vec<_>>(),
             "next_step":reading_text_json(&work.reading.next_step),
@@ -961,14 +980,7 @@ fn work_json(work: &volicord_projections::UnderstandingWork) -> Value {
             "code_freshness":work.reading.code_freshness,
             "code_source_basis":work.reading.code_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
             "analysis_snapshot_basis":work.reading.analysis_snapshot_basis,"repository_snapshot_basis":work.reading.repository_snapshot_basis,
-            "states":work.reading.states.iter().map(|state| json!({
-                "checkpoint_id":state.checkpoint_id.to_string(), "checkpoint_revision":state.checkpoint_revision,
-                "observed_at_unix_micros":state.observed_at.as_unix_micros(),
-                "work_state":crate::recall::work_state_name(state.work_state), "work_source_basis":state.work_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                "verification":state.verification.iter().map(|fact| json!({"state":crate::recall::verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
-                "user_review":{"state":crate::recall::user_review_state_name(state.user_review.state),"source_id":state.user_review.source_id.map(|id| id.to_string())}, "user_acceptance":{"state":crate::recall::user_acceptance_state_name(state.user_acceptance.state),"source_id":state.user_acceptance.source_id.map(|id| id.to_string())},
-                "later_changed_checkpoint_ids":state.later_changed_checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>()
-            })).collect::<Vec<_>>()
+            "states":work.reading.states.iter().map(state_observation_json).collect::<Vec<_>>()
         },
         "work_item_id":work.work_item_id.to_string(),
         "title":work.title,
@@ -982,6 +994,18 @@ fn work_json(work: &volicord_projections::UnderstandingWork) -> Value {
         "next_step":work.next_step,
         "open_question_ids":work.open_question_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
         "source_ids":work.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+    })
+}
+
+fn state_observation_json(state: &volicord_projections::WorkStateObservation) -> Value {
+    json!({
+        "checkpoint_id":state.checkpoint_id.to_string(), "checkpoint_revision":state.checkpoint_revision,
+        "observed_at_unix_micros":state.observed_at.as_unix_micros(),
+        "work_state":crate::recall::work_state_name(state.work_state), "work_source_basis":state.work_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        "verification":state.verification.iter().map(|fact| json!({"state":crate::recall::verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
+        "user_review":{"state":crate::recall::user_review_state_name(state.user_review.state),"source_id":state.user_review.source_id.map(|id| id.to_string())},
+        "user_acceptance":{"state":crate::recall::user_acceptance_state_name(state.user_acceptance.state),"source_id":state.user_acceptance.source_id.map(|id| id.to_string())},
+        "later_changed_checkpoint_ids":state.later_changed_checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>()
     })
 }
 

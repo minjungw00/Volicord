@@ -53,11 +53,12 @@ pub use understanding::{
     UnderstandingBound, UnderstandingDecision, UnderstandingEvidence, UnderstandingEvidenceClass,
     UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingNextStep,
     UnderstandingOmission, UnderstandingWork, UnderstandingWorkState, UnresolvedWorkGrouping,
+    WorkOverview, WorkSection,
 };
 
 pub use reading::{
     DecisionReading, ReadingAvailability, ReadingBasis, ReadingRecord, ReadingRepresentation,
-    ReadingSourceStatus, ReadingText, WorkCodeGap, WorkReading, WorkStateObservation,
+    ReadingSourceStatus, ReadingText, WorkAnswers, WorkCodeGap, WorkReading, WorkStateObservation,
     READING_TEXT_CHARACTER_LIMIT,
 };
 pub use selection::{WorkSelection, WorkSelectionBasis, WorkSelectionError, WorkSelector};
