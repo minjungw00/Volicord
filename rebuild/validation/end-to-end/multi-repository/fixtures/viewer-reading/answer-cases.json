@@ -1,0 +1,118 @@
+{
+  "origin": "self_authored_synthetic",
+  "not_historical_evidence": true,
+  "questions": [
+    "purpose",
+    "reported_change",
+    "expected_effect",
+    "verification_limits",
+    "next_step"
+  ],
+  "cases": [
+    {
+      "key": "relay",
+      "title": "Prevent stale search results from replacing newer responses / 최신 검색 응답 유지",
+      "purpose": "Users should see results for their current query even when network responses arrive out of order.",
+      "state_change": "감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 검색 요청에 sequence를 부여하고 이전 요청의 응답이 현재 결과를 덮어쓰지 못하게 했다고 보고했다. This should keep the visible results aligned with the latest query. It does not cancel older network requests.",
+      "verification": "Passed",
+      "outcome": "The reordered-response unit test passed; browser cancellation behavior was not tested.",
+      "next_step": "Run a browser check with slow responses and confirm loading feedback.",
+      "limits": [
+        "Network cancellation remains outside this change."
+      ],
+      "expected_claims": [
+        "reported sequence guard rejects stale responses",
+        "expected visible results match newest query",
+        "unit test passed",
+        "browser behavior still unverified",
+        "next step slow-response browser check"
+      ],
+      "forbidden_claims": [
+        "network requests cancelled",
+        "browser verification passed",
+        "user accepted"
+      ]
+    },
+    {
+      "key": "relay_variant",
+      "title": "Keep current search results when requests finish in a different order",
+      "purpose": "An older request finishing last must not replace the response for the current search.",
+      "state_change": "No request cancellation was introduced. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. The reported fix tags each request with an increasing sequence and ignores a response belonging to an older request. Users should therefore keep the results for the latest search.",
+      "verification": "Passed",
+      "outcome": "Only the unit scenario with inverted response ordering passed. No browser interaction was checked.",
+      "next_step": "Check the pending indicator and reordered responses in a real browser.",
+      "limits": [
+        "Cancellation is not implemented by this change."
+      ],
+      "expected_claims": [
+        "reported sequence guard rejects stale responses",
+        "expected visible results match newest query",
+        "unit test passed",
+        "browser behavior still unverified",
+        "next step loading indicator browser check"
+      ],
+      "forbidden_claims": [
+        "network requests cancelled",
+        "browser verification passed",
+        "user accepted"
+      ]
+    },
+    {
+      "key": "export",
+      "title": "Make interrupted CSV exports recoverable",
+      "purpose": "A failed export should leave the previous complete report available to the user.",
+      "state_change": "감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. 감사 참고: commit aabbccddeeff00112233445566778899; source와 revision은 상세에서 확인. Reported change: CSV export writes to a temporary sibling and replaces the destination after the write completes. The intended effect is that an interrupted write leaves the old report intact. Windows replacement behavior is still unknown.",
+      "verification": "Failed",
+      "outcome": "The injected disk-full check failed: a temporary file remained. Existing report bytes were unchanged.",
+      "next_step": "Remove abandoned temporary files and rerun the disk-full check.",
+      "limits": [
+        "Windows behavior has not been checked."
+      ],
+      "expected_claims": [
+        "reported temporary-file publication",
+        "intended preserve previous complete report",
+        "disk-full check failed",
+        "temporary file cleanup unresolved",
+        "Windows behavior unknown"
+      ],
+      "forbidden_claims": [
+        "all exports atomic on every OS",
+        "verification passed",
+        "cleanup implemented"
+      ]
+    }
+  ],
+  "prefix_expectations": [
+    {
+      "prefix": 0,
+      "result": null,
+      "state": "Open",
+      "verification": "no_record"
+    },
+    {
+      "prefix": 1,
+      "result": "change",
+      "state": "Completed",
+      "verification": "Passed"
+    },
+    {
+      "prefix": 2,
+      "result": "change",
+      "state": "Paused",
+      "verification": "Failed"
+    },
+    {
+      "prefix": 3,
+      "result": "change",
+      "state": "Paused",
+      "verification": "no_new_record"
+    },
+    {
+      "prefix": 4,
+      "result": "later_change",
+      "state": "Completed",
+      "verification": "NotRun",
+      "earlier_pass": "historical"
+    }
+  ]
+}

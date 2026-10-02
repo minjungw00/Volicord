@@ -47,20 +47,29 @@ fn verification_state(value: &str) -> VerificationState {
     }
 }
 pub fn fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
-    fixture_with_temporary(tempdir()?, false)
+    fixture_with_temporary(tempdir()?, false, serde_json::from_str(SCENARIO)?)
+}
+
+#[allow(dead_code)]
+pub fn fixture_scenario(input: Value) -> Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_with_temporary(tempdir()?, false, input)
 }
 
 // Browser supporting checks retain only their explicitly selected disposable home.
 #[allow(dead_code)]
 pub fn fixture_in(parent: &std::path::Path) -> Result<Fixture, Box<dyn std::error::Error>> {
-    fixture_with_temporary(tempfile::tempdir_in(parent)?, true)
+    fixture_with_temporary(
+        tempfile::tempdir_in(parent)?,
+        true,
+        serde_json::from_str(SCENARIO)?,
+    )
 }
 
 fn fixture_with_temporary(
     temporary: TempDir,
     browser_fixture: bool,
+    input: Value,
 ) -> Result<Fixture, Box<dyn std::error::Error>> {
-    let input: Value = serde_json::from_str(SCENARIO)?;
     let repository = temporary.path().join("repository");
     let fixture_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../validation/end-to-end/multi-repository/fixtures/viewer-reading/repository");
@@ -433,8 +442,10 @@ fn fixture_with_temporary(
                     decisions["project"],
                     decisions["unresolved"],
                 ]
-            } else {
+            } else if key == "same_title" {
                 vec![decisions["other_work"]]
+            } else {
+                Vec::new()
             };
             let id = record(
                 &mut store,

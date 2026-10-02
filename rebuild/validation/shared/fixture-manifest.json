@@ -775,7 +775,8 @@
         "three identity-distinct Works, including Goal-only",
         "all selected older Work Checkpoints before display bounds",
         "separate work/verification/review/acceptance",
-        "purpose present and absent"
+        "purpose present and absent",
+        "independent question specifications and source-rich multilingual variants"
       ],
       "expected_relations": [
         "explicit Work scope and Checkpoint-applied Decision links",
@@ -787,7 +788,7 @@
         "prototype human comprehension claims",
         "invented cross-language relations"
       ],
-      "content_sha256": "06e1fc93a2091be0cfe0a978a078f76b4ca99ba7aa381a958bed4dcb53eaba41",
+      "content_sha256": "bdd3c5003c181c691af4bfa952fc4f4bff3f36c6ef92809df28dd7e88f1ade5b",
       "origin": "Self-authored synthetic adversarial inputs; no user repositories, conversations or runtime data",
       "license": "CC0-1.0"
     }

@@ -144,6 +144,30 @@ locale만 실현한다. 그 밖의 requested-language generated body 성공은 h
 
 ### Work reading and selection
 
+#### Independent question answer specifications
+
+These specifications precede the selection/explanation replacement. The oracle is
+the canonical field meaning and self-authored source material, never renderer
+output. `fixtures/viewer-reading/answer-cases.json` supplies independent expected
+claims. All questions use exact Project/Goal identity; equal titles, paths and Git
+commits confer no association. Detail retains original text and revision evidence.
+
+| Question | Required meaning and exact evidence | Time/scope rule | Forbidden claim / absent behavior | Placement |
+| --- | --- | --- | --- | --- |
+| What was reported? | Latest nonblank `Checkpoint.state_change`, its revision and Sources; purpose/effect from clear source material | Same Work, result observation time then identity; correction uses current revision | Blank/null later records cannot erase earlier result; reported change is not verified achievement; no result means no reported result | Ordinary explanation; quotation in evidence |
+| What is the latest state? | `work_state` with exact Checkpoint revision/Sources | Latest same-Work observation; Goal-only derives Open | Cannot derive state from change text, verification, review or acceptance | Ordinary |
+| What was verified? | Latest nonempty `verification` observation; individual fact state, Command Source and outcome | Independently selected; subsequent meaningful change makes coverage historical/unknown; no silent inheritance | No record differs from explicit NotRun, failure and historical pass; cannot infer coverage from filename or kind | Ordinary with historical warning; full history in detail |
+| Was it reviewed / accepted? | Latest independent `user_review` / `user_acceptance` facts and their Source, including explicit reset to NotRequested | Latest same-Work observation per dimension | Review is not acceptance; accepted is not passed; absent Checkpoint is no observation | Ordinary; history/detail |
+| What next? | Latest Checkpoint `next_step` and exact revision/Sources | Latest observation, no fallback to obsolete earlier direction if blank | No recorded direction means missing next-step information | Ordinary |
+| What is current/completed/remaining? | Complete canonical Work classification before category bounds; category total/displayed/omitted and completeness | State observation time for current/remaining, result time for outcomes, identity only as tie-break | Catalog page and unrelated completed Works cannot hide current category; unknown completeness is not zero | Overview |
+| What does this Work mean? | Purpose, reported change, expected effect, verification limits and unresolved next step, each grounded in exact selected evidence | Current question/evidence revisions and language; interpretation remains derived | No invented feature for generic implementation-changed prose; excerpt/unavailable alone fails sufficient-source explanation | Ordinary answer with deeper grounding |
+
+Null/blank history prefixes and later changes must be observed through Operations
+and Viewer. Source-rich multilingual audit prose and independently reordered or
+paraphrased cases test reading meaning, rather than lexical match with a fixture
+key. A stale realization, generation/authorization failure, selection failure and
+genuinely absent information are distinct outcomes.
+
 The server-rendered Viewer reading hierarchy is **Overview → Work → Code
 Understanding / Decisions → evidence**, with mutation, export and diagnostic tools
 separate from ordinary reading. The current route/CLI/snapshot contract is maintained

@@ -680,6 +680,16 @@ owner/fixture checks and affected projection/Operations/Viewer/V06 targets throu
 `validate focused`, inspect every result, and keep each commit coherent. This work
 invokes neither gate/direct final nor official V11/fresh naturalistic campaigns.
 
+Focused question-answer replacement adds independent `answer-cases.json` claims
+and explicit baseline reproductions in Viewer `answer_contracts`. At the starting
+HEAD, all three product-entry-point reproductions fail: null result suppression,
+current Work hidden beyond 64 IDs, and Korean Debug state output. They remain
+explicitly ignored until their corresponding replacement connects; the default
+suite remains coherent. Full reproduction streams and numeric exit 101 are
+preserved by `validate focused answer-contract-reproductions-complete`. Source-rich
+cases are synthetic new evidence; the generic implementation-changed input is
+unchanged and cannot justify a feature explanation.
+
 ### Browser supporting observations under V11
 
 The bounded `end-to-end/multi-repository/viewer_browser.py` runner and coupled
