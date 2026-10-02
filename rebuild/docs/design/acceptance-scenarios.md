@@ -986,6 +986,23 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   diagram relation의 basis를 찾을 수 있는가
 - 네 문서가 다른 agent의 실제 handoff와 사용자의 이해·판단에 충분한가
 
+### Next Viewer reading acceptance (target; routes unchanged)
+
+Select two distinct Works with identical titles, paths and commit basis without
+merging them. Select a Goal-only Work and an old Work omitted from global lists.
+Navigate its purpose, changes, next step, Decisions, code and exact evidence with
+one consistent selection. A later same-Work verification Checkpoint without paths
+must preserve earlier path grounding. Cross-Project, non-Goal and absent identities
+fail explicitly; malformed input is distinguishable and never selects a substitute.
+
+Read completed/failed/pending/rejected dimensions independently, including older
+verification preceding later changes. Preserve Purpose absence, missing user
+rationale, superseded/review-due Decisions, stale/unavailable analysis and polyglot
+unresolved relations. Long multilingual/audit-heavy text may be a labeled excerpt;
+record which tasks still require interpreting the entire original. Automated
+fixtures and disposable prototypes do not establish human-observed comprehension,
+V11 qualification, a naturalistic campaign or Phase 9 readiness.
+
 ## O. Degraded analysis, provider failure와 crash recovery
 
 ### 시작 상태

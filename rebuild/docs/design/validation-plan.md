@@ -658,6 +658,28 @@ Canonical Context와 Repository Intelligence에서 네 필수 문서를 생성�
 - Project Understanding body와 diagram이 required work/Decision/code/architecture meaning,
   fact/interpretation distinction과 inspectable relation-grounded topology를 유지한다.
 
+### Focused Viewer reading foundation
+
+Self-authored adversarial inputs belong to
+`end-to-end/multi-repository/fixtures/viewer-reading/` and the shared fixture
+manifest. Independent invariants cover exact identity selection before upstream
+and presentation bounds, same-Work history, Goal-only/code gaps, Decision scopes,
+Purpose absence, separate status dimensions, multilingual excerpts, missing
+rationale and stale/unavailable/polyglot analysis. Rust projection and Local
+Operations tests own production semantics. A disposable navigation prototype lives
+under ignored `.local/`; reproducible inputs, generator and reviewed findings may
+be maintained with the capability owner. Hand-authored explanatory examples are
+prototype annotations and supply no canonical facts or human-observation claims.
+
+Before read-path changes, use existing profiled focused workloads to retain HEAD,
+fixture/test hashes, environment/tool identities, numeric execution/termination
+and complete streams under ignored validation state. Retain a reviewed bounded
+measurement summary; missing tools are measurement limitations. These samples
+are diagnostic profiles, not a universal SLA or aggregate qualification. Run
+owner/fixture checks and affected projection/Operations/Viewer/V06 targets through
+`validate focused`, inspect every result, and keep each commit coherent. This work
+invokes neither gate/direct final nor official V11/fresh naturalistic campaigns.
+
 ## 11. V07 — Privacy와 local-only mode
 
 ### 목표

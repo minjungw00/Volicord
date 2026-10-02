@@ -190,6 +190,14 @@ source record를 바꾸지 않는다. 상세 Recall selection, document groundin
 adoption과 output contract는 active
 [Projection과 document 계약](projections-and-documents.md)이 소유한다.
 
+The next Viewer reading surface targets Overview, Work, Code Understanding and
+Decisions, with tools separate from reading. Selection and evidence-linked Work
+reading records belong to [Projection과 document 계약](projections-and-documents.md).
+Local Operations supplies complete canonical/analysis read bases before display
+bounds; adapters carry selectors without inventing canonical meaning. This
+read-side foundation adds no canonical model, provider service or Viewer database.
+Current routes and UI remain unchanged until the later production switch.
+
 #### Candidate Inspection read authority contract
 
 | Contract field | Required authority boundary |

@@ -142,6 +142,65 @@ provider를 요구하거나 새 topology를 만들지 않으며 bundled Viewer�
 locale만 실현한다. 그 밖의 requested-language generated body 성공은 host realization
 계약을 계속 사용하고 local deterministic explanation으로 임의 충족했다고 표시하지 않는다.
 
+### Work reading and selection target
+
+The next server-rendered Viewer reading hierarchy is **Overview → Work → Code
+Understanding / Decisions → evidence**, with mutation, export and diagnostic tools
+separate from ordinary reading. This is a target, not a claim that current HTTP
+routes, navigation or CLI options implement it. Promote command/UI documentation
+only when that production switch ships. The existing Viewer remains the current
+surface during the read-model work.
+
+Shared projection selection has three meanings: `LatestWork` resolves the actual
+Goal identity associated with the latest Checkpoint, or the newest Goal when no
+associated Work is available; `ExactWork(ContextItemId)` validates an existing Goal
+in the selected Project; `Repository` reads repository scope without selecting a
+Work. Latest selection preserves an unassociated latest Checkpoint as unresolved,
+never attaching it by chronology. An exact missing, forgotten, non-Goal or foreign
+identity is not-found; malformed identity input is a distinct invalid-selection
+error. Neither error falls back to LatestWork. These are read-side selectors, not
+canonical entities, HTTP view names, approval states or persistence formats.
+
+Exact selection precedes **every** display bound. The upstream canonical reader
+must supply complete Project history; filtering a globally bounded timeline,
+Resume Brief or parent Work list is insufficient. Resolve same-Work Checkpoints,
+explicit WorkItem Decisions and Checkpoint-applied Decisions, Goal and Source
+seeds, and actual snapshot topology before bounded presentation. Keep ProjectWide
+and Unresolved scope labels even when a Checkpoint applies such a Decision. Do
+not use an unrelated Decision or Goal as a topology seed. An explicitly selected
+Work remains available separately from bounded lists. Goal-only Work is open and
+readable; no code seeds produce an explicit code gap. Earlier changed paths remain
+basis after a same-Work verification-only Checkpoint.
+
+Derived reading records separate original text from display text and exact
+record kind/identity/revision/field, Source, Repository and Analysis Snapshot
+basis. Whole quotations, labeled excerpts and deterministic structured-fact
+explanations are different representations. Excerpts report exact omitted UTF-8
+bytes and characters and do not claim semantic comprehension. Missing prose
+produces summary-unavailable, never a fabricated title/result/rationale. Hash-like
+substrings are preserved; a first sentence is not automatically a result.
+User selection and rationale, agent recommendation and rationale, related code,
+and implementation evidence remain independently inspectable. Missing user
+rationale is not supplied by recommendation rationale. Original record language
+is preserved; fixed English/Korean explanatory labels do not attest that quoted
+source text was translated or that arbitrary requested-language realization ran.
+Document NarrativeRealization is not a Work-summary realizer.
+
+Work, verification, review and acceptance are independently sourced dimensions.
+Each history observation retains its Checkpoint revision and Source basis; latest
+state does not erase failed/rejected/unverified historical states. Earlier passed
+verification is historical evidence and never silently covers later changes.
+Availability, freshness, supersession, review-due and exact omissions remain
+visible independently of prose shortening. All reads are mutation-free and may
+use canonical-only remainder when analysis is unavailable. No GET analysis or
+provider call, new Viewer store or canonical state is required.
+
+Current shared Recall and four-document default behavior remain supported through
+one projection implementation. The target selection and reading types become
+implemented contracts only with their production code and independent tests;
+Viewer navigation and read-cost/comprehension improvements require the later
+surface switch and further evidence.
+
 ## 2. First project-scoped automatic Recall
 
 새 agent session의 첫 `project-scoped` 요청에서는 bounded, read-only Recall을
