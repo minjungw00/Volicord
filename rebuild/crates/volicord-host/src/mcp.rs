@@ -2206,6 +2206,7 @@ const fn understanding_work_state_key(
 
 const fn candidate_dependency_key(state: CandidateDependencyState) -> &'static str {
     match state {
+        CandidateDependencyState::NotRequested => "not_requested",
         CandidateDependencyState::Available => "available",
         CandidateDependencyState::Unavailable => "unavailable",
         CandidateDependencyState::Unsupported => "unsupported",

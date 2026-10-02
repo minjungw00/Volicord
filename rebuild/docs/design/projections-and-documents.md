@@ -889,8 +889,38 @@ freshness observation에 대해 동일한 ResumeBrief를 생성해야 한다. Me
 Project canonical/analysis basis before list bounds. `ProjectProjection` carries
 `selected_decision`, `selected_entity`, its bounded incoming/outgoing relations,
 real neighbor entities and exact omitted relation count separately from parent
-lists. Missing selected details remain absent, letting the adapter return not-found
-without falling back or revealing another Project. Reads retain canonical identity,
+lists. Missing selected details on an available basis remain absent, letting the adapter
+return not-found without falling back or revealing another Project. If the graph
+basis is unavailable, requested entity identity is explicitly unverifiable; canonical
+remainder remains readable without claiming entity existence or absence. Reads retain canonical identity,
 revision, Source/range, evidence class, freshness and unresolved-target meaning.
 Snapshot navigation allows only existing unambiguous internal fragments and native
 `details`; omitted detail produces an explanation rather than a broken link.
+
+### Requested-section materialization
+
+`ProjectionReadRequirements { code, inspection }` separates read materialization
+from identity selection. Both default to requested for full existing consumers.
+`ProjectReadSections` reports `NotRequested`, `Available` or `Unavailable` for
+code and inspection. Candidate dependency also has explicit `NotRequested`.
+A thin read preserves canonical meanings and stored AnalysisMetadata coverage,
+identity and freshness, but makes no graph-integrity or missing-code conclusion.
+Selected Work code availability and Decision code-link gaps distinguish sections
+not requested from requested data that could not be read. Requested missing or
+failed graph input leaves canonical remainder readable with an affected-scope gap.
+
+The Viewer requests graph bodies only for Code and graph-bearing Tools sections;
+ordinary Overview/Work/Decision reads do not decode them or generate documents.
+Candidate inspection is requested only by Memory, Documents and snapshots. Full
+document generation, narrative planning and realization reject any projection
+whose code or inspection section is `NotRequested`. An `Unavailable` requested
+section remains a legitimate degraded complete attempt and reports its gaps.
+Recall's existing metadata read and ordinary full document defaults are preserved.
+
+Local Operations owns selective reads and profiles. Store/recovery health can run
+without graph integrity validation, with that exclusion explicitly visible; Tools
+Status retains full integrity checking. Code uses one stored graph read, and the
+whole snapshot shares one canonical/analysis projection among all bounded sections
+and four document previews. Per-Work presentation never reopens/decode analysis.
+These requirements add no persisted format, cache, analyzer invocation, provider
+call, canonical mutation or weakened correction/forgetting invalidation.

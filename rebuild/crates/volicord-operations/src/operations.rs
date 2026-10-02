@@ -129,6 +129,8 @@ pub struct ProjectProjectionProfile {
     pub canonical_read: Duration,
     pub repository_analysis_read: Duration,
     pub analysis_snapshot_decodes: usize,
+    pub analysis_metadata_decodes: usize,
+    pub candidate_reads: usize,
     pub candidate_read: Duration,
     pub projection_build: Duration,
     pub total: Duration,
@@ -318,6 +320,23 @@ impl LocalOperations {
         &self,
         project_id: Option<ProjectId>,
     ) -> (HealthReport, HealthCheckProfile) {
+        self.health_read_profiled(project_id, true)
+    }
+
+    /// Store/recovery health without validating graph bodies. Graph diagnostics
+    /// are explicitly not requested; use `health_profiled` for a full check.
+    pub fn health_stores_profiled(
+        &self,
+        project_id: Option<ProjectId>,
+    ) -> (HealthReport, HealthCheckProfile) {
+        self.health_read_profiled(project_id, false)
+    }
+
+    fn health_read_profiled(
+        &self,
+        project_id: Option<ProjectId>,
+        validate_analysis: bool,
+    ) -> (HealthReport, HealthCheckProfile) {
         let mut issues = Vec::new();
         let mut profile = HealthCheckProfile::default();
         let _health_lock = match self.layout.acquire_health_lock() {
@@ -443,7 +462,7 @@ impl LocalOperations {
             },
             Err(_) => None,
         });
-        if let Some(project_id) = project_id {
+        if let Some(project_id) = project_id.filter(|_| validate_analysis) {
             match self.check_analyses_profiled(project_id) {
                 Ok((_, decodes)) => profile.analysis_snapshot_decodes = decodes,
                 Err((error, decodes)) => {
@@ -2633,6 +2652,23 @@ impl LocalOperations {
         selection: volicord_projections::WorkSelector,
         detail: volicord_projections::ProjectionDetail,
     ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        self.project_projection_read_profiled(
+            project_id,
+            selection,
+            detail,
+            volicord_projections::ProjectionReadRequirements::default(),
+        )
+    }
+
+    /// One canonical basis with explicitly requested materialization. Metadata
+    /// retains coverage/freshness on thin reads; no analyzer runs on this path.
+    pub fn project_projection_read_profiled(
+        &self,
+        project_id: ProjectId,
+        selection: volicord_projections::WorkSelector,
+        detail: volicord_projections::ProjectionDetail,
+        requirements: volicord_projections::ProjectionReadRequirements,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
         let total_started = Instant::now();
         let canonical_started = Instant::now();
         let canonical = self.canonical_basis(project_id)?;
@@ -2641,16 +2677,41 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("Work selection failed", error))?;
         let canonical_read = canonical_started.elapsed();
         let analysis_started = Instant::now();
-        let (analyses, analysis_issues) = self.load_projection_analyses(project_id, &canonical);
-        let analysis_snapshot_decodes = analyses.len();
+        let (
+            analyses,
+            metadata,
+            analysis_issues,
+            analysis_snapshot_decodes,
+            analysis_metadata_decodes,
+        ) = if requirements.code {
+            let (analyses, issues, decodes) = self.load_projection_analyses(project_id, &canonical);
+            (analyses, Vec::new(), issues, decodes, 0)
+        } else {
+            let (result, decodes) = self.load_recall_metadata_profiled(project_id, &canonical);
+            let (metadata, issues) = match result {
+                Ok(values) => (values, Vec::new()),
+                Err(error) => (Vec::new(), vec![analysis_read_issue(project_id, &error)]),
+            };
+            (Vec::new(), metadata, issues, 0, decodes)
+        };
         let repository_analysis_read = analysis_started.elapsed();
         let analysis_refs = analyses.iter().collect::<Vec<_>>();
         let candidate_started = Instant::now();
-        let (candidate_basis, candidate_failure) = self.read_projection_candidates(project_id);
-        let candidate_read = candidate_started.elapsed();
+        let (candidate_basis, candidate_failure) = if requirements.inspection {
+            self.read_projection_candidates(project_id)
+        } else {
+            (None, None)
+        };
+        let candidate_read = if requirements.inspection {
+            candidate_started.elapsed()
+        } else {
+            Duration::ZERO
+        };
         let candidates = projection_candidates(candidate_basis.as_ref(), candidate_failure);
         let projection_started = Instant::now();
         let projection = build_project_projection(ProjectProjectionInputs {
+            requirements,
+            metadata: &metadata.iter().collect::<Vec<_>>(),
             detail,
             selection,
             analysis_issues: &analysis_issues,
@@ -2670,6 +2731,8 @@ impl LocalOperations {
                 canonical_read,
                 repository_analysis_read,
                 analysis_snapshot_decodes,
+                analysis_metadata_decodes,
+                candidate_reads: usize::from(requirements.inspection),
                 candidate_read,
                 projection_build,
                 total: total_started.elapsed(),
@@ -3928,22 +3991,27 @@ impl LocalOperations {
     ) -> (
         Vec<AnalysisSnapshot>,
         Vec<volicord_projections::ProjectionIssue>,
+        usize,
     ) {
-        match self.load_analyses(project_id) {
-            Ok(mut analyses) => {
+        match self.load_analyses_profiled(project_id) {
+            Ok((mut analyses, decodes)) => {
                 for analysis in &mut analyses {
-                    let observed = self.observe_projection_repository(canonical, analysis.repository_source.identity(), &analysis.inventory.entries).ok();
+                    let observed = self
+                        .observe_projection_repository(
+                            canonical,
+                            analysis.repository_source.identity(),
+                            &analysis.inventory.entries,
+                        )
+                        .ok();
                     analysis.observe_repository_freshness(observed.as_ref());
                 }
-                (analyses, Vec::new())
-            },
-            Err(error) => (Vec::new(), vec![volicord_projections::ProjectionIssue {
-                kind: volicord_projections::ProjectionIssueKind::FailedCapability,
-                identity: project_id.to_string(),
-                affected_scope: "derived_analysis".into(),
-                reason: format!("Stored analysis is unavailable: {error}. Canonical memory remains readable; run volicord doctor repair from the bound repository."),
-                omitted_count: 0,
-            }]),
+                (analyses, Vec::new(), decodes)
+            }
+            Err((error, decodes)) => (
+                Vec::new(),
+                vec![analysis_read_issue(project_id, &error)],
+                decodes,
+            ),
         }
     }
 
@@ -4054,15 +4122,24 @@ impl LocalOperations {
     }
 
     fn load_analyses(&self, project_id: ProjectId) -> Result<Vec<AnalysisSnapshot>, Error> {
-        let Some((header, path)) = self.select_analysis(project_id)? else {
-            return Ok(Vec::new());
+        self.load_analyses_profiled(project_id)
+            .map(|(values, _)| values)
+            .map_err(|(error, _)| error)
+    }
+
+    fn load_analyses_profiled(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<(Vec<AnalysisSnapshot>, usize), (Error, usize)> {
+        let Some((header, path)) = self.select_analysis(project_id).map_err(|e| (e, 0))? else {
+            return Ok((Vec::new(), 0));
         };
-        let value = read_analysis(&path)?;
+        let value = read_analysis(&path).map_err(|e| (e, 1))?;
         if !header.matches(&value) {
-            return Err(Error::new("Analysis Snapshot changed during selection"));
+            return Err((Error::new("Analysis Snapshot changed during selection"), 1));
         }
         self.remember_analysis_validation(&path, value.identity);
-        Ok(vec![value])
+        Ok((vec![value], 1))
     }
 
     fn remember_analysis_validation(&self, path: &Path, identity: AnalysisSnapshotId) {
@@ -4081,28 +4158,41 @@ impl LocalOperations {
         project_id: ProjectId,
         canonical: &CanonicalReadBasis,
     ) -> Result<Vec<AnalysisMetadata>, Error> {
-        let Some((header, path)) = self.select_analysis(project_id)? else {
-            return Ok(Vec::new());
-        };
-        let manifest = crate::analysis_io::read_manifest(&path)?;
-        let mut value = crate::analysis_io::read_metadata(&path, &manifest)?;
-        if value.project.identity() != project_id
-            || value.identity != header.identity
-            || value.generated_at_unix_micros != header.generated_at_unix_micros
-        {
-            return Err(Error::new(
-                "Analysis Snapshot metadata changed during selection",
-            ));
-        }
-        let observation = self
-            .observe_projection_repository(
-                canonical,
-                value.repository_source.identity(),
-                &value.inventory.entries,
-            )
-            .ok();
-        value.observe_repository_freshness(observation.as_ref());
-        Ok(vec![value])
+        self.load_recall_metadata_profiled(project_id, canonical).0
+    }
+
+    fn load_recall_metadata_profiled(
+        &self,
+        project_id: ProjectId,
+        canonical: &CanonicalReadBasis,
+    ) -> (Result<Vec<AnalysisMetadata>, Error>, usize) {
+        let mut decodes = 0;
+        let result = (|| {
+            let Some((header, path)) = self.select_analysis(project_id)? else {
+                return Ok(Vec::new());
+            };
+            let manifest = crate::analysis_io::read_manifest(&path)?;
+            decodes += 1;
+            let mut value = crate::analysis_io::read_metadata(&path, &manifest)?;
+            if value.project.identity() != project_id
+                || value.identity != header.identity
+                || value.generated_at_unix_micros != header.generated_at_unix_micros
+            {
+                return Err(Error::new(
+                    "Analysis Snapshot metadata changed during selection",
+                ));
+            }
+            let observation = self
+                .observe_projection_repository(
+                    canonical,
+                    value.repository_source.identity(),
+                    &value.inventory.entries,
+                )
+                .ok();
+            value.observe_repository_freshness(observation.as_ref());
+            Ok(vec![value])
+        })();
+        (result, decodes)
     }
 
     fn load_analysis_snapshot(
@@ -4121,6 +4211,17 @@ impl LocalOperations {
             ));
         }
         Ok(value)
+    }
+}
+
+fn analysis_read_issue(
+    project_id: ProjectId,
+    error: &Error,
+) -> volicord_projections::ProjectionIssue {
+    volicord_projections::ProjectionIssue {
+        kind: volicord_projections::ProjectionIssueKind::FailedCapability,
+        identity: project_id.to_string(), affected_scope: "derived_analysis".into(),
+        reason: format!("Stored analysis is unavailable: {error}. Canonical memory remains readable; run volicord doctor repair from the bound repository."), omitted_count: 0,
     }
 }
 

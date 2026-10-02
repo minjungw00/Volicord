@@ -1,0 +1,117 @@
+{
+  "workload": "requested_sections_on_large_repository",
+  "scope": "Environment-specific diagnostic regression ceilings; not universal product latency or qualification. No prior acceptance ceiling is changed.",
+  "basis": "Fixed after the initial one-cold/eight-warm measurement on 2026-10-02 and before independent verification. Rounded headroom above observed stage maxima; ordinary total remains below the historical eager fixture latency. Graph/document/count invariants are unconditional; timing ceilings run only with VOLICORD_VIEWER_BUDGETS=1 on this named environment.",
+  "environment": {
+    "os": "Linux 6.18.33.2-microsoft-standard-WSL2 x86_64",
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13700K; 16 exposed logical CPUs",
+    "rustc": "1.97.1 (8bab26f4f 2026-07-14)",
+    "cargo": "1.97.1 (c980f4866 2026-06-30)",
+    "profile": "debug; no override of test worker limits"
+  },
+  "input": "Shared viewer-reading scenario canonical records + its C/TypeScript/Python fixture + 192 synthetic Python modules. No provider. Fresh LocalOperations/Viewer adapter per route; first request is adapter cold, not OS cache cold; eight warm requests. Setup/analyze/compilation excluded.",
+  "required_counts": {
+    "overview": {
+      "projection_passes": 1,
+      "graph_decodes": 0,
+      "metadata_decodes": 1,
+      "candidate_reads": 0,
+      "documents": 0,
+      "health_graph_decodes": 0
+    },
+    "work": {
+      "projection_passes": 1,
+      "graph_decodes": 0,
+      "metadata_decodes": 1,
+      "candidate_reads": 0,
+      "documents": 0,
+      "health_graph_decodes": 0
+    },
+    "decision": {
+      "projection_passes": 1,
+      "graph_decodes": 0,
+      "metadata_decodes": 1,
+      "candidate_reads": 0,
+      "documents": 0,
+      "health_graph_decodes": 0
+    },
+    "code": {
+      "projection_passes": 1,
+      "graph_decodes": 1,
+      "metadata_decodes": 0,
+      "candidate_reads": 0,
+      "documents": 0,
+      "health_graph_decodes": 0
+    },
+    "snapshot": {
+      "projection_passes": 1,
+      "graph_decodes": 1,
+      "metadata_decodes": 0,
+      "candidate_reads": 1,
+      "documents": 4,
+      "health_graph_decodes": 0
+    }
+  },
+  "ceilings_us": {
+    "overview": {
+      "total": 65000,
+      "canonical": 30000,
+      "analysis": 18000,
+      "projection": 5000,
+      "documents": 0,
+      "html": 1500,
+      "candidate": 0,
+      "health": 12000,
+      "privacy": 10000,
+      "understanding": 3000
+    },
+    "work": {
+      "total": 65000,
+      "canonical": 30000,
+      "analysis": 18000,
+      "projection": 5000,
+      "documents": 0,
+      "html": 1500,
+      "candidate": 0,
+      "health": 12000,
+      "privacy": 10000,
+      "understanding": 3000
+    },
+    "decision": {
+      "total": 65000,
+      "canonical": 30000,
+      "analysis": 18000,
+      "projection": 5000,
+      "documents": 0,
+      "html": 1500,
+      "candidate": 0,
+      "health": 12000,
+      "privacy": 10000,
+      "understanding": 3000
+    },
+    "code": {
+      "total": 135000,
+      "canonical": 30000,
+      "analysis": 95000,
+      "projection": 15000,
+      "documents": 0,
+      "html": 4000,
+      "candidate": 0,
+      "health": 12000,
+      "privacy": 10000,
+      "understanding": 4000
+    },
+    "snapshot": {
+      "total": 180000,
+      "canonical": 30000,
+      "analysis": 95000,
+      "projection": 18000,
+      "documents": 18000,
+      "html": 30000,
+      "candidate": 10000,
+      "health": 12000,
+      "privacy": 10000,
+      "understanding": 4000
+    }
+  }
+}

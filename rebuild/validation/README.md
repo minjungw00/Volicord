@@ -556,3 +556,15 @@ scoped reading limitations in [Viewer findings](end-to-end/multi-repository/view
 `volicord-operations/tests/support/reading_fixture.rs`; its independent HTTP
 assertions cover selection, scope, history, pagination, fragment closure and purity.
 This is focused support, not browser or human comprehension qualification.
+
+Viewer requested-section cost checks use `volicord-viewer --test reading
+requested_sections_on_large_repository`. The maintained
+[read budgets](end-to-end/multi-repository/viewer-read-budgets.json) bind the named
+synthetic polyglot/192-module workload, debug profile, WSL2/i7-13700K environment
+and individual stages. Read/decode/document invariants run unconditionally; setting
+`VOLICORD_VIEWER_BUDGETS=1` explicitly checks these environment-specific timing
+ceilings. Run the focused command in the [findings](end-to-end/multi-repository/viewer-reading-findings.md)
+without concurrent expensive validation. First-request cold means a fresh adapter,
+not flushed operating-system caches. Neither these samples nor markup/semantic
+checks provide a population p95, universal SLA, browser interaction or human-review
+qualification. Existing V11/resource budgets are unchanged.

@@ -113,6 +113,9 @@ pub(super) fn warnings(
             escape(health_state_label(health.state, request.locale))
         ));
     }
+    if projection.sections.code == volicord_projections::ReadSectionState::NotRequested {
+        empty_state(html, text(request.locale, "Code bodies not requested. Stored coverage and freshness remain visible; open Code Understanding for relationships.", "코드 본문은 요청하지 않음. 저장된 coverage와 freshness는 표시되며 관계는 코드 이해에서 확인하세요."));
+    }
     html.push_str("<ul class=\"gap-list\">");
     for issue in &health.issues {
         list_item(html, &format!("{}: {}", issue.scope, issue.detail));
@@ -326,7 +329,16 @@ fn work_detail(
         &format!("work-{}", w.work_item_id),
         text(r.locale, "Work detail", "작업 상세"),
     );
-    render_work_card(html, r, w, &p.selected_work_decisions);
+    let decisions = if snapshot {
+        p.decision_catalog
+            .iter()
+            .filter(|d| w.decision_ids.contains(&d.decision.decision_id))
+            .cloned()
+            .collect::<Vec<_>>()
+    } else {
+        p.selected_work_decisions.clone()
+    };
+    render_work_card(html, r, w, &decisions);
     empty_state(html,text(r.locale,"Semantic summary unavailable: Goal and changes are original quotations or labeled excerpts.","의미 요약 없음: 목표와 변경은 원문 인용 또는 표시된 발췌입니다."));
     heading(
         html,
@@ -393,7 +405,7 @@ fn work_detail(
         3,
         text(r.locale, "Decisions and Questions", "결정 및 질문"),
     );
-    for decision in &p.selected_work_decisions {
+    for decision in &decisions {
         if !snapshot {
             decision_link(html, r, decision, false);
         } else {
@@ -560,6 +572,12 @@ fn code(
             _ => text(r.locale, "Repository context", "저장소 범위"),
         },
     );
+    if r.view.detail().entity.is_some()
+        && p.selected_entity.is_none()
+        && p.sections.code == volicord_projections::ReadSectionState::Unavailable
+    {
+        empty_state(html, text(r.locale, "Entity detail unavailable: stored analysis cannot verify the requested entity identity. Canonical Work remains readable.", "엔터티 상세 이용 불가: 저장된 분석으로 요청한 엔터티 identity를 검증할 수 없습니다. Canonical 작업은 계속 읽을 수 있습니다."));
+    }
     empty_state(
         html,
         text(
@@ -811,23 +829,33 @@ pub(super) fn snapshot(
         decision_detail(html, r, d);
     }
     section_end(html);
-    let mut repository = u.clone();
-    repository.architecture.components = p.repository_map.entities.clone();
-    repository.architecture.relationships = p
-        .repository_map
-        .relations
-        .iter()
-        .filter(|r| r.target_entity.is_some())
-        .cloned()
-        .collect();
-    code(html, r, p, &repository, true);
+    // Reuse immutable materialized data; never load a separate per-Work basis.
+    let mut repository_projection = p.clone();
+    repository_projection.selection = volicord_projections::WorkSelection {
+        selector: volicord_projections::WorkSelector::Repository,
+        work_item_id: None,
+        basis: volicord_projections::WorkSelectionBasis::Repository,
+    };
+    repository_projection.selected_work = None;
+    repository_projection.selected_work_decisions.clear();
+    repository_projection.current_work_code.clear();
+    repository_projection.current_work_topology.entities = p.repository_map.entities.clone();
+    repository_projection.current_work_topology.relations = p.repository_map.relations.clone();
+    let repository = build_project_understanding(
+        &repository_projection,
+        UnderstandingBound {
+            max_items_per_section: 32,
+        },
+    );
+    code(html, r, &repository_projection, &repository, true);
 }
 
 fn pagination(html: &mut String, r: &ViewerRequest, count: usize, page: usize, work: bool) {
     html.push_str("<nav aria-label=\"List pages\">");
     for next in [
         page.checked_sub(1),
-        ((page + 1) * 64 < count).then_some(page + 1),
+        page.checked_add(1)
+            .filter(|next| next.saturating_mul(64) < count),
     ]
     .into_iter()
     .flatten()

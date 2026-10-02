@@ -395,6 +395,8 @@ fn source_and_analysis_gaps_do_not_rewrite_selected_work_and_json_retains_basis(
         .retain(|item| item.role != ContextItemRole::ProjectPurpose);
     let candidates = fixture.operations.candidate_basis(fixture.project)?;
     let projection = build_project_projection(ProjectProjectionInputs {
+        requirements: volicord_projections::ProjectionReadRequirements::default(),
+        metadata: &[],
         detail: volicord_projections::ProjectionDetail::default(),
         selection: WorkSelector::ExactWork(fixture.goals["older"]),
         canonical: &raw,
@@ -532,6 +534,8 @@ fn source_seeds_and_verification_only_latest_are_selected_before_timeline_trunca
     )?;
     let project = |canonical: &CanonicalReadBasis, selector| {
         build_project_projection(ProjectProjectionInputs {
+            requirements: volicord_projections::ProjectionReadRequirements::default(),
+            metadata: &[],
             detail: volicord_projections::ProjectionDetail::default(),
             selection: selector,
             canonical,
@@ -779,6 +783,8 @@ fn selected_polyglot_flow_retains_declared_endpoints_and_snapshot_basis(
         },
     });
     let projection = build_project_projection(ProjectProjectionInputs {
+        requirements: volicord_projections::ProjectionReadRequirements::default(),
+        metadata: &[],
         detail: volicord_projections::ProjectionDetail::default(),
         selection: WorkSelector::ExactWork(fixture.goals["older"]),
         canonical: &canonical,

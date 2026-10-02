@@ -302,6 +302,11 @@ pub fn generate_documents(
     projection: &ProjectProjection,
     request: &DocumentRequest,
 ) -> Result<DocumentSet, DocumentError> {
+    if projection.sections.code == crate::ReadSectionState::NotRequested
+        || projection.sections.inspection == crate::ReadSectionState::NotRequested
+    {
+        return Err(DocumentError::new("full document generation requires all projection sections; requested-section input is incomplete"));
+    }
     validate_request(request)?;
     let mut documents = BTreeMap::new();
     for kind in DocumentKind::ALL {
@@ -351,6 +356,11 @@ pub fn prepare_narrative_plan(
     request: &DocumentRequest,
     kind: DocumentKind,
 ) -> Result<NarrativePlan, DocumentError> {
+    if projection.sections.code == crate::ReadSectionState::NotRequested
+        || projection.sections.inspection == crate::ReadSectionState::NotRequested
+    {
+        return Err(DocumentError::new("full document generation requires all projection sections; requested-section input is incomplete"));
+    }
     validate_request(request)?;
     let body = build_body(kind, projection, request.fixed_locale);
     validate_claim_grounding(projection, &body)?;

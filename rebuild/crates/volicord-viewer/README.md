@@ -49,7 +49,9 @@ The Work and Decisions root views list recorded choices in pages of 64;
 Previous/next links preserve locale and language. Exact detail reads resolve
 before display bounds. Malformed or mismatched selectors return 400; an identity
 absent from this Project returns 404. Valid Work with no code remains readable
-with a scoped gap. Removed `level` forms are usage errors/400.
+with a scoped gap. When stored analysis is unavailable, entity detail is explicitly
+unverifiable; the page preserves canonical remainder without claiming that entity
+exists or is absent. Removed `level` forms are usage errors/400.
 
 `volicord viewer open --view overview` forwards to the installed sibling
 `volicord-viewer`; direct launch also accepts `--view`. Named `code` launch opens
@@ -87,3 +89,44 @@ without hover. Relationship lists preserve every constituent identity and count;
 there is no relation grouping. Resolved endpoints have explicit repository-detail
 links; unresolved endpoints never become nodes. Source inspection discloses existing
 snapshot-bound Source/range data and performs no filesystem-path HTTP read.
+
+Read requirements are explicit: `ProjectionReadRequirements { code, inspection }`
+feeds `LocalOperations::project_projection_read_profiled`. Overview, Work and
+Decisions request neither section, using the existing AnalysisMetadata reader for
+snapshot identity, coverage and freshness. Code requests stored graph bodies but
+not Candidate inspection; Memory requests inspection but not code. Documents and
+whole snapshots request both. Evidence and Status request code; only Status runs
+full stored-graph integrity diagnostics. Other pages expose that these diagnostics
+were not requested, while store/recovery health and material metadata gaps remain
+visible. Missing requested analysis is `Unavailable`; omitted materialization is
+`NotRequested`. Document generation and narrative planning reject incomplete
+requested-section input. Default Operations Recall/documents keep their full
+contracts. No new persistent cache or invalidation policy is introduced.
+
+`ViewerRenderProfile` exposes one projection pass, standalone metadata reads,
+graph decode attempts (including failed attempts), Candidate basis reads, document
+generation count and monotonic stage times. `render_snapshot_profiled` reports the
+same one-basis snapshot path. Named fixture-specific timing budgets and reproduction
+commands are in [Viewer findings](../../validation/end-to-end/multi-repository/viewer-reading-findings.md)
+and [read budgets](../../validation/end-to-end/multi-repository/viewer-read-budgets.json).
+They do not establish a universal latency guarantee or browser qualification.
+
+The maintained nested-workspace installer places all three executables together:
+
+```text
+rebuild/install.sh --prefix /absolute/install-prefix --runtime-dir /absolute/runtime
+```
+
+From the bound repository, with `/absolute/install-prefix/bin` on PATH:
+
+```text
+VOLICORD_RUNTIME_DIR=/absolute/runtime volicord viewer open --view overview --language en
+VOLICORD_RUNTIME_DIR=/absolute/runtime volicord viewer export --output /absolute/path/viewer.html --language en
+```
+
+Use a fresh absolute output destination. An explicit `--project PROJECT_ID` can
+replace repository resolution. For development, build with `cargo build
+--manifest-path rebuild/Cargo.toml -p volicord-operations -p volicord-viewer` and use
+the sibling executables under `rebuild/target/debug`. Launch selects a view;
+navigation supplies exact Work/Decision/entity identities. Export always renders
+all bounded snapshot sections, regardless of the live entry view.

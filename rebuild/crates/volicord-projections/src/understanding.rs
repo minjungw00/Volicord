@@ -2026,6 +2026,10 @@ mod tests {
             checkpoint: checkpoint.clone(),
         };
         ProjectProjection {
+            sections: crate::ProjectReadSections {
+                code: crate::ReadSectionState::Available,
+                inspection: crate::ReadSectionState::Available,
+            },
             work_count: 0,
             decision_count: 0,
             decision_catalog: Vec::new(),

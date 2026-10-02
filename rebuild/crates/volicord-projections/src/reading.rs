@@ -71,6 +71,7 @@ pub enum ReadingRepresentation {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ReadingAvailability {
+    NotRequested,
     Unknown,
     Available,
     Degraded,

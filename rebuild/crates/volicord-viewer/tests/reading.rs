@@ -153,6 +153,15 @@ fn bounded_whole_snapshot_has_only_unique_existing_fragment_targets(
         assert!(href.starts_with('#'));
         assert!(ids.contains(&href[1..]), "{href}");
     }
+    let older = page
+        .split(&format!("id=\"work-{}\"", fixture.goals["older"]))
+        .nth(1)
+        .ok_or("older Work section")?
+        .split("</section>")
+        .next()
+        .ok_or("section end")?;
+    assert!(older.contains(&fixture.decisions["explicit"].to_string()));
+    assert!(!older.contains(&fixture.decisions["other_work"].to_string()));
     assert_eq!(page.matches("class=\"document-preview\"").count(), 4);
     for forbidden in [
         "<form",
@@ -233,6 +242,17 @@ fn work_index_pages_reach_items_omitted_from_initial_lists(
     ] {
         assert!(exchange(&server, path).starts_with("HTTP/1.1 400"));
     }
+    let viewer = ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone()));
+    let (snapshot, profile) = viewer.render_snapshot_profiled(
+        &reading_request(fixture.project, ViewerView::Overview),
+        volicord_context::TimestampMicros::from_unix_micros(123),
+    )?;
+    assert_eq!(profile.project_projection_passes, 1);
+    assert_eq!(profile.projection.analysis_snapshot_decodes, 1);
+    assert_eq!(profile.health_analysis_snapshot_decodes, 0);
+    assert_eq!(profile.document_generations, 4);
+    assert!(snapshot.html.contains("work_history"));
+
     Ok(())
 }
 
@@ -319,6 +339,307 @@ fn code_detail_selects_beyond_map_bounds_and_keeps_readable_real_endpoints(
         )
     )
     .starts_with("HTTP/1.1 404"));
+    assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
+    Ok(())
+}
+
+fn reading_request(project: volicord_context::ProjectId, view: ViewerView) -> ViewerRequest {
+    ViewerRequest {
+        project_id: project,
+        locale: ViewerLocale::English,
+        view,
+        requested_language: "en".into(),
+        guarded_request: None,
+    }
+}
+
+#[test]
+fn requested_sections_preserve_metadata_and_refuse_incomplete_documents(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    let fixture = fixture()?;
+    let before = fixture.operations.canonical_basis(fixture.project)?;
+    for view in [
+        ViewerView::Overview,
+        ViewerView::Work {
+            work: Some(fixture.goals["older"]),
+        },
+        ViewerView::Decisions {
+            decision: Some(fixture.decisions["explicit"]),
+        },
+        ViewerView::Work { work: None },
+        ViewerView::Decisions { decision: None },
+    ] {
+        let viewer = ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone()));
+        let request = reading_request(fixture.project, view.clone());
+        let (page, profile) = viewer.render_profiled(&request, "test-token")?;
+        assert_eq!(profile.projection.analysis_snapshot_decodes, 0);
+        assert_eq!(profile.projection.analysis_metadata_decodes, 1);
+        assert_eq!(profile.projection.candidate_reads, 0);
+        assert_eq!(profile.health_analysis_snapshot_decodes, 0);
+        assert_eq!(profile.document_generations, 0);
+        assert_eq!(profile.document_preview, std::time::Duration::ZERO);
+        assert!(page.html.contains("Code bodies not requested"));
+        let (projection, _) = viewer.operations().project_projection_read_profiled(
+            fixture.project,
+            WorkSelector::ExactWork(fixture.goals["older"]),
+            ProjectionDetail::default(),
+            ProjectionReadRequirements {
+                code: false,
+                inspection: false,
+            },
+        )?;
+        assert_eq!(projection.sections.code, ReadSectionState::NotRequested);
+        assert_eq!(
+            projection.sections.inspection,
+            ReadSectionState::NotRequested
+        );
+        assert_eq!(
+            projection.candidate_dependency,
+            CandidateDependencyState::NotRequested
+        );
+        assert!(!projection.resume.snapshots.is_empty());
+        assert!(!projection.overview.capability_reports.is_empty());
+        assert_eq!(
+            projection
+                .selected_work
+                .as_ref()
+                .ok_or("Work")?
+                .reading
+                .code_availability,
+            ReadingAvailability::NotRequested
+        );
+        let document = DocumentRequest {
+            requested_language: "en".into(),
+            fixed_locale: FixedLocale::English,
+            generated_at: volicord_context::TimestampMicros::from_unix_micros(123),
+            generator: GeneratorIdentity {
+                generator: "test".into(),
+                agent: None,
+                model: None,
+            },
+            requested_destinations: Vec::new(),
+        };
+        assert!(viewer
+            .operations()
+            .documents_from_projection(&projection, &document)
+            .is_err());
+        assert!(
+            prepare_narrative_plan(&projection, &document, DocumentKind::HandoffResume).is_err()
+        );
+    }
+    for (tool, graph, candidate, docs) in [
+        (ViewerTool::Memory, 0, 1, 0),
+        (ViewerTool::Documents, 1, 1, 4),
+        (ViewerTool::Status, 1, 0, 0),
+        (ViewerTool::Evidence, 1, 0, 0),
+    ] {
+        let viewer = ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone()));
+        let (_, profile) = viewer.render_profiled(
+            &reading_request(fixture.project, ViewerView::Tools { tool }),
+            "test-token",
+        )?;
+        assert_eq!(profile.projection.analysis_snapshot_decodes, graph);
+        assert_eq!(profile.projection.candidate_reads, candidate);
+        assert_eq!(profile.health_analysis_snapshot_decodes, 0);
+        assert_eq!(profile.document_generations, docs);
+    }
+    assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
+    Ok(())
+}
+
+#[test]
+fn thin_reads_do_not_claim_graph_integrity_and_full_reads_keep_canonical_remainder(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    let fixture = fixture()?;
+    let before = fixture.operations.canonical_basis(fixture.project)?;
+    let directory = fixture
+        .operations
+        .layout()
+        .analysis_project_dir(fixture.project);
+    let manifest = std::fs::read_dir(&directory)?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().is_some_and(|e| e == "json"))
+        .ok_or("manifest")?;
+    let value: serde_json::Value = serde_json::from_slice(&std::fs::read(manifest)?)?;
+    std::fs::write(
+        directory.join("blobs").join(format!(
+            "{}.values",
+            value["values_blob"].as_str().ok_or("values blob")?
+        )),
+        b"corrupt graph body",
+    )?;
+    let viewer = ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone()));
+    let (page, profile) = viewer.render_profiled(
+        &reading_request(
+            fixture.project,
+            ViewerView::Work {
+                work: Some(fixture.goals["older"]),
+            },
+        ),
+        "test-token",
+    )?;
+    assert_eq!(profile.projection.analysis_snapshot_decodes, 0);
+    assert_eq!(profile.projection.analysis_metadata_decodes, 1);
+    assert!(page
+        .html
+        .contains("Stored graph integrity diagnostics not requested"));
+    assert!(page.html.contains("Failed")); // independent canonical verification, still readable
+    let (projection, profile) = viewer.operations().project_projection_read_profiled(
+        fixture.project,
+        WorkSelector::ExactWork(fixture.goals["older"]),
+        ProjectionDetail::default(),
+        ProjectionReadRequirements {
+            code: true,
+            inspection: false,
+        },
+    )?;
+    assert_eq!(profile.analysis_snapshot_decodes, 1); // failed attempts count too
+    assert_eq!(projection.sections.code, ReadSectionState::Unavailable);
+    assert!(projection.selected_work.is_some());
+    assert!(projection
+        .issues
+        .iter()
+        .any(|i| i.kind == ProjectionIssueKind::FailedCapability));
+    let (page, profile) = viewer.render_profiled(
+        &reading_request(
+            fixture.project,
+            ViewerView::Code {
+                scope: volicord_viewer::CodeScope::Work(Some(fixture.goals["older"])),
+                entity: None,
+            },
+        ),
+        "test-token",
+    )?;
+    assert_eq!(profile.projection.analysis_snapshot_decodes, 1);
+    assert_eq!(profile.health_analysis_snapshot_decodes, 0);
+    assert!(page.html.contains("Stored analysis is unavailable"));
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone())),
+        fixture.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let unavailable = exchange(
+        &server,
+        &format!(
+            "/?view=code&scope=work&work={}&entity=unverifiable-entity",
+            fixture.goals["older"]
+        ),
+    );
+    assert!(unavailable.starts_with("HTTP/1.1 200"));
+    assert!(unavailable.contains("Entity detail unavailable"));
+    assert!(unavailable.contains("cannot verify the requested entity identity"));
+    assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
+    Ok(())
+}
+
+#[test]
+fn requested_sections_on_large_repository() -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    for index in 0..192 {
+        std::fs::write(
+            fixture.repository.join(format!("module_{index:03}.py")),
+            format!("def function_{index:03}():\n    return {index}\n"),
+        )?;
+    }
+    let analysis = fixture
+        .operations
+        .analyze(fixture.project, Vec::new())?
+        .value
+        .ok_or("analysis outcome")?
+        .analysis;
+    let entity = analysis
+        .structural_facts
+        .iter()
+        .find(|e| e.entity.area.path == "python/worker.py")
+        .ok_or("worker entity")?
+        .entity
+        .identity
+        .clone();
+    let workloads = [
+        ("overview", ViewerView::Overview),
+        (
+            "work",
+            ViewerView::Work {
+                work: Some(fixture.goals["older"]),
+            },
+        ),
+        (
+            "decision",
+            ViewerView::Decisions {
+                decision: Some(fixture.decisions["explicit"]),
+            },
+        ),
+        (
+            "code",
+            ViewerView::Code {
+                scope: volicord_viewer::CodeScope::Work(Some(fixture.goals["older"])),
+                entity: Some(entity),
+            },
+        ),
+        ("snapshot", ViewerView::Overview),
+    ];
+    let budgets: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../validation/end-to-end/multi-repository/viewer-read-budgets.json"
+    ))?;
+    let enforce_latency = std::env::var_os("VOLICORD_VIEWER_BUDGETS").is_some();
+    let before = fixture.operations.canonical_basis(fixture.project)?;
+    for (name, view) in workloads {
+        // Cold means fresh LocalOperations/Viewer adapter, not flushed OS caches.
+        let viewer = ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone()));
+        for sample in 0..9 {
+            let request = reading_request(fixture.project, view.clone());
+            let (page, p) = if name == "snapshot" {
+                viewer.render_snapshot_profiled(
+                    &request,
+                    volicord_context::TimestampMicros::from_unix_micros(123),
+                )?
+            } else {
+                viewer.render_profiled(&request, "test-token")?
+            };
+            let full = name == "code" || name == "snapshot";
+            assert_eq!(p.project_projection_passes, 1);
+            assert_eq!(p.projection.analysis_snapshot_decodes, usize::from(full));
+            assert_eq!(p.projection.analysis_metadata_decodes, usize::from(!full));
+            assert_eq!(
+                p.projection.candidate_reads,
+                usize::from(name == "snapshot")
+            );
+            assert_eq!(p.health_analysis_snapshot_decodes, 0);
+            assert_eq!(
+                p.document_generations,
+                if name == "snapshot" { 4 } else { 0 }
+            );
+            let metrics = serde_json::json!({"workload":name,"sample":sample,"adapter":"fresh-first-then-warm","total_us":p.total.as_micros(),"canonical_us":p.projection.canonical_read.as_micros(),"candidate_us":p.projection.candidate_read.as_micros(),"guarded_us":p.guarded_read.as_micros(),"analysis_us":p.projection.repository_analysis_read.as_micros(),"projection_us":p.projection.projection_build.as_micros(),"understanding_us":p.understanding.as_micros(),"health_us":p.health_read.as_micros(),"privacy_us":p.privacy_read.as_micros(),"documents_us":p.document_preview.as_micros(),"html_us":p.html_render.as_micros(),"graph_decodes":p.projection.analysis_snapshot_decodes,"metadata_decodes":p.projection.analysis_metadata_decodes,"candidate_reads":p.projection.candidate_reads,"documents":p.document_generations,"bytes":page.html.len()});
+            println!("VIEWER_READ_SAMPLE {metrics}");
+            if enforce_latency {
+                let limit = &budgets["ceilings_us"][name];
+                for (stage, field) in [
+                    ("total", "total_us"),
+                    ("canonical", "canonical_us"),
+                    ("analysis", "analysis_us"),
+                    ("projection", "projection_us"),
+                    ("documents", "documents_us"),
+                    ("html", "html_us"),
+                    ("candidate", "candidate_us"),
+                    ("health", "health_us"),
+                    ("privacy", "privacy_us"),
+                    ("understanding", "understanding_us"),
+                ] {
+                    assert!(
+                        metrics[field].as_u64().ok_or("sample value")?
+                            <= limit[stage].as_u64().ok_or("stage ceiling")?,
+                        "{name}/{sample} stage {stage}: {metrics}"
+                    );
+                }
+            }
+        }
+    }
     assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
     Ok(())
 }

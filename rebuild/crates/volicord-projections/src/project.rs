@@ -11,8 +11,8 @@ use volicord_context::{
 };
 use volicord_inquiry::{ApplicabilityQuery, CandidateReadBasis};
 use volicord_repository_intelligence::{
-    AnalysisSnapshot, AnalysisSnapshotId, CanonicalReference, Capability, CapabilityReport,
-    CapabilityState, CodeEntityKind, FreshnessBasis, Language, RelationTarget,
+    AnalysisMetadata, AnalysisSnapshot, AnalysisSnapshotId, CanonicalReference, Capability,
+    CapabilityReport, CapabilityState, CodeEntityKind, FreshnessBasis, Language, RelationTarget,
     RepositorySnapshotId, SourceRange, Uncertainty,
 };
 
@@ -29,6 +29,32 @@ impl Default for ProjectionBound {
     }
 }
 
+/// Read materialization requirements. Full Recall/document consumers keep the default.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProjectionReadRequirements {
+    pub code: bool,
+    pub inspection: bool,
+}
+impl Default for ProjectionReadRequirements {
+    fn default() -> Self {
+        Self {
+            code: true,
+            inspection: true,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReadSectionState {
+    NotRequested,
+    Available,
+    Unavailable,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProjectReadSections {
+    pub code: ReadSectionState,
+    pub inspection: ReadSectionState,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProjectionDetail {
     pub work_page: usize,
@@ -40,6 +66,8 @@ pub struct ProjectionDetail {
 pub struct ProjectProjectionInputs<'a> {
     pub selection: crate::WorkSelector,
     pub detail: ProjectionDetail,
+    pub requirements: ProjectionReadRequirements,
+    pub metadata: &'a [&'a AnalysisMetadata],
     pub analysis_issues: &'a [ProjectionIssue],
     pub canonical: &'a CanonicalReadBasis,
     pub analyses: &'a [&'a AnalysisSnapshot],
@@ -52,6 +80,7 @@ pub struct ProjectProjectionInputs<'a> {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CandidateDependencyState {
+    NotRequested,
     Available,
     Unavailable,
     Unsupported,
@@ -785,6 +814,7 @@ pub struct CurrentWorkTopology {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
+    pub sections: ProjectReadSections,
     pub work_count: usize,
     pub decision_count: usize,
     pub decision_catalog: Vec<crate::UnderstandingDecision>,
@@ -911,6 +941,11 @@ fn sort_projection_issues(issues: &mut Vec<ProjectionIssue>) {
 pub fn build_project_projection(
     inputs: ProjectProjectionInputs<'_>,
 ) -> Result<ProjectProjection, crate::WorkSelectionError> {
+    let analyses = if inputs.requirements.code {
+        inputs.analyses
+    } else {
+        &[]
+    };
     let selection = inputs.selection.resolve(inputs.canonical)?;
     let scoped = selection
         .work_item_id
@@ -939,18 +974,30 @@ pub fn build_project_projection(
         &seed_canonical
     };
     let limit = inputs.bound.max_items_per_section.max(1);
-    let resume = build_resume_brief(RecallInputs {
-        analysis_issues: inputs.analysis_issues,
-        canonical: reading_canonical,
-        analyses: inputs.analyses,
-        scope: inputs.applicability.clone(),
-        bound: RecallBound {
-            max_items_per_section: limit,
-        },
-    });
+    let resume = if inputs.requirements.code {
+        build_resume_brief(RecallInputs {
+            analysis_issues: inputs.analysis_issues,
+            canonical: reading_canonical,
+            analyses,
+            scope: inputs.applicability.clone(),
+            bound: RecallBound {
+                max_items_per_section: limit,
+            },
+        })
+    } else {
+        crate::build_resume_brief_from_metadata(crate::RecallMetadataInputs {
+            analysis_issues: inputs.analysis_issues,
+            canonical: reading_canonical,
+            analyses: inputs.metadata,
+            scope: inputs.applicability.clone(),
+            bound: RecallBound {
+                max_items_per_section: limit,
+            },
+        })
+    };
     let mut issues = source_issues(reading_canonical);
     issues.extend_from_slice(inputs.analysis_issues);
-    let graph = projection_graph(reading_canonical, inputs.analyses);
+    let graph = projection_graph(reading_canonical, analyses);
     let selected_entity = inputs.detail.entity.as_deref().and_then(|id| {
         graph
             .entities
@@ -1002,7 +1049,8 @@ pub fn build_project_projection(
         build_current_work_topology(topology_canonical, &graph, limit, &mut issues);
     let repository_map = build_repository_map(
         reading_canonical,
-        inputs.analyses,
+        analyses,
+        inputs.metadata,
         &graph,
         limit,
         &mut issues,
@@ -1036,13 +1084,22 @@ pub fn build_project_projection(
         &mut issues,
     );
     let checkpoint_timeline = build_timeline(reading_canonical, limit, &mut issues);
-    let memory = build_memory_inspection(
-        reading_canonical,
-        inputs.candidates,
-        inputs.candidate_content_access,
-        inputs.observed_at,
-        inputs.bound,
-    );
+    let memory = if inputs.requirements.inspection {
+        build_memory_inspection(
+            reading_canonical,
+            inputs.candidates,
+            inputs.candidate_content_access,
+            inputs.observed_at,
+            inputs.bound,
+        )
+    } else {
+        MemoryInspectionProjection {
+            canonical_inspection: Vec::new(),
+            candidate_inspection: Vec::new(),
+            candidate_dependency: CandidateDependencyState::NotRequested,
+            issues: Vec::new(),
+        }
+    };
     let canonical_inspection = memory.canonical_inspection;
     let candidate_inspection = memory.candidate_inspection;
     let candidate_dependency = memory.candidate_dependency;
@@ -1136,7 +1193,7 @@ pub fn build_project_projection(
             crate::ReadingAvailability::Available
         };
         work.reading.code_gap = if current_work_topology.entities.is_empty() {
-            Some(if inputs.analyses.is_empty() {
+            Some(if analyses.is_empty() {
                 crate::WorkCodeGap::AnalysisUnavailable
             } else {
                 crate::WorkCodeGap::NoMatchingCode
@@ -1146,6 +1203,35 @@ pub fn build_project_projection(
         } else {
             None
         };
+    }
+    if !inputs.requirements.code {
+        if let Some(work) = &mut selected_work {
+            work.reading.code_availability = crate::ReadingAvailability::NotRequested;
+            work.reading.code_gap = None;
+            work.reading.analysis_snapshot_basis = resume
+                .snapshots
+                .iter()
+                .map(|s| s.analysis_snapshot)
+                .collect();
+            work.reading.repository_snapshot_basis = resume
+                .snapshots
+                .iter()
+                .map(|s| s.repository_snapshot)
+                .collect();
+            work.reading.code_freshness = resume
+                .snapshots
+                .iter()
+                .map(|s| s.freshness.clone())
+                .collect();
+        }
+        for link in &mut decision_context_code {
+            link.missing_or_uncertain_links.retain(|gap| {
+                gap != "No snapshot-bound Code Entity matches the declared Decision scope"
+            });
+            link.missing_or_uncertain_links.push(
+                "Code links were not requested; open Code Understanding for stored evidence".into(),
+            );
+        }
     }
     let selected_decision = inputs.detail.decision.and_then(|id| {
         inputs
@@ -1251,6 +1337,22 @@ pub fn build_project_projection(
         health,
     };
     Ok(ProjectProjection {
+        sections: ProjectReadSections {
+            code: if !inputs.requirements.code {
+                ReadSectionState::NotRequested
+            } else if analyses.is_empty() {
+                ReadSectionState::Unavailable
+            } else {
+                ReadSectionState::Available
+            },
+            inspection: if !inputs.requirements.inspection {
+                ReadSectionState::NotRequested
+            } else if candidate_dependency == CandidateDependencyState::Available {
+                ReadSectionState::Available
+            } else {
+                ReadSectionState::Unavailable
+            },
+        },
         work_count,
         decision_count,
         decision_catalog,
@@ -1448,6 +1550,7 @@ fn build_current_work_topology(
 fn build_repository_map(
     canonical: &CanonicalReadBasis,
     analyses: &[&AnalysisSnapshot],
+    metadata: &[&AnalysisMetadata],
     graph: &ProjectionGraph<'_>,
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
@@ -1490,6 +1593,18 @@ fn build_repository_map(
                 uncertainty: interpretation.uncertainty.clone(),
             }
         }));
+    }
+    for analysis in metadata
+        .iter()
+        .filter(|a| a.project.identity() == canonical.project.id)
+    {
+        capabilities.extend(analysis.capabilities.iter().cloned());
+        for report in &analysis.capabilities {
+            if report.state != CapabilityState::Available {
+                gaps.push(capability_gap(analysis.identity, report));
+                issues.push(capability_issue(analysis.identity, report));
+            }
+        }
     }
     agent_interpretations.sort_by(|left, right| left.identity.cmp(&right.identity));
     agent_interpretations.dedup_by(|left, right| left.identity == right.identity);
@@ -2450,8 +2565,14 @@ mod tests {
         ))?;
         let mut issues = Vec::new();
         let graph = super::projection_graph(&canonical, &[&analysis]);
-        let full =
-            super::build_repository_map(&canonical, &[&analysis], &graph, usize::MAX, &mut issues);
+        let full = super::build_repository_map(
+            &canonical,
+            &[&analysis],
+            &[],
+            &graph,
+            usize::MAX,
+            &mut issues,
+        );
         let important = full
             .entities
             .iter()
@@ -2462,7 +2583,8 @@ mod tests {
             select_bounded_topology(&full.entities, &full.relations, &important, 8, 8, true);
         super::MATERIALIZED.with(|count| count.set((0, 0)));
         issues.clear();
-        let actual = super::build_repository_map(&canonical, &[&analysis], &graph, 8, &mut issues);
+        let actual =
+            super::build_repository_map(&canonical, &[&analysis], &[], &graph, 8, &mut issues);
         assert_eq!(actual.entities, expected.entities);
         assert_eq!(actual.relations, expected.relations);
         assert!(full.entities.len() > 100 && full.relations.len() > 100);

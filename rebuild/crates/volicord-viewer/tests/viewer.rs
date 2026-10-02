@@ -33,7 +33,7 @@ fn setup() -> (tempfile::TempDir, ViewerAdapter, ProjectId) {
 
 fn print_viewer_profile(sample: &str, profile: ViewerRenderProfile) {
     println!(
-        "VIEWER_PROFILE sample={sample} total_us={} projection_passes={} projection_total_us={} canonical_read_us={} repository_analysis_read_us={} projection_analysis_snapshot_decodes={} candidate_read_us={} projection_build_us={} understanding_us={} health_read_us={} health_analysis_snapshot_decodes={} privacy_read_us={} document_preview_us={} guarded_read_us={} html_render_us={}",
+        "VIEWER_PROFILE sample={sample} total_us={} projection_passes={} projection_total_us={} canonical_read_us={} repository_analysis_read_us={} projection_analysis_snapshot_decodes={} candidate_read_us={} projection_build_us={} understanding_us={} health_read_us={} health_analysis_snapshot_decodes={} metadata_decodes={} candidate_reads={} document_generations={} privacy_read_us={} document_preview_us={} guarded_read_us={} html_render_us={}",
         profile.total.as_micros(),
         profile.project_projection_passes,
         profile.projection.total.as_micros(),
@@ -45,6 +45,9 @@ fn print_viewer_profile(sample: &str, profile: ViewerRenderProfile) {
         profile.understanding.as_micros(),
         profile.health_read.as_micros(),
         profile.health_analysis_snapshot_decodes,
+        profile.projection.analysis_metadata_decodes,
+        profile.projection.candidate_reads,
+        profile.document_generations,
         profile.privacy_read.as_micros(),
         profile.document_preview.as_micros(),
         profile.guarded_read.as_micros(),

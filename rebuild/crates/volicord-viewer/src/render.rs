@@ -78,6 +78,8 @@ pub struct ViewerRenderProfile {
     pub health_analysis_snapshot_decodes: usize,
     pub privacy_read: Duration,
     pub document_preview: Duration,
+    pub document_generations: usize,
+    pub graph_diagnostics_requested: bool,
     pub guarded_read: Duration,
     pub html_render: Duration,
     pub total: Duration,
@@ -87,6 +89,30 @@ pub struct ViewerRenderProfile {
 enum ViewerRenderMode<'a> {
     Live { request_authenticity: &'a str },
     Snapshot { generated_at: TimestampMicros },
+}
+
+fn read_requirements(
+    view: &crate::ViewerView,
+    snapshot: bool,
+) -> volicord_projections::ProjectionReadRequirements {
+    use crate::{ViewerTool, ViewerView};
+    volicord_projections::ProjectionReadRequirements {
+        code: snapshot
+            || matches!(
+                view,
+                ViewerView::Code { .. }
+                    | ViewerView::Tools {
+                        tool: ViewerTool::Documents | ViewerTool::Status | ViewerTool::Evidence
+                    }
+            ),
+        inspection: snapshot
+            || matches!(
+                view,
+                ViewerView::Tools {
+                    tool: ViewerTool::Documents | ViewerTool::Memory
+                }
+            ),
+    }
 }
 
 #[derive(Debug)]
@@ -138,14 +164,22 @@ impl ViewerAdapter {
         {
             let (projection, _) = self
                 .operations
-                .project_projection_detail_profiled(project, view.selection(), view.detail())
+                .project_projection_read_profiled(
+                    project,
+                    view.selection(),
+                    view.detail(),
+                    read_requirements(view, false),
+                )
                 .map_err(|_| {
                     let mut e = ViewerError::new("selected identity is absent from this Project");
                     e.not_found = true;
                     e
                 })?;
             if view.detail().decision.is_some() && projection.selected_decision.is_none()
-                || view.detail().entity.is_some() && projection.selected_entity.is_none()
+                || view.detail().entity.is_some()
+                    && projection.selected_entity.is_none()
+                    && projection.sections.code
+                        != volicord_projections::ReadSectionState::Unavailable
             {
                 let mut e = ViewerError::new("selected identity is absent from this Project");
                 e.not_found = true;
@@ -160,12 +194,8 @@ impl ViewerAdapter {
         request: &ViewerRequest,
         request_authenticity: &str,
     ) -> Result<ViewerPage, ViewerError> {
-        self.render_with_mode(
-            request,
-            ViewerRenderMode::Live {
-                request_authenticity,
-            },
-        )
+        self.render_profiled(request, request_authenticity)
+            .map(|(page, _)| page)
     }
 
     pub fn render_profiled(
@@ -188,6 +218,15 @@ impl ViewerAdapter {
         request: &ViewerRequest,
         generated_at: TimestampMicros,
     ) -> Result<ViewerPage, ViewerError> {
+        self.render_snapshot_profiled(request, generated_at)
+            .map(|(page, _)| page)
+    }
+
+    pub fn render_snapshot_profiled(
+        &self,
+        request: &ViewerRequest,
+        generated_at: TimestampMicros,
+    ) -> Result<(ViewerPage, ViewerRenderProfile), ViewerError> {
         if request.guarded_request.is_some() {
             return Err(ViewerError::new(
                 "a static Viewer snapshot cannot render a Guarded response form",
@@ -195,7 +234,7 @@ impl ViewerAdapter {
         }
         let mut request = request.clone();
         request.view = crate::ViewerView::Overview;
-        self.render_with_mode(&request, ViewerRenderMode::Snapshot { generated_at })
+        self.render_with_mode_profiled(&request, ViewerRenderMode::Snapshot { generated_at })
     }
 
     pub fn export_snapshot(
@@ -218,27 +257,21 @@ impl ViewerAdapter {
             .map_err(|error| ViewerError::new(error.to_string()))
     }
 
-    fn render_with_mode(
-        &self,
-        request: &ViewerRequest,
-        mode: ViewerRenderMode<'_>,
-    ) -> Result<ViewerPage, ViewerError> {
-        self.render_with_mode_profiled(request, mode)
-            .map(|(page, _profile)| page)
-    }
-
     fn render_with_mode_profiled(
         &self,
         request: &ViewerRequest,
         mode: ViewerRenderMode<'_>,
     ) -> Result<(ViewerPage, ViewerRenderProfile), ViewerError> {
         let total_started = Instant::now();
+        let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
+        let requirements = read_requirements(&request.view, snapshot);
         let (projection, projection_profile) = self
             .operations
-            .project_projection_detail_profiled(
+            .project_projection_read_profiled(
                 request.project_id,
                 request.view.selection(),
                 request.view.detail(),
+                requirements,
             )
             .map_err(|error| {
                 let mut result = ViewerError::new(format!("cannot build Project view: {error}"));
@@ -246,7 +279,9 @@ impl ViewerAdapter {
                 result
             })?;
         if request.view.detail().decision.is_some() && projection.selected_decision.is_none()
-            || request.view.detail().entity.is_some() && projection.selected_entity.is_none()
+            || request.view.detail().entity.is_some()
+                && projection.selected_entity.is_none()
+                && projection.sections.code != volicord_projections::ReadSectionState::Unavailable
         {
             let mut error = ViewerError::new("selected identity is absent from this Project");
             error.not_found = true;
@@ -261,7 +296,19 @@ impl ViewerAdapter {
         );
         let understanding_duration = understanding_started.elapsed();
         let health_started = Instant::now();
-        let (health, health_profile) = self.operations.health_profiled(Some(request.project_id));
+        let graph_diagnostics_requested = !snapshot
+            && matches!(
+                request.view,
+                crate::ViewerView::Tools {
+                    tool: crate::ViewerTool::Status
+                }
+            );
+        let (health, health_profile) = if graph_diagnostics_requested {
+            self.operations.health_profiled(Some(request.project_id))
+        } else {
+            self.operations
+                .health_stores_profiled(Some(request.project_id))
+        };
         let health_read = health_started.elapsed();
         let privacy_started = Instant::now();
         let privacy = self.operations.privacy_status(request.project_id).ok();
@@ -281,13 +328,29 @@ impl ViewerAdapter {
             },
             requested_destinations: Vec::new(),
         };
-        let documents = self
-            .operations
-            .documents_from_projection(&projection, &document_request)
-            .map_err(|error| {
-                ViewerError::new(format!("cannot generate document preview: {error}"))
-            })?;
-        let document_preview = document_started.elapsed();
+        let documents = if snapshot
+            || matches!(
+                request.view,
+                crate::ViewerView::Tools {
+                    tool: crate::ViewerTool::Documents
+                }
+            ) {
+            Some(
+                self.operations
+                    .documents_from_projection(&projection, &document_request)
+                    .map_err(|error| {
+                        ViewerError::new(format!("cannot generate document preview: {error}"))
+                    })?,
+            )
+        } else {
+            None
+        };
+        let document_generations = if documents.is_some() { 4 } else { 0 };
+        let document_preview = if documents.is_some() {
+            document_started.elapsed()
+        } else {
+            Duration::ZERO
+        };
         let guarded_started = Instant::now();
         let guarded = match mode {
             ViewerRenderMode::Live { .. } => request
@@ -328,6 +391,9 @@ impl ViewerAdapter {
         let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
         reading::navigation(&mut html, request, snapshot);
         reading::warnings(&mut html, request, &projection, &health);
+        if !graph_diagnostics_requested {
+            empty_state(&mut html, text(request.locale, "Stored graph integrity diagnostics not requested; open Tools → Status for a full check.", "저장 그래프 무결성 진단은 요청하지 않음; 전체 검사는 도구 → 상태를 여세요."));
+        }
         if snapshot {
             empty_state(
                 &mut html,
@@ -338,7 +404,9 @@ impl ViewerAdapter {
                 ),
             );
             reading::snapshot(&mut html, request, &projection, &understanding);
-            render_documents(&mut html, request, &documents, None);
+            if let Some(documents) = &documents {
+                render_documents(&mut html, request, documents, None);
+            }
             render_status(&mut html, request, &projection, &health);
             render_privacy(&mut html, request, privacy.as_ref());
             if let ViewerRenderMode::Snapshot { generated_at } = mode {
@@ -349,18 +417,20 @@ impl ViewerAdapter {
             if let crate::ViewerView::Tools { tool } = request.view {
                 match tool {
                     crate::ViewerTool::Documents => {
-                        render_narrative_availability(&mut html, request, &documents);
-                        render_documents(
-                            &mut html,
-                            request,
-                            &documents,
-                            Some(match mode {
-                                ViewerRenderMode::Live {
-                                    request_authenticity,
-                                } => request_authenticity,
-                                _ => "",
-                            }),
-                        );
+                        if let Some(documents) = &documents {
+                            render_narrative_availability(&mut html, request, documents);
+                            render_documents(
+                                &mut html,
+                                request,
+                                documents,
+                                Some(match mode {
+                                    ViewerRenderMode::Live {
+                                        request_authenticity,
+                                    } => request_authenticity,
+                                    _ => "",
+                                }),
+                            );
+                        }
                     }
                     crate::ViewerTool::Memory => {
                         render_canonical(&mut html, request, &projection);
@@ -418,6 +488,8 @@ impl ViewerAdapter {
                 health_analysis_snapshot_decodes: health_profile.analysis_snapshot_decodes,
                 privacy_read,
                 document_preview,
+                document_generations,
+                graph_diagnostics_requested,
                 guarded_read,
                 html_render,
                 total: total_started.elapsed(),
@@ -3196,6 +3268,7 @@ const fn candidate_dependency_label(
     locale: ViewerLocale,
 ) -> &'static str {
     match state {
+        CandidateDependencyState::NotRequested => text(locale, "not requested", "요청하지 않음"),
         CandidateDependencyState::Available => text(locale, "available", "사용 가능"),
         CandidateDependencyState::Unavailable => text(locale, "unavailable", "사용 불가"),
         CandidateDependencyState::Unsupported => text(locale, "unsupported", "미지원"),

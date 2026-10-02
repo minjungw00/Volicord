@@ -37,8 +37,9 @@ pub use project::{
     CanonicalInspectionItem, CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry,
     CurrentWorkCodeLink, CurrentWorkPathBasis, CurrentWorkTopology, DecisionContextCodeLink,
     MapEntity, MapInterpretation, MapRelation, MapRelationClass, MemoryInspectionProjection,
-    ProjectOverview, ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionDetail,
-    ProjectionHealth, ProjectionIssue, ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
+    ProjectOverview, ProjectProjection, ProjectProjectionInputs, ProjectReadSections,
+    ProjectionBound, ProjectionDetail, ProjectionHealth, ProjectionIssue, ProjectionIssueKind,
+    ProjectionReadRequirements, ReadSectionState, RepositoryMap, SourceStatusSummary,
 };
 pub use recall::{
     build_resume_brief, build_resume_brief_from_metadata, BriefContextItem, BriefDecision,
