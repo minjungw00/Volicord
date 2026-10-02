@@ -130,3 +130,12 @@ replace repository resolution. For development, build with `cargo build
 the sibling executables under `rebuild/target/debug`. Launch selects a view;
 navigation supplies exact Work/Decision/entity identities. Export always renders
 all bounded snapshot sections, regardless of the live entry view.
+
+Selecting an entity focuses both diagrams and the equivalent entity/relation list
+on that exact entity's bounded stored incoming/outgoing neighborhood, even when
+it was omitted from the initial map. The selected node is retained and marked.
+The Work/repository scope is still explicit; selecting a real one-hop neighbor
+in Work scope does not assert canonical Work ownership of that neighbor. Resolved
+relations retain both actual endpoints, unresolved targets remain evidence only,
+and omitted relationships keep exact counts. A generic repository explanation
+uses stored topology without claiming a canonical Work-seed link.

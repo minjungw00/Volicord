@@ -188,7 +188,7 @@ On the stated environment, reproduce the fixed timing check:
 rebuild/scripts/validate focused viewer-read-budget -- env VOLICORD_VIEWER_BUDGETS=1 cargo test --manifest-path rebuild/Cargo.toml -p volicord-viewer --test reading requested_sections_on_large_repository -- --exact --nocapture
 ```
 
-Relevant source/fixture identities after implementation:
+Cost-commit source/fixture identities (before the final entity-focus fix):
 `tests/reading.rs` SHA-256 `703eb3f6723716ca65c412565a35f53c8cb32cae76f6c4f1b00abe281c637068`;
 scenario `e63cae059edd39ea3162ef354684442e3763459a5c2f9008a55f35fce1b44673`;
 independent expected fixture `e898e390988b5e9bd5af6c62db77b695d94fe6053afb3f328e73254576bea456`;
@@ -209,3 +209,27 @@ and whole-snapshot paths. No gate, Final aggregate, official V11, naturalistic
 campaign or human qualification ran. Browser gaps listed above remain for the
 independent browser session; the README supplies installed/development launch and
 export procedures and actual routes instead of requiring a temporary prototype.
+
+## Final selected-entity focus correction
+
+Final review found that an exact entity beyond the parent map was reachable in
+its native detail, while the diagram could still show the initial neighborhood.
+The shared `ProjectUnderstanding` presentation now focuses on the selected entity
+and its actual bounded stored neighbors/incident relations. The 90-module HTTP
+fixture asserts the omitted entity is a marked SVG node and that every focused
+component/relation belongs to that stored neighborhood. Work-scope validity still
+uses the existing canonical seed/real one-hop rule. No extra graph read, inferred
+relation, Work ownership or runtime-flow claim is introduced. Generic repository
+explanations and empty-flow wording no longer imply canonical Work-seed linkage.
+
+The unchanged fixed budgets pass after this correction:
+`20261002T051604.642859Z-viewer-selected-focus-budgets-0i24cy38`, exit 0,
+one first/eight warm samples per route. Overview 45.678 ms cold, 32.703–44.025 ms
+warm; Work 33.274 ms / 30.757–39.215 ms; Decision 32.166 ms / 31.569–33.831 ms;
+focused Code 96.399 ms / 93.194–98.106 ms; snapshot 116.838 ms /
+116.634–120.259 ms. Focused Code output is 41,883 bytes; snapshot is 876,604 bytes
+on this workload. Count/stage ceilings remain unchanged. Latest test source
+`tests/reading.rs` SHA-256 is
+`d3682c02b111ab8c0d7088fb56618549ede4e31d563f7dc1e579b1c400c9b005`;
+fixture and Cargo.lock identities above remain unchanged. These are focused
+synthetic checks and retain the same browser/human/long-history limitations.

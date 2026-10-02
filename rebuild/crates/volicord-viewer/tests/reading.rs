@@ -311,6 +311,51 @@ fn code_detail_selects_beyond_map_bounds_and_keeps_readable_real_endpoints(
         ),
     );
     assert!(page.starts_with("HTTP/1.1 200"));
+    assert!(page.contains("Diagram focus: selected entity"));
+    assert!(page.contains(&format!(
+        "data-selected=\"true\" data-entity-id=\"{}\"",
+        outside.entity.identity
+    )));
+    let (focused_projection, focus) = fixture.operations.project_projection_detail_profiled(
+        fixture.project,
+        volicord_projections::WorkSelector::Repository,
+        volicord_projections::ProjectionDetail {
+            entity: Some(outside.entity.identity.clone()),
+            ..Default::default()
+        },
+    )?;
+    assert_eq!(focus.analysis_snapshot_decodes, 1);
+    let understanding = volicord_projections::build_project_understanding(
+        &focused_projection,
+        volicord_projections::UnderstandingBound {
+            max_items_per_section: 32,
+        },
+    );
+    let allowed = focused_projection
+        .selected_entity_neighbors
+        .iter()
+        .map(|e| e.identity.as_str())
+        .chain(std::iter::once(outside.entity.identity.as_str()))
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(understanding
+        .architecture
+        .components
+        .iter()
+        .all(|e| allowed.contains(e.identity.as_str())));
+    assert!(understanding
+        .architecture
+        .components
+        .iter()
+        .any(|e| e.identity == outside.entity.identity));
+    assert!(understanding
+        .architecture
+        .relationships
+        .iter()
+        .all(|r| focused_projection
+            .selected_entity_relations
+            .iter()
+            .any(|actual| actual == r)));
+    assert!(!page.contains("selected by grounded connection to a current-work seed"));
     assert!(page.contains("Incoming relationships"));
     assert!(page.contains("Outgoing relationships"));
     assert!(page.contains("Source locator and retained range"));
@@ -602,6 +647,10 @@ fn requested_sections_on_large_repository() -> Result<(), Box<dyn std::error::Er
             } else {
                 viewer.render_profiled(&request, "test-token")?
             };
+            if name == "code" {
+                assert!(page.html.contains("Diagram focus: selected entity"));
+                assert!(page.html.contains("data-selected=\"true\""));
+            }
             let full = name == "code" || name == "snapshot";
             assert_eq!(p.project_projection_passes, 1);
             assert_eq!(p.projection.analysis_snapshot_decodes, usize::from(full));

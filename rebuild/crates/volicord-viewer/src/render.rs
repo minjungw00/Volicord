@@ -981,14 +981,14 @@ fn render_grounded_diagram(
             if understanding.architecture.components.is_empty() {
                 text(
                     request.locale,
-                    "No repository component is grounded in the current Goal, Checkpoint, or active Decision; generic topology was not substituted.",
-                    "현재 Goal, Checkpoint 또는 active Decision에 근거가 있는 저장소 컴포넌트가 없습니다. 일반 토폴로지로 대신 채우지 않았습니다.",
+                    "No stored repository entity is included in this scope; unavailable analysis or missing grounding remains an explicit gap.",
+                    "이 범위에 포함된 저장 저장소 엔터티가 없습니다. 분석 이용 불가 또는 근거 부족은 명시적인 공백으로 유지됩니다.",
                 )
             } else {
                 text(
                     request.locale,
-                    "No inspectable relationship of this kind connects the current-work components; no edge or unrelated node was inferred.",
-                    "현재 작업 컴포넌트를 연결하는 이 종류의 검사 가능한 관계가 없습니다. edge나 무관한 노드를 추론하지 않았습니다.",
+                    "No inspectable relationship of this kind connects the displayed entities; no edge or unrelated node was inferred.",
+                    "표시된 엔터티를 연결하는 이 종류의 검사 가능한 관계가 없습니다. edge나 무관한 노드를 추론하지 않았습니다.",
                 )
             },
         );

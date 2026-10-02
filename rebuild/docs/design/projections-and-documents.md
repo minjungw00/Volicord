@@ -924,3 +924,12 @@ whole snapshot shares one canonical/analysis projection among all bounded sectio
 and four document previews. Per-Work presentation never reopens/decode analysis.
 These requirements add no persisted format, cache, analyzer invocation, provider
 call, canonical mutation or weakened correction/forgetting invalidation.
+
+Exact entity detail also focuses `ProjectUnderstanding.architecture` and its
+relationship evidence on `selected_entity`, actual bounded neighbors and incident
+relations. This read-side presentation selection precedes parent map bounds and
+retains the selected entity through the downstream architecture bound. It leaves
+canonical Work selection, `current_work_topology` seed semantics and default
+Recall/document inputs unchanged. No unrelated repository components replace this
+neighborhood. Resolved endpoints, unresolved evidence and exact omissions remain
+separate, and an explicit entity selection is not a canonical Work-seed assertion.

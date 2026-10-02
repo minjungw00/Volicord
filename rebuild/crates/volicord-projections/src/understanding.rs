@@ -324,24 +324,53 @@ pub fn build_project_understanding(
         })
         .map(|decision| decision_understanding(decision, links.get(&decision.decision_id).copied()))
         .collect::<Vec<_>>();
-    let architecture_selection = select_current_work_architecture(
-        projection,
-        if projection.selected_work.is_some() {
-            &projection.selected_work_decisions
-        } else {
-            &topology_decisions
-        },
-        limit,
-    );
+    // Exact entity detail is a separate grounded neighborhood, selected before
+    // the parent map bound. Keep the Work selection and canonical meanings intact.
+    let focused_topology = projection.selected_entity.as_ref().map(|entity| {
+        let mut entities = projection.selected_entity_neighbors.clone();
+        entities.push(entity.clone());
+        entities.sort_by(|left, right| left.identity.cmp(&right.identity));
+        entities.dedup_by(|left, right| left.identity == right.identity);
+        crate::CurrentWorkTopology {
+            entities,
+            relations: projection.selected_entity_relations.clone(),
+            omitted_entity_count: 0,
+            omitted_relation_count: projection.omitted_selected_relation_count,
+        }
+    });
+    let architecture_topology = focused_topology
+        .as_ref()
+        .unwrap_or(&projection.current_work_topology);
+    let architecture_selection = if let Some(entity) = &projection.selected_entity {
+        CurrentWorkArchitectureSelection {
+            topology: crate::project::select_bounded_topology(
+                &architecture_topology.entities,
+                &architecture_topology.relations,
+                &BTreeSet::from([entity.identity.clone()]),
+                limit,
+                limit,
+                false,
+            ),
+            selection_basis: Vec::new(),
+        }
+    } else {
+        select_current_work_architecture(
+            projection,
+            if projection.selected_work.is_some() {
+                &projection.selected_work_decisions
+            } else {
+                &topology_decisions
+            },
+            limit,
+        )
+    };
     let topology = architecture_selection.topology;
-    let all_entities = projection
-        .current_work_topology
+    let all_entities = architecture_topology
         .entities
         .iter()
         .map(|entity| entity.identity.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    let resolved_relation_count = projection
-        .current_work_topology
+    let resolved_relation_count = architecture_topology
         .relations
         .iter()
         .filter(|relation| {
@@ -352,8 +381,7 @@ pub fn build_project_understanding(
                     .is_some_and(|target| all_entities.contains(target))
         })
         .count();
-    let omitted_current_work_entities = projection
-        .current_work_topology
+    let omitted_current_work_entities = architecture_topology
         .omitted_entity_count
         .saturating_add(topology.omitted_entity_count);
     if omitted_current_work_entities > 0 {
@@ -362,8 +390,7 @@ pub fn build_project_understanding(
             omitted_count: omitted_current_work_entities,
         });
     }
-    let omitted_resolved_relations = projection
-        .current_work_topology
+    let omitted_resolved_relations = architecture_topology
         .omitted_relation_count
         .saturating_add(resolved_relation_count.saturating_sub(topology.relations.len()));
     if omitted_resolved_relations > 0 {
@@ -379,14 +406,12 @@ pub fn build_project_understanding(
         .iter()
         .map(|entity| entity.identity.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    let unresolved_relation_count = projection
-        .current_work_topology
+    let unresolved_relation_count = architecture_topology
         .relations
         .iter()
         .filter(|relation| relation.target_entity.is_none() && relation.unresolved_target.is_some())
         .count();
-    let mut unresolved_relationships = projection
-        .current_work_topology
+    let mut unresolved_relationships = architecture_topology
         .relations
         .iter()
         .filter(|relation| {
@@ -1034,9 +1059,10 @@ fn selection_explanation(
 ) -> String {
     let Some(selection) = selection else {
         return if korean {
-            "현재 작업 seed와 연결된 근거로 선택되었습니다.".to_owned()
+            "표시된 저장소 토폴로지의 실제 엔터티 및 관계를 사용한 설명입니다.".to_owned()
         } else {
-            "It was selected by grounded connection to a current-work seed.".to_owned()
+            "This explanation uses the displayed stored repository entities and relationships."
+                .to_owned()
         };
     };
     let mut changed_paths = BTreeSet::new();

@@ -586,6 +586,9 @@ fn code(
             "정적 import, 참조 및 구문 호출 근거는 런타임 흐름을 확정하지 않습니다.",
         ),
     );
+    if p.selected_entity.is_some() {
+        empty_state(html, text(r.locale, "Diagram focus: selected entity and its bounded stored incoming/outgoing relationships.", "다이어그램 범위: 선택한 엔터티와 제한된 저장 incoming/outgoing 관계."));
+    }
     heading(
         html,
         3,
