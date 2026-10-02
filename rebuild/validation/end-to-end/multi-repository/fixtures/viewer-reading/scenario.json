@@ -121,5 +121,14 @@
   "prototype_annotation": {
     "notice": "Hand-authored prototype annotation, not canonical explanation",
     "purpose": "Explore a relay boundary while keeping validation distinct from acceptance"
+  },
+  "graph_cases": {
+    "semantic_relation": {
+      "identity": "fixture-native-runtime",
+      "source_path": "native/query.c",
+      "target_path": "runtime/query_boundary.ts",
+      "basis": "explicit self-authored endpoint binding; not analyzer inference"
+    },
+    "unresolved_path": "python/worker.py"
   }
 }

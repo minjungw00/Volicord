@@ -1060,34 +1060,38 @@ const fn work_state_priority(state: UnderstandingWorkState) -> usize {
 }
 
 fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> GeneratedDocumentClaim {
-    let latest_change = work.meaningful_changes.last().map_or_else(
+    let reading_display = |text: &crate::ReadingText| match locale {
+        FixedLocale::English => text.display_english.clone(),
+        FixedLocale::Korean => text.display_korean.clone(),
+    };
+    let latest_change = work.reading.changes.last().map_or_else(
         || {
             fixed(
                 locale,
-                "No meaningful change is recorded",
-                "의미 있는 변경이 기록되지 않음",
+                "Summary unavailable: no change explanation is recorded",
+                "변경 설명이 기록되지 않아 요약을 제공할 수 없습니다",
             )
             .to_owned()
         },
-        Clone::clone,
+        reading_display,
     );
-    let next_step = work.next_step.as_deref().unwrap_or_else(|| {
-        fixed(
-            locale,
-            "No further step is recorded",
-            "추가 단계가 기록되지 않음",
-        )
-    });
+    let next_step = reading_display(&work.reading.next_step);
     let verification = work
-        .verification
-        .iter()
-        .map(|fact| verification_fact_label(fact, locale))
-        .collect::<Vec<_>>();
+        .reading
+        .states
+        .last()
+        .map_or_else(Vec::new, |observation| {
+            observation
+                .verification
+                .iter()
+                .map(|fact| verification_fact_label(fact, locale))
+                .collect::<Vec<_>>()
+        });
     let state = work_state_label_from_understanding(work.state, locale);
-    let text = match locale {
+    let mut text = match locale {
         FixedLocale::English => format!(
             "`{}` is {}. Latest meaningful change: {}. Next: {}. Affected code: {}. Verification: {}.",
-            work.title,
+            reading_display(&work.reading.goal),
             state,
             latest_change,
             next_step,
@@ -1104,7 +1108,7 @@ fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> Generate
         ),
         FixedLocale::Korean => format!(
             "`{}` 작업은 {} 상태입니다. 최근 의미 있는 변경: {}. 다음 단계: {}. 영향받는 코드: {}. 검증: {}.",
-            work.title,
+            reading_display(&work.reading.goal),
             state,
             latest_change,
             next_step,
@@ -1120,14 +1124,50 @@ fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> Generate
             display_strings(&verification, locale),
         ),
     };
+    if let Some(observation) = work.reading.states.last() {
+        text.push_str(&format!(
+            " {}: {}; {}: {}.",
+            fixed(locale, "User review", "사용자 검토"),
+            user_review_label(observation.user_review.state, locale),
+            fixed(locale, "User acceptance", "사용자 수락"),
+            user_acceptance_label(observation.user_acceptance.state, locale)
+        ));
+    }
+    if work.reading.states.iter().any(|observation| {
+        !observation.later_changed_checkpoint_ids.is_empty()
+            && observation
+                .verification
+                .iter()
+                .any(|fact| fact.state == VerificationState::Passed)
+    }) {
+        text.push_str(fixed(locale, " Earlier passed verification is historical and does not establish coverage of later changes.",
+            " 이전 성공 검증은 과거 근거이며 이후 변경의 검증 범위를 입증하지 않습니다."));
+    }
+    if let Some(gap) = &work.reading.code_gap {
+        let gap = match locale {
+            FixedLocale::English => gap.english(),
+            FixedLocale::Korean => gap.korean(),
+        };
+        text.push_str(&format!(
+            " {}: {gap}.",
+            fixed(locale, "Code gap", "코드 근거 공백")
+        ));
+    }
     GeneratedDocumentClaim {
         identity: format!("work-summary:{}", work.work_item_id),
-        class: ClaimClass::CanonicalContext,
+        class: ClaimClass::DeterministicDerived,
         text,
-        source_basis: work.source_basis.clone(),
+        source_basis: work
+            .source_basis
+            .iter()
+            .chain(&work.reading.code_source_basis)
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect(),
         decision_basis: work.decision_ids.clone(),
-        analysis_basis: Vec::new(),
-        explicit_inference: work.source_basis.is_empty() && work.decision_ids.is_empty(),
+        analysis_basis: work.reading.analysis_snapshot_basis.clone(),
+        explicit_inference: true,
         historical_uncertainty: Vec::new(),
         uncertainty: work
             .open_question_ids

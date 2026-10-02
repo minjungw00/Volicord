@@ -30,6 +30,7 @@ impl Default for ProjectionBound {
 }
 
 pub struct ProjectProjectionInputs<'a> {
+    pub selection: crate::WorkSelector,
     pub analysis_issues: &'a [ProjectionIssue],
     pub canonical: &'a CanonicalReadBasis,
     pub analyses: &'a [&'a AnalysisSnapshot],
@@ -209,7 +210,6 @@ pub struct RepositoryMap {
     pub health: ProjectionHealth,
 }
 
-#[cfg(test)]
 pub(crate) fn select_bounded_topology(
     entities: &[MapEntity],
     relations: &[MapRelation],
@@ -749,7 +749,15 @@ pub struct CanonicalInspectionItem {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CurrentWorkPathBasis {
+    pub checkpoint_id: CheckpointId,
+    pub checkpoint_revision: u64,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CurrentWorkCodeLink {
+    pub changed_path_basis: Vec<CurrentWorkPathBasis>,
     pub entity_identity: String,
     pub changed_paths: Vec<String>,
     pub checkpoint_basis: Vec<CheckpointId>,
@@ -768,6 +776,12 @@ pub struct CurrentWorkTopology {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
+    pub selection: crate::WorkSelection,
+    /// Explicit selection is independent of bounded parent Work lists.
+    pub selected_work: Option<crate::UnderstandingWork>,
+    pub selected_work_decisions: Vec<crate::UnderstandingDecision>,
+    pub work_history: Vec<crate::UnderstandingWork>,
+    pub unresolved_work_grouping: Vec<crate::UnresolvedWorkGrouping>,
     pub overview: ProjectOverview,
     pub resume: ResumeBrief,
     pub repository_map: RepositoryMap,
@@ -877,46 +891,89 @@ fn sort_projection_issues(issues: &mut Vec<ProjectionIssue>) {
 
 /// Builds viewer/host-ready read models from immutable subsystem bases. The
 /// function owns no store, analyzer, Candidate lifecycle, or filesystem handle.
-pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectProjection {
+pub fn build_project_projection(
+    inputs: ProjectProjectionInputs<'_>,
+) -> Result<ProjectProjection, crate::WorkSelectionError> {
+    let selection = inputs.selection.resolve(inputs.canonical)?;
+    let scoped = selection
+        .work_item_id
+        .map(|work| crate::reading::scope_to_work(inputs.canonical, work));
+    let reading_canonical = if matches!(inputs.selection, crate::WorkSelector::ExactWork(_)) {
+        scoped.as_ref().unwrap_or(inputs.canonical)
+    } else {
+        inputs.canonical
+    };
+    let seed_canonical;
+    let topology_canonical = if let Some(scoped) = &scoped {
+        scoped
+    } else {
+        seed_canonical = {
+            let mut basis = inputs.canonical.clone();
+            basis
+                .context_items
+                .retain(|item| item.role != ContextItemRole::Goal);
+            if let Some(latest) = &basis.latest_checkpoint {
+                basis
+                    .active_decisions
+                    .retain(|d| latest.applied_decisions.contains(&d.decision.id));
+            }
+            basis
+        };
+        &seed_canonical
+    };
     let limit = inputs.bound.max_items_per_section.max(1);
     let resume = build_resume_brief(RecallInputs {
         analysis_issues: inputs.analysis_issues,
-        canonical: inputs.canonical,
+        canonical: reading_canonical,
         analyses: inputs.analyses,
         scope: inputs.applicability.clone(),
         bound: RecallBound {
             max_items_per_section: limit,
         },
     });
-    let mut issues = source_issues(inputs.canonical);
+    let mut issues = source_issues(reading_canonical);
     issues.extend_from_slice(inputs.analysis_issues);
-    let graph = projection_graph(inputs.canonical, inputs.analyses);
-    let current_work_topology =
-        build_current_work_topology(inputs.canonical, &graph, limit, &mut issues);
+    let graph = projection_graph(reading_canonical, inputs.analyses);
+    let mut current_work_topology =
+        build_current_work_topology(topology_canonical, &graph, limit, &mut issues);
     let repository_map = build_repository_map(
-        inputs.canonical,
+        reading_canonical,
         inputs.analyses,
         &graph,
         limit,
         &mut issues,
     );
+    if inputs.selection == crate::WorkSelector::Repository {
+        current_work_topology = CurrentWorkTopology {
+            entities: repository_map.entities.clone(),
+            relations: repository_map.relations.clone(),
+            omitted_entity_count: graph
+                .entities
+                .len()
+                .saturating_sub(repository_map.entities.len()),
+            omitted_relation_count: graph
+                .relations
+                .len()
+                .saturating_sub(repository_map.relations.len()),
+        };
+    }
     let current_work_code = build_current_work_code_links(
-        inputs.canonical,
+        topology_canonical,
         &current_work_topology.entities,
         limit,
         &mut issues,
     );
-    let decision_context_code = build_decision_links(
-        inputs.canonical,
-        &resume,
+    let mut decision_context_code = build_decision_links(
+        reading_canonical,
+        &inputs.applicability,
         &current_work_topology.entities,
         &repository_map.entities,
-        limit,
+        usize::MAX,
         &mut issues,
     );
-    let checkpoint_timeline = build_timeline(inputs.canonical, limit, &mut issues);
+    let checkpoint_timeline = build_timeline(reading_canonical, limit, &mut issues);
     let memory = build_memory_inspection(
-        inputs.canonical,
+        reading_canonical,
         inputs.candidates,
         inputs.candidate_content_access,
         inputs.observed_at,
@@ -926,12 +983,11 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
     let candidate_inspection = memory.candidate_inspection;
     let candidate_dependency = memory.candidate_dependency;
     issues.extend(memory.issues);
-    let mut source_catalog = inputs.canonical.sources.clone();
+    let mut source_catalog = reading_canonical.sources.clone();
     source_catalog.sort_by_key(|source| source.source.id);
     bound(&mut source_catalog, limit, "source_catalog", &mut issues);
-    let source_status = source_status(inputs.canonical);
-    let mut current_goals = inputs
-        .canonical
+    let source_status = source_status(reading_canonical);
+    let mut current_goals = reading_canonical
         .context_items
         .iter()
         .filter(|item| item.role == ContextItemRole::Goal)
@@ -944,26 +1000,137 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         "project_overview.goal",
         &mut issues,
     );
+    let mut unresolved_work_grouping =
+        crate::reading::derive_unresolved_grouping(reading_canonical);
+    bound(
+        &mut unresolved_work_grouping,
+        limit,
+        "unresolved_work_grouping",
+        &mut issues,
+    );
+    let mut work_history = crate::reading::derive_work_history(reading_canonical);
+    work_history.sort_by_key(|work| work.work_item_id);
+    let mut selected_work = selection.work_item_id.and_then(|id| {
+        work_history
+            .iter()
+            .find(|work| work.work_item_id == id)
+            .cloned()
+    });
+    if let Some(work) = &mut selected_work {
+        work.reading.code_freshness = inputs
+            .analyses
+            .iter()
+            .filter(|a| a.project.identity() == reading_canonical.project.id)
+            .map(|a| a.freshness.clone())
+            .collect();
+        work.reading.analysis_snapshot_basis = current_work_topology
+            .entities
+            .iter()
+            .map(|e| e.analysis_snapshot)
+            .chain(
+                inputs
+                    .analyses
+                    .iter()
+                    .filter(|a| a.project.identity() == reading_canonical.project.id)
+                    .map(|a| a.identity),
+            )
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        work.reading.repository_snapshot_basis = current_work_topology
+            .entities
+            .iter()
+            .map(|e| e.repository_snapshot)
+            .chain(
+                inputs
+                    .analyses
+                    .iter()
+                    .filter(|a| a.project.identity() == reading_canonical.project.id)
+                    .map(|a| a.repository_snapshot),
+            )
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        work.reading.code_source_basis = current_work_topology
+            .entities
+            .iter()
+            .map(|e| e.source_id)
+            .chain(current_work_topology.relations.iter().map(|r| r.source_id))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        work.reading.code_availability = if current_work_topology.entities.is_empty() {
+            crate::ReadingAvailability::Unavailable
+        } else if work
+            .reading
+            .code_freshness
+            .iter()
+            .any(|f| f.state != volicord_repository_intelligence::FreshnessState::Current)
+        {
+            crate::ReadingAvailability::Degraded
+        } else {
+            crate::ReadingAvailability::Available
+        };
+        work.reading.code_gap = if current_work_topology.entities.is_empty() {
+            Some(if inputs.analyses.is_empty() {
+                crate::WorkCodeGap::AnalysisUnavailable
+            } else {
+                crate::WorkCodeGap::NoMatchingCode
+            })
+        } else if work.reading.code_availability == crate::ReadingAvailability::Degraded {
+            Some(crate::WorkCodeGap::AnalysisNotCurrent)
+        } else {
+            None
+        };
+    }
+    let selected_work_decisions = scoped.as_ref().map_or_else(Vec::new, |basis| {
+        basis
+            .active_decisions
+            .iter()
+            .chain(&basis.superseded_decisions)
+            .map(|lifecycle| {
+                let decision =
+                    crate::recall::brief_decision(basis, lifecycle, &inputs.applicability);
+                let link = decision_context_code
+                    .iter()
+                    .find(|link| link.decision_id == decision.decision_id);
+                crate::understanding::decision_understanding(&decision, link)
+            })
+            .collect()
+    });
+    bound(
+        &mut decision_context_code,
+        limit,
+        "decision_context_code",
+        &mut issues,
+    );
+    if let Some(selected) = &selected_work {
+        if let Some(work) = work_history
+            .iter_mut()
+            .find(|work| work.work_item_id == selected.work_item_id)
+        {
+            *work = selected.clone();
+        }
+    }
+    bound(&mut work_history, limit, "work_history", &mut issues);
     sort_projection_issues(&mut issues);
     let health = health_from_issues(&issues);
     let overview = ProjectOverview {
-        project_id: inputs.canonical.project.id,
-        project_name: inputs.canonical.project.display_name.clone(),
-        canonical_revision: inputs.canonical.project.revision,
+        project_id: reading_canonical.project.id,
+        project_name: reading_canonical.project.display_name.clone(),
+        canonical_revision: reading_canonical.project.revision,
         current_goals: current_goals
             .into_iter()
             .map(|(_, statement)| statement)
             .collect(),
-        active_decision_count: inputs.canonical.active_decisions.len(),
-        superseded_decision_count: inputs.canonical.superseded_decisions.len(),
-        open_question_count: inputs
-            .canonical
+        active_decision_count: reading_canonical.active_decisions.len(),
+        superseded_decision_count: reading_canonical.superseded_decisions.len(),
+        open_question_count: reading_canonical
             .active_questions
             .iter()
             .filter(|question| question.state == QuestionState::Open)
             .count(),
-        latest_checkpoint_id: inputs
-            .canonical
+        latest_checkpoint_id: reading_canonical
             .latest_checkpoint
             .as_ref()
             .map(|checkpoint| checkpoint.id),
@@ -971,7 +1138,12 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         capability_reports: repository_map.capabilities.clone(),
         health,
     };
-    ProjectProjection {
+    Ok(ProjectProjection {
+        selection,
+        selected_work,
+        selected_work_decisions,
+        work_history,
+        unresolved_work_grouping,
         overview,
         resume,
         repository_map,
@@ -985,7 +1157,7 @@ pub fn build_project_projection(inputs: ProjectProjectionInputs<'_>) -> ProjectP
         source_catalog,
         issues,
         health,
-    }
+    })
 }
 
 fn candidate_dependency_issue(failure: CandidateDependencyFailure) -> ProjectionIssue {
@@ -1304,23 +1476,22 @@ fn build_repository_map(
 
 fn build_decision_links(
     canonical: &CanonicalReadBasis,
-    resume: &ResumeBrief,
+    applicability: &ApplicabilityQuery,
     current_work_entities: &[MapEntity],
     repository_entities: &[MapEntity],
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> Vec<DecisionContextCodeLink> {
-    let brief_states = resume
-        .decisions
-        .iter()
-        .map(|decision| (decision.decision_id, decision.state))
-        .collect::<BTreeMap<_, _>>();
+    let mut historical_entities = repository_entities.to_vec();
+    historical_entities.extend_from_slice(current_work_entities);
+    historical_entities.sort_by(|a, b| a.identity.cmp(&b.identity));
+    historical_entities.dedup_by(|a, b| a.identity == b.identity);
     let mut values = canonical
         .active_decisions
         .iter()
-        .map(|lifecycle| decision_link(canonical, lifecycle, current_work_entities, &brief_states))
+        .map(|lifecycle| decision_link(canonical, lifecycle, current_work_entities, applicability))
         .chain(canonical.superseded_decisions.iter().map(|lifecycle| {
-            decision_link(canonical, lifecycle, repository_entities, &brief_states)
+            decision_link(canonical, lifecycle, &historical_entities, applicability)
         }))
         .collect::<Vec<_>>();
     values.sort_by_key(|value| value.decision_id);
@@ -1359,7 +1530,7 @@ fn build_current_work_code_links(
                 .iter()
                 .copied()
                 .filter(|checkpoint| {
-                    checkpoint
+                    source_matches_code(canonical, &checkpoint.changed_source_basis, entity.source_id, locator) || checkpoint
                         .changed_paths
                         .iter()
                         .any(|path| path_matches(path, locator))
@@ -1372,7 +1543,7 @@ fn build_current_work_code_links(
             let mut goal_context_basis = goals
                 .iter()
                 .filter(|context| {
-                    map_entity_matches_scope(
+                    source_matches_code(canonical, &context.source_basis, entity.source_id, locator) || map_entity_matches_scope(
                         entity,
                         &context.applicability.paths,
                         &context.applicability.components,
@@ -1392,6 +1563,9 @@ fn build_current_work_code_links(
                 || !checkpoint_basis.is_empty()
                 || !goal_context_basis.is_empty())
             .then(|| CurrentWorkCodeLink {
+                changed_path_basis: checkpoints.iter().flat_map(|cp| cp.changed_paths.iter()
+                    .filter(|path| path_matches(path, locator))
+                    .map(|path| CurrentWorkPathBasis { checkpoint_id: cp.id, checkpoint_revision: cp.revision, path: path.clone() })).collect(),
                 entity_identity: entity.identity.clone(),
                 changed_paths,
                 checkpoint_basis,
@@ -1430,7 +1604,7 @@ fn decision_link(
     canonical: &CanonicalReadBasis,
     lifecycle: &DecisionLifecycle,
     entities: &[MapEntity],
-    brief_states: &BTreeMap<DecisionId, crate::BriefDecisionState>,
+    applicability: &ApplicabilityQuery,
 ) -> DecisionContextCodeLink {
     let decision = &lifecycle.decision;
     let mut related_context_items = canonical
@@ -1510,10 +1684,7 @@ fn decision_link(
     DecisionContextCodeLink {
         decision_id: decision.id,
         decision_revision: decision.revision,
-        decision_state: brief_states
-            .get(&decision.id)
-            .copied()
-            .unwrap_or(crate::BriefDecisionState::ReviewRequired),
+        decision_state: crate::recall::brief_decision(canonical, lifecycle, applicability).state,
         declared_paths: decision.applicability.paths.clone(),
         declared_components: decision.applicability.components.clone(),
         declared_work_contexts: decision.applicability.work_contexts.clone(),
@@ -1547,7 +1718,11 @@ fn build_timeline(
             checkpoint,
         })
         .collect::<Vec<_>>();
-    bound(&mut values, limit, "checkpoint_timeline", issues);
+    if values.len() > limit {
+        let omitted = values.len() - limit;
+        issues.push(bound_issue("checkpoint_timeline", omitted));
+        values.drain(..omitted);
+    }
     values
 }
 
@@ -1915,6 +2090,27 @@ fn path_matches(scope: &str, locator: &str) -> bool {
             .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
+fn source_matches_code(
+    canonical: &CanonicalReadBasis,
+    ids: &[SourceId],
+    entity_source: SourceId,
+    locator: &str,
+) -> bool {
+    ids.iter().any(|id| {
+        *id == entity_source
+            || canonical.sources.iter().any(|source| {
+                source.source.id == *id
+                    && match &source.source.payload {
+                        SourcePayload::File { locator: path, .. }
+                        | SourcePayload::Symbol { locator: path, .. } => {
+                            path_matches(path, locator)
+                        }
+                        _ => false,
+                    }
+            })
+    })
+}
+
 fn entity_matches_current_work(
     entity: &volicord_repository_intelligence::CodeEntity,
     canonical: &CanonicalReadBasis,
@@ -1936,7 +2132,10 @@ fn entity_matches_current_work(
                 .any(|component| locator.contains(component) || display_name.contains(component))
     };
 
+    let source_matches =
+        |ids: &[SourceId]| source_matches_code(canonical, ids, entity.source.identity(), locator);
     if current_work_checkpoints(canonical).iter().any(|checkpoint| {
+        source_matches(&checkpoint.changed_source_basis) ||
         checkpoint
             .changed_paths
             .iter()
@@ -1962,7 +2161,7 @@ fn entity_matches_current_work(
         .iter()
         .filter(|context| context.role == ContextItemRole::Goal)
         .any(|context| {
-            matches_scope(&context.applicability.paths, &context.applicability.components)
+            source_matches(&context.source_basis) || matches_scope(&context.applicability.paths, &context.applicability.components)
                 || entity.canonical_links.iter().any(|link| {
                     matches!(link, CanonicalReference::ContextItem(reference) if reference.identity() == context.id)
                 })

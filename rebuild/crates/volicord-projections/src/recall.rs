@@ -54,6 +54,11 @@ pub enum BriefDecisionState {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BriefDecision {
+    pub user_source_basis: Vec<SourceId>,
+    pub user_source_status: Vec<crate::ReadingSourceStatus>,
+    pub recommendation_source_status: Vec<crate::ReadingSourceStatus>,
+    pub recommendation_source_basis: Vec<SourceId>,
+    pub available_revisions: Vec<u64>,
     pub decision_id: DecisionId,
     pub revision: u64,
     pub state: BriefDecisionState,
@@ -252,71 +257,7 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
         .active_decisions
         .iter()
         .chain(canonical.superseded_decisions.iter())
-        .map(|lifecycle| {
-            let applicability =
-                evaluate_decision_applicability(canonical, lifecycle, &inputs.scope);
-            let state = match applicability.state {
-                DecisionApplicabilityState::ReusableCurrent => BriefDecisionState::Current,
-                DecisionApplicabilityState::ReviewRequiredUncertain => {
-                    if applicability.issues.iter().any(|issue| {
-                        matches!(issue, volicord_inquiry::ApplicabilityIssue::SourceStale(_))
-                    }) {
-                        BriefDecisionState::StaleBasis
-                    } else {
-                        BriefDecisionState::ReviewRequired
-                    }
-                }
-                DecisionApplicabilityState::Superseded => BriefDecisionState::Superseded,
-                DecisionApplicabilityState::UnavailableBasis => {
-                    BriefDecisionState::UnavailableBasis
-                }
-            };
-            let question_uncertainty = applicability
-                .displayed_basis
-                .as_ref()
-                .map(|basis| basis.uncertainty.clone())
-                .unwrap_or_default();
-            let known_limits = applicability
-                .displayed_basis
-                .as_ref()
-                .map(|basis| basis.known_limits.clone())
-                .unwrap_or_default();
-            let displayed_alternatives = lifecycle.decision.displayed_alternatives.clone();
-            let chosen_alternative_key = match &lifecycle.decision.choice {
-                DecisionChoice::Alternative { alternative_key } => Some(alternative_key.clone()),
-                DecisionChoice::Delegation { .. } => None,
-            };
-            BriefDecision {
-                decision_id: lifecycle.decision.id,
-                revision: lifecycle.decision.revision,
-                state,
-                choice: lifecycle.decision.choice.clone(),
-                chosen_alternative_key,
-                recommended_alternative_key: lifecycle
-                    .decision
-                    .displayed_recommendation
-                    .alternative_key
-                    .clone(),
-                displayed_alternatives,
-                work_scope: lifecycle.decision.work_scope,
-                user_rationale: lifecycle.decision.user_rationale.clone(),
-                recommendation_rationale: lifecycle
-                    .decision
-                    .displayed_recommendation
-                    .rationale
-                    .clone(),
-                assumptions: lifecycle.decision.assumptions.clone(),
-                revisit_triggers: lifecycle.decision.revisit_triggers.clone(),
-                source_basis: applicability.source_basis,
-                question_uncertainty,
-                known_limits,
-                review_basis: applicability
-                    .issues
-                    .iter()
-                    .map(|issue| format!("{issue:?}"))
-                    .collect(),
-            }
-        })
+        .map(|lifecycle| brief_decision(canonical, lifecycle, &inputs.scope))
         .collect::<Vec<_>>();
     decisions.sort_by_key(|item| (decision_state_priority(item.state), item.decision_id));
     bound_items(
@@ -623,5 +564,98 @@ const fn omission_priority(reason: OmissionReason) -> u8 {
         OmissionReason::SupersededHistory => 2,
         OmissionReason::UnavailableBasis => 3,
         OmissionReason::FailedBasis => 4,
+    }
+}
+
+pub(crate) fn brief_decision(
+    canonical: &CanonicalReadBasis,
+    lifecycle: &volicord_context::DecisionLifecycle,
+    scope: &ApplicabilityQuery,
+) -> BriefDecision {
+    let applicability = evaluate_decision_applicability(canonical, lifecycle, scope);
+    let state =
+        match applicability.state {
+            DecisionApplicabilityState::ReusableCurrent => BriefDecisionState::Current,
+            DecisionApplicabilityState::ReviewRequiredUncertain => {
+                if applicability.issues.iter().any(|issue| {
+                    matches!(issue, volicord_inquiry::ApplicabilityIssue::SourceStale(_))
+                }) {
+                    BriefDecisionState::StaleBasis
+                } else {
+                    BriefDecisionState::ReviewRequired
+                }
+            }
+            DecisionApplicabilityState::Superseded => BriefDecisionState::Superseded,
+            DecisionApplicabilityState::UnavailableBasis => BriefDecisionState::UnavailableBasis,
+        };
+    let question_uncertainty = applicability
+        .displayed_basis
+        .as_ref()
+        .map(|basis| basis.uncertainty.clone())
+        .unwrap_or_default();
+    let known_limits = applicability
+        .displayed_basis
+        .as_ref()
+        .map(|basis| basis.known_limits.clone())
+        .unwrap_or_default();
+    let displayed_alternatives = lifecycle.decision.displayed_alternatives.clone();
+    let chosen_alternative_key = match &lifecycle.decision.choice {
+        DecisionChoice::Alternative { alternative_key } => Some(alternative_key.clone()),
+        DecisionChoice::Delegation { .. } => None,
+    };
+    BriefDecision {
+        user_source_status: crate::reading::reading_sources(
+            canonical,
+            &[lifecycle.decision.user_turn_source_id],
+        ),
+        recommendation_source_status: crate::reading::reading_sources(
+            canonical,
+            &lifecycle.decision.displayed_recommendation.source_basis,
+        ),
+        user_source_basis: vec![lifecycle.decision.user_turn_source_id],
+        recommendation_source_basis: lifecycle
+            .decision
+            .displayed_recommendation
+            .source_basis
+            .clone(),
+        available_revisions: canonical
+            .revisions
+            .iter()
+            .find(|r| {
+                r.record_kind == volicord_context::CanonicalRecordKind::Decision
+                    && r.record_identity == lifecycle.decision.id.to_string()
+            })
+            .map_or_else(
+                || vec![lifecycle.decision.revision],
+                |r| r.revisions.clone(),
+            ),
+        decision_id: lifecycle.decision.id,
+        revision: lifecycle.decision.revision,
+        state,
+        choice: lifecycle.decision.choice.clone(),
+        chosen_alternative_key,
+        recommended_alternative_key: lifecycle
+            .decision
+            .displayed_recommendation
+            .alternative_key
+            .clone(),
+        displayed_alternatives,
+        work_scope: lifecycle.decision.work_scope,
+        user_rationale: lifecycle.decision.user_rationale.clone(),
+        recommendation_rationale: lifecycle
+            .decision
+            .displayed_recommendation
+            .rationale
+            .clone(),
+        assumptions: lifecycle.decision.assumptions.clone(),
+        revisit_triggers: lifecycle.decision.revisit_triggers.clone(),
+        source_basis: applicability.source_basis,
+        question_uncertainty,
+        known_limits,
+        review_basis: applicability
+            .issues
+            .iter()
+            .map(|issue| format!("{issue:?}"))
+            .collect(),
     }
 }

@@ -153,7 +153,7 @@ surface during the read-model work.
 
 Shared projection selection has three meanings: `LatestWork` resolves the actual
 Goal identity associated with the latest Checkpoint, or the newest Goal when no
-associated Work is available; `ExactWork(ContextItemId)` validates an existing Goal
+Checkpoint exists; `ExactWork(ContextItemId)` validates an existing Goal
 in the selected Project; `Repository` reads repository scope without selecting a
 Work. Latest selection preserves an unassociated latest Checkpoint as unresolved,
 never attaching it by chronology. An exact missing, forgotten, non-Goal or foreign
@@ -196,10 +196,76 @@ use canonical-only remainder when analysis is unavailable. No GET analysis or
 provider call, new Viewer store or canonical state is required.
 
 Current shared Recall and four-document default behavior remain supported through
-one projection implementation. The target selection and reading types become
-implemented contracts only with their production code and independent tests;
-Viewer navigation and read-cost/comprehension improvements require the later
-surface switch and further evidence.
+one projection implementation. The implemented read foundation below does not
+promote the target Viewer navigation to current UI behavior.
+
+### Implemented Work reading interfaces
+
+`volicord-projections` exports `WorkSelector::{LatestWork, ExactWork(ContextItemId),
+Repository}`, `WorkSelection { selector, work_item_id, basis }` and
+`WorkSelectionBasis`. Exact parsing is `WorkSelector::exact(&str)` and accepts
+exactly 32 ASCII hexadecimal digits. `WorkSelectionError::InvalidIdentity`
+distinguishes malformed text from `WorkNotFound { project_id, work_item_id }`.
+`build_project_projection(ProjectProjectionInputs)` now returns
+`Result<ProjectProjection, WorkSelectionError>`; inputs include `selection`.
+Latest resolves by `(recorded_at, identity)`, retains an unassociated latest
+Checkpoint as `UnassociatedCheckpoint`, and uses `LatestGoal` only when no
+Checkpoint exists. No available Goal gives `NoWork`. Exact basis retains Goal
+revision; latest-Checkpoint basis retains Checkpoint identity and revision.
+
+Local Operations exposes `project_projection_selected(project_id, WorkSelector)`
+and `project_projection_selected_profiled`, the latter returning the projection
+and existing `ProjectProjectionProfile`. Its error offers `work_selection_cause()`.
+Existing `project_projection` and its profiled form use `LatestWork` through the
+same implementation. These APIs add no command option or HTTP route.
+
+The Store reader supplies complete canonical Checkpoint history without a SQL
+display limit. Operations validates the selection before analysis and Candidate
+reads. Exact scope retains all same-Work Checkpoints, explicit WorkItem and
+Checkpoint-applied Decisions, including superseded history, before Resume/list
+bounds. Goal/source/path/component seeds select topology from the complete
+selected Analysis Snapshot graph before graph bounds. Operations loads its
+existing latest Analysis Snapshot per Project; this is not historical-snapshot
+selection or an analysis refresh. Related code remains evidence of scope overlap,
+not proof that a Decision was implemented.
+
+`ProjectProjection` and `ProjectUnderstanding` expose `selection`, `selected_work`
+and `selected_work_decisions` independently of bounded parent lists.
+`ProjectProjection.work_history` aggregates complete history before its list bound;
+the selected Work's reading retains all its observations and quotations. Global
+Checkpoint timeline presentation keeps the recent suffix with exact omissions.
+Unassociated/unknown-Goal Checkpoints and unresolved Decisions are grouped from
+complete canonical input before their own bound. Work code links retain exact
+`CurrentWorkPathBasis { checkpoint_id, checkpoint_revision, path }` pairs, avoiding
+invented combinations between path and Checkpoint lists.
+
+`UnderstandingWork.reading: WorkReading` contains `goal`, `changes`, `next_step`,
+`status`, `states`, `code_gap`, `code_availability`, `code_freshness`, code Source
+and Repository/Analysis Snapshot basis. `ReadingText` contains original text,
+English/Korean display labels, representation, availability, gaps, exact omitted
+bytes/characters and explicit semantic-summary/language-preservation flags.
+`ReadingBasis` retains typed record identity, revision, available revisions, field,
+Source IDs/status/actor/observer and snapshot identities. A quotation display
+uses at most 384 Unicode scalar values; the full original remains inspectable.
+Structured status is deterministic derived interpretation. Goal-only Open is
+explicitly derived from a Goal with no Checkpoint, not a recorded completion state.
+
+Each `WorkStateObservation` retains Checkpoint revision/time, work Source basis,
+verification facts, user-review and acceptance facts with their independent Source
+IDs, and later changed Checkpoint identities. Flattened historical verification is
+retained for evidence consumers; ordinary status must read the relevant observation,
+not interpret a historical pass as current coverage. `DecisionReading` separates
+user rationale from displayed recommendation rationale and their Source/revision
+basis, chosen/recommended alternative keys and original work scope. BriefDecision
+also retains these separate Source bases/status and available revisions for Recall.
+
+Operations status JSON adds selection/selected Work and evidence-linked `reading`
+inside each Work. Four-document projections consume truthful display text and the
+latest independent state observation; the existing Viewer consumes display text
+while retaining original quotation evidence in disclosure. Navigation, semantic
+Work-prose realization, human comprehension evidence, canonical read pagination,
+selection-specific Store queries and avoiding full-history cloning/decoding remain
+later work. Display bounds do not yet constitute a bounded read-cost guarantee.
 
 ## 2. First project-scoped automatic Recall
 

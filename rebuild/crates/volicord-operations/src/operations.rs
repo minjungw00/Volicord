@@ -2600,9 +2600,32 @@ impl LocalOperations {
         &self,
         project_id: ProjectId,
     ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        self.project_projection_selected_profiled(
+            project_id,
+            volicord_projections::WorkSelector::LatestWork,
+        )
+    }
+
+    pub fn project_projection_selected(
+        &self,
+        project_id: ProjectId,
+        selection: volicord_projections::WorkSelector,
+    ) -> Result<ProjectProjection, Error> {
+        self.project_projection_selected_profiled(project_id, selection)
+            .map(|(projection, _)| projection)
+    }
+
+    pub fn project_projection_selected_profiled(
+        &self,
+        project_id: ProjectId,
+        selection: volicord_projections::WorkSelector,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
         let total_started = Instant::now();
         let canonical_started = Instant::now();
         let canonical = self.canonical_basis(project_id)?;
+        selection
+            .resolve(&canonical)
+            .map_err(|error| Error::with_source("Work selection failed", error))?;
         let canonical_read = canonical_started.elapsed();
         let analysis_started = Instant::now();
         let (analyses, analysis_issues) = self.load_projection_analyses(project_id, &canonical);
@@ -2615,6 +2638,7 @@ impl LocalOperations {
         let candidates = projection_candidates(candidate_basis.as_ref(), candidate_failure);
         let projection_started = Instant::now();
         let projection = build_project_projection(ProjectProjectionInputs {
+            selection,
             analysis_issues: &analysis_issues,
             canonical: &canonical,
             analyses: &analysis_refs,
@@ -2623,7 +2647,8 @@ impl LocalOperations {
             candidate_content_access: CandidateContentAccess::AllowBoundedSummary,
             observed_at: now_micros()?,
             bound: ProjectionBound::default(),
-        });
+        })
+        .map_err(|error| Error::with_source("Work selection failed", error))?;
         let projection_build = projection_started.elapsed();
         Ok((
             projection,

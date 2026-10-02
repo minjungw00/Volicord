@@ -40,3 +40,27 @@ read-cost optimization and human comprehension evidence remain unimplemented.
 
 Baseline dependency identity: `rebuild/Cargo.lock` SHA-256 `02ed72ca48eafa2ec8162716d85fb557f0d9da5f5166486e259f33f604ce277a`.
 Fixture setup and generator are in the hashed test source; no private input was used.
+
+Maintained regression consumer: `volicord-operations --test viewer_reading` loads
+the shared scenario and independent expectations, constructs real canonical
+records through Local Operations/Store, and adds a declared synthetic semantic
+binding between the C and TypeScript file entities. This binding is not a claim
+that the structural analyzer resolves cross-language calls. The Python fixture
+also contains real local-call and unresolved-call evidence; existing projection
+flow tests check that unresolved endpoints never become fabricated entities.
+
+Implemented reading limits: display quotations keep 384 Unicode scalar values,
+report exact omitted bytes/characters, and retain full original text. Selected
+Work/history/Decision details survive bounded parent lists; graph endpoint bounds
+and omissions remain explicit. Failed, rejected and unverified observations keep
+their own Checkpoint and Source identities; earlier passes expose later changes.
+Missing explanatory text still cannot explain intent or results. Fixed bilingual
+labels preserve original quote language rather than attesting translation.
+
+Remaining read-cost work: canonical full-history reads and revision catalogs,
+full latest-analysis decoding, canonical-scope clones, repeated per-Work/source
+scans, and full selected-Work original/state arrays are not paginated or cached.
+The earlier baseline measures the maintained default rendering workload only.
+The foundation makes no measured speedup, long-history memory ceiling or human
+comprehension claim. Later Viewer controls must use the maintained selector APIs
+and owner contracts, not depend on this disposable HTML.

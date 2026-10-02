@@ -53,5 +53,12 @@
     "fixture-declared semantic native-to-runtime link retains snapshots",
     "no invented cross-language edge",
     "unresolved target remains no target entity"
-  ]
+  ],
+  "semantic_edge": {
+    "identity": "fixture-native-runtime",
+    "source_locator": "native/query.c",
+    "target_locator": "runtime/query_boundary.ts",
+    "kind": "References",
+    "minimum_endpoints": 2
+  }
 }

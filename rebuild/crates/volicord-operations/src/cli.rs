@@ -932,13 +932,16 @@ fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Err
         "health":debug_name(understanding.health),
         "canonical_revision":understanding.canonical_revision,
         "project_purpose":understanding.project_purpose.into_iter().map(|item| json!({"statement":item.statement,"source_ids":item.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })).collect::<Vec<_>>(),
+        "selection":work_selection_json(understanding.selection),
+        "selected_work":understanding.selected_work.as_ref().map(work_json),
         "current_work":understanding.current_work.iter().map(work_json).collect::<Vec<_>>(),
         "completed_work":understanding.completed_work.iter().map(work_json).collect::<Vec<_>>(),
         "remaining_work":understanding.remaining_work.iter().map(work_json).collect::<Vec<_>>(),
         "work_history":understanding.work_history.iter().map(work_json).collect::<Vec<_>>(),
         "unresolved_work_grouping":understanding.unresolved_work_grouping.iter().map(|gap| json!({"record_kind":gap.record_kind,"identity":gap.identity,"reason":gap.reason})).collect::<Vec<_>>(),
         "next_steps":understanding.next_steps.into_iter().map(|step| step.text).collect::<Vec<_>>(),
-        "active_decisions":understanding.active_decisions.into_iter().map(|item| json!({"identity":item.decision.decision_id.to_string(),"revision":item.decision.revision,"work_scope":decision_work_scope_json(item.decision.work_scope),"choice":format!("{:?}",item.decision.choice),"chosen_alternative_key":item.decision.chosen_alternative_key,"recommended_alternative_key":item.decision.recommended_alternative_key,"displayed_alternatives":item.decision.displayed_alternatives.into_iter().map(|alternative| json!({"alternative_key":alternative.key,"label":alternative.label,"expected_consequence":alternative.consequence})).collect::<Vec<_>>(),"user_rationale":item.decision.user_rationale,"recommendation_rationale":item.decision.recommendation_rationale,"affected_code":item.affected_code_entities,"known_link_gaps":item.known_link_gaps})).collect::<Vec<_>>(),
+        "active_decisions":understanding.active_decisions.iter().map(understanding_decision_json).collect::<Vec<_>>(),
+        "selected_work_decisions":understanding.selected_work_decisions.iter().map(understanding_decision_json).collect::<Vec<_>>(),
         "open_questions":understanding.open_questions.into_iter().map(|item| json!({"identity":item.question_id.to_string(),"revision":item.revision,"prompt":item.prompt,"on_frontier":item.on_current_frontier})).collect::<Vec<_>>(),
         "risks_assumptions_and_limits":understanding.risks_assumptions_and_limits.into_iter().map(|item| item.statement).chain(understanding.known_limits).collect::<Vec<_>>(),
         "architecture": {"components":understanding.architecture.components.len(),"relationships":understanding.architecture.relationships.len(),"gaps":understanding.architecture.gaps.into_iter().map(|gap| gap.reason).collect::<Vec<_>>()},
@@ -949,6 +952,25 @@ fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Err
 
 fn work_json(work: &volicord_projections::UnderstandingWork) -> Value {
     json!({
+        "reading": {
+            "goal":reading_text_json(&work.reading.goal),
+            "changes":work.reading.changes.iter().map(reading_text_json).collect::<Vec<_>>(),
+            "next_step":reading_text_json(&work.reading.next_step),
+            "status":reading_text_json(&work.reading.status),
+            "code_gap":work.reading.code_gap.map(debug_name),
+            "code_availability":debug_name(work.reading.code_availability),
+            "code_freshness":work.reading.code_freshness,
+            "code_source_basis":work.reading.code_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "analysis_snapshot_basis":work.reading.analysis_snapshot_basis,"repository_snapshot_basis":work.reading.repository_snapshot_basis,
+            "states":work.reading.states.iter().map(|state| json!({
+                "checkpoint_id":state.checkpoint_id.to_string(), "checkpoint_revision":state.checkpoint_revision,
+                "observed_at_unix_micros":state.observed_at.as_unix_micros(),
+                "work_state":crate::recall::work_state_name(state.work_state), "work_source_basis":state.work_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                "verification":state.verification.iter().map(|fact| json!({"state":crate::recall::verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
+                "user_review":{"state":crate::recall::user_review_state_name(state.user_review.state),"source_id":state.user_review.source_id.map(|id| id.to_string())}, "user_acceptance":{"state":crate::recall::user_acceptance_state_name(state.user_acceptance.state),"source_id":state.user_acceptance.source_id.map(|id| id.to_string())},
+                "later_changed_checkpoint_ids":state.later_changed_checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>()
+            })).collect::<Vec<_>>()
+        },
         "work_item_id":work.work_item_id.to_string(),
         "title":work.title,
         "state":debug_name(work.state),
@@ -957,11 +979,50 @@ fn work_json(work: &volicord_projections::UnderstandingWork) -> Value {
         "meaningful_changes":work.meaningful_changes,
         "changed_paths":work.changed_paths,
         "changed_components":work.changed_components,
-        "verification":work.verification.iter().map(|fact| json!({"state":debug_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
+        "verification":work.verification.iter().map(|fact| json!({"state":crate::recall::verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
         "next_step":work.next_step,
         "open_question_ids":work.open_question_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
         "source_ids":work.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
     })
+}
+
+fn understanding_decision_json(item: &volicord_projections::UnderstandingDecision) -> Value {
+    let decision = &item.decision;
+    json!({
+        "identity":decision.decision_id.to_string(),"revision":decision.revision,
+        "state":debug_name(decision.state),"work_scope":decision_work_scope_json(decision.work_scope),
+        "choice":format!("{:?}",decision.choice),
+        "chosen_alternative_key":decision.chosen_alternative_key,
+        "recommended_alternative_key":decision.recommended_alternative_key,
+        "displayed_alternatives":decision.displayed_alternatives.iter().map(|alternative| json!({"alternative_key":alternative.key,"label":alternative.label,"expected_consequence":alternative.consequence})).collect::<Vec<_>>(),
+        "user_rationale":decision.user_rationale,"recommendation_rationale":decision.recommendation_rationale,
+        "affected_code":item.affected_code_entities,"known_link_gaps":item.known_link_gaps,
+        "reading":{"user_rationale":reading_text_json(&item.reading.user_rationale),
+            "recommendation_rationale":reading_text_json(&item.reading.recommendation_rationale)}
+    })
+}
+
+fn reading_text_json(text: &volicord_projections::ReadingText) -> Value {
+    let representation = match text.representation {
+        volicord_projections::ReadingRepresentation::OriginalQuotation => "original_quotation",
+        volicord_projections::ReadingRepresentation::Excerpt => "excerpt",
+        volicord_projections::ReadingRepresentation::DeterministicFacts => "deterministic_facts",
+        volicord_projections::ReadingRepresentation::Unavailable => "unavailable",
+    };
+    let (kind, identity) = match text.basis.record {
+        volicord_projections::ReadingRecord::ContextItem(id) => ("context_item", id.to_string()),
+        volicord_projections::ReadingRecord::Checkpoint(id) => ("checkpoint", id.to_string()),
+        volicord_projections::ReadingRecord::Decision(id) => ("decision", id.to_string()),
+    };
+    json!({"original_text":text.original_text,"display_english":text.display_english,"display_korean":text.display_korean,
+        "representation":representation,"availability":debug_name(text.availability),
+        "semantic_summary_available":text.semantic_summary_available,"original_language_preserved":text.original_language_preserved,
+        "omitted_utf8_bytes":text.omitted_utf8_bytes,"omitted_characters":text.omitted_characters,"gaps":text.gaps,
+        "basis":{"record_kind":kind,"identity":identity,"revision":text.basis.revision,
+            "available_revisions":text.basis.available_revisions,"field":text.basis.field,
+            "source_ids":text.basis.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "source_status":text.basis.source_status.iter().map(|source| json!({"source_id":source.source_id.to_string(),"availability":source.availability.map(debug_name),"freshness":debug_name(source.freshness),"snapshot_basis":source.snapshot_basis,"actor":source.actor,"observer":source.observer,"recorded_at_unix_micros":source.recorded_at.map(|time| time.as_unix_micros())})).collect::<Vec<_>>(),
+            "analysis_snapshot_ids":text.basis.analysis_snapshot_basis,"repository_snapshot_ids":text.basis.repository_snapshot_basis}})
 }
 
 fn decision_work_scope_json(scope: DecisionWorkScope) -> Value {
@@ -2241,4 +2302,36 @@ impl Cursor {
             Err(usage("unexpected trailing arguments"))
         }
     }
+}
+
+fn work_selection_json(selection: volicord_projections::WorkSelection) -> Value {
+    use volicord_projections::{WorkSelectionBasis, WorkSelector};
+    let kind = match selection.selector {
+        WorkSelector::LatestWork => "latest_work",
+        WorkSelector::ExactWork(_) => "exact_work",
+        WorkSelector::Repository => "repository",
+    };
+    let basis = match selection.basis {
+        WorkSelectionBasis::ExactGoal { revision } => {
+            json!({"kind":"exact_goal","revision":revision})
+        }
+        WorkSelectionBasis::LatestGoal { revision } => {
+            json!({"kind":"latest_goal","revision":revision})
+        }
+        WorkSelectionBasis::LatestCheckpoint {
+            checkpoint_id,
+            revision,
+        } => {
+            json!({"kind":"latest_checkpoint","checkpoint_id":checkpoint_id.to_string(),"revision":revision})
+        }
+        WorkSelectionBasis::UnassociatedCheckpoint {
+            checkpoint_id,
+            revision,
+        } => {
+            json!({"kind":"unassociated_checkpoint","checkpoint_id":checkpoint_id.to_string(),"revision":revision})
+        }
+        WorkSelectionBasis::Repository => json!({"kind":"repository"}),
+        WorkSelectionBasis::NoWork => json!({"kind":"no_work"}),
+    };
+    json!({"kind":kind,"work_item_id":selection.work_item_id.map(|id| id.to_string()),"basis":basis})
 }

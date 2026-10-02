@@ -179,6 +179,7 @@ where
     let candidates = CandidateStore::open(temporary.path().join("candidates.sqlite3"))?
         .read_basis(project.id)?;
     let projection = build_project_projection(ProjectProjectionInputs {
+        selection: volicord_projections::WorkSelector::LatestWork,
         analysis_issues: &[],
         canonical: &canonical,
         analyses: &[&analysis],
@@ -196,7 +197,8 @@ where
         bound: ProjectionBound {
             max_items_per_section: limit,
         },
-    });
+    })
+    .expect("valid default selection");
     Ok((projection, analysis))
 }
 

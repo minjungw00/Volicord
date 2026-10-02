@@ -52,6 +52,12 @@ impl Error {
         None
     }
 
+    pub fn work_selection_cause(&self) -> Option<&volicord_projections::WorkSelectionError> {
+        self.source
+            .as_deref()?
+            .downcast_ref::<volicord_projections::WorkSelectionError>()
+    }
+
     pub fn message(&self) -> &str {
         &self.message
     }

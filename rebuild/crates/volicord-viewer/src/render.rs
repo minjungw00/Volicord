@@ -940,10 +940,10 @@ fn render_work_card(
         "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h5>{}</h5><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
         work.work_item_id,
         understanding_work_state_key(work.state),
-        escape(&work.title),
+        escape(work_reading_display(&work.reading.goal, request.locale)),
         escape(understanding_work_state_label(work.state, request.locale))
     ));
-    if let Some(change) = work.meaningful_changes.last() {
+    if let Some(change) = work.reading.changes.last() {
         html.push_str(&format!(
             "<p><strong>{}:</strong> {}</p>",
             escape(text(
@@ -951,14 +951,17 @@ fn render_work_card(
                 "Latest meaningful change",
                 "최근 의미 있는 변경"
             )),
-            escape(change)
+            escape(work_reading_display(change, request.locale))
         ));
     }
-    if let Some(next_step) = &work.next_step {
+    if work.next_step.is_some() {
         html.push_str(&format!(
             "<p class=\"work-next-step\"><strong>{}:</strong> {}</p>",
             escape(text(request.locale, "Next step", "다음 단계")),
-            escape(next_step)
+            escape(work_reading_display(
+                &work.reading.next_step,
+                request.locale
+            ))
         ));
     }
     if !work.changed_paths.is_empty() || !work.changed_components.is_empty() {
@@ -1032,6 +1035,23 @@ fn render_work_card(
         ))
     ));
     definition(html, "Work Item", &work.work_item_id.to_string());
+    definition(
+        html,
+        text(request.locale, "Original Goal", "원래 목표"),
+        &work.title,
+    );
+    for change in &work.reading.changes {
+        if let Some(original) = &change.original_text {
+            definition(
+                html,
+                &format!(
+                    "{:?} / {} / revision {}",
+                    change.basis.record, change.basis.field, change.basis.revision
+                ),
+                original,
+            );
+        }
+    }
     definition(
         html,
         text(request.locale, "Checkpoints", "체크포인트"),
@@ -4175,3 +4195,10 @@ fn _projection_health_is_explicit(value: ProjectionHealth) -> &'static str {
 #[cfg(test)]
 #[path = "render_tests.rs"]
 mod tests;
+
+fn work_reading_display(text: &volicord_projections::ReadingText, locale: ViewerLocale) -> &str {
+    match locale {
+        ViewerLocale::English => &text.display_english,
+        ViewerLocale::Korean => &text.display_korean,
+    }
+}

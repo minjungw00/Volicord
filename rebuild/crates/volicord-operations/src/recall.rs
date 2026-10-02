@@ -55,6 +55,9 @@ pub fn resume_brief_json(brief: &ResumeBrief) -> Value {
                 "expected_consequence":alternative.consequence,
             })).collect::<Vec<_>>(),
             "user_rationale":item.user_rationale,
+            "user_source_basis":item.user_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "recommendation_source_basis":item.recommendation_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "available_revisions":item.available_revisions,
             "recommendation_rationale":item.recommendation_rationale,
             "assumptions":item.assumptions, "revisit_triggers":item.revisit_triggers,
             "source_basis":item.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -146,7 +149,7 @@ const fn checkpoint_kind_name(value: CheckpointKind) -> &'static str {
     }
 }
 
-const fn work_state_name(value: WorkState) -> &'static str {
+pub(crate) const fn work_state_name(value: WorkState) -> &'static str {
     match value {
         WorkState::InProgress => "in_progress",
         WorkState::Paused => "paused",
@@ -156,7 +159,7 @@ const fn work_state_name(value: WorkState) -> &'static str {
     }
 }
 
-const fn verification_state_name(value: VerificationState) -> &'static str {
+pub(crate) const fn verification_state_name(value: VerificationState) -> &'static str {
     match value {
         VerificationState::NotRun => "not_run",
         VerificationState::Partial => "partial",
@@ -165,7 +168,9 @@ const fn verification_state_name(value: VerificationState) -> &'static str {
     }
 }
 
-const fn user_review_state_name(value: volicord_context::UserReviewState) -> &'static str {
+pub(crate) const fn user_review_state_name(
+    value: volicord_context::UserReviewState,
+) -> &'static str {
     match value {
         volicord_context::UserReviewState::NotRequested => "not_requested",
         volicord_context::UserReviewState::Pending => "pending",
@@ -173,7 +178,9 @@ const fn user_review_state_name(value: volicord_context::UserReviewState) -> &'s
     }
 }
 
-const fn user_acceptance_state_name(value: volicord_context::UserAcceptanceState) -> &'static str {
+pub(crate) const fn user_acceptance_state_name(
+    value: volicord_context::UserAcceptanceState,
+) -> &'static str {
     match value {
         volicord_context::UserAcceptanceState::NotRequested => "not_requested",
         volicord_context::UserAcceptanceState::Pending => "pending",

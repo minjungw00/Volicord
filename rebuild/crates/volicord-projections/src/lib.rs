@@ -7,7 +7,9 @@
 mod candidate_inspection;
 mod documents;
 mod project;
+mod reading;
 mod recall;
+mod selection;
 mod trigger;
 mod understanding;
 
@@ -33,10 +35,10 @@ pub use project::{
     build_memory_inspection, build_project_projection, CandidateDependencyFailure,
     CandidateDependencyFailureKind, CandidateDependencyState, CandidateProjectionInput,
     CanonicalInspectionItem, CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry,
-    CurrentWorkCodeLink, CurrentWorkTopology, DecisionContextCodeLink, MapEntity,
-    MapInterpretation, MapRelation, MapRelationClass, MemoryInspectionProjection, ProjectOverview,
-    ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionHealth, ProjectionIssue,
-    ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
+    CurrentWorkCodeLink, CurrentWorkPathBasis, CurrentWorkTopology, DecisionContextCodeLink,
+    MapEntity, MapInterpretation, MapRelation, MapRelationClass, MemoryInspectionProjection,
+    ProjectOverview, ProjectProjection, ProjectProjectionInputs, ProjectionBound, ProjectionHealth,
+    ProjectionIssue, ProjectionIssueKind, RepositoryMap, SourceStatusSummary,
 };
 pub use recall::{
     build_resume_brief, build_resume_brief_from_metadata, BriefContextItem, BriefDecision,
@@ -51,3 +53,10 @@ pub use understanding::{
     UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingNextStep,
     UnderstandingOmission, UnderstandingWork, UnderstandingWorkState, UnresolvedWorkGrouping,
 };
+
+pub use reading::{
+    DecisionReading, ReadingAvailability, ReadingBasis, ReadingRecord, ReadingRepresentation,
+    ReadingSourceStatus, ReadingText, WorkCodeGap, WorkReading, WorkStateObservation,
+    READING_TEXT_CHARACTER_LIMIT,
+};
+pub use selection::{WorkSelection, WorkSelectionBasis, WorkSelectionError, WorkSelector};

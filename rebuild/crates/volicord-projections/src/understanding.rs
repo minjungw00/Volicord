@@ -1,7 +1,7 @@
 use crate::{
     project::BoundedTopology, BriefContextItem, BriefDecision, BriefQuestion, BriefSnapshot,
-    CapabilityGap, CheckpointTimelineEntry, DecisionContextCodeLink, MapEntity, MapInterpretation,
-    MapRelation, ProjectProjection, ProjectionHealth, ProjectionIssue, SourceStatusSummary,
+    CapabilityGap, DecisionContextCodeLink, MapEntity, MapInterpretation, MapRelation,
+    ProjectProjection, ProjectionHealth, ProjectionIssue, SourceStatusSummary,
 };
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -26,6 +26,7 @@ impl Default for UnderstandingBound {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnderstandingWork {
+    pub reading: crate::WorkReading,
     pub work_item_id: ContextItemId,
     pub title: String,
     pub state: UnderstandingWorkState,
@@ -71,6 +72,7 @@ pub struct UnresolvedWorkGrouping {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnderstandingDecision {
+    pub reading: crate::DecisionReading,
     pub decision: BriefDecision,
     pub declared_paths: Vec<String>,
     pub declared_components: Vec<String>,
@@ -187,6 +189,9 @@ pub struct UnderstandingOmission {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectUnderstanding {
+    pub selection: crate::WorkSelection,
+    pub selected_work: Option<UnderstandingWork>,
+    pub selected_work_decisions: Vec<UnderstandingDecision>,
     pub project_id: ProjectId,
     pub project_name: String,
     pub canonical_revision: u64,
@@ -254,7 +259,7 @@ pub fn build_project_understanding(
         &mut omissions,
     );
 
-    let mut work_history = grouped_work(projection, &timeline, &links);
+    let mut work_history = projection.work_history.clone();
     work_history.sort_by_key(|work| work.work_item_id);
     let mut current_work = work_history
         .iter()
@@ -280,30 +285,7 @@ pub fn build_project_understanding(
     bound_section(&mut completed_work, limit, "completed_work", &mut omissions);
     bound_section(&mut remaining_work, limit, "remaining_work", &mut omissions);
     bound_section(&mut work_history, limit, "work_history", &mut omissions);
-    let mut unresolved_work_grouping = projection
-        .resume
-        .decisions
-        .iter()
-        .filter(|decision| decision.work_scope == DecisionWorkScope::Unresolved)
-        .map(|decision| UnresolvedWorkGrouping {
-            record_kind: "decision",
-            identity: decision.decision_id.to_string(),
-            reason: "Decision has no explicit Project-wide or Work Item scope".to_owned(),
-        })
-        .collect::<Vec<_>>();
-    unresolved_work_grouping.extend(
-        timeline
-            .iter()
-            .filter(|entry| entry.checkpoint.work_item_id.is_none())
-            .map(|entry| UnresolvedWorkGrouping {
-                record_kind: "checkpoint",
-                identity: entry.checkpoint.id.to_string(),
-                reason: "Checkpoint has no explicit Work Item identity".to_owned(),
-            }),
-    );
-    unresolved_work_grouping.sort_by(|left, right| {
-        (left.record_kind, &left.identity).cmp(&(right.record_kind, &right.identity))
-    });
+    let mut unresolved_work_grouping = projection.unresolved_work_grouping.clone();
     bound_section(
         &mut unresolved_work_grouping,
         limit,
@@ -330,8 +312,27 @@ pub fn build_project_understanding(
     known_limits.dedup();
     bound_section(&mut known_limits, limit, "known_limits", &mut omissions);
 
-    let architecture_selection =
-        select_current_work_architecture(projection, &active_decisions, limit);
+    let topology_decisions = projection
+        .resume
+        .decisions
+        .iter()
+        .filter(|decision| {
+            projection
+                .selected_work
+                .as_ref()
+                .is_none_or(|work| work.decision_ids.contains(&decision.decision_id))
+        })
+        .map(|decision| decision_understanding(decision, links.get(&decision.decision_id).copied()))
+        .collect::<Vec<_>>();
+    let architecture_selection = select_current_work_architecture(
+        projection,
+        if projection.selected_work.is_some() {
+            &projection.selected_work_decisions
+        } else {
+            &topology_decisions
+        },
+        limit,
+    );
     let topology = architecture_selection.topology;
     let all_entities = projection
         .current_work_topology
@@ -444,6 +445,9 @@ pub fn build_project_understanding(
     bound_section(&mut issues, limit, "evidence.issues", &mut omissions);
 
     ProjectUnderstanding {
+        selection: projection.selection,
+        selected_work: projection.selected_work.clone(),
+        selected_work_decisions: projection.selected_work_decisions.clone(),
         project_id: projection.overview.project_id,
         project_name: projection.overview.project_name.clone(),
         canonical_revision: projection.overview.canonical_revision,
@@ -489,6 +493,19 @@ fn select_current_work_architecture(
     limit: usize,
 ) -> CurrentWorkArchitectureSelection {
     let limit = limit.max(1);
+    if projection.selection.selector == crate::WorkSelector::Repository {
+        return CurrentWorkArchitectureSelection {
+            topology: crate::project::select_bounded_topology(
+                &projection.repository_map.entities,
+                &projection.repository_map.relations,
+                &BTreeSet::new(),
+                limit,
+                limit,
+                false,
+            ),
+            selection_basis: Vec::new(),
+        };
+    }
     let entities = projection
         .current_work_topology
         .entities
@@ -501,17 +518,21 @@ fn select_current_work_architecture(
         if !entities.contains_key(link.entity_identity.as_str()) {
             continue;
         }
+        for path in &link.changed_path_basis {
+            basis
+                .entry(link.entity_identity.clone())
+                .or_default()
+                .insert(UnderstandingArchitectureSelectionBasis::ChangedPath {
+                    checkpoint_id: path.checkpoint_id,
+                    path: path.path.clone(),
+                });
+        }
         for checkpoint_id in &link.checkpoint_basis {
-            for path in &link.changed_paths {
-                basis
-                    .entry(link.entity_identity.clone())
-                    .or_default()
-                    .insert(UnderstandingArchitectureSelectionBasis::ChangedPath {
-                        checkpoint_id: *checkpoint_id,
-                        path: path.clone(),
-                    });
-            }
-            if link.changed_paths.is_empty() {
+            if !link
+                .changed_path_basis
+                .iter()
+                .any(|path| path.checkpoint_id == *checkpoint_id)
+            {
                 basis
                     .entry(link.entity_identity.clone())
                     .or_default()
@@ -1518,99 +1539,12 @@ fn entity_kind_label(kind: &CodeEntityKind, korean: bool) -> String {
     }
 }
 
-fn grouped_work(
-    projection: &ProjectProjection,
-    timeline: &[CheckpointTimelineEntry],
-    links: &BTreeMap<DecisionId, &DecisionContextCodeLink>,
-) -> Vec<UnderstandingWork> {
-    let mut titles = projection
-        .resume
-        .goals_and_why
-        .iter()
-        .map(|goal| {
-            (
-                goal.identity,
-                (goal.statement.clone(), goal.source_basis.clone()),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    for entry in timeline {
-        if let Some(work_item_id) = entry.checkpoint.work_item_id {
-            titles.entry(work_item_id).or_insert_with(|| {
-                (
-                    entry.checkpoint.goal.clone(),
-                    entry.checkpoint.source_basis.clone(),
-                )
-            });
-        }
-    }
-
-    titles
-        .into_iter()
-        .map(|(work_item_id, (title, goal_sources))| {
-            let checkpoints = timeline
-                .iter()
-                .filter(|entry| entry.checkpoint.work_item_id == Some(work_item_id))
-                .collect::<Vec<_>>();
-            let latest = checkpoints.last().copied();
-            let mut checkpoint_ids = Vec::new();
-            let mut decision_ids = BTreeSet::new();
-            let mut meaningful_changes = Vec::new();
-            let mut changed_paths = BTreeSet::new();
-            let mut changed_components = BTreeSet::new();
-            let mut verification = Vec::new();
-            let mut open_question_ids = BTreeSet::new();
-            let mut source_basis = goal_sources.into_iter().collect::<BTreeSet<_>>();
-            for entry in &checkpoints {
-                checkpoint_ids.push(entry.checkpoint.id);
-                decision_ids.extend(entry.checkpoint.applied_decisions.iter().copied());
-                meaningful_changes.extend(entry.checkpoint.state_change.iter().cloned());
-                changed_paths.extend(entry.checkpoint.changed_paths.iter().cloned());
-                verification.extend(entry.verification.iter().cloned());
-                open_question_ids.extend(
-                    entry
-                        .checkpoint
-                        .open_questions
-                        .iter()
-                        .map(|question| question.question_id),
-                );
-                source_basis.extend(entry.checkpoint.source_basis.iter().copied());
-            }
-            for decision in &projection.resume.decisions {
-                if decision.work_scope == DecisionWorkScope::WorkItem(work_item_id) {
-                    decision_ids.insert(decision.decision_id);
-                }
-            }
-            for decision_id in &decision_ids {
-                if let Some(link) = links.get(decision_id) {
-                    changed_components.extend(link.declared_components.iter().cloned());
-                }
-            }
-            UnderstandingWork {
-                work_item_id,
-                title,
-                state: latest.map_or(UnderstandingWorkState::Open, |entry| {
-                    UnderstandingWorkState::from(entry.work_state)
-                }),
-                checkpoint_ids,
-                decision_ids: decision_ids.into_iter().collect(),
-                meaningful_changes,
-                changed_paths: changed_paths.into_iter().collect(),
-                changed_components: changed_components.into_iter().collect(),
-                verification,
-                next_step: latest.map(|entry| entry.checkpoint.next_step.clone()),
-                open_question_ids: open_question_ids.into_iter().collect(),
-                source_basis: source_basis.into_iter().collect(),
-            }
-        })
-        .collect()
-}
-
-fn decision_understanding(
+pub(crate) fn decision_understanding(
     decision: &BriefDecision,
     link: Option<&DecisionContextCodeLink>,
 ) -> UnderstandingDecision {
     UnderstandingDecision {
+        reading: crate::reading::decision_reading(decision),
         decision: decision.clone(),
         declared_paths: link.map_or_else(Vec::new, |value| value.declared_paths.clone()),
         declared_components: link.map_or_else(Vec::new, |value| value.declared_components.clone()),
@@ -1963,6 +1897,7 @@ mod tests {
             None,
         );
         projection.current_work_code = vec![CurrentWorkCodeLink {
+            changed_path_basis: Vec::new(),
             entity_identity: "goal-component".into(),
             changed_paths: Vec::new(),
             checkpoint_basis: Vec::new(),
@@ -2019,6 +1954,14 @@ mod tests {
                     .cloned()
                     .collect::<Vec<_>>();
                 (!changed_paths.is_empty()).then(|| CurrentWorkCodeLink {
+                    changed_path_basis: changed_paths
+                        .iter()
+                        .map(|path| crate::CurrentWorkPathBasis {
+                            checkpoint_id: checkpoint.id,
+                            checkpoint_revision: checkpoint.revision,
+                            path: path.clone(),
+                        })
+                        .collect(),
                     entity_identity: entity.identity.clone(),
                     changed_paths,
                     checkpoint_basis: vec![checkpoint.id],
@@ -2028,6 +1971,11 @@ mod tests {
             .collect();
         let decisions = decision
             .map(|(decision_id, _)| BriefDecision {
+                user_source_basis: Vec::new(),
+                user_source_status: Vec::new(),
+                recommendation_source_status: Vec::new(),
+                recommendation_source_basis: Vec::new(),
+                available_revisions: vec![1],
                 decision_id,
                 revision: 1,
                 state: crate::BriefDecisionState::Current,
@@ -2078,6 +2026,18 @@ mod tests {
             checkpoint: checkpoint.clone(),
         };
         ProjectProjection {
+            selection: crate::WorkSelection {
+                selector: crate::WorkSelector::LatestWork,
+                work_item_id: None,
+                basis: crate::WorkSelectionBasis::UnassociatedCheckpoint {
+                    checkpoint_id: checkpoint.id,
+                    revision: checkpoint.revision,
+                },
+            },
+            selected_work: None,
+            selected_work_decisions: Vec::new(),
+            unresolved_work_grouping: Vec::new(),
+            work_history: Vec::new(),
             overview: ProjectOverview {
                 project_id: project_id(),
                 project_name: "Current work fixture".into(),
