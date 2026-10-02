@@ -283,7 +283,11 @@ bytes/characters and explicit semantic-summary/language-preservation flags.
 `ReadingBasis` retains typed record identity, revision, available revisions, field,
 Source IDs/status/actor/observer and snapshot identities. A quotation display
 uses at most 384 Unicode scalar values; the full original remains inspectable.
-Structured status is deterministic derived interpretation. Goal-only Open is
+Structured status is deterministic derived interpretation. Document and Viewer
+state labels share the projection locale responsibility (`FixedLocale`); canonical
+wire values do not change. Ordinary state panels and historical failure warnings
+use localized labels. An absent verification observation says “No verification
+record” / “검증 기록 없음”; explicit NotRun says “not run” / “실행하지 않음”. Goal-only Open is
 explicitly derived from a Goal with no Checkpoint, not a recorded completion state.
 
 Each `WorkStateObservation` retains Checkpoint revision/time, work Source basis,

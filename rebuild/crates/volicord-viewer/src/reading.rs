@@ -312,25 +312,31 @@ fn states(
     definition(
         html,
         text(r.locale, "Work", "작업"),
-        &format!("{:?}", s.work_state),
+        work_state_label(s.work_state, r.locale),
     );
     definition(
         html,
         text(r.locale, "Automated verification", "자동 검증"),
-        &format!(
-            "{:?}",
-            verification.map(|v| v.verification.iter().map(|v| v.state).collect::<Vec<_>>())
+        &verification.map_or_else(
+            || text(r.locale, "No verification record", "검증 기록 없음").to_owned(),
+            |v| {
+                v.verification
+                    .iter()
+                    .map(|fact| verification_state_label(fact.state, r.locale))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
         ),
     );
     definition(
         html,
         text(r.locale, "User review", "사용자 검토"),
-        &format!("{:?}", s.user_review.state),
+        user_review_label(s.user_review.state, r.locale),
     );
     definition(
         html,
         text(r.locale, "User acceptance", "사용자 수락"),
-        &format!("{:?}", s.user_acceptance.state),
+        user_acceptance_label(s.user_acceptance.state, r.locale),
     );
     html.push_str("</dl>");
     if verification.is_some_and(|v| !v.later_changed_checkpoint_ids.is_empty()) {
@@ -399,7 +405,7 @@ fn work_detail(
             empty_state(
                 html,
                 &format!(
-                    "{} — {:?}; {:?}",
+                    "{} — {}; {}",
                     text(
                         r.locale,
                         "Historical failed / rejected observation",
@@ -408,9 +414,10 @@ fn work_detail(
                     state
                         .verification
                         .iter()
-                        .map(|v| v.state)
-                        .collect::<Vec<_>>(),
-                    state.user_acceptance.state
+                        .map(|v| verification_state_label(v.state, r.locale))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    user_acceptance_label(state.user_acceptance.state, r.locale)
                 ),
             );
         }

@@ -1188,7 +1188,7 @@ fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> Generate
     }
 }
 
-const fn work_state_label_from_understanding(
+pub const fn work_state_label_from_understanding(
     state: UnderstandingWorkState,
     locale: FixedLocale,
 ) -> &'static str {
@@ -2994,7 +2994,7 @@ const fn context_role_label(role: ContextItemRole, locale: FixedLocale) -> &'sta
     }
 }
 
-const fn work_state_label(state: WorkState, locale: FixedLocale) -> &'static str {
+pub const fn work_state_label(state: WorkState, locale: FixedLocale) -> &'static str {
     match state {
         WorkState::InProgress => fixed(locale, "in progress", "진행 중"),
         WorkState::Paused => fixed(locale, "paused", "일시 중지"),
@@ -3004,7 +3004,10 @@ const fn work_state_label(state: WorkState, locale: FixedLocale) -> &'static str
     }
 }
 
-const fn verification_state_label(state: VerificationState, locale: FixedLocale) -> &'static str {
+pub const fn verification_state_label(
+    state: VerificationState,
+    locale: FixedLocale,
+) -> &'static str {
     match state {
         VerificationState::NotRun => fixed(locale, "not run", "실행하지 않음"),
         VerificationState::Partial => fixed(locale, "partial", "일부 검증"),
@@ -3028,7 +3031,7 @@ fn verification_fact_label(
     value
 }
 
-const fn user_review_label(state: UserReviewState, locale: FixedLocale) -> &'static str {
+pub const fn user_review_label(state: UserReviewState, locale: FixedLocale) -> &'static str {
     match state {
         UserReviewState::NotRequested => fixed(locale, "not requested", "요청하지 않음"),
         UserReviewState::Pending => fixed(locale, "pending", "대기 중"),
@@ -3036,7 +3039,10 @@ const fn user_review_label(state: UserReviewState, locale: FixedLocale) -> &'sta
     }
 }
 
-const fn user_acceptance_label(state: UserAcceptanceState, locale: FixedLocale) -> &'static str {
+pub const fn user_acceptance_label(
+    state: UserAcceptanceState,
+    locale: FixedLocale,
+) -> &'static str {
     match state {
         UserAcceptanceState::NotRequested => fixed(locale, "not requested", "요청하지 않음"),
         UserAcceptanceState::Pending => fixed(locale, "pending", "대기 중"),

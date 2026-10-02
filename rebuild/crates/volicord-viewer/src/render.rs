@@ -3490,27 +3490,14 @@ const fn checkpoint_kind_label(kind: CheckpointKind, locale: ViewerLocale) -> &'
 }
 
 const fn work_state_label(state: WorkState, locale: ViewerLocale) -> &'static str {
-    match state {
-        WorkState::InProgress => text(locale, "in progress", "진행 중"),
-        WorkState::Paused => text(locale, "paused", "일시 중지"),
-        WorkState::Completed => text(locale, "completed", "완료"),
-        WorkState::Abandoned => text(locale, "abandoned", "중단"),
-        WorkState::Superseded => text(locale, "superseded", "대체됨"),
-    }
+    volicord_projections::work_state_label(state, locale.fixed())
 }
 
 const fn understanding_work_state_label(
     state: UnderstandingWorkState,
     locale: ViewerLocale,
 ) -> &'static str {
-    match state {
-        UnderstandingWorkState::Open => text(locale, "open", "열림"),
-        UnderstandingWorkState::InProgress => text(locale, "in progress", "진행 중"),
-        UnderstandingWorkState::Paused => text(locale, "paused", "일시 중지"),
-        UnderstandingWorkState::Completed => text(locale, "completed", "완료"),
-        UnderstandingWorkState::Abandoned => text(locale, "abandoned", "중단"),
-        UnderstandingWorkState::Superseded => text(locale, "superseded", "대체됨"),
-    }
+    volicord_projections::work_state_label_from_understanding(state, locale.fixed())
 }
 
 const fn understanding_work_state_key(state: UnderstandingWorkState) -> &'static str {
@@ -3525,29 +3512,15 @@ const fn understanding_work_state_key(state: UnderstandingWorkState) -> &'static
 }
 
 const fn verification_state_label(state: VerificationState, locale: ViewerLocale) -> &'static str {
-    match state {
-        VerificationState::NotRun => text(locale, "not run", "실행하지 않음"),
-        VerificationState::Partial => text(locale, "partial", "일부 검증"),
-        VerificationState::Passed => text(locale, "passed", "통과"),
-        VerificationState::Failed => text(locale, "failed", "실패"),
-    }
+    volicord_projections::verification_state_label(state, locale.fixed())
 }
 
 const fn user_review_label(state: UserReviewState, locale: ViewerLocale) -> &'static str {
-    match state {
-        UserReviewState::NotRequested => text(locale, "not requested", "요청하지 않음"),
-        UserReviewState::Pending => text(locale, "pending", "대기 중"),
-        UserReviewState::Reviewed => text(locale, "reviewed", "검토됨"),
-    }
+    volicord_projections::user_review_label(state, locale.fixed())
 }
 
 const fn user_acceptance_label(state: UserAcceptanceState, locale: ViewerLocale) -> &'static str {
-    match state {
-        UserAcceptanceState::NotRequested => text(locale, "not requested", "요청하지 않음"),
-        UserAcceptanceState::Pending => text(locale, "pending", "대기 중"),
-        UserAcceptanceState::Accepted => text(locale, "accepted", "수락됨"),
-        UserAcceptanceState::Rejected => text(locale, "rejected", "거부됨"),
-    }
+    volicord_projections::user_acceptance_label(state, locale.fixed())
 }
 
 fn source_display_label(payload: &SourcePayload, locale: ViewerLocale) -> String {

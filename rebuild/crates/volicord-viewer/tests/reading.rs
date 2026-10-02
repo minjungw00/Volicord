@@ -41,9 +41,24 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
         for key in ["change", "verification_only", "later_change"] {
             assert!(page.contains(&fixture.checkpoints[key].to_string()));
         }
-        assert!(page.contains("Failed"));
-        assert!(page.contains("Rejected"));
-        assert!(page.contains("NotRun"));
+        let states = page
+            .split("class=\"fact-states\"")
+            .nth(1)
+            .ok_or("states")?
+            .split("</dl>")
+            .next()
+            .ok_or("end")?;
+        for expected in if locale == "en" {
+            ["completed", "not run", "not requested", "rejected"]
+        } else {
+            ["완료", "실행하지 않음", "요청하지 않음", "거부됨"]
+        } {
+            assert!(
+                states.contains(expected),
+                "missing localized {expected}: {states}"
+            );
+        }
+        assert!(page.contains(if locale == "en" { "failed" } else { "실패" }));
         assert!(page.contains("Semantic summary unavailable") || page.contains("의미 요약"));
         assert!(!page.contains(&fixture.decisions["other_work"].to_string()));
         let decision = exchange(

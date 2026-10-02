@@ -125,10 +125,13 @@ async function workFacts(key, locale) {
   if (latest) {
     requireFact(text.includes(latest.next_step), 'cross_work_next_step_substitution');
     const state = await section.locator('.fact-states').first().innerText();
-    for (const fact of [latest.work, latest.verification, latest.review, latest.acceptance]) requireFact(state.includes(fact), `work_state_source_mismatch:${fact}`);
+    const labels = locale === 'en'
+      ? {Completed:'completed',Paused:'paused',InProgress:'in progress',Passed:'passed',Failed:'failed',NotRun:'not run',Pending:'pending',NotRequested:'not requested',Reviewed:'reviewed',Accepted:'accepted',Rejected:'rejected'}
+      : {Completed:'완료',Paused:'일시 중지',InProgress:'진행 중',Passed:'통과',Failed:'실패',NotRun:'실행하지 않음',Pending:'대기 중',NotRequested:'요청하지 않음',Reviewed:'검토됨',Accepted:'수락됨',Rejected:'거부됨'};
+    for (const fact of [latest.work, latest.verification, latest.review, latest.acceptance]) requireFact(state.includes(labels[fact]), `work_state_source_mismatch:${fact}`);
     for (const keyName of config.expected.exact_older.excluded_decision_keys) if (key === 'older') requireFact(!await section.locator(`a[href*="decision=${F.decisions[keyName]}"]`).count(), 'cross_work_decision_substitution');
     if (key === 'older') {
-      requireFact(text.includes('Failed') && text.includes('Rejected') && text.includes('Pending'), 'historical_failure_or_pending_state_hidden');
+      requireFact(text.includes(labels.Failed) && text.includes(labels.Rejected) && text.includes(labels.Pending), 'historical_failure_or_pending_state_hidden');
       requireFact(text.includes(locale === 'en' ? 'Semantic summary unavailable' : '의미 요약 없음'), 'summary_limit_hidden');
       const source = await section.textContent();
       for (const cp of config.expected.exact_older.checkpoint_keys) requireFact(source.includes(F.checkpoints[cp]), 'checkpoint_basis_missing');

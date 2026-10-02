@@ -20,16 +20,18 @@ pub use candidate_inspection::{
     LearningResumeItem, LearningResumeProjection, LearningSelectionOutcome, RetentionInspection,
 };
 pub use documents::{
-    generate_documents, prepare_narrative_plan, realize_narrative, ClaimClass, DocumentBody,
-    DocumentDecisionBasis, DocumentError, DocumentKind, DocumentMetadata, DocumentRequest,
-    DocumentSection, DocumentSet, DocumentSourceBasis, FixedLocale, GeneratedDocument,
-    GeneratedDocumentClaim, GeneratorIdentity, NarrativePlan, NarrativePlanClaim,
-    NarrativePlanSection, NarrativeRealization, NarrativeRealizationState,
-    NarrativeSourceTextOmission, OutputFormat, PublicationArtifact, RealizedNarrativeClaim,
-    RealizedNarrativeSection, RequestedDestination, GENERATED_DOCUMENT_FORMAT_KIND,
-    GENERATED_DOCUMENT_METADATA_VERSION, NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT,
-    NARRATIVE_PLAN_PROTECTED_TERM_LIMIT, NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT,
-    RENDERED_DOCUMENT_FIELD_BYTE_LIMIT, RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
+    generate_documents, prepare_narrative_plan, realize_narrative, user_acceptance_label,
+    user_review_label, verification_state_label, work_state_label,
+    work_state_label_from_understanding, ClaimClass, DocumentBody, DocumentDecisionBasis,
+    DocumentError, DocumentKind, DocumentMetadata, DocumentRequest, DocumentSection, DocumentSet,
+    DocumentSourceBasis, FixedLocale, GeneratedDocument, GeneratedDocumentClaim, GeneratorIdentity,
+    NarrativePlan, NarrativePlanClaim, NarrativePlanSection, NarrativeRealization,
+    NarrativeRealizationState, NarrativeSourceTextOmission, OutputFormat, PublicationArtifact,
+    RealizedNarrativeClaim, RealizedNarrativeSection, RequestedDestination,
+    GENERATED_DOCUMENT_FORMAT_KIND, GENERATED_DOCUMENT_METADATA_VERSION,
+    NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT, NARRATIVE_PLAN_PROTECTED_TERM_LIMIT,
+    NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
+    RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 pub use project::{
     build_memory_inspection, build_project_projection, CandidateDependencyFailure,

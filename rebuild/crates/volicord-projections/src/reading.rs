@@ -345,11 +345,8 @@ pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<Underst
             let state = latest.map_or(UnderstandingWorkState::Open, |cp| cp.work_state.into());
             let mut status = ReadingText {
                 original_text: None,
-                display_english: format!("Recorded work state: {state:?}. Verification, user review and acceptance are separate observations."),
-                display_korean: format!("기록된 작업 상태: {}. 검증, 사용자 검토와 수락은 독립적인 관찰입니다.", match state {
-                    UnderstandingWorkState::Open => "열림", UnderstandingWorkState::InProgress => "진행 중", UnderstandingWorkState::Paused => "일시 중지",
-                    UnderstandingWorkState::Completed => "완료", UnderstandingWorkState::Abandoned => "중단", UnderstandingWorkState::Superseded => "대체됨",
-                }),
+                display_english: format!("Recorded work state: {}. Verification, user review and acceptance are separate observations.", crate::work_state_label_from_understanding(state, crate::FixedLocale::English)),
+                display_korean: format!("기록된 작업 상태: {}. 검증, 사용자 검토와 수락은 독립적인 관찰입니다.", crate::work_state_label_from_understanding(state, crate::FixedLocale::Korean)),
                 representation: ReadingRepresentation::DeterministicFacts,
                 availability: ReadingAvailability::Available, basis: status_basis,
                 omitted_utf8_bytes: 0, omitted_characters: 0, semantic_summary_available: true,

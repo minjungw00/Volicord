@@ -62,7 +62,6 @@ fn result_survives_null_and_blank_verification_prefixes() -> Result<(), Box<dyn 
     Ok(())
 }
 #[test]
-#[ignore = "R3 baseline reproduction; run explicitly before localizing state answers"]
 fn korean_visible_state_answers_are_localized() -> Result<(), Box<dyn std::error::Error>> {
     let f = fixture_scenario(scenario())?;
     let page = get(
