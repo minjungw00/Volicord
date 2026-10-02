@@ -63,7 +63,7 @@ inspectable하게 유지하되 ordinary reading hierarchy 뒤의 explicit detail
 
 Production read interface의 `ProjectUnderstanding`은 bounded section으로
 `project_purpose`, `current_work`, `completed_work`, `remaining_work`, `work_history`,
-`unresolved_work_grouping`, `next_steps`,
+`unresolved_work_grouping`, Work Overview의 `next_steps`,
 `active_decisions`, `open_questions`, `risks_assumptions_and_limits`, inspectable
 architecture `components`/`relationships`, `generated_interpretations`와 `evidence`를
 분리해 제공한다. Architecture topology는 Repository Intelligence entity/relation을
@@ -199,8 +199,7 @@ Derived reading records separate original text from display text and exact
 record kind/identity/revision/field, Source, Repository and Analysis Snapshot
 basis. Whole quotations, labeled excerpts and deterministic structured-fact
 explanations are different representations. Excerpts report exact omitted UTF-8
-bytes and characters and do not claim semantic comprehension. Missing prose
-produces summary-unavailable, never a fabricated title/result/rationale. Hash-like
+bytes and characters and do not claim semantic comprehension. Missing interpretation produces an explicit unavailable answer and supported structured facts, never a fabricated result/rationale. Hash-like
 substrings are preserved; a first sentence is not automatically a result.
 User selection and rationale, agent recommendation and rationale, related code,
 and implementation evidence remain independently inspectable. Missing user
@@ -275,44 +274,47 @@ complete canonical input before their own bound. Work code links retain exact
 `CurrentWorkPathBasis { checkpoint_id, checkpoint_revision, path }` pairs, avoiding
 invented combinations between path and Checkpoint lists.
 
-`UnderstandingWork.reading: WorkReading` contains `answers`, `goal`, `changes`, `next_step`,
-`status`, `states`, `code_gap`, `code_availability`, `code_freshness`, code Source
-and Repository/Analysis Snapshot basis. `ReadingText` contains original text,
-English/Korean display labels, representation, availability, gaps, exact omitted
-bytes/characters and explicit semantic-summary/language-preservation flags.
-`ReadingBasis` retains typed record identity, revision, available revisions, field,
-Source IDs/status/actor/observer and snapshot identities. A quotation display
-uses at most 384 Unicode scalar values; the full original remains inspectable.
-Structured status is deterministic derived interpretation. Document and Viewer
-state labels share the projection locale responsibility (`FixedLocale`); canonical
-wire values do not change. Ordinary state panels and historical failure warnings
-use localized labels. An absent verification observation says “No verification
-record” / “검증 기록 없음”; explicit NotRun says “not run” / “실행하지 않음”. Goal-only Open is
-explicitly derived from a Goal with no Checkpoint, not a recorded completion state.
+`UnderstandingWork.reading: WorkReading` retains independently selected evidence
+(`answers`), Goal, original changes, next step, state observations and code basis.
+`ReadingText` is a quotation/evidence DTO with exact revision, field, Sources,
+status, actor/observer and snapshot binding. Its optional 384-character excerpt is
+used only for labeled quotation inspection and navigation; it does not supply an
+ordinary result or rationale. The semantic-summary flag, redundant status text and
+flattened historical verification/change vectors have been removed.
 
-Each `WorkStateObservation` retains Checkpoint revision/time, work Source basis,
-verification facts, user-review and acceptance facts with their independent Source
-IDs, and later changed Checkpoint identities. Flattened historical verification is
-retained for evidence consumers; ordinary status must read the relevant observation,
-not interpret a historical pass as current coverage. `DecisionReading` separates
-user rationale from displayed recommendation rationale and their Source/revision
-basis, chosen/recommended alternative keys and original work scope. BriefDecision
-also retains these separate Source bases/status and available revisions for Recall.
+`work_answers` and `decision_answers` produce the sole shared `QuestionAnswers`
+ordinary-reading contract: generated question-specific prose, deterministic facts,
+availability/diagnostic and exact provenance. State labels use `FixedLocale`;
+generated prose selects the exact requested language. Goal-only Open is derived,
+no verification record differs from NotRun, failed/rejected observations stay visible,
+and historical checks do not establish coverage of later changes. Decision user
+rationale and agent recommendation remain separate; missing user rationale is never
+supplied from recommendation. Declared Work/Project scope does not establish wider
+applicability. Original text is explicit supporting evidence.
 
-Operations status JSON adds selection/selected Work and evidence-linked `reading`
-inside each Work. Four-document projections consume truthful display text and the
-latest independent state observation; the Viewer consumes display text
-while retaining original quotation evidence in disclosure. Work prose uses the
-explicit realization lifecycle below. Human comprehension evidence, canonical read pagination,
-selection-specific Store queries and avoiding full-history cloning/decoding remain
-later work. Display bounds do not yet constitute a bounded read-cost guarantee.
+Overview categories, Work/Decision detail, offline snapshot, all four documents,
+CLI status/decisions/Recall and MCP Recall/repository_understanding use these answers.
+CLI/MCP JSON has `answers` and separate `evidence`; human CLI prints answer paragraphs
+and facts. Recall retains bounded typed Checkpoint evidence for host resumption. Its selected Work
+uses the common LatestWork selector over complete canonical history: the latest
+Checkpoint’s explicit Work association, or a latest Goal when no Checkpoint exists.
+An unassociated/unknown latest Checkpoint never falls back to an older Work or prose.
+The ordinary `next_step` comes from the shared answer; exact recorded next-step prose
+remains in typed Checkpoint evidence.
+Code questions continue to use source-grounded entity/relation explanations and
+real graph identities, without generated ownership or runtime-flow claims.
+Documents tag sections Reading or Evidence; raw Checkpoint/Decision originals use
+closed disclosure in Markdown/HTML. Generated answer text is never silently clipped
+into a purported complete answer; total-size failure returns no publication artifact.
+Snapshots include the union of the catalog and Overview Work targets from one
+projection. Request-specific graph materialization and exact omission states remain.
 
-### Implemented Work explanation lifecycle
+### Shared explanation lifecycle
 
-`prepare_work_explanation(CanonicalReadBasis, ContextItemId, language)` produces
-`WorkExplanationPlan` for `work_outcome`, independently of document NarrativePlan.
-`LocalOperations::{prepare_work_explanation, record_work_explanation,
-delete_work_explanations}` expose the lifecycle. Public CLI entry points are
+`prepare_explanation(CanonicalReadBasis, ExplanationSubject, language)` produces
+`ExplanationPlan` for `work_outcome`, independently of document NarrativePlan.
+`LocalOperations::{prepare_explanation, record_explanation,
+delete_explanations}` expose the lifecycle. Public CLI entry points are
 `work explain prepare`, `work explain record --input FILE`, and `work explain delete`;
 prepare/record require `--work` and accept `--language` (default `en`); delete requires `--work`.
 They use the usual explicit Project/runtime or bound-repository resolution.
@@ -334,7 +336,7 @@ Inventing source-specific lexical rules would not generalize to the reordered va
 and independent export case. Deterministic selection and state explanations remain
 appropriate for structured facts; explicit host realization supplies Work prose.
 
-`WorkExplanationRealization` uses exact-current `volicord_work_explanation` version 1,
+`ExplanationRealization` uses exact-current `volicord_explanation` version 1,
 plan fingerprint, language, host/session and nullable agent/model provenance, and
 question/text/evidence-key paragraphs. Purpose, reported change, expected effect,
 verification and next step each require one answer; optional limits may be additional.
@@ -345,14 +347,14 @@ quality, model identity, authorship or implementation success. All generator ide
 is `self_reported_not_independently_verified`; unknown model stays null.
 
 The existing Privacy managed `CachedSummary` store retains disposable Derived content
-under exact Project/Work/language purpose. `RetainedWorkExplanation` preserves subject,
+under exact Project/subject/language purpose. `RetainedExplanation` preserves subject,
 question, evidence revisions/fields/Sources, snapshot/status, conflicts, fingerprint,
 recording time and generator status without duplicating original evidence text.
 Canonical links cover every used record and Source. No canonical schema, Viewer
 database, provider invocation, background opt-in or adoption authority is introduced.
 
-Reads select the latest retained envelope per Work/language and recompute its basis.
-`WorkExplanationReading` distinguishes Current, Stale, Unavailable, Unsupported and
+Reads select the latest retained envelope per subject/language and recompute its basis.
+`ExplanationReading` distinguishes Current, Stale, Unavailable, Unsupported and
 Corrupt; only Current carries displayable prose. New/corrected/forgotten evidence,
 changed Source status or conflict relations hide old prose. Missing generation is
 distinct from missing result evidence and dependency failure. Privacy forgetting
@@ -360,19 +362,29 @@ barriers and managed deletion remove linked content; explicit delete removes all
 languages/history of this Work and sanitizes local storage. Lost cache can be explicitly
 regenerated from available evidence; GET/navigation/snapshot export never generate.
 
-`WorkReading.explanations` and Operations status JSON expose this state. Work detail
-shows the five answers in ordinary reading; Overview shows change, verification and
-next step from the same content. Exact requested language controls prose, while shared
-`FixedLocale` controls product labels. Result original text is a closed, explicitly
-labeled evidence quotation with exact basis, never the primary Work explanation.
-The replaced primary result-excerpt calls are removed from Work cards and Overview;
-original quotation helpers remain for evidence, Goal/Decision reading and legitimate
-document/Recall contracts. No parallel semantic-summary flag path is introduced.
+`WorkReading.explanations` and `BriefDecision.explanations` use one store and decoder.
+The CLI adds `decision explain prepare/record/delete --decision ID`; Work entry points
+retain `--work ID`. Decision plans contain exact choice, separate user and recommendation
+rationale, displayed consequences and declared scope/assumptions/triggers/review basis.
+They require `user_rationale`, `recommendation`, `consequences` and `applicability`
+paragraphs, including an honest missing-rationale answer. Work requires purpose,
+reported change, expected effect, verification and next step. There is no old-format
+reader, alias or second store; unsupported disposable derived content must be deleted
+and regenerated. Recording and Current reads verify the whole retained binding,
+not only a response hash.
+
+Document metadata version 8 and Viewer publication carry exact explanation provenance
+and a current-build canonical read equality token. Operations verifies canonical basis
+and current retained provenance immediately before atomic no-replace publication under
+the mutation lock. Correction/forget or explicit cache deletion invalidates prepared
+artifacts; newly served document generation also checks current bindings. A previously
+exported offline copy remains under the user's control. No GET/export generates prose,
+invokes a provider, or acquires new transmission authority.
 
 The fresh fixture/public CLI/browser reproduction is maintained in
 `rebuild/crates/volicord-viewer/README.md`. Fake test responses exercise lifecycle only;
-eight actual active-host recordings on four independent/limited cases in two languages
-establish this narrow implemented path, not human comprehension or gate qualification.
+fresh active-host Work and Decision recordings with independent claims in two languages
+establish this implemented path, not human comprehension or gate qualification.
 
 ## 2. First project-scoped automatic Recall
 
@@ -847,9 +859,8 @@ Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/
   realization이 불가능하면 명시적 `unavailable`/`degraded` outcome을 내고
   requested-language success artifact를 생성하지 않는다.
 - Markdown/HTML renderer는 claim, diagnostic, name과 metadata의 각 동적 field에
-  deterministic UTF-8 byte policy를 적용한다. Primary claim text가 bound를 넘으면 bounded
-  semantic excerpt와 exact source byte count, digest, render bound가 있는 remainder marker를
-  함께 표시한다. Audit-only metadata/diagnostic field는 전체 text 대신 exact omission marker를
+  deterministic UTF-8 byte policy를 적용한다. Ordinary answer text는 complete하게 렌더링하고 total byte limit을 넘으면
+  publication artifact 생성 전체를 실패시킨다. Audit-only metadata/diagnostic field는 전체 text 대신 exact omission marker를
   사용할 수 있다.
 - Section별 claim 수, rendered metadata item 수와 per-field bound를 함께 적용해 output
   format별 deterministic total byte contract를 만든다. 이 contract는 authoritative typed

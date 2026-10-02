@@ -60,7 +60,18 @@ pub fn rich_scenario() -> Result<Value, Box<dyn std::error::Error>> {
     let mut input: Value = serde_json::from_str(SCENARIO)?;
     input["prior_checkpoint_count"] = serde_json::json!(0);
     input["later_checkpoint_count"] = serde_json::json!(0);
+    input["unassociated_checkpoint"] = serde_json::json!(false);
     let cases: Value = serde_json::from_str(include_str!("../../../../validation/end-to-end/multi-repository/fixtures/viewer-reading/answer-cases.json"))?;
+    for case in cases["decision_cases"].as_array().ok_or("decision cases")? {
+        let decision = input["decisions"]
+            .as_array_mut()
+            .ok_or("decisions")?
+            .iter_mut()
+            .find(|d| d["key"] == case["key"])
+            .ok_or("Decision case")?;
+        decision["user_rationale"] = case["user_rationale"].clone();
+        decision["recommendation_rationale"] = case["recommendation_rationale"].clone();
+    }
     for case in cases["cases"].as_array().ok_or("cases")? {
         input["works"].as_array_mut().ok_or("works")?.push(serde_json::json!({
             "key":case["key"], "title":format!("{} — {}",case["title"].as_str().ok_or("title")?,case["purpose"].as_str().ok_or("purpose")?),
@@ -511,16 +522,18 @@ fn fixture_with_temporary(
             Vec::new(),
         )?;
     }
-    let unassociated = record(
-        &mut store,
-        &mut counter,
-        None,
-        "Unassociated",
-        &empty,
-        Vec::new(),
-        Vec::new(),
-    )?;
-    checkpoints.insert("unassociated".into(), unassociated);
+    if input["unassociated_checkpoint"].as_bool().unwrap_or(false) {
+        let unassociated = record(
+            &mut store,
+            &mut counter,
+            None,
+            "Unassociated",
+            &empty,
+            Vec::new(),
+            Vec::new(),
+        )?;
+        checkpoints.insert("unassociated".into(), unassociated);
+    }
     drop(store);
     Ok(Fixture {
         _temporary: temporary,

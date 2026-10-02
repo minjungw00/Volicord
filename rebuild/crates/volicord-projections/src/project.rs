@@ -814,6 +814,8 @@ pub struct CurrentWorkTopology {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
+    /// Ephemeral equality binding for new read/export; not canonical authority.
+    pub canonical_read_fingerprint: String,
     pub sections: ProjectReadSections,
     pub work_count: usize,
     pub decision_count: usize,
@@ -982,7 +984,7 @@ pub fn build_project_projection(
             analyses,
             scope: inputs.applicability.clone(),
             bound: RecallBound {
-                max_items_per_section: limit,
+                max_items_per_section: limit.min(RecallBound::default().max_items_per_section),
             },
         })
     } else {
@@ -992,7 +994,7 @@ pub fn build_project_projection(
             analyses: inputs.metadata,
             scope: inputs.applicability.clone(),
             bound: RecallBound {
-                max_items_per_section: limit,
+                max_items_per_section: limit.min(RecallBound::default().max_items_per_section),
             },
         })
     };
@@ -1339,6 +1341,7 @@ pub fn build_project_projection(
         health,
     };
     Ok(ProjectProjection {
+        canonical_read_fingerprint: crate::canonical_read_fingerprint(inputs.canonical),
         sections: ProjectReadSections {
             code: if !inputs.requirements.code {
                 ReadSectionState::NotRequested

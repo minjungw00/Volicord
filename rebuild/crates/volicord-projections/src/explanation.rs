@@ -4,27 +4,46 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole};
+use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
-pub const WORK_EXPLANATION_KIND: &str = "volicord_work_explanation";
-pub const WORK_EXPLANATION_VERSION: u32 = 1;
-pub const WORK_EXPLANATION_BYTE_LIMIT: usize = 16_384;
-pub const WORK_EXPLANATION_PLAN_BYTE_LIMIT: usize = 131_072;
+pub const EXPLANATION_KIND: &str = "volicord_explanation";
+pub const EXPLANATION_VERSION: u32 = 1;
+pub const EXPLANATION_BYTE_LIMIT: usize = 16_384;
+pub const EXPLANATION_PLAN_BYTE_LIMIT: usize = 131_072;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "identity", rename_all = "snake_case")]
+pub enum ExplanationSubject {
+    Work(ContextItemId),
+    Decision(DecisionId),
+}
+impl ExplanationSubject {
+    pub fn key(self) -> String {
+        match self {
+            Self::Work(id) => format!("work:{id}"),
+            Self::Decision(id) => format!("decision:{id}"),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum WorkExplanationQuestion {
+pub enum ExplanationQuestion {
     Purpose,
     ReportedChange,
     ExpectedEffect,
     Verification,
     NextStep,
     Limits,
+    UserRationale,
+    Recommendation,
+    Consequences,
+    Applicability,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkExplanationEvidence {
+pub struct ExplanationEvidence {
     pub key: String,
     pub record_kind: String,
     pub identity: String,
@@ -35,12 +54,12 @@ pub struct WorkExplanationEvidence {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkExplanationPlan {
+pub struct ExplanationPlan {
     pub project_id: String,
-    pub work_item_id: String,
+    pub subject: ExplanationSubject,
     pub question: String,
     pub requested_language: String,
-    pub evidence: Vec<WorkExplanationEvidence>,
+    pub evidence: Vec<ExplanationEvidence>,
     pub source_status: Vec<Value>,
     pub conflicts: Vec<Value>,
     pub instructions: String,
@@ -48,7 +67,7 @@ pub struct WorkExplanationPlan {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkExplanationGenerator {
+pub struct ExplanationGenerator {
     pub host: String,
     pub session: String,
     pub agent: Option<String>,
@@ -56,61 +75,68 @@ pub struct WorkExplanationGenerator {
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkExplanationParagraph {
-    pub question: WorkExplanationQuestion,
+pub struct ExplanationParagraph {
+    pub question: ExplanationQuestion,
     pub text: String,
     pub evidence_keys: Vec<String>,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkExplanationRealization {
+pub struct ExplanationRealization {
     pub format_kind: String,
     pub format_version: u32,
     pub plan_fingerprint: String,
     pub language: String,
-    pub generator: WorkExplanationGenerator,
-    pub paragraphs: Vec<WorkExplanationParagraph>,
+    pub generator: ExplanationGenerator,
+    pub paragraphs: Vec<ExplanationParagraph>,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct RetainedWorkExplanation {
-    pub realization: WorkExplanationRealization,
+pub struct RetainedExplanation {
+    pub realization: ExplanationRealization,
     pub project_id: String,
-    pub work_item_id: String,
+    pub subject: ExplanationSubject,
     pub question: String,
     /// Evidence identity/revision/field, without duplicating original content.
-    pub evidence: Vec<WorkExplanationEvidence>,
+    pub evidence: Vec<ExplanationEvidence>,
     pub source_status: Vec<Value>,
     pub conflicts: Vec<Value>,
     pub generated_at_unix_micros: i64,
     /// Always assigned by the recorder. Caller model strings are not attestations.
     pub generator_identity_status: String,
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WorkExplanationState {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExplanationState {
     Current,
     Stale,
     Unavailable,
     Unsupported,
     Corrupt,
 }
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WorkExplanationReading {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ExplanationReading {
     pub language: String,
-    pub state: WorkExplanationState,
-    pub content: Option<RetainedWorkExplanation>,
+    pub state: ExplanationState,
+    pub content: Option<RetainedExplanation>,
     pub diagnostic: Option<String>,
 }
 
-pub fn prepare_work_explanation(
+pub fn prepare_explanation(
     canonical: &CanonicalReadBasis,
-    work: ContextItemId,
+    subject: ExplanationSubject,
     language: &str,
-) -> Result<WorkExplanationPlan, String> {
+) -> Result<ExplanationPlan, String> {
     if language.trim().is_empty() || language.len() > 128 || language.chars().any(char::is_control)
     {
         return Err("a bounded nonempty requested language is required".into());
     }
+    let work = match subject {
+        ExplanationSubject::Work(work) => work,
+        ExplanationSubject::Decision(decision) => {
+            return prepare_decision(canonical, decision, language)
+        }
+    };
     let scoped = crate::reading::scope_to_work(canonical, work);
     let selected = crate::reading::derive_work_history(&scoped)
         .into_iter()
@@ -123,7 +149,7 @@ pub fn prepare_work_explanation(
             crate::ReadingRecord::Checkpoint(id) => ("checkpoint", id.to_string()),
             crate::ReadingRecord::Decision(id) => ("decision", id.to_string()),
         };
-        evidence.push(WorkExplanationEvidence {
+        evidence.push(ExplanationEvidence {
             key: key.into(),
             record_kind: kind.into(),
             identity,
@@ -144,10 +170,20 @@ pub fn prepare_work_explanation(
     );
     let mut state = |key: &str, observation: &Option<crate::WorkStateObservation>| {
         if let Some(s) = observation {
-            let mut sources = s.work_source_basis.clone();
-            sources.extend(s.verification.iter().filter_map(|v| v.source_id));
-            sources.extend(s.user_review.source_id);
-            sources.extend(s.user_acceptance.source_id);
+            let sources = match key {
+                "latest_state" => s.work_source_basis.clone(),
+                "verification" => s.verification.iter().filter_map(|v| v.source_id).collect(),
+                "review" => s.user_review.source_id.into_iter().collect(),
+                "acceptance" => s.user_acceptance.source_id.into_iter().collect(),
+                _ => s
+                    .work_source_basis
+                    .iter()
+                    .copied()
+                    .chain(s.verification.iter().filter_map(|v| v.source_id))
+                    .chain(s.user_review.source_id)
+                    .chain(s.user_acceptance.source_id)
+                    .collect(),
+            };
             let basis = crate::reading::reading_basis(
                 canonical,
                 crate::ReadingRecord::Checkpoint(s.checkpoint_id),
@@ -216,6 +252,58 @@ pub fn prepare_work_explanation(
             json!(purpose.statement),
         );
     }
+    finish_plan(canonical, subject, "work_outcome", language, evidence)
+}
+
+fn prepare_decision(
+    canonical: &CanonicalReadBasis,
+    id: DecisionId,
+    language: &str,
+) -> Result<ExplanationPlan, String> {
+    let lifecycle = canonical
+        .active_decisions
+        .iter()
+        .chain(&canonical.superseded_decisions)
+        .find(|d| d.decision.id == id && d.decision.project_id == canonical.project.id)
+        .ok_or("Decision not found in this Project")?;
+    let decision = crate::recall::brief_decision(
+        canonical,
+        lifecycle,
+        &volicord_inquiry::ApplicabilityQuery {
+            current_assumptions: Vec::new(),
+            met_revisit_triggers: Vec::new(),
+            project_id: canonical.project.id,
+            paths: Vec::new(),
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+        },
+    );
+    let evidence = [
+        ("choice", "choice", decision.user_source_basis.clone(), json!({"choice":format!("{:?}",decision.choice),"chosen_alternative_key":decision.chosen_alternative_key,"state":format!("{:?}",decision.state)})),
+        ("user_rationale", "user_rationale", decision.user_source_basis.clone(), json!(decision.user_rationale)),
+        ("recommendation", "displayed_recommendation", decision.recommendation_source_basis.clone(), json!({"alternative_key":decision.recommended_alternative_key,"rationale":decision.recommendation_rationale})),
+        ("consequences", "displayed_alternatives", decision.recommendation_source_basis.clone(), json!(decision.displayed_alternatives.iter().map(|a|json!({"key":a.key,"label":a.label,"consequence":a.consequence})).collect::<Vec<_>>())),
+        ("applicability", "applicability", decision.source_basis.clone(), json!({"scope":format!("{:?}",decision.work_scope),"paths":lifecycle.decision.applicability.paths,"components":lifecycle.decision.applicability.components,"work_contexts":lifecycle.decision.applicability.work_contexts,"assumptions":decision.assumptions,"revisit_triggers":decision.revisit_triggers,"known_limits":decision.known_limits,"review_basis":decision.review_basis(crate::FixedLocale::English)})),
+    ].into_iter().map(|(key,field,sources,content)| ExplanationEvidence {
+        key:key.into(),field:field.into(),sources:sources.into_iter().map(|id|id.to_string()).collect(),content,
+        record_kind:"decision".into(),identity:id.to_string(),revision:decision.revision,
+    }).collect();
+    finish_plan(
+        canonical,
+        ExplanationSubject::Decision(id),
+        "decision_rationale",
+        language,
+        evidence,
+    )
+}
+
+fn finish_plan(
+    canonical: &CanonicalReadBasis,
+    subject: ExplanationSubject,
+    question: &str,
+    language: &str,
+    evidence: Vec<ExplanationEvidence>,
+) -> Result<ExplanationPlan, String> {
     let sources = evidence
         .iter()
         .flat_map(|e| e.sources.iter())
@@ -239,24 +327,26 @@ pub fn prepare_work_explanation(
         })
         .map(|r| json!({"from":r.from_identity,"relation":r.relation_kind,"to":r.to_identity}))
         .collect();
-    let mut plan = WorkExplanationPlan { project_id:canonical.project.id.to_string(), work_item_id:work.to_string(),
-        question:"work_outcome".into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:"Explain purpose, reported change, expected effect, verification limits and next step in the requested language. Interpret clear source prose; do not copy audit clutter into ordinary reading. Cite exact evidence keys per paragraph. Report missing information explicitly. A generic implementation-changed report supports no specific feature. A reported change is not independently verified success. Separate work, verification, review and acceptance; later changes are not covered silently. State contradictions and uncertainty. Do not infer runtime code behavior or user rationale. Generator identity is self-reported. Return WorkExplanationRealization JSON, format_kind volicord_work_explanation, format_version 1, this plan fingerprint and language, generator host/session/agent/model (null when unknown), and paragraphs question/text/evidence_keys.".into(), fingerprint:String::new() };
+    let questions = match subject {
+        ExplanationSubject::Work(_) => "Answer purpose, reported_change, expected_effect, verification and next_step (optional limits).",
+        ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). Missing user rationale stays missing; agent rationale never supplies it.",
+    };
+    let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
+        question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
+        instructions:format!("{questions} Interpret full source prose in the requested language, not audit clutter. Cite exact evidence keys. Keep checksums when they are subject matter. State missing information, contradictions and uncertainty. Generic implementation-changed prose supports no specific feature. Reports are not independently verified success. Separate work, verification, review and acceptance; earlier checks do not cover later changes. Do not invent user rationale or runtime behavior. Return ExplanationRealization JSON, format_kind volicord_explanation, format_version 1, exact fingerprint/language, self-reported generator host/session/agent/model (null when unknown), and paragraphs question/text/evidence_keys."), fingerprint:String::new() };
     let bytes = serde_json::to_vec(&plan).map_err(|e| e.to_string())?;
-    if bytes.len() > WORK_EXPLANATION_PLAN_BYTE_LIMIT {
+    if bytes.len() > EXPLANATION_PLAN_BYTE_LIMIT {
         return Err("explanation preparation exceeds evidence budget; no source text was silently truncated".into());
     }
     plan.fingerprint = format!("sha256:{:x}", Sha256::digest(bytes));
     Ok(plan)
 }
 
-pub fn validate_work_explanation(
-    plan: &WorkExplanationPlan,
-    response: &WorkExplanationRealization,
+pub fn validate_explanation(
+    plan: &ExplanationPlan,
+    response: &ExplanationRealization,
 ) -> Result<(), String> {
-    if response.format_kind != WORK_EXPLANATION_KIND
-        || response.format_version != WORK_EXPLANATION_VERSION
-    {
+    if response.format_kind != EXPLANATION_KIND || response.format_version != EXPLANATION_VERSION {
         return Err(
             "unsupported Work explanation format; regenerate from current preparation".into(),
         );
@@ -271,26 +361,40 @@ pub fn validate_work_explanation(
     if serde_json::to_vec(response)
         .map_err(|e| e.to_string())?
         .len()
-        > WORK_EXPLANATION_BYTE_LIMIT
+        > EXPLANATION_BYTE_LIMIT
     {
         return Err("Work explanation exceeds body budget".into());
     }
-    for question in [
-        WorkExplanationQuestion::Purpose,
-        WorkExplanationQuestion::ReportedChange,
-        WorkExplanationQuestion::ExpectedEffect,
-        WorkExplanationQuestion::Verification,
-        WorkExplanationQuestion::NextStep,
-    ] {
+    let required_questions: &[ExplanationQuestion] = match plan.subject {
+        ExplanationSubject::Work(_) => &[
+            ExplanationQuestion::Purpose,
+            ExplanationQuestion::ReportedChange,
+            ExplanationQuestion::ExpectedEffect,
+            ExplanationQuestion::Verification,
+            ExplanationQuestion::NextStep,
+        ],
+        ExplanationSubject::Decision(_) => &[
+            ExplanationQuestion::UserRationale,
+            ExplanationQuestion::Recommendation,
+            ExplanationQuestion::Consequences,
+            ExplanationQuestion::Applicability,
+        ],
+    };
+    for question in required_questions {
         if response
             .paragraphs
             .iter()
-            .filter(|p| p.question == question)
+            .filter(|p| &p.question == question)
             .count()
             != 1
         {
-            return Err("one answer for each required Work question is necessary".into());
+            return Err("one answer for each required question is necessary".into());
         }
+    }
+    if response.paragraphs.iter().any(|p| {
+        p.question != ExplanationQuestion::Limits && !required_questions.contains(&p.question)
+    }) {
+        return Err("answer question does not belong to prepared subject".into());
     }
     for p in &response.paragraphs {
         if p.text.trim().is_empty()
@@ -304,23 +408,27 @@ pub fn validate_work_explanation(
             );
         }
         let required = match p.question {
-            WorkExplanationQuestion::Purpose => "goal",
-            WorkExplanationQuestion::ReportedChange | WorkExplanationQuestion::ExpectedEffect => {
+            ExplanationQuestion::Purpose => "goal",
+            ExplanationQuestion::ReportedChange | ExplanationQuestion::ExpectedEffect => {
                 if plan.evidence.iter().any(|e| e.key == "result") {
                     "result"
                 } else {
                     "goal"
                 }
             }
-            WorkExplanationQuestion::Verification => {
+            ExplanationQuestion::Verification => {
                 if plan.evidence.iter().any(|e| e.key == "verification") {
                     "verification"
                 } else {
                     "goal"
                 }
             }
-            WorkExplanationQuestion::NextStep => "next_step",
-            WorkExplanationQuestion::Limits => continue,
+            ExplanationQuestion::NextStep => "next_step",
+            ExplanationQuestion::UserRationale => "user_rationale",
+            ExplanationQuestion::Recommendation => "recommendation",
+            ExplanationQuestion::Consequences => "consequences",
+            ExplanationQuestion::Applicability => "applicability",
+            ExplanationQuestion::Limits => continue,
         };
         if !p.evidence_keys.iter().any(|key| key == required) {
             return Err(format!("answer {:?} must reference {required}", p.question));

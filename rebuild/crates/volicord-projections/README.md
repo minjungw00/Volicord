@@ -49,13 +49,14 @@ documents.
   realizer, metadata reports `Unavailable` rather than treating the fixed
   English body as requested-language success. Structured Checkpoints become
   separate goal, work, verification, review, remaining-work, and next-step
-  claims; oversized source text retains a bounded semantic excerpt plus exact
-  source size and digest instead of becoming a placeholder-only claim.
+  claims in closed evidence disclosures. Complete ordinary claims remain intact;
+  oversized total output fails without a publication artifact. Narrative plans
+  retain explicit bounded source-evidence excerpts and omission metadata.
 - Markdown and self-contained HTML render from the same semantic body. Their
   ordinary reading path starts with current human meaning; versioned metadata,
   opaque identities, and direct per-claim basis remain in the machine-readable
   `GeneratedDocument.body` grounding sidecar and a closed HTML audit disclosure.
-  Markdown carries only a compact grounding summary. A resolved Question's
+  Markdown also carries exact shared explanation provenance in closed disclosure. A resolved Question's
   former choice ambiguity remains historical audit basis rather than current
   uncertainty. The returned publication artifact may carry an explicitly
   requested destination, but this crate never writes it.
@@ -64,3 +65,11 @@ The crate has no dependency in the reverse direction from Context, Repository
 Intelligence, or Inquiry, and it exposes no canonical write, CLI, MCP, viewer,
 or external process responsibility. Its bounded Markdown/HTML renderer returns
 artifacts but owns no filesystem publication authority.
+
+Shared `work_answers` and `decision_answers` provide question-specific prose and
+independently selected state/scope facts to ordinary Viewer, document, CLI and MCP
+readers. `ExplanationSubject`, `ExplanationPlan`, `ExplanationRealization` and
+`RetainedExplanation` share the current `volicord_explanation` version 1 format;
+Operations owns explicit prepare/record/delete and managed privacy storage. Reads
+have no generation or publication authority. See the Viewer README for generation
+entry points, evidence budgets, lifecycle and fresh active-host proof instructions.

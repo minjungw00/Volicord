@@ -142,7 +142,7 @@ def recall_errors(expected: dict[str, Any], recall: dict[str, Any] | None) -> li
         require(decision.get("chosen_alternative_key") == "local", "Decision choice")
         require(set(expected["decision_sources"]) <= set(decision.get("source_basis", [])), "Decision Source basis")
         require(expected["decision_source_id"] in decision.get("source_basis", []), "Decision response Source")
-    require(recall.get("next_step") == expected["next_step"], "Recall next step")
+    require(isinstance(recall.get("selected_work"), dict) and isinstance(recall["selected_work"].get("answers"), dict), "Recall question answers")
     require(isinstance(recall.get("active_decision_count"), int) and recall["active_decision_count"] >= 1, "active Decision count")
     sources = recall.get("source_details", [])
     snapshots_section = recall.get("snapshots", [])

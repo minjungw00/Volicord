@@ -16,10 +16,9 @@ use std::{
 use volicord_context::{
     BundleComparison, BundleConflictClass, BundleMergeStatus, CanonicalRecordId, CheckpointDraft,
     CheckpointKind, ContextItemCorrectionDraft, ContextItemId, CorrectionKind,
-    DecisionCorrectionDraft, DecisionId, DecisionWorkScope, MergeResolution, MergeResolutionMode,
-    OperationId, Principal, PrincipalKind, ProjectId, SourceId, UserAcceptanceFact,
-    UserAcceptanceState, UserReviewFact, UserReviewState, VerificationFact, VerificationState,
-    WorkState,
+    DecisionCorrectionDraft, DecisionId, MergeResolution, MergeResolutionMode, OperationId,
+    Principal, PrincipalKind, ProjectId, SourceId, UserAcceptanceFact, UserAcceptanceState,
+    UserReviewFact, UserReviewState, VerificationFact, VerificationState, WorkState,
 };
 use volicord_privacy::{
     ProviderIntentProvenance, ProviderOptInPolicy, ProviderRetentionPolicy, SecretFilteringPolicy,
@@ -170,12 +169,13 @@ fn command() -> Command {
         .arg(Arg::new("locale").long("locale").value_name("LOCALE").value_parser(["en", "ko"]).default_value("en").help("Locale for fixed CLI text: en or ko").global(true))
         .subcommand(Command::new("init").about("Initialize and bind a Project to a repository").arg(Arg::new("name").value_name("NAME").help("Project display name")).arg(Arg::new("no_bind").long("no-bind").help("Initialize without binding a repository").action(ArgAction::SetTrue)).after_help("Examples:\n  volicord init \"Payments Service\"\n  volicord --repository /work/payments init \"Payments Service\""))
         .subcommand(Command::new("bind").about("Bind an existing Project to this repository").arg(Arg::new("revision").long("revision").value_name("REVISION")).after_help("Example:\n  volicord --project PROJECT_ID --repository /work/clone bind"))
-        .subcommand(Command::new("status").about("Show current Project Understanding").after_help("Example:\n  volicord status\n\nUse --json for automation and --project only when path-based resolution is ambiguous."))
+        .subcommand(Command::new("status").arg(reading_language()).about("Show current Project Understanding").after_help("Example:\n  volicord status\n\nUse --json for automation and --project only when path-based resolution is ambiguous."))
         .subcommand(Command::new("analyze").about("Analyze the current repository").arg(repeat_arg("exclude", "PATH", "Exclude a repository-relative path")))
-        .subcommand(Command::new("recall").about("Resume from bounded Project memory"))
+        .subcommand(Command::new("recall").arg(reading_language()).about("Resume from bounded Project memory"))
         .subcommand(Command::new("questions").about("Show the current material Question frontier").arg(repeat_arg("scope", "SCOPE", "Restrict the material scope")))
-        .subcommand(Command::new("decisions").about("Inspect current and historical Decisions"))
-        .subcommand(work_command())
+        .subcommand(Command::new("decisions").arg(reading_language()).about("Inspect current and historical Decisions"))
+        .subcommand(explanation_command("work"))
+        .subcommand(explanation_command("decision"))
         .subcommand(document_command())
         .subcommand(viewer_command())
         .subcommand(context_command())
@@ -185,6 +185,24 @@ fn command() -> Command {
         .subcommand(advanced_command())
 }
 
+fn reading_language() -> Arg {
+    Arg::new("language")
+        .long("language")
+        .default_value("en")
+        .help("Exact generated answer language")
+}
+fn reading_options(matches: &ArgMatches) -> (&str, FixedLocale) {
+    (
+        matches
+            .get_one::<String>("language")
+            .map(String::as_str)
+            .unwrap_or("en"),
+        match matches.get_one::<String>("locale").map(String::as_str) {
+            Some("ko") => FixedLocale::Korean,
+            _ => FixedLocale::English,
+        },
+    )
+}
 fn path_arg(id: &'static str, long: &'static str, help: &'static str) -> Arg {
     Arg::new(id)
         .long(long)
@@ -201,12 +219,12 @@ fn repeat_arg(id: &'static str, value: &'static str, help: &'static str) -> Arg 
         .help(help)
 }
 
-fn work_command() -> Command {
+fn explanation_command(kind: &'static str) -> Command {
     let subject = || {
-        Arg::new("work")
-            .long("work")
+        Arg::new(kind)
+            .long(kind)
             .required(true)
-            .value_name("WORK_ID")
+            .value_name("SUBJECT_ID")
     };
     let language = || {
         Arg::new("language")
@@ -214,12 +232,12 @@ fn work_command() -> Command {
             .default_value("en")
             .value_name("LANGUAGE")
     };
-    Command::new("work")
-        .about("Read and explain a specific Work")
+    Command::new(kind)
+        .about("Read and explain a specific subject")
         .subcommand_required(true)
         .subcommand(
             Command::new("explain")
-                .about("Explicit active-host Work explanation; never invokes a background provider")
+                .about("Explicit active-host explanation; never invokes a background provider")
                 .subcommand_required(true)
                 .subcommand(
                     Command::new("prepare")
@@ -241,7 +259,7 @@ fn work_command() -> Command {
                 )
                 .subcommand(
                     Command::new("delete")
-                        .about("Delete all retained explanations for this Work")
+                        .about("Delete all retained explanations for this subject")
                         .arg(subject()),
                 ),
         )
@@ -394,7 +412,11 @@ fn privacy_command() -> Command {
     Command::new("privacy")
         .about("Inspect or change background provider authorization")
         .subcommand_required(true)
-        .subcommand(Command::new("status").about("Show local privacy and provider configuration"))
+        .subcommand(
+            Command::new("status")
+                .arg(reading_language())
+                .about("Show local privacy and provider configuration"),
+        )
         .subcommand(
             Command::new("enable")
                 .about("Enable a provider for explicit source scopes")
@@ -641,7 +663,15 @@ fn dispatch(
             }
             project(operations, &mut cursor)?
         }
-        "status" => status(operations, resolve_project(operations, selection)?)?,
+        "status" => {
+            let (language, locale) = reading_options(matches);
+            status(
+                operations,
+                resolve_project(operations, selection)?,
+                language,
+                locale,
+            )?
+        }
         "analyze" => {
             let project = resolve_project(operations, selection)?;
             let mut cursor = cursor([project.to_string()]);
@@ -650,7 +680,10 @@ fn dispatch(
         }
         "recall" => {
             let mut cursor = cursor([resolve_project(operations, selection)?.to_string()]);
-            recall(operations, &mut cursor)?
+            {
+                let (language, locale) = reading_options(matches);
+                recall(operations, &mut cursor, language, locale)?
+            }
         }
         "questions" => {
             let mut cursor = cursor([
@@ -660,8 +693,16 @@ fn dispatch(
             append_values(&mut cursor, matches, "scope");
             inquiry(operations, &mut cursor)?
         }
-        "decisions" => decisions(operations, resolve_project(operations, selection)?)?,
-        "work" => dispatch_work_explanation(operations, selection, matches)?,
+        "decisions" => {
+            let (language, locale) = reading_options(matches);
+            decisions(
+                operations,
+                resolve_project(operations, selection)?,
+                language,
+                locale,
+            )?
+        }
+        "work" | "decision" => dispatch_explanation(operations, selection, name, matches)?,
         "document" => dispatch_document(operations, selection, matches)?,
         "viewer" => return dispatch_viewer(runtime, operations, selection, matches),
         "context" => dispatch_context(operations, selection, matches)?,
@@ -683,9 +724,10 @@ fn dispatch(
     Ok(Some(value))
 }
 
-fn dispatch_work_explanation(
+fn dispatch_explanation(
     operations: &LocalOperations,
     selection: &ProjectSelection,
+    kind: &str,
     matches: &ArgMatches,
 ) -> Result<Value, Error> {
     let (_, actions) = matches
@@ -695,25 +737,33 @@ fn dispatch_work_explanation(
         .subcommand()
         .ok_or_else(|| Error::new("an explanation action is required"))?;
     let project = resolve_project(operations, selection)?;
-    let work = ContextItemId::from_bytes(parse_identity(required(args, "work")?)?);
+    let identity = parse_identity(required(args, kind)?)?;
+    let subject = match kind {
+        "work" => {
+            volicord_projections::ExplanationSubject::Work(ContextItemId::from_bytes(identity))
+        }
+        _ => volicord_projections::ExplanationSubject::Decision(
+            volicord_context::DecisionId::from_bytes(identity),
+        ),
+    };
     match action {
         "prepare" => Ok(
-            json!({"operation":"work_explanation_prepare", "plan":operations.prepare_work_explanation(project,work,required(args,"language")?)?}),
+            json!({"operation":"explanation_prepare", "plan":operations.prepare_explanation(project,subject,required(args,"language")?)?}),
         ),
         "record" => {
             let file = std::fs::File::open(required_path(args, "input")?)
                 .map_err(|e| Error::with_source("cannot open generated response", e))?;
             let mut bytes = Vec::new();
-            file.take(volicord_projections::WORK_EXPLANATION_BYTE_LIMIT as u64 + 1)
+            file.take(volicord_projections::EXPLANATION_BYTE_LIMIT as u64 + 1)
                 .read_to_end(&mut bytes)
                 .map_err(|e| Error::with_source("cannot read generated response", e))?;
-            if bytes.len() > volicord_projections::WORK_EXPLANATION_BYTE_LIMIT {
+            if bytes.len() > volicord_projections::EXPLANATION_BYTE_LIMIT {
                 return Err(Error::new("generated response exceeds body budget"));
             }
             let header: Value = serde_json::from_slice(&bytes)
                 .map_err(|e| Error::with_source("invalid generated response JSON", e))?;
-            if header["format_kind"] != volicord_projections::WORK_EXPLANATION_KIND
-                || header["format_version"] != volicord_projections::WORK_EXPLANATION_VERSION
+            if header["format_kind"] != volicord_projections::EXPLANATION_KIND
+                || header["format_version"] != volicord_projections::EXPLANATION_VERSION
             {
                 return Err(Error::new(
                     "unsupported Work explanation format; regenerate",
@@ -722,11 +772,11 @@ fn dispatch_work_explanation(
             let response = serde_json::from_value(header)
                 .map_err(|e| Error::with_source("invalid Work explanation", e))?;
             Ok(
-                json!({"operation":"work_explanation_record","explanation":operations.record_work_explanation(project,work,required(args,"language")?,response)?}),
+                json!({"operation":"explanation_record","explanation":operations.record_explanation(project,subject,required(args,"language")?,response)?}),
             )
         }
         "delete" => Ok(
-            json!({"operation":"work_explanation_delete", "deleted":operations.delete_work_explanations(project,work)?}),
+            json!({"operation":"explanation_delete", "deleted":operations.delete_explanations(project,subject)?}),
         ),
         _ => Err(Error::new("unsupported explanation action")),
     }
@@ -1018,9 +1068,19 @@ fn resolve_project_optional(
     }
 }
 
-fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Error> {
+fn status(
+    operations: &LocalOperations,
+    project: ProjectId,
+    language: &str,
+    locale: FixedLocale,
+) -> Result<Value, Error> {
     let projection = operations.project_projection(project)?;
     let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+    let work_json =
+        |w: &volicord_projections::UnderstandingWork| crate::work_reading_json(w, language, locale);
+    let decision_json = |d: &volicord_projections::UnderstandingDecision| {
+        crate::decision_reading_json(&d.decision, language, locale)
+    };
     Ok(json!({
         "operation":"project_status",
         "project_id":understanding.project_id.to_string(),
@@ -1041,9 +1101,9 @@ fn status(operations: &LocalOperations, project: ProjectId) -> Result<Value, Err
         "remaining_work":understanding.remaining_work.iter().map(work_json).collect::<Vec<_>>(),
         "work_history":understanding.work_history.iter().map(work_json).collect::<Vec<_>>(),
         "unresolved_work_grouping":understanding.unresolved_work_grouping.iter().map(|gap| json!({"record_kind":gap.record_kind,"identity":gap.identity,"reason":gap.reason})).collect::<Vec<_>>(),
-        "next_steps":understanding.next_steps.into_iter().map(|step| step.text).collect::<Vec<_>>(),
-        "active_decisions":understanding.active_decisions.iter().map(understanding_decision_json).collect::<Vec<_>>(),
-        "selected_work_decisions":understanding.selected_work_decisions.iter().map(understanding_decision_json).collect::<Vec<_>>(),
+        "next_steps":understanding.work_overview.next_steps.items.iter().map(work_json).collect::<Vec<_>>(),
+        "active_decisions":understanding.active_decisions.iter().map(decision_json).collect::<Vec<_>>(),
+        "selected_work_decisions":understanding.selected_work_decisions.iter().map(decision_json).collect::<Vec<_>>(),
         "open_questions":understanding.open_questions.into_iter().map(|item| json!({"identity":item.question_id.to_string(),"revision":item.revision,"prompt":item.prompt,"on_frontier":item.on_current_frontier})).collect::<Vec<_>>(),
         "risks_assumptions_and_limits":understanding.risks_assumptions_and_limits.into_iter().map(|item| item.statement).chain(understanding.known_limits).collect::<Vec<_>>(),
         "architecture": {"components":understanding.architecture.components.len(),"relationships":understanding.architecture.relationships.len(),"gaps":understanding.architecture.gaps.into_iter().map(|gap| gap.reason).collect::<Vec<_>>()},
@@ -1057,128 +1117,17 @@ fn section_count_json(section: &volicord_projections::WorkSection) -> Value {
         "displayed":section.items.len(),"omitted":section.complete.then_some(section.omitted)})
 }
 
-fn work_json(work: &volicord_projections::UnderstandingWork) -> Value {
-    json!({
-        "reading": {
-            "explanations": work.reading.explanations.iter().map(|e|json!({"language":e.language,"state":debug_name(e.state),"content":e.content,"diagnostic":e.diagnostic})).collect::<Vec<_>>(),
-            "answers": {
-                "result":work.reading.answers.result.as_ref().map(reading_text_json),
-                "result_observed_at":work.reading.answers.result_observed_at.map(|t| t.as_unix_micros()),
-                "latest_state":work.reading.answers.latest_state.as_ref().map(state_observation_json),
-                "verification":work.reading.answers.verification.as_ref().map(state_observation_json),
-                "review":work.reading.answers.review.as_ref().map(state_observation_json),
-                "acceptance":work.reading.answers.acceptance.as_ref().map(state_observation_json)
-            },
-            "goal":reading_text_json(&work.reading.goal),
-            "changes":work.reading.changes.iter().map(reading_text_json).collect::<Vec<_>>(),
-            "next_step":reading_text_json(&work.reading.next_step),
-            "status":reading_text_json(&work.reading.status),
-            "code_gap":work.reading.code_gap.map(debug_name),
-            "code_availability":debug_name(work.reading.code_availability),
-            "code_freshness":work.reading.code_freshness,
-            "code_source_basis":work.reading.code_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "analysis_snapshot_basis":work.reading.analysis_snapshot_basis,"repository_snapshot_basis":work.reading.repository_snapshot_basis,
-            "states":work.reading.states.iter().map(state_observation_json).collect::<Vec<_>>()
-        },
-        "work_item_id":work.work_item_id.to_string(),
-        "title":work.title,
-        "state":debug_name(work.state),
-        "checkpoint_ids":work.checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        "decision_ids":work.decision_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        "meaningful_changes":work.meaningful_changes,
-        "changed_paths":work.changed_paths,
-        "changed_components":work.changed_components,
-        "verification":work.verification.iter().map(|fact| json!({"state":crate::recall::verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
-        "next_step":work.next_step,
-        "open_question_ids":work.open_question_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        "source_ids":work.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-    })
-}
-
-fn state_observation_json(state: &volicord_projections::WorkStateObservation) -> Value {
-    json!({
-        "checkpoint_id":state.checkpoint_id.to_string(), "checkpoint_revision":state.checkpoint_revision,
-        "observed_at_unix_micros":state.observed_at.as_unix_micros(),
-        "work_state":crate::recall::work_state_name(state.work_state), "work_source_basis":state.work_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        "verification":state.verification.iter().map(|fact| json!({"state":crate::recall::verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
-        "user_review":{"state":crate::recall::user_review_state_name(state.user_review.state),"source_id":state.user_review.source_id.map(|id| id.to_string())},
-        "user_acceptance":{"state":crate::recall::user_acceptance_state_name(state.user_acceptance.state),"source_id":state.user_acceptance.source_id.map(|id| id.to_string())},
-        "later_changed_checkpoint_ids":state.later_changed_checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>()
-    })
-}
-
-fn understanding_decision_json(item: &volicord_projections::UnderstandingDecision) -> Value {
-    let decision = &item.decision;
-    json!({
-        "identity":decision.decision_id.to_string(),"revision":decision.revision,
-        "state":debug_name(decision.state),"work_scope":decision_work_scope_json(decision.work_scope),
-        "choice":format!("{:?}",decision.choice),
-        "chosen_alternative_key":decision.chosen_alternative_key,
-        "recommended_alternative_key":decision.recommended_alternative_key,
-        "displayed_alternatives":decision.displayed_alternatives.iter().map(|alternative| json!({"alternative_key":alternative.key,"label":alternative.label,"expected_consequence":alternative.consequence})).collect::<Vec<_>>(),
-        "user_rationale":decision.user_rationale,"recommendation_rationale":decision.recommendation_rationale,
-        "affected_code":item.affected_code_entities,"known_link_gaps":item.known_link_gaps,
-        "reading":{"user_rationale":reading_text_json(&item.reading.user_rationale),
-            "recommendation_rationale":reading_text_json(&item.reading.recommendation_rationale)}
-    })
-}
-
-fn reading_text_json(text: &volicord_projections::ReadingText) -> Value {
-    let representation = match text.representation {
-        volicord_projections::ReadingRepresentation::OriginalQuotation => "original_quotation",
-        volicord_projections::ReadingRepresentation::Excerpt => "excerpt",
-        volicord_projections::ReadingRepresentation::DeterministicFacts => "deterministic_facts",
-        volicord_projections::ReadingRepresentation::Unavailable => "unavailable",
-    };
-    let (kind, identity) = match text.basis.record {
-        volicord_projections::ReadingRecord::ContextItem(id) => ("context_item", id.to_string()),
-        volicord_projections::ReadingRecord::Checkpoint(id) => ("checkpoint", id.to_string()),
-        volicord_projections::ReadingRecord::Decision(id) => ("decision", id.to_string()),
-    };
-    json!({"original_text":text.original_text,"display_english":text.display_english,"display_korean":text.display_korean,
-        "representation":representation,"availability":debug_name(text.availability),
-        "semantic_summary_available":text.semantic_summary_available,"original_language_preserved":text.original_language_preserved,
-        "omitted_utf8_bytes":text.omitted_utf8_bytes,"omitted_characters":text.omitted_characters,"gaps":text.gaps,
-        "basis":{"record_kind":kind,"identity":identity,"revision":text.basis.revision,
-            "available_revisions":text.basis.available_revisions,"field":text.basis.field,
-            "source_ids":text.basis.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "source_status":text.basis.source_status.iter().map(|source| json!({"source_id":source.source_id.to_string(),"availability":source.availability.map(debug_name),"freshness":debug_name(source.freshness),"snapshot_basis":source.snapshot_basis,"actor":source.actor,"observer":source.observer,"recorded_at_unix_micros":source.recorded_at.map(|time| time.as_unix_micros())})).collect::<Vec<_>>(),
-            "analysis_snapshot_ids":text.basis.analysis_snapshot_basis,"repository_snapshot_ids":text.basis.repository_snapshot_basis}})
-}
-
-fn decision_work_scope_json(scope: DecisionWorkScope) -> Value {
-    match scope {
-        DecisionWorkScope::Unresolved => json!({"kind":"unresolved"}),
-        DecisionWorkScope::ProjectWide => json!({"kind":"project_wide"}),
-        DecisionWorkScope::WorkItem(identity) => {
-            json!({"kind":"work_item","work_item_id":identity.to_string()})
-        }
-    }
-}
-
-fn decisions(operations: &LocalOperations, project: ProjectId) -> Result<Value, Error> {
+fn decisions(
+    operations: &LocalOperations,
+    project: ProjectId,
+    language: &str,
+    locale: FixedLocale,
+) -> Result<Value, Error> {
     let brief = operations.recall(project)?;
-    Ok(json!({
-        "operation":"decisions",
-        "project_id":brief.project_id.to_string(),
-        "project_name":brief.project_name,
-        "decisions":brief.decisions.into_iter().map(|decision| json!({
-            "identity":decision.decision_id.to_string(),
-            "revision":decision.revision,
-            "work_scope":decision_work_scope_json(decision.work_scope),
-            "state":debug_name(decision.state),
-            "choice":format!("{:?}", decision.choice),
-            "chosen_alternative_key":decision.chosen_alternative_key,
-            "recommended_alternative_key":decision.recommended_alternative_key,
-            "displayed_alternatives":decision.displayed_alternatives.into_iter().map(|alternative| json!({"alternative_key":alternative.key,"label":alternative.label,"expected_consequence":alternative.consequence})).collect::<Vec<_>>(),
-            "user_rationale":decision.user_rationale,
-            "recommendation_rationale":decision.recommendation_rationale,
-            "assumptions":decision.assumptions,
-            "revisit_triggers":decision.revisit_triggers,
-            "known_limits":decision.known_limits,
-            "source_basis":decision.source_basis.into_iter().map(|source| source.to_string()).collect::<Vec<_>>()
-        })).collect::<Vec<_>>()
-    }))
+    Ok(
+        json!({"operation":"decisions","project_id":project.to_string(),"project_name":brief.project_name,
+        "decisions":brief.decisions.iter().map(|d|crate::decision_reading_json(d,language,locale)).collect::<Vec<_>>(),"omissions":brief.omitted_count}),
+    )
 }
 
 fn dispatch_viewer(
@@ -1274,7 +1223,9 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
         .map_err(|error| Error::with_source("cannot write CLI result", error))?;
     if let Some(object) = value.as_object() {
         for (key, field) in object {
-            if key != "operation" {
+            if key != "operation"
+                && !(operation == "recall" && ["checkpoint", "next_step"].contains(&key.as_str()))
+            {
                 render_field(stdout, key, field, 0, mode.locale)?;
             }
         }
@@ -1290,6 +1241,20 @@ fn render_field(
     locale: CliLocale,
 ) -> Result<(), Error> {
     let padding = "  ".repeat(indent);
+    if let Some(answers) = value.get("answers") {
+        write_line(stdout, format_args!("{padding}{key}:"))?;
+        for a in answers["prose"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .chain(answers["facts"].as_array().into_iter().flatten())
+        {
+            if let Some(text) = a["text"].as_str() {
+                write_line(stdout, format_args!("{padding}  {text}"))?;
+            }
+        }
+        return Ok(());
+    }
     let label = field_label(key, locale);
     match value {
         Value::Null => write_line(stdout, format_args!("{padding}{label}: -")),
@@ -1305,8 +1270,12 @@ fn render_field(
                 match item {
                     Value::Object(fields) => {
                         write_line(stdout, format_args!("{padding}  -"))?;
-                        for (child, value) in fields {
-                            render_field(stdout, child, value, indent + 2, locale)?;
+                        if item.get("answers").is_some() {
+                            render_field(stdout, key, item, indent + 2, locale)?;
+                        } else {
+                            for (child, value) in fields {
+                                render_field(stdout, child, value, indent + 2, locale)?;
+                            }
                         }
                     }
                     Value::String(value) => {
@@ -1977,10 +1946,15 @@ fn privacy(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
     }
 }
 
-fn recall(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
+fn recall(
+    operations: &LocalOperations,
+    cursor: &mut Cursor,
+    language: &str,
+    locale: FixedLocale,
+) -> Result<Value, Error> {
     let project = project_id(&cursor.next("Project ID")?)?;
     let brief = operations.recall(project)?;
-    let mut output = crate::resume_brief_json(&brief);
+    let mut output = crate::resume_brief_json(&brief, language, locale);
     output["operation"] = json!("recall");
     Ok(output)
 }

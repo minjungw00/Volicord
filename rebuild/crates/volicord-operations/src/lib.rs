@@ -9,6 +9,7 @@ mod analysis_storage;
 mod cli;
 mod codex;
 mod error;
+mod explanation;
 mod forgetting;
 mod guarded;
 mod layout;
@@ -17,7 +18,6 @@ mod operations;
 mod payload;
 mod provider;
 mod recall;
-mod work_explanation;
 
 pub use analysis_storage::{
     AnalysisFileFootprint, AnalysisReachabilityReference, AnalysisSectionFootprint,
@@ -56,7 +56,7 @@ pub use payload::{
 pub use provider::{
     CodexCliProviderConfig, CodexCliSemanticProvider, CODEX_CLI_PROVIDER, CODEX_EXECUTABLE_ENV,
 };
-pub use recall::resume_brief_json;
+pub use recall::{decision_reading_json, resume_brief_json, work_reading_json};
 pub use volicord_inquiry::{
     AuthoritySourceEvidence, AuthoritySourceRole, BehavioralContextBasis,
     CoupledArtifactAssessment, CoupledArtifactCategory, CoupledArtifactDisposition,

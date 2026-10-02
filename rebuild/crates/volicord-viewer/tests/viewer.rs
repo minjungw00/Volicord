@@ -358,7 +358,7 @@ fn assert_three_work_hierarchy(with_git: bool) {
         assert!(beta_card.contains(&beta_checkpoint.id.to_string()));
         assert!(!beta_card.contains(&alpha_checkpoint.id.to_string()));
         assert!(gamma_page.contains("data-work-state=\"open\""));
-        assert!(gamma_page.contains("Result unavailable"));
+        assert!(gamma_page.contains("No reported result is recorded"));
         assert!(!alpha_card.contains(&purpose.id.to_string()));
         assert_eq!(
             canonical,

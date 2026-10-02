@@ -80,6 +80,32 @@
         "verification passed",
         "cleanup implemented"
       ]
+    },
+    {
+      "key": "checksum",
+      "title": "Reject damaged downloaded archives before extraction",
+      "purpose": "Users must not extract bytes that differ from the published archive checksum.",
+      "state_change": "The checksum is legitimate output content: SHA-256 ea25e999409939a1e2dc03234f416cf0e8a28a69b8c210b4508edce1105af276. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Audit record bbccee00112233445566778899aabbcc; exact revisions in evidence. Reported: the download client computes SHA-256 over the completed bytes, compares it with the manifest digest and refuses extraction on mismatch. This detects damaged bytes; it does not authenticate who published the manifest.",
+      "verification": "Passed",
+      "outcome": "The altered-byte unit test passed. Signed-manifest authentication and end-to-end downloads were not tested.",
+      "next_step": "Test an interrupted download and decide how to authenticate the manifest.",
+      "limits": [
+        "Manifest authenticity remains unverified."
+      ],
+      "expected_claims": [
+        "computed SHA-256 compared with manifest",
+        "mismatch refuses extraction",
+        "detects damage without authenticating publisher",
+        "altered-byte unit test passed",
+        "end-to-end download unverified",
+        "interrupted download and manifest authenticity next"
+      ],
+      "forbidden_claims": [
+        "signed manifest implemented",
+        "download end-to-end verified",
+        "checksum hidden as sensitive audit data",
+        "all network downloads secure"
+      ]
     }
   ],
   "prefix_expectations": [
@@ -536,6 +562,290 @@
           [
             "이후",
             "추가"
+          ]
+        ]
+      }
+    },
+    "checksum": {
+      "en": {
+        "Purpose": [
+          [
+            "damaged",
+            "differ"
+          ],
+          [
+            "archive",
+            "bytes"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "SHA-256"
+          ],
+          [
+            "manifest"
+          ],
+          [
+            "mismatch"
+          ],
+          [
+            "extraction"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "damage"
+          ],
+          [
+            "not authenticate"
+          ]
+        ],
+        "Verification": [
+          [
+            "unit"
+          ],
+          [
+            "passed"
+          ],
+          [
+            "not tested"
+          ]
+        ],
+        "NextStep": [
+          [
+            "interrupted"
+          ],
+          [
+            "authenticate"
+          ]
+        ]
+      },
+      "ko": {
+        "Purpose": [
+          [
+            "손상"
+          ],
+          [
+            "압축",
+            "바이트"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "SHA-256"
+          ],
+          [
+            "매니페스트"
+          ],
+          [
+            "불일치"
+          ],
+          [
+            "해제"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "손상"
+          ],
+          [
+            "인증하지"
+          ]
+        ],
+        "Verification": [
+          [
+            "단위"
+          ],
+          [
+            "통과"
+          ],
+          [
+            "검증하지"
+          ]
+        ],
+        "NextStep": [
+          [
+            "중단"
+          ],
+          [
+            "인증"
+          ]
+        ]
+      }
+    }
+  },
+  "decision_cases": [
+    {
+      "key": "project",
+      "user_rationale": "Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. Audit note aabbccddeeff00112233445566778899. I choose Local across this Project because queued work must remain usable without a network connection. I accept the narrower local code boundary; remote synchronization is not part of this choice.",
+      "recommendation_rationale": "Recommend Remote to synchronize across devices. This recommendation does not establish the user rationale.",
+      "expected_claims": [
+        "user chose Local for offline queued work",
+        "agent recommended Remote for cross-device synchronization",
+        "Local consequence bounded local code",
+        "Project-wide declared scope only"
+      ],
+      "forbidden_claims": [
+        "user chose Remote",
+        "user wanted cross-device synchronization",
+        "remote synchronization implemented"
+      ]
+    },
+    {
+      "key": "explicit",
+      "user_rationale": null,
+      "recommendation_rationale": "Prefer a bounded local boundary",
+      "expected_claims": [
+        "user rationale missing",
+        "user chose Local despite Remote recommendation",
+        "Work-scoped declaration",
+        "review due remains visible"
+      ],
+      "forbidden_claims": [
+        "agent recommendation supplies user motive",
+        "user chose Remote"
+      ]
+    }
+  ],
+  "decision_browser_claim_terms": {
+    "project": {
+      "en": {
+        "UserRationale": [
+          [
+            "offline",
+            "without a network"
+          ],
+          [
+            "Local"
+          ]
+        ],
+        "Recommendation": [
+          [
+            "Remote"
+          ],
+          [
+            "devices",
+            "synchroniz"
+          ]
+        ],
+        "Consequences": [
+          [
+            "bounded",
+            "local code"
+          ]
+        ],
+        "Applicability": [
+          [
+            "Project"
+          ],
+          [
+            "declared"
+          ]
+        ]
+      },
+      "ko": {
+        "UserRationale": [
+          [
+            "오프라인",
+            "네트워크"
+          ],
+          [
+            "Local",
+            "로컬"
+          ]
+        ],
+        "Recommendation": [
+          [
+            "Remote",
+            "원격"
+          ],
+          [
+            "기기",
+            "동기화"
+          ]
+        ],
+        "Consequences": [
+          [
+            "범위",
+            "로컬"
+          ]
+        ],
+        "Applicability": [
+          [
+            "프로젝트",
+            "Project"
+          ],
+          [
+            "선언"
+          ]
+        ]
+      }
+    },
+    "explicit": {
+      "en": {
+        "UserRationale": [
+          [
+            "not recorded",
+            "missing"
+          ]
+        ],
+        "Recommendation": [
+          [
+            "Remote"
+          ],
+          [
+            "recommend"
+          ]
+        ],
+        "Consequences": [
+          [
+            "Local"
+          ],
+          [
+            "bounded"
+          ]
+        ],
+        "Applicability": [
+          [
+            "Work"
+          ],
+          [
+            "review"
+          ]
+        ]
+      },
+      "ko": {
+        "UserRationale": [
+          [
+            "기록되지",
+            "없습니다"
+          ]
+        ],
+        "Recommendation": [
+          [
+            "Remote",
+            "원격"
+          ],
+          [
+            "권고"
+          ]
+        ],
+        "Consequences": [
+          [
+            "Local",
+            "로컬"
+          ],
+          [
+            "범위"
+          ]
+        ],
+        "Applicability": [
+          [
+            "작업",
+            "Work"
+          ],
+          [
+            "검토"
           ]
         ]
       }

@@ -150,8 +150,10 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
   meaning이 분리되거나 rendered-field omission contract가 추가되면 current writer
   metadata shape/version에서만 함께 기록한다. 이전 shape decoder, dual metadata
   representation 또는 compatibility write를 추가하지 않는다.
-- Current writer version `7`은 active-host realization의 exact requested-language attestation,
+- Current writer version `8`은 active-host realization의 exact requested-language attestation,
   all-generated-prose attestation과 realized-body fingerprint를 plan fingerprint와 함께 기록한다.
+  Version 8 adds typed Reading/Evidence section roles, exact explanation provenance and
+  current-build canonical read equality binding for publication.
   이 durable meaning이 없는 이전 metadata를 host-realized requested-language success로 읽지 않는다.
 
 ### Session Candidate store format
@@ -286,16 +288,16 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 - **V11:** 모든 format의 independent exact-current check, older/newer rejection-before-mutation,
   rebuildable-data recovery와 combined recovery를 실제 journey에서 검증한다.
 
-### Work explanation content
+### Shared explanation content
 
-Retained Work explanation JSON inside the existing managed CachedSummary store
-has format kind `volicord_work_explanation` and exact current format version 1
+Retained Work/Decision explanation JSON inside the existing managed CachedSummary store
+has format kind `volicord_explanation` and exact current format version 1
 in its realization header. Record/read check that header before typed domain
 decode. Non-current content is Unsupported and its prose is withheld; malformed
 current content is Corrupt. Explicit delete and preparation/generation from current
 canonical evidence provide recovery. There is no dual decoder or implicit conversion.
 The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Snapshot
-and document metadata formats do not change. A preparation fingerprint binds evidence
+formats do not change; generated-document metadata is current version 8. A preparation fingerprint binds evidence
 and language; it is neither a format version nor an authenticity certificate.
 
 ## 14. Non-goals

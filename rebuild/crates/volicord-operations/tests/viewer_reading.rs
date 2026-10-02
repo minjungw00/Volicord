@@ -190,7 +190,6 @@ fn exact_work_reads_complete_history_before_all_bounds_and_keeps_independent_sta
     );
     let first = &work.reading.changes[0];
     assert_eq!(first.representation, ReadingRepresentation::Excerpt);
-    assert!(!first.semantic_summary_available);
     assert!(first.display_english.starts_with("Excerpt"));
     assert!(first.display_korean.starts_with("발췌"));
     assert!(first
@@ -315,9 +314,9 @@ fn exact_work_reads_complete_history_before_all_bounds_and_keeps_independent_sta
                 "거부됨"
             }));
             assert!(claim.text.contains(if locale == FixedLocale::English {
-                "does not establish coverage of later changes"
+                "coverage of later changes is not established"
             } else {
-                "이후 변경의 검증 범위를 입증하지 않습니다"
+                "이후 변경의 검증 범위는 확인되지 않았습니다"
             }));
             assert!(claim.text.contains(if locale == FixedLocale::English {
                 "not run"
@@ -568,14 +567,14 @@ fn source_and_analysis_gaps_do_not_rewrite_selected_work_and_json_retains_basis(
         .find(|work| work["work_item_id"] == fixture.goals["older"].to_string())
         .ok_or("JSON older")?;
     assert_eq!(
-        work["reading"]["states"][0]["checkpoint_id"],
+        work["evidence"]["states"][0]["checkpoint_id"],
         fixture.checkpoints["change"].to_string()
     );
     assert_eq!(
-        work["reading"]["states"][2]["verification"][0]["state"],
+        work["evidence"]["states"][2]["verification"][0]["state"],
         "not_run"
     );
-    assert!(work["reading"]["changes"][0]["original_text"]
+    assert!(work["evidence"]["original_changes"][0]["original_text"]
         .as_str()
         .is_some_and(|text| text.contains("aabbccddeeff00112233445566778899")));
     Ok(())
@@ -764,10 +763,14 @@ fn source_seeds_and_verification_only_latest_are_selected_before_timeline_trunca
         reading.goal.original_text.as_deref(),
         Some("Understand without code seeds / 코드 근거 없이 이해")
     );
-    assert!(reading
-        .status
-        .display_english
-        .contains("no Checkpoint work state"));
+    assert!(volicord_projections::work_answers(
+        unavailable.selected_work.as_ref().ok_or("Work")?,
+        "en",
+        volicord_projections::FixedLocale::English
+    )
+    .facts
+    .iter()
+    .any(|a| a.question == "WorkState" && a.text.contains("open")));
     assert!(reading.states.is_empty());
     Ok(())
 }

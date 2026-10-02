@@ -153,7 +153,7 @@ keyboard navigation, closed offline snapshots and real 200% tab zoom. Browser
 tools are validation dependencies only. Automated observations do not establish
 human comprehension or replace the authoritative technical gate.
 
-## Explicit Work explanations
+## Explicit Work and Decision explanations
 
 From a bound repository, or with explicit `--runtime` and `--project`:
 
@@ -165,7 +165,7 @@ volicord --json work explain delete --work GOAL_ID
 
 Preparation returns `{operation, plan}`. The current active agent reads the entire
 plan under its existing source-access authority and creates a response JSON using
-`format_kind: "volicord_work_explanation"`, `format_version: 1`, the exact
+`format_kind: "volicord_explanation"`, `format_version: 1`, the exact
 `plan_fingerprint`, `language`, `generator: {host, session, agent, model}` and
 `paragraphs: [{question, text, evidence_keys}]`. Each of `purpose`, `reported_change`,
 `expected_effect`, `verification`, `next_step` requires one paragraph. `limits` is
@@ -189,6 +189,24 @@ languages/history for the Work through managed cleanup; canonical forgetting rem
 linked content and applies the existing read barrier. Cache deletion leaves canonical
 context intact. GET, navigation and snapshot export never generate or transmit.
 
+The shared `ExplanationSubject::{Work, Decision}` API replaces the Work-only Rust
+DTOs and reader. Decision preparation/recording/deletion use the same format, validator
+and managed store:
+
+```text
+volicord --json decision explain prepare --decision DECISION_ID --language ko
+volicord --json decision explain record --decision DECISION_ID --language ko --input /absolute/response.json
+volicord --json decision explain delete --decision DECISION_ID
+```
+
+Decision paragraphs are `user_rationale`, `recommendation`, `consequences`,
+`applicability`; optional `limits` qualifies both subjects. CLI status/Recall/decisions
+accept `--language`; fixed labels follow `--locale`. MCP Recall and repository_understanding
+accept `requested_language` and `fixed_locale`. JSON exposes shared `answers` with
+explicit `evidence`. Four document kinds use the same semantics and disclosure roles.
+Publication rechecks current canonical and explanation basis; render again after
+correction/forget/deletion. Already exported offline copies cannot be retracted.
+
 ## Reproduce the narrow actual-host reading proof
 
 Use a fresh ignored output directory; the seed creates canonical inputs only and
@@ -197,13 +215,13 @@ root. Wrap validation in `rebuild/scripts/validate focused LABEL -- COMMAND`.
 
 ```bash
 cargo build --manifest-path rebuild/Cargo.toml -p volicord-operations -p volicord-viewer
-VOLICORD_WORK_EXPLANATION_FIXTURE_ROOT="$PWD/rebuild/.local/work-proof-fresh" \
+VOLICORD_EXPLANATION_FIXTURE_ROOT="$PWD/rebuild/.local/work-proof-fresh" \
   cargo test --manifest-path rebuild/Cargo.toml -p volicord-viewer \
   --test work_explanation seed_work_explanation_runtime -- --exact
 ```
 
 Read `work-proof-fresh/fixture.json` for `runtime`, `project` and `goals`. For each
-of `relay`, `relay_variant`, `export`, `older`, and each language `en`, `ko`, run
+of `relay`, `relay_variant`, `export`, `older`, `checksum`, and each language `en`, `ko`, run
 the actual sibling executable, substituting the manifest values:
 
 ```text
@@ -217,6 +235,10 @@ copying expected claims into a fixture do not establish explanation capability.
 The independent cases and browser claim requirements live in
 `rebuild/validation/end-to-end/multi-repository/fixtures/viewer-reading/answer-cases.json`.
 New source-rich input is synthetic and distinct from the preserved generic case.
+The manifest also contains `decisions`: generate `project` (audit-heavy offline reason)
+and `explicit` (missing user reason) in en/ko through `decision explain prepare/record`.
+Independent requirements are in `decision_cases` and `decision_browser_claim_terms`;
+the browser checks these four recordings alongside the ten Work recordings.
 
 Use the browser dependencies documented in the validation README and a Korean-capable
 font (`fc-list :lang=ko` must be nonempty). Then run:

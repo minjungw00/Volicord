@@ -94,11 +94,11 @@ background transmission consent를 부여하지 않으며 현재 non-Codex captu
 Host가 제공하지 않는 권한을 Volicord가 발명하지 않는다. Current-host interaction의
 구체적 UI나 wire representation은 이 문서의 계약이 아니다.
 
-### Explicit local Work explanation retention
+### Explicit local explanation retention
 
-The active host may explicitly prepare canonical Work evidence and submit its
-interpretation through `work explain record`. This operation expresses local
-retention intent for that Project/Work/language only; it grants no background
+The active host may explicitly prepare canonical Work or Decision evidence and submit its
+interpretation through `work explain record` or `decision explain record`. This operation expresses local
+retention intent for that Project/subject/language only; it grants no background
 generation or transmission consent. Preparation reads recorded Source observations,
 never an arbitrary filesystem path or credential. Read/navigation/export perform
 no host or provider invocation. Missing host access or generation authority remains
@@ -109,7 +109,7 @@ evidence identities/revisions/fields, Source snapshot/status and host/session,
 nullable agent/model, recording time and self-reported identity status. Original
 evidence content is not duplicated in the retained envelope. Canonical links include
 every used record and Source, so correction invalidation and forget read barriers
-apply. Explicit Work deletion removes all retained languages/history and sanitizes
+apply. Explicit subject explanation deletion removes all retained languages/history and sanitizes
 the local SQLite content/WAL through existing managed cleanup. Failed sanitization
 reports incomplete cleanup and supports explicit retry; local success certifies
 neither host memory nor provider-side deletion. No remote request was introduced.

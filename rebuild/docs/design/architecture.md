@@ -532,9 +532,9 @@ failure는 canonical state를 바꾸지 않는다. 편집본이나 생성물을 
 별도의 explicit adoption intent를 Kernel operation에 제출한다. Publication success와
 adoption success는 독립 결과다.
 
-### Work-specific interactive explanation
+### Question-scoped interactive explanation
 
-Projections and Documents owns Work question selection, preparation, structural
+Projections and Documents owns Work/Decision question selection, preparation, structural
 realization validation and read states, independently of document NarrativePlan.
 Local Operations coordinates explicit prepare/record/delete, current canonical
 grounding and the existing mutation lock. Privacy and Provider Boundary owns local

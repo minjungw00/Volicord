@@ -579,8 +579,8 @@ qualification. Existing V11/resource budgets are unchanged.
 ### Browser support for Viewer reading (V11 owner)
 
 The narrow `end-to-end/multi-repository/work_explanation_browser.py` runner consumes
-a fresh canonical fixture after actual authorized active-host `work explain prepare/record`.
-It checks ordinary answers for four independent/limited cases in English and Korean,
+a fresh canonical fixture after actual authorized active-host `work explain prepare/record` and `decision explain prepare/record`.
+It checks ordinary answers for five Work cases and two Decision cases in English and Korean,
 current provenance disclosure and mutation-free GETs; it never generates or preloads
 prose. Seed, response format and reproduction commands are maintained in the
 [Viewer README](../crates/volicord-viewer/README.md#reproduce-the-narrow-actual-host-reading-proof).

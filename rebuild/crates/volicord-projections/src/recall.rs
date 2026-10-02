@@ -54,6 +54,7 @@ pub enum BriefDecisionState {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BriefDecision {
+    pub explanations: Vec<crate::ExplanationReading>,
     pub user_source_basis: Vec<SourceId>,
     pub user_source_status: Vec<crate::ReadingSourceStatus>,
     pub recommendation_source_status: Vec<crate::ReadingSourceStatus>,
@@ -83,7 +84,7 @@ pub struct BriefDecision {
     /// Limits that continue to qualify the selected Decision after the
     /// originating Question becomes terminal.
     pub known_limits: Vec<String>,
-    pub review_basis: Vec<String>,
+    pub review_issues: Vec<volicord_inquiry::ApplicabilityIssue>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -139,6 +140,7 @@ pub struct RecallProposal {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResumeBrief {
+    pub selected_work: Option<crate::UnderstandingWork>,
     pub project_id: ProjectId,
     pub project_name: String,
     pub project_purpose: Vec<BriefContextItem>,
@@ -508,6 +510,15 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
     known_limits.dedup();
     let omitted_count = omissions.len();
     ResumeBrief {
+        selected_work: crate::WorkSelector::LatestWork
+            .resolve(canonical)
+            .ok()
+            .and_then(|s| s.work_item_id)
+            .and_then(|id| {
+                crate::reading::derive_work_history(canonical)
+                    .into_iter()
+                    .find(|w| w.work_item_id == id)
+            }),
         project_id: canonical.project.id,
         project_name: canonical.project.display_name.clone(),
         project_purpose,
@@ -604,6 +615,7 @@ pub(crate) fn brief_decision(
         DecisionChoice::Delegation { .. } => None,
     };
     BriefDecision {
+        explanations: Vec::new(),
         user_source_status: crate::reading::reading_sources(
             canonical,
             &[lifecycle.decision.user_turn_source_id],
@@ -652,10 +664,62 @@ pub(crate) fn brief_decision(
         source_basis: applicability.source_basis,
         question_uncertainty,
         known_limits,
-        review_basis: applicability
-            .issues
+        review_issues: applicability.issues,
+    }
+}
+
+impl BriefDecision {
+    pub fn review_basis(&self, locale: crate::FixedLocale) -> Vec<String> {
+        use volicord_inquiry::ApplicabilityIssue::*;
+        self.review_issues
             .iter()
-            .map(|issue| format!("{issue:?}"))
-            .collect(),
+            .map(|issue| {
+                let (en, ko) = match issue {
+                    WrongProject => (
+                        "Decision belongs to a different Project",
+                        "다른 프로젝트의 결정입니다",
+                    ),
+                    ScopeMismatch => (
+                        "Declared scope does not match this applicability query",
+                        "선언된 범위가 현재 적용 범위 질의와 일치하지 않습니다",
+                    ),
+                    AssumptionChanged(_) => (
+                        "A declared assumption changed",
+                        "선언된 가정이 변경되었습니다",
+                    ),
+                    SourceStale(_) => (
+                        "A supporting Source is stale",
+                        "지원하는 Source가 오래되었습니다",
+                    ),
+                    SourceUnavailable(_) => (
+                        "A supporting Source is unavailable",
+                        "지원하는 Source를 사용할 수 없습니다",
+                    ),
+                    SourceUnknown(_) => (
+                        "A supporting Source is unknown",
+                        "지원하는 Source를 알 수 없습니다",
+                    ),
+                    RevisitTriggerMet(_) => (
+                        "A declared revisit trigger was met",
+                        "선언된 재검토 조건이 충족되었습니다",
+                    ),
+                    Contradiction => (
+                        "Contradictory evidence requires review",
+                        "모순된 근거를 검토해야 합니다",
+                    ),
+                    ExistingReviewDue => ("Review is already due", "이미 검토가 필요합니다"),
+                    Superseded => ("Decision has been superseded", "결정이 대체되었습니다"),
+                    MissingQuestionBasis => (
+                        "The originating Question basis is unavailable",
+                        "원래 질문의 근거를 사용할 수 없습니다",
+                    ),
+                };
+                match locale {
+                    crate::FixedLocale::English => en,
+                    crate::FixedLocale::Korean => ko,
+                }
+                .to_owned()
+            })
+            .collect()
     }
 }

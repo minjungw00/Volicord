@@ -696,8 +696,8 @@ no-record versus NotRun, corrupt/non-current cache, explicit deletion and forget
 Fake realizations establish lifecycle only. The maintained fresh canonical fixture
 seed plus public `work explain prepare/record` lets the current authorized active
 host author actual responses from evidence, without preloading expected prose.
-`work_explanation_browser.py` and the existing browser driver then check four cases
-(audit-heavy search, reordered variant, independent CSV failure, limited generic result)
+`work_explanation_browser.py` and the existing browser driver then check five Work cases and two Decision cases
+(audit-heavy search, reordered variant, independent CSV failure, limited generic result, and damaged-download checksum)
 in English and Korean. Required independent claims are visible before evidence opens;
 generator uncertainty remains inspectable. GET-only navigation changes neither canonical
 export nor provider/managed-record counts. Complete streams, exits, screenshots and

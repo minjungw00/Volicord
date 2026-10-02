@@ -31,7 +31,7 @@ pub const RENDERED_MARKDOWN_BYTE_LIMIT: usize = 3 * 1_024 * 1_024;
 pub const RENDERED_HTML_BYTE_LIMIT: usize = 8 * 1_024 * 1_024;
 
 pub const GENERATED_DOCUMENT_FORMAT_KIND: &str = "volicord.generated_document";
-pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 7;
+pub const GENERATED_DOCUMENT_METADATA_VERSION: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DocumentKind {
@@ -122,8 +122,15 @@ pub struct GeneratedDocumentClaim {
     pub uncertainty: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DocumentSectionRole {
+    Reading,
+    Evidence,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DocumentSection {
+    pub role: DocumentSectionRole,
     pub key: String,
     pub title: String,
     pub claims: Vec<GeneratedDocumentClaim>,
@@ -155,6 +162,7 @@ pub struct DocumentMetadata {
     pub document_kind: DocumentKind,
     pub project_id: ProjectId,
     pub canonical_revision: u64,
+    pub canonical_read_fingerprint: String,
     pub generated_at: TimestampMicros,
     pub generator: GeneratorIdentity,
     pub requested_language: String,
@@ -163,6 +171,7 @@ pub struct DocumentMetadata {
     pub html_language_tag: String,
     pub fixed_locale: FixedLocale,
     pub narrative_realization: NarrativeRealizationState,
+    pub explanations: Vec<crate::ExplanationProvenance>,
     pub repository_snapshots: Vec<RepositorySnapshotId>,
     pub analysis_snapshots: Vec<AnalysisSnapshotId>,
     pub included_decisions: Vec<DocumentDecisionBasis>,
@@ -310,7 +319,12 @@ pub fn generate_documents(
     validate_request(request)?;
     let mut documents = BTreeMap::new();
     for kind in DocumentKind::ALL {
-        let body = build_body(kind, projection, request.fixed_locale);
+        let body = build_body(
+            kind,
+            projection,
+            request.fixed_locale,
+            &request.requested_language,
+        );
         validate_claim_grounding(projection, &body)?;
         let metadata = build_metadata(kind, projection, request, &body);
         let markdown_content = render_markdown(&metadata, &body, request.fixed_locale);
@@ -362,7 +376,12 @@ pub fn prepare_narrative_plan(
         return Err(DocumentError::new("full document generation requires all projection sections; requested-section input is incomplete"));
     }
     validate_request(request)?;
-    let body = build_body(kind, projection, request.fixed_locale);
+    let body = build_body(
+        kind,
+        projection,
+        request.fixed_locale,
+        &request.requested_language,
+    );
     validate_claim_grounding(projection, &body)?;
     let protected_candidates = protected_candidates(projection);
     let sections = body
@@ -436,7 +455,12 @@ pub fn realize_narrative(
         ));
     }
 
-    let source_body = build_body(kind, projection, request.fixed_locale);
+    let source_body = build_body(
+        kind,
+        projection,
+        request.fixed_locale,
+        &request.requested_language,
+    );
     let mut body = DocumentBody {
         title: realization.title.clone(),
         sections: Vec::with_capacity(plan.sections.len()),
@@ -483,6 +507,7 @@ pub fn realize_narrative(
             });
         }
         body.sections.push(DocumentSection {
+            role: source_section.role,
             key: plan_section.key.clone(),
             title: realized_section.title.clone(),
             claims,
@@ -557,18 +582,23 @@ fn build_body(
     kind: DocumentKind,
     projection: &ProjectProjection,
     locale: FixedLocale,
+    language: &str,
 ) -> DocumentBody {
     let mut body = match kind {
-        DocumentKind::ProjectArchitectureGuide => architecture_body(projection, locale),
-        DocumentKind::DecisionReport => decision_body(projection, locale),
-        DocumentKind::ImplementationPlan => implementation_body(projection, locale),
-        DocumentKind::HandoffResume => handoff_body(projection, locale),
+        DocumentKind::ProjectArchitectureGuide => architecture_body(projection, locale, language),
+        DocumentKind::DecisionReport => decision_body(projection, locale, language),
+        DocumentKind::ImplementationPlan => implementation_body(projection, locale, language),
+        DocumentKind::HandoffResume => handoff_body(projection, locale, language),
     };
     bound_rendered_body(&mut body, locale);
     body
 }
 
-fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> DocumentBody {
+fn architecture_body(
+    projection: &ProjectProjection,
+    locale: FixedLocale,
+    language: &str,
+) -> DocumentBody {
     let mut overview_claims = projection
         .resume
         .project_purpose
@@ -661,35 +691,15 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
         .iter()
         .map(|decision| GeneratedDocumentClaim {
             identity: format!("decision:{}", decision.decision_id),
-            class: ClaimClass::CanonicalContext,
-            text: format!(
-                "{}: {}; {}={}; {}={}; {}={}; {}={}; {}={}",
-                brief_decision_state_label(decision.state, locale),
-                decision_choice_attribution(decision, locale),
-                fixed(locale, "rationale", "근거"),
-                decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
-                    locale,
-                    "not recorded",
-                    "기록되지 않음"
-                )),
-                fixed(locale, "agent recommendation", "에이전트 권고"),
-                recommendation_attribution(decision, locale),
-                fixed(locale, "recommendation rationale", "권고 근거"),
-                decision.recommendation_rationale,
-                fixed(locale, "alternative consequences", "대안별 예상 결과"),
-                alternative_consequences(decision, locale),
-                fixed(locale, "applicability", "적용 범위"),
-                projection
-                    .decision_context_code
-                    .iter()
-                    .find(|link| link.decision_id == decision.decision_id)
-                    .map_or_else(
-                        || fixed(locale, "not recorded", "기록되지 않음").to_owned(),
-                        |link| {
-                            format_scope(&link.declared_paths, &link.declared_components, locale)
-                        }
-                    )
-            ),
+            class: if crate::decision_answers(decision, language, locale)
+                .provenance
+                .is_some()
+            {
+                ClaimClass::AgentInterpretation
+            } else {
+                ClaimClass::DeterministicDerived
+            },
+            text: crate::decision_answers(decision, language, locale).text(),
             source_basis: decision.source_basis.clone(),
             decision_basis: vec![decision.decision_id],
             analysis_basis: Vec::new(),
@@ -698,7 +708,7 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
             uncertainty: decision
                 .known_limits
                 .iter()
-                .chain(&decision.review_basis)
+                .chain(&decision.review_basis(locale))
                 .cloned()
                 .collect(),
         })
@@ -716,7 +726,8 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
                 fixed(locale, "Project overview", "프로젝트 개요"),
                 overview_claims,
             ),
-            work_summary_section(projection, locale),
+            work_summary_section(projection, locale, language),
+            decision_evidence_section(projection, locale),
             section(
                 "decisions",
                 fixed(locale, "Architecture decisions", "아키텍처 결정"),
@@ -737,7 +748,11 @@ fn architecture_body(projection: &ProjectProjection, locale: FixedLocale) -> Doc
     }
 }
 
-fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> DocumentBody {
+fn decision_body(
+    projection: &ProjectProjection,
+    locale: FixedLocale,
+    language: &str,
+) -> DocumentBody {
     let claims = projection
         .resume
         .decisions
@@ -749,52 +764,15 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                 .find(|link| link.decision_id == decision.decision_id);
             GeneratedDocumentClaim {
                 identity: format!("decision:{}", decision.decision_id),
-                class: ClaimClass::CanonicalContext,
-                text: format!(
-                    "{}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}; {}={}",
-                    fixed(locale, "state", "상태"),
-                    brief_decision_state_label(decision.state, locale),
-                    fixed(locale, "choice", "선택"),
-                    decision_choice_attribution(decision, locale),
-                    fixed(locale, "user rationale", "사용자 근거"),
-                    decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
-                        locale,
-                        "not recorded",
-                        "기록되지 않음"
-                    )),
-                    fixed(locale, "agent recommendation", "에이전트 권고"),
-                    format_args!(
-                        "{}; {}={}",
-                        recommendation_attribution(decision, locale),
-                        fixed(locale, "rationale", "근거"),
-                        decision.recommendation_rationale
-                    ),
-                    fixed(locale, "alternative consequences", "대안별 예상 결과"),
-                    alternative_consequences(decision, locale),
-                    fixed(locale, "assumptions", "가정"),
-                    display_strings(&decision.assumptions, locale),
-                    fixed(locale, "revisit triggers", "재검토 조건"),
-                    display_strings(&decision.revisit_triggers, locale),
-                    fixed(locale, "scope", "범위"),
-                    link.map_or_else(
-                        || fixed(locale, "not recorded", "기록되지 않음").to_owned(),
-                        |value| format!(
-                            "{}; {}={}",
-                            format_scope(
-                                &value.declared_paths,
-                                &value.declared_components,
-                                locale,
-                            ),
-                            fixed(locale, "work context", "작업 맥락"),
-                            display_strings(&value.declared_work_contexts, locale)
-                        )
-                    ),
-                    fixed(locale, "code links", "코드 연결"),
-                    link.map_or_else(
-                        || fixed(locale, "none", "없음").to_owned(),
-                        |value| display_strings(&value.related_code_entities, locale)
-                    ),
-                ),
+                class: if crate::decision_answers(decision, language, locale)
+                    .provenance
+                    .is_some()
+                {
+                    ClaimClass::AgentInterpretation
+                } else {
+                    ClaimClass::DeterministicDerived
+                },
+                text: crate::decision_answers(decision, language, locale).text(),
                 source_basis: decision.source_basis.clone(),
                 decision_basis: vec![decision.decision_id],
                 analysis_basis: Vec::new(),
@@ -803,7 +781,7 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
                 uncertainty: decision
                     .known_limits
                     .iter()
-                    .chain(&decision.review_basis)
+                    .chain(&decision.review_basis(locale))
                     .chain(
                         link.into_iter()
                             .flat_map(|value| value.missing_or_uncertain_links.iter()),
@@ -817,7 +795,8 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
         title: fixed(locale, "Decision Report", "결정 보고서").to_owned(),
         sections: vec![
             goal_section(projection, locale),
-            work_summary_section(projection, locale),
+            work_summary_section(projection, locale, language),
+            decision_evidence_section(projection, locale),
             section(
                 "decisions",
                 fixed(
@@ -833,7 +812,11 @@ fn decision_body(projection: &ProjectProjection, locale: FixedLocale) -> Documen
     }
 }
 
-fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> DocumentBody {
+fn implementation_body(
+    projection: &ProjectProjection,
+    locale: FixedLocale,
+    language: &str,
+) -> DocumentBody {
     let mut plan = Vec::new();
     for question in &projection.resume.open_questions {
         plan.push(GeneratedDocumentClaim {
@@ -858,33 +841,15 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
             uncertainty: question.blocked_basis.clone(),
         });
     }
-    if let Some(checkpoint) = projection.resume.latest_meaningful_checkpoint.as_ref() {
-        plan.push(GeneratedDocumentClaim {
-            identity: format!("checkpoint-next:{}", checkpoint.id),
-            class: ClaimClass::CanonicalContext,
-            text: format!(
-                "{}: {}; {}={}; {}={}; {}={}",
-                fixed(locale, "Next step", "다음 단계"),
-                checkpoint.next_step,
-                fixed(locale, "affected paths", "변경 경로"),
-                display_strings(&checkpoint.changed_paths, locale),
-                fixed(locale, "verification", "검증"),
-                checkpoint
-                    .verification
-                    .iter()
-                    .map(|fact| verification_fact_label(fact, locale))
-                    .collect::<Vec<_>>()
-                    .join("; "),
-                fixed(locale, "known limits", "알려진 한계"),
-                display_strings(&checkpoint.known_limits, locale)
-            ),
-            source_basis: checkpoint.source_basis.clone(),
-            decision_basis: checkpoint.applied_decisions.clone(),
-            analysis_basis: Vec::new(),
-            explicit_inference: false,
-            historical_uncertainty: Vec::new(),
-            uncertainty: checkpoint.known_limits.clone(),
-        });
+    if let Some(work) = &projection.selected_work {
+        let mut next = work_summary_claim(work, locale, language);
+        next.identity = format!("work-nextstep:{}", work.work_item_id);
+        next.text = crate::work_answers(work, language, locale)
+            .prose
+            .into_iter()
+            .find(|a| a.question == "NextStep" || a.question == "ExplanationAvailability")
+            .map_or_else(String::new, |a| a.text);
+        plan.push(next);
     }
     if plan.is_empty() {
         plan.push(inference_claim(
@@ -901,8 +866,9 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
         title: fixed(locale, "Implementation Plan", "구현 계획").to_owned(),
         sections: vec![
             goal_section(projection, locale),
-            work_summary_section(projection, locale),
-            decision_summary_section(projection, locale),
+            work_summary_section(projection, locale, language),
+            decision_evidence_section(projection, locale),
+            decision_summary_section(projection, locale, language),
             section("plan", fixed(locale, "Ordered work", "작업 순서"), plan),
             timeline_section(projection, locale),
             gap_section(projection, locale),
@@ -910,7 +876,11 @@ fn implementation_body(projection: &ProjectProjection, locale: FixedLocale) -> D
     }
 }
 
-fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> DocumentBody {
+fn handoff_body(
+    projection: &ProjectProjection,
+    locale: FixedLocale,
+    language: &str,
+) -> DocumentBody {
     let mut context = projection
         .resume
         .goals_and_why
@@ -981,8 +951,9 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
                 fixed(locale, "Goal and context", "목표와 맥락"),
                 context,
             ),
-            work_summary_section(projection, locale),
-            decision_summary_section(projection, locale),
+            work_summary_section(projection, locale, language),
+            decision_evidence_section(projection, locale),
+            decision_summary_section(projection, locale, language),
             timeline_section(projection, locale),
             section(
                 "questions",
@@ -996,11 +967,27 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
                     identity: "next-meaningful-step".to_owned(),
                     class: ClaimClass::CanonicalContext,
                     text: projection
-                        .resume
-                        .next_meaningful_step
-                        .clone()
+                        .selected_work
+                        .as_ref()
+                        .map(|w| {
+                            crate::work_answers(w, language, locale)
+                                .prose
+                                .into_iter()
+                                .filter(|a| {
+                                    a.question == "NextStep"
+                                        || a.question == "ExplanationAvailability"
+                                })
+                                .map(|a| a.text)
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        })
                         .unwrap_or_else(|| {
-                            fixed(locale, "Not recorded", "기록되지 않음").to_owned()
+                            fixed(
+                                locale,
+                                "No selected Work next step is recorded",
+                                "선택 작업의 다음 단계가 기록되지 않았습니다",
+                            )
+                            .into()
                         }),
                     source_basis: projection
                         .resume
@@ -1025,7 +1012,11 @@ fn handoff_body(projection: &ProjectProjection, locale: FixedLocale) -> Document
     }
 }
 
-fn work_summary_section(projection: &ProjectProjection, locale: FixedLocale) -> DocumentSection {
+fn work_summary_section(
+    projection: &ProjectProjection,
+    locale: FixedLocale,
+    language: &str,
+) -> DocumentSection {
     let understanding = build_project_understanding(projection, UnderstandingBound::default());
     let mut work = understanding
         .current_work
@@ -1036,7 +1027,7 @@ fn work_summary_section(projection: &ProjectProjection, locale: FixedLocale) -> 
     work.sort_by_key(|item| (work_state_priority(item.state), item.work_item_id));
     let mut claims = work
         .into_iter()
-        .map(|work| work_summary_claim(work, locale))
+        .map(|work| work_summary_claim(work, locale, language))
         .collect::<Vec<_>>();
     if claims.is_empty() {
         claims.push(inference_claim(
@@ -1069,105 +1060,20 @@ const fn work_state_priority(state: UnderstandingWorkState) -> usize {
     }
 }
 
-fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> GeneratedDocumentClaim {
-    let reading_display = |text: &crate::ReadingText| match locale {
-        FixedLocale::English => text.display_english.clone(),
-        FixedLocale::Korean => text.display_korean.clone(),
-    };
-    let latest_change = work.reading.answers.result.as_ref().map_or_else(
-        || {
-            fixed(
-                locale,
-                "Summary unavailable: no change explanation is recorded",
-                "변경 설명이 기록되지 않아 요약을 제공할 수 없습니다",
-            )
-            .to_owned()
-        },
-        reading_display,
-    );
-    let next_step = reading_display(&work.reading.next_step);
-    let verification =
-        work.reading
-            .answers
-            .verification
-            .as_ref()
-            .map_or_else(Vec::new, |observation| {
-                observation
-                    .verification
-                    .iter()
-                    .map(|fact| verification_fact_label(fact, locale))
-                    .collect::<Vec<_>>()
-            });
-    let state = work_state_label_from_understanding(work.state, locale);
-    let mut text = match locale {
-        FixedLocale::English => format!(
-            "`{}` is {}. Latest meaningful change: {}. Next: {}. Affected code: {}. Verification: {}.",
-            reading_display(&work.reading.goal),
-            state,
-            latest_change,
-            next_step,
-            display_strings(
-                &work
-                    .changed_paths
-                    .iter()
-                    .chain(&work.changed_components)
-                    .cloned()
-                    .collect::<Vec<_>>(),
-                locale,
-            ),
-            display_strings(&verification, locale),
-        ),
-        FixedLocale::Korean => format!(
-            "`{}` 작업은 {} 상태입니다. 최근 의미 있는 변경: {}. 다음 단계: {}. 영향받는 코드: {}. 검증: {}.",
-            reading_display(&work.reading.goal),
-            state,
-            latest_change,
-            next_step,
-            display_strings(
-                &work
-                    .changed_paths
-                    .iter()
-                    .chain(&work.changed_components)
-                    .cloned()
-                    .collect::<Vec<_>>(),
-                locale,
-            ),
-            display_strings(&verification, locale),
-        ),
-    };
-    if let Some(observation) = work.reading.answers.latest_state.as_ref() {
-        text.push_str(&format!(
-            " {}: {}; {}: {}.",
-            fixed(locale, "User review", "사용자 검토"),
-            user_review_label(observation.user_review.state, locale),
-            fixed(locale, "User acceptance", "사용자 수락"),
-            user_acceptance_label(observation.user_acceptance.state, locale)
-        ));
-    }
-    if work.reading.states.iter().any(|observation| {
-        !observation.later_changed_checkpoint_ids.is_empty()
-            && observation
-                .verification
-                .iter()
-                .any(|fact| fact.state == VerificationState::Passed)
-    }) {
-        text.push_str(fixed(locale, " Earlier passed verification is historical and does not establish coverage of later changes.",
-            " 이전 성공 검증은 과거 근거이며 이후 변경의 검증 범위를 입증하지 않습니다."));
-    }
-    if let Some(gap) = &work.reading.code_gap {
-        let gap = match locale {
-            FixedLocale::English => gap.english(),
-            FixedLocale::Korean => gap.korean(),
-        };
-        text.push_str(&format!(
-            " {}: {gap}.",
-            fixed(locale, "Code gap", "코드 근거 공백")
-        ));
-    }
+fn work_summary_claim(
+    work: &UnderstandingWork,
+    locale: FixedLocale,
+    language: &str,
+) -> GeneratedDocumentClaim {
+    let answers = crate::work_answers(work, language, locale);
     GeneratedDocumentClaim {
         identity: format!("work-summary:{}", work.work_item_id),
-        class: ClaimClass::DeterministicDerived,
-        text,
+        class: if answers.provenance.is_some() {
+            ClaimClass::AgentInterpretation
+        } else {
+            ClaimClass::DeterministicDerived
+        },
+        text: answers.text(),
         source_basis: work
             .source_basis
             .iter()
@@ -1183,7 +1089,7 @@ fn work_summary_claim(work: &UnderstandingWork, locale: FixedLocale) -> Generate
         uncertainty: work
             .open_question_ids
             .iter()
-            .map(|question| format!("open Question {question}"))
+            .map(|q| format!("open Question {q}"))
             .collect(),
     }
 }
@@ -1239,9 +1145,62 @@ fn goal_section(projection: &ProjectProjection, locale: FixedLocale) -> Document
     section("goal", fixed(locale, "Current Goal", "현재 목표"), claims)
 }
 
+fn decision_evidence_section(
+    projection: &ProjectProjection,
+    locale: FixedLocale,
+) -> DocumentSection {
+    let claims = projection
+        .resume
+        .decisions
+        .iter()
+        .map(|d| GeneratedDocumentClaim {
+            identity: format!("decision-original:{}", d.decision_id),
+            class: ClaimClass::CanonicalContext,
+            text: format!(
+                "{}: {}. {}: {}",
+                fixed(
+                    locale,
+                    "User rationale original quotation",
+                    "사용자 근거 원문 인용"
+                ),
+                d.user_rationale.as_deref().unwrap_or_else(|| fixed(
+                    locale,
+                    "not recorded",
+                    "기록되지 않음"
+                )),
+                fixed(
+                    locale,
+                    "Agent recommendation original quotation",
+                    "에이전트 권고 원문 인용"
+                ),
+                d.recommendation_rationale
+            ),
+            source_basis: d
+                .user_source_basis
+                .iter()
+                .chain(&d.recommendation_source_basis)
+                .copied()
+                .collect(),
+            decision_basis: vec![d.decision_id],
+            analysis_basis: Vec::new(),
+            explicit_inference: false,
+            historical_uncertainty: d.question_uncertainty.clone(),
+            uncertainty: Vec::new(),
+        })
+        .collect();
+    let mut section = section(
+        "decision-originals",
+        fixed(locale, "Decision original evidence", "결정 원문 근거"),
+        claims,
+    );
+    section.role = DocumentSectionRole::Evidence;
+    section
+}
+
 fn decision_summary_section(
     projection: &ProjectProjection,
     locale: FixedLocale,
+    language: &str,
 ) -> DocumentSection {
     let claims = projection
         .resume
@@ -1250,27 +1209,15 @@ fn decision_summary_section(
         .filter(|decision| decision.state != BriefDecisionState::Superseded)
         .map(|decision| GeneratedDocumentClaim {
             identity: format!("decision-summary:{}", decision.decision_id),
-            class: ClaimClass::CanonicalContext,
-            text: format!(
-                "{}: {}; {}={}; {}={}; {}={}",
-                fixed(locale, "Decision", "결정"),
-                decision_choice_attribution(decision, locale),
-                fixed(locale, "rationale", "근거"),
-                decision.user_rationale.as_deref().unwrap_or_else(|| fixed(
-                    locale,
-                    "not recorded",
-                    "기록되지 않음"
-                )),
-                fixed(locale, "agent recommendation", "에이전트 권고"),
-                format_args!(
-                    "{}; {}={}",
-                    recommendation_attribution(decision, locale),
-                    fixed(locale, "rationale", "근거"),
-                    decision.recommendation_rationale
-                ),
-                fixed(locale, "alternative consequences", "대안별 예상 결과"),
-                alternative_consequences(decision, locale),
-            ),
+            class: if crate::decision_answers(decision, language, locale)
+                .provenance
+                .is_some()
+            {
+                ClaimClass::AgentInterpretation
+            } else {
+                ClaimClass::DeterministicDerived
+            },
+            text: crate::decision_answers(decision, language, locale).text(),
             source_basis: decision.source_basis.clone(),
             decision_basis: vec![decision.decision_id],
             analysis_basis: Vec::new(),
@@ -1279,7 +1226,7 @@ fn decision_summary_section(
             uncertainty: decision
                 .known_limits
                 .iter()
-                .chain(&decision.review_basis)
+                .chain(&decision.review_basis(locale))
                 .cloned()
                 .collect(),
         })
@@ -1328,11 +1275,13 @@ fn timeline_section(projection: &ProjectProjection, locale: FixedLocale) -> Docu
         .iter()
         .flat_map(|entry| checkpoint_semantic_claims(entry, locale))
         .collect();
-    section(
+    let mut evidence = section(
         "timeline",
         fixed(locale, "Checkpoint timeline", "체크포인트 타임라인"),
         claims,
-    )
+    );
+    evidence.role = DocumentSectionRole::Evidence;
+    evidence
 }
 
 fn checkpoint_semantic_claims(
@@ -1626,6 +1575,7 @@ fn inference_claim(
 
 fn section(key: &str, title: &str, claims: Vec<GeneratedDocumentClaim>) -> DocumentSection {
     DocumentSection {
+        role: DocumentSectionRole::Reading,
         key: key.to_owned(),
         title: title.to_owned(),
         claims,
@@ -1867,6 +1817,7 @@ fn build_metadata(
         document_kind: kind,
         project_id: projection.overview.project_id,
         canonical_revision: projection.overview.canonical_revision,
+        canonical_read_fingerprint: projection.canonical_read_fingerprint.clone(),
         generated_at: request.generated_at,
         generator: request.generator.clone(),
         requested_language: request.requested_language.clone(),
@@ -1875,6 +1826,29 @@ fn build_metadata(
             request.fixed_locale,
         ),
         fixed_locale: request.fixed_locale,
+        explanations: projection
+            .work_history
+            .iter()
+            .chain(projection.selected_work.iter())
+            .chain(&projection.work_overview.current.items)
+            .chain(&projection.work_overview.completed.items)
+            .chain(&projection.work_overview.remaining.items)
+            .filter_map(|w| {
+                crate::work_answers(w, &request.requested_language, request.fixed_locale).provenance
+            })
+            .chain(projection.resume.decisions.iter().filter_map(|d| {
+                crate::decision_answers(d, &request.requested_language, request.fixed_locale)
+                    .provenance
+            }))
+            .fold(Vec::new(), |mut values, e| {
+                if !values
+                    .iter()
+                    .any(|old: &crate::ExplanationProvenance| old.subject == e.subject)
+                {
+                    values.push(e);
+                }
+                values
+            }),
         narrative_realization: if fixed_realization_available(request) {
             NarrativeRealizationState::FixedLocale
         } else {
@@ -2108,6 +2082,9 @@ fn render_markdown(
     )));
     output.push_str("\n\n");
     for section in &body.sections {
+        if section.role == DocumentSectionRole::Evidence {
+            output.push_str("<details><summary>Supporting evidence</summary>\n\n");
+        }
         output.push_str("## ");
         output.push_str(&escape_markdown(&bounded_rendered_field(
             &section.title,
@@ -2147,6 +2124,9 @@ fn render_markdown(
             output.push('\n');
         }
         output.push('\n');
+        if section.role == DocumentSectionRole::Evidence {
+            output.push_str("\n</details>\n\n");
+        }
     }
     render_metadata_markdown(&mut output, metadata, body, locale);
     output
@@ -2171,6 +2151,11 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
     )));
     output.push_str("</h1>");
     for section in &body.sections {
+        if section.role == DocumentSectionRole::Evidence {
+            output.push_str(
+                "<details class=\"supporting-evidence\"><summary>Supporting evidence</summary>",
+            );
+        }
         output.push_str("<section data-section=\"");
         output.push_str(&escape_html(&bounded_rendered_field(
             &section.key,
@@ -2223,6 +2208,9 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
             output.push_str("</article>");
         }
         output.push_str("</section>");
+        if section.role == DocumentSectionRole::Evidence {
+            output.push_str("</details>");
+        }
     }
     render_metadata_html(&mut output, metadata, body, locale);
     output.push_str("</main></body></html>\n");
@@ -2243,6 +2231,13 @@ fn render_metadata_markdown(
     ));
     output.push_str("\n\n");
     output.push_str(fixed(locale, "This trailing appendix preserves the bounded technical basis for the human-facing document above.\n\n", "이 후행 부록은 위의 사용자 중심 문서에 대한 범위 제한 기술 근거를 보존합니다.\n\n"));
+    for explanation in &metadata.explanations {
+        output.push_str("<details><summary>Explanation grounding</summary>\n\n```json\n");
+        if let Ok(json) = serde_json::to_string_pretty(explanation) {
+            output.push_str(&json.replace('<', r"\u003c").replace('>', r"\u003e"));
+        }
+        output.push_str("\n```\n</details>\n\n");
+    }
     for (label, value) in metadata_pairs(metadata, locale) {
         output.push_str("- **");
         output.push_str(label);
@@ -2336,7 +2331,14 @@ fn render_metadata_html(
         )));
         output.push_str("</dd>");
     }
-    output.push_str("</dl><h3>");
+    output.push_str("</dl>");
+    for explanation in &metadata.explanations {
+        output.push_str(&format!(
+            "<pre class=\"explanation-provenance\">{}</pre>",
+            escape_html(&format!("{explanation:?}"))
+        ));
+    }
+    output.push_str("<h3>");
     output.push_str(&escape_html(fixed(
         locale,
         "Direct claim basis",
@@ -2564,34 +2566,8 @@ fn join_display<T: fmt::Display>(values: &[T]) -> String {
 }
 
 fn bounded_rendered_field(value: &str, field: &str, locale: FixedLocale) -> String {
-    if value.len() <= RENDERED_DOCUMENT_FIELD_BYTE_LIMIT {
+    if field == "claim text" || value.len() <= RENDERED_DOCUMENT_FIELD_BYTE_LIMIT {
         return value.to_owned();
-    }
-    if field == "claim text" && !value.trim().is_empty() {
-        let remainder = format!(
-            "[{}: {}; {}={}; {}={}; source digest=sha256:{:x}]",
-            fixed(
-                locale,
-                "bounded source remainder",
-                "범위 제한 source 나머지"
-            ),
-            field,
-            fixed(locale, "exact UTF-8 bytes", "정확한 UTF-8 바이트"),
-            value.len(),
-            fixed(locale, "rendered byte limit", "렌더링 바이트 제한"),
-            RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
-            Sha256::digest(value.as_bytes()),
-        );
-        return bounded_semantic_text(
-            value,
-            RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
-            fixed(
-                locale,
-                "[bounded semantic excerpt]\n",
-                "[범위 제한 의미 발췌]\n",
-            ),
-            &remainder,
-        );
     }
     format!(
         "[{}: {}; {}={}; {}={}]",
@@ -2828,7 +2804,7 @@ fn decision_choice_label(choice: &DecisionChoice, locale: FixedLocale) -> String
     }
 }
 
-fn decision_choice_attribution(decision: &BriefDecision, locale: FixedLocale) -> String {
+pub(crate) fn decision_choice_attribution(decision: &BriefDecision, locale: FixedLocale) -> String {
     match decision.chosen_alternative_key.as_deref() {
         Some(key) => decision
             .displayed_alternatives
@@ -2842,7 +2818,7 @@ fn decision_choice_attribution(decision: &BriefDecision, locale: FixedLocale) ->
     }
 }
 
-fn recommendation_attribution(decision: &BriefDecision, locale: FixedLocale) -> String {
+pub(crate) fn recommendation_attribution(decision: &BriefDecision, locale: FixedLocale) -> String {
     decision
         .recommended_alternative_key
         .as_deref()
@@ -2859,7 +2835,7 @@ fn recommendation_attribution(decision: &BriefDecision, locale: FixedLocale) -> 
         .unwrap_or_else(|| fixed(locale, "none recorded", "기록 없음").to_owned())
 }
 
-fn alternative_consequences(decision: &BriefDecision, locale: FixedLocale) -> String {
+pub(crate) fn alternative_consequences(decision: &BriefDecision, locale: FixedLocale) -> String {
     if decision.displayed_alternatives.is_empty() {
         return fixed(locale, "none recorded", "기록 없음").to_owned();
     }
@@ -2876,7 +2852,7 @@ fn alternative_consequences(decision: &BriefDecision, locale: FixedLocale) -> St
         .join("; ")
 }
 
-const fn brief_decision_state_label(
+pub(crate) const fn brief_decision_state_label(
     state: BriefDecisionState,
     locale: FixedLocale,
 ) -> &'static str {
@@ -3098,14 +3074,6 @@ const fn projection_issue_kind_label(
             fixed(locale, "Candidate read failed", "후보 읽기 실패")
         }
     }
-}
-
-fn format_scope(paths: &[String], components: &[String], locale: FixedLocale) -> String {
-    format!(
-        "paths=[{}]; components=[{}]",
-        display_strings(paths, locale),
-        display_strings(components, locale)
-    )
 }
 
 fn display_strings(values: &[String], locale: FixedLocale) -> String {

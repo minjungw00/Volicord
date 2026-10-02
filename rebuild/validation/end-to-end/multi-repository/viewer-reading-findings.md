@@ -426,3 +426,80 @@ The maintained reproduction inputs, public interfaces and browser commands are i
 `rebuild/crates/volicord-viewer/README.md`; fresh host output is required on reproduction.
 These observations establish a narrow implemented explanation path, not a human
 comprehension assessment, naturalistic campaign, official V11 or cutover gate.
+
+
+## Question-scoped answer integration review (2026-10-03)
+
+Current implementation supersedes the earlier excerpt/prototype limitations above.
+Entry baseline was `b87dcaf2`; before broad integration, public prepare/record/read
+was independently exercised from an empty runtime with five maintained Work
+inputs, including a new checksum task. The audit-heavy change was the final
+same-Work and Project Checkpoint. English/Korean ordinary answers were compared
+with original source, independent required/forbidden claims and exact basis.
+The source-poor Work remained nonspecific. A real SHA-256 is legitimate checksum
+subject matter; unrelated audit tokens remain in closed original evidence.
+
+The integrated proof adds two Decisions: an offline-queue user reason distinct
+from the remote-sync recommendation, and missing user rationale. Fourteen live
+browser checks passed, with Work Overview/detail/snapshot paragraph equality and
+Decision detail/snapshot equality. Current-host authored responses were recorded
+through public CLI; the seed includes canonical inputs only. This is synthetic
+content review, not human acceptance, a naturalistic campaign or official V11.
+GET/export changed neither canonical records nor managed/privacy counts.
+Korean screenshots were inspected with Noto CJK fonts. Reproduce via the seed,
+prepare/record and browser instructions in the Viewer README; do not substitute
+preloaded/generated expected prose for an actual generation step.
+
+One `ExplanationPlan`/`RetainedExplanation` decoder and privacy-managed store
+serve Work and Decision subjects. `prepare_explanation`, `record_explanation`
+and `delete_explanation` bind project, subject, revision, language, full evidence
+fingerprint, sources and self-reported host/model provenance. CLI entry points
+are `work explain` and `decision explain` prepare/record/delete. `work_answers`
+and `decision_answers` return shared `QuestionAnswers`: generated prose,
+independent facts, availability/diagnostic and exact provenance. Consumers are
+Viewer, all four documents, snapshot, status/decisions/Recall CLI and Recall/
+repository-understanding MCP. Language and fixed UI locale are separate inputs.
+No read invokes a provider or silently generates an answer.
+
+Restart, malformed/foreign/language/version rejection, deletion, regeneration,
+forget and rejection of saved stale document/snapshot publication passed against
+Local Operations. Document metadata version is 8. Publication revalidates under
+the mutation lock and never overwrites an existing file. Already exported offline
+copies cannot be retracted. Generated text is self-reported interpretation;
+structural validation checks bindings/citations, not semantic entailment or model
+identity authenticity. Exact quote DTOs remain solely for Goal labels, original
+result/next-step/rationale and closed inspection. Checkpoint observation facts,
+code entity identity/navigation and graph evidence remain active. Removed paths
+include primary result/status excerpts, duplicate next-step aggregation, flattened
+verification lists, duplicate Decision explanation fields and the Work-only
+explanation module/decoder. Code structure/flow explanations continue to derive
+from actual graph evidence and disclose unresolved/runtime-flow gaps.
+
+Relevant focused checks passed: affected projections/Operations/host/Viewer Rust
+all-target/all-feature suites (D1/N1/N2 included), V06 document assertions, fixture
+hashes, current CLI parity, multi-repository self-check (including restart
+negative controls), Dogfood capture/resume/document-realization support and archive
+support. External live provider qualification remains ignored without current
+transmission authorization. Initial runner invocation/selector and displaced
+wire-field expectations failed, were corrected, and rerun; full numeric outcomes,
+stdout/stderr and cleanup remain in ignored focused artifacts. No gate/final was
+invoked.
+
+Pre-performance integration workload: `requested_sections_on_large_repository`,
+192 added Python modules and maintained scenario history, debug profile, nine
+samples per Overview/Work/Decision/code/snapshot; fresh adapter first, then warm
+without OS cache flushing. Median milliseconds (total / projection / documents):
+Overview 42.198 / 8.830 / 0; Work 41.221 / 7.608 / 0; Decision 39.908 / 8.434 / 0;
+code 105.469 / 13.696 / 0; snapshot 217.526 / 14.371 / 94.900.
+This still reads complete canonical history and eagerly copies detailed Work
+histories. Bounded visible sections do not establish bounded read cost.
+The pre-integration snapshot median was 122.476 ms; added live-basis validation
+caused repeated canonical/store reads and requires measured improvement.
+
+Generation-path costs are separate: fourteen public CLI preparations took
+7.18–8.59 ms each (process startup included); full plan envelopes were
+5,080–11,993 bytes. Ten Work records took 267 ms as a batch and four Decision
+records 97 ms after rebinding. Host interpretation was performed in this session;
+no isolated model inference latency or token-cost measurement was available, so
+these timings measure preparation/recording, not model generation speed. Reads
+consume the retained response without generating. No external provider was used.

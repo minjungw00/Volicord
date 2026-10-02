@@ -1426,8 +1426,8 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         .expect("Project Understanding Decisions")
         .iter()
         .any(|item| {
-            item["decision_id"] == decision_id
-                && item["recommendation_rationale"].is_string()
+            item["identity"] == decision_id
+                && item["evidence"]["recommendation_rationale"].is_string()
                 && item["source_basis"].is_array()
         }));
     let completed_work = understanding["completed_work"]
@@ -6174,16 +6174,22 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         "not_run"
     );
     assert_eq!(
-        recalled["decisions"][0]["user_rationale"],
+        recalled["decisions"][0]["evidence"]["user_rationale"],
         "Canonical project memory remains local"
     );
     assert_eq!(
         recalled["checkpoint"]["known_limits"],
         json!(["V11 is independent"])
     );
-    assert_eq!(recalled["next_step"], "Run maintained V08 assertions");
     assert_eq!(
-        recalled["decisions"][0]["recommendation_rationale"],
+        recalled["checkpoint"]["next_step"],
+        "Run maintained V08 assertions"
+    );
+    assert!(recalled["next_step"]
+        .as_str()
+        .is_some_and(|s| s.contains("Interpretation has not been generated")));
+    assert_eq!(
+        recalled["decisions"][0]["evidence"]["recommendation_rationale"],
         "The accepted product boundary is local-first"
     );
     assert_eq!(recalled["decisions"][0]["chosen_alternative_key"], "local");
@@ -7298,7 +7304,13 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             shape(&["repository"], &["repository"]),
         ],
         "project_health" => vec![shape(&["project_id"], &[])],
-        "recall" | "repository_understanding" | "canonical_inspect" | "privacy_status" => {
+        "recall" | "repository_understanding" => {
+            vec![shape(
+                &["project_id", "requested_language", "fixed_locale"],
+                &["project_id"],
+            )]
+        }
+        "canonical_inspect" | "privacy_status" => {
             vec![shape(&["project_id"], &["project_id"])]
         }
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],

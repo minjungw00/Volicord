@@ -461,7 +461,16 @@ impl HostAdapter {
             .operations
             .workflow_after_recall(brief.project_id)
             .map_err(operation_error)?;
-        let mut output = volicord_operations::resume_brief_json(&brief);
+        let mut output = volicord_operations::resume_brief_json(
+            &brief,
+            args.get("requested_language")
+                .and_then(Value::as_str)
+                .unwrap_or("en"),
+            match args.get("fixed_locale").and_then(Value::as_str) {
+                Some("ko") => FixedLocale::Korean,
+                _ => FixedLocale::English,
+            },
+        );
         output["learning_context"] =
             volicord_operations::bounded_read_section(learning_context, 15 * 1024);
         output["learning_context_health"] = learning_context_health;
@@ -480,6 +489,13 @@ impl HostAdapter {
         Ok(project_understanding_json(
             &understanding,
             candidate_dependency,
+            args.get("requested_language")
+                .and_then(Value::as_str)
+                .unwrap_or("en"),
+            match args.get("fixed_locale").and_then(Value::as_str) {
+                Some("ko") => FixedLocale::Korean,
+                _ => FixedLocale::English,
+            },
         ))
     }
 
@@ -1954,27 +1970,11 @@ impl HostAdapter {
 fn project_understanding_json(
     understanding: &ProjectUnderstanding,
     candidate_dependency: CandidateDependencyState,
+    language: &str,
+    locale: FixedLocale,
 ) -> Value {
-    let work_json = |work: &UnderstandingWork| {
-        json!({
-            "work_item_id":work.work_item_id.to_string(),
-            "title":work.title,
-            "state":understanding_work_state_key(work.state),
-            "checkpoint_ids":work.checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "decision_ids":work.decision_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "meaningful_changes":work.meaningful_changes,
-            "changed_paths":work.changed_paths,
-            "changed_components":work.changed_components,
-            "verification":work.verification.iter().map(|fact| json!({
-                "state":format!("{:?}",fact.state).to_lowercase(),
-                "source_id":fact.source_id.map(|id| id.to_string()),
-                "outcome":fact.outcome,
-            })).collect::<Vec<_>>(),
-            "next_step":work.next_step,
-            "open_question_ids":work.open_question_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "source_basis":work.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        })
-    };
+    let work_json =
+        |work: &UnderstandingWork| volicord_operations::work_reading_json(work, language, locale);
     let context_json = |item: &volicord_projections::BriefContextItem| {
         json!({
             "context_item_id":item.identity.to_string(),
@@ -1990,6 +1990,7 @@ fn project_understanding_json(
         "health":format!("{:?}",understanding.health).to_lowercase(),
         "candidate_dependency":candidate_dependency_key(candidate_dependency),
         "project_purpose":understanding.project_purpose.iter().map(context_json).collect::<Vec<_>>(),
+        "selected_work":understanding.selected_work.as_ref().map(work_json),
         "current_work":understanding.current_work.iter().map(work_json).collect::<Vec<_>>(),
         "completed_work":understanding.completed_work.iter().map(work_json).collect::<Vec<_>>(),
         "remaining_work":understanding.remaining_work.iter().map(work_json).collect::<Vec<_>>(),
@@ -1999,41 +2000,8 @@ fn project_understanding_json(
             "identity":item.identity,
             "reason":item.reason,
         })).collect::<Vec<_>>(),
-        "next_steps":understanding.next_steps.iter().map(|step| json!({
-            "identity":step.identity,
-            "text":step.text,
-            "source_basis":step.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "decision_basis":step.decision_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "uncertainty":step.uncertainty,
-        })).collect::<Vec<_>>(),
-        "active_decisions":understanding.active_decisions.iter().map(|item| json!({
-            "decision_id":item.decision.decision_id.to_string(),
-            "revision":item.decision.revision,
-            "state":format!("{:?}",item.decision.state).to_lowercase(),
-            "work_scope":decision_work_scope_host_json(item.decision.work_scope),
-            "choice":format!("{:?}",item.decision.choice),
-            "chosen_alternative_key":item.decision.chosen_alternative_key,
-            "recommended_alternative_key":item.decision.recommended_alternative_key,
-            "displayed_alternatives":item.decision.displayed_alternatives.iter().map(|alternative| json!({
-                "alternative_key":alternative.key,
-                "label":alternative.label,
-                "expected_consequence":alternative.consequence,
-            })).collect::<Vec<_>>(),
-            "user_rationale":item.decision.user_rationale,
-            "recommendation_rationale":item.decision.recommendation_rationale,
-            "assumptions":item.decision.assumptions,
-            "revisit_triggers":item.decision.revisit_triggers,
-            "source_basis":item.decision.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-            "question_uncertainty":item.decision.question_uncertainty,
-            "known_limits":item.decision.known_limits,
-            "review_basis":item.decision.review_basis,
-            "declared_paths":item.declared_paths,
-            "declared_components":item.declared_components,
-            "declared_work_contexts":item.declared_work_contexts,
-            "affected_code_entities":item.affected_code_entities,
-            "link_basis":item.link_basis,
-            "known_link_gaps":item.known_link_gaps,
-        })).collect::<Vec<_>>(),
+        "next_steps":understanding.work_overview.next_steps.items.iter().map(work_json).collect::<Vec<_>>(),
+        "active_decisions":understanding.active_decisions.iter().map(|d|volicord_operations::decision_reading_json(&d.decision,language,locale)).collect::<Vec<_>>(),
         "open_questions":understanding.open_questions.iter().map(|question| json!({
             "question_id":question.question_id.to_string(),
             "revision":question.revision,
@@ -2159,16 +2127,6 @@ fn project_understanding_json(
     })
 }
 
-fn decision_work_scope_host_json(scope: DecisionWorkScope) -> Value {
-    match scope {
-        DecisionWorkScope::Unresolved => json!({"kind":"unresolved"}),
-        DecisionWorkScope::ProjectWide => json!({"kind":"project_wide"}),
-        DecisionWorkScope::WorkItem(work_item_id) => {
-            json!({"kind":"work_item","work_item_id":work_item_id.to_string()})
-        }
-    }
-}
-
 fn architecture_selection_basis_json(basis: &UnderstandingArchitectureSelectionBasis) -> Value {
     match basis {
         UnderstandingArchitectureSelectionBasis::ChangedPath {
@@ -2188,19 +2146,6 @@ fn architecture_selection_basis_json(basis: &UnderstandingArchitectureSelectionB
             relation_id,
             seed_entity,
         } => json!({"kind":"grounded_one_hop","relation_id":relation_id,"seed_entity":seed_entity}),
-    }
-}
-
-const fn understanding_work_state_key(
-    state: volicord_projections::UnderstandingWorkState,
-) -> &'static str {
-    match state {
-        volicord_projections::UnderstandingWorkState::Open => "open",
-        volicord_projections::UnderstandingWorkState::InProgress => "in_progress",
-        volicord_projections::UnderstandingWorkState::Paused => "paused",
-        volicord_projections::UnderstandingWorkState::Completed => "completed",
-        volicord_projections::UnderstandingWorkState::Abandoned => "abandoned",
-        volicord_projections::UnderstandingWorkState::Superseded => "superseded",
     }
 }
 
@@ -2384,12 +2329,12 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
         ),
         "recall" => (
             "Read a bounded source-grounded Project resume brief, including canonical Learning, Preference, and Constraint items that can change work behavior. In every fresh session with a successfully resolved Project, Recall must succeed before repository inspection, edits, or continued work.",
-            project_schema(),
+            object_schema(vec![("project_id",identity_schema("Project identity")),("requested_language",text_schema("Exact generated language",1,128)),("fixed_locale",enum_schema("Fixed labels", &["en","ko"]))], &["project_id"]),
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_understanding" => (
             "Read the bounded human-oriented Project Understanding: purpose; current, completed, and remaining Work with stable identities; Decisions and rationale; next steps; current-work code, component, and flow basis; coverage, freshness, gaps, uncertainty, and explicit omissions. This richer explanation surface complements the compact resume-oriented Recall and never mutates canonical or Candidate state.",
-            project_schema(),
+            object_schema(vec![("project_id",identity_schema("Project identity")),("requested_language",text_schema("Exact generated language",1,128)),("fixed_locale",enum_schema("Fixed labels", &["en","ko"]))], &["project_id"]),
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_analyze" => (

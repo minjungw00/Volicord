@@ -8,27 +8,27 @@ use volicord_operations::{run_cli, CliExit, LocalOperations};
 use volicord_projections::*;
 use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerServer, ViewerView};
 
-fn fake(plan: &WorkExplanationPlan) -> WorkExplanationRealization {
-    WorkExplanationRealization {
-        format_kind: WORK_EXPLANATION_KIND.into(),
-        format_version: WORK_EXPLANATION_VERSION,
+fn fake(plan: &ExplanationPlan) -> ExplanationRealization {
+    ExplanationRealization {
+        format_kind: EXPLANATION_KIND.into(),
+        format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint.clone(),
         language: plan.requested_language.clone(),
-        generator: WorkExplanationGenerator {
+        generator: ExplanationGenerator {
             host: "unit-test-fake".into(),
             session: "fake".into(),
             agent: None,
             model: None,
         },
         paragraphs: [
-            (WorkExplanationQuestion::Purpose, "goal"),
-            (WorkExplanationQuestion::ReportedChange, "result"),
-            (WorkExplanationQuestion::ExpectedEffect, "result"),
-            (WorkExplanationQuestion::Verification, "verification"),
-            (WorkExplanationQuestion::NextStep, "next_step"),
+            (ExplanationQuestion::Purpose, "goal"),
+            (ExplanationQuestion::ReportedChange, "result"),
+            (ExplanationQuestion::ExpectedEffect, "result"),
+            (ExplanationQuestion::Verification, "verification"),
+            (ExplanationQuestion::NextStep, "next_step"),
         ]
         .into_iter()
-        .map(|(question, key)| WorkExplanationParagraph {
+        .map(|(question, key)| ExplanationParagraph {
             question,
             text: format!("Fake unit-test paragraph for {question:?}"),
             evidence_keys: vec![key.into()],
@@ -61,7 +61,7 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
     let before = f.operations.canonical_basis(f.project)?;
     let plan = f
         .operations
-        .prepare_work_explanation(f.project, work, "ko")?;
+        .prepare_explanation(f.project, ExplanationSubject::Work(work), "ko")?;
     assert!(plan
         .evidence
         .iter()
@@ -150,14 +150,22 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
     assert!(!stale.contains("Fake unit-test paragraph"));
     assert!(f
         .operations
-        .record_work_explanation(f.project, work, "ko", fake(&plan))
+        .record_explanation(f.project, ExplanationSubject::Work(work), "ko", fake(&plan))
         .is_err());
-    assert_eq!(f.operations.delete_work_explanations(f.project, work)?, 1);
-    let fresh = f
-        .operations
-        .prepare_work_explanation(f.project, work, "ko")?;
-    f.operations
-        .record_work_explanation(f.project, work, "ko", fake(&fresh))?;
+    assert_eq!(
+        f.operations
+            .delete_explanations(f.project, ExplanationSubject::Work(work))?,
+        1
+    );
+    let fresh =
+        f.operations
+            .prepare_explanation(f.project, ExplanationSubject::Work(work), "ko")?;
+    f.operations.record_explanation(
+        f.project,
+        ExplanationSubject::Work(work),
+        "ko",
+        fake(&fresh),
+    )?;
     let cp = f.checkpoints["relay-change"];
     assert!(
         f.operations
@@ -183,9 +191,9 @@ fn malformed_language_foreign_basis_and_versions_cannot_be_recorded(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
     let work = f.goals["export"];
-    let plan = f
-        .operations
-        .prepare_work_explanation(f.project, work, "fr-CA")?;
+    let plan =
+        f.operations
+            .prepare_explanation(f.project, ExplanationSubject::Work(work), "fr-CA")?;
     assert!(plan
         .evidence
         .iter()
@@ -201,7 +209,7 @@ fn malformed_language_foreign_basis_and_versions_cannot_be_recorded(
         }
         assert!(f
             .operations
-            .record_work_explanation(f.project, work, "fr-CA", response)
+            .record_explanation(f.project, ExplanationSubject::Work(work), "fr-CA", response)
             .is_err());
     }
     assert!(f
@@ -227,9 +235,13 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
     let work = f.goals["export"];
     let plan = f
         .operations
-        .prepare_work_explanation(f.project, work, "en")?;
-    f.operations
-        .record_work_explanation(f.project, work, "en", fake(&plan))?;
+        .prepare_explanation(f.project, ExplanationSubject::Work(work), "en")?;
+    f.operations.record_explanation(
+        f.project,
+        ExplanationSubject::Work(work),
+        "en",
+        fake(&plan),
+    )?;
     let mut store = Store::open(f.operations.layout().canonical_store())?;
     store.record_contradiction(
         OperationId::from_bytes([0x81; 16]),
@@ -238,19 +250,25 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
         CanonicalRecordId::ContextItem(f.goals["relay"]),
     )?;
     drop(store);
-    let changed = f
-        .operations
-        .prepare_work_explanation(f.project, work, "en")?;
+    let changed =
+        f.operations
+            .prepare_explanation(f.project, ExplanationSubject::Work(work), "en")?;
     assert!(!changed.conflicts.is_empty());
     let page = get(&f, &format!("/?view=work&work={work}"));
-    assert!(page.contains("Work explanation is stale"));
+    assert!(page.contains("Explanation is stale"));
     assert!(!page.contains("Fake unit-test paragraph"));
-    f.operations.delete_work_explanations(f.project, work)?;
     f.operations
-        .record_work_explanation(f.project, work, "en", fake(&changed))?;
+        .delete_explanations(f.project, ExplanationSubject::Work(work))?;
+    f.operations.record_explanation(
+        f.project,
+        ExplanationSubject::Work(work),
+        "en",
+        fake(&changed),
+    )?;
     assert!(get(&f, &format!("/?view=work&work={work}"))
         .contains("includes contradiction or supersession"));
-    f.operations.delete_work_explanations(f.project, work)?;
+    f.operations
+        .delete_explanations(f.project, ExplanationSubject::Work(work))?;
     let canonical = f.operations.canonical_basis(f.project)?;
     let source = canonical
         .context_items
@@ -260,17 +278,17 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
         .source_basis[0];
     let grounding =
         volicord_repository_intelligence::CanonicalGrounding::from_read_basis(&canonical)?;
-    for (content,label) in [("broken JSON".to_owned(),"Work explanation is corrupt"),
-        (serde_json::json!({"realization":{"format_kind":WORK_EXPLANATION_KIND,"format_version":WORK_EXPLANATION_VERSION+1}}).to_string(),"Work explanation format is unsupported")] {
+    for (content,label) in [("broken JSON".to_owned(),"Explanation is corrupt"),
+        (serde_json::json!({"realization":{"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION+1}}).to_string(),"Explanation format is unsupported")] {
         let mut privacy=volicord_privacy::PrivacyStore::open(f.operations.layout().privacy_store())?;
         privacy.record_managed_derived(volicord_privacy::ManagedDerivedDraft {
             project_id:f.project,kind:volicord_privacy::ManagedDerivedKind::CachedSummary,
-            provider:None,model:None,purpose:format!("work_outcome:{work}:en"),analysis_snapshot:None,
+            provider:None,model:None,purpose:format!("explanation:work:{work}:en"),analysis_snapshot:None,
             included_sources:vec![grounding.source_reference(source)?],canonical_links:vec![volicord_privacy::ManagedCanonicalLink::ContextItem(work)],
             content,uncertainty:None,retained_until:None,retention_basis:"Unit-test corrupt cache fixture".into() })?;
         drop(privacy);
         assert!(get(&f,&format!("/?view=work&work={work}")).contains(label));
-        f.operations.delete_work_explanations(f.project,work)?;
+        f.operations.delete_explanations(f.project,ExplanationSubject::Work(work))?;
     }
     assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
     Ok(())
@@ -279,12 +297,13 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
 #[test]
 fn seed_work_explanation_runtime() -> Result<(), Box<dyn std::error::Error>> {
     let disposable = tempfile::tempdir()?;
-    let output = std::env::var_os("VOLICORD_WORK_EXPLANATION_FIXTURE_ROOT")
+    let output = std::env::var_os("VOLICORD_EXPLANATION_FIXTURE_ROOT")
         .map(std::path::PathBuf::from)
         .unwrap_or(disposable.path().to_owned());
     std::fs::create_dir_all(&output)?;
     let f = reading_fixture::rich_fixture_in(&output)?;
     let manifest = serde_json::json!({"project":f.project.to_string(),"runtime":f.operations.layout().root(),"repository":f.repository,
+        "decisions":f.decisions.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(),
         "goals":f.goals.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>()});
     std::fs::write(
         output.join("fixture.json"),
@@ -295,8 +314,204 @@ fn seed_work_explanation_runtime() -> Result<(), Box<dyn std::error::Error>> {
         .privacy_status(f.project)?
         .managed_derived
         .is_empty());
-    if std::env::var_os("VOLICORD_WORK_EXPLANATION_FIXTURE_ROOT").is_some() {
+    if std::env::var_os("VOLICORD_EXPLANATION_FIXTURE_ROOT").is_some() {
         let _ = f._temporary.keep();
     }
+    Ok(())
+}
+
+#[test]
+fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_publication(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["checksum"];
+    let subject = ExplanationSubject::Work(work);
+    let plan = f.operations.prepare_explanation(f.project, subject, "ko")?;
+    f.operations
+        .record_explanation(f.project, subject, "ko", fake(&plan))?;
+    let decision = f.decisions["project"];
+    let dp = f.operations.prepare_explanation(
+        f.project,
+        ExplanationSubject::Decision(decision),
+        "ko",
+    )?;
+    let mut response = fake(&plan);
+    response.plan_fingerprint = dp.fingerprint.clone();
+    response.paragraphs = [
+        (ExplanationQuestion::UserRationale, "user_rationale"),
+        (ExplanationQuestion::Recommendation, "recommendation"),
+        (ExplanationQuestion::Consequences, "consequences"),
+        (ExplanationQuestion::Applicability, "applicability"),
+    ]
+    .into_iter()
+    .map(|(question, key)| ExplanationParagraph {
+        question,
+        text: format!("Fake decision lifecycle paragraph {question:?}"),
+        evidence_keys: vec![key.into()],
+    })
+    .collect();
+    f.operations.record_explanation(
+        f.project,
+        ExplanationSubject::Decision(decision),
+        "ko",
+        response,
+    )?;
+    let restarted = LocalOperations::new(f.operations.layout().clone());
+    let p = restarted.project_projection(f.project)?;
+    let selected = p
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == work)
+        .ok_or("Work")?;
+    assert_eq!(selected.work_item_id, work);
+    let expected = work_answers(selected, "ko", FixedLocale::Korean);
+    assert_eq!(
+        expected,
+        work_answers(
+            restarted
+                .recall(f.project)?
+                .selected_work
+                .as_ref()
+                .ok_or("Recall Work")?,
+            "ko",
+            FixedLocale::Korean
+        )
+    );
+    assert!(decision_answers(
+        p.resume
+            .decisions
+            .iter()
+            .find(|d| d.decision_id == decision)
+            .ok_or("Decision")?,
+        "ko",
+        FixedLocale::Korean
+    )
+    .text()
+    .contains("Fake decision lifecycle paragraph"));
+    let args = [
+        "--runtime".to_string(),
+        f.operations.layout().root().to_string_lossy().into_owned(),
+        "--project".into(),
+        f.project.to_string(),
+        "--locale".into(),
+        "ko".into(),
+        "status".into(),
+        "--language".into(),
+        "ko".into(),
+    ];
+    let (mut out, mut errors) = (Vec::new(), Vec::new());
+    assert_eq!(
+        run_cli(args, &mut out, &mut errors),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&errors)
+    );
+    let human = String::from_utf8(out)?;
+    assert!(human.contains("Fake unit-test paragraph"));
+    assert!(!human.contains("Audit record"));
+    let request = DocumentRequest {
+        requested_language: "ko".into(),
+        fixed_locale: FixedLocale::Korean,
+        generated_at: TimestampMicros::from_unix_micros(123),
+        generator: GeneratorIdentity {
+            generator: "unit-test".into(),
+            agent: None,
+            model: None,
+        },
+        requested_destinations: Vec::new(),
+    };
+    let documents = restarted.documents(f.project, &request)?;
+    for d in [
+        &documents.project_architecture_guide,
+        &documents.decision_report,
+        &documents.implementation_plan,
+        &documents.handoff_resume,
+    ] {
+        assert!(d
+            .body
+            .sections
+            .iter()
+            .filter(|s| s.role == DocumentSectionRole::Reading)
+            .flat_map(|s| &s.claims)
+            .any(|c| c.text.contains("Fake unit-test paragraph")));
+        assert!(d
+            .metadata
+            .explanations
+            .iter()
+            .any(|e| e.subject == subject && e.language == "ko"));
+        assert!(d
+            .markdown
+            .content
+            .contains("self_reported_not_independently_verified"));
+        assert!(!d
+            .body
+            .sections
+            .iter()
+            .filter(|s| s.role == DocumentSectionRole::Reading)
+            .flat_map(|s| &s.claims)
+            .any(|c| c.text.contains("Audit record")));
+    }
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let vr = volicord_viewer::ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::Korean,
+        view: ViewerView::Overview,
+        requested_language: "ko".into(),
+        guarded_request: None,
+    };
+    let page = viewer.render_snapshot(&vr, TimestampMicros::from_unix_micros(123))?;
+    assert!(page.html.contains("Fake unit-test paragraph"));
+    restarted.delete_explanations(f.project, subject)?;
+    let doc_path = f.repository.join("deleted-document.html");
+    assert!(restarted
+        .publish_document(&documents.handoff_resume, OutputFormat::Html, &doc_path)
+        .is_err());
+    assert!(!doc_path.exists());
+    let snapshot_path = f.repository.join("deleted-snapshot.html");
+    assert!(restarted
+        .publish_viewer_snapshot(
+            &page.html,
+            &snapshot_path,
+            f.project,
+            &page.canonical_read_fingerprint,
+            &page.explanations
+        )
+        .is_err());
+    assert!(!snapshot_path.exists());
+    assert!(!restarted
+        .documents(f.project, &request)?
+        .handoff_resume
+        .markdown
+        .content
+        .contains("Fake unit-test paragraph"));
+    let fresh = restarted.prepare_explanation(f.project, subject, "ko")?;
+    restarted.record_explanation(f.project, subject, "ko", fake(&fresh))?;
+    assert!(viewer
+        .render_snapshot(&vr, TimestampMicros::from_unix_micros(124))?
+        .html
+        .contains("Fake unit-test paragraph"));
+    let source = restarted
+        .canonical_basis(f.project)?
+        .context_items
+        .iter()
+        .find(|c| c.id == work)
+        .ok_or("Goal")?
+        .source_basis[0];
+    restarted.forget_record(
+        f.project,
+        CanonicalRecordId::Checkpoint(f.checkpoints["checksum-change"]),
+        source,
+    )?;
+    assert!(!viewer
+        .render_snapshot(&vr, TimestampMicros::from_unix_micros(125))?
+        .html
+        .contains("Fake unit-test paragraph"));
+    assert!(restarted
+        .publish_document(
+            &documents.handoff_resume,
+            OutputFormat::Markdown,
+            &f.repository.join("forgotten.md")
+        )
+        .is_err());
     Ok(())
 }

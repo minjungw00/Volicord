@@ -3635,7 +3635,7 @@ def assert_recovery_recall_contract() -> None:
     before = {
         "project_id": "4" * 32, "goals": ["Keep service behavior understandable"],
         "goal_basis": [{"source_ids": [user_id], "role": "goal"}],
-        "decisions": [{"choice": "bounded retry", "user_rationale": "avoid duplicate writes"}],
+        "decisions": [{"choice": "bounded retry", "evidence": {"user_rationale": "avoid duplicate writes"}}],
         "checkpoint": {"verification": "tests passed", "user_review": "pending",
                        "user_acceptance": "pending"},
         "open_questions": [{"revision": 1, "question": "Which retry limit?"}],
@@ -3759,7 +3759,7 @@ def assert_recovery_recall_contract() -> None:
     mutations = [
         (("goals", 0), "silently changed goal"),
         (("goal_basis", 0, "source_ids", 0), old_source_id),
-        (("decisions", 0, "user_rationale"), "inferred rationale"),
+        (("decisions", 0, "evidence", "user_rationale"), "inferred rationale"),
         (("decisions", 0, "choice"), "unbounded retry"),
         (("checkpoint", "verification"), "not run"),
         (("checkpoint", "user_review"), "approved"),

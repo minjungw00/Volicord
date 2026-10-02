@@ -247,12 +247,21 @@ fn overview(
         text(request.locale, "Recorded next steps", "기록된 다음 단계"),
     );
     for work in &u.work_overview.next_steps.items {
-        html.push_str("<p class=\"next-action\">");
-        html.push_str(&escape(work_reading_display(
-            &work.reading.next_step,
-            request.locale,
-        )));
-        html.push_str("</p>");
+        let answers = volicord_projections::work_answers(
+            work,
+            &request.requested_language,
+            request.locale.fixed(),
+        );
+        for answer in answers
+            .prose
+            .iter()
+            .filter(|a| a.question == "NextStep" || a.question == "ExplanationAvailability")
+        {
+            html.push_str(&format!(
+                "<p class=\"next-action\">{}</p>",
+                escape(&answer.text)
+            ));
+        }
     }
     if u.work_overview.next_steps.total == 0 && u.work_overview.next_steps.complete {
         empty_state(
@@ -287,10 +296,75 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
         escape(understanding_work_state_label(w.state, r.locale))
     ));
     work_explanation(html, r, w, true);
-    if let Some(state) = w.reading.answers.latest_state.as_ref() {
-        states(html, r, state, w.reading.answers.verification.as_ref());
-    }
     html.push_str("</article>");
+}
+pub(super) fn render_answers(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    compact: bool,
+) {
+    let current = answers.provenance.is_some();
+    html.push_str(&format!(
+        "<div class=\"{}\" data-statement-role=\"{}\">",
+        if current {
+            "work-explanation"
+        } else {
+            "answer-unavailable"
+        },
+        if current {
+            "generated-interpretation"
+        } else {
+            "deterministic-derived"
+        }
+    ));
+    if current {
+        empty_state(html,text(r.locale,"Host interpretation; claims remain grounded reports, not independent verification.","호스트 해석입니다. 근거 있는 보고이며 독립 검증을 뜻하지 않습니다."));
+    }
+    for answer in &answers.prose {
+        if compact
+            && !matches!(
+                answer.question.as_str(),
+                "ReportedChange" | "Verification" | "NextStep" | "ExplanationAvailability"
+            )
+        {
+            continue;
+        }
+        html.push_str(&format!(
+            "<p data-question=\"{}\">{}</p>",
+            escape(&answer.question),
+            escape(&answer.text)
+        ));
+    }
+    if let Some(provenance) = &answers.provenance {
+        html.push_str(&format!(
+            "<details class=\"explanation-grounding\"><summary>{}</summary><pre>{}</pre></details>",
+            text(
+                r.locale,
+                "Explanation evidence and generator",
+                "설명 근거 및 생성자"
+            ),
+            escape(&format!("{provenance:?}"))
+        ));
+    }
+    if answers.diagnostic.is_some() {
+        html.push_str(&format!(
+            "<details><summary>{}</summary><p>{}</p></details>",
+            text(r.locale, "Explanation diagnostic", "설명 진단"),
+            escape(answers.diagnostic.as_deref().unwrap_or_default())
+        ));
+    }
+    html.push_str(
+        "</div><div class=\"fact-states\" data-statement-role=\"deterministic-derived\">",
+    );
+    for fact in &answers.facts {
+        html.push_str(&format!(
+            "<p data-question=\"{}\">{}</p>",
+            escape(&fact.question),
+            escape(&fact.text)
+        ));
+    }
+    html.push_str("</div>");
 }
 pub(super) fn work_explanation(
     html: &mut String,
@@ -298,89 +372,8 @@ pub(super) fn work_explanation(
     w: &UnderstandingWork,
     compact: bool,
 ) {
-    use volicord_projections::{WorkExplanationQuestion as Q, WorkExplanationState as S};
-    let selected = w
-        .reading
-        .explanations
-        .iter()
-        .find(|e| e.language == r.requested_language)
-        .or_else(|| w.reading.explanations.iter().find(|e| e.language == "*"));
-    if let Some(explanation) = selected
-        .and_then(|e| e.content.as_ref())
-        .filter(|_| selected.is_some_and(|e| e.state == S::Current))
-    {
-        html.push_str(
-            "<div class=\"work-explanation\" data-statement-role=\"generated-interpretation\">",
-        );
-        empty_state(html, text(r.locale, "Host interpretation; claims remain grounded reports, not independent verification.", "호스트 해석입니다. 근거 있는 보고이며 독립 검증을 뜻하지 않습니다."));
-        if !explanation.conflicts.is_empty() {
-            empty_state(html, text(r.locale, "The evidence includes contradiction or supersession relations; this interpretation does not resolve them.", "근거에 모순 또는 대체 관계가 있습니다. 이 해석은 해당 관계를 해결하지 않습니다."));
-        }
-        for paragraph in &explanation.realization.paragraphs {
-            if compact
-                && !matches!(
-                    paragraph.question,
-                    Q::ReportedChange | Q::Verification | Q::NextStep
-                )
-            {
-                continue;
-            }
-            html.push_str(&format!(
-                "<p data-question=\"{:?}\">{}</p>",
-                paragraph.question,
-                escape(&paragraph.text)
-            ));
-        }
-        html.push_str("<details class=\"explanation-grounding\"><summary>");
-        html.push_str(text(
-            r.locale,
-            "Explanation evidence and generator",
-            "설명 근거 및 생성자",
-        ));
-        html.push_str("</summary><pre>");
-        html.push_str(&escape(&format!("{explanation:?}")));
-        html.push_str("</pre></details></div>");
-    } else {
-        let message = match selected.map(|e| e.state) {
-            Some(S::Stale) => text(
-                r.locale,
-                "Work explanation is stale; prepare and generate again.",
-                "작업 설명의 근거가 변경되었습니다. 다시 준비하고 생성하세요.",
-            ),
-            Some(S::Unsupported) => text(
-                r.locale,
-                "Work explanation format is unsupported; delete and regenerate.",
-                "작업 설명 형식을 지원하지 않습니다. 삭제한 뒤 다시 생성하세요.",
-            ),
-            Some(S::Corrupt) => text(
-                r.locale,
-                "Work explanation is corrupt; delete and regenerate.",
-                "작업 설명이 손상되었습니다. 삭제한 뒤 다시 생성하세요.",
-            ),
-            Some(S::Unavailable) => text(
-                r.locale,
-                "Work explanation is unavailable; canonical answers remain readable. Inspect the diagnostic for the affected dependency.",
-                "작업 설명을 사용할 수 없습니다. Canonical 답변은 계속 읽을 수 있습니다. 영향을 받은 의존성은 진단에서 확인하세요.",
-            ),
-            _ if w.reading.answers.result.is_none() => text(
-                r.locale,
-                "No reported result is recorded for this Work.",
-                "이 작업에 보고된 결과가 기록되지 않았습니다.",
-            ),
-            _ => text(
-                r.locale,
-                "Work interpretation has not been generated in this language.",
-                "이 언어의 작업 해석이 아직 생성되지 않았습니다.",
-            ),
-        };
-        empty_state(html, message);
-        if !compact {
-            html.push_str(&format!("<p>{}</p><details><summary>{}</summary><code>volicord --json work explain prepare --work {} --language {}</code><pre>{}</pre></details>",
-            text(r.locale,"Ask the active agent to explain this Work in the requested language.","현재 에이전트에게 요청 언어로 이 작업을 설명해 달라고 요청하세요."),
-            text(r.locale,"Preparation command and diagnostic","준비 명령 및 진단"),w.work_item_id,escape(&r.requested_language),
-            escape(selected.and_then(|e|e.diagnostic.as_deref()).unwrap_or(""))));
-        }
-    }
+    let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
+    render_answers(html, r, &answers, compact);
     // Quotation has an explicit evidence role; never the ordinary explanation.
     if let Some(result) = &w.reading.answers.result {
         html.push_str("<details class=\"result-evidence\"><summary>");
@@ -397,54 +390,6 @@ pub(super) fn work_explanation(
     }
 }
 
-fn states(
-    html: &mut String,
-    r: &ViewerRequest,
-    s: &volicord_projections::WorkStateObservation,
-    verification: Option<&volicord_projections::WorkStateObservation>,
-) {
-    html.push_str("<dl class=\"fact-states\" data-statement-role=\"deterministic-derived\">");
-    definition(
-        html,
-        text(r.locale, "Work", "작업"),
-        work_state_label(s.work_state, r.locale),
-    );
-    definition(
-        html,
-        text(r.locale, "Automated verification", "자동 검증"),
-        &verification.map_or_else(
-            || text(r.locale, "No verification record", "검증 기록 없음").to_owned(),
-            |v| {
-                v.verification
-                    .iter()
-                    .map(|fact| verification_state_label(fact.state, r.locale))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            },
-        ),
-    );
-    definition(
-        html,
-        text(r.locale, "User review", "사용자 검토"),
-        user_review_label(s.user_review.state, r.locale),
-    );
-    definition(
-        html,
-        text(r.locale, "User acceptance", "사용자 수락"),
-        user_acceptance_label(s.user_acceptance.state, r.locale),
-    );
-    html.push_str("</dl>");
-    if verification.is_some_and(|v| !v.later_changed_checkpoint_ids.is_empty()) {
-        empty_state(
-            html,
-            text(
-                r.locale,
-                "Verification is historical; coverage of later changes is not established.",
-                "검증은 과거 관찰입니다. 이후 변경의 검증 범위는 확인되지 않았습니다.",
-            ),
-        );
-    }
-}
 fn work_detail(
     html: &mut String,
     r: &ViewerRequest,
@@ -468,51 +413,6 @@ fn work_detail(
     };
     render_work_card(html, r, w, &decisions);
 
-    heading(
-        html,
-        3,
-        text(r.locale, "Result and next step", "결과 및 다음 단계"),
-    );
-    if w.reading.answers.result.is_none() {
-        empty_state(
-            html,
-            text(
-                r.locale,
-                "Result unavailable: Goal only, no Checkpoint.",
-                "결과 없음: 체크포인트 없이 목표만 기록됨.",
-            ),
-        );
-    }
-    if let Some(state) = w.reading.answers.latest_state.as_ref() {
-        states(html, r, state, w.reading.answers.verification.as_ref());
-    }
-    for state in &w.reading.states {
-        if state
-            .verification
-            .iter()
-            .any(|v| v.state == VerificationState::Failed)
-            || state.user_acceptance.state == UserAcceptanceState::Rejected
-        {
-            empty_state(
-                html,
-                &format!(
-                    "{} — {}; {}",
-                    text(
-                        r.locale,
-                        "Historical failed / rejected observation",
-                        "과거 실패 / 거절 관찰"
-                    ),
-                    state
-                        .verification
-                        .iter()
-                        .map(|v| verification_state_label(v.state, r.locale))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    user_acceptance_label(state.user_acceptance.state, r.locale)
-                ),
-            );
-        }
-    }
     html.push_str("<details><summary>");
     html.push_str(text(
         r.locale,
@@ -521,7 +421,6 @@ fn work_detail(
     ));
     html.push_str("</summary>");
     for state in &w.reading.states {
-        states(html, r, state, Some(state));
         html.push_str(&format!("<p>{}</p>", escape(&format!("{state:?}"))));
     }
     html.push_str("</details>");
@@ -605,27 +504,13 @@ fn decision_detail(
         escape(&decision_choice_attribution(&d.decision, r.locale)),
         escape(brief_decision_state_label(d.decision.state, r.locale))
     ));
+    let answers = volicord_projections::decision_answers(
+        &d.decision,
+        &r.requested_language,
+        r.locale.fixed(),
+    );
+    render_answers(html, r, &answers, false);
     html.push_str("<dl>");
-    definition(
-        html,
-        text(r.locale, "User rationale", "사용자 근거"),
-        work_reading_display(&d.reading.user_rationale, r.locale),
-    );
-    definition(
-        html,
-        text(r.locale, "Agent recommendation", "에이전트 권고"),
-        &recommendation_attribution(&d.decision, r.locale),
-    );
-    definition(
-        html,
-        text(r.locale, "Recommendation rationale", "권고 근거"),
-        work_reading_display(&d.reading.recommendation_rationale, r.locale),
-    );
-    definition(
-        html,
-        text(r.locale, "Alternative consequences", "대안별 예상 결과"),
-        &alternative_consequences(&d.decision, r.locale),
-    );
     definition(
         html,
         text(r.locale, "Typed scope", "명시적 범위"),
@@ -645,12 +530,7 @@ fn decision_detail(
             "관련 코드는 범위 중첩이며 결정이 구현되었다는 증거가 아닙니다.",
         ),
     );
-    for gap in d
-        .known_link_gaps
-        .iter()
-        .chain(&d.decision.known_limits)
-        .chain(&d.decision.review_basis)
-    {
+    for gap in d.known_link_gaps.iter().chain(&d.decision.known_limits) {
         empty_state(html, gap);
     }
     html.push_str("<details><summary>");
@@ -669,6 +549,24 @@ fn decision_detail(
         html,
         "Recommendation Source",
         &join_ids(&d.decision.recommendation_source_basis),
+    );
+    definition(
+        html,
+        "Original user rationale",
+        d.reading
+            .user_rationale
+            .original_text
+            .as_deref()
+            .unwrap_or(""),
+    );
+    definition(
+        html,
+        "Original recommendation rationale",
+        d.reading
+            .recommendation_rationale
+            .original_text
+            .as_deref()
+            .unwrap_or(""),
     );
     definition(html, "Reading basis", &format!("{:?}", d.reading));
     html.push_str("</dl></details>");
@@ -944,8 +842,19 @@ pub(super) fn snapshot(
 ) {
     overview(html, r, p, u, true);
     section_start(html, "works", text(r.locale, "Work", "작업"));
-    for w in &p.work_history {
-        work_detail(html, r, p, w, true);
+    let mut seen = std::collections::BTreeSet::new();
+    for w in p
+        .work_history
+        .iter()
+        .chain(p.selected_work.iter())
+        .chain(&u.work_overview.current.items)
+        .chain(&u.work_overview.completed.items)
+        .chain(&u.work_overview.remaining.items)
+        .chain(&u.work_overview.next_steps.items)
+    {
+        if seen.insert(w.work_item_id) {
+            work_detail(html, r, p, w, true);
+        }
     }
     section_end(html);
     section_start(

@@ -78,7 +78,7 @@ use volicord_projections::{
     CandidateDependencyFailureKind, CandidateProjectionInput, DocumentKind, DocumentRequest,
     DocumentSet, GeneratedDocument, MemoryInspectionProjection, NarrativePlan,
     NarrativeRealization, OutputFormat, ProjectProjection, ProjectProjectionInputs,
-    ProjectionBound, RecallBound, ResumeBrief,
+    ProjectionBound, ResumeBrief,
 };
 use volicord_repository_intelligence::{
     analyze_repository_semantics, AnalysisMetadata, AnalysisSnapshot, AnalysisSnapshotId,
@@ -2724,7 +2724,7 @@ impl LocalOperations {
             bound: ProjectionBound::default(),
         })
         .map_err(|error| Error::with_source("Work selection failed", error))?;
-        self.attach_work_explanations(&canonical, &mut projection);
+        self.attach_explanations(&canonical, &mut projection);
         let projection_build = projection_started.elapsed();
         Ok((
             projection,
@@ -2742,25 +2742,16 @@ impl LocalOperations {
     }
 
     pub fn recall(&self, project_id: ProjectId) -> Result<ResumeBrief, Error> {
-        let canonical = self.canonical_basis(project_id)?;
-        let (analyses, analysis_issues) = match self.load_recall_metadata(project_id, &canonical) {
-            Ok(values) => (values, Vec::new()),
-            Err(error) => (Vec::new(), vec![volicord_projections::ProjectionIssue {
-                kind: volicord_projections::ProjectionIssueKind::FailedCapability,
-                identity: project_id.to_string(), affected_scope: "derived_analysis".into(),
-                reason: format!("Stored analysis is unavailable: {error}. Canonical memory remains readable; run volicord doctor repair from the bound repository."), omitted_count: 0,
-            }]),
-        };
-        let analysis_refs = analyses.iter().collect::<Vec<_>>();
-        Ok(volicord_projections::build_resume_brief_from_metadata(
-            volicord_projections::RecallMetadataInputs {
-                analysis_issues: &analysis_issues,
-                canonical: &canonical,
-                analyses: &analysis_refs,
-                scope: empty_applicability(project_id),
-                bound: RecallBound::default(),
+        self.project_projection_read_profiled(
+            project_id,
+            volicord_projections::WorkSelector::LatestWork,
+            volicord_projections::ProjectionDetail::default(),
+            volicord_projections::ProjectionReadRequirements {
+                code: false,
+                inspection: false,
             },
-        ))
+        )
+        .map(|(projection, _)| projection.resume)
     }
 
     pub fn documents(
@@ -2777,8 +2768,26 @@ impl LocalOperations {
         projection: &ProjectProjection,
         request: &DocumentRequest,
     ) -> Result<DocumentSet, Error> {
-        generate_documents(projection, request)
-            .map_err(|error| Error::with_source("document generation failed", error))
+        self.validate_read_publication(
+            projection.overview.project_id,
+            &projection.canonical_read_fingerprint,
+            &[],
+        )?;
+        let documents = generate_documents(projection, request)
+            .map_err(|error| Error::with_source("document generation failed", error))?;
+        for d in [
+            &documents.project_architecture_guide,
+            &documents.decision_report,
+            &documents.implementation_plan,
+            &documents.handoff_resume,
+        ] {
+            self.validate_read_publication(
+                d.metadata.project_id,
+                &d.metadata.canonical_read_fingerprint,
+                &d.metadata.explanations,
+            )?;
+        }
+        Ok(documents)
     }
 
     pub fn document_narrative_plan(
@@ -2810,6 +2819,12 @@ impl LocalOperations {
         format: OutputFormat,
         destination: &Path,
     ) -> Result<PublicationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        self.validate_read_publication(
+            document.metadata.project_id,
+            &document.metadata.canonical_read_fingerprint,
+            &document.metadata.explanations,
+        )?;
         let artifact = match format {
             OutputFormat::Markdown => &document.markdown,
             OutputFormat::Html => &document.html,
@@ -2824,7 +2839,12 @@ impl LocalOperations {
         &self,
         html: &str,
         destination: &Path,
+        project: ProjectId,
+        canonical_read_fingerprint: &str,
+        explanations: &[volicord_projections::ExplanationProvenance],
     ) -> Result<PublicationOutcome, Error> {
+        let _mutation = self.layout.acquire_mutation_lock()?;
+        self.validate_read_publication(project, canonical_read_fingerprint, explanations)?;
         publish_bytes_no_replace(destination, html.as_bytes())
     }
 
@@ -4152,14 +4172,6 @@ impl LocalOperations {
             validations.clear();
         }
         validations.insert(path.to_path_buf(), receipt);
-    }
-
-    fn load_recall_metadata(
-        &self,
-        project_id: ProjectId,
-        canonical: &CanonicalReadBasis,
-    ) -> Result<Vec<AnalysisMetadata>, Error> {
-        self.load_recall_metadata_profiled(project_id, canonical).0
     }
 
     fn load_recall_metadata_profiled(

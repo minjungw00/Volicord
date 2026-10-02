@@ -60,8 +60,8 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
         }
         assert!(page.contains(if locale == "en" { "failed" } else { "실패" }));
         assert!(
-            page.contains("Work interpretation has not been generated")
-                || page.contains("작업 해석이 아직 생성되지")
+            page.contains("Interpretation has not been generated")
+                || page.contains("해석이 아직 생성되지")
         );
         assert!(!page.contains(&fixture.decisions["other_work"].to_string()));
         let decision = exchange(
@@ -79,7 +79,7 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
         &server,
         &format!("/?view=work&work={}", fixture.goals["goal_only"]),
     );
-    assert!(goal_only.contains("Goal only"));
+    assert!(goal_only.contains("Goal-only Work"));
     let code = exchange(
         &server,
         &format!("/?view=code&scope=work&work={}", fixture.goals["older"]),

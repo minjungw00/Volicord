@@ -65,7 +65,6 @@ pub(crate) fn reading_sources(
 pub enum ReadingRepresentation {
     OriginalQuotation,
     Excerpt,
-    DeterministicFacts,
     Unavailable,
 }
 
@@ -88,8 +87,6 @@ pub struct ReadingText {
     pub basis: ReadingBasis,
     pub omitted_utf8_bytes: usize,
     pub omitted_characters: usize,
-    /// Quoted original text is not a translated or semantically realized summary.
-    pub semantic_summary_available: bool,
     pub original_language_preserved: bool,
     pub gaps: Vec<String>,
 }
@@ -148,12 +145,11 @@ pub struct WorkAnswers {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkReading {
-    pub explanations: Vec<crate::WorkExplanationReading>,
+    pub explanations: Vec<crate::ExplanationReading>,
     pub answers: WorkAnswers,
     pub goal: ReadingText,
     pub changes: Vec<ReadingText>,
     pub next_step: ReadingText,
-    pub status: ReadingText,
     pub states: Vec<WorkStateObservation>,
     pub code_gap: Option<WorkCodeGap>,
     pub code_availability: ReadingAvailability,
@@ -167,9 +163,6 @@ pub struct WorkReading {
 pub struct DecisionReading {
     pub user_rationale: ReadingText,
     pub recommendation_rationale: ReadingText,
-    pub chosen_alternative_key: Option<String>,
-    pub recommended_alternative_key: Option<String>,
-    pub work_scope: DecisionWorkScope,
 }
 
 pub(crate) fn reading_basis(
@@ -225,7 +218,6 @@ pub(crate) fn quoted_reading(
             basis,
             omitted_utf8_bytes: 0,
             omitted_characters: 0,
-            semantic_summary_available: false,
             original_language_preserved: true,
             gaps,
         };
@@ -264,7 +256,6 @@ pub(crate) fn quoted_reading(
         basis,
         omitted_utf8_bytes: text.len() - prefix.len(),
         omitted_characters,
-        semantic_summary_available: false,
         original_language_preserved: true,
         gaps,
     }
@@ -301,103 +292,189 @@ pub(crate) fn decision_reading(decision: &BriefDecision) -> DecisionReading {
             ),
             None,
         ),
-        chosen_alternative_key: decision.chosen_alternative_key.clone(),
-        recommended_alternative_key: decision.recommended_alternative_key.clone(),
-        work_scope: decision.work_scope,
     }
 }
 
 /// Aggregate complete canonical history before any projection/list/transport bound.
 pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<UnderstandingWork> {
-    canonical.context_items.iter().filter(|goal|
-        goal.project_id == canonical.project.id && goal.role == ContextItemRole::Goal)
+    canonical
+        .context_items
+        .iter()
+        .filter(|goal| {
+            goal.project_id == canonical.project.id && goal.role == ContextItemRole::Goal
+        })
         .map(|goal| {
-            let mut checkpoints = canonical.checkpoint_history.iter().chain(canonical.latest_checkpoint.iter())
-                .filter(|cp| cp.project_id == canonical.project.id && cp.work_item_id == Some(goal.id))
+            let mut checkpoints = canonical
+                .checkpoint_history
+                .iter()
+                .chain(canonical.latest_checkpoint.iter())
+                .filter(|cp| {
+                    cp.project_id == canonical.project.id && cp.work_item_id == Some(goal.id)
+                })
                 .collect::<Vec<_>>();
             checkpoints.sort_by_key(|cp| (cp.recorded_at, cp.id));
             checkpoints.dedup_by_key(|cp| cp.id);
             let latest = checkpoints.last().copied();
-            let mut decisions = checkpoints.iter().flat_map(|cp| cp.applied_decisions.iter().copied()).collect::<BTreeSet<_>>();
-            decisions.extend(canonical.active_decisions.iter().chain(&canonical.superseded_decisions)
-                .filter(|d| d.decision.work_scope == DecisionWorkScope::WorkItem(goal.id))
-                .map(|d| d.decision.id));
-            let source_basis = goal.source_basis.iter().copied().chain(checkpoints.iter().flat_map(|cp|
-                cp.source_basis.iter().chain(&cp.changed_source_basis).copied()
-                    .chain(cp.verification.iter().filter_map(|v| v.source_id))
-                    .chain(cp.user_review.source_id).chain(cp.user_acceptance.source_id)))
-                .collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
-            let changed_paths = checkpoints.iter().flat_map(|cp| cp.changed_paths.iter().cloned())
-                .collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
-            let states: Vec<WorkStateObservation> = checkpoints.iter().enumerate().map(|(index, cp)| WorkStateObservation {
-                checkpoint_id: cp.id, checkpoint_revision: cp.revision, observed_at: cp.recorded_at,
-                work_state: cp.work_state, work_source_basis: cp.source_basis.clone(),
-                verification: cp.verification.clone(), user_review: cp.user_review.clone(), user_acceptance: cp.user_acceptance.clone(),
-                later_changed_checkpoint_ids: checkpoints[index + 1..].iter()
-                    .filter(|later| has_reported_change(later))
-                    .map(|later| later.id).collect(),
-            }).collect();
-            let goal_basis = reading_basis(canonical, ReadingRecord::ContextItem(goal.id), goal.revision, "statement", goal.source_basis.clone());
-            let mut status_basis = goal_basis.clone();
-            status_basis.field = "role".into();
-            if let Some(cp) = latest {
-                status_basis = reading_basis(canonical, ReadingRecord::Checkpoint(cp.id), cp.revision, "work_state", cp.source_basis.clone());
-            }
+            let mut decisions = checkpoints
+                .iter()
+                .flat_map(|cp| cp.applied_decisions.iter().copied())
+                .collect::<BTreeSet<_>>();
+            decisions.extend(
+                canonical
+                    .active_decisions
+                    .iter()
+                    .chain(&canonical.superseded_decisions)
+                    .filter(|d| d.decision.work_scope == DecisionWorkScope::WorkItem(goal.id))
+                    .map(|d| d.decision.id),
+            );
+            let source_basis = goal
+                .source_basis
+                .iter()
+                .copied()
+                .chain(checkpoints.iter().flat_map(|cp| {
+                    cp.source_basis
+                        .iter()
+                        .chain(&cp.changed_source_basis)
+                        .copied()
+                        .chain(cp.verification.iter().filter_map(|v| v.source_id))
+                        .chain(cp.user_review.source_id)
+                        .chain(cp.user_acceptance.source_id)
+                }))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let changed_paths = checkpoints
+                .iter()
+                .flat_map(|cp| cp.changed_paths.iter().cloned())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>();
+            let states: Vec<WorkStateObservation> = checkpoints
+                .iter()
+                .enumerate()
+                .map(|(index, cp)| WorkStateObservation {
+                    checkpoint_id: cp.id,
+                    checkpoint_revision: cp.revision,
+                    observed_at: cp.recorded_at,
+                    work_state: cp.work_state,
+                    work_source_basis: cp.source_basis.clone(),
+                    verification: cp.verification.clone(),
+                    user_review: cp.user_review.clone(),
+                    user_acceptance: cp.user_acceptance.clone(),
+                    later_changed_checkpoint_ids: checkpoints[index + 1..]
+                        .iter()
+                        .filter(|later| has_reported_change(later))
+                        .map(|later| later.id)
+                        .collect(),
+                })
+                .collect();
+            let goal_basis = reading_basis(
+                canonical,
+                ReadingRecord::ContextItem(goal.id),
+                goal.revision,
+                "statement",
+                goal.source_basis.clone(),
+            );
             let state = latest.map_or(UnderstandingWorkState::Open, |cp| cp.work_state.into());
-            let mut status = ReadingText {
-                original_text: None,
-                display_english: format!("Recorded work state: {}. Verification, user review and acceptance are separate observations.", crate::work_state_label_from_understanding(state, crate::FixedLocale::English)),
-                display_korean: format!("기록된 작업 상태: {}. 검증, 사용자 검토와 수락은 독립적인 관찰입니다.", crate::work_state_label_from_understanding(state, crate::FixedLocale::Korean)),
-                representation: ReadingRepresentation::DeterministicFacts,
-                availability: ReadingAvailability::Available, basis: status_basis,
-                omitted_utf8_bytes: 0, omitted_characters: 0, semantic_summary_available: true,
-                original_language_preserved: false, gaps: Vec::new(),
-            };
-            let changes: Vec<ReadingText> = checkpoints.iter().map(|cp| quoted_reading(cp.state_change.as_deref(),
-                reading_basis(canonical, ReadingRecord::Checkpoint(cp.id), cp.revision, "state_change", cp.source_basis.clone()), Some(canonical))).collect();
-            let result_index = checkpoints.iter().rposition(|cp| cp.state_change.as_deref().is_some_and(|text| !text.trim().is_empty()));
+            let changes: Vec<ReadingText> = checkpoints
+                .iter()
+                .map(|cp| {
+                    quoted_reading(
+                        cp.state_change.as_deref(),
+                        reading_basis(
+                            canonical,
+                            ReadingRecord::Checkpoint(cp.id),
+                            cp.revision,
+                            "state_change",
+                            cp.source_basis.clone(),
+                        ),
+                        Some(canonical),
+                    )
+                })
+                .collect();
+            let result_index = checkpoints.iter().rposition(|cp| {
+                cp.state_change
+                    .as_deref()
+                    .is_some_and(|text| !text.trim().is_empty())
+            });
             let answers = WorkAnswers {
                 result: result_index.map(|index| changes[index].clone()),
                 result_observed_at: result_index.map(|index| checkpoints[index].recorded_at),
                 latest_state: states.last().cloned(),
-                verification: states.iter().rev().find(|s| !s.verification.is_empty()).cloned(),
+                verification: states
+                    .iter()
+                    .rev()
+                    .find(|s| !s.verification.is_empty())
+                    .cloned(),
                 review: states.last().cloned(),
                 acceptance: states.last().cloned(),
             };
-            if latest.is_none() {
-                status.display_english = "Goal-only Work is open; no Checkpoint work state is recorded".into();
-                status.display_korean = "Goal만 있는 작업은 열림으로 읽습니다. Checkpoint 작업 상태는 기록되지 않았습니다".into();
-            }
-            let mut next_step = latest.map_or_else(|| quoted_reading(None, goal_basis.clone(), Some(canonical)), |cp|
-                quoted_reading(Some(&cp.next_step), reading_basis(canonical, ReadingRecord::Checkpoint(cp.id), cp.revision, "next_step", cp.source_basis.clone()), Some(canonical)));
+            let mut next_step = latest.map_or_else(
+                || quoted_reading(None, goal_basis.clone(), Some(canonical)),
+                |cp| {
+                    quoted_reading(
+                        Some(&cp.next_step),
+                        reading_basis(
+                            canonical,
+                            ReadingRecord::Checkpoint(cp.id),
+                            cp.revision,
+                            "next_step",
+                            cp.source_basis.clone(),
+                        ),
+                        Some(canonical),
+                    )
+                },
+            );
             if latest.is_none() {
                 next_step.basis.field = "role".into();
-                next_step.gaps.push("No same-Work Checkpoint records a next step".into());
+                next_step
+                    .gaps
+                    .push("No same-Work Checkpoint records a next step".into());
             }
-            let has_scope = !goal.applicability.paths.is_empty() || !goal.applicability.components.is_empty();
+            let has_scope =
+                !goal.applicability.paths.is_empty() || !goal.applicability.components.is_empty();
             UnderstandingWork {
-                work_item_id: goal.id, title: goal.statement.clone(), state,
+                work_item_id: goal.id,
+                title: goal.statement.clone(),
+                state,
                 observed_at: latest.map_or(goal.recorded_at, |cp| cp.recorded_at),
-                checkpoint_ids: checkpoints.iter().map(|cp| cp.id).collect(), decision_ids: decisions.iter().copied().collect(),
-                meaningful_changes: checkpoints.iter().filter_map(|cp| cp.state_change.clone().filter(|text| !text.trim().is_empty())).collect(), changed_paths: changed_paths.clone(),
-                changed_components: canonical.active_decisions.iter().chain(&canonical.superseded_decisions)
-                    .filter(|d| decisions.contains(&d.decision.id)).flat_map(|d| d.decision.applicability.components.iter().cloned())
-                    .collect::<BTreeSet<_>>().into_iter().collect(),
-                verification: checkpoints.iter().flat_map(|cp| cp.verification.iter().cloned()).collect(),
+                checkpoint_ids: checkpoints.iter().map(|cp| cp.id).collect(),
+                decision_ids: decisions.iter().copied().collect(),
+                changed_paths: changed_paths.clone(),
+                changed_components: canonical
+                    .active_decisions
+                    .iter()
+                    .chain(&canonical.superseded_decisions)
+                    .filter(|d| decisions.contains(&d.decision.id))
+                    .flat_map(|d| d.decision.applicability.components.iter().cloned())
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
                 next_step: latest.map(|cp| cp.next_step.clone()),
-                open_question_ids: latest.into_iter().flat_map(|cp| cp.open_questions.iter().map(|q| q.question_id))
-                    .filter(|id| canonical.active_questions.iter().any(|q| q.id == *id)).collect(),
+                open_question_ids: latest
+                    .into_iter()
+                    .flat_map(|cp| cp.open_questions.iter().map(|q| q.question_id))
+                    .filter(|id| canonical.active_questions.iter().any(|q| q.id == *id))
+                    .collect(),
                 source_basis,
                 reading: WorkReading {
                     explanations: Vec::new(),
-                    answers, goal: quoted_reading(Some(&goal.statement), goal_basis, Some(canonical)), changes, next_step, status, states,
+                    answers,
+                    goal: quoted_reading(Some(&goal.statement), goal_basis, Some(canonical)),
+                    changes,
+                    next_step,
+                    states,
                     code_availability: ReadingAvailability::Unknown,
-                    code_freshness: Vec::new(), code_source_basis: Vec::new(),
-                    analysis_snapshot_basis: Vec::new(), repository_snapshot_basis: Vec::new(),
-                    code_gap: (changed_paths.is_empty() && !has_scope).then_some(WorkCodeGap::NoSeeds),
+                    code_freshness: Vec::new(),
+                    code_source_basis: Vec::new(),
+                    analysis_snapshot_basis: Vec::new(),
+                    repository_snapshot_basis: Vec::new(),
+                    code_gap: (changed_paths.is_empty() && !has_scope)
+                        .then_some(WorkCodeGap::NoSeeds),
                 },
             }
-        }).collect()
+        })
+        .collect()
 }
 
 /// Any explicit reported change is a conservative coverage boundary. No kind or

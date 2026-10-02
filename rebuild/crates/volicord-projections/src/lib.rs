@@ -4,16 +4,18 @@
 //! This crate has no mutation handle. Automatic Recall trigger state is local
 //! to one in-memory agent session and never enters canonical storage.
 
+mod answers;
+pub use answers::*;
 mod candidate_inspection;
 mod documents;
+mod explanation;
 mod project;
 mod reading;
 mod recall;
 mod selection;
 mod trigger;
 mod understanding;
-mod work_explanation;
-pub use work_explanation::*;
+pub use explanation::*;
 
 pub use candidate_inspection::{
     build_learning_explanation_basis, inspect_candidate, learning_resume_projection,
@@ -25,15 +27,15 @@ pub use documents::{
     generate_documents, prepare_narrative_plan, realize_narrative, user_acceptance_label,
     user_review_label, verification_state_label, work_state_label,
     work_state_label_from_understanding, ClaimClass, DocumentBody, DocumentDecisionBasis,
-    DocumentError, DocumentKind, DocumentMetadata, DocumentRequest, DocumentSection, DocumentSet,
-    DocumentSourceBasis, FixedLocale, GeneratedDocument, GeneratedDocumentClaim, GeneratorIdentity,
-    NarrativePlan, NarrativePlanClaim, NarrativePlanSection, NarrativeRealization,
-    NarrativeRealizationState, NarrativeSourceTextOmission, OutputFormat, PublicationArtifact,
-    RealizedNarrativeClaim, RealizedNarrativeSection, RequestedDestination,
-    GENERATED_DOCUMENT_FORMAT_KIND, GENERATED_DOCUMENT_METADATA_VERSION,
-    NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT, NARRATIVE_PLAN_PROTECTED_TERM_LIMIT,
-    NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT, RENDERED_DOCUMENT_FIELD_BYTE_LIMIT,
-    RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
+    DocumentError, DocumentKind, DocumentMetadata, DocumentRequest, DocumentSection,
+    DocumentSectionRole, DocumentSet, DocumentSourceBasis, FixedLocale, GeneratedDocument,
+    GeneratedDocumentClaim, GeneratorIdentity, NarrativePlan, NarrativePlanClaim,
+    NarrativePlanSection, NarrativeRealization, NarrativeRealizationState,
+    NarrativeSourceTextOmission, OutputFormat, PublicationArtifact, RealizedNarrativeClaim,
+    RealizedNarrativeSection, RequestedDestination, GENERATED_DOCUMENT_FORMAT_KIND,
+    GENERATED_DOCUMENT_METADATA_VERSION, NARRATIVE_PLAN_PROTECTED_TERM_BYTE_LIMIT,
+    NARRATIVE_PLAN_PROTECTED_TERM_LIMIT, NARRATIVE_PLAN_SOURCE_TEXT_BYTE_LIMIT,
+    RENDERED_DOCUMENT_FIELD_BYTE_LIMIT, RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 pub use project::{
     build_memory_inspection, build_project_projection, CandidateDependencyFailure,
@@ -55,9 +57,8 @@ pub use understanding::{
     build_project_understanding, ProjectUnderstanding, UnderstandingArchitecture,
     UnderstandingArchitectureSelection, UnderstandingArchitectureSelectionBasis,
     UnderstandingBound, UnderstandingDecision, UnderstandingEvidence, UnderstandingEvidenceClass,
-    UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingNextStep,
-    UnderstandingOmission, UnderstandingWork, UnderstandingWorkState, UnresolvedWorkGrouping,
-    WorkOverview, WorkSection,
+    UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingOmission,
+    UnderstandingWork, UnderstandingWorkState, UnresolvedWorkGrouping, WorkOverview, WorkSection,
 };
 
 pub use reading::{

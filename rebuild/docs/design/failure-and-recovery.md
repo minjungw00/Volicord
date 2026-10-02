@@ -119,9 +119,9 @@ cause와 현재 workflow/required next action을 보존하며 internal storage s
 재시도하거나 “projection만 실패했으므로 canonical commit도 없었다”고 가정하지
 않는다. 두 result identity와 retry ownership을 분리한다.
 
-### Work explanation failure
+### Shared explanation failure
 
-Work reads distinguish no reported result, no generated interpretation in the
+Work and Decision reads distinguish no reported result, no generated interpretation in the
 requested language, stale evidence, unavailable preparation/storage, corrupt
 current-format content and unsupported format. Only Current retained content is
 shown; failure preserves canonical answers and explicit original evidence. A
@@ -137,6 +137,13 @@ records. Explicit deletion reports incomplete sanitization and can be retried, w
 the existing canonical forgetting barrier withholds affected content immediately.
 Host execution/access/authorization failure is separate from missing canonical facts;
 the product cannot invent that authority or certify submitted prose truth.
+
+New document/snapshot publication rechecks the canonical equality basis and the
+latest retained explanation under the existing mutation lock. Changed, deleted,
+unsupported or unavailable dependencies reject publication without a partial file.
+Re-render from current evidence before retry. Current document reads also reject
+previously prepared projections with deleted explanation content. This local barrier
+does not retract copies already exported by the user.
 
 ### Guarded confirmation and execution failure contract
 

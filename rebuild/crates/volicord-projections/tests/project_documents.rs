@@ -810,9 +810,12 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     );
     assert!(understanding.remaining_work.is_empty());
     assert!(understanding
+        .work_overview
         .next_steps
+        .items
         .iter()
-        .any(|step| step.text == "review source-grounding gaps"));
+        .any(|work| work.reading.next_step.original_text.as_deref()
+            == Some("review source-grounding gaps")));
     assert!(understanding.active_decisions.iter().any(|decision| {
         decision.decision.decision_id == active_decision.id
             && !decision.affected_code_entities.is_empty()
@@ -1046,7 +1049,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
     assert!(decision_markdown.contains("local structural evidence remains available"));
     assert!(decision_markdown.contains("Local \\[local\\]: keep analysis local"));
     assert!(decision_markdown.contains("Remote \\[remote\\]: use a remote service"));
-    assert!(decision_markdown.contains("user rationale=not recorded"));
+    assert!(decision_markdown.contains("User rationale is not recorded"));
     let architecture_classes = documents
         .project_architecture_guide
         .body
@@ -1555,18 +1558,19 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         .html
         .content
         .contains("OVERSIZED-METADATA-OVERSIZED-METADATA-"));
-    for full_value in [&huge_claim, &huge_name, &huge_diagnostic, &huge_metadata] {
-        assert!(!pathological_document.markdown.content.contains(full_value));
-        assert!(!pathological_document.html.content.contains(full_value));
-    }
-    assert!(pathological_document
+    // Ordinary statements stay complete. The retired primary-excerpt reader
+    // must not turn a partial answer into an apparently complete artifact.
+    assert!(pathological_document.markdown.content.contains(&huge_claim));
+    assert!(pathological_document.html.content.contains(&huge_claim));
+    assert!(!pathological_document
         .markdown
         .content
-        .contains("bounded source remainder: claim text"));
-    assert!(pathological_document
-        .html
-        .content
-        .contains("bounded source remainder: claim text"));
+        .contains(&huge_metadata));
+    assert!(!pathological_document.html.content.contains(&huge_metadata));
+    let mut oversized = projection.clone();
+    oversized.resume.project_purpose[0].statement =
+        "complete statement ".repeat(RENDERED_MARKDOWN_BYTE_LIMIT);
+    assert!(generate_documents(&oversized, &request).is_err());
     for field in ["claim uncertainty", "metadata value"] {
         assert!(pathological_document.markdown.content.contains(&format!(
             "omitted oversized field: {field}; exact UTF-8 bytes="

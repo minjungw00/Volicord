@@ -45,6 +45,11 @@ def main():
         if not fonts:
             raise RuntimeError('No Korean-capable font is configured; configure fontconfig before browser proof')
         result['korean_fonts']=[{'path':f,'sha256':harness.sha256(Path(f))} for f in sorted(set(fonts))]
+        snapshots={}
+        for language in ['en','ko']:
+            target=output / f'answers-{language}.html'
+            run(f'snapshot-{language}',cli+['--locale',language,'viewer','export','--output',target,'--language',language])
+            snapshots[language]=str(target)
         before = json.loads(run('privacy-before', cli + ['privacy', 'status']))
         run('canonical-before', cli + ['context', 'export', '--output', output / 'before.json'])
         with socket.socket() as probe:
@@ -66,7 +71,7 @@ def main():
             raise RuntimeError('Viewer startup timeout')
         cases = json.loads((Path(__file__).parent / 'fixtures/viewer-reading/answer-cases.json').read_text())
         config = {'url': url, 'fixture': fixture, 'output': str(output), 'chromium': str(args.chromium.resolve()),
-                  'playwright': str(args.playwright_module.resolve()), 'claim_terms': cases['browser_claim_terms']}
+                  'playwright': str(args.playwright_module.resolve()), 'claim_terms': cases['browser_claim_terms'], 'decision_terms': cases['decision_browser_claim_terms'], 'snapshots': snapshots}
         harness.write_json(output / 'config.json', config)
         run('browser', ['node', Path(__file__).parent / 'viewer_browser_driver.cjs', output / 'config.json', 'work-explanation'])
         after = json.loads(run('privacy-after', cli + ['privacy', 'status']))

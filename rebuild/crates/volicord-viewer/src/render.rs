@@ -62,6 +62,8 @@ pub struct ViewerRequest {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewerPage {
+    pub canonical_read_fingerprint: String,
+    pub explanations: Vec<volicord_projections::ExplanationProvenance>,
     pub project_id: ProjectId,
     pub html: String,
 }
@@ -253,7 +255,13 @@ impl ViewerAdapter {
     ) -> Result<PublicationOutcome, ViewerError> {
         let page = self.render_snapshot(request, generated_at)?;
         self.operations
-            .publish_viewer_snapshot(&page.html, destination)
+            .publish_viewer_snapshot(
+                &page.html,
+                destination,
+                page.project_id,
+                &page.canonical_read_fingerprint,
+                &page.explanations,
+            )
             .map_err(|error| ViewerError::new(error.to_string()))
     }
 
@@ -477,6 +485,29 @@ impl ViewerAdapter {
         let html_render = render_started.elapsed();
         Ok((
             ViewerPage {
+                canonical_read_fingerprint: projection.canonical_read_fingerprint.clone(),
+                explanations: projection
+                    .work_history
+                    .iter()
+                    .chain(projection.selected_work.iter())
+                    .chain(&projection.work_overview.current.items)
+                    .chain(&projection.work_overview.completed.items)
+                    .chain(&projection.work_overview.remaining.items)
+                    .chain(&projection.work_overview.next_steps.items)
+                    .flat_map(|w| &w.reading.explanations)
+                    .chain(
+                        projection
+                            .decision_catalog
+                            .iter()
+                            .flat_map(|d| &d.decision.explanations),
+                    )
+                    .filter(|e| {
+                        e.language == request.requested_language
+                            && e.state == volicord_projections::ExplanationState::Current
+                    })
+                    .filter_map(|e| e.content.as_ref())
+                    .map(Into::into)
+                    .collect(),
                 project_id: request.project_id,
                 html,
             },
@@ -643,25 +674,21 @@ fn render_work_card(
         escape(understanding_work_state_label(work.state, request.locale))
     ));
     reading::work_explanation(html, request, work, false);
-    if work.next_step.is_some()
-        && !work.reading.explanations.iter().any(|e| {
-            e.language == request.requested_language
-                && e.state == volicord_projections::WorkExplanationState::Current
-        })
-    {
-        html.push_str(&format!(
-            "<p class=\"work-next-step\"><strong>{}:</strong> {}</p>",
-            escape(text(
-                request.locale,
-                "Next step quotation",
-                "다음 단계 인용"
-            )),
-            escape(work_reading_display(
-                &work.reading.next_step,
-                request.locale
-            ))
-        ));
-    }
+    html.push_str(&format!(
+        "<details><summary>{}</summary><p>{}</p></details>",
+        text(
+            request.locale,
+            "Original next-step evidence",
+            "원래 다음 단계 근거"
+        ),
+        escape(
+            work.reading
+                .next_step
+                .original_text
+                .as_deref()
+                .unwrap_or("")
+        )
+    ));
     if !work.changed_paths.is_empty() || !work.changed_components.is_empty() {
         html.push_str(&format!(
             "<p class=\"work-scope\"><strong>{}:</strong> {}{}</p>",
@@ -706,21 +733,16 @@ fn render_work_card(
         ));
         for decision in scoped_decisions {
             html.push_str(&format!(
-                "<li data-decision-id=\"{}\" data-decision-scope=\"work-item\">{} — {}: {}</li>",
-                decision.decision.decision_id,
-                escape(&decision_choice_attribution(
-                    &decision.decision,
-                    request.locale
-                )),
-                escape(text(request.locale, "why", "이유")),
-                escape(
-                    decision
-                        .decision
-                        .user_rationale
-                        .as_deref()
-                        .unwrap_or_else(|| text(request.locale, "Not recorded", "기록되지 않음"))
-                )
+                "<li data-decision-id=\"{}\" data-decision-scope=\"work-item\">",
+                decision.decision.decision_id
             ));
+            let answers = volicord_projections::decision_answers(
+                &decision.decision,
+                &request.requested_language,
+                request.locale.fixed(),
+            );
+            reading::render_answers(html, request, &answers, false);
+            html.push_str("</li>");
         }
         html.push_str("</ul></div>");
     }

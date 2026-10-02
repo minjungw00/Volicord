@@ -7,7 +7,7 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
     CheckpointId, ContextItemId, DecisionId, DecisionWorkScope, ProjectId, QuestionId, SourceId,
-    SourceReadBasis, VerificationFact, WorkState,
+    SourceReadBasis, WorkState,
 };
 use volicord_repository_intelligence::{AnalysisSnapshotId, CodeEntityKind, RepositorySnapshotId};
 
@@ -33,10 +33,8 @@ pub struct UnderstandingWork {
     pub state: UnderstandingWorkState,
     pub checkpoint_ids: Vec<CheckpointId>,
     pub decision_ids: Vec<DecisionId>,
-    pub meaningful_changes: Vec<String>,
     pub changed_paths: Vec<String>,
     pub changed_components: Vec<String>,
-    pub verification: Vec<VerificationFact>,
     pub next_step: Option<String>,
     pub open_question_ids: Vec<QuestionId>,
     pub source_basis: Vec<SourceId>,
@@ -81,15 +79,6 @@ pub struct UnderstandingDecision {
     pub affected_code_entities: Vec<String>,
     pub link_basis: Vec<String>,
     pub known_link_gaps: Vec<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UnderstandingNextStep {
-    pub identity: String,
-    pub text: String,
-    pub source_basis: Vec<SourceId>,
-    pub decision_basis: Vec<DecisionId>,
-    pub uncertainty: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -279,7 +268,6 @@ pub struct ProjectUnderstanding {
     pub remaining_work: Vec<UnderstandingWork>,
     pub work_history: Vec<UnderstandingWork>,
     pub unresolved_work_grouping: Vec<UnresolvedWorkGrouping>,
-    pub next_steps: Vec<UnderstandingNextStep>,
     pub active_decisions: Vec<UnderstandingDecision>,
     pub open_questions: Vec<BriefQuestion>,
     pub risks_assumptions_and_limits: Vec<BriefContextItem>,
@@ -368,9 +356,6 @@ pub fn build_project_understanding(
     let mut open_questions = projection.resume.open_questions.clone();
     open_questions.sort_by_key(|question| (!question.on_current_frontier, question.question_id));
     bound_section(&mut open_questions, limit, "open_questions", &mut omissions);
-
-    let mut next_steps = next_steps(projection);
-    bound_section(&mut next_steps, limit, "next_steps", &mut omissions);
 
     let mut risks_assumptions_and_limits = projection.resume.risks_assumptions_and_limits.clone();
     bound_section(
@@ -555,7 +540,6 @@ pub fn build_project_understanding(
         remaining_work,
         work_history,
         unresolved_work_grouping,
-        next_steps,
         active_decisions,
         open_questions,
         risks_assumptions_and_limits,
@@ -1657,33 +1641,6 @@ pub(crate) fn decision_understanding(
     }
 }
 
-fn next_steps(projection: &ProjectProjection) -> Vec<UnderstandingNextStep> {
-    let mut steps = Vec::new();
-    if let Some(checkpoint) = projection.resume.latest_meaningful_checkpoint.as_ref() {
-        steps.push(UnderstandingNextStep {
-            identity: format!("checkpoint:{}", checkpoint.id),
-            text: checkpoint.next_step.clone(),
-            source_basis: checkpoint.source_basis.clone(),
-            decision_basis: checkpoint.applied_decisions.clone(),
-            uncertainty: checkpoint.known_limits.clone(),
-        });
-    }
-    for question in &projection.resume.open_questions {
-        for (index, unlocked) in question.what_the_answer_unlocks.iter().enumerate() {
-            steps.push(UnderstandingNextStep {
-                identity: format!("question:{}:{index}", question.question_id),
-                text: unlocked.clone(),
-                source_basis: question.source_basis.clone(),
-                decision_basis: Vec::new(),
-                uncertainty: question.blocked_basis.clone(),
-            });
-        }
-    }
-    steps.sort_by(|left, right| left.identity.cmp(&right.identity));
-    steps.dedup_by(|left, right| left.identity == right.identity);
-    steps
-}
-
 fn bound_section<T>(
     values: &mut Vec<T>,
     limit: usize,
@@ -2070,6 +2027,7 @@ mod tests {
             .collect();
         let decisions = decision
             .map(|(decision_id, _)| BriefDecision {
+                explanations: Vec::new(),
                 user_source_basis: Vec::new(),
                 user_source_status: Vec::new(),
                 recommendation_source_status: Vec::new(),
@@ -2096,7 +2054,7 @@ mod tests {
                 source_basis: vec![SourceId::from_bytes([8; 16])],
                 question_uncertainty: Vec::new(),
                 known_limits: Vec::new(),
-                review_basis: Vec::new(),
+                review_issues: Vec::new(),
             })
             .into_iter()
             .collect::<Vec<_>>();
@@ -2125,6 +2083,7 @@ mod tests {
             checkpoint: checkpoint.clone(),
         };
         ProjectProjection {
+            canonical_read_fingerprint: String::new(),
             sections: crate::ProjectReadSections {
                 code: crate::ReadSectionState::Available,
                 inspection: crate::ReadSectionState::Available,
@@ -2164,6 +2123,7 @@ mod tests {
                 health: ProjectionHealth::Complete,
             },
             resume: ResumeBrief {
+                selected_work: None,
                 project_purpose: Vec::new(),
                 project_id: project_id(),
                 project_name: "Current work fixture".into(),

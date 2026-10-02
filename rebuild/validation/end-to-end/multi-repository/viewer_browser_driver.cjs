@@ -373,11 +373,11 @@ async function offline() {
   await check('negative-live-link',()=>copyMutation('live_link',()=>{document.querySelector('nav[aria-label="Viewer"] a').setAttribute('href','http://127.0.0.1:3219/?view=tools');},snapshotSafety,pathToFileURL(config.snapshots.en).href));
 }
 async function workExplanations() {
-  for (const locale of ['en','ko']) for (const key of ['relay','relay_variant','export','older']) {
+  for (const locale of ['en','ko']) for (const key of Object.keys(config.claim_terms)) {
     await check(`work-explanation-${key}-${locale}`,async()=>{
       await go(`${config.url}?view=work&work=${F.goals[key]}&locale=${locale}&language=${locale}`);
       const surface=page.locator(workSelector(key));
-      const answer=surface.locator('.work-explanation');
+      const answer=surface.locator(':scope > article.work-item > .work-explanation');
       requireFact(await answer.count()===1,'current_explanation_missing');
       requireFact(await answer.getAttribute('data-statement-role')==='generated-interpretation','interpretation_presented_as_fact');
       const visible=await answer.innerText();
@@ -394,9 +394,37 @@ async function workExplanations() {
       requireFact((await grounding.innerText()).includes('self_reported_not_independently_verified'),'generator_identity_overclaimed');
       await grounding.locator('summary').click();
       await capture(`work-explanation-${key}-${locale}.png`,surface);
+      await go(`${config.url}?view=overview&locale=${locale}&language=${locale}`);
+      const card=page.locator(`[data-work-id="${F.goals[key]}"] .work-explanation`).first();
+      for (const q of ['ReportedChange','Verification','NextStep']) requireFact(await card.locator(`p[data-question="${q}"]`).innerText()===observed[q],`overview_answer_diverged:${q}`);
+      await go(pathToFileURL(config.snapshots[locale]).href);
+      const offline=page.locator(workSelector(key)).locator(':scope > article.work-item > .work-explanation');
+      for (const [q,body] of Object.entries(observed)) requireFact(await offline.locator(`p[data-question="${q}"]`).innerText()===body,`snapshot_answer_diverged:${q}`);
+      requireFact(await page.locator('script,form,iframe,input,button').count()===0,'snapshot_has_active_transport');
       return {work:F.goals[key],ordinary_answers:observed,external_transmission:'none',human_acceptance:'not_established'};
     });
   }
+  for (const locale of ['en','ko']) for (const key of Object.keys(config.decision_terms)) {
+    await check(`decision-answer-${key}-${locale}`,async()=>{
+      await go(`${config.url}?view=decisions&decision=${F.decisions[key]}&locale=${locale}&language=${locale}`);
+      const answer=page.locator('.work-explanation').first();
+      requireFact(await answer.count()===1,'current_decision_explanation_missing');
+      requireFact(!(await answer.innerText()).includes('aabbccddeeff00112233445566778899'),'decision_audit_primary');
+      const observed={};
+      for (const [question,groups] of Object.entries(config.decision_terms[key][locale])) {
+        const body=await answer.locator(`p[data-question="${question}"]`).innerText();
+        for (const terms of groups) requireFact(terms.some(term=>body.toLowerCase().includes(term.toLowerCase())),`decision_claim_missing:${key}/${locale}/${question}/${terms}`);
+        observed[question]=body;
+      }
+      requireFact(await answer.locator('details[open]').count()===0,'decision_requires_evidence_disclosure');
+      await capture(`decision-answer-${key}-${locale}.png`,answer);
+      await go(pathToFileURL(config.snapshots[locale]).href);
+      const offline=page.locator(idSelector(`decision-${F.decisions[key]}`)).locator(':scope > .work-explanation');
+      for (const [q,body] of Object.entries(observed)) requireFact(await offline.locator(`p[data-question="${q}"]`).innerText()===body,`decision_snapshot_answer_diverged:${q}`);
+      return {decision:F.decisions[key],ordinary_answers:observed,human_acceptance:'not_established'};
+    });
+  }
+
 }
 (async()=>{
   try {

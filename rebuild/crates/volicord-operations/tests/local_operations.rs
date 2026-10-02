@@ -1041,14 +1041,26 @@ fn viewer_snapshot_publication_is_absolute_atomic_no_replace_and_noncanonical(
     let destination = temporary.path().join("shared/viewer-snapshot.html");
     let html = "<!doctype html><html><body>read-only snapshot</body></html>";
 
-    let published = operations.publish_viewer_snapshot(html, &destination)?;
+    let published = operations.publish_viewer_snapshot(
+        html,
+        &destination,
+        project,
+        &volicord_projections::canonical_read_fingerprint(&canonical_before),
+        &[],
+    )?;
     assert_eq!(published.destination, destination);
     assert_eq!(published.bytes, html.len() as u64);
     assert_eq!(fs::read_to_string(&destination)?, html);
     assert_eq!(operations.canonical_basis(project)?, canonical_before);
 
     let replacement = operations
-        .publish_viewer_snapshot("replacement", &destination)
+        .publish_viewer_snapshot(
+            "replacement",
+            &destination,
+            project,
+            &volicord_projections::canonical_read_fingerprint(&canonical_before),
+            &[],
+        )
         .expect_err("snapshot publication must not replace an existing file");
     assert!(replacement
         .message()
@@ -1056,7 +1068,13 @@ fn viewer_snapshot_publication_is_absolute_atomic_no_replace_and_noncanonical(
     assert_eq!(fs::read_to_string(&destination)?, html);
 
     let relative = operations
-        .publish_viewer_snapshot(html, Path::new("viewer-snapshot.html"))
+        .publish_viewer_snapshot(
+            html,
+            Path::new("viewer-snapshot.html"),
+            project,
+            &volicord_projections::canonical_read_fingerprint(&canonical_before),
+            &[],
+        )
         .expect_err("relative snapshot destination must be rejected");
     assert!(relative.message().contains("must be absolute"));
     assert_eq!(operations.canonical_basis(project)?, canonical_before);
