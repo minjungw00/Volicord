@@ -8,7 +8,7 @@ use std::{
 };
 use volicord_context::ProjectId;
 use volicord_operations::{LocalOperations, RuntimeLayout};
-use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer};
+use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer, ViewerView};
 
 fn main() {
     if let Err(error) = run(env::args_os().skip(1).collect()) {
@@ -24,7 +24,8 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
     let mut bind_was_requested = false;
     let mut snapshot = None;
     let mut locale = ViewerLocale::English;
-    let mut level = ExplanationLevel::Working;
+    let mut view = ViewerView::Overview;
+    let mut view_was_requested = false;
     let mut language = "en".to_owned();
     let mut index = 0;
     while index < args.len() {
@@ -49,13 +50,9 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                     other => return Err(format!("unsupported fixed locale: {other}")),
                 }
             }
-            "--level" => {
-                level = match next(index + 1)?.as_str() {
-                    "overview" => ExplanationLevel::Overview,
-                    "working" => ExplanationLevel::Working,
-                    "deep" => ExplanationLevel::Deep,
-                    other => return Err(format!("unknown explanation level: {other}")),
-                }
+            "--view" => {
+                view = ViewerView::named(&next(index + 1)?).map_err(|e| e.to_string())?;
+                view_was_requested = true;
             }
             "--language" => language = next(index + 1)?,
             _ => return Err(format!("unknown argument: {argument}")),
@@ -69,6 +66,9 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
     };
     let adapter = ViewerAdapter::new(LocalOperations::new(layout));
     if let Some(destination) = snapshot {
+        if view_was_requested {
+            return Err("--view cannot be combined with whole-snapshot export".into());
+        }
         if bind_was_requested {
             return Err("--bind cannot be combined with --snapshot".into());
         }
@@ -80,7 +80,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                 &ViewerRequest {
                     project_id: project,
                     locale,
-                    explanation_level: level,
+                    view,
                     requested_language: language,
                     guarded_request: None,
                 },
@@ -107,7 +107,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
     let authority = listener
         .local_addr()
         .map_err(|error| format!("cannot identify bound viewer authority: {error}"))?;
-    let server = ViewerServer::new(adapter, project, locale, level, language, authority)
+    let server = ViewerServer::new(adapter, project, locale, view, language, authority)
         .map_err(|error| error.to_string())?;
     eprintln!("Volicord local viewer: http://{authority}/");
     for stream in listener.incoming() {

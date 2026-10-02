@@ -2026,6 +2026,14 @@ mod tests {
             checkpoint: checkpoint.clone(),
         };
         ProjectProjection {
+            work_count: 0,
+            decision_count: 0,
+            decision_catalog: Vec::new(),
+            selected_decision: None,
+            selected_entity: None,
+            selected_entity_relations: Vec::new(),
+            selected_entity_neighbors: Vec::new(),
+            omitted_selected_relation_count: 0,
             selection: crate::WorkSelection {
                 selector: crate::WorkSelector::LatestWork,
                 work_item_id: None,

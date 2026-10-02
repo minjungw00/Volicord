@@ -11,6 +11,10 @@ import tempfile
 
 
 REMOVED_FORMS = (
+    ("viewer", "open", "--level", "deep"),
+    ("viewer", "export", "--output", "out.html", "--level", "working"),
+    ("viewer", "export", "--output", "out.html", "--view", "overview"),
+    ("viewer", "open", "--view", "invalid"),
     ("project", "init", "Old"),
     ("health", "PROJECT"),
     ("recall", "PROJECT"),
@@ -58,6 +62,8 @@ def main() -> int:
             raise AssertionError(f"parity fixture initialization failed: {initialized.stderr}")
         project_id = json.loads(initialized.stdout)["project_id"]
         maintained = (
+            ("viewer whole snapshot", ["--runtime", str(runtime), "--project", project_id, "viewer", "export", "--output", str(root / "viewer.html"), "--language", "en"]),
+            ("viewer purpose selection", ["viewer", "open", "--view", "code", "--help"]),
             ("codex enable", ["--runtime", str(runtime), "--repository", str(repository), "codex", "enable"]),
             ("context export", ["--runtime", str(runtime), "--repository", str(repository), "context", "export", "--output", str(root / "bundle.json")]),
             ("document export", ["--runtime", str(runtime), "--repository", str(repository), "document", "export", "handoff-resume", "--format", "markdown", "--output", str(root / "handoff.md"), "--language", "en"]),

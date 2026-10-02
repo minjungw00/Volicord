@@ -144,7 +144,7 @@ VOLICORD_SHAPES = (
     (("doctor", "check"), 2, {}, set()),
     (("doctor", "repair"), 2, {}, set()),
     (("advanced", "candidates"), 2, {}, set()),
-    (("viewer", "export"), 8, {2: "--output", 4: "--level", 6: "--language"}, {3}),
+    (("viewer", "export"), 6, {2: "--output", 4: "--language"}, {3}),
 )
 
 

@@ -1698,8 +1698,6 @@ def rehearse_target(
         "export",
         "--output",
         str(viewer_snapshot),
-        "--level",
-        "working",
         "--language",
         "en",
         cwd=repository,

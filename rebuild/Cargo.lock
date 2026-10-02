@@ -980,6 +980,7 @@ dependencies = [
  "getrandom 0.3.4",
  "rusqlite",
  "rustix",
+ "serde_json",
  "tempfile",
  "volicord-context",
  "volicord-inquiry",

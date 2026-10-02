@@ -2620,6 +2620,19 @@ impl LocalOperations {
         project_id: ProjectId,
         selection: volicord_projections::WorkSelector,
     ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        self.project_projection_detail_profiled(
+            project_id,
+            selection,
+            volicord_projections::ProjectionDetail::default(),
+        )
+    }
+
+    pub fn project_projection_detail_profiled(
+        &self,
+        project_id: ProjectId,
+        selection: volicord_projections::WorkSelector,
+        detail: volicord_projections::ProjectionDetail,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
         let total_started = Instant::now();
         let canonical_started = Instant::now();
         let canonical = self.canonical_basis(project_id)?;
@@ -2638,6 +2651,7 @@ impl LocalOperations {
         let candidates = projection_candidates(candidate_basis.as_ref(), candidate_failure);
         let projection_started = Instant::now();
         let projection = build_project_projection(ProjectProjectionInputs {
+            detail,
             selection,
             analysis_issues: &analysis_issues,
             canonical: &canonical,

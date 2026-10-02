@@ -29,8 +29,17 @@ impl Default for ProjectionBound {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProjectionDetail {
+    pub work_page: usize,
+    pub decision_page: usize,
+    pub decision: Option<DecisionId>,
+    pub entity: Option<String>,
+}
+
 pub struct ProjectProjectionInputs<'a> {
     pub selection: crate::WorkSelector,
+    pub detail: ProjectionDetail,
     pub analysis_issues: &'a [ProjectionIssue],
     pub canonical: &'a CanonicalReadBasis,
     pub analyses: &'a [&'a AnalysisSnapshot],
@@ -776,6 +785,14 @@ pub struct CurrentWorkTopology {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
+    pub work_count: usize,
+    pub decision_count: usize,
+    pub decision_catalog: Vec<crate::UnderstandingDecision>,
+    pub selected_decision: Option<crate::UnderstandingDecision>,
+    pub selected_entity: Option<MapEntity>,
+    pub selected_entity_relations: Vec<MapRelation>,
+    pub selected_entity_neighbors: Vec<MapEntity>,
+    pub omitted_selected_relation_count: usize,
     pub selection: crate::WorkSelection,
     /// Explicit selection is independent of bounded parent Work lists.
     pub selected_work: Option<crate::UnderstandingWork>,
@@ -934,6 +951,41 @@ pub fn build_project_projection(
     let mut issues = source_issues(reading_canonical);
     issues.extend_from_slice(inputs.analysis_issues);
     let graph = projection_graph(reading_canonical, inputs.analyses);
+    let selected_entity = inputs.detail.entity.as_deref().and_then(|id| {
+        graph
+            .entities
+            .iter()
+            .find(|entity| entity.identity == id)
+            .map(|entity| materialize_entity(entity))
+    });
+    let mut selected_entity_relations = Vec::new();
+    let mut selected_entity_neighbors = Vec::new();
+    let mut omitted_selected_relation_count = 0;
+    if let Some(entity) = &selected_entity {
+        let mut related = graph
+            .relations
+            .iter()
+            .filter(|relation| {
+                relation.source() == entity.identity
+                    || relation.target() == Some(entity.identity.as_str())
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        related.sort_by_key(|relation| relation.identity().to_owned());
+        omitted_selected_relation_count = related.len().saturating_sub(limit);
+        related.truncate(limit);
+        let endpoints = related
+            .iter()
+            .flat_map(relation_endpoints)
+            .collect::<BTreeSet<_>>();
+        selected_entity_neighbors = graph
+            .entities
+            .iter()
+            .filter(|e| endpoints.contains(e.identity.as_str()))
+            .map(|e| materialize_entity(e))
+            .collect();
+        selected_entity_relations = related.into_iter().map(materialize_relation).collect();
+    }
     let mut current_work_topology =
         build_current_work_topology(topology_canonical, &graph, limit, &mut issues);
     let repository_map = build_repository_map(
@@ -1083,6 +1135,25 @@ pub fn build_project_projection(
             None
         };
     }
+    let selected_decision = inputs.detail.decision.and_then(|id| {
+        inputs
+            .canonical
+            .active_decisions
+            .iter()
+            .chain(&inputs.canonical.superseded_decisions)
+            .find(|lifecycle| lifecycle.decision.id == id)
+            .map(|lifecycle| {
+                let decision = crate::recall::brief_decision(
+                    inputs.canonical,
+                    lifecycle,
+                    &inputs.applicability,
+                );
+                let link = decision_context_code
+                    .iter()
+                    .find(|link| link.decision_id == id);
+                crate::understanding::decision_understanding(&decision, link)
+            })
+    });
     let selected_work_decisions = scoped.as_ref().map_or_else(Vec::new, |basis| {
         basis
             .active_decisions
@@ -1112,7 +1183,36 @@ pub fn build_project_projection(
             *work = selected.clone();
         }
     }
+    let work_count = work_history.len();
+    let work_offset = inputs
+        .detail
+        .work_page
+        .saturating_mul(limit)
+        .min(work_count);
+    work_history.drain(..work_offset);
     bound(&mut work_history, limit, "work_history", &mut issues);
+    let mut decision_lifecycles = reading_canonical
+        .active_decisions
+        .iter()
+        .chain(&reading_canonical.superseded_decisions)
+        .collect::<Vec<_>>();
+    decision_lifecycles.sort_by_key(|l| l.decision.id);
+    let decision_count = decision_lifecycles.len();
+    let decision_catalog = decision_lifecycles
+        .into_iter()
+        .skip(inputs.detail.decision_page.saturating_mul(limit))
+        .take(limit)
+        .map(|lifecycle| {
+            let decision =
+                crate::recall::brief_decision(reading_canonical, lifecycle, &inputs.applicability);
+            crate::understanding::decision_understanding(
+                &decision,
+                decision_context_code
+                    .iter()
+                    .find(|l| l.decision_id == decision.decision_id),
+            )
+        })
+        .collect();
     sort_projection_issues(&mut issues);
     let health = health_from_issues(&issues);
     let overview = ProjectOverview {
@@ -1139,6 +1239,14 @@ pub fn build_project_projection(
         health,
     };
     Ok(ProjectProjection {
+        work_count,
+        decision_count,
+        decision_catalog,
+        selected_decision,
+        selected_entity,
+        selected_entity_relations,
+        selected_entity_neighbors,
+        omitted_selected_relation_count,
         selection,
         selected_work,
         selected_work_decisions,

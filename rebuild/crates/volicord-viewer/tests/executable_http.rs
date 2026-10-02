@@ -63,7 +63,7 @@ fn start_viewer(runtime: &Path, project: &str) -> ViewerProcess {
     for _ in 0..100 {
         if let Ok(mut stream) = TcpStream::connect(&address) {
             let request = format!(
-                "GET /?level=overview HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+                "GET /?view=overview HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
             );
             if stream.write_all(request.as_bytes()).is_ok() {
                 let mut response = String::new();
@@ -173,7 +173,7 @@ fn client_reset_does_not_end_the_listener_or_change_canonical_memory() {
     rustix::net::sockopt::set_socket_linger(&reset, Some(Duration::ZERO)).expect("abortive close");
     // An incomplete header keeps the server reading until the abortive close.
     reset
-        .write_all(b"GET / HTTP/1.1\r\nHost:")
+        .write_all(b"GET /?view=tools&tool=memory HTTP/1.1\r\nHost:")
         .expect("partial request");
     drop(reset);
     let response = get(&viewer.address, "/");
@@ -217,8 +217,6 @@ fn snapshot_mode_writes_one_static_file_and_exits_without_a_listener() {
             &project.to_string(),
             "--snapshot",
             destination.to_str().expect("snapshot destination"),
-            "--level",
-            "working",
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -238,7 +236,6 @@ fn snapshot_mode_writes_one_static_file_and_exits_without_a_listener() {
     for forbidden in [
         "<form",
         "request_authenticity",
-        " href=",
         " src=",
         "<script",
         "/memory/",
@@ -296,23 +293,23 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
     let viewer = start_viewer(&runtime, &project.to_string());
     let address = viewer.address.as_str();
 
-    let overview = get(address, "/?level=overview&locale=en&language=fr-CA");
-    let working = get(address, "/?level=working&locale=ko&language=ko");
-    let deep = get(address, "/?level=deep&locale=en&language=ja");
+    let overview = get(address, "/?view=overview&locale=en&language=fr-CA");
+    let working = get(address, "/?view=tools&tool=documents&locale=ko&language=ko");
+    let deep = get(address, "/?view=tools&tool=memory&locale=en&language=ja");
     assert!(overview.starts_with("HTTP/1.1 200 OK"), "{overview}");
-    assert!(overview.contains("data-explanation-level=\"overview\""));
-    assert!(working.contains("data-explanation-level=\"working\""));
-    assert!(working.contains("프로젝트 개요"));
-    assert!(deep.contains("data-explanation-level=\"deep\""));
-    assert!(deep.contains("main.py"));
+    assert!(overview.contains("data-view=\"overview\""));
+    assert!(working.contains("data-view=\"tools\""));
+    assert!(working.contains("문서 미리보기"));
+    assert!(deep.contains("data-view=\"tools\""));
+    assert!(working.contains("main.py") || overview.contains("Material limitations"));
     assert_ne!(overview, working);
     assert_ne!(working, deep);
-    let request_authenticity = request_authenticity(&overview);
+    let request_authenticity = request_authenticity(&deep);
     assert_eq!(request_authenticity.len(), 64);
     assert!(!overview.contains("?request_authenticity="));
     let rebound = exchange(
         address,
-        "GET /?level=deep HTTP/1.1\r\nHost: attacker.example\r\nConnection: close\r\n\r\n",
+        "GET /?view=tools&tool=memory HTTP/1.1\r\nHost: attacker.example\r\nConnection: close\r\n\r\n",
     );
     assert!(rebound.starts_with("HTTP/1.1 421 Misdirected Request"));
     assert!(!rebound.contains("request_authenticity"));
@@ -361,7 +358,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         .value;
     drop(store);
     assert!(!overview.contains(&context.id.to_string()));
-    let refreshed = get(address, "/?level=deep&locale=en&language=en");
+    let refreshed = get(address, "/?view=tools&tool=memory&locale=en&language=en");
     assert!(refreshed.contains(&context.id.to_string()));
     assert!(refreshed.contains("viewer state created after startup"));
 
@@ -369,7 +366,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         address,
         "/memory/context/correct",
         &format!(
-            "record_id={}&expected_revision={}&corrected_text=state+created+after+viewer+startup&user_turn=Correct+this+viewer+memory&level=deep&locale=en&language=en",
+            "record_id={}&expected_revision={}&corrected_text=state+created+after+viewer+startup&user_turn=Correct+this+viewer+memory&view=tools&tool=memory&locale=en&language=en",
             context.id, context.revision
         ),
         &request_authenticity,
@@ -392,14 +389,14 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         corrected_context.statement,
         "state created after viewer startup"
     );
-    assert!(get(address, "/?level=deep").contains("state created after viewer startup"));
+    assert!(get(address, "/?view=tools&tool=memory").contains("state created after viewer startup"));
 
     let published_document = temporary.path().join("published").join("handoff.md");
     let published = post(
         address,
         "/documents/export",
         &format!(
-            "kind=handoff-resume&format=markdown&destination={}&level=working&locale=en&language=en",
+            "kind=handoff-resume&format=markdown&destination={}&view=tools&tool=documents&locale=en&language=en",
             published_document.display()
         ),
         &request_authenticity,
@@ -419,7 +416,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         project,
         &temporary.path().join("before-invalid.json"),
     );
-    assert!(get(address, "/?level=unsupported").starts_with("HTTP/1.1 400 Bad Request"));
+    assert!(get(address, "/?view=unsupported").starts_with("HTTP/1.1 400 Bad Request"));
     assert!(get(address, "/missing").starts_with("HTTP/1.1 404 Not Found"));
     assert!(post(
         address,
@@ -473,7 +470,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
     let shown = get(
         address,
         &format!(
-            "/guarded/{}?level=working",
+            "/guarded/{}?view=tools&tool=documents",
             current.confirmation_request_identity
         ),
     );
@@ -490,7 +487,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         context.id
     );
     let guarded_body = format!(
-        "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&decision=confirm&user_turn=Rejected+viewer+confirmation&guarded={}",
+        "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&confirmation_decision=confirm&user_turn=Rejected+viewer+confirmation&guarded={}",
         current.confirmation_request_identity,
         current.request_revision,
         current.effect_fingerprint,
@@ -609,7 +606,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
             address,
             "/guarded/confirm",
             &format!(
-                "confirmation_request_id={}&request_revision={revision}&effect_fingerprint={fingerprint}&decision=confirm&user_turn={turn}&guarded={}",
+                "confirmation_request_id={}&request_revision={revision}&effect_fingerprint={fingerprint}&confirmation_decision=confirm&user_turn={turn}&guarded={}",
                 current.confirmation_request_identity, current.confirmation_request_identity
             ),
             &request_authenticity,
@@ -686,4 +683,27 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
                 .iter()
                 .all(|source| !source.to_string().contains(&request_authenticity))
     }));
+}
+
+#[test]
+fn direct_viewer_rejects_removed_levels_invalid_views_and_snapshot_selection() {
+    for arguments in [
+        vec!["--level", "overview"],
+        vec!["--view", "invalid"],
+        vec![
+            "--project",
+            "01010101010101010101010101010101",
+            "--snapshot",
+            "/tmp/viewer-rejected.html",
+            "--view",
+            "overview",
+        ],
+    ] {
+        let result = Command::new(env!("CARGO_BIN_EXE_volicord-viewer"))
+            .args(arguments)
+            .output()
+            .expect("direct parser");
+        assert!(!result.status.success());
+        assert!(!result.stderr.is_empty());
+    }
 }

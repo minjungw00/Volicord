@@ -1,4 +1,4 @@
-use crate::{ExplanationLevel, ViewerAdapter, ViewerError, ViewerLocale, ViewerRequest};
+use crate::{ViewerAdapter, ViewerError, ViewerLocale, ViewerRequest, ViewerView};
 use std::{
     collections::BTreeMap,
     fmt,
@@ -20,7 +20,7 @@ pub struct ViewerServer {
     adapter: ViewerAdapter,
     project_id: ProjectId,
     default_locale: ViewerLocale,
-    default_level: ExplanationLevel,
+    default_view: ViewerView,
     requested_language: String,
     session: String,
     authority: String,
@@ -33,7 +33,7 @@ impl ViewerServer {
         adapter: ViewerAdapter,
         project_id: ProjectId,
         default_locale: ViewerLocale,
-        default_level: ExplanationLevel,
+        default_view: ViewerView,
         requested_language: String,
         authority: SocketAddr,
     ) -> Result<Self, ViewerError> {
@@ -47,7 +47,7 @@ impl ViewerServer {
             adapter,
             project_id,
             default_locale,
-            default_level,
+            default_view,
             requested_language,
             session: format!("viewer-process-{}", std::process::id()),
             origin: format!("http://{authority}"),
@@ -88,7 +88,13 @@ impl ViewerServer {
                     "expected_revision",
                     "corrected_text",
                     "user_turn",
-                    "level",
+                    "page",
+                    "view",
+                    "work",
+                    "scope",
+                    "entity",
+                    "decision",
+                    "tool",
                     "locale",
                     "language",
                     "guarded",
@@ -113,7 +119,13 @@ impl ViewerServer {
                     "expected_revision",
                     "corrected_text",
                     "user_turn",
-                    "level",
+                    "page",
+                    "view",
+                    "work",
+                    "scope",
+                    "entity",
+                    "decision",
+                    "tool",
                     "locale",
                     "language",
                     "guarded",
@@ -138,7 +150,13 @@ impl ViewerServer {
                     "alternative",
                     "rationale",
                     "user_turn",
-                    "level",
+                    "page",
+                    "view",
+                    "work",
+                    "scope",
+                    "entity",
+                    "decision",
+                    "tool",
                     "locale",
                     "language",
                     "guarded",
@@ -162,7 +180,13 @@ impl ViewerServer {
                     "record_kind",
                     "record_id",
                     "user_turn",
-                    "level",
+                    "page",
+                    "view",
+                    "work",
+                    "scope",
+                    "entity",
+                    "decision",
+                    "tool",
                     "locale",
                     "language",
                     "guarded",
@@ -197,19 +221,35 @@ impl ViewerServer {
                     "confirmation_request_id",
                     "request_revision",
                     "effect_fingerprint",
-                    "decision",
+                    "confirmation_decision",
                     "user_turn",
-                    "level",
+                    "page",
+                    "view",
+                    "work",
+                    "scope",
+                    "entity",
+                    "decision",
+                    "tool",
                     "locale",
                     "language",
                     "guarded",
                     "request_authenticity",
                 ])?;
-                let decision = match form.required("decision")? {
+                let decision = match form.required("confirmation_decision")? {
                     "confirm" => ConfirmationDecision::Confirmed,
                     "deny" => ConfirmationDecision::Denied,
                     _ => return Err(HttpFailure::bad_request("decision must be confirm or deny")),
                 };
+                let target = self
+                    .adapter
+                    .operations()
+                    .guarded_request(ConfirmationRequestId::from_bytes(identity(
+                        form.required("confirmation_request_id")?,
+                    )?))
+                    .map_err(|_| HttpFailure::not_found())?;
+                if target.project_id != self.project_id {
+                    return Err(HttpFailure::not_found());
+                }
                 self.adapter
                     .confirm_guarded(
                         ConfirmationRequestId::from_bytes(identity(
@@ -230,7 +270,13 @@ impl ViewerServer {
                     "kind",
                     "format",
                     "destination",
-                    "level",
+                    "page",
+                    "view",
+                    "work",
+                    "scope",
+                    "entity",
+                    "decision",
+                    "tool",
                     "locale",
                     "language",
                     "guarded",
@@ -290,12 +336,20 @@ impl ViewerServer {
             return Err(HttpFailure::forbidden());
         }
         let form = request.form()?;
+        self.view_parameters(&form.values)?;
+        if let Some(id) = form.optional("guarded") {
+            identity(id)?;
+        }
         let supplied = form
             .optional("request_authenticity")
             .ok_or_else(HttpFailure::forbidden)?;
         if !constant_time_equal(supplied.as_bytes(), self.request_authenticity.as_bytes()) {
             return Err(HttpFailure::forbidden());
         }
+        let view = self.view_parameters(&form.values)?;
+        self.adapter
+            .validate_view(self.project_id, &view.view)
+            .map_err(domain_failure)?;
         Ok(())
     }
 
@@ -304,7 +358,10 @@ impl ViewerServer {
         query: FormData,
         guarded_path: Option<ConfirmationRequestId>,
     ) -> Result<HttpResponse, HttpFailure> {
-        query.require_only(&["level", "locale", "language", "guarded"])?;
+        query.require_only(&[
+            "page", "view", "work", "scope", "entity", "decision", "tool", "locale", "language",
+            "guarded",
+        ])?;
         let view = self.view_parameters(&query.values)?;
         let guarded_query = query
             .optional("guarded")
@@ -323,7 +380,7 @@ impl ViewerServer {
                 &ViewerRequest {
                     project_id: self.project_id,
                     locale: view.locale,
-                    explanation_level: view.level,
+                    view: view.view,
                     requested_language: view.language,
                     guarded_request: guarded,
                 },
@@ -337,13 +394,8 @@ impl ViewerServer {
         &self,
         values: &BTreeMap<String, String>,
     ) -> Result<ViewParameters, HttpFailure> {
-        let level = match values.get("level").map(String::as_str) {
-            None => self.default_level,
-            Some("overview") => ExplanationLevel::Overview,
-            Some("working") => ExplanationLevel::Working,
-            Some("deep") => ExplanationLevel::Deep,
-            Some(_) => return Err(HttpFailure::bad_request("unknown explanation level")),
-        };
+        let view = ViewerView::parse(values, &self.default_view)
+            .map_err(|e| HttpFailure::bad_request(e.to_string()))?;
         let locale = match values.get("locale").map(String::as_str) {
             None => self.default_locale,
             Some("en") => ViewerLocale::English,
@@ -360,7 +412,7 @@ impl ViewerServer {
             ));
         }
         Ok(ViewParameters {
-            level,
+            view,
             locale,
             language,
         })
@@ -387,7 +439,7 @@ impl ViewerServer {
 }
 
 struct ViewParameters {
-    level: ExplanationLevel,
+    view: ViewerView,
     locale: ViewerLocale,
     language: String,
 }
@@ -585,7 +637,10 @@ impl FormData {
 
     fn return_location(&self) -> String {
         let mut fields = Vec::new();
-        for key in ["level", "locale", "language", "guarded"] {
+        for key in [
+            "page", "view", "work", "scope", "entity", "decision", "tool", "locale", "language",
+            "guarded",
+        ] {
             if let Some(value) = self.values.get(key).filter(|value| !value.is_empty()) {
                 fields.push(format!("{key}={}", percent_encode(value)));
             }
@@ -690,7 +745,15 @@ impl fmt::Display for HttpFailure {
 }
 
 fn domain_failure(error: ViewerError) -> HttpFailure {
-    HttpFailure::new(422, "Unprocessable Content", error.to_string())
+    if error.not_found {
+        HttpFailure::new(
+            404,
+            "Not Found",
+            "selected identity is absent from this Project",
+        )
+    } else {
+        HttpFailure::new(422, "Unprocessable Content", error.to_string())
+    }
 }
 
 fn identity(value: &str) -> Result<[u8; 16], HttpFailure> {

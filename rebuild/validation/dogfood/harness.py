@@ -10082,7 +10082,7 @@ def live_viewer_accessibility(target_root: Path, project_id: str) -> dict[str, A
             "--project", project_id,
             "--bind", "127.0.0.1:0",
             "--locale", locale,
-            "--level", "deep",
+            "--view", "overview",
             "--language", locale,
         ]
         process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
@@ -10097,7 +10097,7 @@ def live_viewer_accessibility(target_root: Path, project_id: str) -> dict[str, A
                 }
                 continue
             address = startup[len(marker):].rstrip("/")
-            content = exchange_http(address, "/?level=deep")
+            content = exchange_http(address, "/?view=overview")
             results[locale] = {"status": "passed", **parse_accessibility_html(content, expected_language=locale)}
         except (AssertionError, OSError, ValueError) as error:
             results[locale] = {"status": "failed", "reason": type(error).__name__}

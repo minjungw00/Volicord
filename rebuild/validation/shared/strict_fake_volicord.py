@@ -86,6 +86,8 @@ def parse(arguments: list[str]) -> tuple[dict[str, object], str, dict[str, str]]
         details["output"] = rest[2]
     elif top == "document":
         details = parse_document(rest)
+    elif top == "viewer" and len(rest) == 5 and rest[:2] == ["export", "--output"] and rest[3] == "--language" and rest[2] and rest[4]:
+        details = {"output": rest[2], "language": rest[4]}
     elif top == "analyze" and not rest:
         pass
     elif top == "doctor" and rest in (["repair"], ["reindex"]):
@@ -102,6 +104,10 @@ def main() -> int:
         return usage(str(error))
     if command == "codex":
         print(json.dumps({"project_trust": "user_controlled", "changed": True}))
+    elif command == "viewer":
+        with Path(details["output"]).open("xb") as output:
+            output.write(b"<!doctype html><html><p>strict fake snapshot</p></html>")
+        print("{}")
     elif command == "document":
         destination = Path(details["output"])
         if details["language"] == "zz":

@@ -215,8 +215,7 @@ VOLICORD_SHAPES = (
     ("doctor", "repair"),
     ("advanced", "candidates"),
     (
-        "viewer", "export", "--output", ("path",), "--level",
-        ("redacted", "sensitive_operand"), "--language",
+        "viewer", "export", "--output", ("path",), "--language",
         ("redacted", "sensitive_operand"),
     ),
 )

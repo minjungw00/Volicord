@@ -31,27 +31,48 @@ the local Viewer has no active-host realizer, an arbitrary language displays a
 truthful unavailable/degraded notice and never presents its fixed English body
 as requested-language success.
 
-The loopback HTTP surface renders current Project state for every `GET /`
-request. Query parameters select `level=overview|working|deep`, `locale=en|ko`,
-and the unrestricted generated-content `language`. Memory correction,
-supersession and forgetting, explicit document export, and exact Guarded
-confirmation forms submit to Local Operations; the viewer does not persist or
-reinterpret their domain state.
+Live reads use purpose-oriented views (default `overview`):
+
+```text
+/?view=overview
+/?view=work&work=CANONICAL_GOAL_ID
+/?view=code&scope=work&work=CANONICAL_GOAL_ID&entity=ENTITY_ID
+/?view=code&scope=repository
+/?view=decisions&decision=DECISION_ID
+/?view=tools&tool=documents|memory|status|evidence
+```
+
+All links carry `locale=en|ko` and unrestricted requested `language`. Work and
+Decision navigation supplies validated identities; no opaque-ID entry is needed.
+The Work and Decisions root views list recorded choices in pages of 64;
+`page=N` is a nonnegative decimal page index, accepted only on those lists.
+Previous/next links preserve locale and language. Exact detail reads resolve
+before display bounds. Malformed or mismatched selectors return 400; an identity
+absent from this Project returns 404. Valid Work with no code remains readable
+with a scoped gap. Removed `level` forms are usage errors/400.
+
+`volicord viewer open --view overview` forwards to the installed sibling
+`volicord-viewer`; direct launch also accepts `--view`. Named `code` launch opens
+repository scope and `tools` opens health/privacy. Whole-snapshot export accepts
+no `--view` or `--level`; it includes bounded Overview, Work, repository Code,
+Decisions, health/privacy, and four document previews on one read basis. Internal
+fragment links refer only to included sections; omitted Work-specific code detail
+is explicit. Snapshot disclosure retains original audit text, not redacted text.
+
+Memory correction, supersession and forgetting, explicit document export, and
+exact Guarded confirmation use the existing Local Operations authority. Forms
+return to parsed allowlisted views. Host, Origin, Fetch Metadata, authenticity,
+CSP, exact target/revision and retry boundaries apply to every mutation. Ordinary
+navigation performs no analysis, provider request or canonical mutation. No
+arbitrary filesystem-path source endpoint is provided.
+
+Work result/Goal/rationale text may be labeled original quotations or excerpts.
+These do not claim a semantic summary or translation. Missing Purpose/result/user
+rationale remains unavailable. Completed work, verification, user review and
+acceptance are independently shown; failed/rejected history remains visible.
+Code diagrams show static grounded evidence, not confirmed runtime ordering.
+The same entities/relations have a keyboard/touch-readable list and disclosure
+path. Only diagrams scroll horizontally; ordinary prose/evidence wraps.
 
 Client disconnects and response-write failures end only the affected connection;
 the listener continues serving subsequent requests without retrying a mutation.
-
-Every level begins with the bounded `ProjectUnderstanding` read model: Goal and
-why, completed/current/remaining work, next steps, Decision rationale and code
-impact, material Questions, architecture, generated interpretations, evidence,
-freshness, and gaps. Inline accessible SVG component/dependency and flow
-diagrams are drawn only from inspectable entity/relation topology and require
-no JavaScript, CDN, or external renderer. Current-work topology is selected from
-grounded Analysis Snapshot seeds and relations before the separate generic
-Repository Map bound; unresolved flow evidence remains explicit and never
-creates a target node. `overview` and `working` lead with
-Goal, current work and verification, Decision consequence, open Questions,
-next step, and material degradation.
-Opaque identities, raw relations, canonical records, and detailed capability
-evidence are subordinate to `deep` or closed audit disclosure; they are not
-removed from the shared Project projection.

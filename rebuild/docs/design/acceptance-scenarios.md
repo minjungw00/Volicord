@@ -926,7 +926,7 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   node/edge는 inspectable repository 또는 Decision relation에 연결된다.
 - Repository Map, Decision trail, Checkpoint timeline, canonical record·audit field는
   deeper detail/inspection으로 탐색한다.
-- `overview`, `working`, `deep` 설명 수준을 선택한다.
+- Overview, Work, Code Understanding, Decisions와 별도 Tools 목적별 화면을 선택한다.
 - code entity와 Decision에 연결된 개념 설명을 본다.
 - 네 필수 문서를 Markdown으로 export하고 self-contained HTML로 preview한다.
 - 현재 Viewer projection을 명시한 local path에 하나의 self-contained read-only HTML

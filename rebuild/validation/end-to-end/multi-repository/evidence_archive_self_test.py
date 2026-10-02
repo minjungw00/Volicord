@@ -337,7 +337,7 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
 
     current_commands = (
         (["volicord", "--json", "--repository", str(root), "codex", "enable"], ("codex", "enable")),
-        (["volicord", "--json", "viewer", "export", "--output", str(root / "understanding.html"), "--level", "project", "--language", "en"], ("viewer", "export")),
+        (["volicord", "--json", "viewer", "export", "--output", str(root / "understanding.html"), "--language", "en"], ("viewer", "export")),
         (["volicord", "--json", "document", "export", "handoff-resume", "--format", "html", "--output", str(root / "handoff.html"), "--language", "en"], ("document", "export")),
     )
     for command, subcommands in current_commands:
@@ -523,7 +523,7 @@ def command_grammar_cases(root: Path, gate: Path) -> list[tuple[str, list[str], 
         (
             "volicord_viewer_export",
             [
-                "viewer", "export", "--output", path, "--level", "working", "--language",
+                "viewer", "export", "--output", path, "--language",
                 "ko",
             ],
         ),

@@ -7,9 +7,10 @@
 
 mod http;
 mod render;
+mod selection;
+pub use selection::{CodeScope, ViewerTool, ViewerView};
 
 pub use http::ViewerServer;
 pub use render::{
-    ExplanationLevel, ViewerAdapter, ViewerError, ViewerLocale, ViewerPage, ViewerRenderProfile,
-    ViewerRequest,
+    ViewerAdapter, ViewerError, ViewerLocale, ViewerPage, ViewerRenderProfile, ViewerRequest,
 };

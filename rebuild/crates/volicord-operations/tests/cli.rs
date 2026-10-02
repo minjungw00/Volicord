@@ -39,11 +39,27 @@ fn help_is_hierarchical_and_obsolete_public_forms_are_rejected() {
         vec!["portable", "export"],
         vec!["guarded", "show"],
         vec!["documents", "preview"],
+        vec!["viewer", "open", "--level", "deep"],
+        vec!["viewer", "open", "--view", "invalid"],
+        vec![
+            "viewer", "export", "--output", "out.html", "--view", "overview",
+        ],
+        vec![
+            "viewer", "export", "--output", "out.html", "--level", "working",
+        ],
     ] {
         let (exit, _, error) = cli(obsolete);
         assert_eq!(exit, CliExit::USAGE);
-        assert!(error.contains("Usage:"), "{error}");
-        assert!(error.contains("tip:") || error.contains("unrecognized subcommand"));
+        assert!(
+            error.contains("Usage:") || error.contains("possible values:"),
+            "{error}"
+        );
+        assert!(
+            error.contains("tip:")
+                || error.contains("unrecognized subcommand")
+                || error.contains("invalid value")
+                || error.contains("unexpected argument")
+        );
     }
 }
 

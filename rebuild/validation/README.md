@@ -547,3 +547,12 @@ session/Project/Work identity, immutable raw hashes and publication. Resume,
 document realization and real-Git repository-state tests remain separate
 deterministic support. A changed Product candidate requires fresh sessions
 and a new qualification.
+
+
+The purpose-oriented Viewer route/CLI/snapshot contract is maintained in
+[its README](../crates/volicord-viewer/README.md), with fixture identities and
+scoped reading limitations in [Viewer findings](end-to-end/multi-repository/viewer-reading-findings.md).
+`volicord-viewer --test reading` reuses the real canonical fixture constructor from
+`volicord-operations/tests/support/reading_fixture.rs`; its independent HTTP
+assertions cover selection, scope, history, pagination, fragment closure and purity.
+This is focused support, not browser or human comprehension qualification.

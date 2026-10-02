@@ -142,14 +142,13 @@ provider를 요구하거나 새 topology를 만들지 않으며 bundled Viewer�
 locale만 실현한다. 그 밖의 requested-language generated body 성공은 host realization
 계약을 계속 사용하고 local deterministic explanation으로 임의 충족했다고 표시하지 않는다.
 
-### Work reading and selection target
+### Work reading and selection
 
-The next server-rendered Viewer reading hierarchy is **Overview → Work → Code
+The server-rendered Viewer reading hierarchy is **Overview → Work → Code
 Understanding / Decisions → evidence**, with mutation, export and diagnostic tools
-separate from ordinary reading. This is a target, not a claim that current HTTP
-routes, navigation or CLI options implement it. Promote command/UI documentation
-only when that production switch ships. The existing Viewer remains the current
-surface during the read-model work.
+separate from ordinary reading. The current route/CLI/snapshot contract is maintained
+in the [Viewer README](../../crates/volicord-viewer/README.md). Explanation-level
+selection is removed; whole-snapshot export has no view selector.
 
 Shared projection selection has three meanings: `LatestWork` resolves the actual
 Goal identity associated with the latest Checkpoint, or the newest Goal when no
@@ -196,8 +195,7 @@ use canonical-only remainder when analysis is unavailable. No GET analysis or
 provider call, new Viewer store or canonical state is required.
 
 Current shared Recall and four-document default behavior remain supported through
-one projection implementation. The implemented read foundation below does not
-promote the target Viewer navigation to current UI behavior.
+one projection implementation. The Viewer uses the same selector implementation.
 
 ### Implemented Work reading interfaces
 
@@ -217,7 +215,7 @@ Local Operations exposes `project_projection_selected(project_id, WorkSelector)`
 and `project_projection_selected_profiled`, the latter returning the projection
 and existing `ProjectProjectionProfile`. Its error offers `work_selection_cause()`.
 Existing `project_projection` and its profiled form use `LatestWork` through the
-same implementation. These APIs add no command option or HTTP route.
+same implementation. Viewer adapters map their typed views to these selectors.
 
 The Store reader supplies complete canonical Checkpoint history without a SQL
 display limit. Operations validates the selection before analysis and Candidate
@@ -261,8 +259,8 @@ also retains these separate Source bases/status and available revisions for Reca
 
 Operations status JSON adds selection/selected Work and evidence-linked `reading`
 inside each Work. Four-document projections consume truthful display text and the
-latest independent state observation; the existing Viewer consumes display text
-while retaining original quotation evidence in disclosure. Navigation, semantic
+latest independent state observation; the Viewer consumes display text
+while retaining original quotation evidence in disclosure. Semantic
 Work-prose realization, human comprehension evidence, canonical read pagination,
 selection-specific Store queries and avoiding full-history cloning/decoding remain
 later work. Display bounds do not yet constitute a bounded read-cost guarantee.
@@ -774,7 +772,7 @@ Component/dependency와 flow figure는 self-contained accessible inline SVG이�
 Repository Intelligence entity, 각 edge는 resolved relation identity와 endpoint를
 `data-entity-id`/`data-relation-id`로 보존한다. Narrative realization은 이 topology를
 추가·삭제할 수 없다. Raw canonical rows, opaque identity와 exhaustive relation audit은
-deep 또는 closed evidence disclosure에 남는다.
+Tools 또는 closed evidence disclosure에 남는다.
 
 이 계약은 Markdown dialect, HTML renderer, template engine, CSS, sanitizer, viewer
 framework 또는 conversion library를 선택하지 않는다. Output format은 canonical
@@ -883,3 +881,16 @@ Recall과 snapshot 근거는 유지할 수 있으며, graph consumer/health의 f
 별도로 실패를 보고한다. Full-snapshot Recall과 metadata Recall은 같은 metadata와
 freshness observation에 대해 동일한 ResumeBrief를 생성해야 한다. Metadata reader도
 공통 Analysis Snapshot kind/current-version 및 typed identity 계약을 검사한다.
+
+
+### Viewer detail selection
+
+`ProjectionDetail` selects an optional Decision or code entity from the complete
+Project canonical/analysis basis before list bounds. `ProjectProjection` carries
+`selected_decision`, `selected_entity`, its bounded incoming/outgoing relations,
+real neighbor entities and exact omitted relation count separately from parent
+lists. Missing selected details remain absent, letting the adapter return not-found
+without falling back or revealing another Project. Reads retain canonical identity,
+revision, Source/range, evidence class, freshness and unresolved-target meaning.
+Snapshot navigation allows only existing unambiguous internal fragments and native
+`details`; omitted detail produces an explanation rather than a broken link.

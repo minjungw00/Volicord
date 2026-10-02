@@ -20,7 +20,7 @@ use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
     PrivacyStore,
 };
-use volicord_viewer::{ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerServer};
+use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerServer, ViewerView};
 
 const AUTHORITY: &str = "127.0.0.1:3219";
 
@@ -36,11 +36,19 @@ fn setup() -> (tempfile::TempDir, ViewerServer, ProjectId) {
         .expect("initialize Project")
         .project
         .id;
+    operations
+        .record_user_source(
+            project,
+            "test-host".into(),
+            "test-session".into(),
+            "Viewer mutation fixture".into(),
+        )
+        .expect("fixture Source");
     let server = ViewerServer::new(
         ViewerAdapter::new(operations),
         project,
         ViewerLocale::English,
-        ExplanationLevel::Working,
+        ViewerView::Overview,
         "en".into(),
         AUTHORITY.parse().expect("viewer authority"),
     )
@@ -102,20 +110,20 @@ fn routes_each_request_with_its_own_depth_and_fresh_state() {
     let overview = exchange(
         &server,
         format!(
-            "GET /?level=overview&locale=en&language=fr-CA HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"
+            "GET /?view=overview&locale=en&language=fr-CA HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"
         ),
     );
     let deep = exchange(
         &server,
-        format!("GET /?level=deep&locale=ko&language=%ED%95%9C%EA%B5%AD%EC%96%B4 HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=memory&locale=ko&language=%ED%95%9C%EA%B5%AD%EC%96%B4 HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(overview.starts_with("HTTP/1.1 200 OK"));
-    assert!(overview.contains("data-explanation-level=\"overview\""));
+    assert!(overview.contains("data-view=\"overview\""));
     assert!(overview.contains("fr-CA"));
-    assert!(deep.contains("data-explanation-level=\"deep\""));
-    assert!(deep.contains("프로젝트 개요"));
-    assert!(deep.contains("요청 언어 본문"));
-    assert!(deep.contains("사용 불가"));
+    assert!(deep.contains("data-view=\"tools\""));
+    assert!(deep.contains("기억"));
+    assert!(deep.contains("요청 언어"));
+    assert!(deep.contains("없습니다"));
     assert!(!deep.contains("절대 대상 경로"));
     assert_ne!(overview, deep);
 
@@ -132,7 +140,7 @@ fn routes_each_request_with_its_own_depth_and_fresh_state() {
     assert!(!overview.contains(&source.identity));
     let refreshed = exchange(
         &server,
-        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(refreshed.contains(&source.identity));
 }
@@ -142,7 +150,7 @@ fn forgetting_http_cleans_linked_local_content_and_preserves_unrelated() {
     let (_temporary, server, project) = setup();
     let page = exchange(
         &server,
-        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     let request_authenticity = request_authenticity(&page);
     let source = server
@@ -191,7 +199,7 @@ fn forgetting_http_cleans_linked_local_content_and_preserves_unrelated() {
         post(
             "/memory/forget",
             &format!(
-                "record_kind=source&record_id={}&user_turn=Forget+this+exact+Source&level=deep&locale=en&language=en",
+                "record_kind=source&record_id={}&user_turn=Forget+this+exact+Source&view=tools&tool=memory&locale=en&language=en",
                 source.identity
             ),
             &request_authenticity,
@@ -243,7 +251,7 @@ fn forgetting_http_cleans_linked_local_content_and_preserves_unrelated() {
 
     let refreshed = exchange(
         &server,
-        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(!refreshed.contains(&format!("Source · {} r1", source.identity)));
 }
@@ -255,7 +263,7 @@ fn viewer_read_withholds_forgotten_content_during_repair_required_cleanup() {
     let (_temporary, server, project) = setup();
     let initial = exchange(
         &server,
-        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     let token = request_authenticity(&initial);
     let target = server
@@ -304,7 +312,7 @@ fn viewer_read_withholds_forgotten_content_during_repair_required_cleanup() {
 
     let completed_before_commit = exchange(
         &server,
-        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(completed_before_commit.starts_with("HTTP/1.1 200 OK"));
     assert!(completed_before_commit.contains(RELATED));
@@ -329,7 +337,7 @@ fn viewer_read_withholds_forgotten_content_during_repair_required_cleanup() {
         post(
             "/memory/forget",
             &format!(
-                "record_kind=source&record_id={}&user_turn=Forget+the+live+Viewer+target&level=deep&locale=en&language=en",
+                "record_kind=source&record_id={}&user_turn=Forget+the+live+Viewer+target&view=tools&tool=memory&locale=en&language=en",
                 target.identity
             ),
             &token,
@@ -362,7 +370,7 @@ fn viewer_read_withholds_forgotten_content_during_repair_required_cleanup() {
 
     let live_read = exchange(
         &server,
-        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(live_read.starts_with("HTTP/1.1 200 OK"));
     assert!(!live_read.contains(RELATED));
@@ -445,7 +453,7 @@ fn concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls() {
             ViewerAdapter::new(operations),
             project,
             ViewerLocale::English,
-            ExplanationLevel::Working,
+            ViewerView::Overview,
             "en".into(),
             AUTHORITY.parse().expect("viewer authority"),
         )
@@ -481,7 +489,7 @@ fn concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls() {
         drop(privacy);
         let page = exchange(
             &worker,
-            format!("GET / HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+            format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
         );
         let token = request_authenticity(&page);
         controls.push((worker, token, target.identity, candidate, derived));
@@ -668,7 +676,7 @@ fn guarded_http_fallback_preserves_exact_request_revision_and_source() {
     let shown = exchange(
         &server,
         format!(
-            "GET /guarded/{}?level=working HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n",
+            "GET /guarded/{}?view=tools&tool=documents HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n",
             request.confirmation_request_identity
         ),
     );
@@ -689,7 +697,7 @@ fn guarded_http_fallback_preserves_exact_request_revision_and_source() {
         post_with_context(
             "/guarded/confirm",
             &format!(
-                "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&decision=confirm&user_turn=Rejected+cross-site+response&guarded={}&request_authenticity={}",
+                "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&confirmation_decision=confirm&user_turn=Rejected+cross-site+response&guarded={}&request_authenticity={}",
                 request.confirmation_request_identity,
                 request.request_revision,
                 request.effect_fingerprint,
@@ -726,7 +734,7 @@ fn guarded_http_fallback_preserves_exact_request_revision_and_source() {
         post(
             "/guarded/confirm",
             &format!(
-                "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&decision=confirm&user_turn=Confirm+this+exact+release&guarded={}",
+                "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&confirmation_decision=confirm&user_turn=Confirm+this+exact+release&guarded={}",
                 request.confirmation_request_identity,
                 request.request_revision,
                 request.effect_fingerprint,
@@ -773,13 +781,13 @@ fn authority_origin_fetch_metadata_and_token_fail_before_memory_side_effects() {
         .expect("record memory target");
     let page = exchange(
         &server,
-        format!("GET /?level=deep HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     let request_authenticity = request_authenticity(&page);
     assert_eq!(request_authenticity.len(), 64);
     let rebound = exchange(
         &server,
-        "GET /?level=deep HTTP/1.1\r\nHost: attacker.example\r\n\r\n",
+        "GET /?view=tools&tool=memory HTTP/1.1\r\nHost: attacker.example\r\n\r\n",
     );
     assert!(rebound.starts_with("HTTP/1.1 421 Misdirected Request"));
     assert!(!rebound.contains("request_authenticity"));
@@ -879,12 +887,12 @@ fn rejected_document_export_has_no_filesystem_effect_and_authenticated_export_wo
     let (temporary, server, _project) = setup();
     let page = exchange(
         &server,
-        format!("GET /?level=working HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=tools&tool=documents HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     let request_authenticity = request_authenticity(&page);
     let destination = temporary.path().join("new-parent").join("handoff.md");
     let body = format!(
-        "kind=handoff-resume&format=markdown&destination={}&level=working&locale=en&language=en&request_authenticity={}",
+        "kind=handoff-resume&format=markdown&destination={}&view=tools&tool=documents&locale=en&language=en&request_authenticity={}",
         destination.display(),
         request_authenticity
     );
@@ -930,7 +938,7 @@ fn malformed_unknown_and_oversized_requests_fail_without_mutation() {
         .expect("basis before malformed requests");
     let malformed = exchange(
         &server,
-        format!("GET /?level=impossible HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /?view=impossible HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(malformed.starts_with("HTTP/1.1 400 Bad Request"));
     let unknown = exchange(

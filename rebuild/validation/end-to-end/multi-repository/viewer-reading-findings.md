@@ -64,3 +64,37 @@ The earlier baseline measures the maintained default rendering workload only.
 The foundation makes no measured speedup, long-history memory ceiling or human
 comprehension claim. Later Viewer controls must use the maintained selector APIs
 and owner contracts, not depend on this disposable HTML.
+
+
+## Purpose-oriented navigation implementation
+
+The Viewer README now owns the operative route, CLI and whole-snapshot procedures.
+`ViewerView` and `CodeScope` map to the shared Work selector; `ProjectionDetail`
+resolves Decision/entity detail before parent display bounds. Work and Decision
+indexes have native previous/next links in pages of 64. Static export uses one
+canonical/analysis projection, shared section functions, native details and only
+existing unique internal fragments. Selected-Work code is explicitly omitted from
+this bounded whole snapshot; repository code remains separately labeled.
+
+Real Viewer render, in-memory HTTP and executable listener tests exercise the
+maintained adversarial canonical fixture through Local Operations. Semantic assertions
+cover exact old Work identity, all its observations, missing rationale, Goal-only
+work, independent failed/rejected/unverified states, multilingual quotation labels,
+strict invalid/not-found behavior, pagination and static fragment closure. Mutation,
+forgetting/repair, document export, Guarded target/revision/Source and disconnect
+checks remain actual entry-point checks. No markup check attests browser interaction
+or human comprehension.
+
+Focused navigation validation: Viewer (all targets/features), Operations CLI/reading,
+projection/document/current-flow, V06, current CLI parity, V11 self-check, archive,
+Dogfood capture and campaign self-tests passed. Listener and campaign special-socket
+fixtures required sandbox escalation for local socket access. V08 assertions stopped
+at the pre-existing historical Production-drift guard against `c17279bb`; it did not
+run the integration journey. The guard was not weakened. Current executable Viewer
+and Operations CLI checks supply scoped entry-point evidence only.
+
+The reading task "explain a long free-prose Goal/result without reading the original"
+remains unsupported where canonical input offers no semantic summary. Quotations,
+labeled excerpts and explicit unavailable explanations are shown; fixed labels do
+not attest translation. Browser keyboard, touch, zoom and narrow-screen interaction,
+plus actual human comprehension, require independent next-session verification.

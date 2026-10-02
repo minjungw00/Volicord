@@ -254,24 +254,23 @@ fn viewer_command() -> Command {
             Command::new("open")
                 .about("Run the local Viewer until interrupted")
                 .arg(Arg::new("bind").long("bind").value_name("LOOPBACK_ADDRESS"))
-                .arg(viewer_level())
+                .arg(viewer_view())
                 .arg(viewer_language()),
         )
         .subcommand(
             Command::new("export")
                 .about("Export a self-contained read-only Viewer snapshot")
                 .arg(path_arg("output", "output", "Absolute snapshot destination").required(true))
-                .arg(viewer_level())
                 .arg(viewer_language()),
         )
 }
 
-fn viewer_level() -> Arg {
-    Arg::new("level")
-        .long("level")
-        .value_name("LEVEL")
-        .value_parser(["overview", "working", "deep"])
-        .default_value("working")
+fn viewer_view() -> Arg {
+    Arg::new("view")
+        .long("view")
+        .value_name("VIEW")
+        .value_parser(["overview", "work", "code", "decisions", "tools"])
+        .default_value("overview")
 }
 
 fn viewer_language() -> Arg {
@@ -1093,11 +1092,10 @@ fn dispatch_viewer(
                 .map(String::as_str)
                 .unwrap_or("en"),
         )
-        .arg("--level")
-        .arg(required(args, "level")?)
         .arg("--language")
         .arg(required(args, "language")?);
     if action == "open" {
+        command.arg("--view").arg(required(args, "view")?);
         if let Some(bind) = args.get_one::<String>("bind") {
             command.arg("--bind").arg(bind);
         }

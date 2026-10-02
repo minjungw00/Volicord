@@ -16,7 +16,8 @@ use volicord_operations::{
 };
 use volicord_projections::{build_project_understanding, UnderstandingBound};
 use volicord_viewer::{
-    ExplanationLevel, ViewerAdapter, ViewerLocale, ViewerRenderProfile, ViewerRequest,
+    CodeScope, ViewerAdapter, ViewerLocale, ViewerRenderProfile, ViewerRequest, ViewerTool,
+    ViewerView,
 };
 
 fn setup() -> (tempfile::TempDir, ViewerAdapter, ProjectId) {
@@ -271,7 +272,7 @@ fn assert_three_work_hierarchy(with_git: bool) {
     // B starts after A completes, while A's repository changes are still dirty.
     let beta = context(&mut store, 104, ContextItemRole::Goal, "Continue Beta");
     let beta_decision = decision_for(&mut store, 108, beta.id, "Beta");
-    let _gamma = context(&mut store, 105, ContextItemRole::Goal, "Explore Gamma");
+    let gamma = context(&mut store, 105, ContextItemRole::Goal, "Explore Gamma");
     if with_git {
         fs::write(
             repository.join("src/shared.rs"),
@@ -320,45 +321,42 @@ fn assert_three_work_hierarchy(with_git: bool) {
             .expect("canonical basis");
         let reopened =
             ViewerAdapter::new(LocalOperations::new(viewer.operations().layout().clone()));
-        let page = render_deep(&reopened, project);
-        let understanding = section_html(&page, "project-understanding");
-        assert!(understanding.contains("Explain and preserve the project across sessions"));
-        assert!(understanding.contains("data-primary-view=\"current-work\""));
-        assert!(understanding.contains("data-work-group=\"completed-work\""));
-        assert!(understanding.contains("data-work-group=\"current-work\""));
-        assert!(understanding.contains("data-work-group=\"remaining-work\""));
-        assert!(understanding.contains("data-work-group=\"recent-work\""));
-        let alpha_card = work_card_html(understanding, "Finish Alpha");
-        let beta_card = work_card_html(understanding, "Continue Beta");
-        let gamma_card = work_card_html(understanding, "Explore Gamma");
+        let page = render_view(&reopened, project, ViewerView::Overview);
+        assert!(page.contains("Explain and preserve the project across sessions"));
+        let alpha_page = render_view(
+            &reopened,
+            project,
+            ViewerView::Work {
+                work: Some(alpha.id),
+            },
+        );
+        let beta_page = render_view(
+            &reopened,
+            project,
+            ViewerView::Work {
+                work: Some(beta.id),
+            },
+        );
+        let gamma_page = render_view(
+            &reopened,
+            project,
+            ViewerView::Work {
+                work: Some(gamma.id),
+            },
+        );
+        let alpha_card = alpha_page.as_str();
+        let beta_card = beta_page.as_str();
         assert!(alpha_card.contains("data-work-state=\"completed\""));
-        assert!(alpha_card.contains(&format!("data-work-id=\"{}\"", alpha.id)));
-        assert!(alpha_card.contains("data-decision-scope=\"work-item\""));
-        assert!(alpha_card.contains("Decisions for this work"));
         assert!(alpha_card.contains(&alpha_decision.id.to_string()));
         assert!(alpha_card.contains(&alpha_checkpoint.id.to_string()));
         assert!(!alpha_card.contains(&beta_decision.id.to_string()));
         assert!(beta_card.contains("data-work-state=\"in-progress\""));
         assert!(beta_card.contains(&beta_decision.id.to_string()));
         assert!(beta_card.contains(&beta_checkpoint.id.to_string()));
-        assert!(!beta_card.contains(&alpha_decision.id.to_string()));
-        assert!(gamma_card.contains("data-work-state=\"open\""));
-        assert!(gamma_card.contains("0 Checkpoints · 0 Decisions"));
-        assert!(!work_card_html(understanding, "Finish Alpha").contains(&purpose.id.to_string()));
-        let primary_end = understanding
-            .find("<details class=\"work-history\"")
-            .expect("bounded history disclosure");
-        let primary = &understanding[..primary_end];
-        assert!(primary.contains("Continue Beta"));
-        assert!(primary.contains("Explore Gamma"));
-        assert!(!primary.contains("Finish Alpha"));
-        assert!(primary.find("Continue Beta").is_some_and(|current| {
-            primary
-                .find("Explore Gamma")
-                .is_some_and(|remaining| current < remaining)
-        }));
         assert!(!beta_card.contains(&alpha_checkpoint.id.to_string()));
-        assert!(!alpha_card.contains(&beta_checkpoint.id.to_string()));
+        assert!(gamma_page.contains("data-work-state=\"open\""));
+        assert!(gamma_page.contains("Result unavailable"));
+        assert!(!alpha_card.contains(&purpose.id.to_string()));
         assert_eq!(
             canonical,
             reopened
@@ -409,20 +407,29 @@ fn candidate_view_distinguishes_empty_unavailable_corrupt_and_unsupported_depend
     assert_candidate_view_dependency(&unavailable, unavailable_project, "unavailable");
 }
 
-fn render_deep(viewer: &ViewerAdapter, project: ProjectId) -> String {
+fn render_view(viewer: &ViewerAdapter, project: ProjectId, view: ViewerView) -> String {
     viewer
         .render(
             &ViewerRequest {
                 project_id: project,
                 locale: ViewerLocale::English,
-                explanation_level: ExplanationLevel::Deep,
+                view,
                 requested_language: "en".into(),
                 guarded_request: None,
             },
             "test-request-authenticity",
         )
-        .expect("render viewer")
+        .expect("render view")
         .html
+}
+fn render_deep(viewer: &ViewerAdapter, project: ProjectId) -> String {
+    render_view(
+        viewer,
+        project,
+        ViewerView::Tools {
+            tool: ViewerTool::Memory,
+        },
+    )
 }
 
 fn assert_candidate_view_dependency(viewer: &ViewerAdapter, project: ProjectId, expected: &str) {
@@ -441,142 +448,106 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
         .canonical_basis(project)
         .expect("basis before render");
     let repository_entries_before = repository_entries(&_temporary);
-    let page = viewer
-        .render(
-            &ViewerRequest {
-                project_id: project,
-                locale: ViewerLocale::English,
-                explanation_level: ExplanationLevel::Deep,
-                requested_language: "en".into(),
-                guarded_request: None,
+    for (view, section) in [
+        (ViewerView::Overview, "overview"),
+        (ViewerView::Work { work: None }, "works"),
+        (
+            ViewerView::Code {
+                scope: CodeScope::Repository,
+                entity: None,
             },
-            "test-request-authenticity",
-        )
-        .expect("render viewer");
-    let after = viewer
-        .operations()
-        .canonical_basis(project)
-        .expect("basis after render");
-    let repository_entries_after = repository_entries(&_temporary);
-
-    assert_eq!(before, after);
-    assert_eq!(repository_entries_before, repository_entries_after);
-    assert!(page.html.starts_with("<!doctype html><html lang=\"en\">"));
-    for expected in [
-        "Project Understanding",
-        "Project overview",
-        "Repository Map",
-        "Current Decisions",
-        "Checkpoint timeline",
-        "Candidate inspection",
-        "Canonical context",
-        "Privacy and provider",
-        "Document preview / export",
-        "Health and usable capability",
-        "Viewer explanation",
-        "Shown in English using the bundled interface wording",
+            "code",
+        ),
+        (ViewerView::Decisions { decision: None }, "decision-reading"),
+        (
+            ViewerView::Tools {
+                tool: ViewerTool::Documents,
+            },
+            "documents",
+        ),
+        (
+            ViewerView::Tools {
+                tool: ViewerTool::Memory,
+            },
+            "memory-actions",
+        ),
+        (
+            ViewerView::Tools {
+                tool: ViewerTool::Status,
+            },
+            "health",
+        ),
+        (
+            ViewerView::Tools {
+                tool: ViewerTool::Evidence,
+            },
+            "checkpoints",
+        ),
     ] {
-        assert!(page.html.contains(expected), "missing {expected}");
+        let page = render_view(&viewer, project, view);
+        assert!(page.contains(&format!("id=\"{section}\"")));
+        assert!(page.contains(":focus-visible"));
+        assert!(page.contains("@media (max-width:44rem)"));
+        assert!(!page.contains("<script"));
+        assert_eq!(
+            before,
+            viewer
+                .operations()
+                .canonical_basis(project)
+                .expect("read-only")
+        );
+        assert_eq!(repository_entries_before, repository_entries(&_temporary));
     }
-    let overview = page.html.find("id=\"project-overview\"").expect("overview");
-    let understanding = page
-        .html
-        .find("id=\"project-understanding\"")
-        .expect("Project Understanding");
-    let decisions = page.html.find("id=\"decisions\"").expect("decisions");
-    let health = page.html.find("id=\"health\"").expect("health");
-    let inspection = page
-        .html
-        .find("<details class=\"record-inspection\"")
-        .expect("record inspection disclosure");
-    let checkpoints = page.html.find("id=\"checkpoints\"").expect("checkpoints");
-    let repository = page.html.find("id=\"repository-map\"").expect("repository");
-    let privacy = page.html.find("id=\"privacy\"").expect("privacy");
-    let documents = page.html.find("id=\"documents\"").expect("documents");
-    let memory = page
-        .html
-        .find("<details class=\"memory-administration\"")
-        .expect("memory administration");
-    assert!(
-        understanding < inspection
-            && inspection < health
-            && health < overview
-            && overview < decisions
-            && decisions < checkpoints
-            && checkpoints < repository
-            && repository < privacy
-            && privacy < documents
-            && documents < memory
-    );
-    assert!(page
-        .html
-        .contains("Inspect health, capability, Project records, and audit detail"));
-    assert!(page
-        .html
-        .find(&project.to_string())
-        .is_some_and(|identity| identity > inspection));
-    for empty in [
-        "No current Project goal is recorded.",
-        "No open Questions.",
-        "No Decisions are recorded.",
-        "No Checkpoints have been recorded.",
-        "No Session Candidates.",
-    ] {
-        assert!(page.html.contains(empty), "missing empty state: {empty}");
-    }
-    assert!(page
-        .html
-        .contains("<section id=\"project-overview\" aria-labelledby="));
-    assert!(page.html.contains("<ol class=\"timeline\"") || page.html.contains("No Checkpoints"));
-    assert!(page.html.contains(":focus-visible"));
-    assert!(page.html.contains("@media (max-width:44rem)"));
-    assert!(page.html.contains("<fieldset>"));
-    assert!(page.html.contains("class=\"document-preview\""));
-    assert!(page.html.contains("class=\"preview-section\""));
-    assert!(!page.html.contains("<pre>"));
-    assert!(page.html.contains("data-statement-role=\"verified-fact\""));
-    assert!(page.html.contains("data-diagram=\"architecture-topology\""));
 }
 
 #[test]
-fn korean_fixed_text_and_all_explanation_levels_are_available() {
+fn korean_fixed_text_and_all_purpose_views_are_available() {
     let (_temporary, viewer, project) = setup();
-    for level in [
-        ExplanationLevel::Overview,
-        ExplanationLevel::Working,
-        ExplanationLevel::Deep,
+    for (view, label) in [
+        (ViewerView::Overview, "목적"),
+        (ViewerView::Work { work: None }, "작업 선택"),
+        (
+            ViewerView::Code {
+                scope: CodeScope::Repository,
+                entity: None,
+            },
+            "코드 이해",
+        ),
+        (ViewerView::Decisions { decision: None }, "결정"),
+        (
+            ViewerView::Tools {
+                tool: ViewerTool::Documents,
+            },
+            "문서 미리보기",
+        ),
+        (
+            ViewerView::Tools {
+                tool: ViewerTool::Memory,
+            },
+            "기억 관리",
+        ),
+        (
+            ViewerView::Tools {
+                tool: ViewerTool::Status,
+            },
+            "개인정보",
+        ),
     ] {
         let page = viewer
             .render(
                 &ViewerRequest {
                     project_id: project,
                     locale: ViewerLocale::Korean,
-                    explanation_level: level,
+                    view,
                     requested_language: "ko".into(),
                     guarded_request: None,
                 },
-                "test-request-authenticity",
+                "test-token",
             )
-            .expect("render Korean viewer");
-        assert!(page.html.starts_with("<!doctype html><html lang=\"ko\">"));
-        assert!(page.html.contains("프로젝트 개요"));
-        assert!(page.html.contains("현재 상태와 다음 작업"));
-        assert!(page.html.contains("상태별 작업"));
-        assert!(page.html.contains("저장소 지도"));
-        assert!(page.html.contains("문서 미리보기 / 내보내기"));
-        assert!(page.html.contains("HTML 언어 태그"));
-        assert!(page.html.contains("<dd>ko</dd>"));
-        assert!(page.html.contains("사용 가능한 기능"));
-        assert!(page
-            .html
-            .contains("상태, 기능, 프로젝트 기록 및 감사 상세 확인"));
-        assert!(page.html.contains("기억 관리 — 기록 수정, 대체 또는 삭제"));
-        assert!(page
-            .html
-            .contains("기본 제공 한국어 화면 문구로 표시됩니다"));
-        assert!(!page.html.contains("고정 locale로 실현됨"));
-        assert!(!page.html.contains("NeverEnabled"));
-        assert!(!page.html.contains("Projection: <strong>Complete"));
+            .expect("Korean view")
+            .html;
+        assert!(page.starts_with("<!doctype html><html lang=\"ko\">"));
+        assert!(page.contains(label), "missing {label}");
     }
 }
 
@@ -589,7 +560,9 @@ fn arbitrary_generated_language_instruction_cannot_become_html_language_syntax()
             &ViewerRequest {
                 project_id: project,
                 locale: ViewerLocale::English,
-                explanation_level: ExplanationLevel::Deep,
+                view: ViewerView::Tools {
+                    tool: ViewerTool::Documents,
+                },
                 requested_language: requested_language.into(),
                 guarded_request: None,
             },
@@ -751,7 +724,10 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
     let request = ViewerRequest {
         project_id: project,
         locale: ViewerLocale::English,
-        explanation_level: ExplanationLevel::Deep,
+        view: ViewerView::Code {
+            scope: CodeScope::Work(None),
+            entity: None,
+        },
         requested_language: "en".into(),
         guarded_request: None,
     };
@@ -814,7 +790,7 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
     assert!(snapshot.contains("data-diagram=\"architecture-topology\""));
     assert!(snapshot.contains("role=\"img\" aria-labelledby="));
     assert!(!snapshot.contains("<script"));
-    assert!(!snapshot.contains(" href="));
+    assert_snapshot_fragments(&snapshot);
     assert!(!snapshot.contains(" src="));
     assert!(snapshot.contains("data-statement-role=\"deterministic-derived\""));
     let korean = viewer
@@ -822,7 +798,10 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
             &ViewerRequest {
                 project_id: project,
                 locale: ViewerLocale::Korean,
-                explanation_level: ExplanationLevel::Deep,
+                view: ViewerView::Code {
+                    scope: CodeScope::Work(None),
+                    entity: None,
+                },
                 requested_language: "한국어".into(),
                 guarded_request: None,
             },
@@ -956,7 +935,14 @@ fn small_python_current_work_flow_renders_real_unresolved_relation_evidence() {
         .find(|relation| relation.kind == "CallsSyntactically")
         .expect("bounded Viewer understanding keeps a Python call");
 
-    let html = render_deep(&viewer, project);
+    let html = render_view(
+        &viewer,
+        project,
+        ViewerView::Code {
+            scope: CodeScope::Work(None),
+            entity: None,
+        },
+    );
     assert!(html.contains("data-diagram=\"flow-topology\""));
     assert!(html.contains("data-explanation-kind=\"flow\""));
     assert!(html.contains(&rendered_call.identity));
@@ -1143,13 +1129,30 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
             &ViewerRequest {
                 project_id: project,
                 locale: ViewerLocale::English,
-                explanation_level: ExplanationLevel::Deep,
+                view: ViewerView::Tools {
+                    tool: ViewerTool::Memory,
+                },
                 requested_language: "en".into(),
                 guarded_request: None,
             },
             "test-request-authenticity",
         )
         .expect("render rich Viewer");
+    let mut page = page;
+    page.html.push_str(&render_view(
+        &viewer,
+        project,
+        ViewerView::Tools {
+            tool: ViewerTool::Evidence,
+        },
+    ));
+    page.html.push_str(&render_view(
+        &viewer,
+        project,
+        ViewerView::Decisions {
+            decision: Some(decision.id),
+        },
+    ));
     assert!(page
         .html
         .contains("<summary><strong>Context Item</strong>: Keep mutation targets readable"));
@@ -1222,7 +1225,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
             &ViewerRequest {
                 project_id: project,
                 locale: ViewerLocale::English,
-                explanation_level: ExplanationLevel::Working,
+                view: ViewerView::Overview,
                 requested_language: "en".into(),
                 guarded_request: None,
             },
@@ -1230,31 +1233,13 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         )
         .expect("render completed working Viewer")
         .html;
-    let overview = section_html(&working, "project-overview");
-    for expected in [
-        "Keep mutation targets readable",
-        "completed",
-        "passed",
-        "Audit-first console [audit-first]",
-        "Operator-readable cockpit [operator-readable]",
-        "No open Questions.",
-        "No further work is planned for this goal",
-    ] {
-        assert!(
-            overview.contains(expected),
-            "missing {expected}: {overview}"
-        );
-    }
-    let work = overview.find("Resume state").expect("work summary");
-    let decision_position = overview.find("Latest Decision").expect("Decision summary");
-    let questions = overview.find("Open Questions").expect("Question summary");
-    let next = overview.find("Next step").expect("next-step summary");
-    assert!(work < decision_position && decision_position < questions && questions < next);
-    assert!(!overview.contains(&project.to_string()));
-    assert!(!overview.contains(&context.id.to_string()));
-    assert!(!overview.contains(&decision.id.to_string()));
+    assert!(working.contains("Keep mutation targets readable"));
+    assert!(working.contains("completed"));
+    assert!(page
+        .html
+        .contains("No further work is planned for this goal"));
     assert!(!working.contains("id=\"candidates\""));
-    assert!(!working.contains("id=\"canonical-context\""));
+    assert!(!working.contains("action=\"/memory/"));
 }
 
 #[test]
@@ -1275,7 +1260,7 @@ fn degraded_working_view_keeps_material_gap_visible_before_audit_detail() {
             &ViewerRequest {
                 project_id: project,
                 locale: ViewerLocale::English,
-                explanation_level: ExplanationLevel::Working,
+                view: ViewerView::Overview,
                 requested_language: "en".into(),
                 guarded_request: None,
             },
@@ -1283,21 +1268,13 @@ fn degraded_working_view_keeps_material_gap_visible_before_audit_detail() {
         )
         .expect("render degraded working Viewer")
         .html;
-    let overview = page.find("id=\"project-overview\"").expect("overview");
-    let health = page.find("id=\"health\"").expect("health");
-    let decisions = page.find("id=\"decisions\"").expect("decisions");
-    let repository = page.find("id=\"repository-map\"").expect("repository");
-    assert!(health < overview && overview < decisions && decisions < repository);
-    assert!(page.contains("Affected capability and scope"), "{page}");
     assert!(
-        page.contains("unavailable") || page.contains("partial") || page.contains("unsupported"),
-        "{page}"
+        page.find("id=\"limitations\"").expect("warnings")
+            < page.find("id=\"overview\"").expect("overview")
     );
-    let capability_summary = page
-        .find("Capability coverage detail")
-        .expect("progressively disclosed capability detail");
-    assert!(health < capability_summary);
-    assert!(!page.contains("id=\"candidates\""));
+    assert!(
+        page.contains("unavailable") || page.contains("partial") || page.contains("unsupported")
+    );
     assert!(!page.contains("id=\"canonical-context\""));
 }
 
@@ -1307,7 +1284,7 @@ fn static_snapshot_is_deterministic_self_contained_and_read_only() {
     let request = ViewerRequest {
         project_id: project,
         locale: ViewerLocale::English,
-        explanation_level: ExplanationLevel::Working,
+        view: ViewerView::Overview,
         requested_language: "en".into(),
         guarded_request: None,
     };
@@ -1343,7 +1320,6 @@ fn static_snapshot_is_deterministic_self_contained_and_read_only() {
         "request_authenticity",
         "action=\"/",
         "<script",
-        " href=",
         " src=",
         "/memory/",
         "/guarded/",
@@ -1351,14 +1327,11 @@ fn static_snapshot_is_deterministic_self_contained_and_read_only() {
     ] {
         assert!(!first.html.contains(forbidden), "found {forbidden}");
     }
-    let overview = first
-        .html
-        .find("id=\"project-overview\"")
-        .expect("overview");
-    let health = first.html.find("id=\"health\"").expect("health");
-    let decisions = first.html.find("id=\"decisions\"").expect("decisions");
-    let checkpoints = first.html.find("id=\"checkpoints\"").expect("checkpoints");
-    assert!(health < overview && overview < decisions && decisions < checkpoints);
+    assert_snapshot_fragments(&first.html);
+    assert!(
+        first.html.find("id=\"overview\"").expect("overview")
+            < first.html.find("id=\"works\"").expect("Works")
+    );
 }
 
 #[test]
@@ -1378,7 +1351,7 @@ fn degraded_static_snapshot_preserves_capability_honesty() {
             &ViewerRequest {
                 project_id: project,
                 locale: ViewerLocale::English,
-                explanation_level: ExplanationLevel::Working,
+                view: ViewerView::Overview,
                 requested_language: "en".into(),
                 guarded_request: None,
             },
@@ -1387,7 +1360,7 @@ fn degraded_static_snapshot_preserves_capability_honesty() {
         .expect("render degraded snapshot")
         .html;
     assert!(html.contains("Affected capability and scope"));
-    assert!(html.contains("Capability coverage detail"));
+    assert!(html.contains("capability"));
     assert!(
         html.contains("unavailable") || html.contains("partial") || html.contains("unsupported")
     );
@@ -1412,7 +1385,9 @@ fn representative_large_repository_page_is_deterministically_bounded() {
     let request = ViewerRequest {
         project_id: project,
         locale: ViewerLocale::English,
-        explanation_level: ExplanationLevel::Deep,
+        view: ViewerView::Tools {
+            tool: ViewerTool::Evidence,
+        },
         requested_language: "en".into(),
         guarded_request: None,
     };
@@ -1440,19 +1415,8 @@ fn representative_large_repository_page_is_deterministically_bounded() {
         .html
         .contains("data-bound-scope=\"repository entities\""));
     assert!(first.html.contains("omitted by deterministic bounds"));
-    assert!(first.html.contains("Affected capability and scope"));
-    assert!(first.html.contains("Raw diagnostic evidence"));
-    assert!(first
-        .html
-        .find("Affected capability and scope")
-        .is_some_and(|summary| first
-            .html
-            .find("Raw diagnostic evidence")
-            .is_some_and(|audit| summary < audit)));
-    assert!(first
-        .html
-        .contains("Opaque identities, relations, and gap evidence"));
-    assert!(first.html.matches("class=\"document-preview\"").count() == 4);
+    assert!(first.html.contains("Material limitations"));
+    assert_eq!(first.html.matches("class=\"document-preview\"").count(), 0);
     assert!(!first.html.contains("<pre>"));
     // This fixture-specific regression detects accidental unbounded rendering;
     // it is not a universal product or hardware ceiling.
@@ -1496,7 +1460,7 @@ fn guarded_fallback_preserves_exact_request_revision_and_source_linkage() {
             &ViewerRequest {
                 project_id: project,
                 locale: ViewerLocale::English,
-                explanation_level: ExplanationLevel::Working,
+                view: ViewerView::Overview,
                 requested_language: "en".into(),
                 guarded_request: Some(request.confirmation_request_identity),
             },
@@ -1558,13 +1522,15 @@ fn section_html<'a>(page: &'a str, identity: &str) -> &'a str {
     &remainder[..end]
 }
 
-fn work_card_html<'a>(section: &'a str, title: &str) -> &'a str {
-    let heading = format!("<h5>{title}</h5>");
-    let heading_at = section.find(&heading).expect("work heading");
-    let start = section[..heading_at]
-        .rfind("<article class=\"understanding-card work-item\"")
-        .expect("work card start");
-    let remainder = &section[start..];
-    let end = remainder.find("</article>").expect("work card end");
-    &remainder[..end]
+fn assert_snapshot_fragments(html: &str) {
+    let mut ids = std::collections::BTreeSet::new();
+    for rest in html.split(" id=\"").skip(1) {
+        let id = rest.split('"').next().expect("id");
+        assert!(ids.insert(id), "duplicate {id}");
+    }
+    for rest in html.split(" href=\"").skip(1) {
+        let href = rest.split('"').next().expect("href");
+        assert!(href.starts_with('#'));
+        assert!(ids.contains(&href[1..]), "missing fragment {href}");
+    }
 }

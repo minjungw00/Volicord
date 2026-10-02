@@ -179,6 +179,7 @@ where
     let candidates = CandidateStore::open(temporary.path().join("candidates.sqlite3"))?
         .read_basis(project.id)?;
     let projection = build_project_projection(ProjectProjectionInputs {
+        detail: volicord_projections::ProjectionDetail::default(),
         selection: volicord_projections::WorkSelector::LatestWork,
         analysis_issues: &[],
         canonical: &canonical,

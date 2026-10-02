@@ -1719,7 +1719,6 @@ def generate_viewer_snapshot(
             "--runtime", str(runtime),
             "--project", project_id,
             "--locale", locale,
-            "--level", "deep",
             "--language", language,
             "--snapshot", str(destination.resolve()),
         ],
