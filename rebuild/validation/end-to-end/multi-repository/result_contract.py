@@ -347,8 +347,7 @@ def _lifecycle_errors(proof: Any) -> list[str]:
             continue
         for label in expected_labels:
             row = by_id[work[label]["goal_id"]]
-            state = "in_progress" if name == "mcp" and label == "C" else (
-                "inprogress" if label == "C" else "paused")
+            state = "in_progress" if label == "C" else "paused"
             if (not _exact(row, {"work_id", "state", "checkpoint_ids", "source_ids"})
                     or row["state"] != state
                     or row["checkpoint_ids"] != [work[label]["checkpoint_id"]]

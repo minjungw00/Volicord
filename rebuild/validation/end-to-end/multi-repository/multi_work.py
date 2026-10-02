@@ -228,7 +228,7 @@ def verify_rehearsal(evidence: dict[str, Any], expected_a: dict[str, Any],
     checkpoints = [work.get(label, {}).get("checkpoint_id") for label in ("A", "B", "C")]
     def distinct(values: list[Any]) -> bool:
         return all(isinstance(value, str) and value for value in values) and len(set(values)) == 3
-    def history(view: dict[str, Any], current_state: str) -> bool:
+    def history(view: dict[str, Any]) -> bool:
         rows = view.get("work_history")
         if not isinstance(rows, list) or len(rows) != 3:
             return False
@@ -240,7 +240,7 @@ def verify_rehearsal(evidence: dict[str, Any], expected_a: dict[str, Any],
             if (work[label]["checkpoint_id"] not in row.get("checkpoint_ids", [])
                     or work[label]["source_id"] not in row.get(
                         "source_ids", row.get("source_basis", []))
-                    or row.get("state") != (current_state if label == "C" else "paused")):
+                    or row.get("state") != ("in_progress" if label == "C" else "paused")):
                 return False
         return True
     def current(view: dict[str, Any]) -> bool:
@@ -301,7 +301,7 @@ def verify_rehearsal(evidence: dict[str, Any], expected_a: dict[str, Any],
             and mismatch.get("decision_work_item_id") == ids[0]
             and rejection.get("before", {}).get("records")
             == rejection.get("after", {}).get("records")),
-        "cli_history_and_current": history(after, "inprogress") and current(after),
-        "mcp_history_and_current": history(understanding, "in_progress") and current(understanding),
-        "portable_history_and_current": history(imported, "inprogress") and current(imported),
+        "cli_history_and_current": history(after) and current(after),
+        "mcp_history_and_current": history(understanding) and current(understanding),
+        "portable_history_and_current": history(imported) and current(imported),
     }

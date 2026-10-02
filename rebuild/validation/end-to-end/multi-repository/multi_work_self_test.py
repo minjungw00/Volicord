@@ -16,7 +16,7 @@ def fixture():
     history = [
         {"work_item_id": ids[label], "source_ids": [sources[label]],
          "checkpoint_ids": [checkpoints[label]],
-         "state": "inprogress" if label == "C" else "paused"}
+         "state": "in_progress" if label == "C" else "paused"}
         for label in ids
     ]
     view = {"project_id": project, "project_purpose": purpose_rows,
@@ -51,8 +51,6 @@ def fixture():
     }]
     for row in evidence["mcp_understanding"]["work_history"]:
         row["source_basis"] = row.pop("source_ids")
-    evidence["mcp_understanding"]["work_history"][2]["state"] = "in_progress"
-    evidence["mcp_understanding"]["current_work"][0]["state"] = "in_progress"
     expected = {"goal_id": ids["A"], "goal_source_id": sources["A"],
                 "checkpoint_id": checkpoints["A"], "decision_id": decision}
     return evidence, expected, copy.deepcopy(view)
@@ -70,6 +68,9 @@ def self_check(module):
         ("lost MCP source basis", lambda e, p: e["mcp_understanding"]["work_history"][0].pop("source_basis")),
         ("wrong current Work", lambda e, p: e["status_after"].update(current_work=[e["status_after"]["work_history"][1]])),
         ("wrong portable history", lambda e, p: p["work_history"].pop(1)),
+        ("retired CLI Debug state", lambda e, p: e["status_after"]["work_history"][2].update(state="inprogress")),
+        ("retired portable Debug state", lambda e, p: p["work_history"][2].update(state="inprogress")),
+        ("wrong current portable state", lambda e, p: p["work_history"][2].update(state="completed")),
         ("cross-Work accepted", lambda e, p: e["cross_work_rejection"].update(accepted=True)),
         ("canonical mutation", lambda e, p: e["cross_work_rejection"]["after"]["records"].pop()),
         ("missing checkpoint", lambda e, p: e["work_b"].update(checkpoint=None)),
@@ -154,6 +155,9 @@ def contract_self_check(contract):
         ("changed purpose", lambda p: p["views"]["portable"].update(purpose_sha256="0" * 64)),
         ("missing MCP purpose", lambda p: p["views"]["mcp"].update(purpose_sha256=None)),
         ("wrong current Work", lambda p: p["views"]["cli"].update(current_work_ids=[p["work"]["B"]["goal_id"]])),
+        ("retired CLI Debug state", lambda p: p["views"]["cli"]["history"][2].update(state="inprogress")),
+        ("retired portable Debug state", lambda p: p["views"]["portable"]["history"][2].update(state="inprogress")),
+        ("wrong current portable state", lambda p: p["views"]["portable"]["history"][2].update(state="completed")),
         ("cross-Work accepted", lambda p: p["authority"].update(rejected=False)),
         ("cross-Work mutated canonical", lambda p: p["authority"].update(canonical_after_sha256="0" * 64)),
         ("missing new baseline", lambda p: p["authored"]["C"].update(baseline_id=None)),
