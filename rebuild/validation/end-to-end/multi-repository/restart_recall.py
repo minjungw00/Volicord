@@ -35,7 +35,8 @@ def expected_state(project_id: str, binding: dict[str, Any], initial_binding: di
                    decision: dict[str, Any], decision_source_id: str,
                    checkpoint: dict[str, Any], analysis: dict[str, Any],
                    current_analysis: dict[str, Any], inspection: dict[str, Any], next_step: str,
-                   decision_work_scope: dict[str, Any] | None = None) -> dict[str, Any]:
+                   decision_work_scope: dict[str, Any] | None = None,
+                   next_step_claims: list[list[str]] | None = None) -> dict[str, Any]:
     """Build only from successful authoring results and a pre-restart canonical read."""
     goal_id = goal.get("context_item_id")
     decision_id = decision.get("identity")
@@ -90,8 +91,120 @@ def expected_state(project_id: str, binding: dict[str, Any], initial_binding: di
         "analysis_snapshot_id": current_analysis["analysis_snapshot_id"],
         "repository_snapshot_id": current_analysis["repository_snapshot_id"],
         "repository_source_id": current_analysis["repository_source_id"],
-        "next_step": next_step, "canonical": canonical_evidence(inspection),
+        "next_step": next_step, "next_step_claims": next_step_claims or [],
+        "canonical": canonical_evidence(inspection),
     }
+
+
+def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any]) -> list[str]:
+    """Known-fixture direction and basis, not a general generated-prose grader.
+
+    Expectations come from canonical authoring, never work_answers or the observed
+    transport. Generated wording may vary within independently authored claim groups.
+    No transport omission can substitute for this minimum continuation meaning.
+    """
+    errors = []
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            errors.append(message)
+    require(recall.get("next_step") == expected["next_step"], "top-level recorded next action")
+    work = recall.get("selected_work")
+    if not isinstance(work, dict):
+        return errors + ["selected Work missing"]
+    require(work.get("work_item_id") == expected["goal_id"], "selected Work identity")
+    checkpoints = work.get("checkpoint_ids")
+    require(isinstance(checkpoints, list) and expected["checkpoint_id"] in checkpoints, "selected Work Checkpoint scope")
+    answers = work.get("answers")
+    if not isinstance(answers, dict):
+        return errors + ["Recall question answers"]
+    facts, prose = answers.get("facts"), answers.get("prose")
+    if not isinstance(facts, list) or not isinstance(prose, list):
+        return errors + ["shared answer sections"]
+    def question(items: list[Any], name: str) -> list[dict[str, Any]]:
+        return [a for a in items if isinstance(a, dict) and a.get("question") == name]
+    action_key = f"checkpoint:{expected['checkpoint_id']}@{expected['checkpoint_revision']}:next_step"
+    goal_key = f"context_item:{expected['goal_id']}@{expected['goal_revision']}:statement"
+    recorded = question(facts, "RecordedNextStep")
+    require(len(recorded) == 1, "recorded next action answer")
+    require(not question(facts, "NextStepAvailability"), "valid direction declared missing")
+    require(not question(prose, "RecordedNextStep") and not question(facts, "NextStep"), "recorded action role/scope")
+    if len(recorded) == 1:
+        fact = recorded[0]
+        require(fact.get("role") == "deterministic_facts", "recorded action role")
+        require(fact.get("evidence_keys") == [action_key], "recorded action evidence key")
+        require(fact.get("text") in [
+            f"Recorded next action quotation (original language): {expected['next_step']}",
+            f"기록된 다음 행동 인용 (원문 언어): {expected['next_step']}",
+        ], "ordinary recorded next action meaning")
+        basis = fact.get("recorded_action")
+        require(isinstance(basis, dict), "recorded action basis missing")
+        if isinstance(basis, dict):
+            for field, value in (
+                ("work_item_id", expected["goal_id"]), ("checkpoint_id", expected["checkpoint_id"]),
+                ("revision", expected["checkpoint_revision"]), ("field", "next_step"),
+                ("recorded_text", expected["next_step"]),
+            ):
+                require(basis.get(field) == value and (field != "revision" or type(basis.get(field)) is int), f"recorded action {field}")
+            sources = basis.get("source_ids")
+            require(isinstance(sources, list) and all(isinstance(s, str) for s in sources)
+                    and sorted(sources) == sorted(expected["checkpoint_sources"]), "recorded action Source basis")
+            statuses = basis.get("source_status")
+            require(isinstance(statuses, list) and len(statuses) == len(expected["checkpoint_sources"])
+                    and all(isinstance(s, dict) and isinstance(s.get("source_id"), str) for s in statuses)
+                    and sorted(s["source_id"] for s in statuses) == sorted(expected["checkpoint_sources"]), "recorded action Source status scope")
+            if isinstance(statuses, list):
+                source_details = recall.get("source_details", [])
+                for status in statuses:
+                    if not isinstance(status, dict):
+                        continue
+                    visible = [s for s in source_details if isinstance(s, dict) and s.get("identity") == status.get("source_id")] if isinstance(source_details, list) else []
+                    for source in visible:
+                        for field in ("availability", "freshness", "snapshot_basis"):
+                            if field in source:
+                                require(status.get(field) == source[field], f"recorded action Source {field}")
+    states = question(facts, "WorkState")
+    require(len(states) == 1 and states[0].get("role") == "deterministic_facts"
+            and states[0].get("text") in ("Work: paused", "작업: 일시 중지")
+            and states[0].get("evidence_keys") == [f"checkpoint:{expected['checkpoint_id']}@{expected['checkpoint_revision']}:work_state"], "shared Work state basis")
+    generated = question(prose, "NextStep")
+    state = answers.get("explanation_state")
+    require(state in ("current", "unavailable", "stale", "corrupt", "unsupported"), "explanation state")
+    if state == "current":
+        require(len(generated) == 1, "current next-step interpretation")
+        provenance = answers.get("provenance")
+        require(isinstance(provenance, dict), "generated provenance missing")
+        if isinstance(provenance, dict):
+            require(provenance.get("project_id") == expected["project_id"]
+                    and provenance.get("subject") == {"kind": "work", "identity": expected["goal_id"]}, "generated Work/Project scope")
+            evidence = provenance.get("evidence", [])
+            for key, identity, revision, field, sources in (
+                ("next_step", expected["checkpoint_id"], expected["checkpoint_revision"], "next_step", expected["checkpoint_sources"]),
+                ("goal", expected["goal_id"], expected["goal_revision"], "statement", expected["goal_sources"]),
+            ):
+                matches = [e for e in evidence if isinstance(e, dict) and e.get("key") == key] if isinstance(evidence, list) else []
+                require(len(matches) == 1 and matches[0].get("identity") == identity
+                        and matches[0].get("revision") == revision and matches[0].get("field") == field
+                        and isinstance(matches[0].get("sources"), list)
+                        and all(isinstance(s, str) for s in matches[0]["sources"])
+                        and sorted(matches[0]["sources"]) == sorted(sources), f"generated {key} basis")
+        if len(generated) == 1:
+            paragraph = generated[0]
+            keys = paragraph.get("evidence_keys")
+            require(paragraph.get("role") == "generated_interpretation"
+                    and isinstance(keys, list) and "next_step" in keys, "generated next-step role/evidence")
+            text = paragraph.get("text")
+            claims = expected.get("next_step_claims", [])
+            require(isinstance(text, str) and bool(text.strip()) and bool(claims)
+                    and all(any(term.casefold() in text.casefold() for term in group) for group in claims), "known-fixture generated next-step meaning")
+    else:
+        require(not generated and answers.get("provenance") is None, "unusable generated direction revived")
+        availability = question(prose, "ExplanationAvailability")
+        require(len(availability) == 1 and availability[0].get("role") == "unavailable", "separate explanation availability")
+        goals = question(facts, "RecordedGoal")
+        require(len(goals) == 1 and goals[0].get("role") == "deterministic_facts"
+                and goals[0].get("text") in (f"Recorded Goal quotation: {expected['goal_statement']}", f"기록된 목표 인용: {expected['goal_statement']}")
+                and goals[0].get("evidence_keys") == [goal_key], "shared Goal revision basis")
+    return errors
 
 
 def recall_errors(expected: dict[str, Any], recall: dict[str, Any] | None) -> list[str]:
@@ -142,18 +255,28 @@ def recall_errors(expected: dict[str, Any], recall: dict[str, Any] | None) -> li
         require(decision.get("chosen_alternative_key") == "local", "Decision choice")
         require(set(expected["decision_sources"]) <= set(decision.get("source_basis", [])), "Decision Source basis")
         require(expected["decision_source_id"] in decision.get("source_basis", []), "Decision response Source")
-    require(isinstance(recall.get("selected_work"), dict) and isinstance(recall["selected_work"].get("answers"), dict), "Recall question answers")
+    errors.extend(shared_answer_errors(expected, recall))
     require(isinstance(recall.get("active_decision_count"), int) and recall["active_decision_count"] >= 1, "active Decision count")
     sources = recall.get("source_details", [])
     snapshots_section = recall.get("snapshots", [])
     omissions = recall.get("omissions", [])
     def transport_bounded(section: Any) -> bool:
+        # Scope comes from the containing Source/snapshot field. Only the maintained
+        # complete-field or stable-array-suffix marker has this permission.
         markers = [section] if isinstance(section, dict) else section if isinstance(section, list) else []
-        return any(isinstance(item, dict) and isinstance(item.get("transport_omission"), dict)
-                   and item["transport_omission"].get("reason") == "serialized_byte_budget"
-                   and (item["transport_omission"].get("omitted_count", 0) > 0
-                        or item["transport_omission"].get("exact_json_bytes", 0) > 0)
-                   for item in markers)
+        for item in markers:
+            marker = item.get("transport_omission") if isinstance(item, dict) else None
+            if not isinstance(marker, dict) or marker.get("reason") != "serialized_byte_budget":
+                continue
+            suffix = (isinstance(section, list)
+                      and marker.get("basis") == "same parent identity, field and stable input order; inspect the authoritative record"
+                      and type(marker.get("omitted_count")) is int and marker["omitted_count"] > 0)
+            whole = (isinstance(section, dict)
+                     and marker.get("basis") == "inspect the complete field on the authoritative parent record"
+                     and type(marker.get("exact_json_bytes")) is int and marker["exact_json_bytes"] > 0)
+            if suffix or whole:
+                return True
+        return False
     source_ids = {item.get("identity") for item in sources if isinstance(item, dict)} if isinstance(sources, list) else set()
     def bounded(identity: str, kind: str) -> bool:
         return any(isinstance(item, dict) and item.get("identity") == identity

@@ -31,7 +31,7 @@ def fixture(oracle):
         {"identity": decision, "revision": 1}, decision_source, authored_checkpoint,
         {"analysis_snapshot_id": analysis},
         {"analysis_snapshot_id": analysis, "repository_snapshot_id": repository, "repository_source_id": repository_source},
-        canonical, "Continue bounded work")
+        canonical, "Continue bounded work", next_step_claims=[["continue", "resume"], ["bounded"], ["work"]])
     recall = {
         "read_only": True, "project_id": project,
         "goal_basis": [{"identity": goal, "role": "goal", "statement": "Do bounded work", "source_ids": [goal_source]}],
@@ -43,8 +43,21 @@ def fixture(oracle):
                        "recorded_at_unix_micros": 1},
         "decisions": [{"identity": decision, "revision": 1, "state": "current", "work_scope": {"kind": "project_wide"},
                        "chosen_alternative_key": "local", "source_basis": [decision_source]}],
-        "selected_work": {"work_item_id":goal,"answers":{"prose":[],"facts":[]}},
-        "active_decision_count": 1, "next_step": "Interpretation has not been generated",
+        "selected_work": {"work_item_id": goal, "checkpoint_ids": [checkpoint], "answers": {
+            "explanation_state": "unavailable", "provenance": None,
+            "prose": [{"question": "ExplanationAvailability", "role": "unavailable", "text": "Interpretation has not been generated", "evidence_keys": []}],
+            "facts": [
+                {"question": "RecordedNextStep", "role": "deterministic_facts",
+                 "text": "Recorded next action quotation (original language): Continue bounded work",
+                 "evidence_keys": [f"checkpoint:{checkpoint}@1:next_step"],
+                 "recorded_action": {"work_item_id": goal, "checkpoint_id": checkpoint, "revision": 1,
+                                     "field": "next_step", "recorded_text": "Continue bounded work",
+                                     "source_ids": [goal_source, decision_source],
+                                     "source_status": [{"source_id": sid, "availability": "available", "freshness": "current", "snapshot_basis": None} for sid in [goal_source, decision_source]]}},
+                {"question": "WorkState", "role": "deterministic_facts", "text": "Work: paused", "evidence_keys": [f"checkpoint:{checkpoint}@1:work_state"]},
+                {"question": "RecordedGoal", "role": "deterministic_facts", "text": "Recorded Goal quotation: Do bounded work", "evidence_keys": [f"context_item:{goal}@1:statement"]},
+            ]}},
+        "active_decision_count": 1, "next_step": "Continue bounded work",
         "source_details": [{"identity": goal_source}, {"identity": decision_source},
                            {"identity": repository_source, "availability": "available",
                             "freshness": "current", "snapshot_basis": "observed"}],
@@ -80,14 +93,104 @@ def self_check(oracle) -> None:
     assert not oracle.recall_errors(expected, bounded_snapshot)
     transport_bound = copy.deepcopy(recall)
     transport_bound["source_details"] = [{"transport_omission": {
-        "reason": "serialized_byte_budget", "omitted_count": 3}}]
+        "reason": "serialized_byte_budget", "omitted_count": 3,
+        "basis": "same parent identity, field and stable input order; inspect the authoritative record"}}]
     transport_bound["snapshots"] = [{"transport_omission": {
-        "reason": "serialized_byte_budget", "omitted_count": 1}}]
+        "reason": "serialized_byte_budget", "omitted_count": 1,
+        "basis": "same parent identity, field and stable input order; inspect the authoritative record"}}]
     assert not oracle.recall_errors(expected, transport_bound)
     reordered = copy.deepcopy(canonical)
     reordered["records"].reverse()
     reordered["records"][0]["summary"] = "Presentation changed"
     assert not oracle.continuation_errors(expected, recall, continued, reordered)
+
+    # These facts are authored here from the fixture setup, never copied from a
+    # product answer. Generated wording is allowed to vary in the known scope.
+    current = copy.deepcopy(recall)
+    current["selected_work"]["answers"].update(
+        explanation_state="current",
+        prose=[{"question": "NextStep", "role": "generated_interpretation",
+                "text": "Resume the bounded work.", "evidence_keys": ["next_step"]}],
+        provenance={"project_id": expected["project_id"],
+                    "subject": {"kind": "work", "identity": expected["goal_id"]},
+                    "evidence": [
+                        {"key": "next_step", "identity": expected["checkpoint_id"], "revision": 1, "field": "next_step", "sources": expected["checkpoint_sources"]},
+                        {"key": "goal", "identity": expected["goal_id"], "revision": 1, "field": "statement", "sources": expected["goal_sources"]},
+                    ]})
+    for positive in [recall, current]:
+        assert not oracle.verify_restart(expected, positive, copy.deepcopy(positive), resolved, canonical, continued, canonical)
+    for state in ("stale", "corrupt", "unsupported"):
+        variant = copy.deepcopy(recall)
+        variant["selected_work"]["answers"]["explanation_state"] = state
+        variant["selected_work"]["answers"]["prose"][0]["text"] = "Prepare and regenerate the explanation."
+        assert not oracle.verify_restart(expected, variant, copy.deepcopy(variant), resolved, canonical, continued, canonical)
+    for text in ("Continue the bounded work in this session.", "Resume bounded work now."):
+        variant = copy.deepcopy(current)
+        variant["selected_work"]["answers"]["prose"][0]["text"] = text
+        assert not oracle.recall_errors(expected, variant)
+    reordered_answers = copy.deepcopy(recall)
+    reordered_answers["selected_work"]["answers"]["facts"].reverse()
+    assert not oracle.recall_errors(expected, reordered_answers)
+    whole_bound = copy.deepcopy(recall)
+    for field in ("source_details", "snapshots"):
+        whole_bound[field] = {"transport_omission": {"reason": "serialized_byte_budget", "exact_json_bytes": 90000,
+            "basis": "inspect the complete field on the authoritative parent record"}}
+    assert not oracle.recall_errors(expected, whole_bound)
+
+    def action(value):
+        return next(a for a in value["selected_work"]["answers"]["facts"] if a["question"] == "RecordedNextStep")
+    def unrelated(value):
+        value["next_step"] = "Ship another Work's CSV service."
+        action(value)["text"] = "Recorded next action quotation (original language): Ship another Work's CSV service."
+        action(value)["recorded_action"]["recorded_text"] = value["next_step"]
+    def other_work(value):
+        unrelated(value)
+        value["selected_work"]["work_item_id"] = "other Work"
+        action(value)["recorded_action"]["work_item_id"] = "other Work"
+    controls = (
+        ("top-level recorded next action", recall, lambda v: v.update(next_step="Delete unrelated data")),
+        ("selected Work identity", recall, other_work),
+        ("ordinary recorded next action meaning", recall, lambda v: action(v).update(text="Ship another Work's CSV service")),
+        ("top-level recorded next action", recall, unrelated),
+        ("recorded action work_item_id", recall, lambda v: action(v)["recorded_action"].update(work_item_id="other Work")),
+        ("recorded action checkpoint_id", recall, lambda v: action(v)["recorded_action"].update(checkpoint_id="other Checkpoint")),
+        ("recorded action revision", recall, lambda v: action(v)["recorded_action"].update(revision=2)),
+        ("recorded action revision", recall, lambda v: action(v)["recorded_action"].update(revision=True)),
+        ("recorded action revision", recall, lambda v: action(v)["recorded_action"].pop("revision")),
+        ("recorded action evidence key", recall, lambda v: action(v).update(evidence_keys=[])),
+        ("recorded action evidence key", recall, lambda v: action(v).update(evidence_keys=["checkpoint:other@1:next_step"])),
+        ("recorded action basis missing", recall, lambda v: action(v).pop("recorded_action")),
+        ("recorded action field", recall, lambda v: action(v)["recorded_action"].update(field="state_change")),
+        ("recorded action Source basis", recall, lambda v: action(v)["recorded_action"].update(source_ids=[])),
+        ("recorded action Source status scope", recall, lambda v: action(v)["recorded_action"].update(source_status=[])),
+        ("recorded action role", recall, lambda v: action(v).update(role="generated_interpretation")),
+        ("top-level recorded next action", recall, lambda v: v.update(next_step="Prepare and regenerate the explanation.")),
+        ("recorded next action answer", recall, lambda v: action(v).update(question="ExplanationAvailability")),
+        ("shared Work state basis", recall, lambda v: v["selected_work"]["answers"]["facts"][1].update(evidence_keys=[])),
+        ("shared Work state basis", recall, lambda v: v["selected_work"]["answers"]["facts"][1].update(text="Work: completed")),
+        ("shared Goal revision basis", recall, lambda v: v["selected_work"]["answers"]["facts"][2].update(text="Recorded Goal quotation: Ship the other service")),
+        ("shared Goal revision basis", recall, lambda v: v["selected_work"]["answers"]["facts"][2].update(evidence_keys=[])),
+        ("selected Work Checkpoint scope", recall, lambda v: v["selected_work"].update(checkpoint_ids=["other"])),
+        ("known-fixture generated next-step meaning", current, lambda v: v["selected_work"]["answers"]["prose"][0].update(text="Deploy another Work's CSV service.")),
+        ("known-fixture generated next-step meaning", current, lambda v: v["selected_work"]["answers"]["prose"][0].update(text="Prepare and regenerate the explanation.")),
+        ("generated next-step role/evidence", current, lambda v: v["selected_work"]["answers"]["prose"][0].update(evidence_keys=[])),
+        ("generated next-step role/evidence", current, lambda v: v["selected_work"]["answers"]["prose"][0].update(evidence_keys=None)),
+        ("generated next_step basis", current, lambda v: v["selected_work"]["answers"]["provenance"]["evidence"][0].update(sources=None)),
+        ("recorded action role/scope", recall, lambda v: v["selected_work"]["answers"]["facts"].append({"question":"NextStep", "role":"deterministic_facts", "text":"Ship the other service"})),
+        ("generated next_step basis", current, lambda v: v["selected_work"]["answers"]["provenance"]["evidence"][0].update(revision=2)),
+        ("generated Work/Project scope", current, lambda v: v["selected_work"]["answers"]["provenance"].update(project_id="other Project")),
+        ("generated Work/Project scope", current, lambda v: v["selected_work"]["answers"]["provenance"]["subject"].update(identity="other Work")),
+        ("unusable generated direction revived", current, lambda v: v["selected_work"]["answers"].update(explanation_state="stale")),
+        ("Source visibility or declared bound", recall, lambda v: v.update(source_details=[{"transport_omission": {"reason":"serialized_byte_budget", "omitted_count":3}}])),
+        ("recorded action work_item_id", recall, lambda v: (action(v)["recorded_action"].update(work_item_id="other Work"), v.update(omissions=[{"transport_omission":{"reason":"serialized_byte_budget","omitted_count":1}}]))),
+    )
+    for message, positive, mutate in controls:
+        broken = copy.deepcopy(positive)
+        mutate(broken)
+        assert message in oracle.recall_errors(expected, broken), message
+        for cli, mcp, prefixes in ((broken, positive, ["CLI"]), (positive, broken, ["MCP"]), (broken, copy.deepcopy(broken), ["CLI", "MCP"])):
+            errors = oracle.verify_restart(expected, cli, mcp, resolved, canonical, continued, canonical)
+            assert all(f"{prefix}: {message}" in errors for prefix in prefixes), (message, prefixes, errors)
 
     mutations = (
         ("Project", lambda value: value.update(project_id="wrong")),
@@ -126,9 +229,9 @@ def self_check(oracle) -> None:
         broken = copy.deepcopy(recall)
         mutate(broken)
         assert oracle.recall_errors(expected, broken), label
-        # Identical corruption in both transports cannot turn either into expected state.
-        assert oracle.verify_restart(expected, broken, copy.deepcopy(broken), resolved,
-                                     canonical, continued, canonical), f"both transports: {label}"
+        for cli, mcp in ((broken, recall), (recall, broken), (broken, copy.deepcopy(broken))):
+            assert oracle.verify_restart(expected, cli, mcp, resolved,
+                                         canonical, continued, canonical), label
     bad_binding = copy.deepcopy(resolved)
     bad_binding["binding"]["binding_id"] = "wrong"
     assert oracle.binding_errors(expected, bad_binding)

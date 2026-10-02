@@ -113,6 +113,15 @@ def contract_fixture(contract, project_id="p" * 32):
         "goal_basis": [{"identity": a["goal_id"], "source_ids": [a["source_id"]]}],
         "decisions": [{"identity": expected_ids["decision_id"], "revision": 1,
                        "work_scope": scope}],
+        "next_step": "Resume the volicord V11 journey in a new session",
+        "selected_work": {"work_item_id": a["goal_id"], "answers": {"facts": [{
+            "question": "RecordedNextStep", "role": "deterministic_facts",
+            "text": "Recorded next action quotation (original language): Resume the volicord V11 journey in a new session",
+            "evidence_keys": [f"checkpoint:{a['checkpoint_id']}@1:next_step"],
+            "recorded_action": {"work_item_id": a["goal_id"], "checkpoint_id": a["checkpoint_id"], "revision": 1,
+                                "field": "next_step", "source_ids": [a["source_id"]],
+                                "recorded_text": "Resume the volicord V11 journey in a new session"},
+        }]}},
         "checkpoint": {"identity": a["checkpoint_id"], "revision": 1,
                        "work_item_id": a["goal_id"],
                        "applied_decisions": [expected_ids["decision_id"]]},
@@ -125,6 +134,8 @@ def contract_fixture(contract, project_id="p" * 32):
             "decision_id": expected_ids["decision_id"],
             "decision_revision": 1, "decision_work_scope": scope,
             "checkpoint_id": a["checkpoint_id"], "checkpoint_revision": 1,
+            "checkpoint_sources": [a["source_id"]],
+            "next_step": "Resume the volicord V11 journey in a new session",
         },
         "cli_recall": copy.deepcopy(recall),
         "restarted_recall": copy.deepcopy(recall),
@@ -149,11 +160,35 @@ def contract_self_check(contract):
         row["source_basis"] = row.pop("source_ids")
         assert contract.lifecycle_errors(contract.make_lifecycle_proof(changed, restart)), view
         assert not contract.lifecycle_errors(contract.make_lifecycle_proof(raw, restart)), view
+    # Exercise the actual bounded proof producer, with legacy fields unchanged.
+    for transport in ("cli_recall", "restarted_recall", "both"):
+        for mutation in ("selected_work", "top_level_action", "ordinary_action", "revision", "evidence"):
+            changed = copy.deepcopy(restart)
+            for name in ("cli_recall", "restarted_recall") if transport == "both" else (transport,):
+                value = changed[name]
+                fact = value["selected_work"]["answers"]["facts"][0]
+                if mutation == "selected_work":
+                    value["selected_work"]["work_item_id"] = "other Work"
+                elif mutation == "top_level_action":
+                    value["next_step"] = "Ship another Work's CSV service."
+                elif mutation == "ordinary_action":
+                    fact["text"] = "Recorded next action quotation (original language): Ship another Work's CSV service."
+                elif mutation == "revision":
+                    fact["recorded_action"]["revision"] = 2
+                else:
+                    fact["evidence_keys"] = []
+            assert contract.lifecycle_errors(contract.make_lifecycle_proof(raw, changed)), (transport, mutation)
     mutations = (
         ("wrong Project", lambda p: p["views"]["cli"].update(project_id="wrong")),
         ("wrong Work", lambda p: p["views"]["portable"]["history"][0].update(work_id="wrong")),
         ("wrong Decision", lambda p: p["restart"]["mcp"].update(decision_id="wrong")),
         ("wrong Checkpoint", lambda p: p["restart"]["cli"].update(checkpoint_id="wrong")),
+        ("wrong selected Work", lambda p: p["restart"]["cli"].update(selected_work_id="wrong")),
+        ("wrong top-level action", lambda p: p["restart"]["mcp"].update(next_step_sha256="0"*64)),
+        ("wrong ordinary action", lambda p: p["restart"]["cli"]["action"].update(quotation_sha256="0"*64)),
+        ("wrong action revision", lambda p: p["restart"]["mcp"]["action"].update(revision=2)),
+        ("missing action keys", lambda p: p["restart"]["cli"]["action"].update(evidence_keys=[])),
+        ("both actions wrong", lambda p: (p["restart"]["cli"]["action"].update(recorded_text_sha256="0"*64), p["restart"]["mcp"]["action"].update(recorded_text_sha256="0"*64))),
         ("missing restart", lambda p: p["restart"].pop("mcp")),
         ("both transports wrong", lambda p: (
             p["restart"]["cli"].update(goal_id="wrong"),

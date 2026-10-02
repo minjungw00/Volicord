@@ -82,6 +82,47 @@ def _view(value: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _text_digest(value: Any) -> str | None:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest() if isinstance(value, str) and value.strip() else None
+
+
+def _recorded_action_proof(work: dict[str, Any]) -> dict[str, Any]:
+    answers = work.get("answers") or {}
+    facts = answers.get("facts", []) if isinstance(answers, dict) else []
+    matches = [a for a in facts if isinstance(a, dict) and a.get("question") == "RecordedNextStep"] if isinstance(facts, list) else []
+    fact = matches[0] if len(matches) == 1 else {}
+    basis = fact.get("recorded_action") or {}
+    if not isinstance(basis, dict):
+        basis = {}
+    text = fact.get("text")
+    quotation = None
+    for prefix in ("Recorded next action quotation (original language): ", "기록된 다음 행동 인용 (원문 언어): "):
+        if isinstance(text, str) and text.startswith(prefix):
+            quotation = text[len(prefix):]
+    return {
+        "question": fact.get("question"), "role": fact.get("role"),
+        "work_item_id": basis.get("work_item_id"), "checkpoint_id": basis.get("checkpoint_id"),
+        "revision": basis.get("revision"), "field": basis.get("field"),
+        "source_ids": sorted(basis.get("source_ids", [])),
+        "evidence_keys": fact.get("evidence_keys"),
+        "recorded_text_sha256": _text_digest(basis.get("recorded_text")),
+        "quotation_sha256": _text_digest(quotation),
+    }
+
+
+def _expected_action_proof(expected: dict[str, Any]) -> dict[str, Any]:
+    """Only authoring facts; never derive this expectation from observed answers."""
+    return {
+        "question": "RecordedNextStep", "role": "deterministic_facts",
+        "work_item_id": expected["goal_id"], "checkpoint_id": expected["checkpoint_id"],
+        "revision": expected["checkpoint_revision"], "field": "next_step",
+        "source_ids": sorted(expected["checkpoint_sources"]),
+        "evidence_keys": [f"checkpoint:{expected['checkpoint_id']}@{expected['checkpoint_revision']}:next_step"],
+        "recorded_text_sha256": _text_digest(expected["next_step"]),
+        "quotation_sha256": _text_digest(expected["next_step"]),
+    }
+
+
 def _restart_read(value: dict[str, Any] | None, goal_id: str, decision_id: str) -> dict[str, Any]:
     value = value or {}
     goals = [item for item in value.get("goal_basis", [])
@@ -93,6 +134,9 @@ def _restart_read(value: dict[str, Any] | None, goal_id: str, decision_id: str) 
     checkpoint = value.get("checkpoint") or {}
     return {
         "project_id": value.get("project_id"),
+        "selected_work_id": (value.get("selected_work") or {}).get("work_item_id"),
+        "next_step_sha256": _text_digest(value.get("next_step")),
+        "action": _recorded_action_proof(value.get("selected_work") or {}),
         "goal_id": goal.get("identity"),
         "goal_source_ids": sorted(goal.get("source_ids", [])),
         "decision_id": decision.get("identity"),
@@ -158,6 +202,7 @@ def make_lifecycle_proof(evidence: dict[str, Any], restart: dict[str, Any]) -> d
                 "decision_work_scope": expected["decision_work_scope"],
                 "checkpoint_id": expected["checkpoint_id"],
                 "checkpoint_revision": expected["checkpoint_revision"],
+                "action": _expected_action_proof(expected),
             },
             "cli": _restart_read(restart.get("cli_recall"), expected["goal_id"], expected["decision_id"]),
             "mcp": _restart_read(restart.get("restarted_recall"), expected["goal_id"], expected["decision_id"]),
@@ -226,7 +271,7 @@ def _lifecycle_errors(proof: Any) -> list[str]:
     expected = restart["expected"]
     if not _exact(expected, {"project_id", "goal_id", "goal_source_id", "goal_revision",
                               "decision_id", "decision_revision", "decision_work_scope",
-                              "checkpoint_id", "checkpoint_revision"}):
+                              "checkpoint_id", "checkpoint_revision", "action"}):
         return errors + ["restart expected shape"]
     if (expected["project_id"] != project or expected["goal_id"] != work["A"]["goal_id"]
             or expected["goal_source_id"] != work["A"]["source_id"]
@@ -239,14 +284,30 @@ def _lifecycle_errors(proof: Any) -> list[str]:
         for key in ("goal_revision", "decision_revision", "checkpoint_revision")
     ):
         errors.append("restart revision/Decision")
+    action = expected["action"]
+    action_keys = {"question", "role", "work_item_id", "checkpoint_id", "revision", "field", "source_ids", "evidence_keys", "recorded_text_sha256", "quotation_sha256"}
+    if (not _exact(action, action_keys) or action.get("question") != "RecordedNextStep"
+            or action.get("role") != "deterministic_facts" or action.get("work_item_id") != expected["goal_id"]
+            or action.get("checkpoint_id") != expected["checkpoint_id"] or action.get("revision") != expected["checkpoint_revision"]
+            or action.get("field") != "next_step"
+            or action.get("evidence_keys") != [f"checkpoint:{expected['checkpoint_id']}@{expected['checkpoint_revision']}:next_step"]
+            or not isinstance(action.get("source_ids"), list) or expected["goal_source_id"] not in action["source_ids"]
+            or not all(_id(s) for s in action["source_ids"])
+            or not isinstance(action.get("recorded_text_sha256"), str) or len(action["recorded_text_sha256"]) != 64
+            or action.get("quotation_sha256") != action.get("recorded_text_sha256")):
+        return errors + ["restart expected action basis"]
     observed_keys = {"project_id", "goal_id", "goal_source_ids", "decision_id",
                      "decision_revision", "decision_work_scope", "checkpoint_id",
-                     "checkpoint_revision", "checkpoint_work_id", "checkpoint_decision_ids"}
+                     "checkpoint_revision", "checkpoint_work_id", "checkpoint_decision_ids",
+                     "selected_work_id", "next_step_sha256", "action"}
     for transport in ("cli", "mcp"):
         observed = restart[transport]
         if not _exact(observed, observed_keys):
             errors.append(f"{transport} restart shape")
             continue
+        if (observed["selected_work_id"] != expected["goal_id"] or observed["action"] != action
+                or observed["next_step_sha256"] != action["recorded_text_sha256"]):
+            errors.append(f"{transport} restart action")
         if (observed["project_id"] != project
                 or observed["goal_id"] != work["A"]["goal_id"]
                 or work["A"]["source_id"] not in observed["goal_source_ids"]

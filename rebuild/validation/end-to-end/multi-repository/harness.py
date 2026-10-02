@@ -2780,6 +2780,7 @@ def rehearse_target(
             checkpoint_value or {}, candidate_analysis or {},
             provider_evidence.get("local_structural") or {}, pre_restart_canonical,
             checkpoint_next_step,
+            next_step_claims=[["resume", "continue"], [target_kind], ["V11"], ["journey"], ["new", "fresh"], ["session"]],
             decision_work_scope=(
                 {"kind": "work_item", "work_item_id": goal.get("context_item_id")}
                 if target_kind == "volicord" else {"kind": "project_wide"}
@@ -4440,6 +4441,7 @@ def self_check() -> int:
         "required_steps_by_target": result_contract.required_counts(),
         "evidence_driven_steps": len(REQUIRED_STEPS + result_contract.VOLICORD_EXTRA),
         "required_step_policy_regressions": "passed",
+        "restart_shared_answer_contract": "passed",
         "candidate_structured_repository_source_regression": "passed",
         "self_guiding_work_authority_checkpoint_path": "passed",
         "viewer_project_understanding_contract": "passed",

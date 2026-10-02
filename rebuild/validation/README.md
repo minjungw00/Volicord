@@ -97,6 +97,14 @@ surface, not a Volicord product command or production architecture.
   reject retired Debug-derived `inprogress` text and the old Work-specific
   `source_basis` alias. Canonical records and Project Purpose keep their own
   distinct Source fields.
+  Restart verification compares authored Work/action/basis against each transport's
+  shared `RecordedNextStep` and top-level direction, including explanation lifecycle
+  positives and independent semantic mutations in CLI, MCP and both. Generated
+  wording uses known-fixture claim groups, not universal prose truth grading.
+  The bounded lifecycle proof preserves action/scope/evidence and text digests without
+  copying recorded prose. Run the restart oracle through its maintained entry point:
+  `rebuild/scripts/validate focused restart-oracle -- python3
+  rebuild/validation/end-to-end/multi-repository/harness.py self-check`.
   Its `--self-test` mode also rejects
   internal-primitive-only coverage, missing entrypoints, canonical-only or
   over-broad forgetting, ignored cleanup/repair failure, Candidate

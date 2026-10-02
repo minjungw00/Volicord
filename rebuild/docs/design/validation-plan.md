@@ -1083,6 +1083,25 @@ clean Linux install
 → provider/parser/index failure recovery
 ```
 
+Restart oracle는 fixture의 canonical authoring 결과와 pre-restart inspection에서
+독립적으로 만든 expected Project/Work, Goal revision, Checkpoint revision/Source와
+recorded action을 CLI·MCP 각각의 `selected_work.answers` 및 top-level `next_step`과
+비교한다. Legacy Goal/Checkpoint가 맞거나 두 transport가 동일하다는 이유로 잘못된
+shared answer를 허용하지 않는다. `RecordedNextStep` role/question, structured
+`recorded_action`, exact record/revision/field/evidence key, Source scope와 일반 읽기
+원문 인용이 일치해야 한다. Current generated `NextStep`은 별도 generated role과
+Work/Project provenance, exact evidence 및 fixture별 독립 claim group을 검사한다.
+그 검사는 known fixture의 bounded meaning만 검증하며 임의 prose truth를 입증하지 않는다.
+Absent/stale/corrupt explanation과 canonical 행동 부재는 구분한다. Self-check는
+설명 없는 행동, stale 설명, current paraphrase의 positive case와 top-level 행동 변경,
+다른 Work, 같은 Work ID의 다른 행동, 누락·잘못된 revision/evidence, 복구 안내 대체를
+각 transport 및 둘 모두에 적용해 full `verify_restart`에서 거부되는지 확인한다.
+Typed Source/snapshot transport omission은 유지하되 generic marker로 minimum Work/
+action/basis를 생략하거나 잘못된 identity를 통과시키지 않는다. Bounded lifecycle proof도
+selected Work/action identity와 canonical action·ordinary quotation·top-level direction의
+SHA-256을 독립 expected digest와 비교하며 원문을 portable report에 복제하지 않는다.
+현재 self-check 진입점은 `harness.py self-check`이며 official V11을 실행하지 않는다.
+
 Controlled derived-index recovery는 변경하지 않은 repository에서 repair 전후의
 Canonical Recall 필드(Goal basis, Decision rationale, Checkpoint의 verification/review/
 acceptance, 열린 질문, risk/assumption, next step 포함)를 그대로 비교한다. Source 목록과
