@@ -235,3 +235,90 @@ fn work_index_pages_reach_items_omitted_from_initial_lists(
     }
     Ok(())
 }
+
+#[test]
+fn code_detail_selects_beyond_map_bounds_and_keeps_readable_real_endpoints(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    for n in 0..90 {
+        std::fs::write(
+            fixture
+                .repository
+                .join(format!("long_shared_module_prefix_{n:03}.py")),
+            format!("def distinguishable_symbol_{n}():\n    return 1\n"),
+        )?;
+    }
+    std::fs::write(
+        fixture.repository.join("unsafe<&>.py"),
+        "def safe():\n    return 1\n",
+    )?;
+    let analysis = fixture
+        .operations
+        .analyze(fixture.project, Vec::new())?
+        .value
+        .ok_or("analysis output")?
+        .analysis;
+    let projection = fixture.operations.project_projection_selected(
+        fixture.project,
+        volicord_projections::WorkSelector::Repository,
+    )?;
+    let outside = analysis
+        .structural_facts
+        .iter()
+        .find(|f| {
+            !projection
+                .repository_map
+                .entities
+                .iter()
+                .any(|e| e.identity == f.entity.identity)
+        })
+        .ok_or("no omitted entity")?;
+    let encode = |id: &str| id.bytes().map(|b| format!("%{b:02X}")).collect::<String>();
+    let before = fixture.operations.canonical_basis(fixture.project)?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone())),
+        fixture.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let page = exchange(
+        &server,
+        &format!(
+            "/?view=code&scope=repository&entity={}",
+            encode(&outside.entity.identity)
+        ),
+    );
+    assert!(page.starts_with("HTTP/1.1 200"));
+    assert!(page.contains("Incoming relationships"));
+    assert!(page.contains("Outgoing relationships"));
+    assert!(page.contains("Source locator and retained range"));
+    assert!(page.contains(&outside.entity.identity));
+    let unsafe_entity = analysis
+        .structural_facts
+        .iter()
+        .find(|f| f.entity.area.path == "unsafe<&>.py")
+        .ok_or("unsafe locator fixture")?;
+    let unsafe_page = exchange(
+        &server,
+        &format!(
+            "/?view=code&scope=repository&entity={}",
+            encode(&unsafe_entity.entity.identity)
+        ),
+    );
+    assert!(unsafe_page.starts_with("HTTP/1.1 200"));
+    assert!(unsafe_page.contains("unsafe&lt;&amp;&gt;.py"));
+    assert!(!unsafe_page.contains("unsafe<&>.py"));
+    assert!(exchange(
+        &server,
+        &format!(
+            "/?view=code&scope=work&work={}&entity={}",
+            fixture.goals["older"],
+            encode(&outside.entity.identity)
+        )
+    )
+    .starts_with("HTTP/1.1 404"));
+    assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
+    Ok(())
+}

@@ -193,3 +193,70 @@ fn analysis_snapshot() -> AnalysisSnapshotId {
     AnalysisSnapshotId::from_hex(&"22".repeat(32))
         .unwrap_or_else(|error| panic!("valid Analysis Snapshot fixture identity: {error}"))
 }
+
+#[test]
+fn long_and_duplicate_symbols_use_distinguishing_suffixes_and_sized_geometry() {
+    let mut left = map_entity("one".into());
+    left.display_name = "namespace::query_shared_symbol".into();
+    left.locator = "a/very/long/shared_prefix/native/query.rs".into();
+    let mut right = map_entity("two".into());
+    right.display_name = left.display_name.clone();
+    right.locator = "b/very/long/shared_prefix/runtime/query.rs".into();
+    let labels = super::diagram_node_labels(&[&left, &right]);
+    assert_eq!(labels["one"][0], "query_shared_symbol");
+    assert!(labels["one"].join(" ").contains("native/query.rs"));
+    assert!(labels["two"].join(" ").contains("runtime/query.rs"));
+    assert_ne!(labels["one"], labels["two"]);
+    left.display_name = "unicode_symbol_한글_".repeat(20);
+    let nodes = [&left, &right];
+    let layout = layout_diagram_topology(&nodes, &[]);
+    let a = &layout.positions["one"];
+    let b = &layout.positions["two"];
+    assert!(a.y + a.height < b.y);
+    assert!(a.width >= 320);
+}
+
+#[test]
+fn cycles_self_loops_and_parallel_relations_keep_each_constituent_identity() {
+    let components = [map_entity("a".into()), map_entity("b".into())];
+    let relationships = [
+        map_relation("self".into(), "a".into(), "a".into()),
+        map_relation("a-b-one".into(), "a".into(), "b".into()),
+        map_relation("a-b-two".into(), "a".into(), "b".into()),
+        map_relation("b-a".into(), "b".into(), "a".into()),
+    ];
+    let (nodes, relations) =
+        select_diagram_topology(&components, &relationships, 24, |_| true, true);
+    assert_eq!(relations.len(), 4);
+    assert_eq!(nodes.len(), 2);
+    let layout = layout_diagram_topology(&nodes, &relations);
+    assert_eq!(layout.positions["a"].layer, layout.positions["b"].layer);
+    assert_eq!(
+        relations
+            .iter()
+            .map(|r| r.identity.as_str())
+            .collect::<std::collections::BTreeSet<_>>(),
+        ["self", "a-b-one", "a-b-two", "b-a"].into_iter().collect()
+    );
+}
+
+#[test]
+fn parallel_relations_have_distinct_ports_and_self_loop_stays_outside_node() {
+    let a = map_entity("a".into());
+    let b = map_entity("b".into());
+    let first = map_relation("one".into(), "a".into(), "b".into());
+    let second = map_relation("two".into(), "a".into(), "b".into());
+    let looping = map_relation("loop".into(), "a".into(), "a".into());
+    let rels = [&first, &second, &looping];
+    let layout = layout_diagram_topology(&[&a, &b], &rels);
+    let source = &layout.positions["a"];
+    let target = &layout.positions["b"];
+    assert_ne!(
+        super::diagram_relation_ports(&first, &rels, source, target),
+        super::diagram_relation_ports(&second, &rels, source, target)
+    );
+    let (x1, y1, x2, y2) = super::diagram_relation_ports(&looping, &rels, source, source);
+    assert_eq!(x1, source.x + source.width);
+    assert_eq!(x2, x1);
+    assert!(y1 < y2);
+}

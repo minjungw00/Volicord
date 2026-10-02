@@ -955,7 +955,19 @@ pub fn build_project_projection(
         graph
             .entities
             .iter()
-            .find(|entity| entity.identity == id)
+            .find(|entity| {
+                entity.identity == id
+                    && (inputs.selection == crate::WorkSelector::Repository
+                        || entity_matches_current_work(entity, topology_canonical)
+                        || graph.relations.iter().any(|relation| {
+                            relation_endpoints(relation).any(|end| end == id)
+                                && graph.entities.iter().any(|seed| {
+                                    entity_matches_current_work(seed, topology_canonical)
+                                        && relation_endpoints(relation)
+                                            .any(|end| end == seed.identity)
+                                })
+                        }))
+            })
             .map(|entity| materialize_entity(entity))
     });
     let mut selected_entity_relations = Vec::new();

@@ -897,6 +897,7 @@ fn render_grounded_diagram(
         include_unconnected_components,
     );
     let layout = layout_diagram_topology(&nodes, &relations);
+    let labels = diagram_node_labels(&nodes);
     html.push_str(&format!(
         "<figure class=\"grounded-diagram\" data-diagram=\"{}\"><figcaption>{}</figcaption>",
         escape(diagram_id),
@@ -936,7 +937,7 @@ fn render_grounded_diagram(
         escape(text(request.locale, "Every displayed node and arrow comes from an inspectable Repository Intelligence entity or relation.", "표시된 모든 노드와 화살표는 검사 가능한 Repository Intelligence 엔터티 또는 관계에서 옵니다.")),
         escape(diagram_id)
     ));
-    for relation in &relations {
+    for (edge_index, relation) in relations.iter().enumerate() {
         let Some(target) = relation.target_entity.as_deref() else {
             continue;
         };
@@ -946,7 +947,9 @@ fn render_grounded_diagram(
         let Some(target_position) = layout.positions.get(target) else {
             continue;
         };
-        let (x1, y1, x2, y2) = diagram_edge_points(source, target_position);
+        let (x1, y1, x2, y2) =
+            diagram_relation_ports(relation, &relations, source, target_position);
+        let lane = 14 + (edge_index % 7) * 6;
         html.push_str(&format!(
             "<g class=\"diagram-edge\" data-relation-id=\"{}\" data-relation-class=\"{}\" data-source-entity=\"{}\" data-target-entity=\"{}\"><title>{}: {} → {}</title>",
             escape(&relation.identity),
@@ -960,15 +963,27 @@ fn render_grounded_diagram(
         if relation.source_entity == target {
             html.push_str(&format!(
                 "<path d=\"M {x1} {y1} C {} {} {} {} {x2} {y2}\" marker-end=\"url(#{}-arrow)\"/>",
-                x1 + 70,
-                y1 - 45,
-                x2 + 70,
-                y2 + 45,
+                x1 + 55 + lane,
+                y1.saturating_sub(25),
+                x2 + 55 + lane,
+                y2 + 25,
                 escape(diagram_id)
             ));
         } else {
             html.push_str(&format!(
-                "<line x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" marker-end=\"url(#{}-arrow)\"/>",
+                "<path d=\"M {x1} {y1} Q {} {} {x2} {y2}\" marker-end=\"url(#{}-arrow)\"/>",
+                (x1 + x2) / 2
+                    + if source.x == target_position.x {
+                        lane
+                    } else {
+                        0
+                    },
+                (y1 + y2) / 2
+                    + if source.x != target_position.x {
+                        lane
+                    } else {
+                        0
+                    },
                 escape(diagram_id)
             ));
         }
@@ -996,20 +1011,21 @@ fn render_grounded_diagram(
                     .join(" ")
             })
             .unwrap_or_default();
+        let fragment = reading::fragment_identity(&node.identity);
+        let selected = request.view.detail().entity.as_deref() == Some(node.identity.as_str());
+        html.push_str(&format!("<a href=\"#entity-{fragment}\" tabindex=\"0\" aria-label=\"{}\"><g class=\"diagram-node\" data-selected=\"{selected}\" data-entity-id=\"{}\" data-analysis-snapshot=\"{}\" data-current-work-basis=\"{}\"><title>{} — {}</title><rect x=\"{x}\" y=\"{y}\" width=\"{}\" height=\"{}\" rx=\"8\"/>",escape(&format!("{} — {}",node.display_name,node.locator)),escape(&node.identity),node.analysis_snapshot,escape(&selection_keys),escape(&node.display_name),escape(&node.locator),position.width,position.height));
+        for (line, label) in labels.get(&node.identity).into_iter().flatten().enumerate() {
+            html.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\">{}</text>",
+                x + 12,
+                y + 23 + line * 19,
+                escape(label)
+            ));
+        }
         html.push_str(&format!(
-            "<g class=\"diagram-node\" data-entity-id=\"{}\" data-analysis-snapshot=\"{}\" data-current-work-basis=\"{}\"><title>{} — {}</title><rect x=\"{}\" y=\"{}\" width=\"220\" height=\"64\" rx=\"8\"/><text x=\"{}\" y=\"{}\">{}</text><text class=\"diagram-node-kind\" x=\"{}\" y=\"{}\">{}</text></g>",
-            escape(&node.identity),
-            node.analysis_snapshot,
-            escape(&selection_keys),
-            escape(&node.display_name),
-            escape(&code_entity_kind_label(&node.kind, request.locale)),
-            x,
-            y,
+            "<text class=\"diagram-node-kind\" x=\"{}\" y=\"{}\">{}</text></g></a>",
             x + 12,
-            y + 27,
-            escape(&diagram_label(&node.display_name)),
-            x + 12,
-            y + 49,
+            y + position.height - 12,
             escape(&code_entity_kind_label(&node.kind, request.locale))
         ));
     }
@@ -1025,18 +1041,45 @@ fn render_grounded_diagram(
         ));
     }
     html.push_str(&format!(
-        "<p class=\"bound\">{} {} · {} {}.</p></figure>",
+        "<p class=\"bound\">{} {} · {} {}. {} {} · {} {}. {}</p></figure>",
         nodes.len(),
         escape(text(request.locale, "grounded nodes", "근거 있는 노드")),
         relations.len(),
-        escape(text(request.locale, "grounded edges", "근거 있는 edge"))
+        escape(text(request.locale, "grounded edges", "근거 있는 edge")),
+        understanding
+            .architecture
+            .components
+            .len()
+            .saturating_sub(nodes.len()),
+        text(
+            request.locale,
+            "entities omitted from this diagram (available in the list)",
+            "이 도식에서 생략된 엔터티 (목록에서 확인 가능)"
+        ),
+        understanding
+            .architecture
+            .relationships
+            .iter()
+            .filter(|r| include_relation(r))
+            .count()
+            .saturating_sub(relations.len()),
+        text(
+            request.locale,
+            "relationships omitted from this diagram (available in the list)",
+            "이 도식에서 생략된 관계 (목록에서 확인 가능)"
+        ),
+        text(
+            request.locale,
+            "No relation grouping; every edge retains its own identity.",
+            "관계 그룹화 없음; 각 edge는 자신의 식별자를 유지합니다."
+        )
     ));
 }
 
-const DIAGRAM_NODE_WIDTH: usize = 220;
-const DIAGRAM_NODE_HEIGHT: usize = 64;
-const DIAGRAM_COLUMN_GAP: usize = 60;
-const DIAGRAM_ROW_GAP: usize = 46;
+const DIAGRAM_NODE_WIDTH: usize = 320;
+const DIAGRAM_NODE_HEIGHT: usize = 100;
+const DIAGRAM_COLUMN_GAP: usize = 100;
+const DIAGRAM_ROW_GAP: usize = 70;
 const DIAGRAM_MARGIN_X: usize = 40;
 const DIAGRAM_MARGIN_Y: usize = 45;
 
@@ -1045,6 +1088,8 @@ pub(crate) struct DiagramPosition {
     pub x: usize,
     pub y: usize,
     pub layer: usize,
+    pub width: usize,
+    pub height: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1137,35 +1182,35 @@ fn layout_diagram_topology(nodes: &[&MapEntity], relations: &[&MapRelation]) -> 
             .or_default()
             .push(identities[node]);
     }
+    let labels = diagram_node_labels(nodes);
     let mut positions = BTreeMap::new();
-    let mut maximum_rows = 0;
+    let mut maximum_height = 0;
+    let mut layer_x = DIAGRAM_MARGIN_X;
     for (layer, layer_nodes) in &mut nodes_by_layer {
         layer_nodes.sort_unstable();
-        maximum_rows = maximum_rows.max(layer_nodes.len());
-        for (row, identity) in layer_nodes.iter().enumerate() {
+        let mut row_y = DIAGRAM_MARGIN_Y;
+        for identity in layer_nodes.iter() {
+            let lines = labels.get(*identity).map_or(1, Vec::len);
+            let height = DIAGRAM_NODE_HEIGHT.max(34 + lines * 19);
             positions.insert(
                 (*identity).to_owned(),
                 DiagramPosition {
-                    x: DIAGRAM_MARGIN_X + *layer * (DIAGRAM_NODE_WIDTH + DIAGRAM_COLUMN_GAP),
-                    y: DIAGRAM_MARGIN_Y + row * (DIAGRAM_NODE_HEIGHT + DIAGRAM_ROW_GAP),
+                    x: layer_x,
+                    y: row_y,
                     layer: *layer,
+                    width: DIAGRAM_NODE_WIDTH,
+                    height,
                 },
             );
+            row_y += height + DIAGRAM_ROW_GAP;
         }
+        maximum_height = maximum_height.max(row_y);
+        layer_x += DIAGRAM_NODE_WIDTH + DIAGRAM_COLUMN_GAP;
     }
-    let layer_count = nodes_by_layer
-        .keys()
-        .next_back()
-        .map_or(0, |layer| layer + 1);
     DiagramLayout {
         positions,
-        width: (DIAGRAM_MARGIN_X * 2
-            + layer_count * DIAGRAM_NODE_WIDTH
-            + layer_count.saturating_sub(1) * DIAGRAM_COLUMN_GAP)
-            .max(620),
-        height: DIAGRAM_MARGIN_Y * 2
-            + maximum_rows * DIAGRAM_NODE_HEIGHT
-            + maximum_rows.saturating_sub(1) * DIAGRAM_ROW_GAP,
+        width: (layer_x + DIAGRAM_MARGIN_X).max(620),
+        height: maximum_height + DIAGRAM_MARGIN_Y,
     }
 }
 
@@ -1239,33 +1284,76 @@ fn diagram_edge_points(
 ) -> (usize, usize, usize, usize) {
     if source.x < target.x {
         (
-            source.x + DIAGRAM_NODE_WIDTH,
-            source.y + DIAGRAM_NODE_HEIGHT / 2,
+            source.x + source.width,
+            source.y + source.height / 2,
             target.x,
-            target.y + DIAGRAM_NODE_HEIGHT / 2,
+            target.y + target.height / 2,
         )
     } else if source.x > target.x {
         (
             source.x,
-            source.y + DIAGRAM_NODE_HEIGHT / 2,
-            target.x + DIAGRAM_NODE_WIDTH,
-            target.y + DIAGRAM_NODE_HEIGHT / 2,
+            source.y + source.height / 2,
+            target.x + target.width,
+            target.y + target.height / 2,
         )
     } else if source.y <= target.y {
         (
-            source.x + DIAGRAM_NODE_WIDTH / 2,
-            source.y + DIAGRAM_NODE_HEIGHT,
-            target.x + DIAGRAM_NODE_WIDTH / 2,
+            source.x + source.width / 2,
+            source.y + source.height,
+            target.x + target.width / 2,
             target.y,
         )
     } else {
         (
-            source.x + DIAGRAM_NODE_WIDTH / 2,
+            source.x + source.width / 2,
             source.y,
-            target.x + DIAGRAM_NODE_WIDTH / 2,
-            target.y + DIAGRAM_NODE_HEIGHT,
+            target.x + target.width / 2,
+            target.y + target.height,
         )
     }
+}
+
+fn diagram_relation_ports(
+    relation: &MapRelation,
+    relations: &[&MapRelation],
+    source: &DiagramPosition,
+    target: &DiagramPosition,
+) -> (usize, usize, usize, usize) {
+    if relation.target_entity.as_deref() == Some(relation.source_entity.as_str()) {
+        return (
+            source.x + source.width,
+            source.y + source.height / 3,
+            source.x + source.width,
+            source.y + source.height * 2 / 3,
+        );
+    }
+    let outgoing = relations
+        .iter()
+        .filter(|r| r.source_entity == relation.source_entity)
+        .collect::<Vec<_>>();
+    let incoming = relations
+        .iter()
+        .filter(|r| r.target_entity == relation.target_entity)
+        .collect::<Vec<_>>();
+    let out_index = outgoing
+        .iter()
+        .position(|r| r.identity == relation.identity)
+        .unwrap_or(0)
+        + 1;
+    let in_index = incoming
+        .iter()
+        .position(|r| r.identity == relation.identity)
+        .unwrap_or(0)
+        + 1;
+    let (mut x1, mut y1, mut x2, mut y2) = diagram_edge_points(source, target);
+    if source.x != target.x {
+        y1 = source.y + source.height * out_index / (outgoing.len() + 1);
+        y2 = target.y + target.height * in_index / (incoming.len() + 1);
+    } else {
+        x1 = source.x + source.width * out_index / (outgoing.len() + 1);
+        x2 = target.x + target.width * in_index / (incoming.len() + 1);
+    }
+    (x1, y1, x2, y2)
 }
 
 fn select_diagram_topology<'a>(
@@ -1447,19 +1535,100 @@ fn is_flow_relation(relation: &MapRelation) -> bool {
     .any(|kind| relation.kind.contains(kind))
 }
 
-fn diagram_label(value: &str) -> String {
-    let mut label = value.chars().take(28).collect::<String>();
-    if value.chars().count() > 28 {
-        label.push('…');
-    }
-    label
-}
-
 const fn map_relation_class_key(class: MapRelationClass) -> &'static str {
     match class {
         MapRelationClass::StructuralFact => "structural-fact",
         MapRelationClass::SemanticResult => "semantic-result",
     }
+}
+fn diagram_symbol(entity: &MapEntity) -> String {
+    if matches!(entity.kind, CodeEntityKind::File | CodeEntityKind::Module)
+        && entity.display_name.contains('/')
+    {
+        return entity
+            .display_name
+            .rsplit('/')
+            .next()
+            .unwrap_or(&entity.display_name)
+            .to_owned();
+    }
+    entity
+        .display_name
+        .rsplit("::")
+        .next()
+        .unwrap_or(&entity.display_name)
+        .to_owned()
+}
+fn diagram_node_labels(nodes: &[&MapEntity]) -> BTreeMap<String, Vec<String>> {
+    nodes
+        .iter()
+        .map(|node| {
+            let symbol = diagram_symbol(node);
+            let path = node.locator.split('/').collect::<Vec<_>>();
+            let mut suffix = node.locator.clone();
+            for count in 1..=path.len() {
+                let candidate = path[path.len() - count..].join("/");
+                if !nodes.iter().any(|other| {
+                    other.identity != node.identity
+                        && diagram_symbol(other) == symbol
+                        && other.locator != node.locator
+                        && (other.locator == candidate
+                            || other.locator.ends_with(&format!("/{candidate}")))
+                }) {
+                    suffix = candidate;
+                    break;
+                }
+            }
+            let duplicate = nodes.iter().any(|other| {
+                other.identity != node.identity
+                    && diagram_symbol(other) == symbol
+                    && other.locator == node.locator
+            });
+            let mut lines = Vec::new();
+            if duplicate {
+                lines.push(
+                    node.source_range
+                        .as_ref()
+                        .map(|r| format!("{}:{} {:?}", r.start.line, r.start.column, node.kind))
+                        .unwrap_or_else(|| {
+                            format!(
+                                "{:?} #{}",
+                                node.kind,
+                                node.identity
+                                    .chars()
+                                    .rev()
+                                    .take(12)
+                                    .collect::<String>()
+                                    .chars()
+                                    .rev()
+                                    .collect::<String>()
+                            )
+                        }),
+                );
+            }
+            for label in [symbol, suffix] {
+                let chars = label.chars().collect::<Vec<_>>();
+                let display = if chars.len() > 96 {
+                    chars
+                        .iter()
+                        .take(48)
+                        .copied()
+                        .chain(['…'])
+                        .chain(chars.iter().skip(chars.len() - 47).copied())
+                        .collect::<Vec<_>>()
+                } else {
+                    chars.clone()
+                };
+                for chunk in display.chunks(36) {
+                    lines.push(chunk.iter().collect::<String>());
+                }
+                if chars.len() > 96 {
+                    lines.push(format!("+{} chars; full label in list", chars.len() - 95));
+                }
+            }
+            (node.identity.clone(), lines)
+        })
+        .collect()
 }
 
 fn render_status(
@@ -3640,7 +3809,7 @@ fn escape(value: &str) -> String {
 }
 
 const STYLE: &str = r#"<style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box;min-width:0}p,li,dd,pre{overflow-wrap:anywhere}pre{white-space:pre-wrap}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4,h5{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.view-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.view-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.view-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable],.state[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid,.understanding-grid,.work-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.work-item{border-left:.35rem solid #60a5fa}.work-item[data-work-state=completed]{border-left-color:#22c55e}.work-item[data-work-state=open],.work-item[data-work-state=paused]{border-left-color:#f59e0b}.work-item h5{font-size:1.05rem;margin:.1rem 0}.work-item p{margin:.45rem 0}.work-audit{background:#111827}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}.fact-legend{display:flex;flex-wrap:wrap;gap:.6rem;margin:.75rem 0}.fact-legend span{padding:.25rem .55rem;border-radius:999px}.verified-fact,.verified-facts{border-color:#22c55e}.deterministic-derived{border:1px solid #38bdf8;background:#082f49;padding:.65rem;border-radius:.4rem}.generated-interpretation{border:1px dashed #c084fc;background:#2e1065;padding:.65rem;border-radius:.4rem}.fact-legend .verified-fact{border:1px solid #22c55e;background:#052e16}.fact-legend .deterministic-derived{padding:.25rem .55rem}.grounded-explanations{display:grid;gap:.65rem;margin:.8rem 0}.explanation-item p{margin-top:0}.explanation-evidence{background:#0f2940}.explanation-basis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));gap:.45rem}.explanation-basis div{min-width:0}.explanation-basis dt{font-weight:700}.explanation-basis dd{margin:0;overflow-wrap:anywhere}.grounded-diagram{margin:1rem 0;padding:.75rem;background:#0f172a;border:1px solid #475569;border-radius:.5rem;overflow:auto}.grounded-diagram figcaption{font-weight:700;margin-bottom:.5rem}.grounded-diagram svg{display:block;min-width:42rem;width:100%;height:auto}.diagram-node rect{fill:#1e3a5f;stroke:#93c5fd;stroke-width:2}.diagram-node text{fill:#f8fafc;font-size:14px;font-weight:700}.diagram-node .diagram-node-kind{fill:#cbd5e1;font-size:12px;font-weight:400}.diagram-edge line,.diagram-edge path{fill:none;stroke:#94a3b8;stroke-width:2}.diagram-edge[data-relation-class=semantic-result] line,.diagram-edge[data-relation-class=semantic-result] path{stroke:#c084fc;stroke-dasharray:6 4}.diagram-gap{color:#fbbf24}.understanding-evidence{margin-top:1rem}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box;min-width:0}p,li,dd,pre{overflow-wrap:anywhere}pre{white-space:pre-wrap}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4,h5{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.view-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.view-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.view-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable],.state[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid,.understanding-grid,.work-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.work-item{border-left:.35rem solid #60a5fa}.work-item[data-work-state=completed]{border-left-color:#22c55e}.work-item[data-work-state=open],.work-item[data-work-state=paused]{border-left-color:#f59e0b}.work-item h5{font-size:1.05rem;margin:.1rem 0}.work-item p{margin:.45rem 0}.work-audit{background:#111827}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}.fact-legend{display:flex;flex-wrap:wrap;gap:.6rem;margin:.75rem 0}.fact-legend span{padding:.25rem .55rem;border-radius:999px}.verified-fact,.verified-facts{border-color:#22c55e}.deterministic-derived{border:1px solid #38bdf8;background:#082f49;padding:.65rem;border-radius:.4rem}.generated-interpretation{border:1px dashed #c084fc;background:#2e1065;padding:.65rem;border-radius:.4rem}.fact-legend .verified-fact{border:1px solid #22c55e;background:#052e16}.fact-legend .deterministic-derived{padding:.25rem .55rem}.grounded-explanations{display:grid;gap:.65rem;margin:.8rem 0}.explanation-item p{margin-top:0}.explanation-evidence{background:#0f2940}.explanation-basis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));gap:.45rem}.explanation-basis div{min-width:0}.explanation-basis dt{font-weight:700}.explanation-basis dd{margin:0;overflow-wrap:anywhere}.grounded-diagram{max-width:100%;margin:1rem 0;padding:.75rem;background:#0f172a;border:1px solid #475569;border-radius:.5rem;overflow:auto}.grounded-diagram figcaption{font-weight:700;margin-bottom:.5rem}.grounded-diagram svg{display:block;min-width:42rem;width:100%;height:auto}.diagram-node[data-selected=true] rect{stroke:#fbbf24;stroke-width:4}.diagram-node rect{fill:#1e3a5f;stroke:#93c5fd;stroke-width:2}.diagram-node text{fill:#f8fafc;font-size:14px;font-weight:700}.diagram-node .diagram-node-kind{fill:#cbd5e1;font-size:12px;font-weight:400}.diagram-edge line,.diagram-edge path{fill:none;stroke:#94a3b8;stroke-width:2}.diagram-edge[data-relation-class=semantic-result] line,.diagram-edge[data-relation-class=semantic-result] path{stroke:#c084fc;stroke-dasharray:6 4}.diagram-gap{color:#fbbf24}.understanding-evidence{margin-top:1rem}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
 @media (max-width:44rem){main{padding:1rem}.view-nav{display:grid;grid-template-columns:1fr}.view-nav a{width:100%}.metrics,.fact-states,.preview-meta,.aggregate-grid,.understanding-grid{grid-template-columns:1fr}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.65rem}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.05rem}.button-row button,button{width:100%}}
 </style>"#;
 

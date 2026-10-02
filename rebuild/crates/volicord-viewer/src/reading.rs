@@ -582,7 +582,7 @@ fn code(
         render_deterministic_explanation(html, r, explanation);
     }
     for interpretation in &u.generated_interpretations {
-        html.push_str(&format!("<details data-statement-role=\"generated-interpretation\"><summary>{}</summary><p>{}</p><p>{:?}</p></details>",escape(text(r.locale,"Generated interpretation","생성 해석")),escape(&interpretation.text),interpretation.known_gaps));
+        html.push_str(&format!("<details data-statement-role=\"generated-interpretation\"><summary>{}</summary><p>{}</p><p>{}</p></details>",escape(text(r.locale,"Generated interpretation","생성 해석")),escape(&interpretation.text),escape(&interpretation.known_gaps.join("; "))));
     }
     render_grounded_diagram(
         html,
@@ -616,7 +616,7 @@ fn code(
         ),
     );
     for entity in &u.architecture.components {
-        html.push_str(&format!("<details id=\"entity-{}\" data-entity-id=\"{}\"><summary>{} — {}</summary><p>{}</p><p>{:?}</p>",fragment_identity(&entity.identity),escape(&entity.identity),escape(&entity.display_name),escape(&entity.locator),escape(&code_entity_kind_label(&entity.kind,r.locale)),entity.source_range));
+        html.push_str(&format!("<details id=\"entity-{}\" data-entity-id=\"{}\"><summary>{} — {}</summary><p>{}</p><p>{}</p>",fragment_identity(&entity.identity),escape(&entity.identity),escape(&entity.display_name),escape(&entity.locator),escape(&code_entity_kind_label(&entity.kind,r.locale)),escape(&range_label(entity.source_range.as_ref(),r.locale))));
         if !snapshot {
             let mut view = r.view.clone();
             if let ViewerView::Code {
@@ -639,35 +639,68 @@ fn code(
         }
         html.push_str("</details>");
     }
+    let entities = u
+        .architecture
+        .components
+        .iter()
+        .chain(&p.selected_entity_neighbors)
+        .collect::<Vec<_>>();
     for relation in u
         .architecture
         .relationships
         .iter()
         .chain(&u.evidence.unresolved_relationships)
     {
-        html.push_str(&format!(
-            "<p data-relation-id=\"{}\">{}: {} → {} ({:?})</p>",
-            escape(&relation.identity),
-            escape(&relation.kind),
-            escape(&relation.source_entity),
-            escape(
-                relation
-                    .target_entity
-                    .as_deref()
-                    .or(relation.unresolved_target.as_deref())
-                    .unwrap_or("unresolved")
-            ),
-            relation.class
-        ));
+        relation_detail(html, r, relation, &entities, snapshot);
     }
     if let Some(entity) = &p.selected_entity {
         heading(html, 3, &entity.display_name);
         html.push_str(&format!(
-            "<p>{} · {:?} · {:?}</p>",
+            "<p>{} · {} · {}</p>",
             escape(&entity.locator),
-            entity.kind,
-            entity.source_range
+            escape(&code_entity_kind_label(&entity.kind, r.locale)),
+            escape(&range_label(entity.source_range.as_ref(), r.locale))
         ));
+        html.push_str("<details><summary>");
+        html.push_str(text(
+            r.locale,
+            "Source locator and retained range",
+            "Source 위치 및 보존된 범위",
+        ));
+        html.push_str("</summary><dl>");
+        definition(html, "Source", &entity.source_id.to_string());
+        definition(
+            html,
+            "Analysis Snapshot",
+            &entity.analysis_snapshot.to_string(),
+        );
+        definition(
+            html,
+            "Repository Snapshot",
+            &entity.repository_snapshot.to_string(),
+        );
+        definition(
+            html,
+            text(r.locale, "Freshness", "최신성"),
+            &format!("{:?}", entity.freshness),
+        );
+        definition(
+            html,
+            text(r.locale, "Range", "범위"),
+            &format!("{:?}", entity.source_range),
+        );
+        if let Some(source) = p
+            .source_catalog
+            .iter()
+            .find(|s| s.source.id == entity.source_id)
+        {
+            definition(
+                html,
+                text(r.locale, "Retained Source", "보존된 Source"),
+                &format!("{source:?}"),
+            );
+        }
+        html.push_str("</dl></details>");
         for (label, incoming) in [
             (
                 text(r.locale, "Incoming relationships", "들어오는 관계"),
@@ -686,7 +719,7 @@ fn code(
                     rel.source_entity == entity.identity
                 }
             }) {
-                html.push_str(&format!("<details data-relation-id=\"{}\"><summary>{}: {} → {}</summary><p>{}</p></details>",escape(&relation.identity),escape(&relation.kind),escape(&relation.source_entity),escape(relation.target_entity.as_deref().or(relation.unresolved_target.as_deref()).unwrap_or("unresolved")),escape(&format!("{relation:?}"))));
+                relation_detail(html, r, relation, &entities, snapshot);
             }
         }
         if p.omitted_selected_relation_count > 0 {
@@ -703,7 +736,7 @@ fn code(
     render_understanding_evidence(html, r, u);
     section_end(html);
 }
-fn fragment_identity(id: &str) -> String {
+pub(super) fn fragment_identity(id: &str) -> String {
     id.as_bytes()
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -813,4 +846,98 @@ fn pagination(html: &mut String, r: &ViewerRequest, count: usize, page: usize, w
         );
     }
     html.push_str("</nav>");
+}
+
+fn relation_detail(
+    html: &mut String,
+    r: &ViewerRequest,
+    relation: &MapRelation,
+    entities: &[&MapEntity],
+    snapshot: bool,
+) {
+    let endpoint = |id: &str| entities.iter().copied().find(|e| e.identity == id);
+    html.push_str(&format!("<details class=\"relationship\" data-relation-id=\"{}\" data-relation-class=\"{}\"><summary>{}: {} → {}</summary>",escape(&relation.identity),map_relation_class_key(relation.class),escape(&relation.kind),escape(&endpoint(&relation.source_entity).map(|e|format!("{} — {}",e.display_name,e.locator)).unwrap_or_else(||text(r.locale,"Source endpoint unavailable","출발 엔터티 없음").into())),escape(&relation.target_entity.as_deref().and_then(endpoint).map(|e|format!("{} — {}",e.display_name,e.locator)).unwrap_or_else(||format!("{}: {}",text(r.locale,"Unresolved / unavailable target","미해결 / 이용 불가 대상"),relation.unresolved_target.as_deref().unwrap_or("entity omitted"))))));
+    for id in [&relation.source_entity]
+        .into_iter()
+        .chain(relation.target_entity.as_ref())
+    {
+        if let Some(entity) = endpoint(id) {
+            if !snapshot {
+                html.push_str("<p>");
+                link(
+                    html,
+                    r,
+                    ViewerView::Code {
+                        scope: CodeScope::Repository,
+                        entity: Some(entity.identity.clone()),
+                    },
+                    &format!(
+                        "{}: {}",
+                        text(r.locale, "Open repository entity", "저장소 엔터티 열기"),
+                        entity.display_name
+                    ),
+                    None,
+                );
+                html.push_str("</p>");
+            } else {
+                html.push_str(&format!(
+                    "<p>{} — {}</p>",
+                    escape(&entity.display_name),
+                    escape(&entity.locator)
+                ));
+            }
+        }
+    }
+    html.push_str("<dl>");
+    definition(
+        html,
+        text(r.locale, "Evidence class", "근거 분류"),
+        match relation.class {
+            MapRelationClass::StructuralFact => text(r.locale, "Structural fact", "구조 사실"),
+            MapRelationClass::SemanticResult => text(r.locale, "Semantic result", "의미 분석 결과"),
+        },
+    );
+    definition(
+        html,
+        text(r.locale, "Freshness", "최신성"),
+        &format!("{:?}", relation.freshness.state),
+    );
+    definition(
+        html,
+        text(r.locale, "Supporting range", "근거 범위"),
+        &range_label(relation.supporting_range.as_ref(), r.locale),
+    );
+    html.push_str("</dl><details><summary>");
+    html.push_str(text(
+        r.locale,
+        "Exact relation and Source evidence",
+        "정확한 관계 및 Source 근거",
+    ));
+    html.push_str("</summary><p>");
+    html.push_str(&escape(&format!("{relation:?}")));
+    html.push_str("</p></details></details>");
+}
+
+fn range_label(
+    range: Option<&volicord_repository_intelligence::SourceRange>,
+    locale: ViewerLocale,
+) -> String {
+    range
+        .map(|r| {
+            format!(
+                "{} :{}:{}–{}:{} ({:?}; {:?}){}",
+                r.locator,
+                r.start.line,
+                r.start.column,
+                r.end.line,
+                r.end.column,
+                r.coordinate_convention,
+                r.meaning,
+                r.precision_limit
+                    .as_ref()
+                    .map(|limit| format!("; {limit}"))
+                    .unwrap_or_default()
+            )
+        })
+        .unwrap_or_else(|| text(locale, "Source range unavailable", "Source 범위 없음").into())
 }

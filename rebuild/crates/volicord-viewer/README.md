@@ -76,3 +76,14 @@ path. Only diagrams scroll horizontally; ordinary prose/evidence wraps.
 
 Client disconnects and response-write failures end only the affected connection;
 the listener continues serving subsequent requests without retrying a mutation.
+
+
+Code exploration keeps SCC cycles together and derives edge direction only from
+stored relations. Symbols lead diagram labels; shortest distinguishing path suffixes
+and real range/kind distinguish duplicate names. Sized nodes and separate edge ports
+retain self-loops/parallel edges. SVG links jump to full entity names and locators in
+the equivalent native-details list, so full labels are available on keyboard/touch
+without hover. Relationship lists preserve every constituent identity and count;
+there is no relation grouping. Resolved endpoints have explicit repository-detail
+links; unresolved endpoints never become nodes. Source inspection discloses existing
+snapshot-bound Source/range data and performs no filesystem-path HTTP read.

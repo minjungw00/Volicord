@@ -98,3 +98,23 @@ remains unsupported where canonical input offers no semantic summary. Quotations
 labeled excerpts and explicit unavailable explanations are shown; fixed labels do
 not attest translation. Browser keyboard, touch, zoom and narrow-screen interaction,
 plus actual human comprehension, require independent next-session verification.
+
+
+## Grounded code navigation
+
+Focused Code tests cover long/duplicate symbol labels, distinguishing path suffixes,
+variable node heights, SCC cycles, distinct parallel ports and self-loop geometry.
+The real-entry-point 90-module fixture selects an entity omitted from the first map,
+checks incoming/outgoing lists and retained Source/ranges, rejects unrelated Work
+scope, and checks HTML escaping with the actual `unsafe<&>.py` locator. The original
+polyglot fixture and unresolved structural calls remain in shared Operations tests.
+No constituent relations are grouped; graph omissions and upstream omissions have
+separate counts, and full names/endpoints remain in the native details/list path.
+Snapshot links remain closed to actual unique targets.
+
+No browser automation tool, Chromium binary or Python Playwright installation was
+available in this session. Prototype and production artifacts were inspected through
+maintained markup/semantic assertions, not browser interaction or visual/human review.
+Independent browser checks must exercise SVG focus/fragment behavior, details keyboard
+and touch operation, zoom, long-name node fit, dense/cyclic edge legibility and narrow
+ordinary-text layout. This session does not implement that dedicated runner.
