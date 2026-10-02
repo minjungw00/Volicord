@@ -238,8 +238,7 @@ def verify_rehearsal(evidence: dict[str, Any], expected_a: dict[str, Any],
         for label in ("A", "B", "C"):
             row = by_id[work[label]["goal_id"]]
             if (work[label]["checkpoint_id"] not in row.get("checkpoint_ids", [])
-                    or work[label]["source_id"] not in row.get(
-                        "source_ids", row.get("source_basis", []))
+                    or work[label]["source_id"] not in row.get("source_ids", [])
                     or row.get("state") != ("in_progress" if label == "C" else "paused")):
                 return False
         return True

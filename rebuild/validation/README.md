@@ -93,8 +93,10 @@ surface, not a Volicord product command or production architecture.
   reading consumers and exact Viewer result/state basis. Labeled test interpretations
   prove transport; the separate active-host browser run proves visible content.
   V11 CLI, MCP and portable Work readback use the shared machine state
-  `in_progress`; the rehearsal and bounded archive contract reject retired
-  Debug-derived `inprogress` text rather than admitting two readers.
+  `in_progress` and `source_ids`; the rehearsal and bounded archive contract
+  reject retired Debug-derived `inprogress` text and the old Work-specific
+  `source_basis` alias. Canonical records and Project Purpose keep their own
+  distinct Source fields.
   Its `--self-test` mode also rejects
   internal-primitive-only coverage, missing entrypoints, canonical-only or
   over-broad forgetting, ignored cleanup/repair failure, Candidate

@@ -49,8 +49,6 @@ def fixture():
         "statement": purpose_rows[0]["statement"],
         "source_basis": purpose_rows[0]["source_ids"],
     }]
-    for row in evidence["mcp_understanding"]["work_history"]:
-        row["source_basis"] = row.pop("source_ids")
     expected = {"goal_id": ids["A"], "goal_source_id": sources["A"],
                 "checkpoint_id": checkpoints["A"], "decision_id": decision}
     return evidence, expected, copy.deepcopy(view)
@@ -65,7 +63,9 @@ def self_check(module):
         ("changed MCP purpose", lambda e, p: e["mcp_understanding"].update(project_purpose=[])),
         ("duplicate Work", lambda e, p: e["work"]["C"].update(goal_id=e["work"]["B"]["goal_id"])),
         ("lost A history", lambda e, p: e["status_after"]["work_history"].pop(0)),
-        ("lost MCP source basis", lambda e, p: e["mcp_understanding"]["work_history"][0].pop("source_basis")),
+        ("lost MCP source basis", lambda e, p: e["mcp_understanding"]["work_history"][0].pop("source_ids")),
+        ("retired MCP Work field", lambda e, p: e["mcp_understanding"]["work_history"][0].update(source_basis=e["mcp_understanding"]["work_history"][0].pop("source_ids"))),
+        ("retired portable Work field", lambda e, p: p["work_history"][0].update(source_basis=p["work_history"][0].pop("source_ids"))),
         ("wrong current Work", lambda e, p: e["status_after"].update(current_work=[e["status_after"]["work_history"][1]])),
         ("wrong portable history", lambda e, p: p["work_history"].pop(1)),
         ("retired CLI Debug state", lambda e, p: e["status_after"]["work_history"][2].update(state="inprogress")),
@@ -80,6 +80,7 @@ def self_check(module):
         changed, current, imported = copy.deepcopy(evidence), copy.deepcopy(expected), copy.deepcopy(portable)
         mutate(changed, imported)
         assert not all(module.verify_rehearsal(changed, current, imported).values()), label
+        assert all(module.verify_rehearsal(evidence, expected, portable).values()), label
 
 
 def contract_fixture(contract, project_id="p" * 32):
@@ -139,7 +140,15 @@ def contract_fixture(contract, project_id="p" * 32):
 
 
 def contract_self_check(contract):
-    _, _, original = contract_fixture(contract)
+    raw, restart, original = contract_fixture(contract)
+    # The bounded proof must also reject resurrection of the old Work reader.
+    # Project Purpose and canonical records retain their distinct source_basis.
+    for view in ("status_after", "mcp_understanding", "portable_status"):
+        changed = copy.deepcopy(raw)
+        row = changed[view]["work_history"][0]
+        row["source_basis"] = row.pop("source_ids")
+        assert contract.lifecycle_errors(contract.make_lifecycle_proof(changed, restart)), view
+        assert not contract.lifecycle_errors(contract.make_lifecycle_proof(raw, restart)), view
     mutations = (
         ("wrong Project", lambda p: p["views"]["cli"].update(project_id="wrong")),
         ("wrong Work", lambda p: p["views"]["portable"]["history"][0].update(work_id="wrong")),
@@ -169,6 +178,7 @@ def contract_self_check(contract):
         changed = copy.deepcopy(original)
         mutate(changed)
         assert contract.lifecycle_errors(changed), label
+        assert not contract.lifecycle_errors(original), label
     assert contract.required_counts() == {
         target: len(contract.required_steps_for_target(target))
         for target in contract.TARGETS
