@@ -1128,6 +1128,23 @@ def copy_self_test_fixture(destination: Path, tracked: list[str]) -> list[str]:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, target)
                 selected.append(relative)
+    # Preserve tracked relative-link targets as fixture inputs, including
+    # crate guides and budget data. The checked owner/document set is unchanged.
+    tracked_set = set(tracked)
+    for document in markdown_files(REPOSITORY_ROOT, tracked):
+        for link in re.findall(r"\[[^]]+\]\(([^)]+)\)", document.read_text(encoding="utf-8")):
+            if "://" in link or link.startswith("#"):
+                continue
+            source = (document.parent / link.split("#", 1)[0]).resolve()
+            try:
+                relative = source.relative_to(REPOSITORY_ROOT).as_posix()
+            except ValueError:
+                continue
+            if relative in tracked_set and relative not in selected and source.is_file():
+                target = destination / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+                selected.append(relative)
     return selected
 
 
@@ -1196,6 +1213,16 @@ def self_test() -> int:
             raise AssertionError("positive fixture failed: " + positive_errors[0])
 
         cases: tuple[tuple[str, Callable[[Path, list[str]], None], str], ...] = (
+            (
+                "missing-viewer-reading-guide",
+                lambda root, _: (root / "rebuild/crates/volicord-viewer/README.md").unlink(),
+                "unresolved relative link",
+            ),
+            (
+                "missing-viewer-read-budgets",
+                lambda root, _: (root / "rebuild/validation/end-to-end/multi-repository/viewer-read-budgets.json").unlink(),
+                "unresolved relative link",
+            ),
             (
                 "missing-heading",
                 lambda root, _: replace_once(
