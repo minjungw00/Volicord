@@ -22,6 +22,12 @@ async function check(id, fn) {
   }
 }
 async function frames() { await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))); }
+async function paint() {
+  await page.waitForFunction(()=>performance.getEntriesByName('first-contentful-paint').length>0);
+  const observed=await page.evaluate(()=>({time_origin_ms:performance.timeOrigin,entries:performance.getEntriesByType('paint').map(e=>({name:e.name,start_ms:e.startTime,duration_ms:e.duration}))}));
+  requireFact(observed.entries.some(e=>e.name==='first-contentful-paint' && e.start_ms>0),'browser_paint_timing_unavailable');
+  return observed;
+}
 async function capture(name, target=page.locator('main > section').first()) {
   // Capture the current browser viewport, including native zoom, at the reading
   // surface. Surface screenshots can be blank at deep offsets with tab zoom.
@@ -40,7 +46,7 @@ async function go(url) {
   if (response) requireFact(response.status() === 200, `product_http_${response.status()}`);
   await frames();
   const navigation = await page.evaluate(() => {const n = performance.getEntriesByType('navigation')[0]; return n ? {response_start_ms:n.responseStart,response_end_ms:n.responseEnd,dom_complete_ms:n.domComplete,load_ms:n.loadEventEnd} : null;});
-  result.timings.push({kind: 'navigation', url, ...navigation, note: 'response completion includes transport; separate Rust render stage profiles are recorded by the parent'});
+  result.timings.push({kind: 'navigation', url, ...navigation,paint:await paint(), note: 'Native PaintTiming marks are measured from navigation start; response completion includes transport; separate Rust render stage profiles are recorded by the parent'});
 }
 async function zoom(factor) {
   const before = await page.evaluate(() => ({innerWidth, dpr:devicePixelRatio, visualScale:visualViewport.scale}));
@@ -93,12 +99,20 @@ async function keyboardReach(locator) {
 }
 async function activate(locator, navigation=true) {
   const focus = await keyboardReach(locator);
+  const inputEpoch=await page.evaluate(()=>performance.timeOrigin+performance.now());
   const started = performance.now();
   if (navigation) await Promise.all([page.waitForEvent('load'), page.keyboard.press('Enter')]);
   else await page.keyboard.press('Enter');
   await frames();
   const duration = performance.now() - started;
-  result.timings.push({kind: navigation ? 'keyboard_navigation_two_frames' : 'keyboard_disclosure_two_frames',duration_ms:duration,note:'automation input through two requestAnimationFrame callbacks; diagnostic only, not human paint or naturalistic memory'});
+  const timing={kind: navigation ? 'keyboard_navigation_paint' : 'keyboard_disclosure_two_frames',two_frame_duration_ms:duration,note:'Automation input through two requestAnimationFrame callbacks; native navigation PaintTiming is separate. Disclosure frames do not measure incremental paint completion or human responsiveness.'};
+  if(navigation) {
+    timing.paint=await paint();
+    const first=timing.paint.entries.find(e=>e.name==='first-contentful-paint');
+    timing.input_to_contentful_paint_ms=timing.paint.time_origin_ms+first.start_ms-inputEpoch;
+    requireFact(timing.input_to_contentful_paint_ms>=0,'navigation_paint_precedes_keyboard_input');
+  }
+  result.timings.push(timing);
   return focus;
 }
 async function workFacts(key, locale) {

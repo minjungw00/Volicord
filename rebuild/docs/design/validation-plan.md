@@ -698,6 +698,9 @@ analysis/source copies remain separate supporting facts.
 Existing requested-section counts/stage ceilings are unchanged and fixed before
 final execution. Actual HTTP response completion, Rust server-render stage profiles
 and browser input/two-animation-frame scheduling are separate measurement classes.
+Native first-paint/first-contentful-paint marks and keyboard-navigation input-to-FCP
+use browser time origins across document navigation. Disclosure frame observations
+do not attest incremental paint completion.
 No browser observation claims human responsiveness, complete accessibility,
 semantic comprehension, a percentile SLA or Naturalistic MCP memory evidence.
 

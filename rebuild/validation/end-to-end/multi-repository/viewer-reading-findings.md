@@ -324,3 +324,13 @@ Fresh naturalistic Work A/B usage, Decision/Source comprehension, Learning and
 semantic value, Naturalistic-memory evidence and direct en/ko human observations
 remain separately required. Automated support and later gate execution cannot
 supply those judgments or open Phase 9.
+
+The browser timing support also records native PaintTiming first-paint and
+first-contentful-paint marks for actual document loads, plus keyboard-navigation
+input-to-FCP using browser time origins. These are distinct from HTTP completion
+and automation input/two-frame intervals. Disclosure intervals retain their
+explicit incremental-paint limitation. No new timing threshold or human verdict
+is introduced. The authoritative gate exposed a separate contract-checker
+fixture defect: maintained relative links to the Viewer guide and budget JSON
+were not copied into its positive fixture. Copying tracked link targets and
+adding both missing-target controls preserves the existing link-check authority.

@@ -639,10 +639,13 @@ pass. Browser evaluation is test instrumentation, never shipped Product JavaScri
 
 The V11 recorder preserves child argv, complete streams, numeric exits/signals,
 timeouts and process-group cleanup. Separate files retain actual HTTP completion
-samples (including loopback transport), browser navigation/input/two-frame samples,
+samples (including loopback transport), browser NavigationTiming/native PaintTiming
+marks and keyboard-navigation input-to-FCP samples, disclosure input/two-frame samples,
 and the existing 45 cold/warm Rust stage profiles/counts on the maintained cost
 workload. Two animation frames are diagnostic scheduling observations, not complete
-paint measurement, human responsiveness or Naturalistic MCP memory evidence.
+incremental-paint completion, human responsiveness or Naturalistic MCP memory evidence.
+Navigation paint marks use the browser's first-paint/first-contentful-paint entries;
+keyboard input-to-FCP uses browser time origins across the actual document navigation.
 Thresholds and existing V11/resource budgets are unchanged; no percentile guarantee
 is inferred. Cold means fresh adapter in the Rust workload, first route request in
 the HTTP samples, and never flushed OS caches.
