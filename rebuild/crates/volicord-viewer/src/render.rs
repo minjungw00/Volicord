@@ -273,15 +273,61 @@ impl ViewerAdapter {
         let total_started = Instant::now();
         let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
         let requirements = read_requirements(&request.view, snapshot);
-        let (projection, projection_profile) = self
-            .operations
-            .project_projection_read_profiled(
-                request.project_id,
-                request.view.selection(),
-                request.view.detail(),
-                requirements,
-            )
-            .map_err(|error| {
+        let documents_requested = snapshot
+            || matches!(
+                request.view,
+                crate::ViewerView::Tools {
+                    tool: crate::ViewerTool::Documents
+                }
+            );
+        let preparation_started = Instant::now();
+        let document_request = if documents_requested {
+            Some(DocumentRequest {
+                requested_language: request.requested_language.clone(),
+                fixed_locale: request.locale.fixed(),
+                generated_at: match mode {
+                    ViewerRenderMode::Live { .. } => now()?,
+                    ViewerRenderMode::Snapshot { generated_at } => generated_at,
+                },
+                generator: GeneratorIdentity {
+                    generator: "volicord-local-viewer".into(),
+                    agent: None,
+                    model: None,
+                },
+                requested_destinations: Vec::new(),
+            })
+        } else {
+            None
+        };
+        let preparation_duration = preparation_started.elapsed();
+        let read = if let Some(document_request) = &document_request {
+            self.operations
+                .project_documents_read_profiled(
+                    request.project_id,
+                    request.view.selection(),
+                    request.view.detail(),
+                    document_request,
+                )
+                .map(|(projection, profile, documents, duration)| {
+                    (
+                        projection,
+                        profile,
+                        Some(documents),
+                        duration + preparation_duration,
+                    )
+                })
+        } else {
+            self.operations
+                .project_projection_read_profiled(
+                    request.project_id,
+                    request.view.selection(),
+                    request.view.detail(),
+                    requirements,
+                )
+                .map(|(projection, profile)| (projection, profile, None, Duration::ZERO))
+        };
+        let (projection, projection_profile, documents, document_preview) =
+            read.map_err(|error| {
                 let mut result = ViewerError::new(format!("cannot build Project view: {error}"));
                 result.not_found = error.work_selection_cause().is_some();
                 result
@@ -321,44 +367,7 @@ impl ViewerAdapter {
         let privacy_started = Instant::now();
         let privacy = self.operations.privacy_status(request.project_id).ok();
         let privacy_read = privacy_started.elapsed();
-        let document_started = Instant::now();
-        let document_request = DocumentRequest {
-            requested_language: request.requested_language.clone(),
-            fixed_locale: request.locale.fixed(),
-            generated_at: match mode {
-                ViewerRenderMode::Live { .. } => now()?,
-                ViewerRenderMode::Snapshot { generated_at } => generated_at,
-            },
-            generator: GeneratorIdentity {
-                generator: "volicord-local-viewer".into(),
-                agent: None,
-                model: None,
-            },
-            requested_destinations: Vec::new(),
-        };
-        let documents = if snapshot
-            || matches!(
-                request.view,
-                crate::ViewerView::Tools {
-                    tool: crate::ViewerTool::Documents
-                }
-            ) {
-            Some(
-                self.operations
-                    .documents_from_projection(&projection, &document_request)
-                    .map_err(|error| {
-                        ViewerError::new(format!("cannot generate document preview: {error}"))
-                    })?,
-            )
-        } else {
-            None
-        };
         let document_generations = if documents.is_some() { 4 } else { 0 };
-        let document_preview = if documents.is_some() {
-            document_started.elapsed()
-        } else {
-            Duration::ZERO
-        };
         let guarded_started = Instant::now();
         let guarded = match mode {
             ViewerRenderMode::Live { .. } => request

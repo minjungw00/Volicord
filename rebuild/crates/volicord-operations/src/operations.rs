@@ -2760,13 +2760,59 @@ impl LocalOperations {
         .map(|(projection, _)| projection.resume)
     }
 
+    /// Build the projection and four documents in one coordinated read. The
+    /// inspection lock prevents canonical/explanation mutation from the initial
+    /// read through grounding validation and generation. No external projection
+    /// or persistent freshness receipt can enter this request-local boundary.
+    pub fn project_documents_read_profiled(
+        &self,
+        project_id: ProjectId,
+        selection: volicord_projections::WorkSelector,
+        detail: volicord_projections::ProjectionDetail,
+        request: &DocumentRequest,
+    ) -> Result<
+        (
+            ProjectProjection,
+            ProjectProjectionProfile,
+            DocumentSet,
+            Duration,
+        ),
+        Error,
+    > {
+        let lock_started = Instant::now();
+        let _inspection = self.layout.acquire_health_lock()?;
+        let lock_duration = lock_started.elapsed();
+        let (projection, mut profile) = self.project_projection_read_profiled(
+            project_id,
+            selection,
+            detail,
+            volicord_projections::ProjectionReadRequirements::default(),
+        )?;
+        profile.canonical_read += lock_duration;
+        profile.total += lock_duration;
+        let document_started = Instant::now();
+        // The shared generator validates full inputs, every claim's grounding,
+        // request language and all output bounds. The coordinated read keeps the
+        // canonical and freshly matched explanation basis current throughout;
+        // reloading those same stores cannot supply a newer mutation here.
+        let documents = generate_documents(&projection, request)
+            .map_err(|error| Error::with_source("document generation failed", error))?;
+        let document_duration = document_started.elapsed();
+        Ok((projection, profile, documents, document_duration))
+    }
+
     pub fn documents(
         &self,
         project_id: ProjectId,
         request: &DocumentRequest,
     ) -> Result<DocumentSet, Error> {
-        let projection = self.project_projection(project_id)?;
-        self.documents_from_projection(&projection, request)
+        self.project_documents_read_profiled(
+            project_id,
+            volicord_projections::WorkSelector::LatestWork,
+            volicord_projections::ProjectionDetail::default(),
+            request,
+        )
+        .map(|(_, _, documents, _)| documents)
     }
 
     pub fn documents_from_projection(
@@ -3839,6 +3885,9 @@ impl LocalOperations {
         project_id: ProjectId,
     ) -> Result<Vec<CanonicalInvalidation>, Error> {
         let operations = self.open_forgetting()?.incomplete(Some(project_id))?;
+        if operations.is_empty() {
+            return Ok(Vec::new());
+        }
         let canonical = self.open_canonical()?;
         let mut invalidations = Vec::new();
         for operation in operations {

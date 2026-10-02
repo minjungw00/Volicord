@@ -641,3 +641,92 @@ and rejected twelve removed shapes, V06 passed, all fourteen actual browser chec
 passed, architecture ownership/formatting/workspace Clippy passed. Full preserved
 streams and corrected failed probes remain under ignored focused validation paths.
 No gate/final, official V11 or naturalistic campaign was invoked.
+
+
+## Comparable projection/document regression resolution (2026-10-03)
+
+Entry source was `4f40d372f57779b2c89eadc93ebe1afceb5d5be3`, with a clean tree.
+The unchanged named WSL2/i7-13700K (16 exposed CPUs), Rust/Cargo 1.97.1 debug
+workload reproduced the repeated regression, with no worker-limit override or
+concurrent expensive check. Enforced run
+`20261002T203007.671732Z-projection-cost-before-enforced-q0zkmygx` failed at
+Overview projection 9.825 ms (exit 101). Complete diagnostic run
+`20261002T203031.616744Z-projection-cost-before-diagnostic-sjr70upf` retained
+all 45 rows (exit 0, timing not enforced): Overview, Work and Decision projection
+failed 9/9 each, Snapshot documents failed 9/9, and Code projection failed 2/9.
+All route totals and read/decode/document counts passed. This confirms the
+100301 repeated finding rather than replacing it with one sample or a gate pass.
+All earlier failure evidence remains retained.
+
+Temporary stage instrumentation (removed from production) isolated canonical
+Debug equality hashing at approximately 3.6–4.2 ms, and document generation at
+11–12 ms versus 29–35 ms including repeated canonical/live-basis inspection.
+The first identity-format/empty-invalidation change alone still failed Overview
+projection at 6.564 ms. Typed equality alone then passed projection ceilings but
+failed Snapshot documents at 26.359 ms. Those enforced failures and the full
+profiling streams remain in ignored focused artifacts.
+
+The production changes are field-wise canonical equality hashing, one formatting
+write per opaque ID, no canonical Store open when the forgetting journal has no
+incomplete operations, and coordinated complete document reads. Derived `Hash`
+traverses all `Eq` fields and sequence/enum boundaries into SHA-256 without Debug
+escaping; it binds full Source observations, lifecycle, revision, relation,
+forgetting and merge history. Its value intentionally changes: this current-build
+equality token is neither canonical identity nor a portable fingerprint. The
+Work/Decision preparation fingerprint, exact actions and evidence keys do not
+change. No persisted cache, additional reader, schema version or provider call
+was introduced.
+
+The existing inspection lock spans the initial canonical/projection read through
+all four validated document generations. This makes one freshly matched evidence
+basis coherent for the entire request, eliminating the second identical SQLite
+history read and digest without weakening correction/deletion exclusion. Lock
+acquisition remains charged to canonical reads; generation, grounding, language
+and output-bound validation remain charged to documents. Health/privacy/HTML
+stages occur after releasing the lock. Supplied old projections still use the
+independent live-basis validator; publication still revalidates under the mutation
+lock. The tradeoff is that complete document read/compute holds the existing
+exclusive coordination lock; it runs no analyzer, host generation or provider.
+
+Focused enforced verification
+`20261002T204828.039991Z-optimized-cost-final-focused-hrnebqht` passed (exit 0,
+no termination/spawn error), with all nine samples per route and every unchanged
+stage ceiling/count. Ranges below are all nine samples, not means:
+
+| Stage | Entry range ms | Optimized range ms | Unchanged ceiling ms |
+| --- | ---: | ---: | ---: |
+| Overview projection | 9.242–10.854 | 3.660–4.616 | 5 |
+| Work projection | 8.265–9.492 | 2.802–3.811 | 5 |
+| Decision projection | 9.294–10.123 | 3.691–4.435 | 5 |
+| Code projection | 14.130–15.624 | 8.654–10.313 | 15 |
+| Snapshot projection | 14.950–15.704 | 9.378–11.831 | 18 |
+| Snapshot documents | 29.014–31.277 | 10.198–12.319 | 18 |
+
+A separate `git archive` of actual entry HEAD under ignored local state uses a
+separate Cargo target directory. Only its cost test's output-identity reporting
+and sha2 dev dependency were instrumented; no workload or timing boundary changed.
+`archived-cost-output-identities` retains 45 old-source rows and output hashes,
+but overlapped the functional Viewer suite and is supplementary identity/count
+evidence, not the uncontended timing comparator above. A disposable frozen-read
+probe then read the exact same fresh Runtime and 192-module repository through
+entry and optimized production paths. All 14 en/ko artifacts (full projection,
+all four document bodies/grounding/rendered outputs, and five Viewer surfaces)
+were byte-equal after substituting only the intentional current-build equality
+token. Raw original/normalized identities and both probe streams remain ignored;
+no second production answer reader or maintained snapshot oracle was added.
+
+Focused functional coverage includes required-history selection, all four
+documents for en/ko/unavailable fr-CA, latest/exact/unrelated/Repository selectors,
+Current/absent/stale/corrupt explanation behavior, correction/forget/deletion,
+publication rejection, and full restart negative controls. The document lifecycle
+consumer compares coordinated output with independent supplied-projection
+validation, while retaining its canonical and generated-binding assertions.
+The browser consumer additionally rejects missing/duplicate cold/warm rows,
+missing output/basis hashes, every individual count failure and each stage overrun
+independently of total latency. Output SHA-256 recording occurs after timing ends.
+Initial compile/test instrumentation mistakes and sandbox-blocked listener results
+are preserved; corrected Viewer socket/lifecycle support passed with socket access.
+Workspace Clippy and architecture-owner routing were clean. These focused results
+precede final-candidate install/content/browser/gate/archive evidence, which is
+reported separately in the final session handoff. No human qualification or Phase 9
+approval follows from these scoped technical observations.

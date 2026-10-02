@@ -595,34 +595,41 @@ pub fn decision_answers(
 /// Internal current-build equality token. Never an authenticity or schema version.
 pub fn canonical_read_fingerprint(canonical: &volicord_context::CanonicalReadBasis) -> String {
     use sha2::{Digest, Sha256};
-    use std::fmt::Write;
-    // Preserve the exact current-build Debug byte stream while avoiding a
-    // second complete prose buffer. Batch tiny formatting writes before hashing.
+    use std::hash::{Hash, Hasher};
+    // Hash derives traverse every Eq field, including full source observations,
+    // lifecycle and revision history. Avoid Debug escaping/identity formatting.
+    // This token is deliberately current-build only, not a portable digest.
     struct DigestWriter {
         digest: Sha256,
         buffer: Vec<u8>,
     }
-    impl Write for DigestWriter {
-        fn write_str(&mut self, value: &str) -> std::fmt::Result {
+    impl Hasher for DigestWriter {
+        fn finish(&self) -> u64 {
+            // Hash::hash only writes; the caller finalizes the full SHA-256.
+            let mut digest = self.digest.clone();
+            digest.update(&self.buffer);
+            let bytes = digest.finalize();
+            let mut prefix = [0_u8; 8];
+            prefix.copy_from_slice(&bytes[..8]);
+            u64::from_le_bytes(prefix)
+        }
+        fn write(&mut self, value: &[u8]) {
             if self.buffer.len() + value.len() > 8192 {
                 self.digest.update(&self.buffer);
                 self.buffer.clear();
             }
             if value.len() >= 8192 {
-                self.digest.update(value.as_bytes());
+                self.digest.update(value);
             } else {
-                self.buffer.extend_from_slice(value.as_bytes());
+                self.buffer.extend_from_slice(value);
             }
-            Ok(())
         }
     }
     let mut writer = DigestWriter {
         digest: Sha256::new(),
         buffer: Vec::with_capacity(8192),
     };
-    // This writer cannot fail; hashing is an ephemeral equality check, not a
-    // durable-state transition. No complete string is built on failure.
-    let _ = write!(&mut writer, "{canonical:?}");
+    canonical.hash(&mut writer);
     writer.digest.update(&writer.buffer);
     format!("{:x}", writer.digest.finalize())
 }

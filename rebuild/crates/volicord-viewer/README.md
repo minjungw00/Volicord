@@ -116,8 +116,16 @@ materialized Work/Checkpoint input bytes and unique retained explanation freshne
 preparations. Store reads and metadata indexes still scale with complete history;
 these counters do not measure allocation, RSS or model inference. Explanation
 freshness results are reused within one read, with no additional persisted cache.
-The four document previews share one final live-basis check; publication still
-checks current provenance under Local Operations coordination.
+The four document previews use `LocalOperations::project_documents_read_profiled`:
+the existing inspection lock spans the initial complete projection and validated
+generation, keeping canonical and freshly matched explanation inputs coherent.
+Independent `documents_from_projection` calls still revalidate supplied inputs;
+publication checks current provenance under Local Operations coordination. The
+lock is released before Viewer health/privacy/render stages. No request receipt
+or content is reused by another request. Profiles charge lock acquisition to
+canonical reads and all document generation/validation to the document stage.
+Canonical equality binds every Eq field through derived Hash and SHA-256 without
+Debug formatting; its value is internal to the current build, not a portable ID.
 
 `ViewerRenderProfile` exposes one projection pass, standalone metadata reads,
 graph decode attempts (including failed attempts), Candidate basis reads, document

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Coupled fail-closed boundary/tooling controls; never browser or human evidence."""
+import copy
 import json
 from pathlib import Path
 import sys
@@ -32,6 +33,33 @@ class SnapshotBoundaryTests(unittest.TestCase):
         ]:
             with self.subTest(expected=expected):
                 self.assertIn(expected, browser.snapshot_boundary(html))
+
+
+class ReadSampleTests(unittest.TestCase):
+    def setUp(self):
+        self.budgets = json.loads((browser.HERE / "viewer-read-budgets.json").read_text())
+        self.samples = [dict(workload=route, sample=sample, adapter="fresh-first-then-warm", html_sha256="a"*64, canonical_basis_sha256="b"*64,
+                             **counts, **{stage+"_us":ceiling for stage,ceiling in self.budgets["ceilings_us"][route].items()})
+                        for route,counts in self.budgets["required_counts"].items() for sample in range(9)]
+
+    def test_all_stages_and_counts_at_ceiling_are_accepted(self):
+        browser.validate_read_samples(self.samples, self.budgets, True)
+
+    def test_last_snapshot_stage_exceedance_is_not_hidden_by_total(self):
+        self.samples[-1]["documents_us"] += 1
+        with self.assertRaisesRegex(RuntimeError, "stage ceiling"):
+            browser.validate_read_samples(self.samples, self.budgets, True)
+        browser.validate_read_samples(self.samples, self.budgets, False)
+
+    def test_missing_duplicate_counts_and_output_identities_are_rejected(self):
+        for mutation in [lambda s:s.pop(), lambda s:s.__setitem__(-1,s[0]),
+                         lambda s:s[-1].__setitem__("documents",3), lambda s:s[0].__setitem__("graph_decodes",1),
+                         lambda s:s[0].__setitem__("health_graph_decodes",1),lambda s:s[0].__setitem__("html_sha256",None),
+                         lambda s:s[0].__setitem__("canonical_basis_sha256","short"),lambda s:s[0].__setitem__("projection_us",None)]:
+            rows=copy.deepcopy(self.samples)
+            mutation(rows)
+            with self.assertRaises(RuntimeError):
+                browser.validate_read_samples(rows,self.budgets,False)
 
 
 class MissingExecutionTests(unittest.TestCase):

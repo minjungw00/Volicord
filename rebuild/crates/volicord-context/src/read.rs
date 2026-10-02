@@ -10,7 +10,7 @@ pub struct CanonicalReadOptions {
     pub include_checkpoint_history: bool,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SourceFreshness {
     Current,
     Stale,
@@ -18,7 +18,7 @@ pub enum SourceFreshness {
     Unknown,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct SourceReadBasis {
     pub source: Source,
     pub snapshot_basis: Option<String>,
@@ -26,14 +26,14 @@ pub struct SourceReadBasis {
     pub freshness: SourceFreshness,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct CanonicalRevisionBasis {
     pub record_kind: CanonicalRecordKind,
     pub record_identity: String,
     pub revisions: Vec<u64>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ReadRelationBasis {
     pub from_kind: String,
     pub from_identity: String,
@@ -43,14 +43,14 @@ pub struct ReadRelationBasis {
     pub recorded_at: TimestampMicros,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ForgottenRecordBasis {
     pub record_kind: CanonicalRecordKind,
     pub record_identity: String,
     pub forgotten_at: TimestampMicros,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ForgottenCheckpointSourceBasis {
     pub checkpoint_identity: String,
     pub source_identity: String,
@@ -58,7 +58,7 @@ pub struct ForgottenCheckpointSourceBasis {
     pub position: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct MergeReadBasis {
     pub operation_identity: String,
     pub conflict_set_identity: String,
@@ -76,7 +76,7 @@ pub struct MergeReadBasis {
     pub committed_at: TimestampMicros,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct CanonicalReadBasis {
     pub project: Project,
     pub active_questions: Vec<Question>,

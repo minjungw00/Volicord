@@ -104,6 +104,34 @@ def inspect_record(result):
     return harness.decoded(result)
 
 
+def validate_read_samples(samples, budgets, timing_enforced):
+    """Independently require every named cold/warm sample and every stage/count."""
+    expected = {(route, sample) for route in budgets["required_counts"] for sample in range(9)}
+    seen = set()
+    for row in samples:
+        key = (row.get("workload"), row.get("sample"))
+        if key not in expected or key in seen or type(key[1]) is not int:
+            raise RuntimeError("Unexpected or duplicate cold/warm read sample")
+        seen.add(key)
+        route = key[0]
+        for field, count in budgets["required_counts"][route].items():
+            if type(row.get(field)) is not int or row[field] != count:
+                raise RuntimeError(f"Read count invariant failed: {key}/{field}")
+        for field in ["html_sha256", "canonical_basis_sha256"]:
+            if not isinstance(row.get(field), str) or not re.fullmatch(r"[0-9a-f]{64}", row[field]):
+                raise RuntimeError(f"Missing output/basis identity: {key}/{field}")
+        if row.get("adapter") != "fresh-first-then-warm":
+            raise RuntimeError("Read sample changed the adapter cold/warm definition")
+        for stage, ceiling in budgets["ceilings_us"][route].items():
+            value = row.get(stage + "_us")
+            if type(value) is not int or value < 0:
+                raise RuntimeError(f"Missing read stage measurement: {key}/{stage}")
+            if timing_enforced and value > ceiling:
+                raise RuntimeError(f"Read stage ceiling exceeded: {key}/{stage}")
+    if seen != expected:
+        raise RuntimeError("Missing cold/warm read samples")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--chromium", required=True, type=Path)
@@ -316,8 +344,7 @@ def main():
         budget_extra = {"VOLICORD_VIEWER_BUDGETS": "1"} if args.enforce_read_budgets else {}
         samples = run("read-profiles", ["cargo", "test", "--manifest-path", "rebuild/Cargo.toml", "-p", "volicord-viewer", "--test", "reading", "requested_sections_on_large_repository", "--", "--exact", "--nocapture"], extra=budget_extra)
         raw_samples = [json.loads(line.split("VIEWER_READ_SAMPLE ", 1)[1]) for line in samples.splitlines() if line.startswith("VIEWER_READ_SAMPLE ")]
-        if len(raw_samples) != 45:
-            raise RuntimeError("Missing cold/warm stage samples")
+        validate_read_samples(raw_samples, json.loads((HERE / "viewer-read-budgets.json").read_text()), args.enforce_read_budgets)
         harness.write_json(output / "read-samples.json", raw_samples)
         result["checks"]["read-cost"] = {"status":"passed", "samples":len(raw_samples), "timing_enforced":args.enforce_read_budgets, "budget_sha256":harness.sha256(HERE / "viewer-read-budgets.json"), "cold_definition":"adapter cold, not OS cache cold", "browser_timing":"separate diagnostic input/two-frame/navigation observations; no percentile claim"}
         result["status"] = "passed"

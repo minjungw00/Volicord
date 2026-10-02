@@ -1088,11 +1088,25 @@ Recall/document inputs unchanged. No unrelated repository components replace thi
 neighborhood. Resolved endpoints, unresolved evidence and exact omissions remain
 separate, and an explicit entity selection is not a canonical Work-seed assertion.
 
-Document set의 live-basis 검사는 네 preview에 포함된 provenance를 합쳐 generation 후 한 번
-수행한다. 기존 inspection coordination lock으로 canonical/explanation 삭제와 조정하며,
-Candidate 저장소 장애는 unrelated store의 private-path 준비 실패로 승격하지 않는다.
-Publication은 계속 explicit Local Operations mutation boundary에서 별도로 current basis를
-검사한다. 이 최적화는 삭제·수정 이후 새 read/export의 stale text 차단을 약화하지 않는다.
+Local Operations의 coordinated document read는 기존 inspection coordination lock을
+canonical read 이전부터 네 preview의 grounding·output validation과 generation 완료까지
+유지한다. 하나의 complete projection과 freshly matched retained explanation basis를 사용하며,
+이 request 안에서 같은 canonical history를 재조회하거나 freshness plan을 재계산하지 않는다.
+Lock, canonical/analysis read, projection과 document generation 비용은 각각 기존 profile
+stage에 포함한다. 이미 만들어진 외부 projection의 document generation은 generation 후
+별도 live-basis 검사를 유지한다. Publication도 계속 explicit Local Operations mutation
+boundary에서 current basis를 별도로 검사한다. Request가 끝나면 lock과 근거는 재사용하지
+않으며, persistent cache나 adapter-owned validity authority를 추가하지 않는다. Candidate
+저장소 장애는 unrelated store의 private-path 준비 실패로 승격하지 않는다.
+삭제·수정 이후 새 read/export의 stale text 차단과 네 complete preview는 유지한다.
+
+Canonical read equality token은 full `CanonicalReadBasis`의 derived field-wise `Hash` 입력을
+SHA-256으로 계산한다. 모든 Eq field, enum/sequence/field boundary, Source observation,
+revision·relation·forgetting·merge history를 포함하며 Debug formatting/escaping을 수행하지
+않는다. 이는 native/current-build 내부 equality binding이며 portable digest·authenticity·schema
+version이 아니다. Token 값 변경은 canonical identity나 explanation plan fingerprint를 변경하지
+않는다. 다른 build에서 생성된 준비 artifact는 다시 render한 뒤 current publication 검사를
+통과해야 한다.
 
 
 CLI `status`, `recall`, `decisions`의 ordinary text는 공통 answer prose와 독립적으로 선택된

@@ -33,10 +33,15 @@ macro_rules! opaque_id {
 
         impl fmt::Display for $name {
             fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                for byte in self.0 {
-                    write!(formatter, "{byte:02x}")?;
+                const HEX: &[u8; 16] = b"0123456789abcdef";
+                let mut encoded = [0_u8; 32];
+                for (byte, pair) in self.0.iter().zip(encoded.chunks_exact_mut(2)) {
+                    pair[0] = HEX[usize::from(byte >> 4)];
+                    pair[1] = HEX[usize::from(byte & 15)];
                 }
-                Ok(())
+                // One formatting write for the same ASCII identity, including
+                // Debug/evidence digests over complete canonical histories.
+                formatter.write_str(std::str::from_utf8(&encoded).map_err(|_| fmt::Error)?)
             }
         }
     };
@@ -121,5 +126,20 @@ mod tests {
         assert_eq!(generator.next_id()?, [7; 16]);
         assert_eq!(generator.next_id()?, [9; 16]);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod formatting_tests {
+    use super::*;
+
+    #[test]
+    fn identity_formatting_preserves_all_bytes_and_debug_representation() {
+        for value in 0..=u8::MAX {
+            let bytes = std::array::from_fn(|i| value.wrapping_add(i as u8));
+            let expected = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+            assert_eq!(ProjectId::from_bytes(bytes).to_string(), expected);
+            assert_eq!(format!("{:?}", SourceId::from_bytes(bytes)), expected);
+        }
     }
 }

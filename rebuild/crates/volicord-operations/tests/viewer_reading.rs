@@ -965,11 +965,10 @@ fn large_history_materializes_only_required_subjects_before_evidence_copying(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = fixture()?;
     let mut canonical = fixture.operations.canonical_basis(fixture.project)?;
-    // Streaming binding preserves the exact former byte-stream equality token.
-    use sha2::{Digest, Sha256};
+    // The ephemeral token binds the complete Eq basis, independently of display.
     assert_eq!(
         canonical_read_fingerprint(&canonical),
-        format!("{:x}", Sha256::digest(format!("{canonical:?}").as_bytes()))
+        canonical_read_fingerprint(&canonical.clone())
     );
     let goal = canonical
         .context_items
@@ -1148,5 +1147,122 @@ fn large_history_materializes_only_required_subjects_before_evidence_copying(
         .is_err());
         println!("WORK_HISTORY_SAMPLE page={page} elapsed_us={} total_input_bytes={input_bytes} cost={cost:?}", started.elapsed().as_micros());
     }
+    Ok(())
+}
+
+#[test]
+fn canonical_equality_binding_detects_content_status_history_and_scope_changes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    let mut canonical = f.operations.canonical_basis(f.project)?;
+    canonical.active_questions.push(
+        canonical
+            .terminal_question_history
+            .first()
+            .ok_or("historical Question")?
+            .clone(),
+    );
+    let expected = canonical_read_fingerprint(&canonical);
+    let check = |label: &str, change: fn(&mut CanonicalReadBasis)| {
+        let mut changed = canonical.clone();
+        change(&mut changed);
+        assert_ne!(changed, canonical, "{label} must change the basis");
+        assert_ne!(canonical_read_fingerprint(&changed), expected, "{label}");
+    };
+    check("project", |c| c.project.display_name.push('!'));
+    check("question", |c| c.active_questions[0].prompt_basis.push('!'));
+    check("terminal history", |c| c.terminal_question_history.clear());
+    check("decision", |c| {
+        c.active_decisions[0]
+            .decision
+            .displayed_recommendation
+            .rationale
+            .push('!')
+    });
+    check("superseded history", |c| c.superseded_decisions.clear());
+    check("Goal", |c| c.context_items[0].statement.push('!'));
+    check("latest action", |c| {
+        c.latest_checkpoint.as_mut().unwrap().next_step.push('!')
+    });
+    check("old checkpoint", |c| {
+        c.checkpoint_history[0].next_step.push('!')
+    });
+    check("source availability", |c| {
+        c.sources[0].availability = if c.sources[0].availability == Availability::Unknown {
+            Availability::Available
+        } else {
+            Availability::Unknown
+        }
+    });
+    check("source freshness", |c| {
+        c.sources[0].freshness = if c.sources[0].freshness == SourceFreshness::Unknown {
+            SourceFreshness::Current
+        } else {
+            SourceFreshness::Unknown
+        }
+    });
+    check("source snapshot", |c| {
+        c.sources[0].snapshot_basis = Some("changed".into())
+    });
+    check("source actor", |c| {
+        c.sources[0].source.actor.identity.push('!')
+    });
+    check("revision catalog", |c| c.revisions[0].revisions.push(900));
+    check("relations", |c| {
+        c.relations.push(ReadRelationBasis {
+            from_kind: "checkpoint".into(),
+            from_identity: "a".into(),
+            relation_kind: "supported_by".into(),
+            to_kind: "source".into(),
+            to_identity: "b".into(),
+            recorded_at: TimestampMicros::from_unix_micros(5),
+        })
+    });
+    check("forgotten records", |c| {
+        c.forgotten.push(ForgottenRecordBasis {
+            record_kind: CanonicalRecordKind::Checkpoint,
+            record_identity: "gone".into(),
+            forgotten_at: TimestampMicros::from_unix_micros(5),
+        })
+    });
+    check("forgotten Source use", |c| {
+        c.forgotten_checkpoint_sources
+            .push(ForgottenCheckpointSourceBasis {
+                checkpoint_identity: "gone".into(),
+                source_identity: "support".into(),
+                semantic_use: "verification".into(),
+                position: 1,
+            })
+    });
+    check("merge history", |c| {
+        c.bundle_merges.push(MergeReadBasis {
+            operation_identity: "merge".into(),
+            conflict_set_identity: "conflict".into(),
+            conflict_revision: 1,
+            common_base_basis: None,
+            local_history_basis: "local".into(),
+            incoming_history_basis: "incoming".into(),
+            result_history_basis: "result".into(),
+            resolution_kind: "unresolved".into(),
+            resolution_source_identity: None,
+            conflict_classes: vec!["modify".into()],
+            affected_identities: vec!["a".into()],
+            unresolved: true,
+            branch_history_basis: None,
+            committed_at: TimestampMicros::from_unix_micros(5),
+        })
+    });
+    check("ordering", |c| {
+        c.stable_ordering_identity.push("extra".into())
+    });
+    // Field/sequence boundaries must survive without Debug punctuation.
+    let mut left = canonical.clone();
+    let mut right = canonical.clone();
+    left.stable_ordering_identity = vec!["ab".into(), "c".into()];
+    right.stable_ordering_identity = vec!["a".into(), "bc".into()];
+    assert_ne!(
+        canonical_read_fingerprint(&left),
+        canonical_read_fingerprint(&right)
+    );
     Ok(())
 }

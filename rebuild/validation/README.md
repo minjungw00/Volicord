@@ -592,6 +592,14 @@ without concurrent expensive validation. First-request cold means a fresh adapte
 not flushed operating-system caches. Neither these samples nor markup/semantic
 checks provide a population p95, universal SLA, browser interaction or human-review
 qualification. Existing V11/resource budgets are unchanged.
+Stage samples also retain HTML SHA-256, complete canonical equality binding,
+requested Work/language and the existing count invariants. The browser consumer
+independently checks all nine samples per route, each named stage and count;
+missing/duplicate samples, output identities and individual overruns cannot be
+hidden by a total/mean. All hashing for sample output identity occurs after the
+production timing intervals. The coherent document read/lock boundary and
+external-projection/publication revalidation are maintained in the Viewer README.
+
 
 ### Browser support for Viewer reading (V11 owner)
 

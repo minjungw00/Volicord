@@ -5,7 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Availability {
     Available,
     Unavailable,
@@ -34,7 +34,7 @@ impl Availability {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum PrincipalKind {
     User,
     Agent,
@@ -72,13 +72,13 @@ impl PrincipalKind {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Principal {
     pub kind: PrincipalKind,
     pub identity: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CommandTermination {
     Exited,
     Signaled,
@@ -107,13 +107,13 @@ impl CommandTermination {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct CommandOutcome {
     pub exit_code: Option<i32>,
     pub termination: CommandTermination,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum SourcePayload {
     RepositorySnapshot {
         revision: String,
@@ -172,7 +172,7 @@ pub struct SourceDraft {
     pub availability: Availability,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Project {
     pub id: ProjectId,
     pub display_name: String,
@@ -191,7 +191,7 @@ pub struct LocalBinding {
     pub bound_at: TimestampMicros,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Source {
     pub id: SourceId,
     pub project_id: ProjectId,
@@ -240,7 +240,7 @@ pub struct OperationResult<T> {
     pub replayed: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct QuestionDependency {
     pub question_id: QuestionId,
     pub required_revision: u64,
@@ -251,7 +251,7 @@ pub struct QuestionDependency {
     pub assessment_source_basis: Vec<SourceId>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum QuestionMateriality {
     Material,
     NotMaterial,
@@ -274,7 +274,7 @@ impl QuestionMateriality {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum QuestionEvidenceFreshness {
     Current,
     Stale,
@@ -303,7 +303,7 @@ impl QuestionEvidenceFreshness {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct QuestionEstablishedFact {
     pub statement: String,
     pub source_basis: Vec<SourceId>,
@@ -311,7 +311,7 @@ pub struct QuestionEstablishedFact {
     pub freshness: QuestionEvidenceFreshness,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum QuestionResearchState {
     ReadyToAsk,
     ResearchRequired,
@@ -334,14 +334,14 @@ impl QuestionResearchState {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct QuestionAlternative {
     pub key: String,
     pub label: String,
     pub consequence: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct AgentRecommendation {
     pub alternative_key: Option<String>,
     pub rationale: String,
@@ -370,7 +370,7 @@ pub struct QuestionDraft {
     pub research_state: QuestionResearchState,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum QuestionTerminalOutcome {
     Answered,
     Delegated,
@@ -408,7 +408,7 @@ impl QuestionTerminalOutcome {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum NonUserQuestionOutcome {
     ResolvedByResearch,
     RequiresPrototype,
@@ -452,7 +452,7 @@ impl NonUserQuestionOutcome {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct QuestionTerminalDisposition {
     pub outcome: QuestionTerminalOutcome,
     pub source_basis: Vec<SourceId>,
@@ -463,13 +463,13 @@ pub struct QuestionTerminalDisposition {
     pub recorded_at: TimestampMicros,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum QuestionState {
     Open,
     Terminal(QuestionTerminalOutcome),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Question {
     pub id: QuestionId,
     pub project_id: ProjectId,
@@ -497,7 +497,7 @@ pub struct Question {
     pub updated_at: TimestampMicros,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct ApplicabilityScope {
     pub paths: Vec<String>,
     pub components: Vec<String>,
@@ -507,7 +507,7 @@ pub struct ApplicabilityScope {
 /// The explicit work grouping to which a Decision applies. A Work Item uses
 /// the canonical identity of its source-grounded Goal Context Item; text,
 /// paths, and record chronology are never grouping identities.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum DecisionWorkScope {
     #[default]
     Unresolved,
@@ -525,13 +525,13 @@ impl DecisionWorkScope {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum DecisionChoice {
     Alternative { alternative_key: String },
     Delegation { delegate_to: String },
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Decision {
     pub id: DecisionId,
     pub project_id: ProjectId,
@@ -603,7 +603,7 @@ pub struct QuestionDispositionDraft {
     pub actor: Principal,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ContextItemRole {
     ProjectPurpose,
     Goal,
@@ -647,7 +647,7 @@ impl ContextItemRole {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum StatementProvenanceRole {
     UserStatement,
     Observed,
@@ -687,7 +687,7 @@ pub struct ContextItemDraft {
     pub applicability: ApplicabilityScope,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ContextItem {
     pub id: ContextItemId,
     pub project_id: ProjectId,
@@ -746,7 +746,7 @@ pub struct DecisionSupersessionDraft {
     pub revisit_triggers: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum CanonicalRecordKind {
     Project,
     Source,
@@ -781,7 +781,7 @@ impl CanonicalRecordKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CanonicalRecordId {
     Project(ProjectId),
     Source(SourceId),
@@ -839,7 +839,7 @@ pub struct CanonicalRelation {
     pub recorded_at: TimestampMicros,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ReviewDueKind {
     ScopeChanged,
     AssumptionChanged,
@@ -871,7 +871,7 @@ impl ReviewDueKind {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ReviewDue {
     pub project_id: ProjectId,
     pub decision_id: DecisionId,
@@ -888,7 +888,7 @@ pub struct ReviewDueDraft {
     pub source_basis: Vec<SourceId>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct DecisionLifecycle {
     pub decision: Decision,
     pub superseded_by: Option<DecisionId>,
@@ -915,7 +915,7 @@ pub struct ForgetResult {
     pub invalidation: CanonicalInvalidation,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum CheckpointKind {
     Completion,
     Pause,
@@ -941,7 +941,7 @@ impl CheckpointKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum WorkState {
     InProgress,
     Paused,
@@ -973,7 +973,7 @@ impl WorkState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum VerificationState {
     NotRun,
     Partial,
@@ -1002,7 +1002,7 @@ impl VerificationState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum UserReviewState {
     NotRequested,
     Pending,
@@ -1028,7 +1028,7 @@ impl UserReviewState {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum UserAcceptanceState {
     NotRequested,
     Pending,
@@ -1057,26 +1057,26 @@ impl UserAcceptanceState {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct VerificationFact {
     pub state: VerificationState,
     pub source_id: Option<SourceId>,
     pub outcome: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct UserReviewFact {
     pub state: UserReviewState,
     pub source_id: Option<SourceId>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct UserAcceptanceFact {
     pub state: UserAcceptanceState,
     pub source_id: Option<SourceId>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct QuestionReference {
     pub question_id: QuestionId,
     pub revision: u64,
@@ -1104,7 +1104,7 @@ pub struct CheckpointDraft {
     pub handoff_to: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Checkpoint {
     pub id: CheckpointId,
     pub project_id: ProjectId,

@@ -470,6 +470,51 @@ fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_public
         },
         requested_destinations: Vec::new(),
     };
+    for (language, locale) in [
+        ("en", FixedLocale::English),
+        ("ko", FixedLocale::Korean),
+        ("fr-CA", FixedLocale::English),
+    ] {
+        let request = DocumentRequest {
+            requested_language: language.into(),
+            fixed_locale: locale,
+            ..request.clone()
+        };
+        for selector in [
+            WorkSelector::LatestWork,
+            WorkSelector::ExactWork(work),
+            WorkSelector::ExactWork(f.goals["older"]),
+            WorkSelector::Repository,
+        ] {
+            let (coordinated, profile, documents, _) = restarted.project_documents_read_profiled(
+                f.project,
+                selector,
+                ProjectionDetail::default(),
+                &request,
+            )?;
+            assert_eq!(profile.analysis_snapshot_decodes, 1);
+            assert_eq!(profile.candidate_reads, 1);
+            if selector == WorkSelector::LatestWork {
+                assert_eq!(profile.explanation_basis_preparations, 2);
+            }
+            assert_eq!(
+                documents,
+                restarted.documents_from_projection(&coordinated, &request)?
+            );
+            for document in [
+                &documents.project_architecture_guide,
+                &documents.decision_report,
+                &documents.implementation_plan,
+                &documents.handoff_resume,
+            ] {
+                assert_eq!(
+                    document.metadata.canonical_read_fingerprint,
+                    coordinated.canonical_read_fingerprint
+                );
+                assert_eq!(document.metadata.requested_language, language);
+            }
+        }
+    }
     let documents = restarted.documents(f.project, &request)?;
     for d in [
         &documents.project_architecture_guide,
