@@ -188,6 +188,7 @@ def main():
             ROOT / "rebuild/crates/volicord-viewer/tests/reading.rs",
             ROOT / "rebuild/crates/volicord-operations/tests/support/reading_fixture.rs",
             HERE / "viewer_browser.py", HERE / "viewer_browser_driver.cjs", HERE / "viewer-read-budgets.json",
+            HERE / "harness.py",
         ]}
         result["fixture_tree_sha256"] = harness.tree_hash(FIXTURE)
         run("build-candidate", ["cargo", "build", "--manifest-path", "rebuild/Cargo.toml", "-p", "volicord-operations", "-p", "volicord-viewer"])

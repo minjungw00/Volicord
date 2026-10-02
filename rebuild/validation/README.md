@@ -165,6 +165,13 @@ restart, and injects unavailable, corrupt, and unsupported Candidate stores to
 require an explicit degraded dependency state while canonical inspection
 remains usable.
 
+The Viewer snapshot consumer treats whole export's labeled repository Code scope
+separately from current-Work MCP components. It checks shared Analysis Snapshot
+basis, native entity/list fragment and label identity, exact relation endpoints,
+retained resolved edges and inspectable reduced diagrams. Attribute order has no
+semantic meaning. These supporting checks do not replace the browser runner's
+independent canonical/source expectations or direct human reading observations.
+
 ## Scripted conformance and naturalistic dogfood
 
 V11 is the maintained scripted conformance boundary. Its deterministic journey

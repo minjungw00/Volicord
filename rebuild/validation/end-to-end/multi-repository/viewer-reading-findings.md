@@ -344,3 +344,28 @@ can display provide a separate positive control: an omitted seed remains 200
 and the selected diagram node. Product scope/membership behavior is unchanged;
 the named cost workload's generator/count/stage ceilings are unchanged. The
 browser result now hashes the maintained reading-test source explicitly too.
+
+
+## Whole-snapshot V11 consumer correction
+
+A real authorized gate at candidate `5e230e66fae53a584d727ce92585ac224267bd07`
+passed ordered Final, live provider qualification, all three authenticated probes,
+resource budgets and credential audit. Its three `source_grounded_understanding`
+checks failed because the consumer expected adjacent SVG attributes and compared
+whole-snapshot repository Code against empty current-Work MCP components. It also
+required removed empty-state wording and a resolved edge even when displayed stored
+entities truthfully have no resolved relationship. The gate/result/archive remain
+retained and independently verified; this failed aggregate is not a pass.
+
+The corrected bounded consumer reads attributes independently of order, requires
+repository scope labeling, matches node Analysis Snapshot identities with MCP
+snapshot evidence, and follows exact native entity/list fragments and readable
+labels. Every rendered edge must match the native exact relation identity, class
+and endpoints; resolved relationships between displayed nodes cannot silently
+lose their edges. Disconnected components require explicit no-edge/no-flow gaps;
+empty diagrams require inspectable capability-gap explanations. Controls reject
+missing edges, foreign snapshots, missing fragments/relations/narratives, changed
+list labels, invented endpoints and uninspectable absence. This aligns a supporting
+conformance consumer with the current snapshot scope; independent canonical/source
+semantics remain the separate browser runner's responsibility. It adds no human
+verdict, provider authority, threshold or alternative gate.
