@@ -55,6 +55,29 @@ pub fn fixture_scenario(input: Value) -> Result<Fixture, Box<dyn std::error::Err
     fixture_with_temporary(tempdir()?, false, input)
 }
 
+#[allow(dead_code)]
+pub fn rich_scenario() -> Result<Value, Box<dyn std::error::Error>> {
+    let mut input: Value = serde_json::from_str(SCENARIO)?;
+    input["prior_checkpoint_count"] = serde_json::json!(0);
+    input["later_checkpoint_count"] = serde_json::json!(0);
+    let cases: Value = serde_json::from_str(include_str!("../../../../validation/end-to-end/multi-repository/fixtures/viewer-reading/answer-cases.json"))?;
+    for case in cases["cases"].as_array().ok_or("cases")? {
+        input["works"].as_array_mut().ok_or("works")?.push(serde_json::json!({
+            "key":case["key"], "title":format!("{} — {}",case["title"].as_str().ok_or("title")?,case["purpose"].as_str().ok_or("purpose")?),
+            "paths":["runtime/query_boundary.ts"], "checkpoints":[{
+                "key":format!("{}-change",case["key"].as_str().ok_or("key")?),"work":"Completed", "verification":case["verification"],
+                "review":"NotRequested","acceptance":"NotRequested","state_change":case["state_change"],
+                "next_step":case["next_step"],"outcome":case["outcome"],"limits":case["limits"]
+            }]
+        }));
+    }
+    Ok(input)
+}
+#[allow(dead_code)]
+pub fn rich_fixture_in(parent: &std::path::Path) -> Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_with_temporary(tempfile::tempdir_in(parent)?, false, rich_scenario()?)
+}
+
 // Browser supporting checks retain only their explicitly selected disposable home.
 #[allow(dead_code)]
 pub fn fixture_in(parent: &std::path::Path) -> Result<Fixture, Box<dyn std::error::Error>> {
@@ -384,9 +407,12 @@ fn fixture_with_temporary(
                         vec![VerificationFact {
                             state: verification_state(verification),
                             source_id: commands.get(verification).copied(),
-                            outcome: commands
-                                .contains_key(verification)
-                                .then(|| "synthetic observed outcome".into()),
+                            outcome: commands.contains_key(verification).then(|| {
+                                cp["outcome"]
+                                    .as_str()
+                                    .unwrap_or("synthetic observed outcome")
+                                    .into()
+                            }),
                         }]
                     },
                     user_review: UserReviewFact {
@@ -401,7 +427,15 @@ fn fixture_with_temporary(
                         )
                         .then_some(user),
                     },
-                    known_limits: vec!["Fixture only, not human evidence".into()],
+                    known_limits: cp["limits"]
+                        .as_array()
+                        .map(|values| {
+                            values
+                                .iter()
+                                .filter_map(|v| v.as_str().map(str::to_owned))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| vec!["Fixture only, not human evidence".into()]),
                     non_goals: Vec::new(),
                     open_questions: Vec::new(),
                     next_step: cp["next_step"]

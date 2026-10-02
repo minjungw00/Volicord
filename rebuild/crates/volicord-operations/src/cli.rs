@@ -175,6 +175,7 @@ fn command() -> Command {
         .subcommand(Command::new("recall").about("Resume from bounded Project memory"))
         .subcommand(Command::new("questions").about("Show the current material Question frontier").arg(repeat_arg("scope", "SCOPE", "Restrict the material scope")))
         .subcommand(Command::new("decisions").about("Inspect current and historical Decisions"))
+        .subcommand(work_command())
         .subcommand(document_command())
         .subcommand(viewer_command())
         .subcommand(context_command())
@@ -198,6 +199,52 @@ fn repeat_arg(id: &'static str, value: &'static str, help: &'static str) -> Arg 
         .value_name(value)
         .action(ArgAction::Append)
         .help(help)
+}
+
+fn work_command() -> Command {
+    let subject = || {
+        Arg::new("work")
+            .long("work")
+            .required(true)
+            .value_name("WORK_ID")
+    };
+    let language = || {
+        Arg::new("language")
+            .long("language")
+            .default_value("en")
+            .value_name("LANGUAGE")
+    };
+    Command::new("work")
+        .about("Read and explain a specific Work")
+        .subcommand_required(true)
+        .subcommand(
+            Command::new("explain")
+                .about("Explicit active-host Work explanation; never invokes a background provider")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("prepare")
+                        .about("Read full evidence and generation instructions")
+                        .arg(subject())
+                        .arg(language()),
+                )
+                .subcommand(
+                    Command::new("record")
+                        .about(
+                            "Retain an explicitly generated host response with current grounding",
+                        )
+                        .arg(subject())
+                        .arg(language())
+                        .arg(
+                            path_arg("input", "input", "Host-generated realization JSON")
+                                .required(true),
+                        ),
+                )
+                .subcommand(
+                    Command::new("delete")
+                        .about("Delete all retained explanations for this Work")
+                        .arg(subject()),
+                ),
+        )
 }
 
 fn document_command() -> Command {
@@ -614,6 +661,7 @@ fn dispatch(
             inquiry(operations, &mut cursor)?
         }
         "decisions" => decisions(operations, resolve_project(operations, selection)?)?,
+        "work" => dispatch_work_explanation(operations, selection, matches)?,
         "document" => dispatch_document(operations, selection, matches)?,
         "viewer" => return dispatch_viewer(runtime, operations, selection, matches),
         "context" => dispatch_context(operations, selection, matches)?,
@@ -633,6 +681,55 @@ fn dispatch(
         _ => return Err(Error::new("unsupported command")),
     };
     Ok(Some(value))
+}
+
+fn dispatch_work_explanation(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    matches: &ArgMatches,
+) -> Result<Value, Error> {
+    let (_, actions) = matches
+        .subcommand()
+        .ok_or_else(|| Error::new("explain is required"))?;
+    let (action, args) = actions
+        .subcommand()
+        .ok_or_else(|| Error::new("an explanation action is required"))?;
+    let project = resolve_project(operations, selection)?;
+    let work = ContextItemId::from_bytes(parse_identity(required(args, "work")?)?);
+    match action {
+        "prepare" => Ok(
+            json!({"operation":"work_explanation_prepare", "plan":operations.prepare_work_explanation(project,work,required(args,"language")?)?}),
+        ),
+        "record" => {
+            let file = std::fs::File::open(required_path(args, "input")?)
+                .map_err(|e| Error::with_source("cannot open generated response", e))?;
+            let mut bytes = Vec::new();
+            file.take(volicord_projections::WORK_EXPLANATION_BYTE_LIMIT as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| Error::with_source("cannot read generated response", e))?;
+            if bytes.len() > volicord_projections::WORK_EXPLANATION_BYTE_LIMIT {
+                return Err(Error::new("generated response exceeds body budget"));
+            }
+            let header: Value = serde_json::from_slice(&bytes)
+                .map_err(|e| Error::with_source("invalid generated response JSON", e))?;
+            if header["format_kind"] != volicord_projections::WORK_EXPLANATION_KIND
+                || header["format_version"] != volicord_projections::WORK_EXPLANATION_VERSION
+            {
+                return Err(Error::new(
+                    "unsupported Work explanation format; regenerate",
+                ));
+            }
+            let response = serde_json::from_value(header)
+                .map_err(|e| Error::with_source("invalid Work explanation", e))?;
+            Ok(
+                json!({"operation":"work_explanation_record","explanation":operations.record_work_explanation(project,work,required(args,"language")?,response)?}),
+            )
+        }
+        "delete" => Ok(
+            json!({"operation":"work_explanation_delete", "deleted":operations.delete_work_explanations(project,work)?}),
+        ),
+        _ => Err(Error::new("unsupported explanation action")),
+    }
 }
 
 fn dispatch_document(
@@ -963,6 +1060,7 @@ fn section_count_json(section: &volicord_projections::WorkSection) -> Value {
 fn work_json(work: &volicord_projections::UnderstandingWork) -> Value {
     json!({
         "reading": {
+            "explanations": work.reading.explanations.iter().map(|e|json!({"language":e.language,"state":debug_name(e.state),"content":e.content,"diagnostic":e.diagnostic})).collect::<Vec<_>>(),
             "answers": {
                 "result":work.reading.answers.result.as_ref().map(reading_text_json),
                 "result_observed_at":work.reading.answers.result_observed_at.map(|t| t.as_unix_micros()),

@@ -998,8 +998,16 @@ fail explicitly; malformed input is distinguishable and never selects a substitu
 Read completed/failed/pending/rejected dimensions independently, including older
 verification preceding later changes. Preserve Purpose absence, missing user
 rationale, superseded/review-due Decisions, stale/unavailable analysis and polyglot
-unresolved relations. Long multilingual/audit-heavy text may be a labeled excerpt;
-record which tasks still require interpreting the entire original. Automated
+unresolved relations. Ordinary Work reading must answer purpose, reported change,
+expected effect, verification/limits and next step when evidence supports them;
+long multilingual/audit-heavy original text belongs in explicit evidence disclosure.
+An excerpt or unavailable notice alone does not satisfy a source-rich task. A generic
+implementation-changed report supplies no specific feature. Current recorded host
+interpretations must match exact evidence and requested language; stale/corrupt/unsupported
+content is withheld. No verification record differs from NotRun; reported completion
+does not certify a passed test, review or acceptance. Overview classification precedes
+category-specific bounds and is independent of catalog pages, with exact completeness
+and total/displayed/omitted meaning. Automated
 fixtures and disposable prototypes do not establish human-observed comprehension,
 V11 qualification, a naturalistic campaign or Phase 9 readiness.
 

@@ -17,6 +17,7 @@ mod operations;
 mod payload;
 mod provider;
 mod recall;
+mod work_explanation;
 
 pub use analysis_storage::{
     AnalysisFileFootprint, AnalysisReachabilityReference, AnalysisSectionFootprint,

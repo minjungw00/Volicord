@@ -642,21 +642,20 @@ fn render_work_card(
         escape(work_reading_display(&work.reading.goal, request.locale)),
         escape(understanding_work_state_label(work.state, request.locale))
     ));
-    if let Some(change) = work.reading.answers.result.as_ref() {
-        html.push_str(&format!(
-            "<p><strong>{}:</strong> {}</p>",
-            escape(text(
-                request.locale,
-                "Latest meaningful change",
-                "최근 의미 있는 변경"
-            )),
-            escape(work_reading_display(change, request.locale))
-        ));
-    }
-    if work.next_step.is_some() {
+    reading::work_explanation(html, request, work, false);
+    if work.next_step.is_some()
+        && !work.reading.explanations.iter().any(|e| {
+            e.language == request.requested_language
+                && e.state == volicord_projections::WorkExplanationState::Current
+        })
+    {
         html.push_str(&format!(
             "<p class=\"work-next-step\"><strong>{}:</strong> {}</p>",
-            escape(text(request.locale, "Next step", "다음 단계")),
+            escape(text(
+                request.locale,
+                "Next step quotation",
+                "다음 단계 인용"
+            )),
             escape(work_reading_display(
                 &work.reading.next_step,
                 request.locale

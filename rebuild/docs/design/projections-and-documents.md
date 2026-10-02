@@ -302,10 +302,77 @@ also retains these separate Source bases/status and available revisions for Reca
 Operations status JSON adds selection/selected Work and evidence-linked `reading`
 inside each Work. Four-document projections consume truthful display text and the
 latest independent state observation; the Viewer consumes display text
-while retaining original quotation evidence in disclosure. Semantic
-Work-prose realization, human comprehension evidence, canonical read pagination,
+while retaining original quotation evidence in disclosure. Work prose uses the
+explicit realization lifecycle below. Human comprehension evidence, canonical read pagination,
 selection-specific Store queries and avoiding full-history cloning/decoding remain
 later work. Display bounds do not yet constitute a bounded read-cost guarantee.
+
+### Implemented Work explanation lifecycle
+
+`prepare_work_explanation(CanonicalReadBasis, ContextItemId, language)` produces
+`WorkExplanationPlan` for `work_outcome`, independently of document NarrativePlan.
+`LocalOperations::{prepare_work_explanation, record_work_explanation,
+delete_work_explanations}` expose the lifecycle. Public CLI entry points are
+`work explain prepare`, `work explain record --input FILE`, and `work explain delete`;
+prepare/record require `--work` and accept `--language` (default `en`); delete requires `--work`.
+They use the usual explicit Project/runtime or bound-repository resolution.
+
+Preparation contains full selected result prose, Goal, next step, separately selected
+state/verification/review/acceptance, historical observations, same-Work limits,
+Project Purpose, canonical contradiction/supersession relations and immutable Source
+observations. Each evidence key identifies record kind, identity, revision, field and
+Sources; Source entries preserve snapshot, availability, freshness, actor and observer.
+The preparation is bounded at 131,072 bytes and fails rather than silently truncating
+source material. Its SHA-256 fingerprints these inputs, scope, question, instructions
+and exact language. Unrelated Work/catalog insertion does not change this basis.
+
+The current active host interprets this plan under its existing interaction authority.
+There is no production deterministic free-prose engine: the audit-heavy source cases
+showed that truthful first-384-character quotations do not answer the task, and the
+canonical fields do not separately encode feature purpose or expected effect.
+Inventing source-specific lexical rules would not generalize to the reordered variant
+and independent export case. Deterministic selection and state explanations remain
+appropriate for structured facts; explicit host realization supplies Work prose.
+
+`WorkExplanationRealization` uses exact-current `volicord_work_explanation` version 1,
+plan fingerprint, language, host/session and nullable agent/model provenance, and
+question/text/evidence-key paragraphs. Purpose, reported change, expected effect,
+verification and next step each require one answer; optional limits may be additional.
+Recording recomputes the plan under the existing mutation lock, rejects stale/foreign
+keys or mismatched language/version, and bounds the response at 16,384 bytes. This
+validates structure and grounding references, **not** prose entailment, translation
+quality, model identity, authorship or implementation success. All generator identity
+is `self_reported_not_independently_verified`; unknown model stays null.
+
+The existing Privacy managed `CachedSummary` store retains disposable Derived content
+under exact Project/Work/language purpose. `RetainedWorkExplanation` preserves subject,
+question, evidence revisions/fields/Sources, snapshot/status, conflicts, fingerprint,
+recording time and generator status without duplicating original evidence text.
+Canonical links cover every used record and Source. No canonical schema, Viewer
+database, provider invocation, background opt-in or adoption authority is introduced.
+
+Reads select the latest retained envelope per Work/language and recompute its basis.
+`WorkExplanationReading` distinguishes Current, Stale, Unavailable, Unsupported and
+Corrupt; only Current carries displayable prose. New/corrected/forgotten evidence,
+changed Source status or conflict relations hide old prose. Missing generation is
+distinct from missing result evidence and dependency failure. Privacy forgetting
+barriers and managed deletion remove linked content; explicit delete removes all
+languages/history of this Work and sanitizes local storage. Lost cache can be explicitly
+regenerated from available evidence; GET/navigation/snapshot export never generate.
+
+`WorkReading.explanations` and Operations status JSON expose this state. Work detail
+shows the five answers in ordinary reading; Overview shows change, verification and
+next step from the same content. Exact requested language controls prose, while shared
+`FixedLocale` controls product labels. Result original text is a closed, explicitly
+labeled evidence quotation with exact basis, never the primary Work explanation.
+The replaced primary result-excerpt calls are removed from Work cards and Overview;
+original quotation helpers remain for evidence, Goal/Decision reading and legitimate
+document/Recall contracts. No parallel semantic-summary flag path is introduced.
+
+The fresh fixture/public CLI/browser reproduction is maintained in
+`rebuild/crates/volicord-viewer/README.md`. Fake test responses exercise lifecycle only;
+eight actual active-host recordings on four independent/limited cases in two languages
+establish this narrow implemented path, not human comprehension or gate qualification.
 
 ## 2. First project-scoped automatic Recall
 

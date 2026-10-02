@@ -532,6 +532,20 @@ failure는 canonical state를 바꾸지 않는다. 편집본이나 생성물을 
 별도의 explicit adoption intent를 Kernel operation에 제출한다. Publication success와
 adoption success는 독립 결과다.
 
+### Work-specific interactive explanation
+
+Projections and Documents owns Work question selection, preparation, structural
+realization validation and read states, independently of document NarrativePlan.
+Local Operations coordinates explicit prepare/record/delete, current canonical
+grounding and the existing mutation lock. Privacy and Provider Boundary owns local
+managed Derived retention/deletion in its existing CachedSummary store, including
+canonical forgetting barriers. Host and User Adapters consume these shared APIs;
+the active host authors the requested interpretation under current interaction
+authority. Viewer renders current recorded prose and canonical remainder without
+generation on reads. This introduces no canonical entity, Viewer persistence,
+background-provider dependency or new approval authority. Detailed lifecycle,
+format and failure contracts remain with their specialized owners.
+
 ### 8. Background semantic-provider opt-in
 
 Host and User Adapter가 Project-scoped opt-in intent와 inspectable source scope를

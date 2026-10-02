@@ -32,11 +32,11 @@ fn scenario() -> Value {
     input["later_checkpoint_count"] = json!(0);
     input
 }
-// Explicit baseline reproductions are excluded until their replacements connect.
+// Initially explicit baseline reproductions; now ordinary regression checks.
 #[test]
 fn result_survives_null_and_blank_verification_prefixes() -> Result<(), Box<dyn std::error::Error>>
 {
-    for blank in [Value::Null] {
+    {
         let mut input = scenario();
         input["works"][0]["checkpoints"]
             .as_array_mut()
@@ -44,7 +44,7 @@ fn result_survives_null_and_blank_verification_prefixes() -> Result<(), Box<dyn 
             .truncate(2);
         input["works"][0]["checkpoints"][0]["state_change"] =
             json!("Reported relay implementation change");
-        input["works"][0]["checkpoints"][1]["state_change"] = blank;
+        input["works"][0]["checkpoints"][1]["state_change"] = Value::Null;
         let f = fixture_scenario(input)?;
         let page = get(&server(&f), "/?view=overview");
         let card = page
@@ -171,5 +171,35 @@ fn current_work_survives_a_catalog_full_of_completed_work() -> Result<(), Box<dy
         current_section.contains(&current.to_string()),
         "current Work lost to catalog pagination"
     );
+    use volicord_projections::{
+        build_project_understanding, ProjectionDetail, UnderstandingBound, WorkSelector,
+    };
+    let mut seen = None;
+    for page in [0, 1] {
+        let (projection, _) = f.operations.project_projection_detail_profiled(
+            f.project,
+            WorkSelector::Repository,
+            ProjectionDetail {
+                work_page: page,
+                ..Default::default()
+            },
+        )?;
+        let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+        assert_eq!(understanding.work_overview.current.total, 1);
+        assert_eq!(understanding.work_overview.completed.total, 89);
+        assert_eq!(understanding.work_overview.completed.items.len(), 8);
+        assert_eq!(understanding.work_overview.completed.omitted, 81);
+        assert!(understanding.work_overview.completed.complete);
+        for pair in understanding.work_overview.completed.items.windows(2) {
+            assert!(
+                pair[0].reading.answers.result_observed_at
+                    >= pair[1].reading.answers.result_observed_at
+            );
+        }
+        if let Some(previous) = &seen {
+            assert_eq!(previous, &understanding.work_overview);
+        }
+        seen = Some(understanding.work_overview);
+    }
     Ok(())
 }

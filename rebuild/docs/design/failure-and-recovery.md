@@ -119,6 +119,25 @@ cause와 현재 workflow/required next action을 보존하며 internal storage s
 재시도하거나 “projection만 실패했으므로 canonical commit도 없었다”고 가정하지
 않는다. 두 result identity와 retry ownership을 분리한다.
 
+### Work explanation failure
+
+Work reads distinguish no reported result, no generated interpretation in the
+requested language, stale evidence, unavailable preparation/storage, corrupt
+current-format content and unsupported format. Only Current retained content is
+shown; failure preserves canonical answers and explicit original evidence. A
+contradiction/supersession relation is visible even for a freshly recorded interpretation
+and is not resolved by generation. Structured state facts remain separate from prose.
+
+Explicit record recomputes the current fingerprint under the mutation lock and
+rejects wrong version/language/evidence roles before retention. A rejected response
+does not replace earlier usable content. Recovery is explicit preparation, active-host
+generation and recording; reads never retry generation or transmission. Evidence-budget
+failure reports insufficiency without truncation. Cache loss cannot damage canonical
+records. Explicit deletion reports incomplete sanitization and can be retried, while
+the existing canonical forgetting barrier withholds affected content immediately.
+Host execution/access/authorization failure is separate from missing canonical facts;
+the product cannot invent that authority or certify submitted prose truth.
+
 ### Guarded confirmation and execution failure contract
 
 Guarded confirmation outcome은 confirmation request/revision, user-response Source와

@@ -369,3 +369,60 @@ list labels, invented endpoints and uninspectable absence. This aligns a support
 conformance consumer with the current snapshot scope; independent canonical/source
 semantics remain the separate browser runner's responsibility. It adds no human
 verdict, provider authority, threshold or alternative gate.
+
+## Question-scoped answers and actual Work interpretation
+
+The earlier record-reading/excerpt observations are superseded for ordinary Work
+results by the current `WorkAnswers`, independent `WorkOverview`, shared locale
+labels and explicit Work explanation lifecycle. Original evidence remains available;
+Recall and document quotations retain their existing responsibilities.
+
+The baseline focused product-entry-point reproductions failed with exit 101 for
+all three reported defects: null result suppression, current Work outside an
+ID-paged catalog, and Korean Debug labels. Connected regression tests now pass.
+Ninety Works with identity order opposed to chronology demonstrate classification
+before independent category bounds (eight) and exact total/displayed/omitted counts.
+Blank state-change authoring is rejected by the canonical writer, so its attempted
+prefix preserves prior answers; a supported null verification observation preserves
+the earlier result. Later changes disclose earlier verification as historical.
+
+The audit-heavy search case places semantic change after a large audit prefix;
+a truthful 384-character excerpt cannot answer purpose/change/effect. The canonical
+fields do not separately structure those facts. Current production uses explicit
+active-host interpretation of a full evidence plan, rather than fixture recognizers
+or a renamed excerpt. A reordered/paraphrased search variant and independent CSV
+failure case exercise different source wording. The preserved generic result supplies
+no identifiable feature or expected effect.
+
+A fresh canonical Runtime was produced by maintained `seed_work_explanation_runtime`,
+with no retained interpretations. The active Codex host read the actual public CLI
+preparations, authored eight responses (four cases × English/Korean) and recorded
+all eight through `work explain record`, each exit 0. Search answers describe
+sequence-based older-response exclusion, its expected visible-result effect, the
+recorded unit pass and missing browser checks. Export answers distinguish temporary-file
+publication from a failed disk-full check and pending cleanup. Generic answers
+state that the feature/effect is unspecified and separate explicit NotRun, review
+and rejection. Responses/prose remain ignored local model output, not maintained
+fixtures or production templates. Generator/model identity is self-reported/unknown,
+not independently certified.
+
+The maintained `work_explanation_browser.py` and shared browser driver observed all
+five question answers in ordinary reading for eight actual loopback pages at 390×900;
+all eight passed independent claim requirements. Result evidence stayed closed and
+audit hashes were absent from ordinary answers. Creator uncertainty was inspectable.
+GET/navigation changed neither canonical export bytes nor provider/managed-record
+counts. Complete streams, numeric exit 0, screenshots and browser/font identities
+were preserved in focused local artifacts. An initial DOM-success run revealed missing
+Korean glyphs on screenshot inspection. A local Korean-capable font configuration
+corrected that prerequisite; the runner now rejects absent Korean fonts. The rerun
+passed and the Korean search screenshot was inspected for readable glyphs.
+
+Lifecycle tests separately cover exact language, stale response rejection, wrong
+format/evidence role, supported correction, conflict invalidation and fresh conflict
+warning, corrupt/non-current cache, no verification record, explicit local deletion
+and canonical forgetting with retained bytes removed. Fake test responses prove
+mechanics only. Preparation/reference hashes do not prove prose truth or authorship.
+The maintained reproduction inputs, public interfaces and browser commands are in
+`rebuild/crates/volicord-viewer/README.md`; fresh host output is required on reproduction.
+These observations establish a narrow implemented explanation path, not a human
+comprehension assessment, naturalistic campaign, official V11 or cutover gate.

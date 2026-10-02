@@ -59,7 +59,10 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
             );
         }
         assert!(page.contains(if locale == "en" { "failed" } else { "실패" }));
-        assert!(page.contains("Semantic summary unavailable") || page.contains("의미 요약"));
+        assert!(
+            page.contains("Work interpretation has not been generated")
+                || page.contains("작업 해석이 아직 생성되지")
+        );
         assert!(!page.contains(&fixture.decisions["other_work"].to_string()));
         let decision = exchange(
             &server,

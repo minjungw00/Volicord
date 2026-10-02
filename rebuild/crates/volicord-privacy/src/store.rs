@@ -560,6 +560,34 @@ impl PrivacyStore {
         })
     }
 
+    /// Exact local Derived deletion; no provider dispatch or canonical mutation.
+    /// Secure cleanup also applies when retrying already deleted identities.
+    pub fn delete_managed_ids(
+        &mut self,
+        project: ProjectId,
+        ids: &[ManagedDerivedId],
+        basis: &str,
+    ) -> Result<(), Error> {
+        validate_text("managed deletion basis", basis)?;
+        let now = self.clock.now().map_err(clock_error)?;
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(write_error)?;
+        for id in ids {
+            let mut record = self.get_derived(project, *id)?;
+            record.content = None;
+            record.state = ManagedDerivedState::Deleted;
+            record.local_deletion = Some(LocalDeletion {
+                deleted_at: now,
+                basis: basis.into(),
+            });
+            self.update_derived(&record)?;
+        }
+        transaction.commit().map_err(write_error)?;
+        sanitize_deleted_content(&self.connection)
+    }
+
     pub fn cleanup_expired(
         &mut self,
         project_id: ProjectId,

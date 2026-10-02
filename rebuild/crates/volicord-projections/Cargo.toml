@@ -9,6 +9,8 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
 sha2 = "0.10.9"
 volicord-context = { path = "../volicord-context" }
 volicord-inquiry = { path = "../volicord-inquiry" }

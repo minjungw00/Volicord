@@ -136,7 +136,7 @@ pub(super) fn warnings(
     }
     html.push_str("</ul>");
     if request.requested_language != locale_key(request.locale) {
-        empty_state(html,text(request.locale,"Requested-language realization is unavailable. Original quotations preserve their source language; fixed labels use the selected locale.","요청 언어 실현을 사용할 수 없습니다. 원문 인용은 원래 언어를 유지하며 고정 설명은 선택한 UI 언어를 사용합니다."));
+        empty_state(html,text(request.locale,"Recorded Work interpretations appear only for their exact requested language. Original quotations preserve their source language; fixed labels use the selected locale.","기록된 작업 해석은 정확히 일치하는 요청 언어로만 표시합니다. 원문 인용은 원래 언어를 유지하며 고정 설명은 선택한 UI 언어를 사용합니다."));
     }
     html.push_str("<details><summary>");
     html.push_str(text(request.locale, "Exact omissions", "정확한 생략"));
@@ -286,22 +286,117 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
         "<p>{}</p>",
         escape(understanding_work_state_label(w.state, r.locale))
     ));
-    if let Some(change) = w.reading.answers.result.as_ref() {
-        html.push_str(&format!(
-            "<p>{}: {}</p>",
-            escape(text(
-                r.locale,
-                "Recorded result / change",
-                "기록된 결과 / 변경"
-            )),
-            escape(work_reading_display(change, r.locale))
-        ));
-    }
+    work_explanation(html, r, w, true);
     if let Some(state) = w.reading.answers.latest_state.as_ref() {
         states(html, r, state, w.reading.answers.verification.as_ref());
     }
     html.push_str("</article>");
 }
+pub(super) fn work_explanation(
+    html: &mut String,
+    r: &ViewerRequest,
+    w: &UnderstandingWork,
+    compact: bool,
+) {
+    use volicord_projections::{WorkExplanationQuestion as Q, WorkExplanationState as S};
+    let selected = w
+        .reading
+        .explanations
+        .iter()
+        .find(|e| e.language == r.requested_language)
+        .or_else(|| w.reading.explanations.iter().find(|e| e.language == "*"));
+    if let Some(explanation) = selected
+        .and_then(|e| e.content.as_ref())
+        .filter(|_| selected.is_some_and(|e| e.state == S::Current))
+    {
+        html.push_str(
+            "<div class=\"work-explanation\" data-statement-role=\"generated-interpretation\">",
+        );
+        empty_state(html, text(r.locale, "Host interpretation; claims remain grounded reports, not independent verification.", "호스트 해석입니다. 근거 있는 보고이며 독립 검증을 뜻하지 않습니다."));
+        if !explanation.conflicts.is_empty() {
+            empty_state(html, text(r.locale, "The evidence includes contradiction or supersession relations; this interpretation does not resolve them.", "근거에 모순 또는 대체 관계가 있습니다. 이 해석은 해당 관계를 해결하지 않습니다."));
+        }
+        for paragraph in &explanation.realization.paragraphs {
+            if compact
+                && !matches!(
+                    paragraph.question,
+                    Q::ReportedChange | Q::Verification | Q::NextStep
+                )
+            {
+                continue;
+            }
+            html.push_str(&format!(
+                "<p data-question=\"{:?}\">{}</p>",
+                paragraph.question,
+                escape(&paragraph.text)
+            ));
+        }
+        html.push_str("<details class=\"explanation-grounding\"><summary>");
+        html.push_str(text(
+            r.locale,
+            "Explanation evidence and generator",
+            "설명 근거 및 생성자",
+        ));
+        html.push_str("</summary><pre>");
+        html.push_str(&escape(&format!("{explanation:?}")));
+        html.push_str("</pre></details></div>");
+    } else {
+        let message = match selected.map(|e| e.state) {
+            Some(S::Stale) => text(
+                r.locale,
+                "Work explanation is stale; prepare and generate again.",
+                "작업 설명의 근거가 변경되었습니다. 다시 준비하고 생성하세요.",
+            ),
+            Some(S::Unsupported) => text(
+                r.locale,
+                "Work explanation format is unsupported; delete and regenerate.",
+                "작업 설명 형식을 지원하지 않습니다. 삭제한 뒤 다시 생성하세요.",
+            ),
+            Some(S::Corrupt) => text(
+                r.locale,
+                "Work explanation is corrupt; delete and regenerate.",
+                "작업 설명이 손상되었습니다. 삭제한 뒤 다시 생성하세요.",
+            ),
+            Some(S::Unavailable) => text(
+                r.locale,
+                "Work explanation is unavailable; canonical answers remain readable. Inspect the diagnostic for the affected dependency.",
+                "작업 설명을 사용할 수 없습니다. Canonical 답변은 계속 읽을 수 있습니다. 영향을 받은 의존성은 진단에서 확인하세요.",
+            ),
+            _ if w.reading.answers.result.is_none() => text(
+                r.locale,
+                "No reported result is recorded for this Work.",
+                "이 작업에 보고된 결과가 기록되지 않았습니다.",
+            ),
+            _ => text(
+                r.locale,
+                "Work interpretation has not been generated in this language.",
+                "이 언어의 작업 해석이 아직 생성되지 않았습니다.",
+            ),
+        };
+        empty_state(html, message);
+        if !compact {
+            html.push_str(&format!("<p>{}</p><details><summary>{}</summary><code>volicord --json work explain prepare --work {} --language {}</code><pre>{}</pre></details>",
+            text(r.locale,"Ask the active agent to explain this Work in the requested language.","현재 에이전트에게 요청 언어로 이 작업을 설명해 달라고 요청하세요."),
+            text(r.locale,"Preparation command and diagnostic","준비 명령 및 진단"),w.work_item_id,escape(&r.requested_language),
+            escape(selected.and_then(|e|e.diagnostic.as_deref()).unwrap_or(""))));
+        }
+    }
+    // Quotation has an explicit evidence role; never the ordinary explanation.
+    if let Some(result) = &w.reading.answers.result {
+        html.push_str("<details class=\"result-evidence\"><summary>");
+        html.push_str(text(
+            r.locale,
+            "Reported result quotation",
+            "보고된 결과 인용",
+        ));
+        html.push_str("</summary><p>");
+        html.push_str(&escape(result.original_text.as_deref().unwrap_or("")));
+        html.push_str("</p><pre>");
+        html.push_str(&escape(&format!("{:?}", result.basis)));
+        html.push_str("</pre></details>");
+    }
+}
+
 fn states(
     html: &mut String,
     r: &ViewerRequest,
@@ -372,7 +467,7 @@ fn work_detail(
         p.selected_work_decisions.clone()
     };
     render_work_card(html, r, w, &decisions);
-    empty_state(html,text(r.locale,"Semantic summary unavailable: Goal and changes are original quotations or labeled excerpts.","의미 요약 없음: 목표와 변경은 원문 인용 또는 표시된 발췌입니다."));
+
     heading(
         html,
         3,
@@ -388,10 +483,6 @@ fn work_detail(
             ),
         );
     }
-    html.push_str(&format!(
-        "<p>{}</p>",
-        escape(work_reading_display(&w.reading.next_step, r.locale))
-    ));
     if let Some(state) = w.reading.answers.latest_state.as_ref() {
         states(html, r, state, w.reading.answers.verification.as_ref());
     }

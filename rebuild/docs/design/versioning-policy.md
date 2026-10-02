@@ -286,6 +286,18 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 - **V11:** 모든 format의 independent exact-current check, older/newer rejection-before-mutation,
   rebuildable-data recovery와 combined recovery를 실제 journey에서 검증한다.
 
+### Work explanation content
+
+Retained Work explanation JSON inside the existing managed CachedSummary store
+has format kind `volicord_work_explanation` and exact current format version 1
+in its realization header. Record/read check that header before typed domain
+decode. Non-current content is Unsupported and its prose is withheld; malformed
+current content is Corrupt. Explicit delete and preparation/generation from current
+canonical evidence provide recovery. There is no dual decoder or implicit conversion.
+The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Snapshot
+and document metadata formats do not change. A preparation fingerprint binds evidence
+and language; it is neither a format version nor an authenticity certificate.
+
 ## 14. Non-goals
 
 이 문서는 version number, database/schema field, migration engine, serializer, checksum,

@@ -26,10 +26,12 @@ remains readable after the Runtime is no longer available. Sharing the file is
 a separate user-controlled action outside this command.
 
 Fixed product text is bundled in English and Korean. `--language` records an
-arbitrary requested generated-content language without an allowlist. Because
-the local Viewer has no active-host realizer, an arbitrary language displays a
-truthful unavailable/degraded notice and never presents its fixed English body
-as requested-language success.
+arbitrary requested generated-content language without an allowlist. The Viewer
+shows current recorded Work interpretations only for that exact language. Explicit
+active-host preparation and recording happen through Operations; navigation never
+invokes a host or provider. Missing generation, stale evidence and unavailable
+dependencies have separate notices. Fixed English text is never presented as
+requested-language generation success.
 
 Live reads use purpose-oriented views (default `overview`):
 
@@ -68,8 +70,9 @@ CSP, exact target/revision and retry boundaries apply to every mutation. Ordinar
 navigation performs no analysis, provider request or canonical mutation. No
 arbitrary filesystem-path source endpoint is provided.
 
-Work result/Goal/rationale text may be labeled original quotations or excerpts.
-These do not claim a semantic summary or translation. Missing Purpose/result/user
+Work interpretations answer purpose, reported change, expected effect, verification
+limits and next step in ordinary reading. Original result quotations are closed
+evidence disclosures. Goal/rationale quotations do not claim translation. Missing Purpose/result/user
 rationale remains unavailable. Completed work, verification, user review and
 acceptance are independently shown; failed/rejected history remains visible.
 Code diagrams show static grounded evidence, not confirmed runtime ordering.
@@ -101,7 +104,9 @@ were not requested, while store/recovery health and material metadata gaps remai
 visible. Missing requested analysis is `Unavailable`; omitted materialization is
 `NotRequested`. Document generation and narrative planning reject incomplete
 requested-section input. Default Operations Recall/documents keep their full
-contracts. No new persistent cache or invalidation policy is introduced.
+contracts. Work interpretations use the existing Privacy managed CachedSummary
+store with explicit local recording, read-time evidence freshness and deletion/forget
+integration, described below. They add no Viewer database or canonical records.
 
 `ViewerRenderProfile` exposes one projection pass, standalone metadata reads,
 graph decode attempts (including failed attempts), Candidate basis reads, document
@@ -147,3 +152,89 @@ They exercise the actual CLI/server/export path, both locales, narrow viewports,
 keyboard navigation, closed offline snapshots and real 200% tab zoom. Browser
 tools are validation dependencies only. Automated observations do not establish
 human comprehension or replace the authoritative technical gate.
+
+## Explicit Work explanations
+
+From a bound repository, or with explicit `--runtime` and `--project`:
+
+```text
+volicord --json work explain prepare --work GOAL_ID --language ko
+volicord --json work explain record --work GOAL_ID --language ko --input /absolute/host-response.json
+volicord --json work explain delete --work GOAL_ID
+```
+
+Preparation returns `{operation, plan}`. The current active agent reads the entire
+plan under its existing source-access authority and creates a response JSON using
+`format_kind: "volicord_work_explanation"`, `format_version: 1`, the exact
+`plan_fingerprint`, `language`, `generator: {host, session, agent, model}` and
+`paragraphs: [{question, text, evidence_keys}]`. Each of `purpose`, `reported_change`,
+`expected_effect`, `verification`, `next_step` requires one paragraph. `limits` is
+optional. Use prepared evidence keys; unknown agent/model is null, and unavailable
+session correlation can be explicitly self-reported as unknown. Do not claim
+independently verified identity. The plan supplies evidence and instructions, never
+a prewritten answer. Record validates references and current basis, not prose truth.
+
+The selected mechanism is active-host interpretation of full canonical material,
+with deterministic selection and state facts. First-384-character quotations failed
+the audit-heavy fixtures; feature purpose/effect are not separately structured facts.
+There are no production fixture recognizers, hardcoded explanations or background
+generation. The generic “The implementation changed” regression supports only that
+limited report. A useful interpretation must say the feature/effect is unspecified.
+
+Stored content identifies Project/Work, question, exact record revisions/fields,
+Sources/snapshots/status, language, recording time and uncertain generator provenance.
+Changes, corrections, conflicts or Source-status changes invalidate the fingerprint.
+Stale/corrupt/non-current content is withheld. Explicit delete removes all retained
+languages/history for the Work through managed cleanup; canonical forgetting removes
+linked content and applies the existing read barrier. Cache deletion leaves canonical
+context intact. GET, navigation and snapshot export never generate or transmit.
+
+## Reproduce the narrow actual-host reading proof
+
+Use a fresh ignored output directory; the seed creates canonical inputs only and
+asserts that no Work interpretation is retained. All commands are run from repository
+root. Wrap validation in `rebuild/scripts/validate focused LABEL -- COMMAND`.
+
+```bash
+cargo build --manifest-path rebuild/Cargo.toml -p volicord-operations -p volicord-viewer
+VOLICORD_WORK_EXPLANATION_FIXTURE_ROOT="$PWD/rebuild/.local/work-proof-fresh" \
+  cargo test --manifest-path rebuild/Cargo.toml -p volicord-viewer \
+  --test work_explanation seed_work_explanation_runtime -- --exact
+```
+
+Read `work-proof-fresh/fixture.json` for `runtime`, `project` and `goals`. For each
+of `relay`, `relay_variant`, `export`, `older`, and each language `en`, `ko`, run
+the actual sibling executable, substituting the manifest values:
+
+```text
+rebuild/target/debug/volicord --runtime RUNTIME --project PROJECT --json work explain prepare --work GOAL --language LANGUAGE
+rebuild/target/debug/volicord --runtime RUNTIME --project PROJECT --json work explain record --work GOAL --language LANGUAGE --input RESPONSE_FILE
+```
+
+Have the authorized current active agent interpret each preparation and write its
+response in ignored local output before recording. Unit-test fake responses or
+copying expected claims into a fixture do not establish explanation capability.
+The independent cases and browser claim requirements live in
+`rebuild/validation/end-to-end/multi-repository/fixtures/viewer-reading/answer-cases.json`.
+New source-rich input is synthetic and distinct from the preserved generic case.
+
+Use the browser dependencies documented in the validation README and a Korean-capable
+font (`fc-list :lang=ko` must be nonempty). Then run:
+
+```bash
+rebuild/scripts/validate focused work-explanation-browser -- \
+  python3 rebuild/validation/end-to-end/multi-repository/work_explanation_browser.py \
+  --fixture rebuild/.local/work-proof-fresh/fixture.json \
+  --chromium /absolute/chromium/chrome \
+  --playwright-module /absolute/node_modules/playwright-core \
+  --library-path /absolute/browser-libraries
+```
+
+Omit `--library-path` when system libraries suffice. `FONTCONFIG_FILE` can point to
+a local font configuration without system changes. The runner checks actual loopback
+GET pages at 390×900, required ordinary five-question answers in both languages,
+closed audit evidence, inspectable self-reported provenance, unchanged canonical
+export and unchanged provider/managed-record counts. It retains screenshots, font
+hashes, full streams and numeric exits under ignored validation output. Inspect the
+Korean screenshot as well as DOM assertions. This proves the narrow implemented
+path; it establishes no human comprehension, official V11 or cutover qualification.

@@ -2709,7 +2709,7 @@ impl LocalOperations {
         };
         let candidates = projection_candidates(candidate_basis.as_ref(), candidate_failure);
         let projection_started = Instant::now();
-        let projection = build_project_projection(ProjectProjectionInputs {
+        let mut projection = build_project_projection(ProjectProjectionInputs {
             requirements,
             metadata: &metadata.iter().collect::<Vec<_>>(),
             detail,
@@ -2724,6 +2724,7 @@ impl LocalOperations {
             bound: ProjectionBound::default(),
         })
         .map_err(|error| Error::with_source("Work selection failed", error))?;
+        self.attach_work_explanations(&canonical, &mut projection);
         let projection_build = projection_started.elapsed();
         Ok((
             projection,
@@ -4875,7 +4876,7 @@ fn new_operation_id() -> Result<OperationId, Error> {
     Ok(OperationId::from_bytes(bytes))
 }
 
-fn now_micros() -> Result<TimestampMicros, Error> {
+pub(crate) fn now_micros() -> Result<TimestampMicros, Error> {
     SystemClock
         .now()
         .map_err(|error| Error::with_source("system clock is unavailable", error))

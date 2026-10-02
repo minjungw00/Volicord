@@ -684,11 +684,27 @@ Focused question-answer replacement adds independent `answer-cases.json` claims
 and explicit baseline reproductions in Viewer `answer_contracts`. At the starting
 HEAD, all three product-entry-point reproductions fail: null result suppression,
 current Work hidden beyond 64 IDs, and Korean Debug state output. They remain
-explicitly ignored until their corresponding replacement connects; the default
-suite remains coherent. Full reproduction streams and numeric exit 101 are
+ordinary regression checks after their corresponding replacements connected; the default
+suite remains coherent. Full original reproduction streams and numeric exit 101 are
 preserved by `validate focused answer-contract-reproductions-complete`. Source-rich
 cases are synthetic new evidence; the generic implementation-changed input is
 unchanged and cannot justify a feature explanation.
+
+`work_explanation` tests cover preparation/record/read through public CLI and
+Viewer, exact language/fingerprint/evidence roles, correction/conflict invalidation,
+no-record versus NotRun, corrupt/non-current cache, explicit deletion and forgetting.
+Fake realizations establish lifecycle only. The maintained fresh canonical fixture
+seed plus public `work explain prepare/record` lets the current authorized active
+host author actual responses from evidence, without preloading expected prose.
+`work_explanation_browser.py` and the existing browser driver then check four cases
+(audit-heavy search, reordered variant, independent CSV failure, limited generic result)
+in English and Korean. Required independent claims are visible before evidence opens;
+generator uncertainty remains inspectable. GET-only navigation changes neither canonical
+export nor provider/managed-record counts. Complete streams, exits, screenshots and
+font hashes remain ignored artifacts. Korean-capable fontconfig is a required browser
+prerequisite; DOM text success alone cannot establish readable Korean glyphs.
+Reproduction commands and the selected mechanism are maintained in the Viewer README.
+This is focused supporting proof, not an official V11, human assessment or gate.
 
 ### Browser supporting observations under V11
 

@@ -105,7 +105,8 @@
       "prefix": 3,
       "result": "change",
       "state": "Paused",
-      "verification": "no_new_record"
+      "verification": "Failed",
+      "attempt": "blank state_change rejected by canonical authoring; prior history unchanged"
     },
     {
       "prefix": 4,
@@ -114,5 +115,430 @@
       "verification": "NotRun",
       "earlier_pass": "historical"
     }
-  ]
+  ],
+  "browser_claim_terms": {
+    "relay": {
+      "en": {
+        "Purpose": [
+          [
+            "current",
+            "latest"
+          ],
+          [
+            "query",
+            "search"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "sequence"
+          ],
+          [
+            "older",
+            "stale"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "latest",
+            "current"
+          ],
+          [
+            "cancel"
+          ]
+        ],
+        "Verification": [
+          [
+            "unit"
+          ],
+          [
+            "passed"
+          ],
+          [
+            "browser"
+          ],
+          [
+            "not",
+            "unverified"
+          ]
+        ],
+        "NextStep": [
+          [
+            "browser"
+          ],
+          [
+            "loading",
+            "pending"
+          ]
+        ]
+      },
+      "ko": {
+        "Purpose": [
+          [
+            "최신",
+            "현재"
+          ],
+          [
+            "검색"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "순서",
+            "sequence"
+          ],
+          [
+            "이전",
+            "오래된"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "최신",
+            "현재"
+          ],
+          [
+            "취소"
+          ]
+        ],
+        "Verification": [
+          [
+            "단위"
+          ],
+          [
+            "통과"
+          ],
+          [
+            "브라우저"
+          ],
+          [
+            "아직",
+            "검증하지"
+          ]
+        ],
+        "NextStep": [
+          [
+            "브라우저"
+          ],
+          [
+            "로딩",
+            "대기"
+          ]
+        ]
+      }
+    },
+    "relay_variant": {
+      "en": {
+        "Purpose": [
+          [
+            "current",
+            "latest"
+          ],
+          [
+            "query",
+            "search"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "sequence"
+          ],
+          [
+            "older",
+            "stale"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "latest",
+            "current"
+          ],
+          [
+            "cancel"
+          ]
+        ],
+        "Verification": [
+          [
+            "unit"
+          ],
+          [
+            "passed"
+          ],
+          [
+            "browser"
+          ],
+          [
+            "not",
+            "unverified"
+          ]
+        ],
+        "NextStep": [
+          [
+            "browser"
+          ],
+          [
+            "loading",
+            "pending"
+          ]
+        ]
+      },
+      "ko": {
+        "Purpose": [
+          [
+            "최신",
+            "현재"
+          ],
+          [
+            "검색"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "순서",
+            "sequence"
+          ],
+          [
+            "이전",
+            "오래된"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "최신",
+            "현재"
+          ],
+          [
+            "취소"
+          ]
+        ],
+        "Verification": [
+          [
+            "단위"
+          ],
+          [
+            "통과"
+          ],
+          [
+            "브라우저"
+          ],
+          [
+            "아직",
+            "검증하지"
+          ]
+        ],
+        "NextStep": [
+          [
+            "브라우저"
+          ],
+          [
+            "로딩",
+            "대기"
+          ]
+        ]
+      }
+    },
+    "export": {
+      "en": {
+        "Purpose": [
+          [
+            "previous",
+            "old"
+          ],
+          [
+            "report"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "temporary"
+          ],
+          [
+            "replac"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "interrupt"
+          ],
+          [
+            "old",
+            "previous"
+          ]
+        ],
+        "Verification": [
+          [
+            "disk-full"
+          ],
+          [
+            "failed"
+          ],
+          [
+            "temporary"
+          ],
+          [
+            "unchanged"
+          ]
+        ],
+        "NextStep": [
+          [
+            "remove",
+            "clean"
+          ],
+          [
+            "rerun"
+          ],
+          [
+            "windows"
+          ]
+        ]
+      },
+      "ko": {
+        "Purpose": [
+          [
+            "기존",
+            "이전"
+          ],
+          [
+            "보고서"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "임시"
+          ],
+          [
+            "교체"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "중단"
+          ],
+          [
+            "기존",
+            "이전"
+          ]
+        ],
+        "Verification": [
+          [
+            "디스크"
+          ],
+          [
+            "실패"
+          ],
+          [
+            "임시"
+          ],
+          [
+            "유지",
+            "바뀌지"
+          ]
+        ],
+        "NextStep": [
+          [
+            "정리",
+            "삭제"
+          ],
+          [
+            "다시"
+          ],
+          [
+            "Windows"
+          ]
+        ]
+      }
+    },
+    "older": {
+      "en": {
+        "Purpose": [
+          [
+            "relay"
+          ],
+          [
+            "specific",
+            "unspecified"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "additional"
+          ],
+          [
+            "not",
+            "unspecified"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "not",
+            "unknown"
+          ]
+        ],
+        "Verification": [
+          [
+            "not run"
+          ],
+          [
+            "historical"
+          ],
+          [
+            "rejected"
+          ]
+        ],
+        "NextStep": [
+          [
+            "verify"
+          ],
+          [
+            "later"
+          ]
+        ]
+      },
+      "ko": {
+        "Purpose": [
+          [
+            "릴레이"
+          ],
+          [
+            "구체"
+          ]
+        ],
+        "ReportedChange": [
+          [
+            "추가"
+          ],
+          [
+            "구체",
+            "없"
+          ]
+        ],
+        "ExpectedEffect": [
+          [
+            "알 수 없",
+            "기록되지"
+          ]
+        ],
+        "Verification": [
+          [
+            "실행하지"
+          ],
+          [
+            "과거"
+          ],
+          [
+            "거부"
+          ]
+        ],
+        "NextStep": [
+          [
+            "검증"
+          ],
+          [
+            "이후",
+            "추가"
+          ]
+        ]
+      }
+    }
+  }
 }

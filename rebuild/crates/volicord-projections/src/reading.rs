@@ -148,6 +148,7 @@ pub struct WorkAnswers {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkReading {
+    pub explanations: Vec<crate::WorkExplanationReading>,
     pub answers: WorkAnswers,
     pub goal: ReadingText,
     pub changes: Vec<ReadingText>,
@@ -388,6 +389,7 @@ pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<Underst
                     .filter(|id| canonical.active_questions.iter().any(|q| q.id == *id)).collect(),
                 source_basis,
                 reading: WorkReading {
+                    explanations: Vec::new(),
                     answers, goal: quoted_reading(Some(&goal.statement), goal_basis, Some(canonical)), changes, next_step, status, states,
                     code_availability: ReadingAvailability::Unknown,
                     code_freshness: Vec::new(), code_source_basis: Vec::new(),

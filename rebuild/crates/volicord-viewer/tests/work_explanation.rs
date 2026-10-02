@@ -1,0 +1,302 @@
+//! Fake responses test lifecycle only. Actual host generation proof uses this
+//! fresh canonical fixture, the public prepare/record CLI, and the browser driver.
+#[path = "../../volicord-operations/tests/support/reading_fixture.rs"]
+#[allow(dead_code)]
+mod reading_fixture;
+use volicord_context::*;
+use volicord_operations::{run_cli, CliExit, LocalOperations};
+use volicord_projections::*;
+use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerServer, ViewerView};
+
+fn fake(plan: &WorkExplanationPlan) -> WorkExplanationRealization {
+    WorkExplanationRealization {
+        format_kind: WORK_EXPLANATION_KIND.into(),
+        format_version: WORK_EXPLANATION_VERSION,
+        plan_fingerprint: plan.fingerprint.clone(),
+        language: plan.requested_language.clone(),
+        generator: WorkExplanationGenerator {
+            host: "unit-test-fake".into(),
+            session: "fake".into(),
+            agent: None,
+            model: None,
+        },
+        paragraphs: [
+            (WorkExplanationQuestion::Purpose, "goal"),
+            (WorkExplanationQuestion::ReportedChange, "result"),
+            (WorkExplanationQuestion::ExpectedEffect, "result"),
+            (WorkExplanationQuestion::Verification, "verification"),
+            (WorkExplanationQuestion::NextStep, "next_step"),
+        ]
+        .into_iter()
+        .map(|(question, key)| WorkExplanationParagraph {
+            question,
+            text: format!("Fake unit-test paragraph for {question:?}"),
+            evidence_keys: vec![key.into()],
+        })
+        .collect(),
+    }
+}
+fn get(f: &reading_fixture::Fixture, path: &str) -> String {
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse().expect("address"),
+    )
+    .expect("server");
+    let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n");
+    let mut out = Vec::new();
+    server
+        .serve_connection(&mut request.as_bytes(), &mut out)
+        .expect("HTTP");
+    String::from_utf8(out).expect("UTF-8")
+}
+#[test]
+fn preparation_record_read_correction_delete_and_forget_use_current_operations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["relay"];
+    let before = f.operations.canonical_basis(f.project)?;
+    let plan = f
+        .operations
+        .prepare_work_explanation(f.project, work, "ko")?;
+    assert!(plan
+        .evidence
+        .iter()
+        .any(|e| e.key == "result" && e.content.to_string().contains("sequence")));
+    assert!(plan
+        .evidence
+        .iter()
+        .any(|e| e.key == "verification" && e.content.to_string().contains("reordered-response")));
+    assert!(f
+        .operations
+        .privacy_status(f.project)?
+        .managed_derived
+        .is_empty());
+    let input = f.repository.join("fake-response.json");
+    std::fs::write(&input, serde_json::to_vec(&fake(&plan))?)?;
+    let args = vec![
+        "--runtime".to_owned(),
+        f.operations.layout().root().to_string_lossy().into_owned(),
+        "--project".into(),
+        f.project.to_string(),
+        "--json".into(),
+        "work".into(),
+        "explain".into(),
+        "record".into(),
+        "--work".into(),
+        work.to_string(),
+        "--language".into(),
+        "ko".into(),
+        "--input".into(),
+        input.to_string_lossy().into_owned(),
+    ];
+    let (mut output, mut errors) = (Vec::new(), Vec::new());
+    assert_eq!(
+        run_cli(args, &mut output, &mut errors),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&errors)
+    );
+    let stored: serde_json::Value = serde_json::from_slice(&output)?;
+    assert_eq!(
+        stored["explanation"]["generator_identity_status"],
+        "self_reported_not_independently_verified"
+    );
+    let page = get(
+        &f,
+        &format!("/?view=work&work={work}&locale=ko&language=ko"),
+    );
+    assert!(page.contains("class=\"work-explanation\""));
+    assert!(page.contains("Fake unit-test paragraph"));
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    // Exact requested language, not UI locale; no hidden generation on reads.
+    let untranslated = get(
+        &f,
+        &format!("/?view=work&work={work}&locale=ko&language=fr"),
+    );
+    assert!(!untranslated.contains("Fake unit-test paragraph"));
+    let source = before
+        .context_items
+        .iter()
+        .find(|c| c.id == work)
+        .ok_or("Goal")?
+        .source_basis[0];
+    f.operations.correct_context_item(
+        f.project,
+        work,
+        ContextItemCorrectionDraft {
+            expected_revision: 1,
+            corrected_statement: format!(
+                "{}.",
+                before
+                    .context_items
+                    .iter()
+                    .find(|c| c.id == work)
+                    .ok_or("Goal")?
+                    .statement
+            ),
+            user_authorization_source_id: source,
+            kind: CorrectionKind::Expression,
+        },
+    )?;
+    let stale = get(
+        &f,
+        &format!("/?view=work&work={work}&locale=ko&language=ko"),
+    );
+    assert!(stale.contains("근거가 변경"));
+    assert!(!stale.contains("Fake unit-test paragraph"));
+    assert!(f
+        .operations
+        .record_work_explanation(f.project, work, "ko", fake(&plan))
+        .is_err());
+    assert_eq!(f.operations.delete_work_explanations(f.project, work)?, 1);
+    let fresh = f
+        .operations
+        .prepare_work_explanation(f.project, work, "ko")?;
+    f.operations
+        .record_work_explanation(f.project, work, "ko", fake(&fresh))?;
+    let cp = f.checkpoints["relay-change"];
+    assert!(
+        f.operations
+            .forget_record(f.project, CanonicalRecordId::Checkpoint(cp), source)?
+            .managed_derived_cleanup_completed
+    );
+    assert!(f
+        .operations
+        .privacy_status(f.project)?
+        .managed_derived
+        .iter()
+        .all(|r| r.content.is_none()));
+    let bytes = std::fs::read(f.operations.layout().privacy_store())?;
+    assert!(!bytes
+        .windows(b"Fake unit-test paragraph".len())
+        .any(|window| window == b"Fake unit-test paragraph"));
+    let page = get(&f, &format!("/?view=work&work={work}&language=ko"));
+    assert!(!page.contains("Fake unit-test paragraph"));
+    Ok(())
+}
+#[test]
+fn malformed_language_foreign_basis_and_versions_cannot_be_recorded(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["export"];
+    let plan = f
+        .operations
+        .prepare_work_explanation(f.project, work, "fr-CA")?;
+    assert!(plan
+        .evidence
+        .iter()
+        .any(|e| e.key == "verification" && e.content.to_string().contains("Failed")));
+    for mutation in 0..5 {
+        let mut response = fake(&plan);
+        match mutation {
+            0 => response.format_version += 1,
+            1 => response.language = "en".into(),
+            2 => response.plan_fingerprint = "wrong".into(),
+            3 => response.paragraphs[1].evidence_keys = vec!["foreign".into()],
+            _ => response.paragraphs[1].evidence_keys = vec!["goal".into()],
+        }
+        assert!(f
+            .operations
+            .record_work_explanation(f.project, work, "fr-CA", response)
+            .is_err());
+    }
+    assert!(f
+        .operations
+        .privacy_status(f.project)?
+        .managed_derived
+        .is_empty());
+    Ok(())
+}
+#[test]
+fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = reading_fixture::rich_scenario()?;
+    input["works"][1]["checkpoints"][0]["verification"] = serde_json::Value::Null;
+    let f = reading_fixture::fixture_scenario(input)?;
+    for (locale, label) in [("en", "No verification record"), ("ko", "검증 기록 없음")] {
+        let page = get(
+            &f,
+            &format!("/?view=work&work={}&locale={locale}", f.goals["same_title"]),
+        );
+        assert!(page.contains(label));
+    }
+    let work = f.goals["export"];
+    let plan = f
+        .operations
+        .prepare_work_explanation(f.project, work, "en")?;
+    f.operations
+        .record_work_explanation(f.project, work, "en", fake(&plan))?;
+    let mut store = Store::open(f.operations.layout().canonical_store())?;
+    store.record_contradiction(
+        OperationId::from_bytes([0x81; 16]),
+        f.project,
+        CanonicalRecordId::ContextItem(work),
+        CanonicalRecordId::ContextItem(f.goals["relay"]),
+    )?;
+    drop(store);
+    let changed = f
+        .operations
+        .prepare_work_explanation(f.project, work, "en")?;
+    assert!(!changed.conflicts.is_empty());
+    let page = get(&f, &format!("/?view=work&work={work}"));
+    assert!(page.contains("Work explanation is stale"));
+    assert!(!page.contains("Fake unit-test paragraph"));
+    f.operations.delete_work_explanations(f.project, work)?;
+    f.operations
+        .record_work_explanation(f.project, work, "en", fake(&changed))?;
+    assert!(get(&f, &format!("/?view=work&work={work}"))
+        .contains("includes contradiction or supersession"));
+    f.operations.delete_work_explanations(f.project, work)?;
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let source = canonical
+        .context_items
+        .iter()
+        .find(|c| c.id == work)
+        .ok_or("Goal")?
+        .source_basis[0];
+    let grounding =
+        volicord_repository_intelligence::CanonicalGrounding::from_read_basis(&canonical)?;
+    for (content,label) in [("broken JSON".to_owned(),"Work explanation is corrupt"),
+        (serde_json::json!({"realization":{"format_kind":WORK_EXPLANATION_KIND,"format_version":WORK_EXPLANATION_VERSION+1}}).to_string(),"Work explanation format is unsupported")] {
+        let mut privacy=volicord_privacy::PrivacyStore::open(f.operations.layout().privacy_store())?;
+        privacy.record_managed_derived(volicord_privacy::ManagedDerivedDraft {
+            project_id:f.project,kind:volicord_privacy::ManagedDerivedKind::CachedSummary,
+            provider:None,model:None,purpose:format!("work_outcome:{work}:en"),analysis_snapshot:None,
+            included_sources:vec![grounding.source_reference(source)?],canonical_links:vec![volicord_privacy::ManagedCanonicalLink::ContextItem(work)],
+            content,uncertainty:None,retained_until:None,retention_basis:"Unit-test corrupt cache fixture".into() })?;
+        drop(privacy);
+        assert!(get(&f,&format!("/?view=work&work={work}")).contains(label));
+        f.operations.delete_work_explanations(f.project,work)?;
+    }
+    assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn seed_work_explanation_runtime() -> Result<(), Box<dyn std::error::Error>> {
+    let disposable = tempfile::tempdir()?;
+    let output = std::env::var_os("VOLICORD_WORK_EXPLANATION_FIXTURE_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or(disposable.path().to_owned());
+    std::fs::create_dir_all(&output)?;
+    let f = reading_fixture::rich_fixture_in(&output)?;
+    let manifest = serde_json::json!({"project":f.project.to_string(),"runtime":f.operations.layout().root(),"repository":f.repository,
+        "goals":f.goals.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>()});
+    std::fs::write(
+        output.join("fixture.json"),
+        serde_json::to_vec_pretty(&manifest)?,
+    )?;
+    assert!(f
+        .operations
+        .privacy_status(f.project)?
+        .managed_derived
+        .is_empty());
+    if std::env::var_os("VOLICORD_WORK_EXPLANATION_FIXTURE_ROOT").is_some() {
+        let _ = f._temporary.keep();
+    }
+    Ok(())
+}

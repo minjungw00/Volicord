@@ -132,7 +132,7 @@ async function workFacts(key, locale) {
     for (const keyName of config.expected.exact_older.excluded_decision_keys) if (key === 'older') requireFact(!await section.locator(`a[href*="decision=${F.decisions[keyName]}"]`).count(), 'cross_work_decision_substitution');
     if (key === 'older') {
       requireFact(text.includes(labels.Failed) && text.includes(labels.Rejected) && text.includes(labels.Pending), 'historical_failure_or_pending_state_hidden');
-      requireFact(text.includes(locale === 'en' ? 'Semantic summary unavailable' : '의미 요약 없음'), 'summary_limit_hidden');
+      requireFact(text.includes(locale === 'en' ? 'Work interpretation has not been generated' : '작업 해석이 아직 생성되지'), 'summary_limit_hidden');
       const source = await section.textContent();
       for (const cp of config.expected.exact_older.checkpoint_keys) requireFact(source.includes(F.checkpoints[cp]), 'checkpoint_basis_missing');
       for (const decision of ['explicit','project','unresolved']) requireFact(await section.locator(`a[href*="decision=${F.decisions[decision]}"]`).count() > 0, 'decision_scope_link_missing');
@@ -372,11 +372,37 @@ async function offline() {
   await check('negative-fragment',()=>copyMutation('fragment',()=>{const href=document.querySelector('nav[aria-label="Viewer"] a').getAttribute('href');document.getElementById(href.slice(1)).removeAttribute('id');},fragments,pathToFileURL(config.snapshots.en).href));
   await check('negative-live-link',()=>copyMutation('live_link',()=>{document.querySelector('nav[aria-label="Viewer"] a').setAttribute('href','http://127.0.0.1:3219/?view=tools');},snapshotSafety,pathToFileURL(config.snapshots.en).href));
 }
+async function workExplanations() {
+  for (const locale of ['en','ko']) for (const key of ['relay','relay_variant','export','older']) {
+    await check(`work-explanation-${key}-${locale}`,async()=>{
+      await go(`${config.url}?view=work&work=${F.goals[key]}&locale=${locale}&language=${locale}`);
+      const surface=page.locator(workSelector(key));
+      const answer=surface.locator('.work-explanation');
+      requireFact(await answer.count()===1,'current_explanation_missing');
+      requireFact(await answer.getAttribute('data-statement-role')==='generated-interpretation','interpretation_presented_as_fact');
+      const visible=await answer.innerText();
+      requireFact(!visible.includes('aabbccddeeff00112233445566778899'),'audit_clutter_in_ordinary_answer');
+      const observed={};
+      for (const [question,groups] of Object.entries(config.claim_terms[key][locale])) {
+        const body=await answer.locator(`p[data-question="${question}"]`).innerText();
+        for (const terms of groups) requireFact(terms.some(term=>body.toLowerCase().includes(term.toLowerCase())),`required_claim_missing:${key}/${locale}/${question}/${terms}`);
+        observed[question]=body;
+      }
+      requireFact(await answer.locator('details[open]').count()===0,'proof_depends_on_open_evidence');
+      const grounding=answer.locator('.explanation-grounding');
+      await grounding.locator('summary').click();
+      requireFact((await grounding.innerText()).includes('self_reported_not_independently_verified'),'generator_identity_overclaimed');
+      await grounding.locator('summary').click();
+      await capture(`work-explanation-${key}-${locale}.png`,surface);
+      return {work:F.goals[key],ordinary_answers:observed,external_transmission:'none',human_acceptance:'not_established'};
+    });
+  }
+}
 (async()=>{
   try {
     try {
-      context=await chromium.launchPersistentContext(path.join(config.output,`${mode}-profile`),{executablePath:config.chromium,headless:true,ignoreDefaultArgs:['--disable-extensions'],args:[`--disable-extensions-except=${config.extension}`,`--load-extension=${config.extension}`],viewport:{width:390,height:900}});
-      worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker',{timeout:15000});
+      context=await chromium.launchPersistentContext(path.join(config.output,`${mode}-profile`),{executablePath:config.chromium,headless:true,ignoreDefaultArgs:mode==='work-explanation'?[]:['--disable-extensions'],args:mode==='work-explanation'?[]:[`--disable-extensions-except=${config.extension}`,`--load-extension=${config.extension}`],viewport:{width:390,height:900}});
+      if(mode!=='work-explanation')worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker',{timeout:15000});
     } catch(error) {result.status='browser_launch_blocked';result.detail=String(error);return;}
     result.browser_version=context.browser().version();
     page=context.pages()[0]||await context.newPage();page.setDefaultTimeout(5000);
@@ -388,7 +414,7 @@ async function offline() {
         result.checks.push({id:'unexpected_external_or_mutation_request',status:'failed',reason:address});await route.abort();
       } else await route.continue();
     });
-    if(mode==='live')await live();else if(mode==='offline')await offline();else throw new Error('Unknown driver mode');
+    if(mode==='live')await live();else if(mode==='offline')await offline();else if(mode==='work-explanation')await workExplanations();else throw new Error('Unknown driver mode');
     requireFact(result.checks.length>0,'no_browser_execution');
     result.status=result.checks.some(c=>c.status!=='passed')?'failed':'passed';
   } catch(error) {result.status='failed';result.detail=String(error);}
