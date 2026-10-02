@@ -1,5 +1,5 @@
 //! One question-scoped ordinary-reading contract. Quotations and raw history
-//! stay in evidence; generated prose never replaces independently selected facts.
+//! stay identified as quotations; generated prose never replaces recorded actions.
 use crate::*;
 use serde::Serialize;
 
@@ -41,12 +41,26 @@ pub enum AnswerRole {
     DeterministicFacts,
     Unavailable,
 }
+/// Canonical continuation basis, independent of generated provenance. Source
+/// status describes support for the recorded direction, not current code truth.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct RecordedActionBasis {
+    pub work_item_id: String,
+    pub checkpoint_id: String,
+    pub revision: u64,
+    pub field: String,
+    pub recorded_text: String,
+    pub source_ids: Vec<String>,
+    pub source_status: Vec<serde_json::Value>,
+}
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QuestionAnswer {
     pub question: String,
     pub text: String,
     pub role: AnswerRole,
     pub evidence_keys: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recorded_action: Option<RecordedActionBasis>,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QuestionAnswers {
@@ -57,6 +71,20 @@ pub struct QuestionAnswers {
     pub provenance: Option<ExplanationProvenance>,
 }
 impl QuestionAnswers {
+    /// The sole task-direction selection rule. Generated NextStep prose is an
+    /// interpretation alongside this fact; explanation repair is never an action.
+    pub fn next_step_answer(&self) -> Option<&QuestionAnswer> {
+        self.facts.iter().find(|a| {
+            matches!(
+                a.question.as_str(),
+                "RecordedNextStep" | "NextStepAvailability"
+            )
+        })
+    }
+    pub fn recorded_next_action(&self) -> Option<&RecordedActionBasis> {
+        self.next_step_answer()
+            .and_then(|a| a.recorded_action.as_ref())
+    }
     pub fn text(&self) -> String {
         self.prose
             .iter()
@@ -96,6 +124,7 @@ pub fn explanation_answers(
                 text: p.text.clone(),
                 role: AnswerRole::GeneratedInterpretation,
                 evidence_keys: p.evidence_keys.clone(),
+                recorded_action: None,
             })
             .collect()
     } else {
@@ -111,6 +140,7 @@ pub fn explanation_answers(
             text: fixed(locale, en, ko),
             role: AnswerRole::Unavailable,
             evidence_keys: Vec::new(),
+            recorded_action: None,
         }]
     };
     let mut result = QuestionAnswers {
@@ -131,6 +161,7 @@ fn fact(question: &str, text: String, evidence_keys: Vec<String>) -> QuestionAns
         text,
         role: AnswerRole::DeterministicFacts,
         evidence_keys,
+        recorded_action: None,
     }
 }
 
@@ -164,6 +195,77 @@ pub fn work_answers(
     locale: FixedLocale,
 ) -> QuestionAnswers {
     let mut result = explanation_answers(&work.reading.explanations, language, locale);
+    let direction = &work.reading.next_step;
+    if let (ReadingRecord::Checkpoint(checkpoint_id), Some(recorded)) = (
+        &direction.basis.record,
+        direction
+            .original_text
+            .as_deref()
+            .filter(|s| !s.trim().is_empty()),
+    ) {
+        let mut answer = fact(
+            "RecordedNextStep",
+            format!(
+                "{}: {recorded}",
+                fixed(
+                    locale,
+                    "Recorded next action quotation (original language)",
+                    "기록된 다음 행동 인용 (원문 언어)"
+                )
+            ),
+            vec![format!(
+                "checkpoint:{checkpoint_id}@{}:next_step",
+                direction.basis.revision
+            )],
+        );
+        answer.recorded_action = Some(RecordedActionBasis {
+            work_item_id: work.work_item_id.to_string(),
+            checkpoint_id: checkpoint_id.to_string(),
+            revision: direction.basis.revision,
+            field: direction.basis.field.clone(),
+            recorded_text: recorded.into(),
+            source_ids: direction
+                .basis
+                .source_basis
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            source_status: direction
+                .basis
+                .source_status
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "source_id": s.source_id.to_string(),
+                        "availability": s.availability.map(|a| format!("{a:?}").to_lowercase()),
+                        "freshness": format!("{:?}", s.freshness).to_lowercase(),
+                        "snapshot_basis": s.snapshot_basis,
+                    })
+                })
+                .collect(),
+        });
+        result.facts.push(answer);
+    } else {
+        let mut answer = fact(
+            "NextStepAvailability",
+            fixed(
+                locale,
+                if work.reading.answers.latest_state.is_none() {
+                    "No next action is recorded: this Work has no Checkpoint."
+                } else {
+                    "No next action is recorded in the latest Checkpoint."
+                },
+                if work.reading.answers.latest_state.is_none() {
+                    "다음 행동이 기록되지 않았습니다. 이 작업에는 Checkpoint가 없습니다."
+                } else {
+                    "최신 Checkpoint에 다음 행동이 기록되지 않았습니다."
+                },
+            ),
+            Vec::new(),
+        );
+        answer.role = AnswerRole::Unavailable;
+        result.facts.push(answer);
+    }
     if let Some(gap) = source_gap(work.reading.evidence_source_status.iter(), locale) {
         result.facts.push(gap);
     }

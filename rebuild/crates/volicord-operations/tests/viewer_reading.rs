@@ -469,6 +469,18 @@ fn source_and_analysis_gaps_do_not_rewrite_selected_work_and_json_retains_basis(
         .any(|s| s.freshness.state == volicord_repository_intelligence::FreshnessState::Stale));
     fs::remove_dir_all(&fixture.repository)?;
     let unavailable = select()?;
+    let action = volicord_projections::work_answers(
+        unavailable.selected_work.as_ref().ok_or("Work")?,
+        "en",
+        volicord_projections::FixedLocale::English,
+    );
+    assert_eq!(
+        action
+            .recorded_next_action()
+            .ok_or("recorded action")?
+            .recorded_text,
+        "Verify the later change"
+    );
     assert!(unavailable
         .resume
         .snapshots

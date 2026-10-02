@@ -543,6 +543,15 @@ async function workExplanations() {
       if(phase.phase==='stale-correction')requireFact(body.includes('Explanation is stale'),'lifecycle_stale_state_hidden');
       if(phase.phase==='forgotten-result')requireFact(body.includes('No reported result is recorded'),'lifecycle_forgetting_result_gap_hidden');
     }
+    const action=work.locator('.fact-states p[data-question="RecordedNextStep"]');
+    if(phase.recorded_action!==null) {
+      requireFact(await action.count()===1,'lifecycle_recorded_action_missing');
+      requireFact(await ordinaryText(action)===`Recorded next action quotation (original language): ${phase.recorded_action}`,'lifecycle_recorded_action_changed');
+      requireFact(await action.isVisible(),'lifecycle_recorded_action_hidden');
+    } else {
+      requireFact(await action.count()===0,'lifecycle_forgotten_action_revived');
+      requireFact(await work.locator('.fact-states p[data-question="NextStepAvailability"]').count()===1,'lifecycle_missing_action_gap_hidden');
+    }
     await snapshotSafety();return {phase:phase.phase,reading:'ordinary_before_disclosure'};
   });
   for (const locale of ['en','ko']) for (const key of Object.keys(config.decision_terms)) {

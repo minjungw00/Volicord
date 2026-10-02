@@ -252,11 +252,7 @@ fn overview(
             &request.requested_language,
             request.locale.fixed(),
         );
-        for answer in answers
-            .prose
-            .iter()
-            .filter(|a| a.question == "NextStep" || a.question == "ExplanationAvailability")
-        {
+        if let Some(answer) = answers.next_step_answer() {
             html.push_str(&format!(
                 "<p class=\"next-action\">{}</p>",
                 escape(&answer.text)

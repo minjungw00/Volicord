@@ -51,7 +51,7 @@ pub fn resume_brief_json(
         })).collect::<Vec<_>>(),
         "risks_assumptions_and_limits":brief.risks_assumptions_and_limits.iter().map(context_json).collect::<Vec<_>>(),
         "declared_assumptions":brief.declared_assumptions, "known_limits":brief.known_limits,
-        "next_step":brief.selected_work.as_ref().and_then(|w|volicord_projections::work_answers(w,language,locale).prose.into_iter().find(|a|a.question=="NextStep" || a.question=="ExplanationAvailability")).map(|a|a.text),
+        "next_step":brief.selected_work.as_ref().and_then(|w|volicord_projections::work_answers(w,language,locale).recorded_next_action().map(|a|a.recorded_text.clone())),
         "used_sources":brief.used_sources.iter().map(|item| item.source.id.to_string()).collect::<Vec<_>>(),
         "source_details":brief.used_sources.iter().map(|item| json!({
             "identity":item.source.id.to_string(), "actor":item.source.actor,

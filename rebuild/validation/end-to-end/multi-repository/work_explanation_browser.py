@@ -106,6 +106,7 @@ def main():
             plan=json.loads(run('lifecycle-prepare',scoped+['work','explain','prepare','--work',subject,'--language','en']))['plan']
             goal=next(e for e in plan['evidence'] if e['key']=='goal')
             original_result=next(e for e in plan['evidence'] if e['key']=='result')
+            expected_action=next(case['next_step'] for case in cases['cases'] if case['key']=='relay')
             response=json.loads(args.lifecycle_response.read_text())
             if response['plan_fingerprint']!=plan['fingerprint']:
                 raise RuntimeError('Lifecycle response must belong to this fresh imported preparation; import can change repository Source availability, so an original-runtime response cannot be reused')
@@ -113,7 +114,8 @@ def main():
             def export_phase(phase):
                 target=output/f'lifecycle-{phase}.html'
                 run('lifecycle-export-'+phase,scoped+['viewer','export','--output',target,'--language','en'])
-                lifecycle.append({'phase':phase,'snapshot':str(target),'work':subject,'reported_change':response['paragraphs'][1]['text']})
+                lifecycle.append({'phase':phase,'snapshot':str(target),'work':subject,'reported_change':response['paragraphs'][1]['text'],'recorded_action':expected_action if phase!='forgotten-result' else None})
+            export_phase('absent-interpretation')
             run('lifecycle-record-imported',scoped+['work','explain','record','--work',subject,'--input',args.lifecycle_response.resolve()])
             export_phase('restart-current')
             partial={**response,'paragraphs':response['paragraphs'][:-1]}

@@ -844,11 +844,19 @@ fn implementation_body(
     if let Some(work) = &projection.selected_work {
         let mut next = work_summary_claim(work, locale, language);
         next.identity = format!("work-nextstep:{}", work.work_item_id);
+        next.class = if crate::work_answers(work, language, locale)
+            .recorded_next_action()
+            .is_some()
+        {
+            ClaimClass::CanonicalContext
+        } else {
+            ClaimClass::DeterministicDerived
+        };
+        next.source_basis = work.reading.next_step.basis.source_basis.clone();
+        next.explicit_inference = false;
         next.text = crate::work_answers(work, language, locale)
-            .prose
-            .into_iter()
-            .find(|a| a.question == "NextStep" || a.question == "ExplanationAvailability")
-            .map_or_else(String::new, |a| a.text);
+            .next_step_answer()
+            .map_or_else(String::new, |a| a.text.clone());
         plan.push(next);
     }
     if plan.is_empty() {
@@ -971,15 +979,8 @@ fn handoff_body(
                         .as_ref()
                         .map(|w| {
                             crate::work_answers(w, language, locale)
-                                .prose
-                                .into_iter()
-                                .filter(|a| {
-                                    a.question == "NextStep"
-                                        || a.question == "ExplanationAvailability"
-                                })
-                                .map(|a| a.text)
-                                .collect::<Vec<_>>()
-                                .join(" ")
+                                .next_step_answer()
+                                .map_or_else(String::new, |a| a.text.clone())
                         })
                         .unwrap_or_else(|| {
                             fixed(

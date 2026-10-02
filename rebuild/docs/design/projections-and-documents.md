@@ -300,8 +300,30 @@ and facts. Recall retains bounded typed Checkpoint evidence for host resumption.
 uses the common LatestWork selector over complete canonical history: the latest
 Checkpoint’s explicit Work association, or a latest Goal when no Checkpoint exists.
 An unassociated/unknown latest Checkpoint never falls back to an older Work or prose.
-The ordinary `next_step` comes from the shared answer; exact recorded next-step prose
-remains in typed Checkpoint evidence.
+The shared `QuestionAnswers::next_step_answer` selects the `RecordedNextStep` fact
+(or the distinct `NextStepAvailability` gap), never generated `NextStep` prose or
+`ExplanationAvailability`. Its `recorded_action` contains exact untruncated
+`recorded_text`, Work identity, latest same-Work Checkpoint identity/revision/field,
+Source identities and availability/freshness/snapshot status. The fact's evidence
+key is `checkpoint:ID@REV:next_step`; it exists without generated provenance.
+Ordinary reading labels this text as a recorded quotation in its original language;
+fixed en/ko labels do not translate it. Recall's top-level `next_step` is the exact
+`recorded_next_action().recorded_text`, or null when no action is recorded.
+Current generated `NextStep` paragraphs remain separately labeled interpretations
+with generated provenance and evidence keys. They never override the canonical
+direction. Explanation repair stays in `ExplanationAvailability`.
+
+Blank/missing latest Checkpoint direction produces `NextStepAvailability`, without
+inheriting an older action; Goal-only Work identifies the absence of a Checkpoint.
+Missing selected Work yields no action. Unavailable/stale Source support remains
+explicit historical support status alongside a surviving canonical recorded action,
+not current repository proof. Forgotten canonical records are excluded upstream;
+no quoted Source body or deleted action is reconstructed from generated content.
+Corrupt, unsupported, absent and stale interpretations preserve this recorded fact
+and their separate repair diagnostic. Freshness checks remain strict, including
+punctuation-only canonical corrections. Whole-field transport omissions must carry
+the typed byte-budget reason and enclosing field/identity scope; they cannot stand
+in for the minimum Work identity, direction and basis in restart verification.
 Code questions continue to use source-grounded entity/relation explanations and
 real graph identities, without generated ownership or runtime-flow claims.
 Documents tag sections Reading or Evidence; raw Checkpoint/Decision originals use
@@ -426,7 +448,8 @@ Resume Brief는 최소 다음을 포함한다.
 - **open Questions:** canonical identity/revision, current frontier/blocked distinction과
   what each answer unlocks
 - **risks, assumptions and known limits:** statement role, Source basis와 review trigger
-- **next meaningful step:** Checkpoint/Decision/Question basis가 있는 actionable direction
+- **next meaningful step:** selected Work의 latest same-Work Checkpoint에 기록된 행동과
+  identity/revision/Source basis; current generated interpretation과 explanation repair는 별도
 - **sources, capability, freshness and omissions:** used Sources/snapshots, analysis
   capability/coverage, stale/unavailable/failed scope, omitted count와 reason
 

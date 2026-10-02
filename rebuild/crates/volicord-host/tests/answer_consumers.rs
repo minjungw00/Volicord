@@ -117,3 +117,238 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
     assert_eq!(f.operations.canonical_basis(f.project)?, before);
     Ok(())
 }
+
+#[test]
+fn recorded_action_is_readable_without_generated_interpretation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = reading_fixture::rich_scenario()?;
+    let works = input["works"].as_array_mut().ok_or("works")?;
+    let n = works
+        .iter()
+        .position(|w| w["key"] == "relay")
+        .ok_or("relay")?;
+    let last = works.remove(n);
+    works.push(last);
+    let f = reading_fixture::fixture_scenario(input)?;
+    let expected = "Run a browser check with slow responses and confirm loading feedback.";
+    let args = vec![
+        "--runtime".into(),
+        f.operations.layout().root().to_string_lossy().into_owned(),
+        "--project".into(),
+        f.project.to_string(),
+        "--json".into(),
+        "recall".into(),
+    ];
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    assert_eq!(
+        volicord_operations::run_cli(args, &mut out, &mut err),
+        volicord_operations::CliExit::SUCCESS
+    );
+    let cli: Value = serde_json::from_slice(&out)?;
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let response = host
+        .handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"recall","arguments":{"project_id":f.project.to_string()}}}))
+        .ok_or("MCP")?;
+    let mcp = &response["result"]["structuredContent"];
+    // Assert both real product reads before testing either transport's verdict.
+    assert_eq!(cli["next_step"], mcp["next_step"]);
+    assert_eq!(cli["next_step"], expected);
+    let before = f.operations.canonical_basis(f.project)?;
+    let work = f.goals["relay"];
+    let subject = ExplanationSubject::Work(work);
+    let cp = before
+        .checkpoint_history
+        .iter()
+        .find(|c| c.id == f.checkpoints["relay-change"])
+        .ok_or("Checkpoint")?;
+    let check = |state: &str,
+                 action: &str,
+                 checkpoint: String|
+     -> Result<(), Box<dyn std::error::Error>> {
+        for locale in ["en", "ko"] {
+            let args = vec![
+                "--runtime".into(),
+                f.operations.layout().root().to_string_lossy().into_owned(),
+                "--project".into(),
+                f.project.to_string(),
+                "--locale".into(),
+                locale.into(),
+                "--json".into(),
+                "recall".into(),
+                "--language".into(),
+                "en".into(),
+            ];
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            assert_eq!(
+                volicord_operations::run_cli(args, &mut out, &mut err),
+                volicord_operations::CliExit::SUCCESS
+            );
+            let cli: Value = serde_json::from_slice(&out)?;
+            let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+            for tool in ["recall", "repository_understanding"] {
+                let response = host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+                    "params":{"name":tool,"arguments":{"project_id":f.project.to_string(),"requested_language":"en","fixed_locale":locale}}})).ok_or("MCP")?;
+                assert_eq!(response["result"]["isError"], false, "{response}");
+                let data = &response["result"]["structuredContent"];
+                let answers = &data["selected_work"]["answers"];
+                assert_eq!(answers["explanation_state"], state);
+                let fact = answers["facts"]
+                    .as_array()
+                    .ok_or("facts")?
+                    .iter()
+                    .find(|a| a["question"] == "RecordedNextStep")
+                    .ok_or("recorded action")?;
+                assert_eq!(fact["role"], "deterministic_facts");
+                assert!(fact["text"]
+                    .as_str()
+                    .ok_or("action text")?
+                    .ends_with(action));
+                assert_eq!(fact["recorded_action"]["recorded_text"], action);
+                assert_eq!(fact["recorded_action"]["work_item_id"], work.to_string());
+                assert_eq!(fact["recorded_action"]["checkpoint_id"], checkpoint);
+                assert_eq!(fact["recorded_action"]["revision"], 1);
+                assert_eq!(fact["recorded_action"]["field"], "next_step");
+                assert_eq!(
+                    fact["evidence_keys"],
+                    json!([format!("checkpoint:{checkpoint}@1:next_step")])
+                );
+                assert_eq!(
+                    fact["recorded_action"]["source_ids"],
+                    json!(cp
+                        .source_basis
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>())
+                );
+                if tool == "recall" {
+                    assert_eq!(data["next_step"], action);
+                    assert_eq!(cli["next_step"], action);
+                    assert_eq!(cli["selected_work"]["answers"], *answers);
+                }
+            }
+        }
+        Ok(())
+    };
+    check("unavailable", expected, cp.id.to_string())?;
+    let realize = |plan: &ExplanationPlan| ExplanationRealization {
+        format_kind: EXPLANATION_KIND.into(),
+        format_version: EXPLANATION_VERSION,
+        plan_fingerprint: plan.fingerprint.clone(),
+        language: "en".into(),
+        generator: ExplanationGenerator {
+            host: "unit-test-fake".into(),
+            session: "synthetic".into(),
+            agent: None,
+            model: None,
+        },
+        paragraphs: [
+            (ExplanationQuestion::Purpose, "goal"),
+            (ExplanationQuestion::ReportedChange, "result"),
+            (ExplanationQuestion::ExpectedEffect, "result"),
+            (ExplanationQuestion::Verification, "verification"),
+            (ExplanationQuestion::NextStep, "next_step"),
+        ]
+        .into_iter()
+        .map(|(question, key)| ExplanationParagraph {
+            question,
+            text: if question == ExplanationQuestion::NextStep {
+                "Check loading feedback in a slow-response browser session.".into()
+            } else {
+                format!("Synthetic {question:?}")
+            },
+            evidence_keys: vec![key.into()],
+        })
+        .collect(),
+    };
+    let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+    f.operations
+        .record_explanation(f.project, subject, "en", realize(&plan))?;
+    check("current", expected, cp.id.to_string())?;
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    let goal = before
+        .context_items
+        .iter()
+        .find(|g| g.id == work)
+        .ok_or("Goal")?;
+    f.operations.correct_context_item(
+        f.project,
+        work,
+        volicord_context::ContextItemCorrectionDraft {
+            expected_revision: goal.revision,
+            corrected_statement: format!("{}.", goal.statement),
+            user_authorization_source_id: goal.source_basis[0],
+            kind: volicord_context::CorrectionKind::Expression,
+        },
+    )?;
+    check("stale", expected, cp.id.to_string())?;
+    assert!(f
+        .operations
+        .record_explanation(f.project, subject, "en", realize(&plan))
+        .is_err());
+    let fresh = f.operations.prepare_explanation(f.project, subject, "en")?;
+    f.operations
+        .record_explanation(f.project, subject, "en", realize(&fresh))?;
+    check("current", expected, cp.id.to_string())?;
+    // A new canonical direction invalidates the old interpretation and updates
+    // the ordinary answer with the new Checkpoint's basis, even on restart.
+    let mut store = volicord_context::Store::open(f.operations.layout().canonical_store())?;
+    let next = store
+        .record_checkpoint(
+            volicord_context::OperationId::from_bytes([0xc9; 16]),
+            f.project,
+            volicord_context::CheckpointDraft {
+                expected_project_revision: before.project.revision,
+                work_item_id: Some(work),
+                kind: cp.kind,
+                goal: cp.goal.clone(),
+                work_state: cp.work_state,
+                state_change: None,
+                source_basis: cp.source_basis.clone(),
+                changed_source_basis: vec![],
+                changed_paths: vec![],
+                applied_decisions: cp.applied_decisions.clone(),
+                verification: cp.verification.clone(),
+                user_review: cp.user_review.clone(),
+                user_acceptance: cp.user_acceptance.clone(),
+                known_limits: vec![],
+                non_goals: vec![],
+                open_questions: vec![],
+                next_step: "Inspect the pending indicator before changing request cancellation."
+                    .into(),
+                handoff_to: Some("next".into()),
+            },
+        )?
+        .value;
+    drop(store);
+    check("stale", &next.next_step, next.id.to_string())?;
+    f.operations.delete_explanations(f.project, subject)?;
+    check("unavailable", &next.next_step, next.id.to_string())?;
+    let supporting_source = cp
+        .source_basis
+        .iter()
+        .find(|id| **id != goal.source_basis[0])
+        .ok_or("supporting Source")?;
+    f.operations.forget_record(
+        f.project,
+        volicord_context::CanonicalRecordId::Source(*supporting_source),
+        goal.source_basis[0],
+    )?;
+    let recalled = f.operations.recall(f.project)?;
+    let answers = work_answers(
+        recalled.selected_work.as_ref().ok_or("Work")?,
+        "en",
+        FixedLocale::English,
+    );
+    let action = answers.recorded_next_action().ok_or("action")?;
+    assert_eq!(action.recorded_text, next.next_step);
+    // Forgetting scrubs the dependency from canonical provenance. Do not revive
+    // its identity/status or body from previously generated evidence.
+    assert!(!action.source_ids.contains(&supporting_source.to_string()));
+    assert!(!action
+        .source_status
+        .iter()
+        .any(|s| s["source_id"] == supporting_source.to_string()));
+    assert_eq!(answers.provenance, None);
+    Ok(())
+}

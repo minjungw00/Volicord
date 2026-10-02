@@ -111,6 +111,10 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
     );
     assert!(page.contains("class=\"work-explanation\""));
     assert!(page.contains("Fake unit-test paragraph"));
+    let action = "Run a browser check with slow responses and confirm loading feedback.";
+    assert!(page.contains(&format!(
+        "data-question=\"RecordedNextStep\">기록된 다음 행동 인용 (원문 언어): {action}</p>"
+    )));
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     // Exact requested language, not UI locale; no hidden generation on reads.
     let untranslated = get(
@@ -118,6 +122,7 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
         &format!("/?view=work&work={work}&locale=ko&language=fr"),
     );
     assert!(!untranslated.contains("Fake unit-test paragraph"));
+    assert!(untranslated.contains(action));
     let source = before
         .context_items
         .iter()
@@ -148,6 +153,9 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
     );
     assert!(stale.contains("근거가 변경"));
     assert!(!stale.contains("Fake unit-test paragraph"));
+    assert!(stale.contains(&format!(
+        "data-question=\"RecordedNextStep\">기록된 다음 행동 인용 (원문 언어): {action}</p>"
+    )));
     assert!(f
         .operations
         .record_explanation(f.project, ExplanationSubject::Work(work), "ko", fake(&plan))
@@ -166,6 +174,7 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
         "ko",
         fake(&fresh),
     )?;
+    assert!(get(&f, &format!("/?view=work&work={work}&language=ko")).contains(action));
     let cp = f.checkpoints["relay-change"];
     assert!(
         f.operations
@@ -184,6 +193,8 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
         .any(|window| window == b"Fake unit-test paragraph"));
     let page = get(&f, &format!("/?view=work&work={work}&language=ko"));
     assert!(!page.contains("Fake unit-test paragraph"));
+    assert!(!page.contains("data-question=\"RecordedNextStep\""));
+    assert!(page.contains("data-question=\"NextStepAvailability\""));
     Ok(())
 }
 #[test]
@@ -287,7 +298,10 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
             included_sources:vec![grounding.source_reference(source)?],canonical_links:vec![volicord_privacy::ManagedCanonicalLink::ContextItem(work)],
             content,uncertainty:None,retained_until:None,retention_basis:"Unit-test corrupt cache fixture".into() })?;
         drop(privacy);
-        assert!(get(&f,&format!("/?view=work&work={work}")).contains(label));
+        let page = get(&f,&format!("/?view=work&work={work}"));
+        assert!(page.contains(label));
+        assert!(page.contains("data-question=\"RecordedNextStep\""));
+        assert!(page.contains("Remove abandoned temporary files"));
         f.operations.delete_explanations(f.project,ExplanationSubject::Work(work))?;
     }
     assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
@@ -672,6 +686,86 @@ fn unrelated_work_pagination_and_failed_generation_preserve_exact_answers(
             assert_eq!(answer.explanation_state, ExplanationState::Current);
             assert!(!answer.text().contains("CSV bytes replaced"));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn recorded_action_preserves_full_text_and_distinguishes_missing_information(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let long = format!(
+        "{}Confirm the pending indicator under slow responses.",
+        "Review the recorded setup. ".repeat(20)
+    );
+    for direction in [None, Some(""), Some("   "), Some(long.as_str())] {
+        let mut input = reading_fixture::rich_scenario()?;
+        let selected = input["works"]
+            .as_array_mut()
+            .ok_or("works")?
+            .iter_mut()
+            .find(|w| w["key"] == "relay")
+            .ok_or("relay")?;
+        if let Some(text) = direction {
+            selected["checkpoints"][0]["next_step"] = serde_json::json!(text);
+        } else {
+            selected["checkpoints"] = serde_json::json!([]);
+        }
+        if direction.is_some_and(|s| s.trim().is_empty()) {
+            // Canonical authoring rejects blank direction rather than fabricating
+            // one. A deficient read DTO must likewise never inherit an old step.
+            assert!(reading_fixture::fixture_scenario(input).is_err());
+            let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+            let mut work = f
+                .operations
+                .project_projection_selected(f.project, WorkSelector::ExactWork(f.goals["relay"]))?
+                .selected_work
+                .ok_or("Work")?;
+            work.reading.next_step.original_text = direction.map(str::to_owned);
+            let answers = work_answers(&work, "en", FixedLocale::English);
+            assert!(answers.recorded_next_action().is_none());
+            assert_eq!(
+                answers.next_step_answer().ok_or("gap")?.role,
+                AnswerRole::Unavailable
+            );
+            continue;
+        }
+        let f = reading_fixture::fixture_scenario(input)?;
+        let work = f.goals["relay"];
+        let projection = f
+            .operations
+            .project_projection_selected(f.project, WorkSelector::ExactWork(work))?;
+        let selected = projection.selected_work.as_ref().ok_or("Work")?;
+        let answers = work_answers(selected, "en", FixedLocale::English);
+        let page = get(&f, &format!("/?view=work&work={work}"));
+        if direction.is_some_and(|s| !s.trim().is_empty()) {
+            assert_eq!(
+                answers
+                    .recorded_next_action()
+                    .ok_or("action")?
+                    .recorded_text,
+                long
+            );
+            assert!(page.contains(&format!("data-question=\"RecordedNextStep\">Recorded next action quotation (original language): {long}</p>")));
+        } else {
+            assert!(answers.recorded_next_action().is_none());
+            assert!(!page.contains("data-question=\"RecordedNextStep\""));
+            assert_eq!(
+                answers.next_step_answer().ok_or("gap")?.role,
+                AnswerRole::Unavailable
+            );
+            assert!(page.contains(if direction.is_none() {
+                "this Work has no Checkpoint"
+            } else {
+                "latest Checkpoint"
+            }));
+        }
+        assert!(f
+            .operations
+            .project_projection_selected(
+                f.project,
+                WorkSelector::ExactWork(ContextItemId::from_bytes([0; 16]))
+            )
+            .is_err());
     }
     Ok(())
 }

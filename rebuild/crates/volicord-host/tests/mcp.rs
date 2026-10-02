@@ -6185,9 +6185,7 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         recalled["checkpoint"]["next_step"],
         "Run maintained V08 assertions"
     );
-    assert!(recalled["next_step"]
-        .as_str()
-        .is_some_and(|s| s.contains("Interpretation has not been generated")));
+    assert_eq!(recalled["next_step"], "Run maintained V08 assertions");
     assert_eq!(
         recalled["decisions"][0]["evidence"]["recommendation_rationale"],
         "The accepted product boundary is local-first"
