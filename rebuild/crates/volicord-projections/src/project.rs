@@ -1,6 +1,6 @@
 use crate::{
-    build_resume_brief, inspect_candidate, CandidateContentAccess, CandidateInspection,
-    RecallBound, RecallInputs, ResumeBrief,
+    inspect_candidate, CandidateContentAccess, CandidateInspection, RecallBound, RecallInputs,
+    ResumeBrief,
 };
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -812,12 +812,25 @@ pub struct CurrentWorkTopology {
     pub omitted_relation_count: usize,
 }
 
+/// Projection Work evidence construction, independent of displayed bounds.
+/// Operations separately counts retained-explanation freshness preparations.
+/// Canonical store reads remain complete; input bytes are not allocated-byte/RSS measurements.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct WorkReadCost {
+    pub classified_works: usize,
+    pub indexed_checkpoints: usize,
+    pub materialized_works: usize,
+    pub materialized_checkpoints: usize,
+    pub evidence_input_bytes: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
     /// Ephemeral equality binding for new read/export; not canonical authority.
     pub canonical_read_fingerprint: String,
     pub sections: ProjectReadSections,
     pub work_count: usize,
+    pub work_read_cost: WorkReadCost,
     pub decision_count: usize,
     pub decision_catalog: Vec<crate::UnderstandingDecision>,
     pub selected_decision: Option<crate::UnderstandingDecision>,
@@ -962,41 +975,36 @@ pub fn build_project_projection(
     let topology_canonical = if let Some(scoped) = &scoped {
         scoped
     } else {
-        seed_canonical = {
-            let mut basis = inputs.canonical.clone();
-            basis
-                .context_items
-                .retain(|item| item.role != ContextItemRole::Goal);
-            if let Some(latest) = &basis.latest_checkpoint {
-                basis
-                    .active_decisions
-                    .retain(|d| latest.applied_decisions.contains(&d.decision.id));
-            }
-            basis
-        };
+        seed_canonical = crate::reading::topology_seed_without_work(inputs.canonical);
         &seed_canonical
     };
     let limit = inputs.bound.max_items_per_section.max(1);
-    let resume = if inputs.requirements.code {
-        build_resume_brief(RecallInputs {
-            analysis_issues: inputs.analysis_issues,
-            canonical: reading_canonical,
-            analyses,
-            scope: inputs.applicability.clone(),
-            bound: RecallBound {
-                max_items_per_section: limit.min(RecallBound::default().max_items_per_section),
+    let mut resume = if inputs.requirements.code {
+        crate::recall::build_resume_brief_coordinated(
+            RecallInputs {
+                analysis_issues: inputs.analysis_issues,
+                canonical: reading_canonical,
+                analyses,
+                scope: inputs.applicability.clone(),
+                bound: RecallBound {
+                    max_items_per_section: limit.min(RecallBound::default().max_items_per_section),
+                },
             },
-        })
+            false,
+        )
     } else {
-        crate::build_resume_brief_from_metadata(crate::RecallMetadataInputs {
-            analysis_issues: inputs.analysis_issues,
-            canonical: reading_canonical,
-            analyses: inputs.metadata,
-            scope: inputs.applicability.clone(),
-            bound: RecallBound {
-                max_items_per_section: limit.min(RecallBound::default().max_items_per_section),
+        crate::recall::build_resume_brief_metadata_coordinated(
+            crate::RecallMetadataInputs {
+                analysis_issues: inputs.analysis_issues,
+                canonical: reading_canonical,
+                analyses: inputs.metadata,
+                scope: inputs.applicability.clone(),
+                bound: RecallBound {
+                    max_items_per_section: limit.min(RecallBound::default().max_items_per_section),
+                },
             },
-        })
+            false,
+        )
     };
     let mut issues = source_issues(reading_canonical);
     issues.extend_from_slice(inputs.analysis_issues);
@@ -1132,14 +1140,71 @@ pub fn build_project_projection(
         "unresolved_work_grouping",
         &mut issues,
     );
-    let mut work_history = crate::reading::derive_work_history(reading_canonical);
-    work_history.sort_by_key(|work| work.work_item_id);
-    let mut selected_work = selection.work_item_id.and_then(|id| {
-        work_history
+    let work_index = crate::reading::WorkHistoryIndex::new(reading_canonical);
+    let overview_selection = work_index.overview_selection(8);
+    let work_count = work_index.0.len();
+    let work_offset = inputs
+        .detail
+        .work_page
+        .saturating_mul(limit)
+        .min(work_count);
+    let page_ids = work_index
+        .0
+        .keys()
+        .skip(work_offset)
+        .take(limit)
+        .copied()
+        .collect::<Vec<_>>();
+    let resume_id = crate::WorkSelector::LatestWork
+        .resolve(reading_canonical)?
+        .work_item_id;
+    let required_ids = page_ids
+        .iter()
+        .copied()
+        .chain(
+            overview_selection
+                .iter()
+                .flat_map(|(ids, _)| ids.iter().copied()),
+        )
+        .chain(selection.work_item_id)
+        .chain(resume_id)
+        .collect::<BTreeSet<_>>();
+    let work_read_cost = WorkReadCost {
+        classified_works: work_count,
+        indexed_checkpoints: work_index.0.values().map(|g| g.checkpoints.len()).sum(),
+        materialized_works: required_ids.len(),
+        materialized_checkpoints: required_ids
             .iter()
-            .find(|work| work.work_item_id == id)
-            .cloned()
-    });
+            .filter_map(|id| work_index.0.get(id))
+            .map(|g| g.checkpoints.len())
+            .sum(),
+        evidence_input_bytes: required_ids
+            .iter()
+            .filter_map(|id| work_index.0.get(id))
+            .map(|g| {
+                g.goal.statement.len()
+                    + g.checkpoints
+                        .iter()
+                        .map(|cp| {
+                            cp.state_change.as_deref().map_or(0, str::len) + cp.next_step.len()
+                        })
+                        .sum::<usize>()
+            })
+            .sum(),
+    };
+    let mut materialized = required_ids
+        .iter()
+        .filter_map(|id| {
+            work_index
+                .0
+                .get(id)
+                .map(|g| (*id, g.materialize(reading_canonical)))
+        })
+        .collect::<BTreeMap<_, _>>();
+    resume.selected_work = resume_id.and_then(|id| materialized.get(&id).cloned());
+    let mut selected_work = selection
+        .work_item_id
+        .and_then(|id| materialized.get(&id).cloned());
     if let Some(work) = &mut selected_work {
         work.reading.code_freshness = inputs
             .analyses
@@ -1277,22 +1342,17 @@ pub fn build_project_projection(
         &mut issues,
     );
     if let Some(selected) = &selected_work {
-        if let Some(work) = work_history
-            .iter_mut()
-            .find(|work| work.work_item_id == selected.work_item_id)
-        {
-            *work = selected.clone();
-        }
+        materialized.insert(selected.work_item_id, selected.clone());
     }
-    let work_overview = crate::WorkOverview::from_history(&work_history, 8);
-    let work_count = work_history.len();
-    let work_offset = inputs
-        .detail
-        .work_page
-        .saturating_mul(limit)
-        .min(work_count);
-    work_history.drain(..work_offset);
-    bound(&mut work_history, limit, "work_history", &mut issues);
+    let work_overview = crate::WorkOverview::from_selection(overview_selection, &materialized);
+    let work_history = page_ids
+        .into_iter()
+        .filter_map(|id| materialized.remove(&id))
+        .collect::<Vec<_>>();
+    let omitted = work_count.saturating_sub(work_offset + work_history.len());
+    if omitted > 0 {
+        issues.push(bound_issue("work_history", omitted));
+    }
     let mut decision_lifecycles = reading_canonical
         .active_decisions
         .iter()
@@ -1359,6 +1419,7 @@ pub fn build_project_projection(
             },
         },
         work_count,
+        work_read_cost,
         decision_count,
         decision_catalog,
         selected_decision,
@@ -1943,28 +2004,28 @@ fn build_timeline(
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> Vec<CheckpointTimelineEntry> {
-    let mut checkpoints = if canonical.checkpoint_history.is_empty() {
-        canonical.latest_checkpoint.iter().cloned().collect()
-    } else {
-        canonical.checkpoint_history.clone()
-    };
+    let mut checkpoints = canonical
+        .checkpoint_history
+        .iter()
+        .chain(canonical.latest_checkpoint.iter())
+        .collect::<Vec<_>>();
     checkpoints.sort_by_key(|checkpoint| (checkpoint.recorded_at, checkpoint.id));
-    let mut values = checkpoints
+    checkpoints.dedup_by_key(|cp| cp.id);
+    let omitted = checkpoints.len().saturating_sub(limit);
+    if omitted > 0 {
+        issues.push(bound_issue("checkpoint_timeline", omitted));
+    }
+    checkpoints
         .into_iter()
+        .skip(omitted)
         .map(|checkpoint| CheckpointTimelineEntry {
             work_state: checkpoint.work_state,
             verification: checkpoint.verification.clone(),
             user_review: checkpoint.user_review.clone(),
             user_acceptance: checkpoint.user_acceptance.clone(),
-            checkpoint,
+            checkpoint: checkpoint.clone(),
         })
-        .collect::<Vec<_>>();
-    if values.len() > limit {
-        let omitted = values.len() - limit;
-        issues.push(bound_issue("checkpoint_timeline", omitted));
-        values.drain(..omitted);
-    }
-    values
+        .collect()
 }
 
 fn build_canonical_inspection(

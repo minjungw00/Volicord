@@ -193,51 +193,27 @@ pub struct WorkOverview {
     pub next_steps: WorkSection,
 }
 impl WorkOverview {
-    pub(crate) fn from_history(history: &[UnderstandingWork], limit: usize) -> Self {
-        let section = |filter: fn(&UnderstandingWork) -> bool, result_time: bool| {
-            let mut items = history
-                .iter()
-                .filter(|w| filter(w))
-                .cloned()
+    pub(crate) fn from_selection(
+        selections: crate::reading::WorkOverviewSelection,
+        materialized: &BTreeMap<ContextItemId, UnderstandingWork>,
+    ) -> Self {
+        let [current, completed, remaining, next_steps] = selections.map(|(ids, total)| {
+            let items = ids
+                .into_iter()
+                .filter_map(|id| materialized.get(&id).cloned())
                 .collect::<Vec<_>>();
-            items.sort_by_key(|w| {
-                (
-                    Reverse(if result_time {
-                        w.reading
-                            .answers
-                            .result_observed_at
-                            .unwrap_or(w.observed_at)
-                    } else {
-                        w.observed_at
-                    }),
-                    w.work_item_id,
-                )
-            });
-            let total = items.len();
-            items.truncate(limit);
             WorkSection {
                 omitted: total - items.len(),
                 items,
                 total,
                 complete: true,
             }
-        };
+        });
         Self {
-            current: section(|w| w.state == UnderstandingWorkState::InProgress, false),
-            completed: section(|w| w.state == UnderstandingWorkState::Completed, true),
-            remaining: section(
-                |w| {
-                    matches!(
-                        w.state,
-                        UnderstandingWorkState::Open | UnderstandingWorkState::Paused
-                    )
-                },
-                false,
-            ),
-            next_steps: section(
-                |w| w.next_step.as_deref().is_some_and(|s| !s.trim().is_empty()),
-                false,
-            ),
+            current,
+            completed,
+            remaining,
+            next_steps,
         }
     }
     fn bound(&mut self, limit: usize) {
@@ -2083,6 +2059,7 @@ mod tests {
             checkpoint: checkpoint.clone(),
         };
         ProjectProjection {
+            work_read_cost: crate::WorkReadCost::default(),
             canonical_read_fingerprint: String::new(),
             sections: crate::ProjectReadSections {
                 code: crate::ReadSectionState::Available,
@@ -2107,7 +2084,10 @@ mod tests {
             selected_work: None,
             selected_work_decisions: Vec::new(),
             unresolved_work_grouping: Vec::new(),
-            work_overview: crate::WorkOverview::from_history(&[], 8),
+            work_overview: crate::WorkOverview::from_selection(
+                std::array::from_fn(|_| (Vec::new(), 0)),
+                &std::collections::BTreeMap::new(),
+            ),
             work_history: Vec::new(),
             overview: ProjectOverview {
                 project_id: project_id(),

@@ -1003,6 +1003,16 @@ freshness observation에 대해 동일한 ResumeBrief를 생성해야 한다. Me
 공통 Analysis Snapshot kind/current-version 및 typed identity 계약을 검사한다.
 
 
+Work Overview는 complete canonical history의 Goal/Checkpoint 참조를 분류하고 state,
+result chronology와 next-step eligibility 및 전체 category count를 먼저 확정한다.
+Catalog page, 각 Overview section, exact selection과 Recall에 필요한 identity의 합집합만
+상세 원문·state history·coverage evidence로 materialize한다. 선택된 Work의 전체 history는
+생략하지 않는다. Canonical store read와 lightweight index는 전체 기록 크기에 비례하며,
+이 비용을 표시 항목 bound로 숨기지 않는다. `WorkReadCost`는 projection에서 분류한 Work,
+indexed/materialized Checkpoint, materialized Work와 evidence input byte 수를 구분한다.
+Operations는 retained subject/language마다 한 번 수행하는 explanation freshness preparation
+횟수를 별도로 보고한다. 이는 allocation/RSS 또는 model generation latency 측정이 아니다.
+
 ### Viewer detail selection
 
 `ProjectionDetail` selects an optional Decision or code entity from the complete
@@ -1053,3 +1063,9 @@ canonical Work selection, `current_work_topology` seed semantics and default
 Recall/document inputs unchanged. No unrelated repository components replace this
 neighborhood. Resolved endpoints, unresolved evidence and exact omissions remain
 separate, and an explicit entity selection is not a canonical Work-seed assertion.
+
+Document set의 live-basis 검사는 네 preview에 포함된 provenance를 합쳐 generation 후 한 번
+수행한다. 기존 inspection coordination lock으로 canonical/explanation 삭제와 조정하며,
+Candidate 저장소 장애는 unrelated store의 private-path 준비 실패로 승격하지 않는다.
+Publication은 계속 explicit Local Operations mutation boundary에서 별도로 current basis를
+검사한다. 이 최적화는 삭제·수정 이후 새 read/export의 stale text 차단을 약화하지 않는다.

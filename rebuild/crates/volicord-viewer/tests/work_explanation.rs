@@ -357,7 +357,10 @@ fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_public
         response,
     )?;
     let restarted = LocalOperations::new(f.operations.layout().clone());
-    let p = restarted.project_projection(f.project)?;
+    let (p, profile) = restarted.project_projection_profiled(f.project)?;
+    // Work appears in several sections and Decision in catalog/resume; each
+    // retained subject/language freshness basis is prepared exactly once.
+    assert_eq!(profile.explanation_basis_preparations, 2);
     let selected = p
         .work_history
         .iter()

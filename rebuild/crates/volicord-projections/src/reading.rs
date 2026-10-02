@@ -1,7 +1,7 @@
 //! Deterministic reading representations. Original text and independent facts
 //! remain inspectable; quotations never claim semantic comprehension.
 use crate::{BriefDecision, UnderstandingWork, UnderstandingWorkState};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{
     CanonicalReadBasis, CanonicalRecordKind, CheckpointId, ContextItemId, ContextItemRole,
     DecisionId, DecisionWorkScope, SourceFreshness, SourceId, TimestampMicros, UserAcceptanceFact,
@@ -295,186 +295,260 @@ pub(crate) fn decision_reading(decision: &BriefDecision) -> DecisionReading {
     }
 }
 
-/// Aggregate complete canonical history before any projection/list/transport bound.
-pub(crate) fn derive_work_history(canonical: &CanonicalReadBasis) -> Vec<UnderstandingWork> {
-    canonical
-        .context_items
-        .iter()
-        .filter(|goal| {
-            goal.project_id == canonical.project.id && goal.role == ContextItemRole::Goal
-        })
-        .map(|goal| {
-            let mut checkpoints = canonical
-                .checkpoint_history
-                .iter()
-                .chain(canonical.latest_checkpoint.iter())
-                .filter(|cp| {
-                    cp.project_id == canonical.project.id && cp.work_item_id == Some(goal.id)
-                })
-                .collect::<Vec<_>>();
-            checkpoints.sort_by_key(|cp| (cp.recorded_at, cp.id));
-            checkpoints.dedup_by_key(|cp| cp.id);
-            let latest = checkpoints.last().copied();
-            let mut decisions = checkpoints
-                .iter()
-                .flat_map(|cp| cp.applied_decisions.iter().copied())
-                .collect::<BTreeSet<_>>();
-            decisions.extend(
-                canonical
-                    .active_decisions
-                    .iter()
-                    .chain(&canonical.superseded_decisions)
-                    .filter(|d| d.decision.work_scope == DecisionWorkScope::WorkItem(goal.id))
-                    .map(|d| d.decision.id),
-            );
-            let source_basis = goal
-                .source_basis
-                .iter()
-                .copied()
-                .chain(checkpoints.iter().flat_map(|cp| {
-                    cp.source_basis
-                        .iter()
-                        .chain(&cp.changed_source_basis)
-                        .copied()
-                        .chain(cp.verification.iter().filter_map(|v| v.source_id))
-                        .chain(cp.user_review.source_id)
-                        .chain(cp.user_acceptance.source_id)
-                }))
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-            let changed_paths = checkpoints
-                .iter()
-                .flat_map(|cp| cp.changed_paths.iter().cloned())
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-            let states: Vec<WorkStateObservation> = checkpoints
-                .iter()
-                .enumerate()
-                .map(|(index, cp)| WorkStateObservation {
-                    checkpoint_id: cp.id,
-                    checkpoint_revision: cp.revision,
-                    observed_at: cp.recorded_at,
-                    work_state: cp.work_state,
-                    work_source_basis: cp.source_basis.clone(),
-                    verification: cp.verification.clone(),
-                    user_review: cp.user_review.clone(),
-                    user_acceptance: cp.user_acceptance.clone(),
-                    later_changed_checkpoint_ids: checkpoints[index + 1..]
-                        .iter()
-                        .filter(|later| has_reported_change(later))
-                        .map(|later| later.id)
-                        .collect(),
-                })
-                .collect();
-            let goal_basis = reading_basis(
-                canonical,
-                ReadingRecord::ContextItem(goal.id),
-                goal.revision,
-                "statement",
-                goal.source_basis.clone(),
-            );
-            let state = latest.map_or(UnderstandingWorkState::Open, |cp| cp.work_state.into());
-            let changes: Vec<ReadingText> = checkpoints
-                .iter()
-                .map(|cp| {
-                    quoted_reading(
-                        cp.state_change.as_deref(),
-                        reading_basis(
-                            canonical,
-                            ReadingRecord::Checkpoint(cp.id),
-                            cp.revision,
-                            "state_change",
-                            cp.source_basis.clone(),
+/// Request-local references: classify complete history without copying prose or
+/// constructing per-observation coverage. Only selected subjects materialize it.
+pub(crate) struct WorkHistory<'a> {
+    pub goal: &'a volicord_context::ContextItem,
+    pub checkpoints: Vec<&'a volicord_context::Checkpoint>,
+}
+pub(crate) struct WorkHistoryIndex<'a>(pub BTreeMap<ContextItemId, WorkHistory<'a>>);
+pub(crate) type WorkOverviewSelection = [(Vec<ContextItemId>, usize); 4];
+impl<'a> WorkHistoryIndex<'a> {
+    pub fn new(canonical: &'a CanonicalReadBasis) -> Self {
+        let mut groups = canonical
+            .context_items
+            .iter()
+            .filter(|goal| {
+                goal.project_id == canonical.project.id && goal.role == ContextItemRole::Goal
+            })
+            .map(|goal| {
+                (
+                    goal.id,
+                    WorkHistory {
+                        goal,
+                        checkpoints: Vec::new(),
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        for cp in canonical
+            .checkpoint_history
+            .iter()
+            .chain(canonical.latest_checkpoint.iter())
+        {
+            if cp.project_id == canonical.project.id {
+                if let Some(group) = cp.work_item_id.and_then(|id| groups.get_mut(&id)) {
+                    group.checkpoints.push(cp);
+                }
+            }
+        }
+        for group in groups.values_mut() {
+            group.checkpoints.sort_by_key(|cp| (cp.recorded_at, cp.id));
+            group.checkpoints.dedup_by_key(|cp| cp.id);
+        }
+        Self(groups)
+    }
+    pub fn overview_selection(&self, limit: usize) -> WorkOverviewSelection {
+        let section = |category: usize| {
+            let mut groups = self
+                .0
+                .values()
+                .filter(|group| {
+                    let latest = group.checkpoints.last();
+                    let state =
+                        latest.map_or(UnderstandingWorkState::Open, |cp| cp.work_state.into());
+                    match category {
+                        0 => state == UnderstandingWorkState::InProgress,
+                        1 => state == UnderstandingWorkState::Completed,
+                        2 => matches!(
+                            state,
+                            UnderstandingWorkState::Open | UnderstandingWorkState::Paused
                         ),
-                        Some(canonical),
-                    )
+                        _ => latest.is_some_and(|cp| !cp.next_step.trim().is_empty()),
+                    }
                 })
-                .collect();
-            let result_index = checkpoints.iter().rposition(|cp| {
-                cp.state_change
-                    .as_deref()
-                    .is_some_and(|text| !text.trim().is_empty())
+                .collect::<Vec<_>>();
+            groups.sort_by_cached_key(|group| {
+                let latest = group.checkpoints.last();
+                let observed = latest.map_or(group.goal.recorded_at, |cp| cp.recorded_at);
+                let time = if category == 1 {
+                    group
+                        .checkpoints
+                        .iter()
+                        .rev()
+                        .find(|cp| {
+                            cp.state_change
+                                .as_deref()
+                                .is_some_and(|s| !s.trim().is_empty())
+                        })
+                        .map_or(observed, |cp| cp.recorded_at)
+                } else {
+                    observed
+                };
+                (std::cmp::Reverse(time), group.goal.id)
             });
-            let answers = WorkAnswers {
-                result: result_index.map(|index| changes[index].clone()),
-                result_observed_at: result_index.map(|index| checkpoints[index].recorded_at),
-                latest_state: states.last().cloned(),
-                verification: states
+            let total = groups.len();
+            (
+                groups.into_iter().take(limit).map(|g| g.goal.id).collect(),
+                total,
+            )
+        };
+        [section(0), section(1), section(2), section(3)]
+    }
+}
+impl WorkHistory<'_> {
+    pub fn materialize(&self, canonical: &CanonicalReadBasis) -> UnderstandingWork {
+        let goal = self.goal;
+        let checkpoints = &self.checkpoints;
+        let latest = checkpoints.last().copied();
+        let mut decisions = checkpoints
+            .iter()
+            .flat_map(|cp| cp.applied_decisions.iter().copied())
+            .collect::<BTreeSet<_>>();
+        decisions.extend(
+            canonical
+                .active_decisions
+                .iter()
+                .chain(&canonical.superseded_decisions)
+                .filter(|d| d.decision.work_scope == DecisionWorkScope::WorkItem(goal.id))
+                .map(|d| d.decision.id),
+        );
+        let source_basis = goal
+            .source_basis
+            .iter()
+            .copied()
+            .chain(checkpoints.iter().flat_map(|cp| {
+                cp.source_basis
                     .iter()
-                    .rev()
-                    .find(|s| !s.verification.is_empty())
-                    .cloned(),
-                review: states.last().cloned(),
-                acceptance: states.last().cloned(),
-            };
-            let mut next_step = latest.map_or_else(
-                || quoted_reading(None, goal_basis.clone(), Some(canonical)),
-                |cp| {
-                    quoted_reading(
-                        Some(&cp.next_step),
-                        reading_basis(
-                            canonical,
-                            ReadingRecord::Checkpoint(cp.id),
-                            cp.revision,
-                            "next_step",
-                            cp.source_basis.clone(),
-                        ),
-                        Some(canonical),
-                    )
-                },
-            );
-            if latest.is_none() {
-                next_step.basis.field = "role".into();
-                next_step
-                    .gaps
-                    .push("No same-Work Checkpoint records a next step".into());
-            }
-            let has_scope =
-                !goal.applicability.paths.is_empty() || !goal.applicability.components.is_empty();
-            UnderstandingWork {
-                work_item_id: goal.id,
-                title: goal.statement.clone(),
-                state,
-                observed_at: latest.map_or(goal.recorded_at, |cp| cp.recorded_at),
-                checkpoint_ids: checkpoints.iter().map(|cp| cp.id).collect(),
-                decision_ids: decisions.iter().copied().collect(),
-                changed_paths: changed_paths.clone(),
-                changed_components: canonical
-                    .active_decisions
+                    .chain(&cp.changed_source_basis)
+                    .copied()
+                    .chain(cp.verification.iter().filter_map(|v| v.source_id))
+                    .chain(cp.user_review.source_id)
+                    .chain(cp.user_acceptance.source_id)
+            }))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let changed_paths = checkpoints
+            .iter()
+            .flat_map(|cp| cp.changed_paths.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let states: Vec<WorkStateObservation> = checkpoints
+            .iter()
+            .enumerate()
+            .map(|(index, cp)| WorkStateObservation {
+                checkpoint_id: cp.id,
+                checkpoint_revision: cp.revision,
+                observed_at: cp.recorded_at,
+                work_state: cp.work_state,
+                work_source_basis: cp.source_basis.clone(),
+                verification: cp.verification.clone(),
+                user_review: cp.user_review.clone(),
+                user_acceptance: cp.user_acceptance.clone(),
+                later_changed_checkpoint_ids: checkpoints[index + 1..]
                     .iter()
-                    .chain(&canonical.superseded_decisions)
-                    .filter(|d| decisions.contains(&d.decision.id))
-                    .flat_map(|d| d.decision.applicability.components.iter().cloned())
-                    .collect::<BTreeSet<_>>()
-                    .into_iter()
+                    .filter(|later| has_reported_change(later))
+                    .map(|later| later.id)
                     .collect(),
-                next_step: latest.map(|cp| cp.next_step.clone()),
-                open_question_ids: latest
-                    .into_iter()
-                    .flat_map(|cp| cp.open_questions.iter().map(|q| q.question_id))
-                    .filter(|id| canonical.active_questions.iter().any(|q| q.id == *id))
-                    .collect(),
-                source_basis,
-                reading: WorkReading {
-                    explanations: Vec::new(),
-                    answers,
-                    goal: quoted_reading(Some(&goal.statement), goal_basis, Some(canonical)),
-                    changes,
-                    next_step,
-                    states,
-                    code_availability: ReadingAvailability::Unknown,
-                    code_freshness: Vec::new(),
-                    code_source_basis: Vec::new(),
-                    analysis_snapshot_basis: Vec::new(),
-                    repository_snapshot_basis: Vec::new(),
-                    code_gap: (changed_paths.is_empty() && !has_scope)
-                        .then_some(WorkCodeGap::NoSeeds),
-                },
-            }
-        })
-        .collect()
+            })
+            .collect();
+        let goal_basis = reading_basis(
+            canonical,
+            ReadingRecord::ContextItem(goal.id),
+            goal.revision,
+            "statement",
+            goal.source_basis.clone(),
+        );
+        let state = latest.map_or(UnderstandingWorkState::Open, |cp| cp.work_state.into());
+        let changes: Vec<ReadingText> = checkpoints
+            .iter()
+            .map(|cp| {
+                quoted_reading(
+                    cp.state_change.as_deref(),
+                    reading_basis(
+                        canonical,
+                        ReadingRecord::Checkpoint(cp.id),
+                        cp.revision,
+                        "state_change",
+                        cp.source_basis.clone(),
+                    ),
+                    Some(canonical),
+                )
+            })
+            .collect();
+        let result_index = checkpoints.iter().rposition(|cp| {
+            cp.state_change
+                .as_deref()
+                .is_some_and(|text| !text.trim().is_empty())
+        });
+        let answers = WorkAnswers {
+            result: result_index.map(|index| changes[index].clone()),
+            result_observed_at: result_index.map(|index| checkpoints[index].recorded_at),
+            latest_state: states.last().cloned(),
+            verification: states
+                .iter()
+                .rev()
+                .find(|s| !s.verification.is_empty())
+                .cloned(),
+            review: states.last().cloned(),
+            acceptance: states.last().cloned(),
+        };
+        let mut next_step = latest.map_or_else(
+            || quoted_reading(None, goal_basis.clone(), Some(canonical)),
+            |cp| {
+                quoted_reading(
+                    Some(&cp.next_step),
+                    reading_basis(
+                        canonical,
+                        ReadingRecord::Checkpoint(cp.id),
+                        cp.revision,
+                        "next_step",
+                        cp.source_basis.clone(),
+                    ),
+                    Some(canonical),
+                )
+            },
+        );
+        if latest.is_none() {
+            next_step.basis.field = "role".into();
+            next_step
+                .gaps
+                .push("No same-Work Checkpoint records a next step".into());
+        }
+        let has_scope =
+            !goal.applicability.paths.is_empty() || !goal.applicability.components.is_empty();
+        UnderstandingWork {
+            work_item_id: goal.id,
+            title: goal.statement.clone(),
+            state,
+            observed_at: latest.map_or(goal.recorded_at, |cp| cp.recorded_at),
+            checkpoint_ids: checkpoints.iter().map(|cp| cp.id).collect(),
+            decision_ids: decisions.iter().copied().collect(),
+            changed_paths: changed_paths.clone(),
+            changed_components: canonical
+                .active_decisions
+                .iter()
+                .chain(&canonical.superseded_decisions)
+                .filter(|d| decisions.contains(&d.decision.id))
+                .flat_map(|d| d.decision.applicability.components.iter().cloned())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+            next_step: latest.map(|cp| cp.next_step.clone()),
+            open_question_ids: latest
+                .into_iter()
+                .flat_map(|cp| cp.open_questions.iter().map(|q| q.question_id))
+                .filter(|id| canonical.active_questions.iter().any(|q| q.id == *id))
+                .collect(),
+            source_basis,
+            reading: WorkReading {
+                explanations: Vec::new(),
+                answers,
+                goal: quoted_reading(Some(&goal.statement), goal_basis, Some(canonical)),
+                changes,
+                next_step,
+                states,
+                code_availability: ReadingAvailability::Unknown,
+                code_freshness: Vec::new(),
+                code_source_basis: Vec::new(),
+                analysis_snapshot_basis: Vec::new(),
+                repository_snapshot_basis: Vec::new(),
+                code_gap: (changed_paths.is_empty() && !has_scope).then_some(WorkCodeGap::NoSeeds),
+            },
+        }
+    }
 }
 
 /// Any explicit reported change is a conservative coverage boundary. No kind or
@@ -488,15 +562,69 @@ fn has_reported_change(cp: &volicord_context::Checkpoint) -> bool {
             .is_some_and(|text| !text.trim().is_empty())
 }
 
+/// Metadata copied for a derived scope; no complete history/prose cloning.
+fn work_scope_metadata(canonical: &CanonicalReadBasis) -> CanonicalReadBasis {
+    CanonicalReadBasis {
+        project: canonical.project.clone(),
+        active_questions: Vec::new(),
+        terminal_question_history: Vec::new(),
+        active_decisions: Vec::new(),
+        superseded_decisions: Vec::new(),
+        context_items: canonical
+            .context_items
+            .iter()
+            .filter(|item| item.role != ContextItemRole::Goal)
+            .cloned()
+            .collect(),
+        latest_checkpoint: None,
+        checkpoint_history: Vec::new(),
+        sources: canonical.sources.clone(),
+        revisions: canonical.revisions.clone(),
+        relations: canonical.relations.clone(),
+        forgotten: canonical.forgotten.clone(),
+        forgotten_checkpoint_sources: canonical.forgotten_checkpoint_sources.clone(),
+        bundle_merges: canonical.bundle_merges.clone(),
+        stable_ordering_identity: canonical.stable_ordering_identity.clone(),
+    }
+}
+
+/// Latest unassociated Checkpoint remains a code seed without assigning a Work.
+pub(crate) fn topology_seed_without_work(canonical: &CanonicalReadBasis) -> CanonicalReadBasis {
+    let mut basis = work_scope_metadata(canonical);
+    basis.latest_checkpoint = canonical.latest_checkpoint.clone();
+    basis.active_decisions = canonical
+        .active_decisions
+        .iter()
+        .filter(|d| {
+            canonical
+                .latest_checkpoint
+                .as_ref()
+                .is_none_or(|cp| cp.applied_decisions.contains(&d.decision.id))
+        })
+        .cloned()
+        .collect();
+    basis
+}
+
 /// Shared full-history selection used by topology and exact Work reading.
 pub(crate) fn scope_to_work(
     canonical: &CanonicalReadBasis,
     work: ContextItemId,
 ) -> CanonicalReadBasis {
-    let mut scoped = canonical.clone();
-    scoped
+    let mut scoped = work_scope_metadata(canonical);
+    scoped.context_items.extend(
+        canonical
+            .context_items
+            .iter()
+            .filter(|item| item.role == ContextItemRole::Goal && item.id == work)
+            .cloned(),
+    );
+    scoped.checkpoint_history = canonical
         .checkpoint_history
-        .retain(|cp| cp.project_id == canonical.project.id && cp.work_item_id == Some(work));
+        .iter()
+        .filter(|cp| cp.project_id == canonical.project.id && cp.work_item_id == Some(work))
+        .cloned()
+        .collect();
     if let Some(cp) = &canonical.latest_checkpoint {
         if cp.work_item_id == Some(work)
             && !scoped
@@ -520,11 +648,18 @@ pub(crate) fn scope_to_work(
         d.decision.work_scope == DecisionWorkScope::WorkItem(work)
             || applied.contains(&d.decision.id)
     };
-    scoped.active_decisions.retain(relevant);
-    scoped.superseded_decisions.retain(relevant);
-    scoped
-        .context_items
-        .retain(|item| item.role != ContextItemRole::Goal || item.id == work);
+    scoped.active_decisions = canonical
+        .active_decisions
+        .iter()
+        .filter(|d| relevant(d))
+        .cloned()
+        .collect();
+    scoped.superseded_decisions = canonical
+        .superseded_decisions
+        .iter()
+        .filter(|d| relevant(d))
+        .cloned()
+        .collect();
     let questions = scoped
         .checkpoint_history
         .iter()
@@ -537,12 +672,18 @@ pub(crate) fn scope_to_work(
                 .map(|d| d.decision.question_id),
         )
         .collect::<BTreeSet<_>>();
-    scoped
+    scoped.active_questions = canonical
         .active_questions
-        .retain(|q| questions.contains(&q.id));
-    scoped
+        .iter()
+        .filter(|q| questions.contains(&q.id))
+        .cloned()
+        .collect();
+    scoped.terminal_question_history = canonical
         .terminal_question_history
-        .retain(|q| questions.contains(&q.id));
+        .iter()
+        .filter(|q| questions.contains(&q.id))
+        .cloned()
+        .collect();
     scoped
 }
 

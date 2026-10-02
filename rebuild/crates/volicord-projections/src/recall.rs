@@ -163,21 +163,36 @@ pub struct ResumeBrief {
 /// Builds a deterministic, bounded, read-only resumption view. It accepts no
 /// Kernel, CandidateStore, or analyzer mutation handle.
 pub fn build_resume_brief(inputs: RecallInputs<'_>) -> ResumeBrief {
+    build_resume_brief_coordinated(inputs, true)
+}
+pub(crate) fn build_resume_brief_coordinated(
+    inputs: RecallInputs<'_>,
+    include_work: bool,
+) -> ResumeBrief {
     let metadata = inputs
         .analyses
         .iter()
         .map(|snapshot| AnalysisMetadata::from(*snapshot))
         .collect::<Vec<_>>();
-    build_resume_brief_from_metadata(RecallMetadataInputs {
-        analysis_issues: inputs.analysis_issues,
-        canonical: inputs.canonical,
-        analyses: &metadata.iter().collect::<Vec<_>>(),
-        scope: inputs.scope,
-        bound: inputs.bound,
-    })
+    build_resume_brief_metadata_coordinated(
+        RecallMetadataInputs {
+            analysis_issues: inputs.analysis_issues,
+            canonical: inputs.canonical,
+            analyses: &metadata.iter().collect::<Vec<_>>(),
+            scope: inputs.scope,
+            bound: inputs.bound,
+        },
+        include_work,
+    )
 }
 
 pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> ResumeBrief {
+    build_resume_brief_metadata_coordinated(inputs, true)
+}
+pub(crate) fn build_resume_brief_metadata_coordinated(
+    inputs: RecallMetadataInputs<'_>,
+    include_work: bool,
+) -> ResumeBrief {
     let canonical = inputs.canonical;
     let limit = inputs.bound.max_items_per_section.max(1);
     let mut omissions = Vec::new();
@@ -510,15 +525,20 @@ pub fn build_resume_brief_from_metadata(inputs: RecallMetadataInputs<'_>) -> Res
     known_limits.dedup();
     let omitted_count = omissions.len();
     ResumeBrief {
-        selected_work: crate::WorkSelector::LatestWork
-            .resolve(canonical)
-            .ok()
-            .and_then(|s| s.work_item_id)
-            .and_then(|id| {
-                crate::reading::derive_work_history(canonical)
-                    .into_iter()
-                    .find(|w| w.work_item_id == id)
-            }),
+        selected_work: include_work
+            .then(|| {
+                crate::WorkSelector::LatestWork
+                    .resolve(canonical)
+                    .ok()
+                    .and_then(|s| s.work_item_id)
+                    .and_then(|id| {
+                        crate::reading::WorkHistoryIndex::new(canonical)
+                            .0
+                            .get(&id)
+                            .map(|w| w.materialize(canonical))
+                    })
+            })
+            .flatten(),
         project_id: canonical.project.id,
         project_name: canonical.project.display_name.clone(),
         project_purpose,

@@ -181,43 +181,51 @@ impl LocalOperations {
         &self,
         canonical: &CanonicalReadBasis,
         projection: &mut ProjectProjection,
-    ) {
+    ) -> usize {
         let records = self.privacy_status(canonical.project.id);
-        let attach = |subject: ExplanationSubject| -> Vec<ExplanationReading> {
-            let records = match &records {
-                Err(e) => {
-                    return vec![ExplanationReading {
-                        language: "*".into(),
-                        state: ExplanationState::Unavailable,
-                        content: None,
-                        diagnostic: Some(format!("explanation storage unavailable: {e}")),
-                    }]
-                }
-                Ok(records) => records,
-            };
-            let prefix = format!("explanation:{}:", subject.key());
-            let mut latest = std::collections::BTreeMap::new();
+        let mut latest = std::collections::BTreeMap::new();
+        if let Ok(records) = &records {
             for record in records.managed_derived.iter().filter(|r| {
-                r.kind == ManagedDerivedKind::CachedSummary && r.purpose.starts_with(&prefix)
+                r.kind == ManagedDerivedKind::CachedSummary && r.purpose.starts_with("explanation:")
             }) {
-                if latest.get(&record.purpose).is_none_or(
+                if latest.get(record.purpose.as_str()).is_none_or(
                     |old: &&volicord_privacy::ManagedDerivedRecord| {
                         (old.created_at, old.id) < (record.created_at, record.id)
                     },
                 ) {
-                    latest.insert(&record.purpose, record);
+                    latest.insert(record.purpose.as_str(), record);
                 }
             }
-            latest
-                .into_values()
+        }
+        let mut attached = std::collections::BTreeMap::<String, Vec<ExplanationReading>>::new();
+        let mut preparations = 0;
+        let mut attach = |subject: ExplanationSubject| -> Vec<ExplanationReading> {
+            let key = subject.key();
+            if let Some(readings) = attached.get(&key) {
+                return readings.clone();
+            }
+            if let Err(e) = &records {
+                return vec![ExplanationReading {
+                    language: "*".into(),
+                    state: ExplanationState::Unavailable,
+                    content: None,
+                    diagnostic: Some(format!("explanation storage unavailable: {e}")),
+                }];
+            }
+            let prefix = format!("explanation:{key}:");
+            let readings = latest
+                .range(prefix.as_str()..)
+                .take_while(|(purpose, _)| purpose.starts_with(&prefix))
+                .map(|(_, record)| *record)
                 .filter(|record| record.state != ManagedDerivedState::Deleted)
                 .map(|record| {
                     let language = record.purpose[prefix.len()..].to_owned();
-                    let (state, content, diagnostic) = match decode_explanation(
-                        record.content.as_deref(),
-                    ) {
-                        Err((state, diagnostic)) => (state, None, Some(diagnostic)),
-                        Ok(retained) => match prepare_explanation(canonical, subject, &language) {
+                    let (state, content, diagnostic) =
+                        match decode_explanation(record.content.as_deref()) {
+                            Err((state, diagnostic)) => (state, None, Some(diagnostic)),
+                            Ok(retained) => {
+                                preparations += 1;
+                                match prepare_explanation(canonical, subject, &language) {
                             Err(e) => (ExplanationState::Unavailable, None, Some(e)),
                             Ok(plan)
                                 if record.state == ManagedDerivedState::Current
@@ -233,8 +241,9 @@ impl LocalOperations {
                                         .into(),
                                 ),
                             ),
-                        },
-                    };
+                        }
+                            }
+                        };
                     ExplanationReading {
                         language,
                         state,
@@ -242,7 +251,9 @@ impl LocalOperations {
                         diagnostic,
                     }
                 })
-                .collect()
+                .collect::<Vec<_>>();
+            attached.insert(key, readings.clone());
+            readings
         };
         for work in projection
             .selected_work
@@ -268,6 +279,7 @@ impl LocalOperations {
         for decision in &mut projection.resume.decisions {
             decision.explanations = attach(ExplanationSubject::Decision(decision.decision_id));
         }
+        preparations
     }
 }
 fn decode_explanation(

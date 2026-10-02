@@ -503,3 +503,107 @@ records 97 ms after rebinding. Host interpretation was performed in this session
 no isolated model inference latency or token-cost measurement was available, so
 these timings measure preparation/recording, not model generation speed. Reads
 consume the retained response without generating. No external provider was used.
+
+
+## Required-evidence materialization review
+
+The performance change uses a request-local borrowed Work history index to select
+page/Overview/exact/Recall identities before copying detailed prose and historical
+state evidence. One materializer supplies each required subject; all Overview
+counts are computed independently of the page. Current Recall reuses that Work
+selection. Timeline payload copying follows its declared bound. Exact Work and
+unassociated topology seeds no longer start by cloning complete unrelated histories.
+The canonical equality digest streams the same Debug bytes instead of allocating
+another complete prose buffer; equality with the former digest is tested.
+Explanation freshness is prepared once per retained subject/language per read,
+using the same decoder and storage. Document-set validation gathers provenance
+and checks it once after generation; inspection coordination preserves Candidate
+store degradation. The initial use of mutation-path preparation broke the MCP
+Candidate-unavailable preview invariant, was corrected, and the negative test and
+workspace suite passed. Lifecycle/publication safeguards remain in force.
+
+Named large-history workload: Operations integration test
+`large_history_materializes_only_required_subjects_before_evidence_copying`.
+A valid maintained fixture basis is expanded in memory to 512 Work identities,
+8,192 Checkpoints (16 per Work, final verification-only observation), 56,033,280
+reported-change bytes, mixed current/completed/paused states and page size four.
+This isolates projection/history cost; canonical SQLite loading, OS cache flushing,
+model generation and RSS are excluded. Pages 0, 64, 127 and 128 retain identical
+Overview counts `[171,171,170,512]`, complete source/state/result meaning and reject
+full document generation from explicitly unrequested sections.
+
+An isolated `git archive 97ae54b6 rebuild` under `/tmp` ran the identical fixture
+and invariant checks with only a measurement counter at the old Work materializer
+and the new-cost assertions removed. Actual old materializations: 1,024 per page
+(two complete passes); elapsed microseconds 1,284,388 / 1,204,130 / 1,210,367 /
+1,210,297. Current materializations: 28 / 28 / 28 / 24, with 448 / 448 / 448 / 384
+complete Checkpoint histories and 3,074,846 / 3,074,848 / 3,074,846 / 2,635,584
+input bytes; elapsed microseconds 852,207 / 857,559 / 854,267 / 847,112.
+The instrumentation is ignored experiment output; no alternate production reader
+or performance branch remains. Reproduce the maintained current workload with:
+
+```text
+rebuild/scripts/validate focused answer-history-cost -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-operations --test viewer_reading large_history_materializes_only_required_subjects_before_evidence_copying -- --exact --nocapture
+```
+
+Final nine-sample Viewer workload medians, same debug fixture/adapter conditions as
+the integration baseline, milliseconds (total / projection / documents):
+
+| Workload | Integration baseline | Current |
+| --- | --- | --- |
+| Overview | 42.198 / 8.830 / 0 | 41.569 / 9.367 / 0 |
+| Exact Work | 41.221 / 7.608 / 0 | 40.261 / 8.796 / 0 |
+| Decision | 39.908 / 8.434 / 0 | 41.434 / 9.681 / 0 |
+| Code | 105.469 / 13.696 / 0 | 106.321 / 14.634 / 0 |
+| Snapshot | 217.526 / 14.371 / 94.900 | 151.182 / 15.188 / 28.476 |
+
+No consistent thin-route latency improvement is established at this fixture size.
+Snapshot/document repeated-read reduction and large-history evidence construction
+are directly measured; no universal bounded-total-read claim follows. The Viewer
+workload has four Work groups/164 associated Checkpoints and no stored explanations,
+so freshness-plan count is zero. A retained Work plus Decision lifecycle test
+asserts exactly two preparations despite their duplicate appearances. The actual
+fourteen retained answers also passed the browser proof after optimization without
+regeneration. Code/snapshot still decode one analysis body; ordinary routes decode
+one metadata envelope, with no health re-decode. Raw logs/results remain ignored.
+
+Final required nested-workspace Rust validation: 500 passed, zero failed, one
+external live-provider test ignored; no transmission authorization was inferred.
+The new preparation-count assertion also passed separately. Metadata confirms all
+nine packages under `rebuild/` and zero legacy path dependencies. Formatting,
+workspace Clippy, fixture manifest and architecture ownership checks are rerun on
+the completed tree. Remaining costs: complete canonical SQLite/revision reads,
+complete-history metadata/index/digest traversal, full evidence for required Work
+histories and managed-store reads; historical coverage lists within a required Work
+can still grow quadratically. These are visible residual costs, not a display-bound
+claim. No retained content failure remains in the exercised five Work/two Decision
+cases. Host interpretation cost remains unisolated as described above.
+
+
+A separate fresh checksum response was prepared, interpreted by the current host,
+recorded and compared through live/offline reads: preparation 9.835 ms, full plan
+envelope 10,640 bytes, host evidence-reading/interpretation/authoring wall time
+32,335.625 ms, response 1,751 bytes and public recording 21.661 ms (exit 0).
+This is one host-phase observation including tool handoff, not isolated inference,
+model-token billing or a generation SLA. Read profiles include no generation.
+
+During isolated baseline measurement, sharing `CARGO_TARGET_DIR` overwrote a test
+executable: the later current-workload command emitted baseline counter rows.
+That apparent current result was rejected. Reconstruction-package build outputs
+were cleaned; current tests, binaries, workload profiles and browser proof were
+rebuilt/rerun before the performance commit. Future archived baseline runs must use
+a separate target directory. The earlier measured current rows above preceded the
+baseline build and remain independent, with full source-path compiler output.
+
+
+The rebuilt current run passed with numeric exit 0, no termination and one ignored
+external provider test. Its output contains 501 passing test results including the
+nested private-runtime probe. Current workload rows are `WORK_HISTORY_SAMPLE`, not
+the rejected baseline rows: pages 0/64/127/128 took 886,737 / 894,092 / 881,231 /
+873,454 microseconds with the same 28/28/28/24 materializations. The rebuilt Viewer
+medians (total / projection / documents ms) were Overview 40.017 / 9.355 / 0,
+Work 38.337 / 8.195 / 0, Decision 40.747 / 9.247 / 0, code 104.125 / 14.255 / 0,
+snapshot 154.328 / 15.327 / 28.651. These reruns confirm the same limited conclusion;
+thin-route timings remain variable. The rebuilt current browser passed all fourteen
+checks, including the timed regenerated checksum answer, without read mutation.
+Current workspace Clippy also passed with no compiler warnings.

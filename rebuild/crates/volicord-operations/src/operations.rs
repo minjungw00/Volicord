@@ -133,6 +133,9 @@ pub struct ProjectProjectionProfile {
     pub candidate_reads: usize,
     pub candidate_read: Duration,
     pub projection_build: Duration,
+    pub work_read_cost: volicord_projections::WorkReadCost,
+    /// Freshness plans are recomputed once per unique retained subject/language.
+    pub explanation_basis_preparations: usize,
     pub total: Duration,
 }
 
@@ -2724,8 +2727,9 @@ impl LocalOperations {
             bound: ProjectionBound::default(),
         })
         .map_err(|error| Error::with_source("Work selection failed", error))?;
-        self.attach_explanations(&canonical, &mut projection);
+        let explanation_basis_preparations = self.attach_explanations(&canonical, &mut projection);
         let projection_build = projection_started.elapsed();
+        let work_read_cost = projection.work_read_cost;
         Ok((
             projection,
             ProjectProjectionProfile {
@@ -2736,6 +2740,8 @@ impl LocalOperations {
                 candidate_reads: usize::from(requirements.inspection),
                 candidate_read,
                 projection_build,
+                work_read_cost,
+                explanation_basis_preparations,
                 total: total_started.elapsed(),
             },
         ))
@@ -2768,25 +2774,29 @@ impl LocalOperations {
         projection: &ProjectProjection,
         request: &DocumentRequest,
     ) -> Result<DocumentSet, Error> {
-        self.validate_read_publication(
-            projection.overview.project_id,
-            &projection.canonical_read_fingerprint,
-            &[],
-        )?;
         let documents = generate_documents(projection, request)
             .map_err(|error| Error::with_source("document generation failed", error))?;
+        let mut explanations = Vec::new();
         for d in [
             &documents.project_architecture_guide,
             &documents.decision_report,
             &documents.implementation_plan,
             &documents.handoff_resume,
         ] {
-            self.validate_read_publication(
-                d.metadata.project_id,
-                &d.metadata.canonical_read_fingerprint,
-                &d.metadata.explanations,
-            )?;
+            for provenance in &d.metadata.explanations {
+                if !explanations.contains(provenance) {
+                    explanations.push(provenance.clone());
+                }
+            }
         }
+        // One final current-basis check for the coherent set. Deletion during
+        // generation is rejected before any newly generated content is served.
+        let _inspection = self.layout().acquire_health_lock()?;
+        self.validate_read_publication(
+            projection.overview.project_id,
+            &projection.canonical_read_fingerprint,
+            &explanations,
+        )?;
         Ok(documents)
     }
 

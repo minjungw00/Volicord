@@ -45,7 +45,7 @@ pub use project::{
     MapEntity, MapInterpretation, MapRelation, MapRelationClass, MemoryInspectionProjection,
     ProjectOverview, ProjectProjection, ProjectProjectionInputs, ProjectReadSections,
     ProjectionBound, ProjectionDetail, ProjectionHealth, ProjectionIssue, ProjectionIssueKind,
-    ProjectionReadRequirements, ReadSectionState, RepositoryMap, SourceStatusSummary,
+    ProjectionReadRequirements, ReadSectionState, RepositoryMap, SourceStatusSummary, WorkReadCost,
 };
 pub use recall::{
     build_resume_brief, build_resume_brief_from_metadata, BriefContextItem, BriefDecision,

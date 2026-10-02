@@ -137,11 +137,12 @@ pub fn prepare_explanation(
             return prepare_decision(canonical, decision, language)
         }
     };
-    let scoped = crate::reading::scope_to_work(canonical, work);
-    let selected = crate::reading::derive_work_history(&scoped)
-        .into_iter()
-        .find(|w| w.work_item_id == work)
-        .ok_or("Work not found in this Project")?;
+    let index = crate::reading::WorkHistoryIndex::new(canonical);
+    let selected = index
+        .0
+        .get(&work)
+        .ok_or("Work not found in this Project")?
+        .materialize(canonical);
     let mut evidence = Vec::new();
     let mut add = |key: &str, basis: &crate::ReadingBasis, content: Value| {
         let (kind, identity) = match basis.record {

@@ -108,6 +108,17 @@ contracts. Work interpretations use the existing Privacy managed CachedSummary
 store with explicit local recording, read-time evidence freshness and deletion/forget
 integration, described below. They add no Viewer database or canonical records.
 
+Work classification uses request-local references over complete canonical history.
+Detailed evidence is created only for the union of page, Overview, selected and
+Recall Work identities. Overview totals are independent of paging; selected Works
+retain their full history. Profiles separate classified/indexed history from
+materialized Work/Checkpoint input bytes and unique retained explanation freshness
+preparations. Store reads and metadata indexes still scale with complete history;
+these counters do not measure allocation, RSS or model inference. Explanation
+freshness results are reused within one read, with no additional persisted cache.
+The four document previews share one final live-basis check; publication still
+checks current provenance under Local Operations coordination.
+
 `ViewerRenderProfile` exposes one projection pass, standalone metadata reads,
 graph decode attempts (including failed attempts), Candidate basis reads, document
 generation count and monotonic stage times. `render_snapshot_profiled` reports the

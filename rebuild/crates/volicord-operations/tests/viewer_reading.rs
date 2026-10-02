@@ -927,3 +927,194 @@ fn selected_polyglot_flow_retains_declared_endpoints_and_snapshot_basis(
         .all(|r| r.kind != "References" || r.identity == relation.identity));
     Ok(())
 }
+
+#[test]
+fn large_history_materializes_only_required_subjects_before_evidence_copying(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let mut canonical = fixture.operations.canonical_basis(fixture.project)?;
+    // Streaming binding preserves the exact former byte-stream equality token.
+    use sha2::{Digest, Sha256};
+    assert_eq!(
+        canonical_read_fingerprint(&canonical),
+        format!("{:x}", Sha256::digest(format!("{canonical:?}").as_bytes()))
+    );
+    let goal = canonical
+        .context_items
+        .iter()
+        .find(|g| g.id == fixture.goals["older"])
+        .ok_or("Goal")?
+        .clone();
+    let checkpoint = canonical
+        .checkpoint_history
+        .iter()
+        .find(|cp| cp.id == fixture.checkpoints["later_change"])
+        .ok_or("Checkpoint")?
+        .clone();
+    canonical
+        .context_items
+        .retain(|g| g.role != ContextItemRole::Goal);
+    canonical.checkpoint_history.clear();
+    canonical.latest_checkpoint = None;
+    // A large, mixed-state complete canonical input; each Work has full prose
+    // history, including a verification-only final observation. No provider.
+    let prose = "Long reported change with inspectable original evidence. ".repeat(128);
+    for n in 0_u128..512 {
+        let mut item = goal.clone();
+        item.id = ContextItemId::from_bytes((100_000 + n).to_le_bytes());
+        item.statement = format!("Work {n}");
+        canonical.context_items.push(item.clone());
+        for observation in 0_u128..16 {
+            let mut cp = checkpoint.clone();
+            cp.id = CheckpointId::from_bytes((200_000 + n * 16 + observation).to_le_bytes());
+            cp.work_item_id = Some(item.id);
+            cp.recorded_at =
+                TimestampMicros::from_unix_micros((n * 16 + observation + 100_000) as i64);
+            cp.work_state = match n % 3 {
+                0 => WorkState::InProgress,
+                1 => WorkState::Completed,
+                _ => WorkState::Paused,
+            };
+            cp.state_change = (observation < 15).then(|| prose.clone());
+            canonical.checkpoint_history.push(cp);
+        }
+    }
+    canonical.latest_checkpoint = canonical.checkpoint_history.last().cloned();
+    let input_bytes = canonical
+        .checkpoint_history
+        .iter()
+        .filter_map(|cp| cp.state_change.as_ref())
+        .map(String::len)
+        .sum::<usize>();
+    let build = |page| {
+        build_project_projection(ProjectProjectionInputs {
+            canonical: &canonical,
+            analyses: &[],
+            metadata: &[],
+            analysis_issues: &[],
+            selection: WorkSelector::Repository,
+            detail: ProjectionDetail {
+                work_page: page,
+                ..ProjectionDetail::default()
+            },
+            requirements: ProjectionReadRequirements {
+                code: false,
+                inspection: false,
+            },
+            applicability: volicord_inquiry::ApplicabilityQuery {
+                project_id: fixture.project,
+                paths: Vec::new(),
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+                current_assumptions: Vec::new(),
+                met_revisit_triggers: Vec::new(),
+            },
+            candidates: CandidateProjectionInput::Degraded {
+                usable_basis: None,
+                failure: CandidateDependencyFailure {
+                    kind: CandidateDependencyFailureKind::Unavailable,
+                    affected_scope: "not requested".into(),
+                    reason: "not requested".into(),
+                },
+            },
+            candidate_content_access: CandidateContentAccess::PolicyWithheld,
+            observed_at: TimestampMicros::from_unix_micros(200_000),
+            bound: ProjectionBound {
+                max_items_per_section: 4,
+            },
+        })
+    };
+    let mut counts = None;
+    for page in [0, 64, 127, 128] {
+        let started = std::time::Instant::now();
+        let projection = build(page)?;
+        let cost = projection.work_read_cost;
+        assert_eq!(cost.classified_works, 512);
+        assert_eq!(cost.indexed_checkpoints, 8192);
+        assert!(cost.materialized_works <= 4 + 4 * 8 + 1, "{cost:?}");
+        assert_eq!(cost.materialized_checkpoints, cost.materialized_works * 16);
+        assert!(cost.evidence_input_bytes < input_bytes / 8, "{cost:?}");
+        let overview = &projection.work_overview;
+        let totals = [
+            overview.current.total,
+            overview.completed.total,
+            overview.remaining.total,
+            overview.next_steps.total,
+        ];
+        assert_eq!(totals, [171, 171, 170, 512]);
+        if let Some(previous) = counts {
+            assert_eq!(totals, previous);
+        } else {
+            counts = Some(totals);
+        }
+        assert!(
+            overview.current.complete
+                && overview.completed.complete
+                && overview.remaining.complete
+                && overview.next_steps.complete
+        );
+        for work in overview
+            .current
+            .items
+            .iter()
+            .chain(&overview.completed.items)
+            .chain(&overview.remaining.items)
+        {
+            assert_eq!(work.reading.states.len(), 16);
+            assert!(work.reading.changes[14]
+                .original_text
+                .as_deref()
+                .is_some_and(|s| s == prose));
+            assert!(work.reading.changes[15].original_text.is_none());
+            assert_eq!(
+                work.reading
+                    .answers
+                    .result
+                    .as_ref()
+                    .ok_or("result")?
+                    .original_text
+                    .as_deref(),
+                Some(prose.as_str())
+            );
+            assert_ne!(
+                work.reading
+                    .answers
+                    .result
+                    .as_ref()
+                    .ok_or("result")?
+                    .basis
+                    .record,
+                ReadingRecord::Checkpoint(
+                    work.reading
+                        .answers
+                        .latest_state
+                        .as_ref()
+                        .ok_or("state")?
+                        .checkpoint_id
+                )
+            );
+        }
+        assert_eq!(projection.sections.code, ReadSectionState::NotRequested);
+        assert_eq!(
+            projection.sections.inspection,
+            ReadSectionState::NotRequested
+        );
+        assert!(generate_documents(
+            &projection,
+            &DocumentRequest {
+                requested_language: "en".into(),
+                fixed_locale: FixedLocale::English,
+                generated_at: TimestampMicros::from_unix_micros(1),
+                generator: GeneratorIdentity {
+                    generator: "cost fixture".into(),
+                    agent: None,
+                    model: None
+                },
+                requested_destinations: Vec::new()
+            }
+        )
+        .is_err());
+        println!("WORK_HISTORY_SAMPLE page={page} elapsed_us={} total_input_bytes={input_bytes} cost={cost:?}", started.elapsed().as_micros());
+    }
+    Ok(())
+}
