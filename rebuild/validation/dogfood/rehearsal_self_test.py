@@ -96,6 +96,30 @@ class ContractTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):
                 contract.validate_result(value, "a" * 40)
 
+    def test_rehashed_temporal_claims_require_actual_retained_evidence(self):
+        original = passed_result()
+        for mutation in ('missing', 'labels_only', 'no_process', 'no_receipt', 'drop_history',
+                'other_locale', 'old_final', 'authorization_as_support', 'unordered', 'gap_as_pass',
+                'hide_hard_error', 'no_copy', 'missing_outcome'):
+            value = copy.deepcopy(original)
+            temporal = value['pipeline']['temporal_evidence']
+            if mutation == 'missing': value['pipeline'].pop('temporal_evidence')
+            elif mutation == 'labels_only': temporal['outcomes'] = dict.fromkeys(contract.TEMPORAL_CONTROLS, 'passed')
+            elif mutation == 'no_process': temporal['regeneration']['correction_process'] = 'absent-process'
+            elif mutation == 'no_receipt': temporal['regeneration']['lifecycles'][0]['stages'].pop('receipt')
+            elif mutation == 'drop_history': temporal['regeneration']['lifecycles'].pop(0)
+            elif mutation == 'other_locale': temporal['regeneration']['lifecycles'][0]['language'] = 'ko'
+            elif mutation == 'old_final': temporal['regeneration']['lifecycles'][1]['goal_revision'] = 1
+            elif mutation == 'authorization_as_support': temporal['recall']['supporting_sources'] = [temporal['recall']['authorization_source_id']]
+            elif mutation == 'unordered': temporal['recall']['correction']['invocation_sequence'] = 5
+            elif mutation == 'gap_as_pass': temporal['outcomes']['missing_temporal_evidence']['status'] = 'confirmed_pass'
+            elif mutation == 'hide_hard_error': temporal['outcomes']['missing_temporal_evidence_with_violation']['error_classes'] = []
+            elif mutation == 'no_copy': temporal['copied']['lifecycles'].popitem()
+            elif mutation == 'missing_outcome': temporal['outcomes'].popitem()
+            value['result_id'] = contract.digest({k: v for k, v in value.items() if k != 'result_id'})
+            with self.subTest(mutation=mutation), self.assertRaises((ValueError, TypeError, KeyError)):
+                contract.validate_result(value, 'a' * 40)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -27,7 +27,19 @@ PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "rehearsal_contract.py
 
 
 EXPECTED_INNER = "unresolved"
-CONTROLS = ('duplicate_titles', 'contradictory_shared_answer', 'missing_explanation_plan', 'mismatched_explanation_response', 'review_projection_omission', 'changed_artifact', 'memory_binary_mismatch', 'absent_human_observations', 'rehearsal_not_measured', 'copied_semantic_rehash')
+TEMPORAL_CONTROLS = {
+    'historical_explanation_regeneration': ('explanation_readiness', 'realization_binding', 'confirmed_pass', 'advisory'),
+    'temporal_recall_correction': ('naturalistic_observation', 'shared_answer_integrity', 'confirmed_pass', 'advisory'),
+    'mismatched_final_current_plan': ('explanation_readiness', 'realization_binding', 'confirmed_violation', 'hard_blocking'),
+    'tampered_historical_explanation': ('explanation_readiness', 'campaign_inventory', 'confirmed_violation', 'hard_blocking'),
+    'incomplete_attempt_fallback': ('explanation_readiness', 'realization_binding', 'confirmed_violation', 'hard_blocking'),
+    'explanation_scope_boundary': ('explanation_lifecycle', 'realization_binding', 'confirmed_violation', 'hard_blocking'),
+    'post_correction_old_revision': ('naturalistic_observation', 'shared_answer_integrity', 'confirmed_violation', 'hard_blocking'),
+    'future_correction_scope': ('naturalistic_observation', 'shared_answer_integrity', 'confirmed_violation', 'hard_blocking'),
+    'missing_temporal_evidence': ('naturalistic_observation', 'shared_answer_integrity', 'indeterminate', 'qualitative_review_required'),
+    'missing_temporal_evidence_with_violation': ('naturalistic_observation', 'shared_answer_integrity', 'confirmed_violation', 'hard_blocking'),
+}
+CONTROLS = ('duplicate_titles', 'contradictory_shared_answer', 'missing_explanation_plan', 'mismatched_explanation_response', 'review_projection_omission', 'changed_artifact', 'memory_binary_mismatch', 'absent_human_observations', 'rehearsal_not_measured', 'copied_semantic_rehash', *TEMPORAL_CONTROLS)
 TOPOLOGY = {'repository_journeys': 3, 'work_items': 5, 'resume_pairs': 3, 'fresh_sessions': 8, 'work_distribution': {'volicord': 3, 'small-python': 1, 'polyglot-medium': 1}, 'resume_repository_classes': ['polyglot-medium', 'small-python', 'volicord']}
 
 def identities():
@@ -57,7 +69,7 @@ def validate_result(value, candidate, *, expected_identities=None):
     require(set(pipeline) == {"evidence_set_sha256", "evaluation_run_id", "qualification_run_id",
         "expected_inner_verdict", "technical_evidence", "human_observations", "unresolved_criteria_count",
         "hard_findings", "copied_lineage_id", "copied_verification", "resource_sample_count", "topology",
-        "measured_evidence_eligible", "controls", "executables"}, "unexpected pipeline content")
+        "measured_evidence_eligible", "controls", "executables", "temporal_evidence"}, "unexpected pipeline content")
     for key in ("evidence_set_sha256", "evaluation_run_id", "qualification_run_id", "copied_lineage_id"):
         require(re.fullmatch(r"[0-9a-f]{64}", pipeline[key]), "invalid pipeline identity")
     require(pipeline["expected_inner_verdict"] == EXPECTED_INNER
@@ -83,7 +95,131 @@ def validate_result(value, candidate, *, expected_identities=None):
             require(set(record[stream]) == {"bytes", "sha256"}
                 and type(record[stream]["bytes"]) is int and record[stream]["bytes"] >= 0
                 and re.fullmatch(r"[0-9a-f]{64}", record[stream]["sha256"]), "invalid process stream evidence")
+    validate_temporal(pipeline['temporal_evidence'], records)
     return value
+
+
+def hash_value(value):
+    require(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{64}', value), 'missing temporal digest')
+
+
+def identity(value):
+    require(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{32}', value), 'missing temporal identity')
+
+
+def artifact(value):
+    require(isinstance(value, dict) and set(value) == {'bytes', 'sha256'}
+        and type(value['bytes']) is int and value['bytes'] > 0, 'missing temporal artifact evidence')
+    hash_value(value['sha256'])
+
+
+def validate_temporal(value, processes):
+    """Closed portable facts, tied to actual lifecycles, observation and process outcomes."""
+    require(isinstance(value, dict) and set(value) == {'regeneration', 'recall', 'outcomes', 'copied'},
+        'missing temporal rehearsal evidence')
+    regeneration = value['regeneration']
+    require(set(regeneration) == {'work_slot_id', 'project_id', 'work_item_id', 'authorization_source_id',
+        'correction_process', 'correction_receipt', 'lifecycles'}
+        and regeneration['work_slot_id'] == 'journey-polyglot-medium-work-a', 'invalid regeneration binding')
+    for key in ('project_id', 'work_item_id', 'authorization_source_id'):
+        identity(regeneration[key])
+    require(any(p['identity'] == regeneration['correction_process'] and p['stdout']['bytes'] > 0
+        for p in processes), 'correction has no retained Product process')
+    artifact(regeneration['correction_receipt'])
+    lives = regeneration['lifecycles']
+    require(isinstance(lives, list) and len(lives) == 4 and len({v['identity'] for v in lives}) == 4,
+        'both completed historical/final observations in en/ko are required')
+    for life in lives:
+        require(set(life) == {'identity', 'publication_role', 'selected_identity', 'language', 'goal_revision',
+            'goal_sources', 'before_state', 'after_state', 'plan_fingerprint', 'stages'}, 'unexpected lifecycle summary')
+        identity(life['identity']); identity(life['selected_identity'])
+        require(re.fullmatch(r'sha256:[0-9a-f]{64}', life['plan_fingerprint'])
+            and life['after_state'] == 'current' and life['before_state'] in {'unavailable', 'stale', 'current'}
+            and life['goal_sources'] and regeneration['authorization_source_id'] not in life['goal_sources'],
+            'lifecycle lacks current-at-recording or distinct Source basis')
+        for source in life['goal_sources']: identity(source)
+        require(set(life['stages']) == {'attempt', 'preparation', 'response', 'record', 'after', 'receipt'},
+            'incomplete retained lifecycle')
+        for item in life['stages'].values(): artifact(item)
+    for language in ('en', 'ko'):
+        pair = [v for v in lives if v['language'] == language]
+        require(len(pair) == 2, 'cross-locale lifecycle substitution')
+        historical = next((v for v in pair if v['publication_role'] == 'historical'), None)
+        final = next((v for v in pair if v['publication_role'] == 'final'), None)
+        require(historical is not None and final is not None and historical['goal_revision'] == 1
+            and final['goal_revision'] == 2 and type(historical['goal_revision']) is int and type(final['goal_revision']) is int
+            and historical['selected_identity'] == final['identity'] == final['selected_identity']
+            and historical['goal_sources'] == final['goal_sources']
+            and historical['plan_fingerprint'] != final['plan_fingerprint'] and final['before_state'] == 'stale',
+            'historical/final selection or actual correction missing')
+    recall = value['recall']
+    require(set(recall) == {'work_slot_id', 'supporting_sources', 'authorization_source_id', 'observations', 'correction'}
+        and recall['work_slot_id'] == 'journey-small-python-work-a' and recall['supporting_sources'], 'missing temporal Recall')
+    identity(recall['authorization_source_id'])
+    require(recall['authorization_source_id'] not in recall['supporting_sources'], 'authorization replaced original Goal Source')
+    for source in recall['supporting_sources']: identity(source)
+    observations = recall['observations']
+    require(len(observations) == 3 and [o['goal_revision'] for o in observations] == [1, 2, 2], 'missing pre/post/resume observations')
+    for observation in observations:
+        require(set(observation) == {'transport', 'call_id', 'sequence', 'completion_sequence', 'invocation_sequence',
+            'raw_capture_sha256', 'status', 'goal_revision', 'basis_sha256'} and observation['transport'] == 'mcp'
+            and observation['status'] == 'confirmed_pass' and isinstance(observation['call_id'], str)
+            and type(observation['goal_revision']) is int
+            and all(type(observation[k]) is int and observation[k] >= 0 for k in ('sequence', 'completion_sequence', 'invocation_sequence'))
+            and observation['invocation_sequence'] < observation['completion_sequence'], 'missing actual Recall order/status')
+        hash_value(observation['raw_capture_sha256']); hash_value(observation['basis_sha256'])
+    correction = recall['correction']
+    require(set(correction) == {'transport', 'call_id', 'sequence', 'completion_sequence', 'invocation_sequence', 'kind',
+        'raw_capture_sha256', 'session_id', 'expected_revision', 'actual_revision', 'authorization_source_id',
+        'supporting_sources_changed', 'transition'} and correction['transition'] == 'successful_correction'
+        and correction['kind'] == 'correct_context' and correction['transport'] == 'mcp'
+        and correction['expected_revision'] == 1 and correction['actual_revision'] == 2
+        and correction['authorization_source_id'] == recall['authorization_source_id']
+        and correction['supporting_sources_changed'] is False
+        and observations[0]['raw_capture_sha256'] == correction['raw_capture_sha256'] == observations[1]['raw_capture_sha256']
+        and observations[0]['completion_sequence'] < correction['invocation_sequence']
+            < correction['completion_sequence'] < observations[1]['invocation_sequence'], 'correction is not between actual Recalls')
+    outcomes = value['outcomes']
+    require(isinstance(outcomes, dict) and set(outcomes) == set(TEMPORAL_CONTROLS), 'missing required temporal control outcomes')
+    for name, expected in TEMPORAL_CONTROLS.items():
+        outcome = outcomes[name]
+        require(set(outcome) == {'consumer', 'check', 'status', 'disposition', 'basis_sha256', 'finding', 'artifacts',
+            'observation_statuses', 'goal_revisions', 'error_classes', 'rejection_sha256'}
+            and tuple(outcome[k] for k in ('consumer', 'check', 'status', 'disposition')) == expected,
+            'control outcome differs from maintained consumer/policy')
+        hash_value(outcome['basis_sha256']); artifact(outcome['finding'])
+        require(isinstance(outcome['artifacts'], list) and outcome['artifacts'], 'pass label has no control artifacts')
+        for item in outcome['artifacts']: artifact(item)
+        if outcome['consumer'] == 'naturalistic_observation':
+            require(outcome['rejection_sha256'] is None, 'Recall requires actual observations')
+            if name == 'future_correction_scope':
+                require(outcome['observation_statuses'] == ['confirmed_violation', 'confirmed_pass', 'confirmed_pass']
+                    and outcome['goal_revisions'] == [1, 2, 2], 'future revision was not rejected at the earlier observation')
+            else:
+                statuses = ['confirmed_pass', expected[2], expected[2]] if name.startswith('missing_temporal') else (
+                    ['confirmed_pass', 'confirmed_violation', 'confirmed_pass'] if name == 'post_correction_old_revision' else ['confirmed_pass'] * 3)
+                # Missing receipt uncertainty crosses the proven resume relation; independent errors are scoped to the changed read.
+                if name == 'missing_temporal_evidence_with_violation': statuses[-1] = 'indeterminate'
+                require(outcome['observation_statuses'] == statuses
+                    and outcome['goal_revisions'] == ([1, None, None] if name.startswith('missing_temporal') else [1, 2, 2]),
+                    'missing scoped temporal observation outcomes')
+            if name in {'post_correction_old_revision', 'future_correction_scope'}:
+                require('generated goal revision basis' in outcome['error_classes'], 'old-current claim was not detected')
+            elif name == 'missing_temporal_evidence_with_violation':
+                require(outcome['error_classes'], 'independent hard error was hidden by missing evidence')
+            else: require(outcome['error_classes'] == [], 'positive/gap contains a hard violation')
+        else:
+            require(outcome['observation_statuses'] == [] and outcome['goal_revisions'] == []
+                and outcome['error_classes'] == [], 'unexpected explanation observation summary')
+            if name != 'historical_explanation_regeneration': hash_value(outcome['rejection_sha256'])
+    require(outcomes['historical_explanation_regeneration']['basis_sha256'] == digest({'lifecycles': lives})
+        and outcomes['historical_explanation_regeneration']['artifacts'] == [v['stages']['receipt'] for v in lives],
+        'regeneration success has no retained lifecycle evidence')
+    copied = value['copied']
+    require(set(copied) == {'lifecycles', 'recall_capture'} and set(copied['lifecycles']) == {v['identity'] for v in lives},
+        'copied lineage omitted historical/final observations')
+    for item in copied['lifecycles'].values(): artifact(item)
+    artifact(copied['recall_capture'])
 
 def validate_binding(value):
     if value is None:

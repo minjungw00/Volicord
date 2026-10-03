@@ -818,3 +818,15 @@ prevents provider/V11 and readiness. Its diagnostic CLI route cannot supply this
 binding. Archive verification preserves blocked evidence and rejects historical
 stage absence, incompatible order, duplicate invocations, changed source/binary
 identities, contradictory inner verdicts and retained raw/private content.
+
+The fixture's `temporal_scenarios` independently exercises Small Python Recall correction and
+polyglot en/ko explanation regeneration. These remain five Works/eight authored support slots.
+Completed revision-1 and revision-2 explanation bytes survive collection/review/copied lineage;
+final publication selects revision 2. Recall grounds each answer at its own request/completion
+window, retaining original Goal Sources and separate self-authored correction authorization.
+The closed `temporal_evidence` receipt binds Product correction processes, historical/final
+lifecycles, pre/post/resume observations, actual consumer/policy outcomes and copied artifacts.
+Disposable controls reject mismatched current plans, tampering, pending-attempt fallback,
+cross-subject/locale substitution and false old-current claims. A missing temporal receipt is
+indeterminate; an independent contradictory action remains hard-blocking. These mutated verifier
+inputs are separate from actual Product positives and supply no measured or human evidence.

@@ -164,6 +164,113 @@ def copied_control(root):
     return "passed"
 
 
+def shared_finding(root, manifest, slot):
+    observed = next(w for w in c.evaluate_works(root, manifest) if w['work_slot_id'] == slot)
+    return next(f for f in observed['findings'] if f['check'] == 'shared_answer_integrity')
+
+
+def temporal_controls(root, campaign_root, manifest, temporal):
+    slot = json.loads(FIXTURE.read_bytes())['temporal_scenarios']['recall']['work_slot_id']
+    positive = shared_finding(campaign_root, manifest, slot)
+    observations = positive['basis']['observations']
+    require(positive['status'] == 'confirmed_pass', 'actual temporal Recall did not pass: ' + str(positive))
+    require([o['goal_basis']['revision'] for o in observations] == [1, 2, 2], 'pre/post/resume revision evidence missing')
+    require(all(o['status'] == 'confirmed_pass' for o in observations), 'one Recall is not independently verified')
+    sources = observations[0]['goal_basis']['sources']
+    require(sources and all(o['goal_basis']['sources'] == sources for o in observations), 'Goal Sources changed')
+    correction = [w for w in observations[1]['goal_basis']['witnesses'] if w.get('transition') == 'successful_correction']
+    require(len(correction) == 1 and correction[0]['authorization_source_id'] not in sources,
+        'successful independent authorization witness missing')
+    temporal['recall'] = {'work_slot_id': slot, 'supporting_sources': sources,
+        'authorization_source_id': correction[0]['authorization_source_id'],
+        'observations': [{k: o[k] for k in ('transport', 'call_id', 'sequence', 'completion_sequence',
+            'invocation_sequence', 'raw_capture_sha256', 'status')} | {
+            'goal_revision': o['goal_basis']['revision'], 'basis_sha256': machine_findings.digest(o['goal_basis'])}
+            for o in observations], 'correction': correction[0]}
+    outcomes = temporal['outcomes']
+    artifacts = [manifest['artifacts'][f'slots/{slot}/evidence/work.rollout.jsonl']]
+    outcomes['temporal_recall_correction'] = control_evidence(root, 'temporal_recall_correction',
+        'shared_answer_integrity', positive['status'], 'naturalistic_observation', positive['basis'], artifacts)
+    # Both actual Product-generated returns are current at their own observation;
+    # the later correction is excluded from the earlier response's witness set.
+    require(not any(w.get('kind') == 'correct_context' for w in observations[0]['goal_basis']['witnesses']),
+        'future correction was applied retroactively')
+    raw = campaign_root / f'slots/{slot}/evidence/work.rollout.jsonl'
+    original_events = [json.loads(line) for line in raw.read_text().splitlines() if line]
+    for control in ('post_correction_old_revision', 'future_correction_scope', 'missing_temporal_evidence', 'missing_temporal_evidence_with_violation'):
+        negative = root / ('negative-' + control)
+        negative.mkdir()
+        for name in ('tasks', 'slots', 'journeys'):
+            shutil.copytree(campaign_root / name, negative / name, ignore=shutil.ignore_patterns('repository', 'runtime'))
+        events = copy.deepcopy(original_events)
+        recalls = [e['payload'] for e in events if e['payload'].get('type') == 'mcp_tool_call_end'
+            and e['payload'].get('invocation', {}).get('tool') == 'recall']
+        require(len(recalls) == 2, 'control needs two actual captured Recalls')
+        if control in {'post_correction_old_revision', 'future_correction_scope'}:
+            answer = recalls[1 if control == 'post_correction_old_revision' else 0]['result']['Ok']['structuredContent']['selected_work']['answers']
+            require(answer['explanation_state'] == 'current', 'old-revision control lacks a current claim')
+            next(e for e in answer['provenance']['evidence'] if e['key'] == 'goal')['revision'] = 1 if control == 'post_correction_old_revision' else 2
+        else:
+            mutation = next(e['payload'] for e in events if e['payload'].get('type') == 'mcp_tool_call_end'
+                and e['payload'].get('invocation', {}).get('tool') == 'canonical_mutate')
+            del mutation['result']['Ok']['structuredContent']['revision']
+            if control.endswith('with_violation'):
+                recalls[1]['result']['Ok']['structuredContent']['next_step'] = 'Deliberately contradictory verifier input'
+        changed_raw = negative / raw.relative_to(campaign_root)
+        changed_raw.chmod(0o600)
+        changed_raw.write_text(''.join(json.dumps(e) + '\n' for e in events))
+        descriptor_path = negative / f'tasks/descriptors/{slot}.json'
+        descriptor = c.read_json(descriptor_path)
+        descriptor['evidence']['captures']['work']['sha256'] = c.harness.sha256(changed_raw)
+        descriptor_path.chmod(0o600)
+        c.write_json(descriptor_path, descriptor)
+        finding = shared_finding(negative, manifest, slot)
+        target = finding['basis']['observations'][0 if control == 'future_correction_scope' else 1]
+        expected = 'indeterminate' if control == 'missing_temporal_evidence' else 'confirmed_violation'
+        require(target['status'] == expected and finding['status'] == expected,
+            'temporal negative control outcome differs: ' + str(finding))
+        require(finding['basis']['observations'][1 if control == 'future_correction_scope' else 0]['status'] == 'confirmed_pass', 'scoped control damaged an unchanged observation')
+        if control in {'post_correction_old_revision', 'future_correction_scope'}:
+            require('generated goal revision basis' in target['errors'], 'old revision rejected for wrong reason')
+        else:
+            require(target['goal_basis']['revision'] is None and target['limits'], 'missing revision fabricated certainty')
+        outcomes[control] = control_evidence(root, control, 'shared_answer_integrity', finding['status'],
+            'naturalistic_observation', finding['basis'], [explanation_evidence.binding(changed_raw.read_bytes())])
+    c.load_evidence_set(campaign_root)  # None of the invalid controls altered valid frozen evidence.
+
+
+def copied_temporal(copied, temporal):
+    """Inspect the copied consumer's safe bodies/locators, with staging unavailable."""
+    import review_explanations
+    index = c.read_json(copied / 'index.json')
+    review_root = copied / index['qualitative_reviews'][0]['root']
+    preparation, _, _ = review.load_package(review_root)
+    evidence = preparation['index']['evidence']
+    lifecycle_bindings = {}
+    for life in temporal['regeneration']['lifecycles']:
+        entry = evidence['explanation-' + life['identity']]
+        path = review_root / entry['path']
+        value = review_explanations.validate(path.read_bytes())
+        require(value['publication'] == {k: life[k] for k in ('publication_role', 'selected_identity')}
+            and value['semantic_complete'] and value['readback_subject_locators']['after'], 'copied lifecycle lost classification/locators')
+        require(all(value['private_artifacts'][k] == v for k, v in life['stages'].items()), 'copied historical/final bytes changed')
+        goal = rehearsal_support.goal_evidence(value['stages']['plan']['value']['value']['plan'])
+        require(goal['revision'] == life['goal_revision'] and goal['sources'] == life['goal_sources'], 'copied Goal revision/Source changed')
+        lifecycle_bindings[life['identity']] = explanation_evidence.binding(path.read_bytes())
+    matches = [v for v in evidence.values() if v['surface'] == 'work_capture'
+        and temporal['recall']['work_slot_id'] in v['sample_ids']]
+    require(len(matches) == 1, 'copied temporal capture missing')
+    path = review_root / matches[0]['path']
+    capture = review_captures.validate(path.read_bytes())
+    mutation = next(r for r in capture['records'] if r.get('operation') == 'canonical_mutate')
+    receipt = mutation['body']['value']['result']
+    require(receipt['revision'] == 2 and receipt['user_response_source_id'] == temporal['recall']['authorization_source_id']
+        and mutation['body']['value']['request']['expected_revision'] == 1
+        and mutation['sequence'] < mutation['completion_sequence'], 'copied correction witness lost')
+    require(any(p['value'].endswith('/body/value/result/revision') for p in matches[0]['locators']), 'copied revision locator missing')
+    return {'lifecycles': lifecycle_bindings, 'recall_capture': explanation_evidence.binding(path.read_bytes())}
+
+
 class Processes:
     """Private complete streams with bounded portable hash/exit observations."""
     def __init__(self, root, process_timeout=300):
@@ -274,16 +381,21 @@ def authored_capture(path, repository, revision, session, task, activation, oper
         {"type": "event_msg", "payload": {"type": "task_started", "turn_id": turn}},
         {"type": "event_msg", "payload": {"type": "user_message", "message": task,
             "client_id": "support-user-" + session}}]
-    for number, (name, arguments, result, duration) in enumerate(operations):
+    for number, (name, arguments, result, duration, started, ended) in enumerate(operations):
         call = session + "-" + str(number)
         events.extend([
-            {"type": "event_msg", "payload": {"type": "mcp_tool_call_begin", "turn_id": turn,
+            {"timestamp": started, "type": "event_msg", "payload": {"type": "mcp_tool_call_begin", "turn_id": turn,
                 "call_id": call, "invocation": {"server": "volicord", "tool": name, "arguments": arguments}}},
-            {"type": "event_msg", "payload": {"type": "mcp_tool_call_end", "turn_id": turn,
+            {"timestamp": ended, "type": "event_msg", "payload": {"type": "mcp_tool_call_end", "turn_id": turn,
                 "call_id": call, "invocation": {"server": "volicord", "tool": name, "arguments": arguments},
                 "result": {"Ok": {"isError": False, "structuredContent": result}},
                 "duration": {"secs": duration // 1_000_000_000, "nanos": duration % 1_000_000_000}}}])
     events.append({"type": "event_msg", "payload": {"type": "task_complete", "turn_id": turn}})
+    # Wall observations come from real request/completion boundaries. The transport
+    # is authored support; its chronology and Product results are retained separately.
+    for event in events[:4]:
+        event['timestamp'] = operations[0][4]
+    events[-1]['timestamp'] = explanation_evidence.timestamp()
     path.write_text("".join(json.dumps(e) + "\n" for e in events))
     capture = codex_events.load_codex_capture(path)
     require(capture.repository_scoped_activation_observed and capture.tool_calls,
@@ -352,9 +464,11 @@ def run_sessions(root, campaign_root, binary, logs):
         client = Product(binary.with_name("volicord-mcp"), runtime, repository, logs)
         operations = []
         def call(name, arguments):
+            wall_started = explanation_evidence.timestamp()
             started = time.monotonic_ns()
             value = client.tool(name, arguments)
-            operations.append((name, arguments, value, time.monotonic_ns() - started))
+            operations.append((name, arguments, value, time.monotonic_ns() - started,
+                wall_started, explanation_evidence.timestamp()))
             return value
         try:
             if kind == "volicord" and label == "A" and role == "start":
@@ -381,7 +495,25 @@ def run_sessions(root, campaign_root, binary, logs):
                     "excluded_paths": ["crates", "tests", "docs", "xtask"] if kind == "volicord" else []})
                 rehearsal_support.record_support_checkpoint(call, project, goal, baseline, repository,
                     label, learning, learning_context)
-            call("recall", {"project_id": project, "requested_language": "en"})
+            scenario = json.loads(FIXTURE.read_bytes())['temporal_scenarios']['recall']
+            if c.work_key(kind, label) == scenario['work_slot_id'] and role == 'start':
+                work = goal['context_item_id']
+                before_plan, before_response, before_receipt = rehearsal_support.product_explanation(
+                    root, binary, runtime, project, work, logs, 'recall-before')
+                before = call('recall', {'project_id': project, 'requested_language': 'en'})
+                explanation_evidence.validate_lifecycle({'plan': before_plan, 'project_id': project,
+                    'subject': {'kind': 'work', 'identity': work}, 'language': 'en'},
+                    before_response, before_receipt, before)
+                mutation = rehearsal_support.correction(call, project, work, 1, scenario)
+                after_plan, after_response, after_receipt = rehearsal_support.product_explanation(
+                    root, binary, runtime, project, work, logs, 'recall-after')
+                after = call('recall', {'project_id': project, 'requested_language': 'en'})
+                rehearsal_support.check_sources(before_plan, after_plan, mutation)
+                explanation_evidence.validate_lifecycle({'plan': after_plan, 'project_id': project,
+                    'subject': {'kind': 'work', 'identity': work}, 'language': 'en'},
+                    after_response, after_receipt, after)
+            else:
+                call("recall", {"project_id": project, "requested_language": "en"})
         finally:
             client.close()
         path = root / (c.session_slot_id(kind, label, role) + ".jsonl")
@@ -391,25 +523,135 @@ def run_sessions(root, campaign_root, binary, logs):
     return paths
 
 
-def realizations(root, campaign_root, paths):
-    prepared = explanation_evidence.prepare(campaign_root, paths, languages=["en", "ko"])
+def complete_explanations(root, campaign_root, prepared):
     for item in prepared["explanations"]:
         preparation = c.read_json(campaign_root / item["preparation"])
         plan = preparation["plan"]
-        questions = explanation_evidence.WORK_QUESTIONS if item["subject"]["kind"] == "work" else explanation_evidence.DECISION_QUESTIONS
-        response = {"format_kind": "volicord_explanation", "format_version": 1,
-            "plan_fingerprint": plan["fingerprint"], "language": item["language"],
-            "generator": {"host": "self_authored_test_support", "session": "rehearsal-script",
-                "agent": None, "model": None},
-            "paragraphs": [{"question": question,
-                "text": "직접 작성한 구조 검사 입력입니다." if item["language"] == "ko" else "Self-authored structural support input.",
-                "evidence_keys": [{"purpose": "goal", "reported_change": "result", "expected_effect": "result", "verification": "verification"}.get(question, question)]} for question in sorted(questions)]}
+        response = rehearsal_support.realization(plan)
         input_path = root / (item["identity"] + ".json")
         c.write_json(input_path, response)
         wrong = copy.deepcopy(response)
         wrong["plan_fingerprint"] = "sha256:" + "0" * 64
         rejected(lambda: explanation_evidence.validate_response(plan, wrong))
         explanation_evidence.record(campaign_root, item["identity"], input_path)
+
+
+def rejected_for(operation, message):
+    """Keep the actual rejection privately and assert its intended cause."""
+    try:
+        operation()
+    except ValueError as error:
+        require(message in str(error), 'control rejected for an unintended reason: ' + str(error))
+        return {'reason_sha256': hashlib.sha256(str(error).encode()).hexdigest()}
+    raise ValueError('negative temporal control accepted')
+
+
+def control_evidence(root, name, check, status, consumer, basis, artifacts):
+    finding = machine_findings.finding(check, status, basis)
+    path = root / (name + '-finding.json')
+    c.write_json(path, finding)
+    return {'consumer': consumer, 'check': check, 'status': finding['status'],
+        'disposition': finding['disposition'], 'basis_sha256': machine_findings.digest(basis),
+        'finding': explanation_evidence.binding(path.read_bytes()), 'artifacts': artifacts,
+        'observation_statuses': [o['status'] for o in basis.get('observations', [])],
+        'goal_revisions': [o['goal_basis']['revision'] for o in basis.get('observations', [])],
+        'error_classes': sorted({e for o in basis.get('observations', []) for e in o['errors']}),
+        'rejection_sha256': basis.get('reason_sha256') or (machine_findings.digest(basis['rejections']) if 'rejections' in basis else None)}
+
+
+def explanation_clone(campaign_root, target):
+    # Disposable control inputs retain the authentic campaign bindings. Runtime
+    # reads still reach the real Product, but all evidence mutations stay here.
+    shutil.copytree(campaign_root, target, ignore=shutil.ignore_patterns('repository', 'runtime'))
+    return c.load_campaign(target)
+
+
+def regenerate(root, campaign_root, paths, prepared, binary, logs):
+    scenario = json.loads(FIXTURE.read_bytes())['temporal_scenarios']['regeneration']
+    campaign = c.load_campaign(campaign_root)
+    state = campaign['works'][scenario['work_slot_id']]
+    journey = campaign['journeys'][state['journey_id']]
+    selected = [item for item in prepared['explanations'] if item['journey_id'] == state['journey_id']]
+    require(len(selected) == 2 and {i['language'] for i in selected} == {'en', 'ko'}, 'regeneration subject/locale boundary changed')
+    work, project = selected[0]['subject']['identity'], selected[0]['project_id']
+    mapped = c.map_batch_rollouts(campaign_root, paths)
+    explanation_evidence.require_ready(campaign_root, campaign, mapped)
+    originals = {p: p.read_bytes() for item in selected
+        for p in explanation_evidence.entry_path(campaign_root, item['identity']).rglob('*') if p.is_file()}
+    client = Product(binary.with_name('volicord-mcp'), Path(journey['runtime_home']), Path(journey['repository_path']), logs)
+    try:
+        mutation = rehearsal_support.correction(client.tool, project, work, 1, scenario)
+    finally:
+        client.close()
+    c.write_json(root / 'regeneration-correction.json', {'scenario': scenario, 'project_id': project,
+        'work_item_id': work, 'receipt': mutation, 'process_identity': client.label})
+    outcomes = {}
+    negative = root / 'negative-current-plan'
+    copied_campaign = explanation_clone(campaign_root, negative)
+    rejection = rejected_for(lambda: explanation_evidence.require_ready(negative, copied_campaign, mapped), 'basis changed')
+    outcomes['mismatched_final_current_plan'] = control_evidence(root, 'mismatched_final_current_plan',
+        'realization_binding', 'confirmed_violation', 'explanation_readiness', rejection,
+        [explanation_evidence.binding((negative / selected[0]['preparation']).read_bytes())])
+    new = explanation_evidence.prepare(campaign_root, paths, languages=['en', 'ko'], work_ids=[work])
+    complete_explanations(root, campaign_root, new)
+    relations = explanation_evidence.require_ready(campaign_root, campaign, mapped)
+    require(all(p.read_bytes() == body for p, body in originals.items()), 'historical observation bytes were rewritten')
+    lifecycles = []
+    for item in selected + new['explanations']:
+        path = campaign_root / item['preparation']
+        preparation, receipt = explanation_evidence.verify(campaign_root, path)
+        goal = rehearsal_support.goal_evidence(preparation['plan'])
+        prior = next(i for i in selected if i['language'] == item['language'])
+        if item in new['explanations']:
+            rehearsal_support.check_sources(c.read_json(campaign_root / prior['preparation'])['plan'], preparation['plan'], mutation)
+        lifecycles.append({'identity': item['identity'], **relations[item['identity']],
+            'language': item['language'], 'goal_revision': goal['revision'], 'goal_sources': goal['sources'],
+            'before_state': preparation['before_observation']['state'], 'after_state': receipt['after_state'],
+            'plan_fingerprint': preparation['plan']['fingerprint'],
+            'stages': {name: explanation_evidence.binding((path.parent / (name + '.json')).read_bytes())
+                for name in ('attempt', 'preparation', 'response', 'record', 'after', 'receipt')}})
+    outcomes['historical_explanation_regeneration'] = control_evidence(root, 'historical_explanation_regeneration',
+        'realization_binding', 'confirmed_pass', 'explanation_readiness', {'lifecycles': lifecycles},
+        [v['stages']['receipt'] for v in lifecycles])
+    historical = campaign_root / selected[0]['preparation']
+    negative = root / 'negative-historical'
+    explanation_clone(campaign_root, negative)
+    damaged = negative / historical.relative_to(campaign_root).parent / 'response.json'
+    damaged.chmod(0o600)
+    damaged.write_bytes(damaged.read_bytes() + b'\n')
+    rejection = rejected_for(lambda: explanation_evidence.publication_relations(negative), 'inventory')
+    outcomes['tampered_historical_explanation'] = control_evidence(root, 'tampered_historical_explanation',
+        'campaign_inventory', 'confirmed_violation', 'explanation_readiness', rejection,
+        [explanation_evidence.binding(damaged.read_bytes())])
+    negative = root / 'negative-pending'
+    copied_campaign = explanation_clone(campaign_root, negative)
+    pending = explanation_evidence.prepare(negative, paths, languages=['en'], work_ids=[work])
+    rejection = rejected_for(lambda: explanation_evidence.require_ready(negative, copied_campaign, mapped), 'missing host response')
+    outcomes['incomplete_attempt_fallback'] = control_evidence(root, 'incomplete_attempt_fallback',
+        'realization_binding', 'confirmed_violation', 'explanation_readiness', rejection,
+        [explanation_evidence.binding((negative / pending['explanations'][0]['preparation']).read_bytes())])
+    preparation = c.read_json(historical)
+    response = c.read_json(historical.parent / 'response.json')
+    failures = []
+    for boundary in ('language', 'subject'):
+        wrong = copy.deepcopy(preparation)
+        wrong[boundary] = 'ko' if boundary == 'language' and wrong['language'] == 'en' else ('en' if boundary == 'language' else {'kind': 'work', 'identity': '0' * 32})
+        failures.append(rejected_for(lambda: explanation_evidence.validate_lifecycle(wrong, response,
+            c.read_json(historical.parent / 'record.json'), c.read_json(historical.parent / 'after.json')), 'subject/language'))
+    outcomes['explanation_scope_boundary'] = control_evidence(root, 'explanation_scope_boundary',
+        'realization_binding', 'confirmed_violation', 'explanation_lifecycle', {'rejections': failures},
+        [explanation_evidence.binding(historical.read_bytes())])
+    return {'regeneration': {'work_slot_id': scenario['work_slot_id'], 'project_id': project, 'work_item_id': work,
+        'authorization_source_id': mutation['user_response_source_id'], 'correction_process': client.label,
+        'correction_receipt': explanation_evidence.binding(c.json_bytes(mutation)), 'lifecycles': lifecycles},
+        'outcomes': outcomes}
+
+
+def realizations(root, campaign_root, paths, binary, logs):
+    prepared = explanation_evidence.prepare(campaign_root, paths, languages=['en', 'ko'])
+    complete_explanations(root, campaign_root, prepared)
+    temporal = regenerate(root, campaign_root, paths, prepared, binary, logs)
+    # Final regeneration precedes this existing immutable document/collection freeze.
     document_realization.prepare(campaign_root, paths)
     for item in c.read_json(campaign_root / "realizer/index.json")["documents"]:
         draft_path = campaign_root / item["draft"]
@@ -425,6 +667,7 @@ def realizations(root, campaign_root, paths):
                 claim["text"] = "직접 작성한 검사 입력: " + " ".join(original["protected_terms"])
         c.write_json(draft_path, draft)
         document_realization.record(campaign_root, item["realization_id"], draft_path)
+    return temporal
 
 
 def pipeline(root, candidate, binary, logs):
@@ -433,7 +676,7 @@ def pipeline(root, candidate, binary, logs):
         repositories(root, candidate, logs), tasks(root), candidate_binary=binary, purpose=purpose.REHEARSAL)
     c.activate_all(campaign_root)
     paths = run_sessions(root, campaign_root, binary, logs)
-    realizations(root, campaign_root, paths)
+    temporal = realizations(root, campaign_root, paths, binary, logs)
     c.collect_batch(campaign_root, paths)
     manifest = c.load_evidence_set(campaign_root)
     evaluation = c.evaluate_campaign(campaign_root, root / "evaluation")
@@ -465,6 +708,7 @@ def pipeline(root, candidate, binary, logs):
         "missing observations were promoted")
     rejected(lambda: purpose.require_measured(qualified))
     checked = controls(root, campaign_root, manifest, evaluation_path, review_root, qualified)
+    temporal_controls(root, campaign_root, manifest, temporal)
     result_lineage.publish(campaign_root, evaluation_path, [review_root],
         root / "qualification/qualification.json", root / "lineage")
     copied = root / "copied-lineage"
@@ -476,6 +720,8 @@ def pipeline(root, candidate, binary, logs):
     require(verification["state"] == "verified" and not verification["external_staging_paths_used"],
         "copied verification consulted original inputs")
     checked["copied_semantic_rehash"] = copied_control(copied)
+    temporal['copied'] = copied_temporal(copied, temporal)
+    checked.update(dict.fromkeys(temporal['outcomes'], 'passed'))
     require(set(checked) == set(json.loads(FIXTURE.read_bytes())["controls"]), "rehearsal control coverage changed")
     return {"evidence_set_sha256": c.harness.sha256(root / "campaign-unavailable/evidence-set.json"),
         "executables": {name: item["sha256"] for name, item in manifest["candidate_artifacts"].items()},
@@ -486,7 +732,8 @@ def pipeline(root, candidate, binary, logs):
         "hard_findings": qualified["machine_summary"]["hard_findings"],
         "copied_lineage_id": verification["lineage_id"], "copied_verification": "verified",
         "resource_sample_count": manifest["naturalistic_memory_evidence"]["measurement"]["sample_count"],
-        "topology": qualified["campaign_topology"], "measured_evidence_eligible": False, "controls": checked}
+        "topology": qualified["campaign_topology"], "measured_evidence_eligible": False, "controls": checked,
+        "temporal_evidence": temporal}
 
 
 def main():

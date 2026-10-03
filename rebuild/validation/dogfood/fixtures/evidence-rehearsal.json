@@ -63,7 +63,17 @@
     "memory_binary_mismatch",
     "absent_human_observations",
     "rehearsal_not_measured",
-    "copied_semantic_rehash"
+    "copied_semantic_rehash",
+    "historical_explanation_regeneration",
+    "temporal_recall_correction",
+    "mismatched_final_current_plan",
+    "tampered_historical_explanation",
+    "incomplete_attempt_fallback",
+    "explanation_scope_boundary",
+    "post_correction_old_revision",
+    "future_correction_scope",
+    "missing_temporal_evidence",
+    "missing_temporal_evidence_with_violation"
   ],
   "expected_inner": {
     "technical_gate": "not_provided",
@@ -71,5 +81,17 @@
     "human_observations": "not_provided",
     "replacement_qualification": "unresolved",
     "reason": "Support captures cannot supply measured-session qualification; coverage is explicitly insufficient and other authored reviews remain not_reviewed."
+  },
+  "temporal_scenarios": {
+    "recall": {
+      "work_slot_id": "journey-small-python-work-a",
+      "corrected_statement": "Inspect the shared evidence support scenario — retain configuration investigation evidence.",
+      "authorization": "Self-authored support authorization: clarify the configuration investigation Goal expression and preserve its original supporting Sources."
+    },
+    "regeneration": {
+      "work_slot_id": "journey-polyglot-medium-work-a",
+      "corrected_statement": "Inspect the shared evidence support scenario — retain cross-stack integration evidence.",
+      "authorization": "Self-authored support authorization: clarify the integration Goal expression and preserve its original supporting Sources."
+    }
   }
 }

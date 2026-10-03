@@ -2113,6 +2113,31 @@ Passed technical qualification retains the rehearsal contract/status/result hash
 qualification validation and copied-lineage replay require that closed identity.
 The inner `not_provided` path has no gate input or retention dependency.
 
+The mandatory stage also proves two independent temporal scenarios from actual Product entry points.
+Small Python's authored Work slot records current generated Recall before and after successful
+`canonical_mutate/correct_context`, then a fresh resume read. Polyglot's Work retains completed
+revision-1 en/ko explanation lifecycles, corrects its expression through MCP, and completes revision-2
+lifecycles before the existing document/final-collection freeze. Original Goal Sources remain unchanged;
+both authorization Sources are separate self-authored support. Raw capture bindings and historical
+attempt/preparation/response/record/receipt/readback bytes are never edited to make regeneration work.
+Each retained historical observation verifies against its own basis; only the causal selected final
+observation must match current Product publication. All four lifecycles and the temporal capture's
+revision/authorization locators survive reviewer preparation and verification of a copied lineage
+after original staging paths disappear.
+
+Required temporal controls are `historical_explanation_regeneration`, `temporal_recall_correction`,
+`mismatched_final_current_plan`, `tampered_historical_explanation`, `incomplete_attempt_fallback`,
+`explanation_scope_boundary`, `post_correction_old_revision`, `future_correction_scope`,
+`missing_temporal_evidence`, and `missing_temporal_evidence_with_violation`. Disposable evidence variants
+exercise maintained readiness/lifecycle or Naturalistic observation consumers and the current machine
+disposition policy. Deliberately changed return payloads are verifier sensitivity tests. Missing revision
+evidence is scoped indeterminate; independent action contradictions remain hard-blocking. Portable stage
+results require closed observation coordinates, revisions, distinct Sources, lifecycle artifact bindings,
+actual correction process identity, retained finding/control artifacts and copied lifecycle/capture hashes.
+Rehashed missing controls or bare success labels cannot satisfy the current contract. Fixture/producer
+hashing covers these obligations without upgrading historical archives or changing stage order, topology,
+resource budgets, external transmission scope or inner unresolved qualification.
+
 ### Temporal explanation evidence support
 
 `explanation_evidence_self_test.py` retains the two-completion correction regression and

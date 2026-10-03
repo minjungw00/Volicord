@@ -5,6 +5,58 @@ These authored assertions demonstrate transport and validation, not semantic tru
 """
 from typing import Any
 
+
+def realization(plan):
+    """Authored structural input; the Product alone supplies plan/receipt/readback."""
+    import explanation_evidence as e
+    questions = e.WORK_QUESTIONS if plan['subject']['kind'] == 'work' else e.DECISION_QUESTIONS
+    return {'format_kind': 'volicord_explanation', 'format_version': 1,
+        'plan_fingerprint': plan['fingerprint'], 'language': plan['requested_language'],
+        'generator': {'host': 'self_authored_test_support', 'session': 'rehearsal-script',
+            'agent': None, 'model': None},
+        'paragraphs': [{'question': q,
+            'text': '직접 작성한 구조 검사 입력입니다.' if plan['requested_language'] == 'ko' else 'Self-authored structural support input.',
+            'evidence_keys': [v['key'] for v in plan['evidence']]} for q in sorted(questions)]}
+
+
+def product_explanation(root, binary, runtime, project, work, logs, phase):
+    """Fresh public CLI generation for session-time Recall; no campaign seams."""
+    import json
+    import campaign as c
+    import explanation_evidence as e
+    argv = [binary, '--runtime', runtime, '--project', project, '--json']
+    prepared = json.loads(logs.run([*argv, 'work', 'explain', 'prepare', '--work', work, '--language', 'en']))
+    plan = prepared['plan']
+    response = realization(plan)
+    path = root / (phase + '-authored-response.json')
+    c.write_json(path, response)
+    receipt = json.loads(logs.run([*argv, 'work', 'explain', 'record', '--work', work,
+        '--language', 'en', '--input', path]))
+    return plan, response, receipt
+
+
+def correction(call, project, work, revision, scenario):
+    """MCP creates a distinct Source from this explicitly authored authorization."""
+    receipt = call('canonical_mutate', {'project_id': project, 'action': 'correct_context',
+        'record_id': work, 'expected_revision': revision,
+        'corrected_text': scenario['corrected_statement'], 'user_turn': scenario['authorization']})
+    if receipt.get('revision') != revision + 1 or receipt.get('identity') != work:
+        raise ValueError('Product did not complete the requested correction')
+    return receipt
+
+
+def goal_evidence(plan):
+    return next(e for e in plan['evidence'] if e['key'] == 'goal')
+
+
+def check_sources(before, after, receipt):
+    old, new = goal_evidence(before), goal_evidence(after)
+    if (old['identity'] != new['identity'] or new['revision'] != old['revision'] + 1
+            or old['sources'] != new['sources'] or not old['sources']
+            or receipt['user_response_source_id'] in new['sources']):
+        raise ValueError('correction confused Goal Sources with authorization Source')
+
+
 ENGINEERING_EFFECT_CATEGORIES = (
     "public_api_shape_or_semantics",
     "compatibility",
