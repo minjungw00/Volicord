@@ -336,7 +336,9 @@ def run_sessions(root, campaign_root, binary, logs):
         task = (campaign_root / state["operator_task_artifacts"][role]["path"]).read_text()
         hook = logs.run([binary, "--runtime", runtime, "--repository", repository, "codex", "hook"],
             cwd=repository, input=json.dumps({"hook_event_name": "SessionStart", "session_id": session,
-                "cwd": str(repository), "source": "startup" if role == "start" else "resume"}).encode())
+                "cwd": str(repository), "source": "startup" if role == "start" else "resume",
+                "model": "self-authored-test-support", "permission_mode": "default",
+                "transcript_path": None}).encode())
         activation = json.loads(hook)["hookSpecificOutput"]["additionalContext"]
         client = Product(binary.with_name("volicord-mcp"), runtime, repository, logs)
         operations = []
