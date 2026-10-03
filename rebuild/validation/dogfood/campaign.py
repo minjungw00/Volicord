@@ -32,6 +32,7 @@ import workload_intents
 import interaction_diagnostics
 import cli_observations
 import document_realization
+import explanation_evidence
 import machine_findings
 import review_operations
 import human_review
@@ -814,7 +815,15 @@ def render_operator_run_sheet(root: Path) -> Path:
         "Codex executed SessionStart; every raw session still requires runtime activation evidence. "
         "If trust or activation is uncertain, inspect it before sending any frozen task. Run all "
         "eight fresh start/resume chats, preserve their raw rollouts, and provide the eight files once "
-        "to the steward. For cross-locale documents the steward runs `prepare-document-realizations`, "
+        "to the steward. When explanations are needed, first run `prepare-explanations --campaign-root ROOT "
+        "--rollout-directory RAW --language en --language ko` (optionally select --work/--decision), then "
+        "have the authorized active host interpret each private Product plan and run `record-explanation "
+        "--campaign-root ROOT --explanation-id ID --input RESPONSE`. Inspect progress with `inspect-explanations`. "
+        "This uses actual `work explain prepare/record --work ID` and `decision explain prepare/record --decision ID` "
+        "CLI interfaces; no Work MCP tool exists. Same-language prose may need generation too. "
+        "Earlier measured absent/stale/current answers remain independent. Steward generation is post-session "
+        "and proves no earlier use or adoption. No per-session generation quota applies. "
+        "Finish any requested explanation lifecycle before cross-locale documents: run `prepare-document-realizations`, "
         "has an active host complete and fix the private drafts, and then runs `collect-batch`. "
         "Same-locale evidence uses `collect-batch` directly. No per-chat control-session collection is required.\n\n"
         "Follow the user's task and repository-owned Git policy. Dogfood requires no Work commit "
@@ -2384,6 +2393,7 @@ def collect_batch(
         raise CampaignError("batch collection requires all five frozen Works")
     # Global identity mapping is read-only and complete before staging anything.
     mapped = integrity_check("session_mapping", map_batch_rollouts, root, raw_paths)
+    integrity_check("realization_binding", explanation_evidence.require_ready, root, campaign, mapped)
     integrity_check("realization_binding", document_realization.require_batch_ready, root, campaign, mapped)
     for slot, rollout in mapped.items():
         failure = harness.activation_failure(rollout.capture)
@@ -2720,11 +2730,12 @@ def normalize_batch(
     register_artifact(root, root / "batch-intake-summary.json")
     # The manifest closes over exact artifacts, excluding mutable inventory/campaign
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
-    manifest = {"kind": "dogfood_evidence_set", "schema_version": 5,
+    manifest = {"kind": "dogfood_evidence_set", "schema_version": 6,
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
         "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
         "naturalistic_memory_evidence": copy.deepcopy(campaign["naturalistic_memory_evidence"]),
         "live_evidence_obligations": copy.deepcopy(campaign["live_evidence_obligations"]),
+        "explanation_evidence": explanation_evidence.collection_index(root, mapped),
         "raw_inputs": document_realization.raw_binding(mapped),
         "journeys": copy.deepcopy(campaign["journeys"]),
         "works": copy.deepcopy(campaign["works"]),
@@ -2749,7 +2760,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         or reference.get("sha256") != harness.sha256(root / "evidence-set.json")):
         raise CampaignError("campaign has no intact immutable evidence set")
     manifest = read_json(root / "evidence-set.json")
-    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 5
+    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 6
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
         or manifest.get("candidate_artifacts") != campaign.get("candidate_artifacts")
@@ -2796,6 +2807,11 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         for role, artifact in state["operator_task_artifacts"].items():
             if task_hashes.get(session_slot_id(kind, label, role)) != artifact["sha256"]:
                 raise CampaignError("evidence-set frozen task differs from preparation receipt")
+    mapped = {slot: type("RetainedRollout", (), {"capture": load_codex_capture(root / "slots" /
+        manifest["works"][work_key(*slot[:2])]["work_slot_id"] / "evidence" / f"{slot[2]}.rollout.jsonl")})()
+        for slot in harness.current_session_slots()}
+    if manifest.get("explanation_evidence") != explanation_evidence.collection_index(root, mapped):
+        raise CampaignError("immutable explanation observation/lifecycle index changed")
     integrity_check("project_binding", verify_retained_repository_states, root, manifest)
     return manifest
 
@@ -2954,7 +2970,7 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
         "evaluator_files": {name: harness.sha256(Path(__file__).parent / name)
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
-                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py", "answer_observations.py",
+                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py", "answer_observations.py", "explanation_evidence.py",
                 "../shared/recorded_action_evidence.py",
                 "evaluation.json", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
@@ -3109,6 +3125,9 @@ def parser() -> argparse.ArgumentParser:
     activate = sub.add_parser("activate-journey")
     activate_every = sub.add_parser("activate-all")
     collect_b = sub.add_parser("collect-batch")
+    prepare_explanations = sub.add_parser("prepare-explanations", help="Prepare private post-session Work/Decision explanation evidence before document realization")
+    record_explanation = sub.add_parser("record-explanation", help="Record an active-host response through the existing Product CLI and retain readback")
+    inspect_explanations = sub.add_parser("inspect-explanations", help="Inspect immutable explanation lifecycle progress")
     prepare_documents = sub.add_parser("prepare-document-realizations")
     inspect_documents = sub.add_parser("inspect-document-realizations",
         help="Inspect published preparation and immutable realization counts without mutation")
@@ -3193,6 +3212,17 @@ def parser() -> argparse.ArgumentParser:
     batch_input = collect_b.add_mutually_exclusive_group(required=True)
     batch_input.add_argument("--raw-rollout", action="append")
     batch_input.add_argument("--rollout-directory")
+    prepare_explanations.add_argument("--campaign-root", required=True)
+    explanation_inputs = prepare_explanations.add_mutually_exclusive_group(required=True)
+    explanation_inputs.add_argument("--raw-rollout", action="append")
+    explanation_inputs.add_argument("--rollout-directory")
+    prepare_explanations.add_argument("--language", action="append")
+    prepare_explanations.add_argument("--work", action="append")
+    prepare_explanations.add_argument("--decision", action="append")
+    record_explanation.add_argument("--campaign-root", required=True)
+    record_explanation.add_argument("--explanation-id", required=True)
+    record_explanation.add_argument("--input", required=True)
+    inspect_explanations.add_argument("--campaign-root", required=True)
     prepare_documents.add_argument("--campaign-root", required=True)
     inspect_documents.add_argument("--campaign-root", required=True)
     document_inputs = prepare_documents.add_mutually_exclusive_group(required=True)
@@ -3243,12 +3273,22 @@ def main() -> int:
             Path(args.draft).resolve(), Path(args.runtime_rollout).resolve())
     elif args.command == "inspect-document-realizations":
         value = document_realization.inspect_state(root)
-    elif args.command in {"collect-batch", "prepare-document-realizations"}:
+    elif args.command == "record-explanation":
+        value = explanation_evidence.record(root, args.explanation_id, Path(args.input).resolve())
+    elif args.command == "inspect-explanations":
+        value = {"state": "inspected", "mutation": "none", "explanations": [
+            {"identity": prepared["identity"], "subject": prepared["subject"], "language": prepared["language"],
+             "state": "recorded" if receipt else "prepared", "phase": prepared["phase"]}
+            for prepared, receipt in (explanation_evidence.verify(root, path, allow_unrecorded=True)
+                for path in explanation_evidence.preparations(root))]}
+    elif args.command in {"collect-batch", "prepare-document-realizations", "prepare-explanations"}:
         paths = batch_rollout_paths(
             [Path(path) for path in args.raw_rollout] if args.raw_rollout else None,
             Path(args.rollout_directory) if args.rollout_directory else None,
         )
-        value = (document_realization.prepare(root, paths, progress=document_realization.stderr_progress)
+        value = (explanation_evidence.prepare(root, paths, languages=args.language,
+                    work_ids=args.work, decision_ids=args.decision) if args.command == "prepare-explanations"
+                 else document_realization.prepare(root, paths, progress=document_realization.stderr_progress)
                  if args.command == "prepare-document-realizations"
                  else collect_batch(root, paths))
     elif args.command == "diagnose":

@@ -345,6 +345,8 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
     if progress:
         progress({"phase": "mapping_inputs", "completed": 0, "total": 1})
     mapped = c.map_batch_rollouts(root, raw_paths)
+    import explanation_evidence
+    explanation_evidence.require_ready(root, campaign, mapped)
     if progress:
         progress({"phase": "mapping_inputs", "completed": 1, "total": 1})
     files, drafts, bindings, index = {}, {}, [], []

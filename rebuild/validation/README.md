@@ -252,6 +252,32 @@ dirty cross-Work state and later combined commits remain collectible. The run sh
 follows task/repository-owned Git policy; compliance is assessed in post-hoc review.
 Canonical Work identity remains independent of commits, paths and HEAD intervals.
 
+After the eight chats, explanation collection is separate from document realization:
+
+```sh
+rebuild/scripts/dogfood-campaign prepare-explanations --campaign-root ROOT --rollout-directory RAW --language en --language ko
+rebuild/scripts/dogfood-campaign inspect-explanations --campaign-root ROOT
+rebuild/scripts/dogfood-campaign record-explanation --campaign-root ROOT --explanation-id ID --input RESPONSE
+```
+
+Optional `--work ID` / `--decision ID` select subjects; languages default to the
+campaign document language. The authorized current host reads each private plan
+and writes the Product `volicord_explanation` response. The collector uses actual
+`work explain prepare/record --work ID` and `decision explain prepare/record
+--decision ID` CLI interfaces, with `--language` and `--input` for record.
+Work readback uses `status`; Decision readback uses `decisions`. A subject outside
+the returned bound is explicitly unresolvable. No Work-specific MCP tool exists.
+There is no provider dispatch, new transmission authority or generation quota.
+Same-language explanation generation is independent of cross-locale document rules.
+Finish requested lifecycles before `prepare-document-realizations` (when needed),
+then `collect-batch` captures final documents/Viewer. Already-prepared incomplete
+lifecycles block collection; no preparation is required merely to meet a quota.
+Regeneration uses a fresh immutable preparation, preserving earlier observations.
+Evidence-set schema 6 indexes measured answer/CLI lifecycle locators separately
+from post-session steward plans/responses/receipts/readbacks. Neither later material
+nor a current final bundle proves what the Product returned earlier. Generator
+identity and response-input authorship remain explicitly unverified.
+
 ### Naturalistic workload selection
 
 The existing 3 journeys / 5 Works / 3 resume pairs / 8 sessions fit five ordinary

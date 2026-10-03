@@ -740,6 +740,21 @@ term도 deterministic representative set만 plan에 포함하며 term/item bound
 
 ### Active-host realization provenance in campaign evidence
 
+Work/Decision explanation evidence uses the existing CLI `work explain
+prepare/record --work ID` and `decision explain prepare/record --decision ID`.
+It is independent of document NarrativeRealization; same-language explanations
+may also require the authorized current host. Campaign collection retains the
+before-generation shared answer, exact Product plan, submitted response, Product
+record receipt and after-generation shared answer as separate immutable artifacts.
+Project, subject, language, executable, revisions, Source/snapshot basis, times and
+raw call/turn locators remain bound. A later generation never rewrites a measured
+absent/stale/current answer. Steward generation is explicitly post-session and
+does not establish earlier use, adoption or user experience. Complete requested
+explanation lifecycles before document realization and final document/Viewer
+capture; no per-session generation quota applies. Model/host claims remain
+self-reported or unknown; a record receipt proves local retention and structural
+linkage, not authorship, translation quality or semantic adequacy.
+
 Phase 8 recorder는 preparation의 candidate/local MCP executable binding과 realizer의
 identity claim을 구분한다. Verified preparation은 exact plan/route의 local evidence일 뿐
 active-host authorship 또는 exact model identity의 attestation이 아니다. 현재 control path가

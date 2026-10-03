@@ -1411,6 +1411,16 @@ qualitative review; no fixed V11 task expectations are used. The shared primitiv
 Focused controls in `dogfood/answer_observations_self_test.py` execute the actual
 Naturalistic consumer with duplicate-title Works and independent CLI/MCP substitutions.
 
+`dogfood/explanation_evidence.py` owns append-only campaign explanation evidence,
+separately from document realization. Its public campaign commands and ordering
+are maintained in the validation README and generated operator run sheet. Product
+CLI preparation/record/readback binds plan, response, receipt, exact revisions and
+Source/snapshot basis. Measured-session locators and post-session steward material
+are distinct in evidence-set schema 6. Missing prepared lifecycle inputs, basis
+drift and artifact changes fail collection. Fixture responses establish structure
+only; fresh current-host Work/Decision output through Product prepare/record in
+en/ko is separate focused proof. Neither proof grants review or Phase 9 authority.
+
 ### Naturalistic workload selection
 
 The existing 3 journeys / 5 Works / 3 resume pairs / 8 sessions fit five ordinary

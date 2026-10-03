@@ -136,7 +136,7 @@ def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any]) -> li
         require(isinstance(provenance, dict), "generated provenance missing")
         if isinstance(provenance, dict):
             require(provenance.get("project_id") == expected["project_id"]
-                    and provenance.get("subject") == {"kind": "work", "identity": expected["goal_id"]}, "generated Work/Project scope")
+                    and provenance.get("subject") == {"kind": "work", "identity": list(bytes.fromhex(expected["goal_id"]))}, "generated Work/Project scope")
             evidence = provenance.get("evidence", [])
             for key, identity, revision, field, sources in (
                 ("next_step", expected["checkpoint_id"], expected["checkpoint_revision"], "next_step", expected["checkpoint_sources"]),

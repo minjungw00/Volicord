@@ -17,7 +17,7 @@ def returned_recalls(capture):
         return []
     values = [{'transport': 'mcp', 'call_id': call.call_id, 'turn_id': call.turn_id,
         'sequence': call.sequence, 'completion_sequence': call.completion_sequence,
-        'result': call.result} for call in capture.successful_calls('recall')]
+        'requested_language': call.arguments.get('requested_language', 'en'), 'result': call.result} for call in capture.successful_calls('recall')]
     for command in capture.commands:
         argvs = c.command_argvs(command.parsed_command)
         if len(argvs) != 1:
@@ -33,7 +33,7 @@ def returned_recalls(capture):
                 pass
         values.append({'transport': 'cli', 'call_id': command.execution_identity,
             'turn_id': command.turn_id, 'sequence': command.sequence,
-            'completion_sequence': command.completion_sequence, 'result': result})
+            'completion_sequence': command.completion_sequence, 'requested_language': argv[argv.index('--language') + 1] if '--language' in argv and argv.index('--language') + 1 < len(argv) else 'en', 'result': result})
     return sorted(values, key=lambda value: value['sequence'])
 
 
@@ -94,7 +94,7 @@ def observe(work, resume, bundle, work_id):
                         if state not in {'current', 'unavailable', 'stale', 'corrupt', 'unsupported'}:
                             errors.append('explanation availability state')
                         if state == 'current':
-                            if not isinstance(provenance, dict) or provenance.get('project_id') != bundle.project_id or provenance.get('subject') != {'kind': 'work', 'identity': work_id}:
+                            if not isinstance(provenance, dict) or provenance.get('project_id') != bundle.project_id or provenance.get('subject') != {'kind': 'work', 'identity': list(bytes.fromhex(work_id))}:
                                 errors.append('generated Work/Project scope')
                             else:
                                 for key, identity, revision, field in (

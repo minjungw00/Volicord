@@ -11,6 +11,7 @@ def policy_identity():
     policy = {"machine_version": machine.POLICY_VERSION, "authority": machine.POLICY,
         "machine_policy_sha256": harness.sha256(Path(machine.__file__)),
         "interaction_diagnostics_sha256": harness.sha256(Path(__file__).with_name("interaction_diagnostics.py")),
+        "explanation_evidence_sha256": harness.sha256(Path(__file__).with_name("explanation_evidence.py")),
         "answer_observations_sha256": harness.sha256(Path(__file__).with_name("answer_observations.py")),
         "recorded_action_evidence_sha256": harness.sha256(harness.ROOT / "rebuild/validation/shared/recorded_action_evidence.py"),
         "workload_intents_sha256": harness.sha256(Path(__file__).with_name("workload_intents.py")),

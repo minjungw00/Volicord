@@ -112,7 +112,7 @@ def self_check(oracle) -> None:
         prose=[{"question": "NextStep", "role": "generated_interpretation",
                 "text": "Resume the bounded work.", "evidence_keys": ["next_step"]}],
         provenance={"project_id": expected["project_id"],
-                    "subject": {"kind": "work", "identity": expected["goal_id"]},
+                    "subject": {"kind": "work", "identity": list(bytes.fromhex(expected["goal_id"]))},
                     "evidence": [
                         {"key": "next_step", "identity": expected["checkpoint_id"], "revision": 1, "field": "next_step", "sources": expected["checkpoint_sources"]},
                         {"key": "goal", "identity": expected["goal_id"], "revision": 1, "field": "statement", "sources": expected["goal_sources"]},
