@@ -34,7 +34,24 @@ async function capture(name, target=page.locator('main > section').first()) {
   // Capture the current browser viewport, including native zoom, at the reading
   // surface. Surface screenshots can be blank at deep offsets with tab zoom.
   if (await target.count()) await target.first().evaluate(e=>window.scrollTo({left:0,top:e.getBoundingClientRect().top+scrollY,behavior:'instant'}));
-  await frames();
+  // Native keyboard focus scrolling may continue after disclosure frames. Wait
+  // for a stable viewport before observing; still reject any movement during
+  // the screenshot itself. Do not alter browser scrolling or snapshot geometry.
+  await page.evaluate(async()=>{
+    await document.fonts.ready;
+    await new Promise((resolve,reject)=>{
+      let previous='',stable=0,frames=0;
+      function sample() {
+        const geometry=JSON.stringify([scrollX,scrollY,innerWidth,innerHeight,devicePixelRatio]);
+        stable=geometry===previous?stable+1:0;
+        previous=geometry;
+        if(stable>=6)return resolve();
+        if(++frames>=120)return reject(new Error('viewport_did_not_settle'));
+        requestAnimationFrame(sample);
+      }
+      requestAnimationFrame(sample);
+    });
+  });
   const observed=await page.evaluate(()=>({context:JSON.parse(document.querySelector('meta[name="volicord-observation"]').content),dom:document.documentElement.outerHTML}));
   requireFact(observed.context.process.executable_sha256 === config.viewer_sha256,'displayed_candidate_executable_mismatch');
   const observedUrl=page.url();

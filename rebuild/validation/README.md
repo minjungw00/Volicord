@@ -740,6 +740,10 @@ Thresholds and existing V11/resource budgets are unchanged; no percentile guaran
 is inferred. Cold means fresh adapter in the Rust workload, first route request in
 the HTTP samples, and never flushed OS caches.
 
+Viewport capture waits for fonts and six consecutive stable animation frames
+after native keyboard scrolling, with a 120-frame bound. It still rejects DOM,
+URL or geometry changes during the screenshot; settling is not a latency metric.
+
 Every run gets a fresh ignored `rebuild/.local/validation/viewer-browser-*` root
 with `result.json`, candidate/input/environment/executable hashes, retained tested
 executables, fixture bindings, full logs, screenshots and screenshot hashes.
