@@ -9,7 +9,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-8"
+REVISION = "replacement-qualification-9"
 COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
 MULTI_WORK_CRITERION = "journey-volicord/viewer_snapshot/multiple_work_organization"
 # Direct human/user observations cannot be inferred from an agent's artifact review.

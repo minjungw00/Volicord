@@ -5,10 +5,10 @@ from __future__ import annotations
 import copy
 
 def fixture(oracle):
-    project, goal, goal_source = "p" * 32, "g" * 32, "s" * 32
-    decision, decision_source = "d" * 32, "u" * 32
-    checkpoint, analysis, repository = "c" * 32, "a" * 32, "r" * 32
-    repository_source = "t" * 32
+    project, goal, goal_source = "01" * 16, "02" * 16, "03" * 16
+    decision, decision_source = "04" * 16, "05" * 16
+    checkpoint, analysis, repository = "06" * 16, "07" * 16, "08" * 16
+    repository_source = "09" * 16
     records = [
         {"kind": "project", "identity": project, "revision": 1, "lifecycle_state": "current", "statement_role": None, "summary": "Project", "source_basis": []},
         {"kind": "source", "identity": goal_source, "revision": 1, "lifecycle_state": "current", "statement_role": "source_basis", "summary": "Goal Source", "source_basis": [goal_source]},
@@ -44,7 +44,7 @@ def fixture(oracle):
         "decisions": [{"identity": decision, "revision": 1, "state": "current", "work_scope": {"kind": "project_wide"},
                        "chosen_alternative_key": "local", "source_basis": [decision_source]}],
         "selected_work": {"work_item_id": goal, "checkpoint_ids": [checkpoint], "answers": {
-            "explanation_state": "unavailable", "provenance": None,
+            "explanation_state": "unavailable", "provenance": None, "diagnostic": None,
             "prose": [{"question": "ExplanationAvailability", "role": "unavailable", "text": "Interpretation has not been generated", "evidence_keys": []}],
             "facts": [
                 {"question": "RecordedNextStep", "role": "deterministic_facts",

@@ -11,12 +11,16 @@ def policy_identity():
     policy = {"machine_version": machine.POLICY_VERSION, "authority": machine.POLICY,
         "machine_policy_sha256": harness.sha256(Path(machine.__file__)),
         "interaction_diagnostics_sha256": harness.sha256(Path(__file__).with_name("interaction_diagnostics.py")),
+        "answer_projection_sha256": harness.sha256(Path(__file__).with_name("answer_projection.py")),
+        "review_captures_sha256": harness.sha256(Path(__file__).with_name("review_captures.py")),
+        "review_explanations_sha256": harness.sha256(Path(__file__).with_name("review_explanations.py")),
+        "review_operations_sha256": harness.sha256(Path(__file__).with_name("review_operations.py")),
         "explanation_evidence_sha256": harness.sha256(Path(__file__).with_name("explanation_evidence.py")),
         "answer_observations_sha256": harness.sha256(Path(__file__).with_name("answer_observations.py")),
         "recorded_action_evidence_sha256": harness.sha256(harness.ROOT / "rebuild/validation/shared/recorded_action_evidence.py"),
         "workload_intents_sha256": harness.sha256(Path(__file__).with_name("workload_intents.py")),
         "rubric": qualitative_review.rubric(harness.load_definition())}
-    return {"revision": "evidence-evaluation-7", "sha256": machine.digest(policy)}
+    return {"revision": "evidence-evaluation-8", "sha256": machine.digest(policy)}
 
 
 def historical_reference(path, candidate, evidence):

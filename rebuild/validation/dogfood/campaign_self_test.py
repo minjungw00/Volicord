@@ -812,7 +812,7 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
         if work["work_label"] == "A":
             assert work["sessions"]["start"]["session_id"] != work["sessions"]["resume"]["session_id"]
     manifest = campaign.load_evidence_set(root)
-    assert manifest["schema_version"] == 6 and len(manifest["raw_inputs"]) == 8
+    assert manifest["schema_version"] == 7 and len(manifest["raw_inputs"]) == 8
     observed_sources = set()
     for work in manifest["work_evidence"]:
         for session in work["sessions"].values():
@@ -906,6 +906,10 @@ def main() -> int:
     checked = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(LifecycleTests))
     if not checked.wasSuccessful():
         raise AssertionError("explanation lifecycle regressions failed")
+    from review_meaning_self_test import MeaningTests
+    checked = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(MeaningTests))
+    if not checked.wasSuccessful():
+        raise AssertionError("review returned-meaning regressions failed")
     from resume_self_test import check_resume_regressions
     from document_realization_self_test import check_document_realization_regressions
     from long_lived_project_self_test import check_long_lived_project_regressions

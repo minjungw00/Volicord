@@ -1416,7 +1416,7 @@ separately from document realization. Its public campaign commands and ordering
 are maintained in the validation README and generated operator run sheet. Product
 CLI preparation/record/readback binds plan, response, receipt, exact revisions and
 Source/snapshot basis. Measured-session locators and post-session steward material
-are distinct in evidence-set schema 6. Missing prepared lifecycle inputs, basis
+are distinct in evidence-set schema 7. Missing prepared lifecycle inputs, basis
 drift and artifact changes fail collection. Fixture responses establish structure
 only; fresh current-host Work/Decision output through Product prepare/record in
 en/ko is separate focused proof. Neither proof grants review or Phase 9 authority.
@@ -1732,8 +1732,8 @@ Work identity를 보존한 세 projection에 적용된다. CLI group만 `volicor
 `polyglot-medium` repository class별 일곱 criterion으로 생성된다. Dedicated observation이 없는
 class는 일곱 bounded unresolved gap을 남기며 `not_applicable`로 숨기지 않는다.
 
-Naturalistic review-capture support는 `review_captures.py`의 current schema 1 /
-`naturalistic-review-capture-1` policy를 사용한다. Immutable source member bytes/hash를 projection
+Naturalistic review-capture support는 `review_captures.py`의 current schema 2 /
+`naturalistic-review-capture-2` policy를 사용한다. Immutable source member bytes/hash를 projection
 전에 검증하며 origin raw identity와 projected artifact identity를 분리한다. User/agent/Question
 semantic omission은 typed reason과 count를 남기고 required direct capture에 대한 `satisfied` 및
 `violated`를 거부한다. `insufficient_evidence`는 observation gap이며 Product failure가 아니다.
@@ -1741,6 +1741,13 @@ Excluded arbitrary tool/process/source body의 credential-like content는 packag
 sensitive scanner나 human/CLI privacy contract를 약화하지 않는다. Synthetic focused regressions는
 Work/resume safe projection, provenance, non-semantic exclusion, sensitive semantic omission,
 unsupported capture/hash/inconsistency rejection과 decisive judgment restriction을 검증한다.
+`answer_projection.py`는 returned Work/Decision claims, recorded action, requested language,
+availability와 provenance를 typed selection으로 보존한다. `review_explanations.py`는 measured
+call/turn observation과 별도 post-session lifecycle의 before/plan/response/record/readback을 연결한다.
+Missing typed semantic content는 explicit omission이며 later canonical/generated material로 채우지 않는다.
+Maintained campaign/review/qualification tests는 actual collect/evaluate/package/record/copied-lineage
+consumer를 통과시키며 fresh outer hashes로 바꾼 inner claim/basis/provenance corruption도 거부한다.
+Current schema/policy/dependency identities와 private omission/locator contract는 `qualitative-review.md`가 소유한다.
 Real conversations와 실제 third-party literal은 maintained fixture로 추가하지 않는다. 이 synthetic
 support 결과는 실제 campaign package readiness나 independent review를 증명하지 않는다.
 Post-hoc review의 optional immutable machine run은 current machine schema/finding semantics와

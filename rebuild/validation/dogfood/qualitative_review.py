@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 # Shared by completion/handoff reporting and replacement qualification.
 HIGH_IMPACT_INSUFFICIENCY_GROUPS = ("authority", "context_recovery", "campaign_interaction")
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
@@ -487,6 +487,10 @@ def validate_assessment(value, spec, preparation, inspected):
                 required = {"task_selection", "work_capture"} | ({"resume_capture"} if sample["resume_pair"] else set())
                 present = {entry["surface"] for entry in entries if evidence_applies(entry, sample["sample_id"])}
                 require(required <= present, "interaction coverage requires inspection of every frozen task and Work/resume projection")
+        selected_lifecycles = [index['evidence'][r['evidence_id']] for r in value['evidence']
+            if index['evidence'][r['evidence_id']]['surface'] == 'explanation_lifecycle']
+        require(all(e.get('projection', {}).get('semantic_complete') is True for e in selected_lifecycles),
+            'cited explanation lifecycle is semantically incomplete; use insufficient_evidence')
         if state == "satisfied" and spec["group"] == "documents":
             document_kinds = {index["evidence"][r["evidence_id"]].get("document_kind") for r in value["evidence"]}
             require(DOCUMENT_KINDS <= document_kinds, "document satisfaction must inspect all four required documents")

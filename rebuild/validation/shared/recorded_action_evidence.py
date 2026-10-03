@@ -11,13 +11,15 @@ def recorded_action_errors(expected, recall):
         if not ok:
             errors.append(message)
     require(recall.get("project_id") == expected["project_id"], "Project identity")
-    require(recall.get("next_step") == expected["next_step"], "top-level recorded next action")
+    has_action = isinstance(expected["next_step"], str) and bool(expected["next_step"].strip())
+    require(recall.get("next_step") == (expected["next_step"] if has_action else None), "top-level recorded next action")
     work = recall.get("selected_work")
     if not isinstance(work, dict):
         return errors + ["selected Work missing"]
     require(work.get("work_item_id") == expected["goal_id"], "selected Work identity")
     checkpoints = work.get("checkpoint_ids")
-    require(isinstance(checkpoints, list) and expected["checkpoint_id"] in checkpoints,
+    require(isinstance(checkpoints, list) and (expected["checkpoint_id"] in checkpoints
+            if expected["checkpoint_id"] is not None else not checkpoints),
             "selected Work Checkpoint scope")
     answers = work.get("answers")
     if not isinstance(answers, dict):
@@ -26,6 +28,22 @@ def recorded_action_errors(expected, recall):
     if not isinstance(facts, list) or not isinstance(prose, list):
         return errors + ["shared answer sections"]
     recorded = [p for p in facts if isinstance(p, dict) and p.get("question") == "RecordedNextStep"]
+    if not has_action:
+        unavailable = [p for p in facts if isinstance(p, dict) and p.get('question') == 'NextStepAvailability']
+        require(not recorded and len(unavailable) == 1, 'genuine recorded action absence')
+        require(not any(isinstance(p, dict) and p.get('recorded_action') is not None for p in facts + prose),
+                'absent action has no recorded basis')
+        if len(unavailable) == 1:
+            require(unavailable[0].get('role') == 'unavailable' and unavailable[0].get('evidence_keys') == [],
+                    'recorded action absence role/basis')
+            require(unavailable[0].get('text') in (
+                ('No next action is recorded in the latest Checkpoint.', '최신 Checkpoint에 다음 행동이 기록되지 않았습니다.')
+                if expected['checkpoint_id'] is not None else
+                ('No next action is recorded: this Work has no Checkpoint.', '다음 행동이 기록되지 않았습니다. 이 작업에는 Checkpoint가 없습니다.')),
+                'recorded action absence meaning')
+        require(not any(isinstance(p, dict) and p.get('question') == 'NextStep' for p in facts),
+                'recorded action absence role/scope')
+        return errors
     require(len(recorded) == 1, "recorded next action answer")
     require(not any(isinstance(p, dict) and p.get("question") in {"NextStep", "NextStepAvailability"}
                     for p in facts), "recorded action role/scope")

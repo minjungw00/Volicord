@@ -2730,7 +2730,7 @@ def normalize_batch(
     register_artifact(root, root / "batch-intake-summary.json")
     # The manifest closes over exact artifacts, excluding mutable inventory/campaign
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
-    manifest = {"kind": "dogfood_evidence_set", "schema_version": 6,
+    manifest = {"kind": "dogfood_evidence_set", "schema_version": 7,
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
         "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
         "naturalistic_memory_evidence": copy.deepcopy(campaign["naturalistic_memory_evidence"]),
@@ -2760,7 +2760,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         or reference.get("sha256") != harness.sha256(root / "evidence-set.json")):
         raise CampaignError("campaign has no intact immutable evidence set")
     manifest = read_json(root / "evidence-set.json")
-    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 6
+    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 7
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
         or manifest.get("candidate_artifacts") != campaign.get("candidate_artifacts")
@@ -2970,7 +2970,7 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
         "evaluator_files": {name: harness.sha256(Path(__file__).parent / name)
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
-                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py", "answer_observations.py", "explanation_evidence.py",
+                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py", "answer_observations.py", "explanation_evidence.py", "answer_projection.py", "review_captures.py", "review_explanations.py", "review_operations.py",
                 "../shared/recorded_action_evidence.py",
                 "evaluation.json", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,

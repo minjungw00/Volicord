@@ -237,14 +237,24 @@ verification preserve the exact evidence and decision chain.
 
 `prepare-qualitative-review --include-raw-rollouts` selects immutable raw Work/resume
 inputs for bounded reviewer-safe conversation projections under the current
-`naturalistic_review_capture` schema 1 / `naturalistic-review-capture-1` policy.
+`naturalistic_review_capture` schema 2 / `naturalistic-review-capture-2` policy.
 It copies no complete raw rollout. Each index entry distinguishes origin member/raw
 bytes/SHA-256 from projected review bytes/SHA-256 and exposes limits, omission counts
 and semantic completeness. Irrelevant tool/source/process bodies are excluded by
-allowlist; sensitive required conversation bodies are omitted whole. No credential-like
+allowlist; sensitive required conversation/answer bodies are omitted whole. Typed returns
+retain actual task action/claims, role, language request, availability and evidence/provenance;
+missing typed fields and bounded transport omissions remain explicit. No credential-like
 literal is allowlisted. A semantically incomplete required capture forces evidence
 insufficiency for decisive interaction judgments, including campaign coverage. See
 `docs/design/qualitative-review.md` for the maintained schema and exact restrictions.
+Private explanation lifecycles are selected separately from measured Work/resume returns, with
+nested claim/plan/readback JSON pointers and exact private-versus-projected hash bindings.
+Copied lineage verifies these relationships without the original response file or runtime.
+Focused reproduction uses `rebuild/scripts/validate focused LABEL -- python3` with
+`rebuild/validation/dogfood/review_meaning_self_test.py`, `review_operations_self_test.py`,
+`campaign_self_test.py` and `qualification_self_test.py`; these authored lifecycle/campaign
+fixtures establish structure only. Genuine host prose must independently use the supported
+prepare/record/readback commands under current interactive authority.
 
 Naturalistic target Git state is factual review evidence. Dogfood requires no Work
 commit, clean distinct-Work boundary or clean final target. Zero/multiple commits,
@@ -273,7 +283,7 @@ Finish requested lifecycles before `prepare-document-realizations` (when needed)
 then `collect-batch` captures final documents/Viewer. Already-prepared incomplete
 lifecycles block collection; no preparation is required merely to meet a quota.
 Regeneration uses a fresh immutable preparation, preserving earlier observations.
-Evidence-set schema 6 indexes measured answer/CLI lifecycle locators separately
+Evidence-set schema 7 indexes measured answer/CLI lifecycle locators separately
 from post-session steward plans/responses/receipts/readbacks. Neither later material
 nor a current final bundle proves what the Product returned earlier. Generator
 identity and response-input authorship remain explicitly unverified.

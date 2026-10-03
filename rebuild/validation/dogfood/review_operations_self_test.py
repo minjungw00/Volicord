@@ -392,8 +392,26 @@ class WorkflowTests(unittest.TestCase):
         fixtures.write_fake_binary(binary)
         with patch.object(harness, "git_clean", return_value=True):
             cls.root, raw, bundles = fixtures.prepared_batch(cls.parent, "campaign", binary)
-            c.collect_batch(cls.root, raw, exporter=fixtures.batch_exporter(bundles),
-                documenter=fixtures.documenter, snapshotter=fixtures.snapshotter)
+            import hashlib
+            import explanation_evidence as explanations
+            from explanation_evidence_self_test import publish_fixture
+            mapped = c.map_batch_rollouts(cls.root, raw)
+            candidate = c.load_campaign(cls.root)
+            work_id = hashlib.sha256(b'work:volicord:A').hexdigest()[:32]
+            project = hashlib.sha256(b'project:volicord').hexdigest()[:32]
+            publish_fixture(cls.root, mapped=mapped, candidate=candidate, subject_id=work_id, project_id=project)
+            canonical = harness.load_canonical_bundle(bundles[c.work_key('volicord', 'B')])
+            decision_id = canonical.rows('decisions')[0]['id']
+            publish_fixture(cls.root, kind='decision', language='ko', mapped=mapped, candidate=candidate,
+                project_id=project, subject_id=decision_id, identity='cc' * 16, before_state='stale')
+            def plan_read(binary, runtime, project, args):
+                subject, language = args[4], args[6]
+                plans = [json.loads(explanations.bound(cls.root, path)) for path in explanations.preparations(cls.root)]
+                plan = next(p['plan'] for p in plans if p['subject']['identity'] == subject and p['language'] == language)
+                return {'operation': 'explanation_prepare', 'plan': plan}, {}
+            with patch.object(explanations, 'invoke', side_effect=plan_read):
+                c.collect_batch(cls.root, raw, exporter=fixtures.batch_exporter(bundles),
+                    documenter=fixtures.documenter, snapshotter=fixtures.snapshotter)
             cls.evaluation_result = c.evaluate_campaign(cls.root)
         cls.evaluation = cls.root / cls.evaluation_result["evaluation"]
 
@@ -403,6 +421,40 @@ class WorkflowTests(unittest.TestCase):
 
     def target(self):
         return self.parent / self._testMethodName
+
+    def test_collected_lifecycle_and_returned_meaning_reach_review_with_exact_locators(self):
+        import review_explanations
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='meaning-reviewer', include_raw=True)
+        preparation, _, _ = ops.load_package(target)
+        lifecycle_entries = [v for v in preparation['index']['evidence'].values() if v['surface'] == 'explanation_lifecycle']
+        self.assertEqual(len(lifecycle_entries), 2)
+        for entry in lifecycle_entries:
+            value = review_explanations.validate((target / entry['path']).read_bytes())
+            review_explanations.verify_manifest(value, c.load_evidence_set(self.root))
+            self.assertTrue(entry['projection']['semantic_complete'])
+            self.assertTrue(any(p['value'].endswith('/paragraphs/0/text') for p in entry['locators']))
+            self.assertEqual(value['context']['phase'], 'post_session_steward')
+        work = preparation['index']['evidence'][c.work_key('volicord', 'A') + '-resume']
+        captured = captures.validate((target / work['path']).read_bytes())
+        actual = next(r for r in captured['records'] if r.get('operation') == 'recall')
+        fact = actual['body']['value']['returned_meaning']['value']['selected_work']['answers']['facts'][0]
+        self.assertIn('Recorded next action quotation', fact['text'])
+        self.assertTrue(any(p['value'].endswith('/recorded_action/recorded_text') for p in work['locators']))
+
+    def test_package_rejects_fresh_hashes_with_corrupted_returned_meaning(self):
+        from review_meaning_self_test import rehash_package
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='corruption-reviewer', include_raw=True)
+        preparation, _, _ = ops.load_package(target)
+        identity = c.work_key('volicord', 'A') + '-resume'
+        value = json.loads((target / preparation['index']['evidence'][identity]['path']).read_bytes())
+        recall = next(v for v in value['records'] if v.get('operation') == 'recall')
+        recall['body']['value']['returned_meaning']['value']['next_step'] = 'Corrupted returned continuation'
+        recall['body'] = captures.body_projection(recall['body']['value'])
+        rehash_package(target, identity, ops.encoded(value))
+        with self.assertRaisesRegex(ValueError, 'omissions/consistency changed'):
+            ops.load_package(target)
 
     def test_round_trip_isolated_deterministic_and_append_only(self):
         assert_review_workflow(self.root, self.parent)

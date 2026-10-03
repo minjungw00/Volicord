@@ -381,7 +381,7 @@
       "purpose": "Review independently material outcomes observed in actual Work and coupled artifacts."
     },
     "qualification_authority": false,
-    "policy_revision": 12,
+    "policy_revision": 13,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -476,11 +476,13 @@
         "package_bytes": 536870912,
         "draft_bytes": 8388608
       },
+      "returned_meaning": "typed_shared_answers_and_explanation_plans_records_with_explicit_omissions",
+      "explanation_lifecycles": "private_post_session_steward_material_separate_from_measured_returns",
       "human_observations": "explicit_candidate_bound_direct_human_live_observations",
       "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
       "qualification_authority": false
     },
-    "schema_version": 13
+    "schema_version": 14
   },
   "fixture_regression_command": [
     "python3",
@@ -950,7 +952,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-8",
+    "revision": "replacement-qualification-9",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "journey-volicord/viewer_snapshot/multiple_work_organization",

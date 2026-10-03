@@ -26,6 +26,7 @@ import qualitative_review as review
 import interaction_diagnostics
 import codex_events
 import review_captures
+import review_explanations
 
 MAX_FILES = 512
 MAX_FILE_BYTES = 32 * 1024 * 1024
@@ -78,6 +79,8 @@ def workflow_contract():
         "artifact_limits": {"files": MAX_FILES, "file_bytes": MAX_FILE_BYTES, "source_capture_bytes": review_captures.LIMITS["source_bytes"],
             "capture_body_bytes": review_captures.MAX_BODY_BYTES,
             "package_bytes": MAX_PACKAGE_BYTES, "draft_bytes": MAX_DRAFT_BYTES},
+        "returned_meaning": "typed_shared_answers_and_explanation_plans_records_with_explicit_omissions",
+        "explanation_lifecycles": "private_post_session_steward_material_separate_from_measured_returns",
         "human_observations": "explicit_candidate_bound_direct_human_live_observations",
         "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
         "qualification_authority": False}
@@ -225,13 +228,22 @@ def require_review_artifact_safe(data, message="review artifact contains sensiti
 
 
 def locators(data):
-    """Exact line coordinates always resolve; JSON top-level pointers aid navigation."""
+    """Exact lines plus bounded claim/basis pointers on typed semantic artifacts."""
     result = []
     try:
         value = json.loads(data)
         if isinstance(value, dict):
-            result = [{"kind": "json_pointer", "value": "/" + key.replace("~", "~0").replace("/", "~1")}
-                      for key in sorted(value)[:128]]
+            deep = value.get('kind') in {'naturalistic_review_capture', 'dogfood_review_explanation_lifecycle'}
+            def visit(node, path=''):
+                children = sorted(node.items()) if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else []
+                for key, child in children:
+                    if len(result) >= 8192:
+                        return
+                    current = path + '/' + str(key).replace('~', '~0').replace('/', '~1')
+                    result.append({'kind': 'json_pointer', 'value': current})
+                    if deep:
+                        visit(child, current)
+            visit(value)
     except (ValueError, UnicodeDecodeError):
         pass
     return result, len(data.splitlines())
@@ -314,6 +326,27 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             sample_ids=journey_scope)
         journey_samples.append({"sample_id": journey_sample_id, "journey_id": journey_sample_id,
             "repository_class": kind, "represented_work_sample_ids": work_sample_ids})
+        for lifecycle in manifest['explanation_evidence']['steward_lifecycles']:
+            if lifecycle['journey_id'] != journey_sample_id:
+                continue
+            data, projection = review_explanations.project(root, safe_path(root, lifecycle['preparation']),
+                evidence_set_sha256=digest(bounded_read(root / 'evidence-set.json')))
+            scope = [journey_sample_id]
+            if lifecycle['subject']['kind'] == 'work':
+                scope += [slot for slot in work_sample_ids
+                    if work_evidence[slot]['work_item_id'] == lifecycle['subject']['identity']]
+            identity = add('explanation-' + lifecycle['identity'], data, review_explanations.SURFACE,
+                journey_sample_id, {'kind': 'typed_private_lifecycle_selection',
+                    'preparation': lifecycle['preparation'], 'receipt': lifecycle['receipt']}, sample_ids=scope)
+            evidence[identity]['projection'] = projection
+        measured = [v for v in manifest['explanation_evidence']['measured_observations']
+            if v['session_slot_id'].startswith(journey_sample_id + '-')]
+        add(journey_sample_id + '-explanation-observations', encoded({'kind': 'measured_explanation_observation_index',
+            'phase': 'measured_session', 'observations': measured,
+            'limits': ['hashes locate actual returned payloads, not generated prose truth',
+                'actual returned meaning is in explicitly selected Work/resume captures',
+                'post-session lifecycles do not establish earlier adoption']}),
+            'explanation_observations', journey_sample_id, {'kind': 'evidence_set_selection'}, sample_ids=journey_scope)
         for work in c.work_labels(kind):
             work_slot = c.work_key(kind, work)
             state = manifest["works"][work_slot]
@@ -638,14 +671,14 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         "completion_obligations": review.completion_obligations(index, policy),
         "preparer_revision": c.harness.git_head(c.ROOT),
         "preparer_files": {name: c.harness.sha256(Path(__file__).with_name(name)) for name in
-            ("review_operations.py", "review_captures.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
+            ("review_operations.py", "review_captures.py", "review_explanations.py", "answer_projection.py", "explanation_evidence.py", "answer_observations.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
              "authority_obligations.py", "interaction_diagnostics.py", "workload_intents.py", "evaluation.json")}}
     preparation_bytes = encoded(preparation)
     review.require(len(preparation_bytes) <= MAX_FILE_BYTES, "review index exceeds bound")
     files["preparation.json"] = preparation_bytes
     files["REVIEW.md"] = INSTRUCTIONS
     inventory = {name: {"bytes": len(data), "sha256": digest(data)} for name, data in sorted(files.items())}
-    files["package.json"] = encoded({"kind": "dogfood_qualitative_review_package", "schema_version": 1,
+    files["package.json"] = encoded({"kind": "dogfood_qualitative_review_package", "schema_version": 2,
         "package_id": package_id, "preparation_sha256": digest(preparation_bytes), "artifacts": inventory})
     files["draft.json"] = encoded(review.template(preparation, digest(preparation_bytes)))
     # Source and machine references must still match immediately before publication.
@@ -673,7 +706,7 @@ def _load_package(root):
     review.require(not root.with_name(root.name + ".publication-lock").exists(), "review publication requires recovery")
     package = json.loads(bounded_read(root / "package.json"))
     review.require(isinstance(package, dict) and set(package) == {"kind", "schema_version", "package_id", "preparation_sha256", "artifacts"}
-        and package["kind"] == "dogfood_qualitative_review_package" and package["schema_version"] == 1,
+        and package["kind"] == "dogfood_qualitative_review_package" and package["schema_version"] == 2,
         "invalid review package")
     artifacts = package["artifacts"]
     review.require(isinstance(artifacts, dict) and 2 <= len(artifacts) <= MAX_FILES + 2, "invalid review package inventory")
@@ -727,6 +760,18 @@ def _load_package(root):
                 and projected["session_id"] in preparation["evaluated_sessions"]
                 and entry["surface"] == ("work_capture" if projected["role"] == "start" else "resume_capture"),
                 "review capture projection binding mismatch")
+        if entry['surface'] == review_explanations.SURFACE:
+            lifecycle = review_explanations.validate(content)
+            context = lifecycle['context']
+            review.require(entry.get('projection') == {'schema_version': review_explanations.SCHEMA_VERSION,
+                'semantic_complete': lifecycle['semantic_complete'], 'review_bytes': len(content), 'review_sha256': digest(content)}
+                and context['candidate_head'] == binding['candidate_head']
+                and lifecycle['evidence_set_sha256'] == binding['evidence_set']['sha256']
+                and context['journey_id'] == entry['sample_id']
+                and context['journey_id'] in entry['sample_ids'], 'review explanation package binding changed')
+            for raw in context['raw_inputs']:
+                review.require(raw['session_id'] in preparation['evaluated_sessions'],
+                    'review explanation raw-session binding changed')
     review.require(set(contents) == {"preparation.json", "REVIEW.md", *(e["path"] for e in index["evidence"].values())},
         "review package contains unindexed or private extra artifacts")
     for value in index["machine_findings"].values():
@@ -756,7 +801,7 @@ def record(root, draft):
     data = draft_bytes(root, draft, package)
     result = review.validate_value(preparation, sha, json.loads(data))
     review.require(result["counts"]["not_reviewed"] < sum(result["counts"].values()), "empty draft is not a completed review effort")
-    receipt = {"kind": "dogfood_qualitative_review_receipt", "schema_version": 1,
+    receipt = {"kind": "dogfood_qualitative_review_receipt", "schema_version": 2,
         "review_run_id": preparation["reviewer"]["run_id"], "reviewer_kind": preparation["reviewer"]["kind"],
         "preparation_sha256": sha, "review_sha256": digest(data), "result": result}
     current, current_sha, _ = load_package(root)
@@ -775,7 +820,7 @@ def recorded_files(root, preparation, sha):
     data = bounded_read(safe_path(root, "recorded/review.json"), MAX_DRAFT_BYTES)
     receipt_bytes = bounded_read(safe_path(root, "recorded/receipt.json"))
     receipt = json.loads(receipt_bytes)
-    expected = {"kind": "dogfood_qualitative_review_receipt", "schema_version": 1,
+    expected = {"kind": "dogfood_qualitative_review_receipt", "schema_version": 2,
         "review_run_id": preparation["reviewer"]["run_id"], "reviewer_kind": preparation["reviewer"]["kind"],
         "preparation_sha256": sha, "review_sha256": digest(data),
         "result": review.validate_value(preparation, sha, json.loads(data))}

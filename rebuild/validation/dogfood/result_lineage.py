@@ -12,7 +12,7 @@ import qualitative_review as review
 import review_operations as operations
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _binding(data):
@@ -211,6 +211,36 @@ def verify(root):
     for item in index["qualitative_reviews"]:
         review_root = operations.safe_path(root, item["root"] + "/package.json").parent
         preparation, sha, package = operations.load_package(review_root)
+        import review_explanations
+        import review_captures
+        for entry in preparation['index']['evidence'].values():
+            content = operations.bounded_read(operations.safe_path(review_root, entry['path']))
+            if entry['surface'] == review_explanations.SURFACE:
+                lifecycle = review_explanations.validate(content)
+                review_explanations.verify_manifest(lifecycle, evidence_set)
+            if entry['surface'] in review_captures.CAPTURE_SURFACES:
+                capture = review_captures.validate(content)
+                origin = capture['origin']
+                review.require(evidence_set['artifacts'].get(origin['path']) == {
+                    'bytes': origin['raw_bytes'], 'sha256': origin['raw_sha256']},
+                    'copied returned answer source binding changed')
+                for returned in capture['records']:
+                    if (returned['semantic_role'] != 'volicord_operation'
+                            or returned['body']['state'] != 'retained'):
+                        continue
+                    meaning = returned['body']['value']['returned_meaning']
+                    if meaning is None or returned['transport'] == 'mcp' and returned['outcome'] != 'succeeded':
+                        continue
+                    observed = [v for v in evidence_set['explanation_evidence']['measured_observations']
+                        if v['raw_capture_sha256'] == origin['raw_sha256']
+                        and v['sequence'] == returned['sequence'] and v['call_id'] == returned['call_id']
+                        and v['transport'] == returned['transport']]
+                    import campaign
+                    meaning_sha = operations.digest(campaign.json_bytes(meaning))
+                    review.require(observed and all(v['review_meaning_sha256'] == meaning_sha
+                        and v['operation'] == returned['operation'] and v['turn_id'] == returned['turn_id']
+                        and v['requested_language'] == returned['requested_language'] for v in observed),
+                        'copied returned meaning differs from observed source index')
         recorded = operations.recorded_files(review_root, preparation, sha)
         review.require(recorded, "result lineage requires recorded review evidence")
         value = json.loads(recorded["recorded/review.json"])

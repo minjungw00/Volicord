@@ -701,7 +701,7 @@ class FileBoundaryTests(unittest.TestCase):
         target = self.parent / 'incomplete-review'
         with patch.object(campaign.harness, 'load_v11', side_effect=AssertionError('V11 rerun')), \
              patch.object(policy, 'verify_technical', side_effect=AssertionError('technical verification during review')):
-            ops.prepare(self.root, target, reviewer_kind='agent', session_id='separate-review', evaluation_path=self.evaluation)
+            ops.prepare(self.root, target, reviewer_kind='agent', session_id='separate-review', evaluation_path=self.evaluation, include_raw=True)
             insufficient_draft(target)
             ops.record(target, target / 'draft.json')
         output = self.parent / 'qualification'
@@ -747,6 +747,67 @@ class FileBoundaryTests(unittest.TestCase):
         self.assertEqual(
             lineage_qualification['naturalistic_evidence']['naturalistic_resource'],
             lineage_evidence['naturalistic_memory_evidence'])
+        # Refresh every copied wrapper, review receipt and qualification reference.
+        # Rejection must come from inner returned-meaning/lifecycle consistency.
+        from review_meaning_self_test import rehash_package
+        import review_captures
+        for control in ('resume_capture', 'explanation_lifecycle', 'explanation_plan_content', 'explanation_locator'):
+            surface = 'resume_capture' if control == 'resume_capture' else 'explanation_lifecycle'
+            tampered = self.parent / ('returned-meaning-tamper-' + control)
+            shutil.copytree(lineage_root, tampered)
+            index = json.loads((tampered / 'index.json').read_bytes())
+            review_entry = index['qualitative_reviews'][0]
+            review_root = tampered / review_entry['root']
+            prepared = json.loads((review_root / 'preparation.json').read_bytes())
+            eid = next(k for k, v in prepared['index']['evidence'].items() if v['surface'] == surface)
+            entry = prepared['index']['evidence'][eid]
+            content = json.loads((review_root / entry['path']).read_bytes())
+            if surface == 'resume_capture':
+                returned = next(v for v in content['records'] if v.get('operation') == 'recall')
+                returned['body']['value']['returned_meaning']['value']['next_step'] = 'Corrupted captured action'
+                returned['body'] = review_captures.body_projection(returned['body']['value'])
+                expected_error = 'omissions/consistency changed'
+            elif control == 'explanation_lifecycle':
+                body = content['stages']['record']
+                body['value']['value']['explanation']['realization']['paragraphs'][0]['text'] = 'Corrupted recorded claim'
+                content['stages']['record'] = review_captures.body_projection(body['value'])
+                expected_error = 'record receipt subject/revision/Source/provenance mismatch'
+            elif control == 'explanation_plan_content':
+                body = content['stages']['plan']
+                body['value']['value']['plan']['evidence'][0]['content'] = 'Corrupted canonical evidence content'
+                content['stages']['plan'] = review_captures.body_projection(body['value'])
+                expected_error = 'copied lifecycle meaning/locators differ from source index'
+            else:
+                content['readback_subject_locators']['after'] = ['/work_history/999']
+                expected_error = 'copied lifecycle meaning/locators differ from source index'
+            rehash_package(review_root, eid, ops.encoded(content))
+            package = json.loads((review_root / 'package.json').read_bytes())
+            prepared = json.loads((review_root / 'preparation.json').read_bytes())
+            review_value = json.loads((review_root / 'recorded/review.json').read_bytes())
+            review_value['preparation_sha256'] = package['preparation_sha256']
+            review_data = ops.encoded(review_value)
+            receipt_value = json.loads((review_root / 'recorded/receipt.json').read_bytes())
+            receipt_value.update(preparation_sha256=package['preparation_sha256'], review_sha256=ops.digest(review_data),
+                result=review.validate_value(prepared, package['preparation_sha256'], review_value))
+            for name, data in (('recorded/review.json', review_data), ('recorded/receipt.json', ops.encoded(receipt_value))):
+                path = review_root / name; path.chmod(0o600); path.write_bytes(data)
+            review_entry.update(preparation_sha256=package['preparation_sha256'],
+                review_sha256=ops.digest(review_data), package_id=package['package_id'])
+            qualification = json.loads((tampered / 'qualification/qualification.json').read_bytes())
+            qualification['qualitative_review_runs'][0].update(preparation_sha256=package['preparation_sha256'],
+                review_sha256=ops.digest(review_data))
+            qualification['run_id'] = m.digest({k: v for k, v in qualification.items() if k != 'run_id'})
+            qualification_data = ops.encoded(qualification)
+            path = tampered / 'qualification/qualification.json'; path.chmod(0o600); path.write_bytes(qualification_data)
+            index['qualification'].update(run_id=qualification['run_id'], sha256=ops.digest(qualification_data))
+            index['lineage_id'] = m.digest({k: v for k, v in index.items() if k != 'lineage_id'})
+            path = tampered / 'index.json'; path.chmod(0o600); path.write_bytes(ops.encoded(index))
+            receipt = json.loads((tampered / 'receipt.json').read_bytes())
+            receipt.update(lineage_id=index['lineage_id'], index_sha256=ops.digest(ops.encoded(index)))
+            receipt['artifacts'] = {name: result_lineage._binding((tampered / name).read_bytes()) for name in receipt['artifacts']}
+            path = tampered / 'receipt.json'; path.chmod(0o600); path.write_bytes(ops.encoded(receipt))
+            with self.assertRaisesRegex(ValueError, expected_error):
+                result_lineage.verify(tampered)
         # Change only a derived criterion, then also try a complete success claim.
         # Neither control changes the immutable recorded insufficient review.
         for promoted in (False, True):

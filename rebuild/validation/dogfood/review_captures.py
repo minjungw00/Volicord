@@ -6,20 +6,22 @@ digests, never a redacted reconstruction of repository or process content.
 from __future__ import annotations
 
 import codex_events as codex
+import answer_projection
+import answer_observations
+import explanation_evidence
 
-SCHEMA_VERSION = 1
-POLICY = "naturalistic-review-capture-1"
+SCHEMA_VERSION = 2
+POLICY = "naturalistic-review-capture-2"
 MAX_BODY_BYTES = 1 << 20
 MAX_PROJECTION_BYTES = 32 << 20
 CAPTURE_SURFACES = {"work_capture", "resume_capture"}
 SEMANTIC_ROLES = {"user_turn", "agent_message", "question_request", "volicord_operation"}
 LIMITS = {"source_bytes": codex.MAX_CAPTURE_BYTES, "source_events": codex.MAX_CAPTURE_EVENTS,
           "body_bytes": MAX_BODY_BYTES, "projection_bytes": MAX_PROJECTION_BYTES}
-# Scalar identities/states only. Semantic prose is in actual user/agent turns,
-# Questions and the separately selected canonical bundle, never generic payloads.
+# Scalar request/outcome fields accompany typed returned meaning; never generic payloads.
 OPERATION_FIELDS = {"action", "project_id", "work_item_id", "source_id", "candidate_id",
     "question_id", "decision_id", "checkpoint_id", "deliberation_candidate_id",
-    "user_response_source_id", "state", "status", "resolution", "outcome"}
+    "user_response_source_id", "state", "status", "resolution", "outcome", "requested_language"}
 
 
 def plane():
@@ -170,13 +172,28 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
         records.append({"sequence": request.sequence, "source_sequences": [request.sequence, request.completion_sequence],
             "turn_id": request.turn_id, "call_id": request.call_id, "semantic_role": "question_request",
             "body_value": [{"title": q["title"], "options": q.get("options", [])} for q in questions]})
+    def operation_record(sequence, completion, turn, call_id, operation, outcome, request, result, transport, language):
+        records.append({"sequence": sequence, "source_sequences": sorted(set([sequence, completion])),
+            "completion_sequence": completion, "turn_id": turn, "call_id": call_id,
+            "semantic_role": "volicord_operation", "operation": operation, "outcome": outcome,
+            "transport": transport, "requested_language": language,
+            "body_value": {"request": {k: v for k, v in request.items() if k in OPERATION_FIELDS
+                    and (v is None or type(v) in {str, int, bool})},
+                "result": {k: v for k, v in result.items() if k in OPERATION_FIELDS
+                    and (v is None or type(v) in {str, int, bool})} if isinstance(result, dict) else {},
+                "returned_meaning": answer_projection.project(result, operation)
+                    if operation in answer_projection.SCHEMAS else None}})
     for call in capture.tool_calls:
-        records.append({"sequence": call.sequence, "source_sequences": sorted(set([call.sequence, call.completion_sequence])),
-            "completion_sequence": call.completion_sequence, "turn_id": call.turn_id, "call_id": call.call_id,
-            "semantic_role": "volicord_operation", "operation": call.operation, "outcome": call.outcome,
-            "body_value": {name: {key: value for key, value in payload.items()
-                if key in OPERATION_FIELDS and (value is None or type(value) in {str, int, bool})}
-                for name, payload in (("request", call.arguments), ("result", call.result))}})
+        operation_record(call.sequence, call.completion_sequence, call.turn_id, call.call_id,
+            call.operation, call.outcome, call.arguments, call.result, "mcp",
+            call.arguments.get("requested_language", "en"))
+    cli_returns = [r for r in answer_observations.returned_recalls(capture) if r['transport'] == 'cli']
+    cli_returns += explanation_evidence.measured_cli_operations(capture)
+    for returned in cli_returns:
+        operation = returned.get('operation', 'recall')
+        operation_record(returned['sequence'], returned['completion_sequence'], returned['turn_id'],
+            returned['call_id'], operation, 'success' if isinstance(returned['result'], dict) else 'unresolvable',
+            {}, returned['result'], 'cli', returned['requested_language'])
     for turn in capture.turn_lifecycle.turns:
         records.append({"sequence": turn.start_sequence, "source_sequences": [turn.start_sequence],
             "turn_id": turn.turn_id, "semantic_role": "turn_boundary", "state": turn.state,
@@ -219,10 +236,14 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
 
 def counts(value):
     omitted = [r for r in value["records"] if r.get("body", {}).get("state") == "omitted"]
-    semantic = sum(r["semantic_role"] in SEMANTIC_ROLES for r in omitted)
+    partial = [r for r in value["records"] if r.get("body", {}).get("state") == "retained"
+        and r['semantic_role'] == 'volicord_operation'
+        and isinstance(r['body']['value'].get('returned_meaning'), dict)
+        and not r['body']['value']['returned_meaning']['semantic_complete']]
+    semantic = sum(r["semantic_role"] in SEMANTIC_ROLES for r in omitted) + len(partial)
     return {"retained_record_count": len(value["records"]) - len(omitted),
-        "omitted_record_count": len(value["excluded_records"]) + len(omitted),
-        "non_semantic_omission_count": len(value["excluded_records"]) + len(omitted) - semantic,
+        "omitted_record_count": len(value["excluded_records"]) + len(omitted) + len(partial),
+        "non_semantic_omission_count": len(value["excluded_records"]) + len(omitted) + len(partial) - semantic,
         "semantic_omission_count": semantic, "semantic_complete": semantic == 0}
 
 
@@ -271,7 +292,7 @@ def validate(data):
         "user_turn": {"turn_id", "user_turn_id", "body"},
         "agent_message": {"turn_id", "message_id", "phase", "body"},
         "question_request": {"turn_id", "call_id", "body"},
-        "volicord_operation": {"completion_sequence", "turn_id", "call_id", "operation", "outcome", "body"},
+        "volicord_operation": {"completion_sequence", "turn_id", "call_id", "operation", "outcome", "body", "transport", "requested_language"},
         "turn_boundary": {"turn_id", "state", "end_sequence"},
         "turn_terminal": {"turn_id", "state"},
         "context_compacted": set(),
@@ -312,10 +333,18 @@ def validate(data):
                         and all(isinstance(o, str) for o in q["options"]) for q in retained),
                         "invalid projected question body")
                 elif role == "volicord_operation":
-                    ops.review.require(isinstance(retained, dict) and set(retained) == {"request", "result"}
+                    ops.review.require(isinstance(retained, dict) and set(retained) == {"request", "result", "returned_meaning"}
                         and all(isinstance(p, dict) and set(p) <= OPERATION_FIELDS and all(
-                            v is None or type(v) in {str, int, bool} for v in p.values()) for p in retained.values()),
+                            v is None or type(v) in {str, int, bool} for v in p.values()) for p in (retained["request"], retained["result"])),
                         "invalid projected operation body")
+                    ops.review.require(record['transport'] in {'mcp', 'cli'}
+                        and isinstance(record['requested_language'], str), 'invalid operation transport/language')
+                    meaning = retained['returned_meaning']
+                    if record['operation'] in answer_projection.SCHEMAS:
+                        answer_projection.validate(meaning)
+                        ops.review.require(meaning['operation'] == record['operation'], 'returned operation scope mismatch')
+                    else:
+                        ops.review.require(meaning is None, 'unsupported returned meaning')
             else:
                 ops.review.require(body["state"] == "omitted" and body["reason"] in {"sensitive_payload", "body_limit"}
                     and body["value"] is None, "invalid review capture omission")

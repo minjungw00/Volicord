@@ -33,12 +33,13 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
     retained = {'realization': response, 'project_id': project, 'subject': plan['subject'],
         'question': plan['question'], 'evidence': stripped, 'source_status': statuses, 'conflicts': [],
         'generated_at_unix_micros': 100, 'generator_identity_status': 'self_reported_not_independently_verified'}
-    answers = {'language': language, 'explanation_state': 'current', 'facts': [],
+    answers = {'diagnostic': None, 'explanation_state': 'current', 'facts': ([{'question':'NextStepAvailability', 'text':'No Checkpoint is recorded in this structural fixture.',
+        'role':'unavailable', 'evidence_keys':[]}] if kind == 'work' else []),
         'prose': [{'question': ''.join(word.title() for word in p['question'].split('_')),
             'text': p['text'], 'role': 'generated_interpretation', 'evidence_keys': p['evidence_keys']} for p in response['paragraphs']],
         'provenance': {k: v for k, v in retained.items() if k != 'realization'} | {
             'language': language, 'fingerprint': plan['fingerprint'], 'generator': response['generator']}}
-    readback = {'project_id': project, 'selected_work': {'work_item_id': identity, 'answers': answers},
+    readback = {'project_id': project, 'selected_work': {'work_item_id': identity, 'checkpoint_ids': [], 'answers': answers},
         'decisions': [{'identity': identity, 'answers': answers}]}
     preparation = {'kind': 'dogfood_explanation_preparation', 'schema_version': 1,
         'identity': 'bb' * 16, 'project_id': project, 'subject': subject, 'language': language,
@@ -46,17 +47,49 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
         'candidate_executable_sha256': 'c' * 64, 'phase': 'post_session_steward',
         'observed_at': '2026-10-03T00:00:00+00:00', 'raw_inputs': [],
         'before_observation': {'state': before_state, 'answers': None},
+        'canonical_bundle_sha256': 'd' * 64,
+        'generation_authority': 'current_active_host_interaction_required_no_provider_dispatch',
         'generator_identity_limit': 'self_reported_not_independently_verified'}
     return preparation, response, {'operation': 'explanation_record', 'explanation': retained}, readback
 
 
-def publish_fixture(root, *, kind='work', language='en', before_state='unavailable'):
+def publish_fixture(root, *, kind='work', language='en', before_state='unavailable', mapped=None, candidate=None, subject_id=None, project_id=None, identity=None, paragraph_text=None):
     preparation, response, record, after = lifecycle(kind, language, before_state)
+    if paragraph_text is not None:
+        for paragraph in response['paragraphs']:
+            paragraph['text'] = paragraph_text
+        for selected in (after['selected_work'], after['decisions'][0]):
+            for paragraph in selected['answers']['prose']:
+                paragraph['text'] = paragraph_text
+    if identity:
+        preparation['identity'] = identity
+    if project_id:
+        preparation, response, record, after = [json.loads(json.dumps(v).replace('01' * 16, project_id))
+            for v in (preparation, response, record, after)]
+    if subject_id:
+        old = preparation['subject']['identity']
+        preparation, response, record, after = [json.loads(json.dumps(v).replace(old, subject_id))
+            for v in (preparation, response, record, after)]
+        for value in (preparation['plan'], record['explanation'], after['selected_work']['answers']['provenance'],
+                after['decisions'][0]['answers']['provenance']):
+            value['subject']['identity'] = list(bytes.fromhex(subject_id))
+    if candidate:
+        preparation['candidate_head'] = candidate['candidate_head']
+        preparation['candidate_executable_sha256'] = candidate['candidate_artifacts']['volicord']['sha256']
+    if mapped:
+        preparation['raw_inputs'] = e.document_realization.raw_binding(mapped)
+    before = copy.deepcopy(after)
+    for answer in (before['selected_work']['answers'], before['decisions'][0]['answers']):
+        if before_state != 'current':
+            answer.update(explanation_state=before_state, provenance=None, prose=[{'question':'ExplanationAvailability',
+                'text':'Fixture explanation is unavailable.', 'role':'unavailable', 'evidence_keys':[]}])
+    preparation['before_observation'] = e.subject_answers(before, preparation['subject'])
     directory = e.entry_path(root, preparation['identity'])
-    values = {'preparation': c.json_bytes(preparation), 'response': c.json_bytes(response),
+    values = {'before': c.json_bytes(before), 'preparation': c.json_bytes(preparation), 'response': c.json_bytes(response),
         'record': c.json_bytes(record), 'after': c.json_bytes(after)}
     receipt = {'kind': 'dogfood_explanation_receipt', 'schema_version': 1,
         'identity': preparation['identity'], 'phase': 'post_session_steward',
+        'observed_at': '2026-10-03T00:01:00+00:00',
         'preparation': e.binding(values['preparation']), 'response': e.binding(values['response']),
         'record': e.binding(values['record']), 'readback': e.binding(values['after']),
         'candidate_head': preparation['candidate_head'], 'candidate_executable_sha256': preparation['candidate_executable_sha256'],

@@ -326,6 +326,13 @@ def verify(root, preparation_path, *, allow_unrecorded=False):
     preparation_bytes = bound(root, preparation_path)
     preparation = json.loads(preparation_bytes)
     directory = preparation_path.parent
+    if (preparation.get('kind') != 'dogfood_explanation_preparation' or preparation.get('schema_version') != SCHEMA_VERSION
+            or preparation.get('identity') != directory.name or preparation.get('phase') != 'post_session_steward'
+            or preparation.get('generator_identity_limit') != 'self_reported_not_independently_verified'):
+        raise api().CampaignError('explanation preparation identity/phase/provenance changed')
+    before = json.loads(bound(root, directory / 'before.json'))
+    if before.get('project_id') != preparation['project_id'] or subject_answers(before, preparation['subject']) != preparation['before_observation']:
+        raise api().CampaignError('explanation earlier observation changed')
     if not (directory / 'receipt.json').exists():
         if allow_unrecorded:
             return preparation, None
@@ -339,6 +346,10 @@ def verify(root, preparation_path, *, allow_unrecorded=False):
             or receipt.get('candidate_executable_sha256') != preparation['candidate_executable_sha256']
             or receipt.get('generator_identity_status') != 'self_reported_not_independently_verified'):
         raise api().CampaignError('explanation receipt linkage changed')
+    started = dt.datetime.fromisoformat(preparation['observed_at'])
+    ended = dt.datetime.fromisoformat(receipt['observed_at'])
+    if started.tzinfo is None or ended.tzinfo is None or started > ended:
+        raise api().CampaignError('explanation observation order changed')
     response = json.loads(values['response'])
     expected_locator = {'kind': 'submitted_response_file', 'sha256': binding(values['response'])['sha256'],
         'session': response['generator']['session'], 'raw_capture_sha256': None, 'turn_id': None,
@@ -373,7 +384,11 @@ def measured_cli_operations(capture):
         if len(argvs) != 1 or Path(argvs[0][0]).name != 'volicord' or '--json' not in argvs[0]:
             continue
         argv = argvs[0]
-        if not any(name in argv for name in ('work', 'decision', 'status', 'decisions')):
+        expected = next(('explanation_' + argv[n + 2] for n, arg in enumerate(argv[:-2])
+            if arg in {'work', 'decision'} and argv[n + 1] == 'explain' and argv[n + 2] in {'prepare', 'record'}), None)
+        if expected is None:
+            expected = 'project_status' if 'status' in argv else 'decisions' if 'decisions' in argv else None
+        if expected is None:
             continue
         result = None
         if command.exit_code == 0 and command.evidence_state == 'completed':
@@ -381,18 +396,16 @@ def measured_cli_operations(capture):
                 result = codex_events.strict_json(command.output)
             except (ValueError, UnicodeError):
                 pass
-        if isinstance(result, dict) and result.get('operation') not in {
-                'explanation_prepare', 'explanation_record', 'project_status', 'decisions'}:
-            continue
         values.append({'transport': 'cli', 'call_id': command.execution_identity, 'turn_id': command.turn_id,
             'sequence': command.sequence, 'completion_sequence': command.completion_sequence,
-            'operation': result.get('operation') if isinstance(result, dict) else 'unresolvable',
+            'operation': expected,
             'requested_language': argv[argv.index('--language') + 1] if '--language' in argv and argv.index('--language') + 1 < len(argv) else 'en',
             'result': result})
     return values
 
 
 def collection_index(root, mapped):
+    import answer_projection
     measured = []
     for slot, value in sorted(mapped.items()):
         capture = value.capture
@@ -401,7 +414,9 @@ def collection_index(root, mapped):
         for returned in sorted(returned_values, key=lambda value: value['sequence']):
             result = returned['result']
             common = {'phase': 'measured_session', 'session_slot_id': api().session_slot_id(*slot),
-                'raw_capture_sha256': capture.source_sha256, **{k: v for k, v in returned.items() if k != 'result'}}
+                'raw_capture_sha256': capture.source_sha256, **{k: v for k, v in returned.items() if k != 'result'},
+                'returned_payload_sha256': binding(api().json_bytes(result))['sha256'],
+                'review_meaning_sha256': binding(api().json_bytes(answer_projection.project(result, returned['operation'])))['sha256']}
             if not isinstance(result, dict):
                 measured.append(common | {'state': 'unresolvable', 'limit': 'returned JSON unavailable'})
                 continue
@@ -418,6 +433,8 @@ def collection_index(root, mapped):
             subjects = [('work', selected)] if isinstance(selected, dict) else []
             subjects += [('decision', decision) for decision in list_items(result.get('decisions'))
                 if isinstance(decision, dict)]
+            if not subjects:
+                measured.append(common | {'state': 'returned_no_subject_answer', 'project_id': result.get('project_id')})
             for kind, selected in subjects:
                 answers = selected.get('answers')
                 measured.append(common | {'project_id': result.get('project_id'),
@@ -428,10 +445,15 @@ def collection_index(root, mapped):
     steward = []
     for path in preparations(root):
         preparation, receipt = verify(root, path)
+        import review_explanations
+        projected, _ = review_explanations.project(root, path, evidence_set_sha256='0' * 64)
+        review_value = json.loads(projected)
         steward.append({'identity': preparation['identity'], 'phase': 'post_session_steward',
             'subject': preparation['subject'], 'language': preparation['language'],
             'journey_id': preparation['journey_id'], 'project_id': preparation['project_id'],
             'before_state': preparation['before_observation']['state'], 'after_state': receipt['after_state'],
+            'review_stage_bindings': review_explanations.stage_bindings(review_value),
+            'readback_subject_locators': review_value['readback_subject_locators'],
             'preparation': api().relative(root, path), 'receipt': api().relative(root, path.parent / 'receipt.json')})
     return {'kind': 'dogfood_explanation_evidence', 'schema_version': SCHEMA_VERSION,
         'measured_observations': measured, 'steward_lifecycles': steward,

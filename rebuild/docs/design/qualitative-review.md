@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 13 / policy revision 12, machine evaluation
-policy `evidence-evaluation-7`, human observation/receipt schema 3, qualification policy
-`replacement-qualification-8`, and result-lineage schema 1. Historical runs retain their old
+Current identities are qualitative review schema 14 / policy revision 13, machine evaluation
+policy `evidence-evaluation-8`, human observation/receipt schema 3, qualification policy
+`replacement-qualification-9`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -235,8 +235,8 @@ transmission is performed.
 
 ### Naturalistic review-capture projection
 
-`review_captures.py` owns the one current `naturalistic_review_capture` schema 1 /
-`naturalistic-review-capture-1` policy. Preparation verifies source bytes/SHA-256 against
+`review_captures.py` owns the one current `naturalistic_review_capture` schema 2 /
+`naturalistic-review-capture-2` policy. Preparation verifies source bytes/SHA-256 against
 both the immutable evidence-set member and session binding before parsing those exact
 bytes through the shared Codex normalizer. It rechecks immutable Campaign bindings before
 publication. Unsupported/malformed conversation transports, conflicting message copies,
@@ -255,13 +255,14 @@ hashes are integrity evidence, not authenticated capture authorship.
 
 The positive allowlist retains normalized actual user turns, user-visible agent messages,
 async Question titles/options, Volicord operation identity/sequence/outcome with scalar
-identity/action/state fields, turn start/terminal/interruption and compaction boundaries,
+request/action/state fields and typed returned meaning, turn start/terminal/interruption and compaction boundaries,
 normalized execution command-role/digest/exit/termination facts with explicit
 `output_retention = non_semantic_by_design`, and typed transport issues. Duplicate agent
 item/response transports must agree and retain their original source coordinates. Operation
-prose is inspected in actual conversation and the separately selected canonical bundle.
+meaning comes from the exact normalized MCP/JSON CLI completion, with its original turn and
+sequence. It is never reconstructed from agent prose or a later bundle.
 System/developer/skill/plugin instructions, reasoning, environment bodies, arbitrary
-repository source, command stdout/stderr and generic tool/MCP payloads are excluded.
+repository source, generic command stdout/stderr and generic tool/MCP payloads are excluded.
 No repository name, credential spelling or test-token convention is allowlisted.
 
 Current `item_completed.AgentMessage` content uses `Text` parts with string `text`
@@ -285,9 +286,9 @@ The source limit is 64 MiB / 200,000 events and the projected artifact limit is 
 `excluded_records` lists unused raw event sequences with `non_semantic_by_design`.
 Selected operation/execution records also exclude all unallowlisted payload fields by design.
 `semantic_omission_count` counts omitted required user, agent, async Question or selected
-Volicord operation identity/action/state bodies;
+Volicord operation bodies or partially omitted required typed returned meaning;
 `non_semantic_omission_count` accounts for the remaining omissions. `semantic_complete = true`
-means all required user/agent/Question bodies and selected operation fields were retained,
+means all required user/agent/Question bodies and selected operation meaning were retained,
 not that the whole
 rollout was copied. Non-semantic exclusion alone leaves it true. Limits and omissions are
 available in the capture, evidence index, inspection presentation and Work availability view.
@@ -300,6 +301,49 @@ a journey-scoped criterion cannot inspect only a favorable Work. No current alte
 supplies omitted actual interaction. Privacy or size omissions require `insufficient_evidence`
 with explicit inspected omission/availability evidence and limits, never automatic Product
 failure or silent satisfaction. This changes structural admissibility, not semantic scoring.
+
+`answer_projection.py` owns typed return selection. `body.value.returned_meaning`
+binds schema, requested operation, selected `value`, `omissions`, `consistency_errors`
+and `semantic_complete`. Recall retains Project, selected Work identity, Checkpoint membership,
+actual shared facts/prose, top-level task direction, Checkpoint identity/revision/action,
+Goal identity/statement/Source basis and Decision meaning. Claims retain question, actual text,
+role and evidence keys; RecordedNextStep retains exact recorded text, Work/Checkpoint/revision,
+field and Source status. Answers retain explanation availability, diagnostic and generated
+provenance: subject, language, fingerprint, generation time, generator claims, record revisions,
+Sources/snapshots and conflicts. Status/Decision CLI reads preserve corresponding typed rows.
+Plans retain typed canonical evidence content and subject/language; records retain the accepted
+realization and basis. No Work-specific MCP tool is assumed.
+
+Language comes from the request and generated provenance; `QuestionAnswers` has no language
+member. Missing required fields become `_semantic_omission = transport_omission`; unsupported
+typed values/fields have explicit markers/counts. Product `transport_omission` objects retain
+their reason, bounds and inspection basis at the original field. Null/empty sections remain
+genuine returned absence. Omissions cannot suppress available contradictory identity or direction.
+Recomputed consistency diagnostics report return-internal role/key/scope/action contradictions;
+the independent historical observer remains the factual machine-policy owner. Contradictory
+returns stay inspectable. Generated prose is not compared with a prescribed paraphrase;
+hashes do not certify prose meaning or generator identity. Language retains the Product
+contract (a bounded nonempty requested language), independently of document cross-locale rules.
+
+`review_explanations.py` selects private `explanation_lifecycle` evidence separately from
+Work/resume captures. Each lifecycle binds Project, Work/Decision, language, candidate executable,
+raw session bindings, observation order, before/after states, plan, submitted response, Product
+record and readback. Exact private artifact hashes differ from selected-json stage hashes.
+`readback_subject_locators` identifies the actual source row, including Work history when needed.
+Stage bodies use the same privacy/size policy. Source observation prose and generator instructions
+are excluded. A cited incomplete lifecycle cannot support a decisive judgment. The submitted-file
+locator explicitly lacks independent authorship/host-turn attestation; generator identity remains
+`self_reported_not_independently_verified`. Earlier unavailable/stale observations and new
+preparations stay distinct. Steward material has `phase = post_session_steward`; measured
+call/turn/sequence observations have `phase = measured_session` and the raw capture hash.
+Steward generation supplies no earlier adoption, user experience or measured-session claim.
+
+Typed artifacts have nested JSON pointers into claim text, action, plan content and lifecycle
+stages (up to 8,192 per artifact); exact line locators always remain available. Package and record
+receipt schema 2 bind preparation schema 14. Copied result-lineage schema 2 rechecks typed shape,
+omissions, stage/receipt/readback consistency and observation-index meaning/stage/locator bindings without original
+Runtime Homes, response files or staging paths. New modules participate in preparer, evaluator
+and qualification dependency hashing. Fresh outer hashes cannot excuse inconsistent inner claims.
 
 For human review use `--reviewer-kind human` without an agent session. Optional
 `--reviewer-identity <json-file>` supplies the five `host`, `agent`, `model`,

@@ -11767,7 +11767,7 @@ def real_session_fixture(
                 "project_name": "Phase 8 fixture",
                 "goals": [work_user_task],
                 "selected_work": {"work_item_id": context, "checkpoint_ids": [checkpoint],
-                    "answers": {"language": "en", "explanation_state": "unavailable", "provenance": None,
+                    "answers": {"diagnostic": None, "explanation_state": "unavailable", "provenance": None,
                         "facts": [{"question": "RecordedNextStep", "role": "deterministic_facts",
                             "text": f"Recorded next action quotation (original language): {next_step}",
                             "evidence_keys": [f"checkpoint:{checkpoint}@1:next_step"],
@@ -11781,7 +11781,11 @@ def real_session_fixture(
                     "statement": work_user_task, "source_ids": [goal_source]}],
                 "behaviorally_relevant_context": [],
                 "decisions": (
-                    [{"identity": decision, "revision": 1, "state": "active", "choice": "concise", "rationale": None}]
+                    [{"identity": decision, "revision": 1, "state": "active", "choice": "concise", "rationale": None,
+                        "answers": {"facts": [{"question": "RecordedUserRationale", "text": "No user rationale was recorded.",
+                            "role": "unavailable", "evidence_keys": []}], "prose": [{"question": "ExplanationAvailability",
+                            "text": "No interpretation has been generated.", "role": "unavailable", "evidence_keys": []}],
+                            "explanation_state": "unavailable", "diagnostic": None, "provenance": None}}]
                     if is_user_owned_behavior(materiality_obligations)
                     else []
                 ),
