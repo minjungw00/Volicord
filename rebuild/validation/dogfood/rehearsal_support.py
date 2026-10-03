@@ -195,7 +195,9 @@ def record_support_checkpoint(call, project_id, goal, baseline, repository, labe
                 choice_id, list(alternatives), repository_source),
             "basis_summary": "Only private marker organization varies.",
             "authority_counterfactual": "Neither alternative changes a user-owned outcome.",
-            "learning_authority": {"state": "inactive"},
+            "learning_authority": {"state": "assessed", "independent_user_authority": False,
+                "rationale": "The authored marker preserves public outcomes independently of the learning request.",
+                "source_ids": [repository_source]},
             "learning_value": {"state": "routine", "rationale": "The authored private marker adds no significant learning fork."},
         }],
     })
