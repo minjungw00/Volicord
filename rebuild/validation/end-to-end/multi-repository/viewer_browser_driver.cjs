@@ -52,8 +52,15 @@ async function capture(name, target=page.locator('main > section').first()) {
       requestAnimationFrame(sample);
     });
   });
-  const observed=await page.evaluate(()=>({context:JSON.parse(document.querySelector('meta[name="volicord-observation"]').content),dom:document.documentElement.outerHTML}));
-  requireFact(observed.context.process.executable_sha256 === config.viewer_sha256,'displayed_candidate_executable_mismatch');
+  const observed=await page.evaluate(()=>{
+    const meta=document.querySelector('meta[name="volicord-observation"]');
+    return {context:meta?JSON.parse(meta.content):null,dom:document.documentElement.outerHTML};
+  });
+  if(mode==='offline') {
+    requireFact(page.url().startsWith('file:')&&observed.context===null,'snapshot_has_live_observation_context');
+  } else {
+    requireFact(observed.context?.process?.executable_sha256 === config.viewer_sha256,'displayed_candidate_executable_mismatch');
+  }
   const observedUrl=page.url();
   const beforeHash=sha256(observed.dom);
   const geometry=await page.evaluate(()=>({scrollX,scrollY,innerWidth,innerHeight,dpr:devicePixelRatio}));
@@ -70,7 +77,9 @@ async function capture(name, target=page.locator('main > section').first()) {
     candidate_head:config.candidate_head,url:page.url(),context:observed.context,dom_sha256:beforeHash,
     screenshot:{path:name,sha256:sha256(screenshot),bytes:screenshot.length},
     browser:{version:context.browser().version(),geometry,zoom:result.zoom.at(-1)||null}};
-  (result.display_captures ??= []).push(receipt);
+  // Offline snapshots have no live process/render authority. Keep their image
+  // and stability observation without manufacturing a live display receipt.
+  if(mode!=='offline')(result.display_captures ??= []).push(receipt);
   (result.captures ??= []).push({path:name,mechanism:'Page.captureScreenshot fromSurface=false; browser viewport',...geometry});
 }
 async function go(url) {

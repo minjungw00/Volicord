@@ -743,6 +743,8 @@ the HTTP samples, and never flushed OS caches.
 Viewport capture waits for fonts and six consecutive stable animation frames
 after native keyboard scrolling, with a 120-frame bound. It still rejects DOM,
 URL or geometry changes during the screenshot; settling is not a latency metric.
+Offline file snapshots retain image/stability evidence without a live display
+receipt. Live modes still require the actual renderer/executable context.
 
 Every run gets a fresh ignored `rebuild/.local/validation/viewer-browser-*` root
 with `result.json`, candidate/input/environment/executable hashes, retained tested
