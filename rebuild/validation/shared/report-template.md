@@ -16,7 +16,7 @@ List the decision identifiers and preserve their accepted scope.
 
 List fixture IDs, content hashes, and source revisions. For a capsule-backed V11
 conclusion, also record the candidate and maintained dependency/fixture identity
-paths and SHA-256 values.
+paths and SHA-256 values, including `dogfood_rehearsal` fixture/producer identities.
 
 ## Environment and tool versions
 
@@ -36,7 +36,10 @@ bounded transmission configuration, and same-gate final-to-V11 artifact flow.
 
 ## Observed results
 
-Separate observations from interpretation.
+Separate observations from interpretation. For a current capsule-backed conclusion,
+record `dogfood_rehearsal` status/count, gate binding, executable identities, wrapper
+exit/timestamp/stream hashes, result hash, controls and incomplete inner verdict.
+Name separate active-host/browser/cost proofs only when they were actually run.
 
 ## Coverage and failures
 

@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import runpy
 from pathlib import Path
 import subprocess
 import tarfile
@@ -50,6 +51,11 @@ TRACKED_EVIDENCE_PATHS = (
     "rebuild/validation/dogfood/remediation_integration.py",
     "rebuild/validation/privacy/background-provider-qualification/harness.py",
 )
+REHEARSAL = runpy.run_path(str(Path(__file__).resolve().parents[2] / "dogfood/rehearsal_contract.py"))
+TRACKED_EVIDENCE_PATHS += tuple(entry["path"] for entry in
+    REHEARSAL["dependencies"](Path(__file__).resolve().parents[4])["inputs"].values()
+    if entry["path"] not in TRACKED_EVIDENCE_PATHS)
+OWNED_PYTHON_SCRIPTS = ('rebuild/validation/shared/contract_coverage.py', 'rebuild/validation/dogfood/assertions.py', 'rebuild/validation/dogfood/campaign_self_test.py', 'rebuild/validation/dogfood/remediation_integration.py', 'rebuild/validation/dogfood/rehearsal_self_test.py', 'rebuild/validation/repository-intelligence/realistic-qualification/assertions.py', 'rebuild/validation/privacy/background-provider-qualification/harness.py')
 V11_TARGETS = {"volicord", "small-python", "polyglot-medium"}
 V11_EXECUTION_ROOTS = {"repository", "clone"}
 KNOWN_EXECUTABLES = {
@@ -60,6 +66,7 @@ KNOWN_EXECUTABLES = {
     "codex",
     "git",
     "harness.py",
+    "rehearsal.py",
     "assertions.py",
     "campaign_self_test.py",
     "remediation_integration.py",
@@ -311,6 +318,23 @@ def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
                 redact(2, "inline_program" if argv[1] == "-c" else "module_operand")
             for index in range(3, len(argv)):
                 redact(index, "program_argument")
+        if executable in {"python", "python3"}:
+            script_index = 2 if len(argv) > 1 and argv[1] == '-B' else 1
+            if (len(argv) in {script_index + 1, script_index + 2}
+                and script_index < len(argv)
+                and any(argv[script_index].endswith('/' + script) or argv[script_index] == script for script in OWNED_PYTHON_SCRIPTS)
+                and (len(argv) == script_index + 1 or argv[-1] == '--self-test')):
+                if script_index == 2: structural(1, 'flag')
+                path(script_index)
+                if len(argv) == script_index + 2: structural(script_index + 1, 'flag')
+        return roles
+
+    if executable == "rehearsal.py":
+        if len(argv) == 7 and argv[1] == "--candidate-head" and argv[3] == "--final-artifact" and argv[5] == "--output":
+            for index in (1, 3, 5): structural(index)
+            redact(2, "candidate_identity")
+            path(4)
+            path(6)
         return roles
 
     if executable == "codex":
@@ -584,6 +608,10 @@ def sanitized_execution(
         "exit_code": value.get("exit_code"),
         "wrapper_exit_code": value.get("wrapper_exit_code"),
         "termination": value.get("termination"),
+        "streams": {name: ({"bytes": Path(value[name]).stat().st_size,
+            "sha256": sha256_bytes(Path(value[name]).read_bytes())}
+            if isinstance(value.get(name), str) and Path(value[name]).is_file() else None)
+            for name in ("stdout", "stderr")},
         "spawn": {
             "status": "failed" if spawn_error is not None else "started",
             "error_type": (
@@ -654,6 +682,9 @@ def sanitized_admission(value: dict[str, Any]) -> dict[str, Any]:
 def collected_processes(gate_directory: Path, repository_root: Path) -> dict[str, Any]:
     processes: list[dict[str, Any]] = []
     for path in sorted(gate_directory.rglob("result.json")):
+        # Inner rehearsal sources, Runtime and operation bodies stay private.
+        if path.relative_to(gate_directory).parts[0] == "dogfood-rehearsal":
+            continue
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -825,6 +856,9 @@ def create_review_archive(
         "processes.json": collected_processes(gate_directory, repository_root),
         "tracked-files.json": tracked_file_evidence(repository_root, candidate_head),
     }
+    stage = capsule["dogfood_rehearsal"]
+    if stage["result"] is not None:
+        payloads["dogfood-rehearsal.json"] = stage["result"]
     if final_summary is not None:
         payloads["final-summary.json"] = sanitized_final_summary(
             final_summary, repository_root, gate_directory

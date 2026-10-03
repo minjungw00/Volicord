@@ -53,6 +53,8 @@ def load_builder() -> Any:
     return module
 
 
+REHEARSAL_TEST = runpy.run_path(str(ROOT / "rebuild/validation/dogfood/rehearsal_test_support.py"))
+REHEARSAL = runpy.run_path(str(ROOT / "rebuild/validation/dogfood/rehearsal_contract.py"))
 builder = load_builder()
 contract_spec = importlib.util.spec_from_file_location(
     "archive_v11_contract", HERE / "result_contract.py")
@@ -67,8 +69,29 @@ fixture_spec.loader.exec_module(multi_work_fixture)
 
 
 
+# The following owners describe current bytes in explicit synthetic archives.
+# They cannot establish a clean production candidate; the actual gate owns that proof.
+def synthetic_tracked_files(repository_root, candidate):
+    files = []
+    for relative in builder.TRACKED_EVIDENCE_PATHS:
+        path = repository_root / relative
+        mode = '100755' if path.stat().st_mode & 0o111 else '100644'
+        files.append({'path': relative, 'tracked': True, 'git_mode': mode,
+            'executable': mode == '100755', 'git_object_id': 'b' * 40,
+            'sha256': builder.sha256_bytes(path.read_bytes())})
+    return {'kind': 'candidate_tracked_file_modes', 'candidate_head': candidate, 'files': files}
+
+builder.tracked_file_evidence = synthetic_tracked_files
+
+
+def write_fixture_archive(path, *, candidate_head, payloads, source_final_summary_sha256):
+    return builder.write_archive(path, candidate_head=candidate_head, payloads=payloads,
+        source_final_summary_sha256=source_final_summary_sha256
+            if source_final_summary_sha256 is not None else payloads['capsule.json']['final_summary_sha256'])
+
+
 def payloads() -> dict[str, object]:
-    return {
+    value = {
         "admission.json": {
             "kind": "sanitized_validation_admission",
             "candidate_head": HEAD,
@@ -137,6 +160,41 @@ def payloads() -> dict[str, object]:
             ],
         },
     }
+    with tempfile.TemporaryDirectory(prefix='explicit-fake-archive-') as directory:
+        gate = Path(directory)
+        final = prepare_rehearsal_fixture(value['capsule.json'], gate, HEAD, None)
+        value['final-summary.json'] = builder.sanitized_final_summary(final, ROOT, gate)
+        value['dogfood-rehearsal.json'] = value['capsule.json']['dogfood_rehearsal']['result']
+        value['processes.json'] = builder.collected_processes(gate, ROOT)
+    for entry in REHEARSAL['dependencies'](ROOT)['inputs'].values():
+        value['tracked-files.json']['files'].append({'path': entry['path'], 'tracked': True,
+            'git_mode': '100755' if entry['path'].endswith('/rehearsal.py') else '100644',
+            'executable': entry['path'].endswith('/rehearsal.py'), 'git_object_id': 'b' * 40,
+            'sha256': entry['sha256']})
+    return value
+
+
+def prepare_rehearsal_fixture(capsule, gate, candidate, final):
+    """Coherent explicit fake lifecycle for sanitizer tests; no real validation claim."""
+    capsule['gate_invocation'] = gate.name
+    dependency = REHEARSAL['dependencies'](ROOT)
+    capsule.setdefault('dependency_snapshot', {})['dogfood_rehearsal'] = dependency
+    later = (capsule.get('official_v11', {}).get('status', 'not_run') != 'not_run'
+        or capsule.get('live_provider_qualification', {}).get('status', 'not_run') != 'not_run')
+    if not later:
+        capsule['dogfood_rehearsal'] = REHEARSAL['not_run_stage']()
+        return final
+    if final is None:
+        commands = runpy.run_path(str(ROOT / 'rebuild/scripts/check-validation-report'))['FINAL_COMMANDS']
+        final = {'working_directory': str(ROOT), 'started_at': '2026-08-21T00:00:00.000000+00:00',
+            'ended_at': '2026-08-21T00:00:01.000000+00:00', 'duration_ms': 1000.0,
+            'command_count': len(commands), 'failure_count': 0, 'outcome': 'succeeded',
+            'commands': [execution(list(argv), ROOT) for argv in commands]}
+    final.setdefault('ended_at', '2026-08-21T00:00:01.000000+00:00')
+    capsule['final_summary_sha256'] = builder.sha256_bytes(builder.json_bytes(final))
+    REHEARSAL_TEST['attach_stage'](capsule, gate, candidate, capsule['final_summary_sha256'])
+    return final
+
 
 
 def successful_provider_evidence(candidate_head: str) -> dict[str, object]:
@@ -701,6 +759,8 @@ def grammar_completeness_archives(root: Path) -> dict[str, object]:
     ).stdout.strip()
     base = root / "grammar-completeness"
     cases = command_grammar_cases(root, base)
+    cases.extend(('owned-python-' + str(index), ['python3', '-B', str(ROOT / script)], ROOT)
+        for index, script in enumerate(builder.OWNED_PYTHON_SCRIPTS))
     names: list[str] = []
     for index, (name, argv, cwd) in enumerate(cases):
         gate = base
@@ -720,6 +780,7 @@ def grammar_completeness_archives(root: Path) -> dict[str, object]:
         capsule["validated_candidate_head"] = head
         gate_result["candidate_head"] = head
         tracked["candidate_head"] = head
+        final_fixture = prepare_rehearsal_fixture(capsule, gate, head, None)
         identity = builder.create_review_archive(
             repository_root=ROOT,
             gate_directory=gate,
@@ -727,7 +788,7 @@ def grammar_completeness_archives(root: Path) -> dict[str, object]:
             admission=admission,
             capsule=capsule,
             gate_result=gate_result,
-            final_summary=None,
+            final_summary=final_fixture,
         )
         verified = run_verifier(Path(identity["path"]), head)
         if verified.returncode != 0:
@@ -910,6 +971,14 @@ def integration_archive(root: Path) -> tuple[Path, str]:
         "blocking_classification": "evidence_archive_pending",
         "evidence_archive_status": "pending",
     }
+    final['commands'] = [execution(list(argv), ROOT) for argv in
+        runpy.run_path(str(ROOT / 'rebuild/scripts/check-validation-report'))['FINAL_COMMANDS']]
+    final['command_count'] = 4
+    final = prepare_rehearsal_fixture(capsule, gate, head, final)
+    private_inner = gate / 'dogfood-rehearsal/private/result.json'
+    private_inner.parent.mkdir(parents=True)
+    private_inner.write_text(json.dumps({'argv': ['tool', PROMPT_SENTINEL],
+        'working_directory': '/home/private/source', 'raw_source_body': PROMPT_SENTINEL}))
     identity = builder.create_review_archive(
         repository_root=ROOT,
         gate_directory=gate,
@@ -1072,6 +1141,7 @@ def production_scale_archive(root: Path) -> dict[str, int]:
         "blocking_classification": "evidence_archive_pending",
         "evidence_archive_status": "pending",
     }
+    prepare_rehearsal_fixture(capsule, gate, head, None)
     identity = builder.create_review_archive(
         repository_root=ROOT,
         gate_directory=gate,
@@ -1140,15 +1210,68 @@ def rewrite_archive(
             archive.addfile(member, io.BytesIO(body) if body is not None else None)
 
 
+def rehearsal_archive_controls(root):
+    names = ('missing', 'execution', 'order', 'nonzero', 'candidate', 'binary', 'fixture',
+        'producer', 'inner', 'summary', 'streams', 'duplicate', 'teardown', 'dependency', 'private')
+    for name in names:
+        value = payloads()
+        capsule = value['capsule.json']
+        stage = capsule['dogfood_rehearsal']
+        result = stage['result']
+        process = value['processes.json']['processes'][0]
+        if name == 'missing': del capsule['dogfood_rehearsal']
+        elif name == 'execution': stage['execution'] = None
+        elif name == 'order':
+            process['started_at'] = stage['execution']['started_at'] = '2026-08-21T00:00:00.000000+00:00'
+        elif name == 'nonzero':
+            process['exit_code'] = stage['execution']['exit_code'] = 1
+            process['wrapper_exit_code'] = stage['execution']['wrapper_exit_code'] = 1
+        elif name == 'candidate': result['candidate_head'] = '0' * 40
+        elif name == 'binary': result['executables']['volicord-mcp'] = '0' * 64
+        elif name == 'fixture': result['fixture_sha256'] = '0' * 64
+        elif name == 'producer': result['producer_sha256']['rehearsal.py'] = '0' * 64
+        elif name == 'inner': result['pipeline']['expected_inner_verdict'] = 'qualified'
+        elif name == 'summary': stage['result_sha256'] = '0' * 64
+        elif name == 'streams': process['streams']['stdout']['sha256'] = '0' * 64
+        elif name == 'duplicate': value['processes.json']['processes'].append(copy.deepcopy(process))
+        elif name == 'teardown': result['teardown'] = 'failed'
+        elif name == 'dependency': capsule['dependency_snapshot']['dogfood_rehearsal']['inputs']['rehearsal.py']['sha256'] = '0' * 64
+        elif name == 'private': result['raw_source_body'] = PROMPT_SENTINEL
+        result['result_id'] = REHEARSAL['digest']({k: v for k, v in result.items() if k != 'result_id'})
+        if name != 'summary': stage['result_sha256'] = builder.sha256_bytes(builder.json_bytes(result))
+        archive = root / ('rehearsal-' + name + '.tar.gz')
+        write_fixture_archive(archive, candidate_head=HEAD, payloads=value, source_final_summary_sha256=None)
+        verified = run_verifier(archive)
+        assert verified.returncode == 1, ('rehash contradiction accepted', name, verified.stdout)
+    # A bounded failed stage remains a verifiable blocked archive, never ready.
+    value = payloads()
+    capsule = value['capsule.json']
+    capsule.update(blocking_classification='dogfood_rehearsal_failed', authenticated_codex_outcomes=[],
+        official_v11={'status': 'not_run', 'required_by_target': {}})
+    stage = capsule['dogfood_rehearsal']
+    stage.update(status='failed', result=None, result_sha256=None)
+    del value['dogfood-rehearsal.json']
+    process = value['processes.json']['processes'][0]
+    process['exit_code'] = stage['execution']['exit_code'] = 1
+    process['wrapper_exit_code'] = stage['execution']['wrapper_exit_code'] = 1
+    process['outcome'] = 'failed'
+    archive = root / 'rehearsal-failed-bounded.tar.gz'
+    write_fixture_archive(archive, candidate_head=HEAD, payloads=value, source_final_summary_sha256=None)
+    verified = run_verifier(archive)
+    assert verified.returncode == 0, verified.stderr
+    return list(names)
+
+
 def main() -> int:
     assert "rebuild/validation/dogfood/assertions.py" in builder.TRACKED_EVIDENCE_PATHS
     with tempfile.TemporaryDirectory(prefix="volicord-evidence-archive-self-test-") as directory:
         root = Path(directory)
+        rehearsal_controls = rehearsal_archive_controls(root)
         grammar = grammar_completeness_archives(root)
         integration_archive(root)
         scale = production_scale_archive(root)
         archive = root / "positive.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             archive,
             candidate_head=HEAD,
             payloads=payloads(),
@@ -1159,7 +1282,7 @@ def main() -> int:
         assert json.loads(positive.stdout)["candidate_head"] == HEAD
 
         successful_provider_archive = root / "successful-provider-attestation.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             successful_provider_archive,
             candidate_head=HEAD,
             payloads=add_successful_provider_evidence(payloads(), HEAD),
@@ -1175,7 +1298,7 @@ def main() -> int:
             invalid_payloads = add_successful_provider_evidence(payloads(), HEAD)
             mutate(invalid_payloads)
             invalid_archive = root / f"{name}.tar.gz"
-            builder.write_archive(
+            write_fixture_archive(
                 invalid_archive,
                 candidate_head=HEAD,
                 payloads=invalid_payloads,
@@ -1319,7 +1442,7 @@ def main() -> int:
         )
         oversized_archive = root / "oversized.tar.gz"
         try:
-            builder.write_archive(
+            write_fixture_archive(
                 oversized_archive,
                 candidate_head=HEAD,
                 payloads=oversized_payloads,
@@ -1349,7 +1472,7 @@ def main() -> int:
         )
         non_current_payloads["processes.json"]["processes"] = [non_current_execution]
         non_current_archive = root / "non-current-process-representation.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             non_current_archive,
             candidate_head=HEAD,
             payloads=non_current_payloads,
@@ -1374,7 +1497,7 @@ def main() -> int:
             unknown_structural_execution
         ]
         unknown_structural_archive = root / "unknown-structural-flag.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             unknown_structural_archive,
             candidate_head=HEAD,
             payloads=unknown_structural_payloads,
@@ -1396,7 +1519,7 @@ def main() -> int:
         ]
         unknown_executable_payloads["processes.json"]["processes"] = [unknown_executable]
         unknown_executable_archive = root / "unknown-executable-marked-structural.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             unknown_executable_archive,
             candidate_head=HEAD,
             payloads=unknown_executable_payloads,
@@ -1418,7 +1541,7 @@ def main() -> int:
         ]
         unknown_subcommand_payloads["processes.json"]["processes"] = [unknown_subcommand]
         unknown_subcommand_archive = root / "unknown-volicord-subcommand.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             unknown_subcommand_archive,
             candidate_head=HEAD,
             payloads=unknown_subcommand_payloads,
@@ -1435,7 +1558,7 @@ def main() -> int:
         invalid_position["argv"][2] = "context"
         invalid_position_payloads["processes.json"]["processes"] = [invalid_position]
         invalid_position_archive = root / "valid-token-invalid-position.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             invalid_position_archive,
             candidate_head=HEAD,
             payloads=invalid_position_payloads,
@@ -1468,7 +1591,7 @@ def main() -> int:
             sensitive_structural
         ]
         sensitive_structural_archive = root / "sensitive-operand-marked-structural.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             sensitive_structural_archive,
             candidate_head=HEAD,
             payloads=sensitive_structural_payloads,
@@ -1487,7 +1610,7 @@ def main() -> int:
         ]
         malformed_roles_payloads["processes.json"]["processes"] = [malformed_roles]
         malformed_roles_archive = root / "malformed-structural-role-metadata.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             malformed_roles_archive,
             candidate_head=HEAD,
             payloads=malformed_roles_payloads,
@@ -1505,7 +1628,7 @@ def main() -> int:
             "api_key": "sk-prohibited-credential-value",
         }
         prohibited = root / "prohibited.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             prohibited,
             candidate_head=HEAD,
             payloads=prohibited_payloads,
@@ -1520,7 +1643,7 @@ def main() -> int:
             "Bearer generic-token-leakage-value-1234567890"
         )
         generic_token_archive = root / "generic-token-retained.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             generic_token_archive,
             candidate_head=HEAD,
             payloads=generic_token_payloads,
@@ -1546,7 +1669,7 @@ def main() -> int:
             "processes": [leaked_prompt],
         }
         prompt_archive = root / "prompt-retained.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             prompt_archive,
             candidate_head=HEAD,
             payloads=prompt_payloads,
@@ -1559,7 +1682,7 @@ def main() -> int:
             "/home/private-user/repository"
         )
         absolute_archive = root / "absolute-path-retained.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             absolute_archive,
             candidate_head=HEAD,
             payloads=absolute_payloads,
@@ -1570,7 +1693,7 @@ def main() -> int:
         source_payloads = payloads()
         source_payloads["processes.json"]["source_body"] = "repository body"
         source_archive = root / "source-body-retained.tar.gz"
-        builder.write_archive(
+        write_fixture_archive(
             source_archive,
             candidate_head=HEAD,
             payloads=source_payloads,
@@ -1582,6 +1705,7 @@ def main() -> int:
         "kind": "validation_evidence_archive_self_test",
         "status": "passed",
         "grammar_completeness": grammar,
+        "rehearsal_controls": rehearsal_controls,
         "production_scale": scale,
         "scenarios": [
             "positive",

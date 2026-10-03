@@ -65,7 +65,7 @@ def promote_lineage_qualification(value, evaluation):
         qualitative[field] = []
     qualitative["state"] = "complete"
     value["machine_summary"]["hard_findings"] = []
-    value["technical_gate"] = {"state": "passed", "candidate_head": value["candidate_head"]}
+    value["technical_gate"] = {"state": "passed", "candidate_head": value["candidate_head"], "rehearsal": {"contract": "product-backed-dogfood-evidence-rehearsal-1", "status": "passed", "result_sha256": "8" * 64}}
     value.update(evidence_validity="valid", replacement_qualification="qualified",
         replacement_pass_candidate=True)
     value["naturalistic_evidence"] = policy.naturalistic_summary(value, evaluation,
@@ -118,7 +118,7 @@ class PolicyTests(unittest.TestCase):
         self.human_prep["reviewer"]["run_id"] = "b" * 32
         self.human = fixtures.completed(self.human_prep)
         self.evaluation = evaluation()
-        self.technical = {"state": "passed", "candidate_head": "a" * 40}
+        self.technical = {"state": "passed", "candidate_head": "a" * 40, "rehearsal": {"contract": "product-backed-dogfood-evidence-rehearsal-1", "status": "passed", "result_sha256": "8" * 64}}
 
     def result(self, reviews=None, technical=None):
         return policy.combine(self.evaluation, self.specs, reviews if reviews is not None else [self.agent, self.human], technical or self.technical)
@@ -507,6 +507,20 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         original_orchestrate = gate.orchestrate
 
         def orchestrate(**kwargs):
+            def rehearsal(head, final):
+                owners.counts['rehearsal'] += 1
+                fake = runpy.run_path(str(root / 'rebuild/validation/dogfood/rehearsal_test_support.py'))
+                value, execution, path = fake['fake_owner'](kwargs['gate_directory'] / 'dogfood-rehearsal', head,
+                    gate.sha256(final), kwargs['gate_directory'].name)
+                value.update(gate.REHEARSAL['expected_from_dependencies'](admitted['dependency_snapshot']['dogfood_rehearsal']))
+                value['result_id'] = gate.REHEARSAL['digest']({k: v for k, v in value.items() if k != 'result_id'})
+                path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
+                execution['working_directory'] = str(candidate)
+                execution['argv'][0] = str(candidate / 'rebuild/validation/dogfood/rehearsal.py')
+                (kwargs['gate_directory'] / 'dogfood-rehearsal-invocation/result.json').write_text(json.dumps(execution))
+                return value, execution, path
+
+            kwargs["rehearsal_owner"] = rehearsal
             return original_orchestrate(**kwargs,
                 contract_execution_owner=lambda summary: gate.check(
                     'contract_coverage_execution', 'passed', 'synthetic execution coverage',
@@ -516,6 +530,8 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
             assert label == 'final' and commands == namespace['FINAL_COMMANDS']
             summary, path = owners.final()
             summary['working_directory'] = str(candidate)
+            summary['started_at'] = '2026-08-21T00:00:00.000000+00:00'
+            summary['ended_at'] = '2026-08-21T00:00:01.000000+00:00'
             summary['failure_count'] = sum(command['exit_code'] != 0
                 for command in summary['commands'])
             for command in summary['commands']:
@@ -554,7 +570,7 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
                 gate.AUTHORIZATION_ASSERTION, '--authorize-provider-source-transmission',
                 gate.PROVIDER_AUTHORIZATION_ASSERTION, '--provider-model', 'synthetic-model']
             code = runner['run_gate'](arguments)
-            assert owners.counts == {'final': 1, 'provider': 1, 'preflight': 1, 'v11': 1, 'audit': 1}
+            assert owners.counts == {'rehearsal': 1, 'final': 1, 'provider': 1, 'preflight': 1, 'v11': 1, 'audit': 1}
             owners.final_passes = False
             failed_stdout, failed_stderr = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(failed_stdout), contextlib.redirect_stderr(failed_stderr):
@@ -651,6 +667,10 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
                 'multi_work_continuity']['authority'].update(decision_work_id='wrong'),
             'wrong_target_counts': lambda v: v['official_v11'].update(
                 required_by_target={'volicord': 18, 'small-python': 18, 'polyglot-medium': 18}),
+            'missing_rehearsal': lambda v: v.pop('dogfood_rehearsal'),
+            'unstarted_rehearsal': lambda v: v['dogfood_rehearsal'].update(status='not_run'),
+            'rehearsal_execution': lambda v: v['dogfood_rehearsal'].update(execution=None),
+            'rehearsal_inner': lambda v: v['dogfood_rehearsal']['result']['pipeline'].update(expected_inner_verdict='qualified'),
             'archive_hash': lambda v: v['evidence_archive'].update(sha256='f' * 64),
             'archive_size': lambda v: v['evidence_archive'].update(size_bytes=1),
             'archive_members': lambda v: v['evidence_archive'].update(member_count=1),

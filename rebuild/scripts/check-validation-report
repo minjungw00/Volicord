@@ -17,6 +17,8 @@ from typing import Any, Sequence
 from types import SimpleNamespace
 
 
+REHEARSAL = runpy.run_path(str(Path(__file__).resolve().parents[1] / "validation/dogfood/rehearsal_contract.py"))
+
 SECTIONS = (
     "Status",
     "Goal",
@@ -191,6 +193,11 @@ def optional_digest(
 
 def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    try:
+        rehearsal_passed = REHEARSAL["validate_stage"](capsule)
+    except (ValueError, TypeError, KeyError, AttributeError) as error:
+        errors.append("capsule dogfood_rehearsal: " + str(error))
+        rehearsal_passed = False
     if capsule.get("kind") != "validation_handoff_capsule":
         errors.append("capsule kind must be validation_handoff_capsule")
     candidate_head = optional_digest(
@@ -680,7 +687,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         if official_started
         else (True, True, False)
     )
-    if blocking in {"candidate_changed_during_qualification", "contract_coverage_execution_failed"} and not official_started:
+    if blocking in {"candidate_changed_during_qualification", "contract_coverage_execution_failed", "dogfood_rehearsal_failed", "dogfood_rehearsal_environment_blocked"} and not official_started:
         expected_flow = (True, False, False)
     actual_flow = tuple(flow.get(key) for key in FLOW_KEYS)
     if actual_flow != expected_flow:
@@ -729,6 +736,9 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         if (coverage.get("status") != "failed" or provider_status != "not_run"
             or official_started or outcomes or audit_status != "not_run" or phase_8_ready is not False):
             errors.append("capsule contract execution failure contains inconsistent later-stage evidence")
+    elif blocking in {"dogfood_rehearsal_failed", "dogfood_rehearsal_environment_blocked"}:
+        if provider_status != "not_run" or official_started or outcomes or audit_status != "not_run":
+            errors.append("capsule rehearsal failure contains later-stage evidence")
     elif provider_status == "failed":
         if blocking != "provider_live_qualification_failed" or official_started or outcomes or audit_status != "not_run":
             errors.append("capsule provider failure contains inconsistent later-stage evidence")
@@ -779,6 +789,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         admission_status == "eligible"
         and blocking is None
         and final_passed
+        and rehearsal_passed
         and provider_passed
         and official_status == "passed"
         and official_ready is True
@@ -810,6 +821,7 @@ def capsule_contract_errors(capsule: dict[str, Any]) -> list[str]:
         admission_status == "eligible"
         and not candidate_mutated
         and final_passed
+        and rehearsal_passed
         and provider_passed
         and official_status == "passed"
         and official_ready is True
@@ -965,6 +977,17 @@ def check_capsule_semantics(text: str, capsule: dict[str, Any]) -> list[str]:
             require(privacy, "Privacy and external transmission", f"credential_retention_audit.{key}", value, errors)
 
     official = capsule["official_v11"]
+    def projection_fields(value, prefix):
+        for key, item in value.items():
+            label = prefix + "." + key
+            if isinstance(item, dict):
+                yield from projection_fields(item, label)
+            elif not isinstance(item, list):
+                yield label, item
+    for label, value in projection_fields(capsule["dogfood_rehearsal"], "dogfood_rehearsal"):
+        require(observed, "Observed results", label, value, errors)
+    for label, value in projection_fields(dependencies["dogfood_rehearsal"], "dogfood_rehearsal"):
+        require(inputs, "Input repositories and revisions", label, value, errors)
     provider_qualification = capsule["live_provider_qualification"]
     require(
         acceptance,
@@ -1076,8 +1099,9 @@ def self_test_capsule() -> dict[str, Any]:
             zip(FINAL_COMMAND_LABELS, FINAL_COMMANDS), start=1
         )
     ]
-    return {
+    capsule = {
         "kind": "validation_handoff_capsule",
+        "gate_invocation": "fixture-gate",
         "validated_candidate_head": head,
         "admission_status": "eligible",
         "blocking_classification": None,
@@ -1218,6 +1242,17 @@ def self_test_capsule() -> dict[str, Any]:
     }
 
 
+    fake = runpy.run_path(str(Path(__file__).resolve().parents[1] / "validation/dogfood/rehearsal_test_support.py"))
+    capsule["dependency_snapshot"]["dogfood_rehearsal"] = REHEARSAL["dependencies"](Path(__file__).resolve().parents[2])
+    capsule["contract_coverage_execution"] = {"status": "passed"}
+    with tempfile.TemporaryDirectory(prefix="explicit-fake-rehearsal-") as directory:
+        result, execution, path = fake["fake_owner"](Path(directory) / "dogfood-rehearsal", head,
+            capsule["final_summary_sha256"], "fixture-gate")
+        capsule["dogfood_rehearsal"] = REHEARSAL["stage_evidence"](result, execution, path, head,
+            capsule["final_summary_sha256"], "fixture-gate", capsule["dependency_snapshot"]["dogfood_rehearsal"])
+    return capsule
+
+
 def self_test_report(capsule: dict[str, Any]) -> str:
     def flat_lines(value: dict[str, Any], prefix: str = "") -> list[str]:
         lines: list[str] = []
@@ -1273,7 +1308,7 @@ def self_test_report(capsule: dict[str, Any]) -> str:
         *final_lines,
     ))
     official = capsule["official_v11"]
-    observed_values: dict[str, Any] = {}
+    observed_values: dict[str, Any] = {"dogfood_rehearsal": capsule["dogfood_rehearsal"]}
     provider_qualification = capsule["live_provider_qualification"]
     if provider_qualification["status"] != "not_run":
         observed_values["live_provider_qualification"] = {
@@ -1354,6 +1389,19 @@ def self_test() -> int:
     assert check_shape_text(fully_passed_report) == []
     assert check_capsule_semantics(fully_passed_report, fully_passed) == []
 
+    for mutation in ('missing', 'execution', 'inner', 'summary', 'dependency', 'duplicate', 'binding', 'private'):
+        invalid = copy.deepcopy(fully_passed)
+        stage = invalid['dogfood_rehearsal']
+        if mutation == 'missing': del invalid['dogfood_rehearsal']
+        elif mutation == 'execution': stage['execution'] = None
+        elif mutation == 'inner': stage['result']['pipeline']['expected_inner_verdict'] = 'qualified'
+        elif mutation == 'summary': stage['result_sha256'] = '0' * 64
+        elif mutation == 'dependency': del invalid['dependency_snapshot']['dogfood_rehearsal']
+        elif mutation == 'duplicate': stage['invocation_count'] = 2
+        elif mutation == 'binding': stage['result']['gate_binding']['gate_invocation'] = 'another-gate'
+        elif mutation == 'private': stage['result']['raw_rollout'] = 'must remain private'
+        assert capsule_contract_errors(invalid), mutation
+
     for metric in ("v11_duration_ms", "post_warmup_analysis_growth_bytes"):
         invalid = copy.deepcopy(fully_passed)
         invalid["official_v11"]["performance"]["observed"][metric] = (
@@ -1387,6 +1435,7 @@ def self_test() -> int:
         capsule["phase_8_ready"] = False
 
     def without_provider(capsule: dict[str, Any]) -> None:
+        capsule["dogfood_rehearsal"] = REHEARSAL["not_run_stage"]()
         capsule["live_provider_qualification"] = {
             "status": "not_run",
             "evidence_sha256": None,

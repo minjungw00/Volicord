@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import runpy
 import shutil
 import socket
 import subprocess
@@ -36,6 +37,9 @@ REALISTIC_QUALIFICATION = REBUILD_ROOT / "validation/repository-intelligence/rea
 DOGFOOD_CONTRACT_ASSERTIONS = REBUILD_ROOT / "validation/dogfood/assertions.py"
 DOGFOOD_CAMPAIGN_SELF_TEST = REBUILD_ROOT / "validation/dogfood/campaign_self_test.py"
 DOGFOOD_REMEDIATION_INTEGRATION = REBUILD_ROOT / "validation/dogfood/remediation_integration.py"
+DOGFOOD_REHEARSAL = REBUILD_ROOT / "validation/dogfood/rehearsal.py"
+DOGFOOD_REHEARSAL_SELF_TEST = DOGFOOD_REHEARSAL.with_name("rehearsal_self_test.py")
+REHEARSAL = runpy.run_path(str(DOGFOOD_REHEARSAL.with_name("rehearsal_contract.py")))
 PROVIDER_QUALIFICATION = REBUILD_ROOT / "validation/privacy/background-provider-qualification/harness.py"
 FIXTURE_MANIFEST = REBUILD_ROOT / "validation/shared/fixture-manifest.json"
 FIXTURE_CHECKER = REBUILD_ROOT / "scripts/check-fixture-manifest"
@@ -163,6 +167,7 @@ def hashed_identity(path: Path) -> dict[str, Any]:
 def dependency_snapshot(candidate_head: str | None) -> dict[str, Any]:
     return {
         "candidate_head": candidate_head,
+        "dogfood_rehearsal": REHEARSAL["dependencies"](ROOT),
         **{
             name: hashed_identity(path)
             for name, path in DEPENDENCY_INPUTS.items()
@@ -339,7 +344,8 @@ def executable_check() -> Check:
         "v11_harness": HARNESS.is_file() and os.access(HARNESS, os.X_OK),
     }
     for name, argv in support_commands(REBUILD_ROOT / "scripts/validate"):
-        target = Path(argv[1] if argv[0] == sys.executable else argv[0])
+        target = Path(next(argument for argument in argv[1:] if not argument.startswith("-"))
+            if argv[0] == sys.executable else argv[0])
         files[name] = target.is_file() and os.access(target, os.R_OK if argv[0] == sys.executable else os.X_OK)
     for name in ('gate_self_test.py', 'gate_entrypoint_self_test.py', 'evidence_archive_self_test.py'):
         target = HERE / name
@@ -473,6 +479,7 @@ def authentication_check() -> Check:
 def support_commands(runner_path: Path) -> tuple[tuple[str, tuple[str, ...]], ...]:
     """The gate owns this deterministic suite once, after cheap eligibility."""
     return (
+        ("dogfood_rehearsal_self_test", (sys.executable, "-B", str(DOGFOOD_REHEARSAL_SELF_TEST))),
         ("validation_runner_self_check", (str(runner_path), "self-test")),
         ("v11_harness_self_check", (str(HARNESS), "self-check")),
         ("gate_self_test", (str(runner_path), "gate-self-test")),
@@ -847,6 +854,8 @@ def make_capsule(
     blocking_classification: str | None,
     final_summary: dict[str, Any] | None = None,
     final_summary_hash: str | None = None,
+    gate_invocation: str | None = None,
+    dogfood_rehearsal: dict[str, Any] | None = None,
     provider_qualification: dict[str, Any] | None = None,
     provider_qualification_hash: str | None = None,
     provider_qualification_status: str = "not_run",
@@ -864,8 +873,9 @@ def make_capsule(
     revisit_assessment, revisit_triggers, revisit_source, revisit_completed = (
         revisit_evidence_view(v11_result)
     )
-    return {
+    capsule = {
         "kind": "validation_handoff_capsule",
+        "gate_invocation": gate_invocation,
         "validated_candidate_head": candidate_head,
         "admission_status": admission.get("status"),
         "blocking_classification": blocking_classification,
@@ -895,6 +905,7 @@ def make_capsule(
         "contract_coverage_execution": contract_execution or check(
             "contract_coverage_execution", "not_run", "Final workspace test execution has not qualified"),
         "final_summary_sha256": final_summary_hash,
+        "dogfood_rehearsal": dogfood_rehearsal or REHEARSAL["not_run_stage"](),
         "live_provider_qualification": {
             "status": provider_qualification_status,
             "evidence_sha256": provider_qualification_hash,
@@ -946,15 +957,24 @@ def make_capsule(
             and revisit_triggers == []
             and credential_audit
             and credential_audit.get("status") == "passed"
+            and dogfood_rehearsal is not None
+            and dogfood_rehearsal.get("status") == "passed"
             and provider_qualification is not None
             and blocking_classification is None
         ),
     }
+    if capsule['phase_8_ready']:
+        try:
+            REHEARSAL['validate_stage'](capsule)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            capsule['phase_8_ready'] = False
+            capsule['blocking_classification'] = 'dogfood_rehearsal_failed'
+    return capsule
 
 
 def stage_evidence_archive(capsule: dict[str, Any]) -> dict[str, Any]:
     staged = copy.deepcopy(capsule)
-    prerequisites_passed = staged.get("phase_8_ready") is True
+    prerequisites_passed = staged.get("phase_8_ready") is True and REHEARSAL["validate_stage"](staged)
     staged["evidence_archive"] = {
         "status": "pending",
         "prerequisites_passed": prerequisites_passed,
@@ -988,6 +1008,8 @@ def complete_evidence_archive(
     ):
         raise ValueError("evidence archive completion identities are inconsistent")
     prerequisites_passed = evidence.get("prerequisites_passed") is True
+    if prerequisites_passed and not REHEARSAL["validate_stage"](completed):
+        raise ValueError("archive readiness requires passed rehearsal")
     completed["evidence_archive"] = {
         "status": "verified",
         "prerequisites_passed": prerequisites_passed,
@@ -1043,6 +1065,7 @@ def orchestrate(
     admission: dict[str, Any],
     final_commands: Sequence[Sequence[str]],
     final_owner: Callable[[], tuple[dict[str, Any], Path]],
+    rehearsal_owner: Callable[[str, Path], tuple[dict[str, Any] | None, dict[str, Any], Path]],
     provider_owner: Callable[[str], tuple[dict[str, Any] | None, dict[str, Any], Path]],
     preflight_owner: Callable[[str, Path], tuple[dict[str, Any] | None, dict[str, Any]]],
     v11_owner: Callable[[str, Path, Path], tuple[dict[str, Any] | None, dict[str, Any]]],
@@ -1051,6 +1074,9 @@ def orchestrate(
     candidate_check_owner: Callable[[str], Check] = pre_final_repository_check,
     contract_execution_owner: Callable[[dict[str, Any]], Check] = contract_execution_check,
 ) -> tuple[dict[str, Any], dict[str, int]]:
+    rehearsal = REHEARSAL["not_run_stage"]()
+    def capsule_with_rehearsal(**evidence):
+        return make_capsule(gate_invocation=gate_directory.name, dogfood_rehearsal=rehearsal, **evidence)
     continuity_checks = []
     def continuity(boundary):
         observed = candidate_check_owner(admission["candidate_head"])
@@ -1058,16 +1084,16 @@ def orchestrate(
         return observed.get("status") == "passed"
 
     def candidate_failure(**evidence):
-        capsule = make_capsule(
+        capsule = capsule_with_rehearsal(
             admission=admission, candidate_head=admission["candidate_head"],
             blocking_classification="candidate_changed_during_qualification", **evidence)
         capsule["candidate_continuity_checks"] = continuity_checks
         return capsule, counts
 
-    counts = {"final": 0, "provider_live_qualification": 0, "preflight": 0, "official_v11": 0, "credential_audit": 0}
+    counts = {"final": 0, "dogfood_rehearsal": 0, "provider_live_qualification": 0, "preflight": 0, "official_v11": 0, "credential_audit": 0}
     candidate_head = admission.get("candidate_head")
     if not admission.get("eligible"):
-        capsule = make_capsule(
+        capsule = capsule_with_rehearsal(
             admission=admission,
             candidate_head=candidate_head,
             blocking_classification=admission.get("blocking_classification"),
@@ -1075,7 +1101,7 @@ def orchestrate(
         return capsule, counts
 
     if not isinstance(candidate_head, str) or not candidate_head:
-        return make_capsule(
+        return capsule_with_rehearsal(
             admission=admission,
             candidate_head=None,
             blocking_classification="candidate_state_unavailable",
@@ -1091,7 +1117,7 @@ def orchestrate(
             if details.get("dirty_entry_count")
             else "candidate_state_unavailable"
         )
-        return make_capsule(
+        return capsule_with_rehearsal(
             admission=admission,
             candidate_head=candidate_head,
             blocking_classification=blocking,
@@ -1102,7 +1128,7 @@ def orchestrate(
     final_summary, final_path = final_owner()
     final_hash = sha256(final_path)
     if not exact_final_passed(final_summary, final_commands):
-        return make_capsule(
+        return capsule_with_rehearsal(
             admission=admission,
             candidate_head=candidate_head,
             blocking_classification="final_failed",
@@ -1118,13 +1144,28 @@ def orchestrate(
 
     contract_execution = contract_execution_owner(final_summary)
     if contract_execution.get("status") != "passed":
-        return make_capsule(
+        return capsule_with_rehearsal(
             admission=admission, candidate_head=candidate_head,
             blocking_classification="contract_coverage_execution_failed",
             final_summary=final_summary, final_summary_hash=final_hash,
             pre_final_check=pre_final, final_artifact_produced=True,
             contract_execution=contract_execution,
         ), counts
+
+    counts["dogfood_rehearsal"] += 1
+    result, execution, result_path = rehearsal_owner(candidate_head, final_path)
+    rehearsal = REHEARSAL["stage_evidence"](result, execution, result_path, candidate_head,
+        final_hash, gate_directory.name, admission["dependency_snapshot"]["dogfood_rehearsal"])
+    if rehearsal["status"] != "passed":
+        return capsule_with_rehearsal(admission=admission, candidate_head=candidate_head,
+            blocking_classification="dogfood_rehearsal_" + rehearsal["status"],
+            final_summary=final_summary, final_summary_hash=final_hash,
+            pre_final_check=pre_final, final_artifact_produced=True,
+            contract_execution=contract_execution), counts
+
+    if not continuity("after_rehearsal"):
+        return candidate_failure(final_summary=final_summary, final_summary_hash=final_hash,
+            pre_final_check=pre_final, final_artifact_produced=True, contract_execution=contract_execution)
 
     counts["provider_live_qualification"] += 1
     provider_qualification, provider_execution, provider_path = provider_owner(candidate_head)
@@ -1136,7 +1177,7 @@ def orchestrate(
             provider_qualification, candidate_head, expected_provider_model
         )
     ):
-        return make_capsule(
+        return capsule_with_rehearsal(
             admission=admission,
             candidate_head=candidate_head,
             blocking_classification="provider_live_qualification_failed",
@@ -1157,7 +1198,7 @@ def orchestrate(
     counts["preflight"] += 1
     preflight, preflight_execution = preflight_owner(candidate_head, final_path)
     if preflight_execution.get("exit_code", preflight_execution.get("wrapper_exit_code")) != 0 or not preflight or preflight.get("status") != "passed":
-        return make_capsule(
+        return capsule_with_rehearsal(
             admission=admission,
             candidate_head=candidate_head,
             blocking_classification="v11_preflight_failed",
@@ -1210,7 +1251,7 @@ def orchestrate(
             **check("final_artifact_continuity", "environment_blocked", "bound Final artifact changed or disappeared")})
     if not candidate_continues or not final_unchanged:
         blocking = "candidate_changed_during_qualification"
-    capsule = make_capsule(
+    capsule = capsule_with_rehearsal(
         admission=admission,
         candidate_head=candidate_head,
         blocking_classification=blocking,

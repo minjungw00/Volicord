@@ -90,7 +90,8 @@ REQUIRED_PAYLOADS = {
     "processes.json",
     "tracked-files.json",
 }
-OPTIONAL_PAYLOADS = {"final-summary.json"}
+OWNED_PYTHON_SCRIPTS = ('./rebuild/validation/shared/contract_coverage.py', './rebuild/validation/dogfood/assertions.py', './rebuild/validation/dogfood/campaign_self_test.py', './rebuild/validation/dogfood/remediation_integration.py', './rebuild/validation/dogfood/rehearsal_self_test.py', './rebuild/validation/repository-intelligence/realistic-qualification/assertions.py', './rebuild/validation/privacy/background-provider-qualification/harness.py')
+OPTIONAL_PAYLOADS = {"final-summary.json", "dogfood-rehearsal.json"}
 PORTABLE_EXECUTABLES = {
     "bash",
     "cargo",
@@ -99,6 +100,7 @@ PORTABLE_EXECUTABLES = {
     "codex",
     "git",
     "harness.py",
+    "rehearsal.py",
     "assertions.py",
     "campaign_self_test.py",
     "remediation_integration.py",
@@ -471,6 +473,12 @@ def verify_current_command_grammar(
                 *[("redacted", "program_argument") for _ in argv[3:]],
             ]
             matched = argv_matches(argv, roles_by_index, expected)
+        if executable in {'python', 'python3'}:
+            index = 2 if len(argv) > 1 and argv[1] == '-B' else 1
+            if index < len(argv) and argv[index] in OWNED_PYTHON_SCRIPTS:
+                prefix = [("executable",)] + (['-B'] if index == 2 else []) + [("path",)]
+                matched = any(argv_matches(argv, roles_by_index, shape)
+                    for shape in (prefix, prefix + ['--self-test']))
     elif executable == "codex":
         matched = argv_matches(
             argv,
@@ -506,6 +514,9 @@ def verify_current_command_grammar(
         matched = verify_git_argv(argv, roles_by_index)
     elif executable == "volicord":
         matched = verify_volicord_argv(argv, roles_by_index)
+    elif executable == "rehearsal.py":
+        matched = argv_matches(argv, roles_by_index, (("executable",), "--candidate-head",
+            ("redacted", "candidate_identity"), "--final-artifact", ("path",), "--output", ("path",)))
     elif executable == "harness.py":
         shapes = (
             (("executable",), "self-check"),
@@ -781,6 +792,50 @@ def verify(path: Path, expected_candidate: str | None) -> dict[str, Any]:
             or not SHA256.fullmatch(str(entry.get("sha256")))
         ):
             fail("invalid tracked/executable file-mode evidence")
+
+    rehearsal = runpy.run_path(str(Path(__file__).resolve().parents[1] / "validation/dogfood/rehearsal_contract.py"))
+    try:
+        rehearsal["validate_stage"](capsule)
+        stage = capsule['dogfood_rehearsal']
+        member = 'dogfood-rehearsal.json'
+        if (stage['result'] is not None) != (member in names):
+            fail('rehearsal retained result presence differs from capsule')
+        if member in names:
+            body = contents[f'{ROOT}/{member}']
+            if hashlib.sha256(body).hexdigest() != stage['result_sha256'] or json.loads(body) != stage['result']:
+                fail('rehearsal retained result hash/body differs from capsule')
+        by_path = {entry['path']: entry for entry in tracked_files}
+        for entry in capsule['dependency_snapshot']['dogfood_rehearsal']['inputs'].values():
+            if by_path.get(entry['path'], {}).get('sha256') != entry['sha256']:
+                fail('rehearsal dependency differs from candidate source manifest')
+        processes = load_json(contents, f'{ROOT}/processes.json')['processes']
+        invocations = [p for p in processes if p['artifact'] == 'dogfood-rehearsal-invocation/result.json']
+        if len(invocations) != stage['invocation_count']:
+            fail('rehearsal invocation count lacks matching process evidence')
+        if invocations:
+            process, execution = invocations[0], stage['execution']
+            if (process['argv'][0] != 'rehearsal.py'
+                or any(process[k] != execution[k] for k in ('exit_code', 'wrapper_exit_code', 'termination', 'duration_ms', 'started_at', 'ended_at'))
+                or process['streams'] != {k: execution[k] for k in ('stdout', 'stderr')}
+                or (process['spawn']['status'] == 'failed') != execution['spawn_error']):
+                fail('rehearsal execution is inconsistent with retained wrapper')
+            from datetime import datetime
+            start, end = (datetime.fromisoformat(process[k]) for k in ('started_at', 'ended_at'))
+            if 'final-summary.json' not in names or start < datetime.fromisoformat(load_json(contents, f'{ROOT}/final-summary.json')['ended_at']):
+                fail('rehearsal started before ordered Final completed')
+            final = load_json(contents, f'{ROOT}/final-summary.json')
+            commands = final['commands']
+            if (final.get('outcome') != 'succeeded' or final.get('failure_count') != 0
+                or final.get('command_count') != 4 or len(commands) != 4
+                or [p['argv'][1] for p in commands] != ['metadata', 'fmt', 'clippy', 'test']
+                or any(p['exit_code'] != 0 or p['wrapper_exit_code'] != 0 or p['outcome'] != 'succeeded'
+                    or p['termination'] is not None or p['spawn']['status'] != 'started' for p in commands)):
+                fail('rehearsal lacks successful ordered Final execution')
+            for p in processes:
+                if p['artifact'] in {'live-provider-qualification/result.json', 'v11-preflight/result.json', 'official-v11-invocation/result.json'} and datetime.fromisoformat(p['started_at']) < end:
+                    fail('external qualification started before rehearsal teardown')
+    except (ValueError, TypeError, KeyError, AttributeError) as error:
+        fail('rehearsal current contract: ' + str(error))
 
     return {
         "kind": "validation_evidence_archive_verification",

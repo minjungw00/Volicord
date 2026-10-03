@@ -283,7 +283,9 @@ def verify_technical(candidate, capsule_path, archive_path):
     # JSON encoding also distinguishes booleans from numerically equal values.
     review.require(operations.encoded(capsule) == operations.encoded(expected),
         "final capsule differs from verified archive completion/publication")
-    return {"state": "passed" if capsule["phase_8_ready"] else "failed", "candidate_head": candidate,
+    return {"rehearsal": {key: capsule["dogfood_rehearsal"][key]
+            for key in ("contract", "status", "result_sha256")},
+        "state": "passed" if capsule["phase_8_ready"] else "failed", "candidate_head": candidate,
         "capsule_sha256": operations.digest(data), "archive_sha256": verification["archive_sha256"],
         "verification": "maintained_independent_archive_and_capsule_contract", "execution": "reused"}
 
@@ -390,6 +392,12 @@ def validate_result(value):
     review.require(value["replacement_qualification"] == expected and value["replacement_pass_candidate"] is (expected == "qualified")
         and q["state"] == ("complete" if complete else "incomplete"), "qualification state contradicts mandatory evidence")
     if t["state"] == "passed":
+        import rehearsal_contract
+        proof = t.get("rehearsal")
+        review.require(isinstance(proof, dict) and set(proof) == {"contract", "status", "result_sha256"}
+            and proof["contract"] == rehearsal_contract.CONTRACT and proof["status"] == "passed"
+            and re.fullmatch(r"[0-9a-f]{64}", str(proof["result_sha256"])),
+            "technical qualification requires retained passed rehearsal identity")
         review.require(t["candidate_head"] == value["candidate_head"], "technical gate candidate mismatch")
     approval = value["operator_approval"]
     review.require(approval == {"state": "not_provided"} and value["phase_9_ready"] is False,

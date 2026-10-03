@@ -30,6 +30,8 @@ def load_module(name: str, path: Path) -> Any:
     return module
 
 
+REHEARSAL_TEST = load_module("gate_rehearsal_test_owner", ROOT / "rebuild/validation/dogfood/rehearsal_test_support.py")
+
 gate = load_module("volicord_gate_self_test_target", GATE_PATH)
 harness = load_module("volicord_harness_self_test_target", HARNESS_PATH)
 HEAD = gate.git_output("rev-parse", "HEAD").stdout.strip()
@@ -112,6 +114,7 @@ def synthetic_environment_evidence() -> dict[str, Any]:
 def synthetic_dependency_evidence() -> dict[str, Any]:
     return {
         "candidate_head": HEAD,
+        "dogfood_rehearsal": gate.REHEARSAL["dependencies"](ROOT),
         "cargo_lock": {
             "path": "rebuild/Cargo.lock", "status": "available", "sha256": "c" * 64,
         },
@@ -172,7 +175,7 @@ class Owners:
         self.v11_passes = v11_passes
         self.provider_passes = provider_passes
         self.revisit_assessment = revisit_assessment
-        self.counts = {"final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
+        self.counts = {"rehearsal": 0, "final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
         self.final_path: Path | None = None
         self.preflight_path: Path | None = None
         self.v11_result: dict[str, Any] | None = None
@@ -192,6 +195,7 @@ class Owners:
                     "argv": list(command),
                     "outcome": "failed" if failed else "succeeded",
                     "exit_code": 9 if failed else 0,
+                    "wrapper_exit_code": 9 if failed else 0,
                     "termination": None,
                     "spawn_error": None,
                     "duration_ms": 1.0,
@@ -203,6 +207,11 @@ class Owners:
         self.final_path = directory / "summary.json"
         self.final_path.write_text(json.dumps(summary), encoding="utf-8")
         return summary, self.final_path
+
+    def rehearsal(self, candidate_head, final_path, invocation):
+        self.counts['rehearsal'] += 1
+        return REHEARSAL_TEST.fake_owner(self.root / 'dogfood-rehearsal', candidate_head,
+            gate.sha256(final_path), invocation)
 
     def preflight(self, candidate_head: str, final_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         self.counts["preflight"] += 1
@@ -351,6 +360,7 @@ def run_orchestration(root: Path, admitted: dict[str, Any], owners: Owners, cand
         admission=admitted,
         final_commands=FINAL_COMMANDS,
         final_owner=owners.final,
+        rehearsal_owner=lambda head, final: owners.rehearsal(head, final, root.name),
         contract_execution_owner=execution_checker or (lambda summary: passed("contract_coverage_execution", execution_owner="exact_candidate_final_workspace_tests", mapped_test_count=12)),
         provider_owner=owners.provider,
         preflight_owner=owners.preflight,
@@ -448,7 +458,7 @@ def assert_maintained_contract_admission(root: Path) -> None:
         assert capsule["blocking_classification"] == "validation_failed"
         assert capsule["phase_8_ready"] is False
         assert all(count == 0 for count in counts.values())
-        assert owners.counts == {"final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
+        assert owners.counts == {"rehearsal": 0, "final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
 
 
 def assert_dirty_candidate_admission(root: Path) -> None:
@@ -505,9 +515,9 @@ def assert_contract_execution(root: Path) -> None:
         execution_checker=lambda final: gate.check('contract_coverage_execution', 'failed', 'omitted mapped test'))
     assert capsule['blocking_classification'] == 'contract_coverage_execution_failed'
     assert capsule['contract_coverage_execution']['status'] == 'failed'
-    assert counts == {'final': 1, 'provider_live_qualification': 0, 'preflight': 0,
+    assert counts == {'dogfood_rehearsal': 0, 'final': 1, 'provider_live_qualification': 0, 'preflight': 0,
                       'official_v11': 0, 'credential_audit': 0}
-    assert owners.counts == {'final': 1, 'provider': 0, 'preflight': 0, 'v11': 0, 'audit': 0}
+    assert owners.counts == {'rehearsal': 0, 'final': 1, 'provider': 0, 'preflight': 0, 'v11': 0, 'audit': 0}
 
 
 def assert_support_scheduling(root: Path) -> None:
@@ -567,9 +577,66 @@ def assert_support_scheduling(root: Path) -> None:
     assert all(value['details']['exit_code'] == 37 and value['details']['artifact_directory'] for value in failures)
 
 
+def assert_rehearsal_controls(root):
+    admitted = admission(root / 'admission', authorization=gate.AUTHORIZATION_ASSERTION,
+        provider_authorization=gate.PROVIDER_AUTHORIZATION_ASSERTION, provider_model='synthetic-model')
+    mutations = ('failure', 'tooling', 'timeout', 'signal', 'missing', 'candidate', 'binary',
+        'fixture', 'producer', 'binding', 'duplicate_process', 'teardown', 'inner', 'zero_samples', 'missing_stream', 'bool_exit')
+    for mutation in mutations:
+        case = root / mutation
+        owners = Owners(case / 'owners')
+        original = owners.rehearsal
+        def rehearsal(head, final, invocation):
+            value, execution, path = original(head, final, invocation)
+            if mutation == 'missing_stream': execution['stdout'] = None
+            elif mutation == 'bool_exit': execution['exit_code'] = False
+            elif mutation == 'failure': execution.update(exit_code=1, wrapper_exit_code=1)
+            elif mutation == 'tooling': execution.update(exit_code=None, wrapper_exit_code=127, spawn_error='FileNotFoundError: fixture executable')
+            elif mutation == 'timeout': execution.update(exit_code=1, wrapper_exit_code=1, termination={'kind': 'timeout'})
+            elif mutation == 'signal': execution.update(exit_code=None, wrapper_exit_code=143, termination={'kind': 'signal', 'number': 15, 'name': 'SIGTERM'})
+            elif mutation == 'missing': path.unlink()
+            elif mutation == 'candidate': value['candidate_head'] = '0' * 40
+            elif mutation == 'binary': value['executables']['volicord-mcp'] = '0' * 64
+            elif mutation == 'fixture': value['fixture_sha256'] = '0' * 64
+            elif mutation == 'producer': value['producer_sha256']['rehearsal.py'] = '0' * 64
+            elif mutation == 'binding': value['gate_binding']['final_sha256'] = '0' * 64
+            elif mutation == 'duplicate_process': value['processes'].append(value['processes'][0])
+            elif mutation == 'teardown': value['teardown'] = 'failed'
+            elif mutation == 'inner': value['pipeline']['expected_inner_verdict'] = 'qualified'
+            elif mutation == 'zero_samples': value['pipeline']['resource_sample_count'] = 0
+            value['result_id'] = gate.REHEARSAL['digest']({k: v for k, v in value.items() if k != 'result_id'})
+            if mutation != 'missing': path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
+            return value, execution, path
+        owners.rehearsal = rehearsal
+        capsule, counts = run_orchestration(case / 'gate', admitted, owners)
+        assert counts['dogfood_rehearsal'] == 1 and counts['final'] == 1
+        assert owners.counts['rehearsal'] == 1
+        assert all(counts[key] == 0 for key in ('provider_live_qualification', 'preflight', 'official_v11', 'credential_audit'))
+        assert capsule['phase_8_ready'] is False
+        assert capsule['live_provider_qualification']['status'] == capsule['official_v11']['status'] == 'not_run'
+        assert capsule['blocking_classification'] == ('dogfood_rehearsal_environment_blocked' if mutation == 'tooling' else 'dogfood_rehearsal_failed')
+        if mutation == 'missing_stream':
+            try: gate.REHEARSAL['validate_stage'](capsule)
+            except ValueError: pass
+            else: raise AssertionError('missing execution stream accepted')
+        else:
+            assert gate.REHEARSAL['validate_stage'](capsule) is False
+    passed_owners = Owners(root / 'passed-owners')
+    capsule, counts = run_orchestration(root / 'passed-gate', admitted, passed_owners)
+    assert gate.REHEARSAL['validate_stage'](capsule) is True and counts['dogfood_rehearsal'] == 1
+    capsule['dogfood_rehearsal']['invocation_count'] = 2
+    try:
+        gate.REHEARSAL['validate_stage'](capsule)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('duplicate rehearsal invocation accepted')
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-gate-self-test-") as directory:
         root = Path(directory)
+        assert_rehearsal_controls(root / "rehearsal-controls")
         assert_support_scheduling(root / "support-scheduling")
         assert_contract_execution(root / "contract-execution")
         assert_maintained_contract_admission(root / "maintained-contracts")
@@ -586,7 +653,7 @@ def main() -> int:
         capsule, counts = run_orchestration(root / "loopback-gate", loopback_blocked, owners)
         assert capsule["blocking_classification"] == "environment_blocked"
         assert counts["final"] == 0 and counts["official_v11"] == 0
-        assert owners.counts == {"final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
+        assert owners.counts == {"rehearsal": 0, "final": 0, "provider": 0, "preflight": 0, "v11": 0, "audit": 0}
 
         authorization_blocked = admission(root / "authorization")
         owners = Owners(root / "authorization-owners")
@@ -626,8 +693,8 @@ def main() -> int:
         old = root / "older-unrelated-final.json"
         old.write_text('{"outcome":"succeeded","failure_count":0}\n', encoding="utf-8")
         capsule, counts = run_orchestration(root / "success-gate", admitted, owners)
-        assert counts == {"final": 1, "provider_live_qualification": 1, "preflight": 1, "official_v11": 1, "credential_audit": 1}
-        assert owners.counts == {"final": 1, "provider": 1, "preflight": 1, "v11": 1, "audit": 1}
+        assert counts == {"dogfood_rehearsal": 1, "final": 1, "provider_live_qualification": 1, "preflight": 1, "official_v11": 1, "credential_audit": 1}
+        assert owners.counts == {"rehearsal": 1, "final": 1, "provider": 1, "preflight": 1, "v11": 1, "audit": 1}
         assert owners.preflight_path == owners.final_path and owners.preflight_path != old
         assert capsule["phase_8_ready"] is True
         assert capsule["official_v11"]["performance"] == owners.v11_result["performance"]
@@ -742,7 +809,7 @@ def main() -> int:
                                             StaleBindingOwners(root / f"stale-{field}-owners"))
             assert rejected["phase_8_ready"] is False
             assert rejected["blocking_classification"] == "v11_failed"
-        for fail_at in (1, 2, 3):
+        for fail_at in (1, 2, 3, 4):
             check_count = 0
             def changed_candidate(_head):
                 nonlocal check_count
@@ -755,7 +822,7 @@ def main() -> int:
             assert rejected["phase_8_ready"] is False
             assert rejected["blocking_classification"] == "candidate_changed_during_qualification"
             assert any(check["status"] != "passed" for check in rejected["candidate_continuity_checks"])
-            assert counts["official_v11"] == (1 if fail_at == 3 else 0)
+            assert counts["official_v11"] == (1 if fail_at == 4 else 0)
         class ChangedFinalOwners(Owners):
             def v11(self, *args):
                 result, execution = super().v11(*args)
@@ -859,7 +926,7 @@ def main() -> int:
         assert set(configuration["same_session_artifact_flow"].values()) == {True}
         for sentinel in SECRET_SENTINELS:
             assert sentinel not in encoded
-        assert len(encoded.encode("utf-8")) < 32_000
+        assert len(encoded.encode("utf-8")) < 256 * 1024
         shutil.rmtree(owners.final_path.parent)
         shutil.rmtree(root / "success-gate" / "official-v11")
         assert required_capsule_keys <= capsule.keys() and capsule["phase_8_ready"] is True
@@ -879,6 +946,7 @@ def main() -> int:
         capsule, counts = run_orchestration(root / "provider-failure-gate", admitted, owners)
         assert capsule["blocking_classification"] == "provider_live_qualification_failed"
         assert counts == {
+            "dogfood_rehearsal": 1,
             "final": 1,
             "provider_live_qualification": 1,
             "preflight": 0,
@@ -886,7 +954,7 @@ def main() -> int:
             "credential_audit": 0,
         }
         assert owners.counts == {
-            "final": 1, "provider": 1, "preflight": 0, "v11": 0, "audit": 0,
+            "rehearsal": 1, "final": 1, "provider": 1, "preflight": 0, "v11": 0, "audit": 0,
         }
         assert capsule["live_provider_qualification"]["status"] == "failed"
         assert capsule["official_v11"]["status"] == "not_run"

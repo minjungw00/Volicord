@@ -9,29 +9,42 @@ import rehearsal_contract as contract
 import rehearsal  # Import the actual runner and its bounded workflow builders.
 
 
-def passed_result(candidate="a" * 40):
-    """Explicit fake execution owner for orchestration/portable contract tests."""
-    fixture = json.loads(contract.FIXTURE.read_bytes())
-    value = {"kind": "dogfood_evidence_rehearsal", "candidate_head": candidate,
-        "evidence_purpose": purpose.REHEARSAL, **contract.identities(), "status": "passed",
-        "teardown": "completed", "external_transmission": "none", "operator_approval": "not_provided",
-        "executables": dict.fromkeys(("volicord", "volicord-mcp", "volicord-viewer"), "b" * 64),
-        "pipeline": {"evidence_set_sha256": "c" * 64, "evaluation_run_id": "d" * 64,
-            "qualification_run_id": "e" * 64, "expected_inner_verdict": fixture["expected_inner"]["replacement_qualification"],
-            "technical_evidence": "not_provided", "human_observations": "not_provided",
-            "unresolved_criteria_count": 200, "hard_findings": [],
-            "copied_lineage_id": "f" * 64, "copied_verification": "verified", "resource_sample_count": 3,
-            "topology": json.loads(Path(__file__).with_name("evaluation.json").read_bytes())["qualification_policy"]["campaign_topology"],
-            "measured_evidence_eligible": False, "controls": dict.fromkeys(fixture["controls"], "passed")},
-        "processes": [{"identity": "support-process-" + str(i), "exit_code": 0,
-            "termination": "exited", "duration_ns": 100,
-            "stdout": {"bytes": 1, "sha256": "1" * 64}, "stderr": {"bytes": 0, "sha256": "2" * 64}}
-            for i in range(16)]}
-    value["result_id"] = contract.digest(value)
-    return value
+from rehearsal_test_support import passed_result
 
 
 class ContractTests(unittest.TestCase):
+    def test_actual_child_timeout_is_reaped_and_streams_retained(self):
+        import os
+        import subprocess
+        import sys
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            processes = rehearsal.Processes(Path(directory) / 'processes', process_timeout=0.05)
+            children = []
+            spawn = subprocess.Popen
+            def observed_spawn(*args, **kwargs):
+                child = spawn(*args, **kwargs)
+                children.append(child)
+                return child
+            with patch.object(rehearsal.subprocess, 'Popen', side_effect=observed_spawn):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    processes.run([sys.executable, '-c', 'import time; time.sleep(60)'])
+            self.assertEqual(len(children), 1)
+            self.assertIsNotNone(children[0].poll())
+            with self.assertRaises(ChildProcessError): os.waitpid(children[0].pid, os.WNOHANG)
+            self.assertEqual(processes.records[0]['termination'], 'signal')
+            self.assertLess(processes.records[0]['exit_code'], 0)
+            for name in ('stdout', 'stderr'):
+                body = (processes.root / ('process-0000.' + name)).read_bytes()
+                self.assertEqual(processes.records[0][name], rehearsal.explanation_evidence.binding(body))
+
+    def test_independent_contract_matches_maintained_inputs(self):
+        fixture = json.loads(contract.FIXTURE.read_bytes())
+        self.assertEqual(fixture['expected_inner']['replacement_qualification'], contract.EXPECTED_INNER)
+        self.assertEqual(tuple(fixture['controls']), contract.CONTROLS)
+        self.assertEqual(json.loads(Path(__file__).with_name('evaluation.json').read_bytes())['qualification_policy']['campaign_topology'], contract.TOPOLOGY)
+
     def test_support_memory_and_obligations_use_the_same_purpose(self):
         import campaign
         import resource_observer
@@ -62,7 +75,7 @@ class ContractTests(unittest.TestCase):
     def test_passed_claim_requires_pipeline_execution_and_inner_limits(self):
         original = passed_result()
         contract.validate_result(original, "a" * 40)
-        for mutation in ("candidate", "fixture", "producer", "processes", "exit", "signal", "inner", "human", "samples", "controls", "approval", "teardown", "purpose"):
+        for mutation in ("candidate", "fixture", "producer", "processes", "exit", "signal", "inner", "human", "samples", "controls", "approval", "teardown", "purpose", "binary", "raw"):
             value = copy.deepcopy(original)
             if mutation == "candidate": value["candidate_head"] = "0" * 40
             elif mutation == "fixture": value["fixture_sha256"] = "0" * 64
@@ -76,6 +89,8 @@ class ContractTests(unittest.TestCase):
             elif mutation == "controls": value["pipeline"]["controls"].popitem()
             elif mutation == "approval": value["operator_approval"] = "approved"
             elif mutation == "teardown": value["teardown"] = "pending"
+            elif mutation == "binary": value["executables"]["volicord-mcp"] = "0" * 64
+            elif mutation == "raw": value["raw_source_body"] = "private source must stay local"
             elif mutation == "purpose": value["evidence_purpose"] = purpose.NATURALISTIC
             value["result_id"] = contract.digest({k: v for k, v in value.items() if k != "result_id"})
             with self.subTest(mutation=mutation), self.assertRaises(ValueError):

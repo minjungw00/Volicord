@@ -10,6 +10,7 @@ import argparse
 from contextlib import contextmanager
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -18,7 +19,10 @@ import selectors
 import shutil
 import signal
 import subprocess
+import sys
 import time
+
+sys.dont_write_bytecode = True
 
 import campaign as c
 import codex_events
@@ -162,8 +166,9 @@ def copied_control(root):
 
 class Processes:
     """Private complete streams with bounded portable hash/exit observations."""
-    def __init__(self, root):
+    def __init__(self, root, process_timeout=300):
         self.root, self.records = root, []
+        self.process_timeout = process_timeout
         root.mkdir(mode=0o700)
 
     def run(self, argv, *, cwd=c.ROOT, input=None):
@@ -173,9 +178,12 @@ class Processes:
             stdin=subprocess.PIPE if input else subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         try:
-            stdout, stderr = child.communicate(input, timeout=300)
+            stdout, stderr = child.communicate(input, timeout=self.process_timeout)
         except BaseException:
-            os.killpg(child.pid, signal.SIGKILL)
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             stdout, stderr = child.communicate(timeout=5)
             self.save(label, stdout, stderr, child.returncode, started)
             raise
@@ -470,6 +478,7 @@ def pipeline(root, candidate, binary, logs):
     checked["copied_semantic_rehash"] = copied_control(copied)
     require(set(checked) == set(json.loads(FIXTURE.read_bytes())["controls"]), "rehearsal control coverage changed")
     return {"evidence_set_sha256": c.harness.sha256(root / "campaign-unavailable/evidence-set.json"),
+        "executables": {name: item["sha256"] for name, item in manifest["candidate_artifacts"].items()},
         "evaluation_run_id": evaluation["run_id"], "qualification_run_id": qualified["run_id"],
         "expected_inner_verdict": qualified["replacement_qualification"],
         "technical_evidence": "not_provided", "human_observations": "not_provided",
@@ -483,6 +492,7 @@ def pipeline(root, candidate, binary, logs):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-head", required=True)
+    parser.add_argument("--final-artifact", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--bin-dir", type=Path)
     args = parser.parse_args()
@@ -490,14 +500,27 @@ def main():
         raise InterruptedError("rehearsal interrupted")
     signal.signal(signal.SIGTERM, interrupted)
     signal.signal(signal.SIGINT, interrupted)
+    signal.signal(signal.SIGALRM, interrupted)
+    signal.alarm(1800)
     output = args.output.resolve()
     c.require_current_candidate(args.candidate_head)
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
     logs = Processes(output / "processes")
     result = {"kind": "dogfood_evidence_rehearsal", "candidate_head": args.candidate_head,
         "evidence_purpose": purpose.REHEARSAL, **identities(), "status": "not_run",
-        "external_transmission": "none", "operator_approval": "not_provided"}
+        "external_transmission": "none", "operator_approval": "not_provided", "gate_binding": None}
     try:
+        if args.final_artifact:
+            require(args.bin_dir is None, "gate rehearsal installs its own candidate binaries")
+            spec = importlib.util.spec_from_file_location("rehearsal_final_binding",
+                c.ROOT / "rebuild/validation/end-to-end/multi-repository/final_evidence.py")
+            owner = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(owner)
+            binding = owner.read_gate_final(c.ROOT, args.candidate_head, args.final_artifact)
+            result["gate_binding"] = {"gate_invocation": binding["gate_invocation"],
+                "final_sha256": binding["final_sha256"],
+                "binding_sha256": os.environ[owner.BINDING_HASH_ENV]}
+            require(output.parent == Path(binding["gate_directory"]), "rehearsal output escapes its gate")
         if args.bin_dir:
             binary = args.bin_dir.resolve() / "volicord"
         else:
@@ -522,10 +545,18 @@ def main():
                 teardown = "failed"
                 result["status"] = "failed"
                 result["failure_kind"] = "ProcessTeardownError"
+        signal.alarm(0)
         # Canonical/analysis/source copies stay private; no processes survive into V11.
         result["processes"] = logs.records
         result["teardown"] = teardown
         result["result_id"] = machine_findings.digest(result)
+        if result["status"] == "passed":
+            try:
+                validate_result(result, args.candidate_head)
+            except ValueError as error:
+                result["status"], result["failure_kind"] = "failed", "ResultContractError"
+                (output / "failure.txt").write_text(str(error) + "\n")
+                result["result_id"] = machine_findings.digest({k: v for k, v in result.items() if k != "result_id"})
         c.write_json(output / "result.json", result)
         print(json.dumps({"status": result["status"], "result": str(output / "result.json")}))
     return 0 if result["status"] == "passed" else 1

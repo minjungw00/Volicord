@@ -47,7 +47,7 @@ def structured_stdout(result: subprocess.CompletedProcess[str]) -> dict[str, Any
     try:
         value = json.loads(result.stdout)
     except json.JSONDecodeError as error:
-        raise AssertionError(f"entry point did not emit JSON: {result.stdout!r}") from error
+        raise AssertionError(f"entry point did not emit JSON: {result.stdout!r}; stderr={result.stderr!r}") from error
     assert isinstance(value, dict)
     return value
 
@@ -78,9 +78,17 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     shutil.copy2(RESOURCE_ESTIMATE, resource_estimate)
     shutil.copy2(GATE.with_name("result_contract.py"), gate.with_name("result_contract.py"))
 
+    # Copy every bounded rehearsal producer into this explicit isolated test candidate.
+    import runpy
+    rehearsal = runpy.run_path(str(ROOT / 'rebuild/validation/dogfood/rehearsal_contract.py'))
+    for entry in rehearsal['dependencies'](ROOT)['inputs'].values():
+        target = candidate / entry['path']
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / entry['path'], target)
+
     (candidate / ".gitignore").write_text("/rebuild/.local/\n", encoding="utf-8")
     manifest = candidate / "rebuild/validation/shared/fixture-manifest.json"
-    manifest.parent.mkdir(parents=True)
+    manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(json.dumps({
         "schema_version": 1,
         "fixtures": [
@@ -126,6 +134,7 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
         "rebuild/validation/dogfood/qualification_self_test.py",
         "rebuild/validation/dogfood/assertions.py",
         "rebuild/validation/dogfood/campaign_self_test.py",
+        "rebuild/validation/dogfood/rehearsal_self_test.py",
         "rebuild/validation/dogfood/remediation_integration.py",
         "rebuild/validation/privacy/background-provider-qualification/harness.py",
     ):
@@ -209,8 +218,11 @@ def assert_maintained_preflight(parent: Path) -> None:
     shutil.copy2(HARNESS, harness)
     for name in ("performance.py", "performance-budgets.json", "final_evidence.py",
                  "restart_recall.py", "multi_work.py", "result_contract.py",
-                 "multi_work_self_test.py", "analysis_metadata.py"):
+                 "multi_work_self_test.py", "analysis_metadata.py", "materiality_scenarios.py"):
         shutil.copy2(HARNESS.with_name(name), harness.with_name(name))
+    shared = candidate / 'rebuild/validation/shared/recorded_action_evidence.py'
+    shared.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / 'rebuild/validation/shared/recorded_action_evidence.py', shared)
     runner = candidate / "rebuild/scripts/validate"
     runner.parent.mkdir(parents=True)
     shutil.copy2(RUNNER, runner)

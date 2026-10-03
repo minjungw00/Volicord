@@ -543,3 +543,10 @@ Purpose provenance, coverage collection paths, observer launch checks and separa
 en/ko human display-context requirements. Proposed tasks become frozen only after
 user approval and successful maintained preparation; outcomes remain future evidence.
 Local support pipeline success does not authorize measured launch or Phase 9.
+
+Current technical readiness also requires the same-invocation local Product-backed
+Dogfood evidence rehearsal, successful teardown, existing authorized external
+stages and independent archive verification. Its incomplete inner qualification
+is expected support evidence and supplies none of the required Naturalistic or
+human observations. Historical gates without this stage cannot establish current
+readiness. The proposed preparation pack leaves measured launch and Phase 9 closed.

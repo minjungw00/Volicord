@@ -78,8 +78,9 @@ Authenticated `codex_probe.py` remains a separate authorized external check.
   architecture, RI, Dogfood, provider and fixture support once, preserving every
   result even after a failure. It then rechecks clean HEAD and invokes the ordered
   four-command Final once. Final's Cargo metadata and test output must show each
-  mapped contract test's actual successful execution before provider qualification
-  starts. Only fresh evidence from this invocation is used for the provider, V11
+  mapped contract test's actual successful execution before the local Product-backed
+  Dogfood rehearsal. Its passed same-invocation result and process teardown precede
+  provider qualification. Only fresh evidence from this invocation is used for the provider, V11
   preflight, official V11, credential audit and independently verified archive.
   Direct `final` is refused. Local support ownership and the deduplication evidence
   are maintained in [validation-plan.md](../docs/design/validation-plan.md#31-maintained-final-provider-qualification-v11과-documentation-handoff-lifecycle).
@@ -493,6 +494,9 @@ The versionless current capsule has `kind = validation_handoff_capsule`. It is
 one stage-dependent contract rather than separate success and failure schemas.
 Its bounded cross-session evidence is:
 
+- mandatory local `dogfood_rehearsal` status/count, gate-parent Final binding, candidate/
+  executable/fixture/producer identities, wrapper exits/times/stream hashes and bounded
+  pipeline result/control/inner-unresolved evidence;
 - mapped contract-test execution owner/status/count from Final metadata and test output;
 - validated candidate HEAD, sanitized admission check name/status, pre-final
   check, and any gate blocker;
@@ -800,3 +804,11 @@ no-Question behavior, en/ko content, accessibility, CLI and Naturalistic memory
 evidence to maintained collection/review paths. User Purpose and human verdicts
 remain absent until actually supplied; technical transmission approvals grant no
 measured campaign launch.
+
+The authoritative stage uses `rehearsal.py --candidate-head HEAD --final-artifact
+SAME_GATE_FINAL --output SAME_GATE_DIRECTORY/dogfood-rehearsal` with the private
+parent binding. It runs once after Final/mapped tests; missing/failed/blocked stage
+prevents provider/V11 and readiness. Its diagnostic CLI route cannot supply this
+binding. Archive verification preserves blocked evidence and rejects historical
+stage absence, incompatible order, duplicate invocations, changed source/binary
+identities, contradictory inner verdicts and retained raw/private content.

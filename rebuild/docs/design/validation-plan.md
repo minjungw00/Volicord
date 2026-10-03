@@ -96,7 +96,8 @@ documentation conclusion은 서로 다른 책임이다. Maintained lifecycle은 
 ```text
 implementation and focused checks
 → admission gate
-→ exact final once
+→ exact final once and mapped-test confirmation
+→ local product-backed Dogfood evidence rehearsal once
 → separately authorized production provider qualification once
 → same-session V11 once
 → sanitized evidence archive creation and independent verification
@@ -115,7 +116,7 @@ admission을 실행할 의무는 없다.
 
 Authoritative gate admission은 같은 cheap checks를 자체 실행한다. 하나라도
 막히면 모든 support command를 `not_run`/`cheap_preflight_blocked`로 남기고
-blocking check IDs를 기록한다. Final/provider/preflight/official V11/audit는
+blocking check IDs를 기록한다. Final/rehearsal/provider/preflight/official V11/audit는
 시작하지 않는다. Cheap checks가 통과한 경우 아래 deterministic support를 그
 candidate revision에서 정확히 한 번 실행한다. Suite가 시작된 뒤에는 첫 failure로
 중단하지 않고 모든 command의 stdout/stderr, numeric exit와 result를 보존한다.
@@ -135,6 +136,7 @@ Support failure는 `validation_failed`이며 Final을 시작하지 않는다.
 | Dogfood assertions | maintained contract checks, review workflow and one transitive harness self-test |
 | Dogfood campaign self-test | collection/activation plus resume, realization, long-lived Project, repository state, task freezing and evidence controls |
 | remediation integration | distinct MachineFindingTests: finite authority, attribution and immutable evaluation/lineage |
+| Dogfood rehearsal self-test | isolated stage/identity/privacy controls and actual child timeout/reaping; no full rehearsal |
 | provider qualification `--self-test` | provider evidence/degradation and source-boundary controls |
 | fixture checker | actual maintained fixture hashes/integrity |
 
@@ -194,7 +196,9 @@ entry point다. Admission이 통과하면 gate parent process는 admission에서
 다시 확인하고 existing final owner의 ordered command vector를 정확히 한 번 실행한다.
 그 호출이 직접 반환한 새 `summary.json`만 읽으며 older ignored artifact를 검색하거나
 대체하지 않는다. 모든 exact command와 `failure_count = 0`, mapped-test execution을 확인한 경우에만 그 같은
-HEAD에서 separately authorized production-provider qualification을 정확히 한 번
+HEAD에서 Product-backed `dogfood_rehearsal`을 정확히 한 번 실행한다. Passed rehearsal,
+완료된 process teardown과 candidate continuity를 확인한 경우에만 separately authorized
+production-provider qualification을 정확히 한 번
 실행한다. 이 stage가 통과한 경우에만 final path와 HEAD를 existing V11 preflight에
 전달한다. Preflight가 통과한 경우에만 official
 V11을 정확히 한 번 실행하고 credential-retention audit을 수행한다. Final failure는
@@ -2035,3 +2039,38 @@ Purpose provenance, coverage collection paths, observer launch checks and separa
 en/ko human display-context requirements. Proposed tasks become frozen only after
 user approval and successful maintained preparation; outcomes remain future evidence.
 Local support pipeline success does not authorize measured launch or Phase 9.
+
+### Mandatory local rehearsal stage and portable evidence
+
+The current gate requires `dogfood_rehearsal` after successful ordered Final and
+mapped-contract execution and before either authorized external stage. Only its
+isolated self-test belongs to cheap-admitted support; a full diagnostic is not reused.
+The direct runner validates the gate-parent-issued Final binding, installs the clean
+candidate, owns isolated Runtime Homes/processes, and verifies current identity again
+before exit. A 1,800-second total bound and bounded component operations preserve
+failure evidence and reap owned processes. Legacy reference paths are excluded from
+Volicord support-session analysis; this explicit support scope does not narrow any
+Naturalistic repository requirement or separately collected CLI observations.
+
+Capsule `gate_invocation`, stage count/status, fixture and producer SHA-256 inventory,
+three executable identities, real wrapper exits/timestamps/stream hashes, bounded
+pipeline controls/inner limits and canonical result hash are jointly required. The
+inner expected qualification is `unresolved` with technical/human evidence absent,
+189 gaps in the diagnostic sample, and no operator approval; counts are observations,
+not fixed success quotas. Deliberately contradictory shared answers remain hard
+findings. Copied lineage with refreshed semantic-contradiction hashes is rejected.
+
+Archive retains only the bounded rehearsal JSON and wrapper/source identities. Its
+verifier checks result/capsule/manifest equality, exactly one actual invocation,
+ordered successful Final before rehearsal, and no provider/preflight/V11 start before
+rehearsal teardown. Failure/tool blockage prevents later stages. Invalid or private
+result bodies stay private and are never copied into the portable capsule; raw logs,
+source copies and screenshots remain separately retained. Existing 256 KiB member and
+512 KiB compressed bounds remain enforced. Report, archive completion and technical
+qualification consumers require the same current stage. Missing historical stages
+are not upgraded into current readiness; old archives remain immutable. The verifier
+inspects retained evidence rather than rerunning Product or authenticating a human.
+
+Passed technical qualification retains the rehearsal contract/status/result hash;
+qualification validation and copied-lineage replay require that closed identity.
+The inner `not_provided` path has no gate input or retention dependency.

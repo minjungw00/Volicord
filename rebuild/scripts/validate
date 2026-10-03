@@ -445,6 +445,18 @@ def run_gate(arguments: Sequence[str]) -> int:
             ),
         )
 
+    def rehearsal_owner(candidate_head: str, final_path: Path):
+        output = run_directory / "dogfood-rehearsal"
+        execution = bound_v11_runner(run_directory / "dogfood-rehearsal-invocation",
+            (str(gate.DOGFOOD_REHEARSAL), "--candidate-head", candidate_head,
+             "--final-artifact", str(final_path), "--output", str(output)))
+        path = output / "result.json"
+        try:
+            result = json.loads(path.read_bytes())
+        except (OSError, ValueError):
+            result = None
+        return result, execution, path
+
     def provider_owner(
         candidate_head: str,
     ) -> tuple[dict[str, object] | None, dict[str, object], Path]:
@@ -497,6 +509,7 @@ def run_gate(arguments: Sequence[str]) -> int:
         admission=admission,
         final_commands=FINAL_COMMANDS,
         final_owner=final_owner,
+        rehearsal_owner=rehearsal_owner,
         provider_owner=provider_owner,
         preflight_owner=preflight_owner,
         v11_owner=v11_owner,
