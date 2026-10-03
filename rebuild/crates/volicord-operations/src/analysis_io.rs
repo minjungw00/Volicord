@@ -277,6 +277,14 @@ fn write_analysis_cache_value(
         .map_err(|error| Error::with_source("cannot write Analysis read cache header", error))?;
     let mut encoder = zstd::stream::write::Encoder::new(output, 1)
         .map_err(|error| Error::with_source("cannot create Analysis read cache encoder", error))?;
+    // A large graph repeats facts across sections farther apart than the
+    // default window. Reuse them without raising the compression level.
+    encoder
+        .window_log(26)
+        .and_then(|_| encoder.long_distance_matching(true))
+        .map_err(|error| {
+            Error::with_source("cannot configure Analysis read cache encoder", error)
+        })?;
     rmp_serde::encode::write_named(&mut encoder, value)
         .map_err(|error| Error::with_source("cannot stream Analysis read cache", error))?;
     encoder
@@ -963,6 +971,32 @@ mod tests {
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn analysis_cache_reuses_distant_repeated_sections_without_losing_values() -> Result<(), Error>
+    {
+        let mut state = 1_u64;
+        let block = (0..150_000)
+            .map(|_| {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                state
+            })
+            .collect::<Vec<_>>();
+        let value = block.repeat(3);
+        let original = rmp_serde::to_vec_named(&value)
+            .map_err(|error| Error::with_source("cannot encode distant cache fixture", error))?;
+        let default = zstd::stream::encode_all(original.as_slice(), 1)
+            .map_err(|error| Error::with_source("cannot compress default cache fixture", error))?;
+        let mut packed = Vec::new();
+        write_analysis_cache_value(&mut packed, &value)?;
+        assert!(
+            packed.len() * 2 < default.len(),
+            "distant sections were stored repeatedly"
+        );
+        let decoded: Vec<u64> = read_analysis_cache_value(packed.as_slice())?;
+        assert_eq!(decoded, value);
+        Ok(())
     }
 
     #[test]

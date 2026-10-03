@@ -562,6 +562,9 @@ store 진단은 다른 책임이며, 최신 payload 실패를 과거 graph의 cu
 있다. 이 cache는 newest snapshot과 earliest retained baseline의 bounded 두 항목에만
 유지되고 canonical/Analysis history나
 corruption 판정의 근거가 아니며, 없거나 invalid하면 durable payload를 decode한다.
+Cache의 streamed MessagePack을 낮은 압축 수준과 bounded 64 MiB 긴 거리 매칭으로
+무손실 압축하여 section 사이의 먼 반복도 재사용한다. Cache header/schema, exact
+snapshot 검증과 두 항목 retention은 바뀌지 않는다.
 Snapshot publication은 normalized JSON shape 조각, value stream, typed capability metadata를
 각각 content identity의 압축 blob으로 먼저 no-replace 게시한 뒤 lightweight manifest를
 마지막에 atomic/no-replace 게시하고 sync 책임을 보존한다. Metadata blob의 hash와
