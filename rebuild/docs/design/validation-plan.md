@@ -1402,7 +1402,11 @@ identity and canonical Source relationships, never equal Goal text. The separate
 `shared_answer_integrity` fact checks every observed MCP Recall and supported JSON
 CLI Recall against preceding record receipts and immutable same-Work Checkpoints.
 It checks selected Work, recorded action, top-level direction, revision and typed
-evidence keys. A contradiction is hard blocking; unavailable observation-time
+evidence keys. Generated grounding keys and revision types, requested-language agreement
+and the unverified generator assertion are factual checks. Malformed returned grounding is
+a violation rather than an observer exception; scoped generated-field transport omissions
+remain indeterminate and cannot excuse available wrong direction or provenance.
+A contradiction is hard blocking; unavailable observation-time
 basis is indeterminate and review required. Later canonical export does not attest
 historical Source freshness or generated semantics. Absent/stale explanation does
 not invalidate a valid recorded task action. Generated paraphrase adequacy remains

@@ -5,6 +5,21 @@ never from the returned answer. This module has no fixture-specific task meaning
 """
 
 
+def transport_omission(value):
+    if not isinstance(value, dict) or set(value) != {'transport_omission'}:
+        return False
+    marker = value['transport_omission']
+    if not isinstance(marker, dict) or marker.get('reason') != 'serialized_byte_budget':
+        return False
+    bases = {
+        'omitted_count': 'same parent identity, field and stable input order; inspect the authoritative record',
+        'omitted_field_count': 'inspect the authoritative record at this identity',
+        'exact_json_bytes': 'inspect the complete field on the authoritative parent record',
+    }
+    return any(type(marker.get(k)) is int and marker[k] > 0 and marker.get('basis') == basis
+        for k, basis in bases.items())
+
+
 def recorded_action_errors(expected, recall):
     errors = []
     def require(ok, message):
@@ -25,8 +40,15 @@ def recorded_action_errors(expected, recall):
     if not isinstance(answers, dict):
         return errors + ["Recall question answers"]
     facts, prose = answers.get("facts"), answers.get("prose")
-    if not isinstance(facts, list) or not isinstance(prose, list):
+    if not isinstance(facts, list):
         return errors + ["shared answer sections"]
+    if not isinstance(prose, list):
+        if not transport_omission(prose):
+            return errors + ["shared answer sections"]
+        # Only the visible recorded action is checked here. The caller retains
+        # the generated-prose observation gap; the V11 oracle still requires its
+        # fixture-specific generated/availability sections independently.
+        prose = []
     recorded = [p for p in facts if isinstance(p, dict) and p.get("question") == "RecordedNextStep"]
     if not has_action:
         unavailable = [p for p in facts if isinstance(p, dict) and p.get('question') == 'NextStepAvailability']

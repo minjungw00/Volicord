@@ -121,6 +121,72 @@ class AnswerTests(unittest.TestCase):
         _, fact = self.evaluate(wrong)
         self.assertEqual(fact['status'], 'confirmed_violation')
 
+    def generated_answer(self):
+        correct = copy.deepcopy(self.answer)
+        work = correct['selected_work']; action = work['answers']['facts'][0]['recorded_action']
+        work['answers'].update(explanation_state='current', provenance={
+            'project_id': correct['project_id'], 'subject': {'kind': 'work', 'identity': list(bytes.fromhex(work['work_item_id']))},
+            'language': 'en', 'generator_identity_status': 'self_reported_not_independently_verified',
+            'evidence': [{'key': 'next_step', 'identity': action['checkpoint_id'], 'revision': 1,
+                'field': 'next_step', 'sources': action['source_ids']},
+                {'key': 'goal', 'identity': work['work_item_id'], 'revision': 1, 'field': 'statement', 'sources': action['source_ids']}]},
+            prose=[{'question': 'NextStep', 'role': 'generated_interpretation',
+                'text': 'Continue the task using the recorded action.', 'evidence_keys': ['next_step']}])
+        return correct
+
+    def test_generated_grounding_types_language_and_provenance_are_factual(self):
+        correct = self.generated_answer()
+        _, fact = self.evaluate(correct)
+        self.assertEqual(fact['status'], 'confirmed_pass', fact)
+        self.assertIn('generated prose adequacy requires qualitative review', fact['basis']['observations'][-1]['limits'])
+        for mutation in ('claim_key', 'record_key', 'revision', 'language', 'provenance'):
+            wrong = copy.deepcopy(correct); answers = wrong['selected_work']['answers']
+            if mutation == 'claim_key':
+                answers['prose'][0]['evidence_keys'] = [{'unexpected': 'typed value'}]
+            elif mutation == 'record_key':
+                answers['provenance']['evidence'][0]['key'] = ['unexpected']
+            elif mutation == 'revision':
+                answers['provenance']['evidence'][0]['revision'] = True
+            elif mutation == 'language':
+                answers['provenance']['language'] = 'ko'
+            else:
+                answers['provenance']['generator_identity_status'] = 'verified'
+            _, fact = self.evaluate(wrong)
+            self.assertEqual(fact['status'], 'confirmed_violation', (mutation, fact))
+            self.assertEqual(m.disposition('shared_answer_integrity', fact['status']), 'hard_blocking')
+
+    def test_scoped_generated_omissions_are_indeterminate_without_excusing_wrong_values(self):
+        marker = {'transport_omission': {'reason': 'serialized_byte_budget', 'omitted_count': 1,
+            'basis': 'same parent identity, field and stable input order; inspect the authoritative record'}}
+        whole_field = {'transport_omission': {'reason': 'serialized_byte_budget', 'exact_json_bytes': 400,
+            'basis': 'inspect the complete field on the authoritative parent record'}}
+        for field in ('evidence', 'evidence_keys', 'text', 'language', 'generator_identity_status', 'prose'):
+            value = self.generated_answer(); answers = value['selected_work']['answers']
+            if field == 'evidence':
+                answers['provenance']['evidence'] = [answers['provenance']['evidence'][0], marker]
+            elif field == 'evidence_keys':
+                answers['prose'][0]['evidence_keys'] = ['next_step', marker]
+            elif field == 'text':
+                answers['prose'][0]['text'] = whole_field
+            elif field == 'prose':
+                answers['prose'] = whole_field
+            else:
+                answers['provenance'][field] = whole_field
+            _, fact = self.evaluate(value)
+            self.assertEqual(fact['status'], 'indeterminate', (field, fact))
+            value['next_step'] = 'Wrong direction despite a legitimate unrelated omission'
+            _, fact = self.evaluate(value)
+            self.assertEqual(fact['status'], 'confirmed_violation', (field, fact))
+        wrong = self.generated_answer()
+        wrong['selected_work']['answers']['prose'][0].update(text=whole_field, evidence_keys=['undeclared'])
+        _, fact = self.evaluate(wrong)
+        self.assertEqual(fact['status'], 'confirmed_violation', fact)
+        wrong = self.generated_answer()
+        wrong['selected_work']['answers']['provenance']['language'] = 'ko'
+        wrong['selected_work']['answers']['provenance']['transport_omission'] = marker['transport_omission']
+        _, fact = self.evaluate(wrong)
+        self.assertEqual(fact['status'], 'confirmed_violation', fact)
+
 
 if __name__ == '__main__':
     unittest.main()
