@@ -123,7 +123,10 @@ fn fresh_observations_preserve_polyglot_graph_order_and_current_bindings(
         }
         let order = graph_order(&analysis);
         if let Some(expected) = &expected_order {
-            assert!(&order == expected, "observation identity shuffled the graph");
+            assert!(
+                &order == expected,
+                "observation identity shuffled the graph"
+            );
         } else {
             expected_order = Some(order);
         }
