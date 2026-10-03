@@ -230,3 +230,136 @@ fn shared_storage_survives_restart_retains_history_and_collects_only_orphans(
         .any(|name| name.starts_with(&changed.analysis.identity.to_string())));
     Ok(())
 }
+
+#[test]
+fn repeated_polyglot_observations_keep_graph_locality_and_immutable_history(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture(0)?;
+    for file in 0..12 {
+        for extension in ["rs", "ts", "py"] {
+            let mut body = String::new();
+            for item in 0..12 {
+                body.push_str(&match extension {
+                    "rs" => format!("pub fn value_{item}() -> i32 {{ {item} }}\npub fn call_{item}() -> i32 {{ value_{item}() }}\n"),
+                    "ts" => format!("export function value_{item}(): number {{ return {item}; }}\nexport function call_{item}(): number {{ return value_{item}(); }}\n"),
+                    _ => format!("def value_{item}():\n    return {item}\ndef call_{item}():\n    return value_{item}()\n"),
+                });
+            }
+            fs::write(
+                fixture
+                    .repository
+                    .join(format!("src/module_{file}.{extension}")),
+                body,
+            )?;
+        }
+    }
+    let project = fixture
+        .operations
+        .initialize_project("Repeated observations", Some(&fixture.repository))?
+        .project
+        .id;
+    let mut retained = Vec::new();
+    let mut sources = std::collections::BTreeSet::new();
+    let mut expected = None;
+    let mut warmup = 0;
+    for cycle in 0..8 {
+        let operations = LocalOperations::new(fixture.operations.layout().clone());
+        let output = operations
+            .analyze(project, Vec::new())?
+            .value
+            .ok_or("analysis output")?;
+        let analysis = &output.analysis;
+        assert!(sources.insert(analysis.repository_source.identity()));
+        let facts = analysis
+            .structural_facts
+            .iter()
+            .map(|fact| {
+                assert_eq!(fact.entity.source, analysis.repository_source);
+                assert_eq!(fact.entity.analysis_snapshot, analysis.identity);
+                serde_json::json!([
+                    fact.entity.area,
+                    fact.entity.kind,
+                    fact.entity.display_name,
+                    fact.entity.qualified_name
+                ])
+            })
+            .collect::<Vec<_>>();
+        let ranks = analysis
+            .structural_facts
+            .iter()
+            .enumerate()
+            .map(|(rank, fact)| (fact.entity.identity.as_str(), rank))
+            .collect::<std::collections::HashMap<_, _>>();
+        let semantics = analysis
+            .semantic_results
+            .iter()
+            .map(|result| {
+                assert_eq!(result.relation.analysis_snapshot, analysis.identity);
+                let target = match &result.relation.target {
+                    volicord_repository_intelligence::RelationTarget::ResolvedEntity(id) => {
+                        serde_json::json!(ranks.get(id.as_str()))
+                    }
+                    volicord_repository_intelligence::RelationTarget::Unresolved(value) => {
+                        serde_json::json!(value)
+                    }
+                };
+                serde_json::json!([
+                    ranks.get(result.relation.source_entity.as_str()),
+                    result.relation.kind,
+                    target
+                ])
+            })
+            .collect::<Vec<_>>();
+        assert!(!semantics.is_empty());
+        let current = (facts, semantics);
+        if let Some(expected) = &expected {
+            assert_eq!(&current, expected);
+        } else {
+            expected = Some(current);
+        }
+        for (path, bytes) in &retained {
+            assert_eq!(&fs::read(path)?, bytes);
+        }
+        retained.push((output.stored_at.clone(), fs::read(&output.stored_at)?));
+        if cycle == 0 {
+            warmup = operations
+                .analysis_storage_footprint(project)?
+                .logical_bytes;
+        }
+    }
+    let restarted = LocalOperations::new(fixture.operations.layout().clone());
+    // Footprint reads every historical durable payload, independently of the two read caches.
+    let report = restarted.analysis_storage_footprint(project)?;
+    assert_eq!(report.snapshot_count, 8);
+    assert_eq!(report.reusable_content_overlap_millionths, Some(1_000_000));
+    assert!(report.snapshots.iter().all(|snapshot| snapshot.entity_count
+        == report.snapshots[0].entity_count
+        && snapshot.relation_count == report.snapshots[0].relation_count));
+    eprintln!(
+        "{}",
+        serde_json::json!({"warmup_logical_bytes":warmup,"retained_logical_bytes":report.logical_bytes,"post_warmup_growth_bytes":report.logical_bytes-warmup,"unchanged_repeat_delta_bytes":report.unchanged_repeat_delta_bytes,"snapshot_count":report.snapshot_count})
+    );
+    fs::write(
+        fixture.repository.join("src/module_0.py"),
+        "def changed():\n    return 999\n",
+    )?;
+    let changed = restarted
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("changed output")?;
+    assert!(changed.analysis.structural_facts.iter().any(|fact| fact
+        .entity
+        .display_name
+        .as_deref()
+        == Some("changed")));
+    for (path, bytes) in &retained {
+        assert_eq!(&fs::read(path)?, bytes);
+    }
+    assert_eq!(
+        restarted
+            .analysis_storage_footprint(project)?
+            .snapshot_count,
+        9
+    );
+    Ok(())
+}

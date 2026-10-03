@@ -575,6 +575,15 @@ Project/Analysis identity를 확인한 뒤 Recall 및 V11 capability evidence에
 exact current Analysis Snapshot schema를 검사한다. 이는 별도 old/new decoder가 아니다.
 Pretty-printing과 physical blob partition은 durable domain meaning의 일부가 아니다.
 
+Graph collection의 직렬화 순서는 새 observation의 hashed identity로 전체 graph를
+재배열하지 않는다. Structural facts는 area/language와 source 위치, kind, 이름을,
+relations는 kind, supporting 위치와 target entity의 같은 위치 순서를 사용한다.
+Semantic results도 source/target entity의 이 순서를 따른다. 같은 위치의 구별되지
+않는 항목만 exact identity로 tie-break한다. 이는 모든 entity/relation과 새 Source,
+snapshot, range/provenance binding을 보존하면서 반복 observation의 shape/value
+locality를 유지한다. Historical manifest와 payload bytes를 다시 정렬하거나
+덮어쓰지 않으며 identity, freshness, schema 또는 analysis coverage를 줄이지 않는다.
+
 Shape/value blob은 content identity 게시 전에 blob별로 무손실 압축할 수 있으며 reader는
 저장 bytes의 identity를 먼저 검증한 뒤 원래 token stream을 복원한다. Value delta가 최신
 complete base의 압축 representation보다 충분히 작지 않으면 writer는 그 snapshot을 새

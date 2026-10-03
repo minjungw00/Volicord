@@ -294,6 +294,7 @@ fn analyze_repository_semantics_inner(
     }
 
     drop(by_identity);
+    crate::ordering::order_semantic_results(&facts, &mut results);
     analysis.structural_facts = facts;
     apply_canonical_links(&mut analysis, canonical_links, &canonical_grounding)?;
     analysis.semantic_results = results;

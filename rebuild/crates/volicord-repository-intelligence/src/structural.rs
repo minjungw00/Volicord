@@ -335,11 +335,7 @@ fn analyze_repository_inner(
             analysis.generated_at_unix_micros,
         ));
     }
-    facts.sort_by(|left, right| left.entity.identity.cmp(&right.entity.identity));
-    for fact in &mut facts {
-        fact.relations
-            .sort_by(|left, right| left.identity.cmp(&right.identity));
-    }
+    crate::ordering::order_structural_facts(&mut facts);
     analysis.identity = final_identity;
     analysis.structural_facts = facts;
     analysis.structural_bases = bases;

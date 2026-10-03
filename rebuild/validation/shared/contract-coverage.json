@@ -3,6 +3,19 @@
   "execution_owner": "exact_candidate_final_workspace_tests",
   "contracts": [
     {
+      "id": "analysis-observation-locality",
+      "owners": ["repository-intelligence", "local-operations"],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": ["local_operations"],
+      "evidence": [
+        [
+          "local_operations",
+          "rebuild/crates/volicord-operations/tests/analysis_storage_footprint.rs",
+          "repeated_polyglot_observations_keep_graph_locality_and_immutable_history"
+        ]
+      ]
+    },
+    {
       "id": "canonical-forgetting-local-closure",
       "owners": [
         "canonical-context",

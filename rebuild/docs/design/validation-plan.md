@@ -1244,6 +1244,20 @@ bytes와 post-fix 691,245 bytes/delta 332,517 bytes, 그리고 prior Volicord ca
 25,179,035,785-byte cycle을 threshold basis로 보존한다. Functional coverage, provenance,
 freshness를 줄여서 이 상한을 만족시키지 않는다.
 
+Fresh Source-bound snapshot마다 identity hash 순으로 structural/semantic graph를
+재배열하면 unchanged input도 큰 value delta를 만들 수 있다. 현재 producer는
+source 위치와 typed entity/relation key로 graph locality를 보존하며 identity와
+provenance는 원래 관측 값 그대로 유지한다. `observation_ordering` test는 일곱
+structural language와 세 semantic ecosystem의 새 관측 순서와 current binding을
+검증한다. `analysis_storage_footprint`의
+`repeated_polyglot_observations_keep_graph_locality_and_immutable_history`는 실제
+Local Operations의 여덟 관측, 매회 재시작, ninth changed-input analysis와 모든
+historical durable read/manifest byte equality를 검증한다. 이 Product test는
+Final의 maintained contract-coverage map에도 등록한다. Prototype로 보존된 실패
+snapshot을 재직렬화한 측정은 진단일 뿐이며 fresh clean-HEAD gate의 resource
+qualification을 대체하지 않는다. 기존 V11 한도, observer, workload와 history
+retention 조건은 그대로 적용한다.
+
 ### Phase 8 naturalistic Dogfood qualification
 
 Phase 8 is a fresh real-session campaign for one exact clean Product candidate.

@@ -11,6 +11,7 @@ mod identity;
 mod inventory;
 mod model;
 mod observation;
+mod ordering;
 mod search;
 mod semantic;
 mod structural;
