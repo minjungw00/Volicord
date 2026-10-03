@@ -19,7 +19,7 @@ def passed_result(candidate="a" * 40):
         "pipeline": {"evidence_set_sha256": "c" * 64, "evaluation_run_id": "d" * 64,
             "qualification_run_id": "e" * 64, "expected_inner_verdict": fixture["expected_inner"]["replacement_qualification"],
             "technical_evidence": "not_provided", "human_observations": "not_provided",
-            "unresolved_criteria_count": 200, "hard_findings": ["journey-volicord-work-a/required_validation_execution"],
+            "unresolved_criteria_count": 200, "hard_findings": [],
             "copied_lineage_id": "f" * 64, "copied_verification": "verified", "resource_sample_count": 3,
             "topology": json.loads(Path(__file__).with_name("evaluation.json").read_bytes())["qualification_policy"]["campaign_topology"],
             "measured_evidence_eligible": False, "controls": dict.fromkeys(fixture["controls"], "passed")},

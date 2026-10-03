@@ -69,7 +69,7 @@
     "technical_gate": "not_provided",
     "operator_approval": "not_provided",
     "human_observations": "not_provided",
-    "replacement_qualification": "blocked",
+    "replacement_qualification": "unresolved",
     "reason": "Support captures cannot supply measured-session qualification; coverage is explicitly insufficient and other authored reviews remain not_reviewed."
   }
 }
