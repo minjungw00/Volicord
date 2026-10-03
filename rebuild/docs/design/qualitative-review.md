@@ -743,3 +743,12 @@ Rehearsal authors write only structural fixture realization/review payloads. A r
 not-reviewed agent payload exercises recording without pre-awarding semantic truth.
 Qualification uses the maintained technical-evidence-not-provided path, preserving
 required review and human gaps; no enclosing unpublished archive is an input.
+
+### Measured campaign preparation status
+
+The [campaign preparation pack](../../validation/dogfood/campaign-readiness.md)
+records pinned target proposals, unresolved target/task authorization, exact-user
+Purpose provenance, coverage collection paths, observer launch checks and separate
+en/ko human display-context requirements. Proposed tasks become frozen only after
+user approval and successful maintained preparation; outcomes remain future evidence.
+Local support pipeline success does not authorize measured launch or Phase 9.

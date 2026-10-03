@@ -2026,3 +2026,12 @@ binding, negative-control rejection and copied verification with original stagin
 unavailable. Fixture explanations prove structure, not model authorship, language
 quality or human understanding. Genuine active-host en/ko explanations and live
 content/browser/cost proofs remain separate candidate-bound supporting evidence.
+
+### Measured campaign preparation status
+
+The [campaign preparation pack](../../validation/dogfood/campaign-readiness.md)
+records pinned target proposals, unresolved target/task authorization, exact-user
+Purpose provenance, coverage collection paths, observer launch checks and separate
+en/ko human display-context requirements. Proposed tasks become frozen only after
+user approval and successful maintained preparation; outcomes remain future evidence.
+Local support pipeline success does not authorize measured launch or Phase 9.

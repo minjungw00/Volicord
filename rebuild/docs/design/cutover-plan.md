@@ -534,3 +534,12 @@ collection or establish Product failure, actor attribution or verification. Qual
 `approve-phase-9` operator action over a qualified result can open Phase 9.
 The approved result needs a verified durable result lineage. Historical
 failed captures remain diagnostic and cannot qualify a changed candidate.
+
+### Measured campaign preparation status
+
+The [campaign preparation pack](../../validation/dogfood/campaign-readiness.md)
+records pinned target proposals, unresolved target/task authorization, exact-user
+Purpose provenance, coverage collection paths, observer launch checks and separate
+en/ko human display-context requirements. Proposed tasks become frozen only after
+user approval and successful maintained preparation; outcomes remain future evidence.
+Local support pipeline success does not authorize measured launch or Phase 9.

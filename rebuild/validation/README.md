@@ -792,3 +792,11 @@ Collection uses existing explanation/document preparation and recording,
 `collect-batch`, `evaluate`, `collect-cli-observations`, review prepare/record,
 `qualify`, and publish/verify result-lineage owners. Rehearsal evidence cannot supply
 measured campaign use, human observations or Phase 9 approval.
+
+The [measured campaign preparation pack](dogfood/campaign-readiness.md) keeps
+proposed targets/tasks separate from approved frozen inputs and observed outcomes.
+It maps required Learning, semantic understanding, Work/Decision comprehension,
+no-Question behavior, en/ko content, accessibility, CLI and Naturalistic memory
+evidence to maintained collection/review paths. User Purpose and human verdicts
+remain absent until actually supplied; technical transmission approvals grant no
+measured campaign launch.
