@@ -28,7 +28,7 @@ PRODUCER_FILES = ("rehearsal.py", "rehearsal_contract.py", "evidence_purpose.py"
 
 def identities():
     return {"contract": CONTRACT, "fixture_sha256": sha256(FIXTURE),
-        "producer_sha256": {name: sha256(Path(__file__).with_name(name))
+        "producer_sha256": {name: sha256(Path(__file__).parent / name)
             for name in PRODUCER_FILES}}
 
 
