@@ -100,7 +100,7 @@ def controls(root, campaign_root, manifest, evaluation_path, review_root, qualif
     for event in events:
         payload = event["payload"]
         if payload.get("type") == "mcp_tool_call_end" and payload.get("invocation", {}).get("tool") == "recall":
-            payload["result"]["Ok"]["structuredContent"]["next_step"] = "Contradictory support direction"
+            payload["result"]["Ok"]["structuredContent"]["selected_work"]["work_item_id"] = "0" * 32
             substituted += 1
     require(substituted == 1, "negative Recall was not uniquely selected")
     negative_raw.chmod(0o600)
@@ -355,21 +355,18 @@ def run_sessions(root, campaign_root, binary, logs):
                     "actual candidate process observation missing")
                 c.write_json(root / "actual-resource.json", resource)
             if role == "start" and label == "A":
-                project = call("project_initialize", {"name": "Authored support " + kind,
-                    "repository_path": str(repository)})["project_id"]
+                resolved = call("project_resolve", {"repository": str(repository)})
+                require(resolved["state"] == "not_found", "support Project unexpectedly preexists")
+                project = call("project_initialize", {"display_name": "Authored support " + kind,
+                    "repository": str(repository)})["project_id"]
             else:
-                project = call("project_resolve", {"repository_path": str(repository)})["project_id"]
+                project = call("project_resolve", {"repository": str(repository)})["project_id"]
             if role == "start":
                 goal = call("context_record", {"project_id": project, "user_turn": task,
-                    "role": "goal", "statement": "Inspect the shared evidence support scenario."})["context_item_id"]
+                    "role": "goal", "work_transition": "start_new",
+                    "statement": "Inspect the shared evidence support scenario."})["context_item_id"]
                 baseline = call("repository_analyze", {"project_id": project})["analysis_snapshot_id"]
-                (repository / ("support-" + label + ".txt")).write_text(
-                    "Self-authored support change; no real user adoption claim.\n")
-                call("checkpoint_record", {"project_id": project, "goal_context_id": goal,
-                    "baseline_analysis_snapshot_id": baseline, "kind": "handoff", "work_state": "paused",
-                    "verification_basis": {"state": "ordinary_change"}, "verification": [{"state": "not_run"}],
-                    "state_change": "Authored support result for " + label,
-                    "next_step": "Inspect the support result for " + label, "handoff_to": "support replay"})
+                # Preparation observes real source; it makes no implementation or completion claim.
             call("recall", {"project_id": project, "requested_language": "en"})
         finally:
             client.close()
