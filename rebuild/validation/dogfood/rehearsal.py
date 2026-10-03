@@ -30,6 +30,7 @@ import qualification_policy
 import qualitative_review
 import resource_observer
 import result_lineage
+import rehearsal_support
 import review_captures
 import review_operations as review
 
@@ -364,9 +365,10 @@ def run_sessions(root, campaign_root, binary, logs):
             if role == "start":
                 goal = call("context_record", {"project_id": project, "user_turn": task,
                     "role": "goal", "work_transition": "start_new",
-                    "statement": "Inspect the shared evidence support scenario."})["context_item_id"]
-                baseline = call("repository_analyze", {"project_id": project})["analysis_snapshot_id"]
-                # Preparation observes real source; it makes no implementation or completion claim.
+                    "statement": "Inspect the shared evidence support scenario."})
+                baseline = call("repository_analyze", {"project_id": project})
+                learning = json.loads(FIXTURE.read_bytes())["tasks"][c.work_key(kind, label)]["learning_collaboration_statement"]
+                rehearsal_support.record_support_checkpoint(call, project, goal, baseline, repository, label, learning)
             call("recall", {"project_id": project, "requested_language": "en"})
         finally:
             client.close()
@@ -389,11 +391,7 @@ def realizations(root, campaign_root, paths):
                 "agent": None, "model": None},
             "paragraphs": [{"question": question,
                 "text": "직접 작성한 구조 검사 입력입니다." if item["language"] == "ko" else "Self-authored structural support input.",
-                "evidence_keys": [("next_step" if question == "next_step" else
-                    "goal" if question in {"purpose", "reported_change", "expected_effect", "verification"} else
-                    question) if any(e["key"] == ("next_step" if question == "next_step" else
-                    "goal" if question in {"purpose", "reported_change", "expected_effect", "verification"} else
-                    question) for e in plan["evidence"]) else plan["evidence"][0]["key"]]} for question in sorted(questions)]}
+                "evidence_keys": [{"purpose": "goal", "reported_change": "result", "expected_effect": "result", "verification": "verification"}.get(question, question)]} for question in sorted(questions)]}
         input_path = root / (item["identity"] + ".json")
         c.write_json(input_path, response)
         wrong = copy.deepcopy(response)
