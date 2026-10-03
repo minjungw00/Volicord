@@ -16,6 +16,7 @@ from typing import Any
 
 import harness
 import identity_provenance
+import evidence_purpose
 import codex_events
 
 
@@ -159,6 +160,8 @@ def observed_runtime_provenance(binding: dict[str, Any], rollout: Path) -> dict[
     c = campaign_api()
     try:
         capture = codex_events.load_codex_capture(rollout)
+        if evidence_purpose.capture_purpose(capture) != evidence_purpose.NATURALISTIC:
+            raise c.CampaignError("authored support cannot supply host runtime provenance")
         events = [json.loads(line) for line in rollout.read_text(encoding="utf-8").splitlines()]
     except (codex_events.EvidenceError, OSError, UnicodeError, json.JSONDecodeError) as error:
         raise c.CampaignError("runtime identity rollout is unavailable or invalid") from error
@@ -363,6 +366,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
             identity = secrets.token_hex(16)
             preparation = {"kind": "active_host_document_preparation", "schema_version": 4,
                 "realization_id": identity, "candidate_head": campaign["candidate_head"],
+                "evidence_purpose": campaign["evidence_purpose"],
                 "project_id": work_ids[0], "document_kind": document_kind,
                 "language": campaign["document_language"], "locale": campaign["viewer_locale"]}
             preparation["provenance_binding"] = {"state": "verified",

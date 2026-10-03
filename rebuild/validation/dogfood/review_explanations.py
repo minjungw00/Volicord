@@ -8,10 +8,11 @@ import re
 import answer_projection as projection
 import explanation_evidence as evidence
 import review_captures
+import evidence_purpose
 
 SCHEMA_VERSION = 1
 SURFACE = 'explanation_lifecycle'
-CONTEXT_FIELDS = {'identity', 'journey_id', 'project_id', 'subject', 'language', 'candidate_head',
+CONTEXT_FIELDS = {'evidence_purpose', 'identity', 'journey_id', 'project_id', 'subject', 'language', 'candidate_head',
     'candidate_executable_sha256', 'phase', 'observed_at', 'raw_inputs', 'generator_identity_limit',
     'generation_authority', 'canonical_bundle_sha256'}
 
@@ -131,12 +132,13 @@ def validate(data):
         and value['kind'] == 'dogfood_review_explanation_lifecycle' and value['schema_version'] == SCHEMA_VERSION,
         'unsupported review explanation lifecycle')
     context, receipt = value['context'], value['receipt']
+    evidence_purpose.require_same(context, receipt)
     o.review.require(isinstance(receipt, dict) and set(receipt) == {'kind', 'schema_version', 'identity',
-        'phase', 'observed_at', 'preparation', 'response', 'record', 'readback', 'candidate_head',
+        'evidence_purpose', 'phase', 'observed_at', 'preparation', 'response', 'record', 'readback', 'candidate_head',
         'candidate_executable_sha256', 'generator_identity_status', 'host_response_locator', 'after_state'},
         'unsupported retained explanation receipt')
     o.review.require(set(context) == CONTEXT_FIELDS and context['phase'] == 'post_session_steward'
-        and context['generation_authority'] == 'current_active_host_interaction_required_no_provider_dispatch'
+        and context['generation_authority'] == ('self_authored_support_no_provider_dispatch' if context['evidence_purpose'] == evidence_purpose.REHEARSAL else 'current_active_host_interaction_required_no_provider_dispatch')
         and re.fullmatch(r'[0-9a-f]{64}', context['canonical_bundle_sha256'])
         and context['generator_identity_limit'] == 'self_reported_not_independently_verified'
         and re.fullmatch(r'[0-9a-f]{40}', context['candidate_head'])

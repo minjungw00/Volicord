@@ -1480,7 +1480,10 @@ class CodexCapture:
 
     def provenance_evidence(self) -> dict[str, Any]:
         """Host-recorded observations; source/originator do not attest a UI."""
-        return {"host_family": "codex", "capture_format": self.capture_format,
+        import evidence_purpose
+        purpose = evidence_purpose.capture_purpose(self)
+        return {"host_family": "test_support" if purpose == evidence_purpose.REHEARSAL else "codex",
+                "evidence_purpose": purpose, "capture_format": self.capture_format,
                 "ui_surface": "unknown", "observed_metadata": self.observed_metadata}
 
     def calls(self, operation: str) -> list[ToolCall]:

@@ -952,7 +952,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-9",
+    "revision": "replacement-qualification-10",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "journey-volicord/viewer_snapshot/multiple_work_organization",

@@ -48,10 +48,13 @@ def path_binding(path):
     return hashlib.sha256(os.fsencode(path.resolve())).hexdigest()
 
 
-def initial(artifacts):
+def initial(artifacts, *, purpose="naturalistic"):
+    import evidence_purpose
+    evidence_purpose.validate(purpose)
     return {'kind': 'dogfood_naturalistic_mcp_memory_evidence', 'schema_version': SCHEMA,
-        'status': 'not_observed', 'candidate_mcp_sha256': artifacts.get('volicord-mcp', {}).get('sha256'),
-        'process_ownership': 'codex_host_external_to_campaign_harness',
+        'evidence_purpose': purpose, 'status': 'not_observed', 'candidate_mcp_sha256': artifacts.get('volicord-mcp', {}).get('sha256'),
+        'process_ownership': ('codex_host_external_to_campaign_harness' if purpose == 'naturalistic'
+            else 'test_support_owned_candidate_process'),
         'configured_launch': 'direct_candidate_local_volicord_mcp_executable',
         'observer_lifecycle': 'not_started', 'measurement': {'scope': 'registered_candidate_mcp_instances',
             'peak_rss_bytes': None, 'sample_count': 0, 'mechanism': 'linux_proc_status_vmrss_kib',
@@ -134,7 +137,7 @@ def sample(reg, expected_hash, cache):
 
 
 def validate(value, expected_hash=None):
-    template = initial({'volicord-mcp': {'sha256': value.get('candidate_mcp_sha256')}})
+    template = initial({'volicord-mcp': {'sha256': value.get('candidate_mcp_sha256')}}, purpose=value.get('evidence_purpose'))
     if (set(value) != set(template) or value['kind'] != template['kind'] or value['schema_version'] != SCHEMA
         or value['status'] not in STATUSES or not HEX.fullmatch(value.get('candidate_mcp_sha256') or '')
         or (expected_hash is not None and value['candidate_mcp_sha256'] != expected_hash)
@@ -190,10 +193,10 @@ def validate(value, expected_hash=None):
     return value
 
 
-def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=None, proc_sample=sample):
+def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=None, proc_sample=sample, purpose="naturalistic"):
     if not 50 <= interval_ms <= 60000 or not 0 <= duration_seconds <= 86400:
         raise ObservationError('invalid observation bounds')
-    result = initial(artifacts)
+    result = initial(artifacts, purpose=purpose)
     result['interval_ns'] = interval_ms * 1_000_000
     start, cpu = time.monotonic_ns(), time.process_time_ns()
     instances, cache, rejected = {}, {}, set()

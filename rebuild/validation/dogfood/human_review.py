@@ -122,6 +122,8 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
     ops, campaign = _ops(), _campaign()
     root, output = campaign_root.resolve(), output.absolute()
     manifest = campaign.load_evidence_set(root)
+    import evidence_purpose
+    evidence_purpose.require_measured(manifest)
     evidence_hash = ops.digest(ops.bounded_read(root / "evidence-set.json"))
     contexts = viewer_observation.load_contexts(context_paths, manifest)
     observer = review.reviewer("human", run_id or secrets.token_hex(16))

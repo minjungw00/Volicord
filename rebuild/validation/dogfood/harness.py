@@ -3593,9 +3593,10 @@ def work_descriptor_errors(
         return ["descriptor kind must be phase8_work_descriptor"]
     if value.get("contract") == "naturalistic-observation-1":
         errors = []
-        required = {"kind", "contract", "producer", "journey_id", "repository_class",
+        required = {"kind", "contract", "producer", "evidence_purpose", "journey_id", "repository_class",
             "work_slot_id", "work_label", "repository_revision", "work_user_task",
             "fresh_resume_user_task", "workload_intent", "learning_collaboration_statement"}
+        __import__("evidence_purpose").validate(value.get("evidence_purpose"))
         errors.extend(workload_intents.metadata_errors(value.get("work_slot_id"), value, value.get("work_user_task")))
         actual = set(value) - {"_evidence_directory", "_evidence_file_sha256",
             "materiality_obligations", "evaluation_basis", "behavior_review"}

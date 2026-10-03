@@ -5,6 +5,7 @@ digests, never a redacted reconstruction of repository or process content.
 """
 from __future__ import annotations
 
+import evidence_purpose
 import codex_events as codex
 import answer_projection
 import answer_observations
@@ -224,6 +225,7 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
     excluded = [{"sequence": sequence, "reason": "non_semantic_by_design"}
                 for sequence in range(len(events)) if sequence not in used]
     value = {"kind": "naturalistic_review_capture", "schema_version": SCHEMA_VERSION,
+        "evidence_purpose": evidence_purpose.capture_purpose(capture),
         "policy": POLICY, "origin": origin, "session_id": session_id, "role": role,
         "candidate_head": candidate_head, "evidence_set_sha256": evidence_set_sha256,
         "fresh_user_thread": capture.fresh_user_thread, "limits": LIMITS,
@@ -264,7 +266,7 @@ def validate(data):
     ops = plane()
     ops.require_review_artifact_safe(data)
     value = codex.strict_json(data.decode("utf-8"))
-    required = {"kind", "schema_version", "policy", "origin", "session_id", "role", "candidate_head",
+    required = {"evidence_purpose", "kind", "schema_version", "policy", "origin", "session_id", "role", "candidate_head",
         "evidence_set_sha256", "fresh_user_thread", "limits", "source_record_count", "records", "excluded_records",
         "retained_record_count", "omitted_record_count", "non_semantic_omission_count", "semantic_omission_count", "semantic_complete"}
     ops.review.require(isinstance(value, dict) and set(value) == required
@@ -274,6 +276,7 @@ def validate(data):
     ops.review.require(type(value["source_record_count"]) is int and 0 < value["source_record_count"] <= codex.MAX_CAPTURE_EVENTS
         and isinstance(value["records"], list) and value["records"] and isinstance(value["excluded_records"], list),
         "malformed review capture records")
+    evidence_purpose.validate(value["evidence_purpose"])
     origin = value["origin"]
     ops.review.require(isinstance(origin, dict) and set(origin) == {"kind", "path", "raw_bytes", "raw_sha256"}
         and origin["kind"] == "evidence_set_member" and type(origin["raw_bytes"]) is int

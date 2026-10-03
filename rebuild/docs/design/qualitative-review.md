@@ -5,8 +5,8 @@ This contract owns review artifacts and operations, not Product behavior or fina
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 14 / policy revision 13, machine evaluation
-policy `evidence-evaluation-8`, human observation/receipt schema 4, qualification policy
-`replacement-qualification-9`, and result-lineage schema 2. Historical runs retain their old
+policy `evidence-evaluation-9`, human observation/receipt schema 4, qualification policy
+`replacement-qualification-10`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -726,3 +726,20 @@ technical V11 harness-tree RSS and human Viewer judgment. Copied packages valida
 resource schema 2, candidate identity, sample counts/observed peak and explicit
 coverage/failure states through the [resource owner](../../validation/dogfood/resource-observation.md).
 Absent evidence remains unobserved; no operation/Codex-session attribution is inferred.
+
+## Evidence purpose and pipeline support
+
+Current collection, evaluation, review bindings, resource observation and result lineage
+retain a closed `evidence_purpose`: `naturalistic` or `dogfood_rehearsal`. The latter
+is explicitly self-authored support with actual Product outputs. Its capture metadata
+names test-support authorship and never becomes runtime-observed Codex/model provenance.
+All durable consumers compare purpose, including copied review captures, explanation
+lifecycles and qualification. Rehearsal cannot qualify replacement or supply direct-human
+observations, measured adoption, Learning quality or operator approval. Missing purpose
+in a historical package is not upgraded into current evidence. Historical bytes remain
+immutable and require their producing contract for interpretation.
+
+Rehearsal authors write only structural fixture realization/review payloads. A recorded
+not-reviewed agent payload exercises recording without pre-awarding semantic truth.
+Qualification uses the maintained technical-evidence-not-provided path, preserving
+required review and human gaps; no enclosing unpublished archive is an input.

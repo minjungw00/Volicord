@@ -2006,3 +2006,23 @@ hash checks and copied review/lineage bindings preserve evidence identity; human
 judgments remain self-reported. Source-independent review verification retains
 context metadata and original image hashes, while images stay in local capture
 directories and require separate retention for later visual inspection.
+
+### Product-backed Dogfood evidence support
+
+The maintained runner is `dogfood-campaign rehearse-evidence --candidate-head HEAD
+--output ABSOLUTE_NEW_DIRECTORY`. Standalone execution is diagnostic support only.
+It requires the current clean candidate, installs actual CLI/MCP/Viewer binaries,
+and prepares the complete 3-repository/5-Work/8-slot support topology. Source and task
+construction and scripted conversations are explicitly self-authored. Actual hook,
+MCP, explanation preparation/record/readback, documents and Viewer artifacts traverse
+the same campaign collection, evaluation, reviewer-safe preparation, recording,
+qualification and copied-lineage implementations. Actual process samples belong to
+support and cannot supply Naturalistic memory. No provider or host chat is dispatched.
+
+The fixture independently specifies unresolved/blocked inner expectations. Missing
+technical evidence, unreviewed criteria and absent direct-human observations remain
+visible. Pipeline success requires their honest policy treatment, positive process
+binding, negative-control rejection and copied verification with original staging
+unavailable. Fixture explanations prove structure, not model authorship, language
+quality or human understanding. Genuine active-host en/ko explanations and live
+content/browser/cost proofs remain separate candidate-bound supporting evidence.

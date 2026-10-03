@@ -28,6 +28,7 @@ import tomllib
 from typing import Any, Callable
 
 import harness
+import evidence_purpose
 import workload_intents
 import interaction_diagnostics
 import cli_observations
@@ -187,6 +188,8 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
+    evidence_purpose.validate(value.get("evidence_purpose"))
+    evidence_purpose.require_same(value, value["naturalistic_memory_evidence"])
     try:
         resource_observer.validate(value.get("naturalistic_memory_evidence", {}),
             value.get("candidate_artifacts", {}).get("volicord-mcp", {}).get("sha256"))
@@ -1008,6 +1011,7 @@ def load_frozen_descriptor(
         raise CampaignError("frozen task descriptor changed")
     if descriptor.get("workload_intent") != state.get("workload_intent"):
         raise CampaignError("frozen workload intent changed")
+    evidence_purpose.require_same(campaign, descriptor)
     errors = harness.work_descriptor_errors(
         descriptor,
         candidate_revision=campaign["candidate_head"],
@@ -1228,6 +1232,7 @@ def prepare_campaign(
     repository_input: Path, task_manifest: Path, *,
     candidate_binary: Path | None = None, enable: bool = False,
     cloner: Callable[[Path, Path, str], None] = clone_repository,
+    purpose: str = evidence_purpose.NATURALISTIC,
 ) -> dict[str, Any]:
     root = root.resolve()
     if root.exists() and any(root.iterdir()):
@@ -1238,6 +1243,7 @@ def prepare_campaign(
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{2,80}", campaign_id):
         raise CampaignError("campaign identity must be a bounded filesystem-safe value")
     require_current_candidate(candidate_head)
+    evidence_purpose.validate(purpose)
     definition = harness.load_definition()
     raw_input = read_json(repository_input)
     specs = repository_spec_map(raw_input)
@@ -1291,6 +1297,7 @@ def prepare_campaign(
         }
         descriptor = {
             "kind": "phase8_work_descriptor", "contract": "naturalistic-observation-1",
+            "evidence_purpose": purpose,
             "producer": "volicord_phase8_codex_event_normalizer",
             **selection[slot],
             "journey_id": state["journey_id"], "repository_class": kind,
@@ -1313,10 +1320,10 @@ def prepare_campaign(
         (slot_root(root, slot) / "evidence").mkdir(parents=True)
     campaign = {
         "kind": "phase8_dogfood_campaign", "schema_version": 9,
-        "campaign_id": campaign_id, "campaign_root": str(root),
+        "campaign_id": campaign_id, "campaign_root": str(root), "evidence_purpose": purpose,
         "candidate_head": candidate_head, "candidate_binary": str(binary),
         "candidate_artifacts": candidate_artifacts,
-        "naturalistic_memory_evidence": naturalistic_memory_evidence(candidate_artifacts),
+        "naturalistic_memory_evidence": resource_observer.initial(candidate_artifacts, purpose=purpose),
         "live_evidence_obligations": live_evidence_obligations(candidate_artifacts),
         "document_language": document_language, "viewer_locale": viewer_locale,
         "document_realization_route": realization_route,
@@ -1329,14 +1336,14 @@ def prepare_campaign(
     save_campaign(root, campaign)
     write_json(inventory_path(root), load_inventory(root))
     preparation = {
-        "kind": "phase8_dogfood_campaign_preparation", "campaign_id": campaign_id,
+        "kind": "phase8_dogfood_campaign_preparation", "campaign_id": campaign_id, "evidence_purpose": purpose,
         "candidate_head": candidate_head, "candidate_worktree_clean": True,
         "repository_identities": identities,
         "journey_count": len(CLASSES), "work_count": QUALIFICATION_WORK_COUNT,
         "resume_pair_count": harness.QUALIFICATION_RESUME_PAIR_COUNT,
         "session_count": BATCH_CAPTURE_COUNT, "candidate_local_install": str(binary),
         "candidate_artifacts": candidate_artifacts,
-        "naturalistic_memory_evidence": naturalistic_memory_evidence(candidate_artifacts),
+        "naturalistic_memory_evidence": resource_observer.initial(candidate_artifacts, purpose=purpose),
         "live_evidence_obligations": live_evidence_obligations(candidate_artifacts),
         "repository_trust": "user_controlled_not_automated",
         "workload_intents": workload_intents.WORKLOAD_INTENTS,
@@ -2131,6 +2138,8 @@ def map_batch_rollouts(
                 "batch rollout maps to zero frozen task roles",
                 diagnostic=diagnostic,
             ) from error
+        if evidence_purpose.capture_purpose(capture) != campaign["evidence_purpose"]:
+            raise CampaignError("capture authorship/purpose differs from campaign")
         provenance_matches = (
             capture.fresh_user_thread
             and bool(capture.user_turns)
@@ -2708,6 +2717,7 @@ def normalize_batch(
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
     manifest = {"kind": "dogfood_evidence_set", "schema_version": 8,
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
+        "evidence_purpose": campaign["evidence_purpose"],
         "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
         "naturalistic_memory_evidence": copy.deepcopy(campaign["naturalistic_memory_evidence"]),
         "live_evidence_obligations": copy.deepcopy(campaign["live_evidence_obligations"]),
@@ -2736,6 +2746,7 @@ def record_resources(root: Path, source: Path) -> dict[str, Any]:
         raise CampaignError("resource evidence exceeds bound")
     value = resource_observer.validate(json.loads(data),
         campaign["candidate_artifacts"]["volicord-mcp"]["sha256"])
+    evidence_purpose.require_same(campaign, value)
     bindings = {(resource_observer.path_binding(Path(j["runtime_home"])),
         resource_observer.path_binding(Path(j["repository_path"]))) for j in campaign["journeys"].values()}
     if any((i["identity"]["runtime_binding"], i["identity"]["cwd_binding"]) not in bindings
@@ -2764,6 +2775,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         or reference.get("sha256") != harness.sha256(root / "evidence-set.json")):
         raise CampaignError("campaign has no intact immutable evidence set")
     manifest = read_json(root / "evidence-set.json")
+    evidence_purpose.require_same(campaign, manifest, read_json(root / "preparation.json"))
     if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 8
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
@@ -2787,7 +2799,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     if "resources/observation.json" in manifest["artifacts"]:
         if read_json(root / "resources/observation.json") != manifest["naturalistic_memory_evidence"]:
             raise CampaignError("resource artifact/manifest disagreement")
-    elif manifest["naturalistic_memory_evidence"] != naturalistic_memory_evidence(manifest["candidate_artifacts"]):
+    elif manifest["naturalistic_memory_evidence"] != resource_observer.initial(manifest["candidate_artifacts"], purpose=manifest["evidence_purpose"]):
         raise CampaignError("attached resource evidence lacks immutable artifact")
     for name, binding in manifest["artifacts"].items():
         path = root / name
@@ -2821,6 +2833,8 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     mapped = {slot: type("RetainedRollout", (), {"capture": load_codex_capture(root / "slots" /
         manifest["works"][work_key(*slot[:2])]["work_slot_id"] / "evidence" / f"{slot[2]}.rollout.jsonl")})()
         for slot in harness.current_session_slots()}
+    if any(evidence_purpose.capture_purpose(v.capture) != manifest["evidence_purpose"] for v in mapped.values()):
+        raise CampaignError("retained capture authorship/purpose differs from campaign")
     if manifest.get("explanation_evidence") != explanation_evidence.collection_index(root, mapped):
         raise CampaignError("immutable explanation observation/lifecycle index changed")
     integrity_check("project_binding", verify_retained_repository_states, root, manifest)
@@ -2978,12 +2992,13 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
     journeys = evaluate_journeys(manifest)
     result = {"kind": "dogfood_machine_evaluation", "schema_version": 4,
         "candidate_head": manifest["candidate_head"], "evidence_set": campaign["evidence_set"],
+        "evidence_purpose": manifest["evidence_purpose"],
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
         "evaluator_files": {name: harness.sha256(Path(__file__).parent / name)
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
                 "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py", "answer_observations.py", "explanation_evidence.py", "answer_projection.py", "review_captures.py", "review_explanations.py", "review_operations.py",
                 "../shared/recorded_action_evidence.py",
-                "evaluation.json", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py")},
+                "evaluation.json", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py", "evidence_purpose.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "works": works,
@@ -3127,6 +3142,10 @@ def tar_info(name: str, size: int) -> tarfile.TarInfo:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     sub = result.add_subparsers(dest="command", required=True)
+    rehearse = sub.add_parser("rehearse-evidence", help="Run local Product-backed support; standalone receipt is diagnostic")
+    rehearse.add_argument("--candidate-head", required=True)
+    rehearse.add_argument("--output", required=True)
+    rehearse.add_argument("--bin-dir")
     prepare = sub.add_parser("prepare")
     prepare.add_argument("--campaign-root", required=True)
     prepare.add_argument("--campaign-id", required=True)
@@ -3259,6 +3278,12 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
+    if args.command == "rehearse-evidence":
+        import sys
+        argv = [sys.executable, "-B", str(Path(__file__).with_name("rehearsal.py")), "--candidate-head", args.candidate_head, "--output", args.output]
+        if args.bin_dir:
+            argv.extend(["--bin-dir", args.bin_dir])
+        return subprocess.run(argv, check=False).returncode
     if args.command == "verify-result-lineage":
         print(json.dumps(result_lineage.verify(Path(args.lineage_root)), indent=2, sort_keys=True))
         return 0

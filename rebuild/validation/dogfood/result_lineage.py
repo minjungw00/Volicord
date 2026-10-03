@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import evidence_purpose
 from pathlib import Path
 import re
 
@@ -60,6 +61,7 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
     evaluation_path = evaluation_path.resolve()
     evaluation_data = operations.bounded_read(evaluation_path)
     evaluation = evaluation_runs.load(evaluation_path)
+    evidence_purpose.require_same(manifest, evaluation)
     review.require(evaluation["candidate_head"] == manifest["candidate_head"]
         and evaluation["evidence_set"] == {"path": "evidence-set.json", "sha256": evidence_sha},
         "evaluation does not bind the campaign candidate/evidence set")
@@ -119,7 +121,7 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
             "operator_approval": approval_value["operator_approval"]}
 
     index_without_id = {"kind": "dogfood_result_lineage", "schema_version": SCHEMA_VERSION,
-        "candidate_head": manifest["candidate_head"],
+        "candidate_head": manifest["candidate_head"], "evidence_purpose": manifest["evidence_purpose"],
         "campaign": {"campaign_id": manifest["campaign_id"],
             "evidence_set_path": "source/evidence-set.json", "evidence_set_sha256": evidence_sha},
         "evaluation": {"run_id": evaluation["run_id"], "path": "evaluation/evaluation.json",
@@ -196,6 +198,7 @@ def verify(root):
         "result lineage evidence-set identity changed")
     evaluation_path = operations.safe_path(root, index["evaluation"]["path"])
     evaluation = evaluation_runs.load(evaluation_path)
+    evidence_purpose.require_same(index, evidence_set, evaluation)
     review.require(index["evaluation"] == {"run_id": evaluation["run_id"],
         "path": "evaluation/evaluation.json", "sha256": operations.digest(operations.bounded_read(evaluation_path)),
         "receipt_path": "evaluation/receipt.json", "evaluator_revision": evaluation["evaluator_revision"],
@@ -250,6 +253,7 @@ def verify(root):
         review.require(recorded, "result lineage requires recorded review evidence")
         value = json.loads(recorded["recorded/review.json"])
         binding = value["binding"]
+        evidence_purpose.require_same(index, binding)
         review.require(binding["candidate_head"] == index["candidate_head"]
             and binding["evidence_set"] == {"sha256": index["campaign"]["evidence_set_sha256"]},
             "result lineage review candidate/evidence changed")
@@ -283,6 +287,7 @@ def verify(root):
     qualification_data = operations.bounded_read(qualification_path)
     qualification = json.loads(qualification_data)
     qualification_policy.validate_result(qualification)
+    evidence_purpose.require_same(index, evidence_set, evaluation, qualification)
     review.require(qualification["candidate_head"] == index["candidate_head"]
         and qualification["evidence_set"]["sha256"] == index["campaign"]["evidence_set_sha256"]
         and qualification["naturalistic_evidence"]["naturalistic_resource"]

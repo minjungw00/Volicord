@@ -773,3 +773,22 @@ retains their basis and separate personal-observation declarations. Review index
 and source-independent lineage consumers validate that binding. Original local
 screenshots remain separately retained. HTTP/markup, browser, human, snapshot
 export and render profiling keep their separate evidence meanings.
+
+## Product-backed Dogfood evidence rehearsal
+
+```sh
+rebuild/scripts/validate focused evidence-rehearsal-controls -- python3 rebuild/validation/dogfood/rehearsal_self_test.py
+rebuild/scripts/validate focused evidence-rehearsal -- rebuild/scripts/dogfood-campaign rehearse-evidence --candidate-head <current-clean-HEAD> --output <new-absolute-ignored-directory>
+```
+
+The support runner installs actual candidate entry points; `--bin-dir` may select a
+previously installed immutable candidate for a standalone diagnostic. No diagnostic
+receipt establishes authoritative gate success. It invokes neither Final/V11 nor a
+provider/chat. Authored transport metadata and realization/review inputs remain test
+support. Product receipts, actual observer samples and artifacts remain distinct.
+Complete raw process evidence is retained privately under the output; only bounded
+hashes/identities/inner verdicts/controls may enter technical handoff evidence.
+Collection uses existing explanation/document preparation and recording,
+`collect-batch`, `evaluate`, `collect-cli-observations`, review prepare/record,
+`qualify`, and publish/verify result-lineage owners. Rehearsal evidence cannot supply
+measured campaign use, human observations or Phase 9 approval.

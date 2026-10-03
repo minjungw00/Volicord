@@ -10,6 +10,7 @@ import copy
 import datetime as dt
 import hashlib
 import json
+import evidence_purpose
 from pathlib import Path
 import secrets
 import subprocess
@@ -241,14 +242,14 @@ def prepare(root, raw_paths, *, languages=None, work_ids=None, decision_ids=None
                 plan = result.get('plan')
                 validate_plan(plan, project, subject, language)
                 preparation = {'kind': 'dogfood_explanation_preparation', 'schema_version': SCHEMA_VERSION,
-                    'identity': identity, 'candidate_head': campaign['candidate_head'],
+                    'identity': identity, 'evidence_purpose': campaign['evidence_purpose'], 'candidate_head': campaign['candidate_head'],
                     'candidate_executable_sha256': campaign['candidate_artifacts']['volicord']['sha256'],
                     'journey_id': journey_id, 'project_id': project, 'subject': subject, 'language': language,
                     'phase': 'post_session_steward', 'observed_at': timestamp(),
                     'raw_inputs': document_realization.raw_binding(mapped),
                     'before_observation': subject_answers(before, subject), 'plan': plan,
                     'canonical_bundle_sha256': canonical.source_sha256,
-                    'generation_authority': 'current_active_host_interaction_required_no_provider_dispatch',
+                    'generation_authority': ('self_authored_support_no_provider_dispatch' if campaign['evidence_purpose'] == evidence_purpose.REHEARSAL else 'current_active_host_interaction_required_no_provider_dispatch'),
                     'generator_identity_limit': 'self_reported_not_independently_verified'}
                 files[directory / 'preparation.json'] = c.json_bytes(preparation)
                 files[directory / 'before.json'] = c.json_bytes(before)
@@ -276,6 +277,7 @@ def record(root, identity, input_path):
     directory = entry_path(root, identity)
     preparation_bytes = bound(root, directory / 'preparation.json')
     preparation = json.loads(preparation_bytes)
+    evidence_purpose.require_same(campaign, preparation)
     if preparation['candidate_head'] != campaign['candidate_head'] or preparation['candidate_executable_sha256'] != campaign['candidate_artifacts']['volicord']['sha256']:
         raise c.CampaignError('explanation candidate binding changed')
     if (directory / 'receipt.json').exists():
@@ -307,7 +309,7 @@ def record(root, identity, input_path):
         'identity': identity, 'phase': 'post_session_steward', 'observed_at': timestamp(),
         'preparation': binding(preparation_bytes), 'response': binding(data),
         'record': binding(c.json_bytes(result)), 'readback': binding(c.json_bytes(after)),
-        'candidate_head': preparation['candidate_head'], 'candidate_executable_sha256': preparation['candidate_executable_sha256'],
+        'evidence_purpose': preparation['evidence_purpose'], 'candidate_head': preparation['candidate_head'], 'candidate_executable_sha256': preparation['candidate_executable_sha256'],
         'generator_identity_status': 'self_reported_not_independently_verified',
         'host_response_locator': {'kind': 'submitted_response_file', 'sha256': binding(data)['sha256'],
             'session': response['generator']['session'], 'raw_capture_sha256': None, 'turn_id': None,
@@ -338,6 +340,7 @@ def verify(root, preparation_path, *, allow_unrecorded=False):
             return preparation, None
         raise api().CampaignError('prepared explanation is missing host response/record receipt/readback')
     receipt = json.loads(bound(root, directory / 'receipt.json'))
+    evidence_purpose.require_same(preparation, receipt)
     values = {name: bound(root, directory / (name + '.json')) for name in ('response', 'record', 'after')}
     if (receipt.get('preparation') != binding(preparation_bytes) or receipt.get('response') != binding(values['response'])
             or receipt.get('record') != binding(values['record']) or receipt.get('readback') != binding(values['after'])
@@ -363,6 +366,7 @@ def verify(root, preparation_path, *, allow_unrecorded=False):
 def require_ready(root, campaign, mapped):
     for path in preparations(root):
         preparation, receipt = verify(root, path)
+        evidence_purpose.require_same(campaign, preparation)
         if preparation['raw_inputs'] != document_realization.raw_binding(mapped) or preparation['candidate_head'] != campaign['candidate_head']:
             raise api().CampaignError('explanation preparation does not bind current raw inputs/candidate')
         # Freshness must survive subsequent steward operations before collection.

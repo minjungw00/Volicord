@@ -11,6 +11,7 @@ import gzip
 import hashlib
 import io
 import json
+import evidence_purpose
 import os
 from pathlib import Path
 import re
@@ -592,6 +593,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         from evaluation_runs import load
         data = bounded_read(evaluation_path)
         evaluation = load(evaluation_path, for_review=True)
+        evidence_purpose.require_same(manifest, evaluation)
         review.require(evaluation["candidate_head"] == manifest["candidate_head"]
             and evaluation["evidence_set"] == {"path": "evidence-set.json", "sha256": evidence_hash}, "machine run evidence-set/candidate mismatch")
         machine_binding = {"run_id": evaluation["run_id"], "sha256": digest(data),
@@ -604,6 +606,8 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
             review.require(isinstance(identity, dict) and identity.get("session") == {"state": "self_reported", "value": session_id},
                 "reviewer identity contradicts the declared review session")
         reviewer["identity"] = identity
+    if reviewer_kind == "human":
+        evidence_purpose.require_measured(manifest)
     sessions = sorted(item["session_id"] for item in manifest["raw_inputs"])
     review.validate_reviewer(reviewer, sessions)
     cli_observation_set = None
@@ -678,6 +682,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
             and u["surface"] == "live_viewer_observation")]
     binding = {"state": "verified", "source": "immutable_campaign_evidence",
         "candidate_head": manifest["candidate_head"], "evidence_set": {"sha256": evidence_hash},
+        "evidence_purpose": manifest["evidence_purpose"],
         "machine_evaluation": machine_binding, "policy_revision": policy["policy_revision"],
         "rubric_sha256": machine.digest(policy)}
     package_id = machine.digest({"binding": binding, "index": index, "unavailable_surfaces": unavailable})
@@ -741,6 +746,7 @@ def _load_package(root):
     review.require(preparation.get("kind") == "dogfood_qualitative_review_preparation"
         and preparation.get("schema_version") == review.SCHEMA_VERSION, "unsupported review preparation")
     binding, index, policy = preparation["binding"], preparation["index"], preparation["rubric"]
+    evidence_purpose.validate(binding.get("evidence_purpose"))
     review.require(policy == review.rubric(campaign_api().harness.load_definition())
         and binding["rubric_sha256"] == machine.digest(policy)
         and binding["policy_revision"] == policy["policy_revision"], "stale or modified review policy")
@@ -794,6 +800,7 @@ def _load_package(root):
                 and projected["origin"] == entry["origin"]
                 and projected["candidate_head"] == binding["candidate_head"]
                 and projected["evidence_set_sha256"] == binding["evidence_set"]["sha256"]
+                and projected["evidence_purpose"] == binding["evidence_purpose"]
                 and projected["session_id"] in preparation["evaluated_sessions"]
                 and entry["surface"] == ("work_capture" if projected["role"] == "start" else "resume_capture"),
                 "review capture projection binding mismatch")
@@ -803,6 +810,7 @@ def _load_package(root):
             review.require(entry.get('projection') == {'schema_version': review_explanations.SCHEMA_VERSION,
                 'semantic_complete': lifecycle['semantic_complete'], 'review_bytes': len(content), 'review_sha256': digest(content)}
                 and context['candidate_head'] == binding['candidate_head']
+                and lifecycle['context']['evidence_purpose'] == binding['evidence_purpose']
                 and lifecycle['evidence_set_sha256'] == binding['evidence_set']['sha256']
                 and context['journey_id'] == entry['sample_id']
                 and context['journey_id'] in entry['sample_ids'], 'review explanation package binding changed')

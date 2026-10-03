@@ -8,7 +8,7 @@ import machine_findings as machine
 def policy_identity():
     import qualitative_review
     import harness
-    policy = {"machine_version": machine.POLICY_VERSION, "authority": machine.POLICY,
+    policy = {"purpose_sha256": harness.sha256(Path(__file__).with_name("evidence_purpose.py")), "machine_version": machine.POLICY_VERSION, "authority": machine.POLICY,
         "machine_policy_sha256": harness.sha256(Path(machine.__file__)),
         "interaction_diagnostics_sha256": harness.sha256(Path(__file__).with_name("interaction_diagnostics.py")),
         "answer_projection_sha256": harness.sha256(Path(__file__).with_name("answer_projection.py")),
@@ -20,7 +20,7 @@ def policy_identity():
         "recorded_action_evidence_sha256": harness.sha256(harness.ROOT / "rebuild/validation/shared/recorded_action_evidence.py"),
         "workload_intents_sha256": harness.sha256(Path(__file__).with_name("workload_intents.py")),
         "rubric": qualitative_review.rubric(harness.load_definition())}
-    return {"revision": "evidence-evaluation-8", "sha256": machine.digest(policy)}
+    return {"revision": "evidence-evaluation-9", "sha256": machine.digest(policy)}
 
 
 def historical_reference(path, candidate, evidence):

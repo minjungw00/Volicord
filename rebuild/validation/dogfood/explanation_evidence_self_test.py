@@ -42,7 +42,7 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
     readback = {'project_id': project, 'selected_work': {'work_item_id': identity, 'checkpoint_ids': [], 'answers': answers},
         'decisions': [{'identity': identity, 'answers': answers}]}
     preparation = {'kind': 'dogfood_explanation_preparation', 'schema_version': 1,
-        'identity': 'bb' * 16, 'project_id': project, 'subject': subject, 'language': language,
+        'identity': 'bb' * 16, 'evidence_purpose': 'naturalistic', 'project_id': project, 'subject': subject, 'language': language,
         'plan': plan, 'journey_id': 'journey-volicord', 'candidate_head': 'a' * 40,
         'candidate_executable_sha256': 'c' * 64, 'phase': 'post_session_steward',
         'observed_at': '2026-10-03T00:00:00+00:00', 'raw_inputs': [],
@@ -92,7 +92,7 @@ def publish_fixture(root, *, kind='work', language='en', before_state='unavailab
         'observed_at': '2026-10-03T00:01:00+00:00',
         'preparation': e.binding(values['preparation']), 'response': e.binding(values['response']),
         'record': e.binding(values['record']), 'readback': e.binding(values['after']),
-        'candidate_head': preparation['candidate_head'], 'candidate_executable_sha256': preparation['candidate_executable_sha256'],
+        'evidence_purpose': preparation['evidence_purpose'], 'candidate_head': preparation['candidate_head'], 'candidate_executable_sha256': preparation['candidate_executable_sha256'],
         'generator_identity_status': 'self_reported_not_independently_verified', 'after_state': 'current',
         'host_response_locator': {'kind': 'submitted_response_file', 'sha256': e.binding(values['response'])['sha256'],
             'session': response['generator']['session'], 'raw_capture_sha256': None, 'turn_id': None,
@@ -115,7 +115,7 @@ class LifecycleTests(unittest.TestCase):
             source = fixture_root / descriptor['evidence']['captures']['work']['file']
             mapped = {('volicord', 'A', 'start'): SimpleNamespace(source=source, capture=h.load_codex_capture(source))}
             p,response,product_receipt,after = lifecycle()
-            candidate = {'candidate_head': p['candidate_head'], 'candidate_binary': '/unused/volicord',
+            candidate = {'evidence_purpose': 'naturalistic', 'candidate_head': p['candidate_head'], 'candidate_binary': '/unused/volicord',
                 'document_language': 'en', 'candidate_artifacts': {'volicord': {'sha256': p['candidate_executable_sha256']}},
                 'journeys': {'journey-volicord': {'repository_class': 'volicord', 'runtime_home': '/unused/runtime',
                     'repository_path': '/unused/repository'}}}
@@ -207,7 +207,7 @@ class LifecycleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary);c.write_json(c.inventory_path(root), {'kind': 'phase8_dogfood_evidence_inventory', 'schema_version': 1, 'artifacts': {}})
             directory = publish_fixture(root)
-            campaign = {'candidate_head': 'a' * 40, 'candidate_binary': '/unused/volicord',
+            campaign = {'evidence_purpose': 'naturalistic', 'candidate_head': 'a' * 40, 'candidate_binary': '/unused/volicord',
                 'journeys': {'journey-volicord': {'runtime_home': '/unused/runtime'}}}
             with patch.object(c, 'candidate_artifact_use'), patch.object(e, 'invoke', return_value=({'plan': {}}, {})):
                 with self.assertRaisesRegex(c.CampaignError, 'basis changed'):

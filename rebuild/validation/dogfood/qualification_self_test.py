@@ -28,7 +28,7 @@ def evaluation():
                     for rule in sorted(policy.STRUCTURAL_RULES)]
         journeys.append({"repository_class": repository_class, "journey_id": journey_id,
             "work_slot_ids": list(work_slot_ids), "findings": findings})
-    return {"run_id": "a" * 64, "works": works, "journeys": journeys,
+    return {"evidence_purpose": "naturalistic", "run_id": "a" * 64, "works": works, "journeys": journeys,
         "coverage": copy.deepcopy(policy.TOPOLOGY)}
 
 

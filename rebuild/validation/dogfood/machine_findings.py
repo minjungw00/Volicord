@@ -2,6 +2,7 @@
 from enum import StrEnum
 import hashlib
 import json
+import evidence_purpose
 import re
 from pathlib import Path
 
@@ -171,11 +172,12 @@ def digest(value):
 
 
 def validate_run(value, *, require_current_policy=True):
-    if not isinstance(value, dict) or set(value) != {"kind", "schema_version", "candidate_head", "evidence_set",
+    if not isinstance(value, dict) or set(value) != {"kind", "schema_version", "candidate_head", "evidence_set", "evidence_purpose",
         "evaluator_revision", "policy_version", "evaluator_files", "policy", "qualitative_review_runs",
         "previous_evaluation", "run_nonce", "collection_state", "evaluation_state", "qualification_state",
         "works", "journeys", "interaction_diagnostics", "coverage", "finding_state", "run_id"}:
         raise ValueError("invalid machine evaluation shape")
+    evidence_purpose.validate(value["evidence_purpose"])
     if (value.get("kind") != "dogfood_machine_evaluation" or value.get("schema_version") != 4
         or value.get("qualification_state") != "not_run"
         or value.get("collection_state") != "collected"

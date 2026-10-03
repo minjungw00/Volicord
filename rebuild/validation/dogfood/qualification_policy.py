@@ -1,5 +1,6 @@
 """Single Phase 8 qualification policy, independent of technical gate execution."""
 import json
+import evidence_purpose
 import resource_observer
 from collections import Counter
 from pathlib import Path
@@ -10,7 +11,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-9"
+REVISION = "replacement-qualification-10"
 COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
 MULTI_WORK_CRITERION = "journey-volicord/viewer_snapshot/multiple_work_organization"
 # Direct human/user observations cannot be inferred from an agent's artifact review.
@@ -176,6 +177,7 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
     Every required criterion remains explicit, including those with no review.
     A machine observation is never erased by semantic adjudication.
     """
+    purpose = evidence_purpose.validate(evaluation["evidence_purpose"])
     topology = validate_topology(evaluation)
     scopes = [*evaluation["works"], *evaluation["journeys"]]
     findings = {finding_id(scope, n): f for scope in scopes for n, f in enumerate(scope["findings"])}
@@ -232,8 +234,8 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
     unresolved_findings = []
     complete = not unresolved and not unresolved_findings and not violated
     blocked = evidence_validity != "valid" or bool(hard) or technical["state"] in {"failed", "candidate_mismatch", "invalid"} or bool(violated)
-    status = "blocked" if blocked else "qualified" if complete and technical["state"] == "passed" else "unresolved"
-    result = {"evidence_validity": evidence_validity, "campaign_topology": topology,
+    status = "blocked" if blocked else "qualified" if complete and technical["state"] == "passed" and purpose == evidence_purpose.NATURALISTIC else "unresolved"
+    result = {"evidence_purpose": purpose, "evidence_validity": evidence_validity, "campaign_topology": topology,
         "technical_gate": technical,
         "machine_summary": {"counts": dict(sorted(Counter(f["disposition"] for f in findings.values()).items())),
             "hard_findings": hard, "review_support_findings": review_support_findings,
@@ -290,6 +292,7 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
     import campaign
     manifest = campaign.load_evidence_set(root)
     evaluation = evaluation_runs.load(evaluation_path)
+    purpose = evidence_purpose.require_same(manifest, evaluation)
     evidence_hash = campaign.harness.sha256(root / "evidence-set.json")
     review.require(candidate == manifest["candidate_head"] == evaluation["candidate_head"], "Product candidate mismatch")
     review.require(evaluation["evidence_set"] == {"path": "evidence-set.json", "sha256": evidence_hash}, "evaluation evidence mismatch")
@@ -302,6 +305,7 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
         review.require(files, "qualification consumes only immutable recorded reviews")
         value = json.loads(files["recorded/review.json"])
         binding = value["binding"]
+        evidence_purpose.require_same(manifest, binding)
         review.require(binding["candidate_head"] == candidate and binding["evidence_set"] == {"sha256": evidence_hash}, "review candidate/evidence mismatch")
         if binding["machine_evaluation"] is not None:
             review.require(binding["machine_evaluation"] == {"run_id": evaluation["run_id"],
@@ -348,6 +352,7 @@ def validate_result(value):
     q, m, t = value["qualitative_review"], value["machine_summary"], value["technical_gate"]
     review.require(COVERAGE_CRITERION in set(q["resolved_criteria"] + q["unresolved_criteria"] + q["violated_criteria"])
         and COVERAGE_CRITERION not in q["not_observed_criteria"], "required interaction coverage was omitted or unobserved")
+    purpose = evidence_purpose.validate(value.get("evidence_purpose"))
     naturalistic = value.get("naturalistic_evidence")
     structural = naturalistic.get("multi_work_structural_continuity") if isinstance(naturalistic, dict) else None
     comprehension = naturalistic.get("multi_work_viewer_comprehension") if isinstance(naturalistic, dict) else None
@@ -381,7 +386,7 @@ def validate_result(value):
         and not set(q["not_observed_criteria"]) & (set(q["resolved_criteria"]) | set(q["violated_criteria"]) | set(q["unresolved_criteria"])),
         "qualitative not-observed state is not distinct")
     blocked = value["evidence_validity"] != "valid" or bool(m["hard_findings"]) or bool(q["violated_criteria"]) or t["state"] in {"failed", "invalid", "candidate_mismatch"}
-    expected = "blocked" if blocked else "qualified" if complete and t["state"] == "passed" else "unresolved"
+    expected = "blocked" if blocked else "qualified" if complete and t["state"] == "passed" and purpose == evidence_purpose.NATURALISTIC else "unresolved"
     review.require(value["replacement_qualification"] == expected and value["replacement_pass_candidate"] is (expected == "qualified")
         and q["state"] == ("complete" if complete else "incomplete"), "qualification state contradicts mandatory evidence")
     if t["state"] == "passed":
@@ -407,6 +412,7 @@ def approve(qualification_path, output, *, operator, statement):
 
 
 def approval_value(value, data, operator, statement):
+    evidence_purpose.require_measured(value)
     result = {**value, "kind": "dogfood_operator_approval", "schema_version": 1, "policy": identity(),
         "candidate_head": value["candidate_head"], "evidence_set": value["evidence_set"],
         "qualification_run_id": value["run_id"], "qualification_sha256": operations.digest(data),
