@@ -216,10 +216,11 @@ def validate_temporal(value, processes):
         and outcomes['historical_explanation_regeneration']['artifacts'] == [v['stages']['receipt'] for v in lives],
         'regeneration success has no retained lifecycle evidence')
     copied = value['copied']
-    require(set(copied) == {'lifecycles', 'recall_capture'} and set(copied['lifecycles']) == {v['identity'] for v in lives},
+    require(set(copied) == {'lifecycles', 'recall_capture', 'evaluation'} and set(copied['lifecycles']) == {v['identity'] for v in lives},
         'copied lineage omitted historical/final observations')
     for item in copied['lifecycles'].values(): artifact(item)
     artifact(copied['recall_capture'])
+    artifact(copied['evaluation'])
 
 def validate_binding(value):
     if value is None:

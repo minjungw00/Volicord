@@ -56,7 +56,7 @@ def temporal_fixture():
         'recall': {'work_slot_id':'journey-small-python-work-a', 'supporting_sources': sources,
             'authorization_source_id':'05'*16, 'observations': observations, 'correction': correction},
         'outcomes':outcomes, 'copied':{'lifecycles': {v['identity']:dict(artifact) for v in lives},
-            'recall_capture': dict(artifact)}}
+            'recall_capture': dict(artifact), 'evaluation': dict(artifact)}}
 
 
 def passed_result(candidate="a" * 40):

@@ -266,9 +266,17 @@ def copied_temporal(copied, temporal):
     receipt = mutation['body']['value']['result']
     require(receipt['revision'] == 2 and receipt['user_response_source_id'] == temporal['recall']['authorization_source_id']
         and mutation['body']['value']['request']['expected_revision'] == 1
-        and mutation['sequence'] < mutation['completion_sequence'], 'copied correction witness lost')
+        and mutation['sequence'] == temporal['recall']['correction']['sequence']
+        and mutation['completion_sequence'] == temporal['recall']['correction']['completion_sequence'], 'copied correction witness lost')
     require(any(p['value'].endswith('/body/value/result/revision') for p in matches[0]['locators']), 'copied revision locator missing')
-    return {'lifecycles': lifecycle_bindings, 'recall_capture': explanation_evidence.binding(path.read_bytes())}
+    evaluation_path = copied / index['evaluation']['path']
+    evaluation = c.read_json(evaluation_path)
+    finding = next(f for w in evaluation['works'] if w['work_slot_id'] == temporal['recall']['work_slot_id']
+        for f in w['findings'] if f['check'] == 'shared_answer_integrity')
+    require([machine_findings.digest(o['goal_basis']) for o in finding['basis']['observations']]
+        == [o['basis_sha256'] for o in temporal['recall']['observations']], 'copied invocation windows changed')
+    return {'lifecycles': lifecycle_bindings, 'recall_capture': explanation_evidence.binding(path.read_bytes()),
+        'evaluation': explanation_evidence.binding(evaluation_path.read_bytes())}
 
 
 class Processes:

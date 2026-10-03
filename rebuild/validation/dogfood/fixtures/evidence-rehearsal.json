@@ -85,13 +85,13 @@
   "temporal_scenarios": {
     "recall": {
       "work_slot_id": "journey-small-python-work-a",
-      "corrected_statement": "Inspect the shared evidence support scenario — retain configuration investigation evidence.",
-      "authorization": "Self-authored support authorization: clarify the configuration investigation Goal expression and preserve its original supporting Sources."
+      "corrected_statement": "Inspect the shared support evidence scenario!",
+      "authorization": "Self-authored support authorization: reorder evidence/support in the Goal expression, preserve its meaning and original supporting Sources."
     },
     "regeneration": {
       "work_slot_id": "journey-polyglot-medium-work-a",
-      "corrected_statement": "Inspect the shared evidence support scenario — retain cross-stack integration evidence.",
-      "authorization": "Self-authored support authorization: clarify the integration Goal expression and preserve its original supporting Sources."
+      "corrected_statement": "Inspect the support scenario: shared evidence.",
+      "authorization": "Self-authored support authorization: reorder the same Goal words without changing its meaning or original supporting Sources."
     }
   }
 }
