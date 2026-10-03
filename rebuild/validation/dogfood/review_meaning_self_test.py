@@ -95,7 +95,11 @@ class MeaningTests(unittest.TestCase):
         self.assertEqual(body['result']['user_response_source_id'], 'fa' * 16)
         self.assertNotIn('user_turn', body['request'])
         self.assertNotIn('corrected_text', body['request'])
-        self.assertLess(correction['sequence'], correction['completion_sequence'])
+        self.assertLessEqual(correction['sequence'], correction['completion_sequence'])
+        parsed = codex_events.load_codex_capture(self.fixture.path)
+        self.assertEqual(correction['sequence'], parsed.calls('canonical_mutate')[0].sequence)
+        recall = next(r for r in value['records'] if r.get('operation') == 'recall')
+        self.assertEqual(recall['sequence'], parsed.calls('recall')[0].sequence)
         pointers, _ = ops.locators(data)
         self.assertTrue(any(p['value'].endswith('/body/value/result/revision') for p in pointers))
 

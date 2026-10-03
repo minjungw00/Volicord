@@ -325,7 +325,9 @@ Its machine basis retains a per-Recall Goal revision/Source result, mutation inv
 coordinates, expected/actual revisions, replay disposition and separate correction authorization Source,
 plus any verified start/resume relationship or scoped uncertainty.
 Reviewer operation projections retain creation/correction identities, expected and returned revisions,
-original creation Source and separate authorization Source, and invocation/completion source coordinates.
+original creation Source and separate authorization Source, and normalized operation/completion locators.
+The collection index keeps those same observation locators; invocation windows remain separate in the
+packaged evaluation's per-Recall machine basis.
 Correction text and authorization bodies are not added to the scalar operation projection.
 Parser/evaluator dependency hashing includes `codex_events.py`; no historical evaluation is silently upgraded. A missing temporal basis
 leaves review required and cannot waive an independently confirmed shared-answer violation. Contradictory

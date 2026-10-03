@@ -175,9 +175,10 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
         records.append({"sequence": request.sequence, "source_sequences": [request.sequence, request.completion_sequence],
             "turn_id": request.turn_id, "call_id": request.call_id, "semantic_role": "question_request",
             "body_value": [{"title": q["title"], "options": q.get("options", [])} for q in questions]})
-    def operation_record(sequence, completion, turn, call_id, operation, outcome, request, result, transport, language, invocation=None):
-        coordinates = sorted({sequence, completion} | ({invocation} if invocation is not None else set()))
-        records.append({"sequence": min(coordinates), "source_sequences": coordinates,
+    def operation_record(sequence, completion, turn, call_id, operation, outcome, request, result, transport, language):
+        # This is the normalized observation locator used by the collection index.
+        # Invocation windows belong to the independently retained machine basis.
+        records.append({"sequence": sequence, "source_sequences": sorted({sequence, completion}),
             "completion_sequence": completion, "turn_id": turn, "call_id": call_id,
             "semantic_role": "volicord_operation", "operation": operation, "outcome": outcome,
             "transport": transport, "requested_language": language,
@@ -190,8 +191,7 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
     for call in capture.tool_calls:
         operation_record(call.sequence, call.completion_sequence, call.turn_id, call.call_id,
             call.operation, call.outcome, call.arguments, call.result, "mcp",
-            call.arguments.get("requested_language", "en"),
-            capture.observed_metadata.get('mcp_invocations', {}).get(call.call_id))
+            call.arguments.get("requested_language", "en"))
     cli_returns = [r for r in answer_observations.returned_recalls(capture) if r['transport'] == 'cli']
     cli_returns += explanation_evidence.measured_cli_operations(capture)
     for returned in cli_returns:
