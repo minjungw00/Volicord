@@ -356,7 +356,7 @@ def run_sessions(root, campaign_root, binary, logs):
                 c.write_json(root / "actual-resource.json", resource)
             if role == "start" and label == "A":
                 resolved = call("project_resolve", {"repository": str(repository)})
-                require(resolved["state"] == "not_found", "support Project unexpectedly preexists")
+                require(resolved["status"] == "not_found", "support Project unexpectedly preexists")
                 project = call("project_initialize", {"display_name": "Authored support " + kind,
                     "repository": str(repository)})["project_id"]
             else:
