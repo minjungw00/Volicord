@@ -1985,3 +1985,24 @@ independent agent review and required human observations. These remain synthetic
 A successful authoritative gate enables a wholly fresh campaign, never Dogfood success
 or Phase 9 approval. All prior failed campaigns remain historical evidence only and
 cannot be rebound to the changed candidate.
+
+### Candidate-bound live display support
+
+[Viewer observation](../../validation/dogfood/viewer-observation.md) is maintained
+focused support alongside the existing browser/explanation tools. Renderer context
+and actual Chromium capture bind process/executable, Runtime/Project/view/subject,
+en/ko, explanation state/generation and canonical/Source/Analysis basis. The
+`viewer_context_browser.py` runner uses the maintained explanation seed and public
+Operations commands with labeled structural fixture prose. It retains distinct
+absent/current/stale/regenerated captures, Decision state, actual native 200% zoom,
+attachment/detachment and wrong-executable controls. These results do not establish
+active-host prose quality, authenticated external activation, human experience,
+a measured Naturalistic campaign or technical gate success.
+
+Human observation/receipt schema 4 adds only displayed contexts and each locale's
+personal-inspection declaration to the existing grouped observation/limits model.
+Both locales' contexts precede any English reference. Closed validators, image
+hash checks and copied review/lineage bindings preserve evidence identity; human
+judgments remain self-reported. Source-independent review verification retains
+context metadata and original image hashes, while images stay in local capture
+directories and require separate retention for later visual inspection.

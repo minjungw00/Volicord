@@ -18,6 +18,7 @@ import qualitative_review as q
 import review_operations as ops
 import review_captures as captures
 import codex_events
+from viewer_observation_self_test import display_fixture, context_directory
 
 
 def snapshot(root):
@@ -721,16 +722,18 @@ class WorkflowTests(unittest.TestCase):
         evidence_hash = ops.digest((self.root / "evidence-set.json").read_bytes())
         observation = {
             "kind": "dogfood_human_observations",
-            "schema_version": 3,
+            "schema_version": 4,
             "candidate_head": c.load_evidence_set(self.root)["candidate_head"],
             "evidence_set_sha256": evidence_hash,
             "observer": q.reviewer("human", "b" * 32),
             "observations": [
                 {"sample_id": "journey-volicord", "surface": "live_viewer_observation", "locale": "en",
+                 "contexts": [display_fixture(c.load_evidence_set(self.root), "en")], "personally_observed": True,
                  "control": {"action": "direct", "reference_locale": None},
                  "response": {"observation": "The view states that auth.json content is not retained.",
                     "limits": "Private prompt bodies were excluded from inspection."}},
                 {"sample_id": "journey-volicord", "surface": "live_viewer_observation", "locale": "ko",
+                 "contexts": [display_fixture(c.load_evidence_set(self.root), "ko")], "personally_observed": True,
                  "control": {"action": "direct", "reference_locale": None},
                  "response": {"observation": "Bearer token terminology is visible as security guidance.",
                     "limits": "The api_key field name is documentation, not a retained value."}},
@@ -752,13 +755,16 @@ class WorkflowTests(unittest.TestCase):
 
     def test_conversational_human_observations_bind_candidate_and_receipt(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
+        manifest = c.load_evidence_set(self.root)
+        context_paths = [context_directory(self.parent,self._testMethodName+locale,manifest,locale) for locale in ["en","ko"]]
         answers = iter([
+            "1",
             "OBSERVATION:\nKeyboard focus, narrow layout, input response and resulting paint were personally inspected in the English Viewer.\n\nA second paragraph remains one answer.\nLIMITS:\nScreen reader output and other pages were not inspected.",
-            "SAME AS ENGLISH",
+            "1", "SAME AS ENGLISH",
         ])
         result = human_review.capture_viewer_observations(
             self.root, observation_root, input_fn=answers.__next__, output_fn=lambda _text: None,
-            run_id="c" * 32)
+            run_id="c" * 32, context_paths=context_paths)
         self.assertEqual(result["state"], "captured")
         self.assertTrue((observation_root / "observations.json").is_file())
         self.assertTrue((observation_root / "receipt.json").is_file())
@@ -775,6 +781,26 @@ class WorkflowTests(unittest.TestCase):
         captured = json.loads((observation_root / "observations.json").read_bytes())
         self.assertEqual(captured["observations"][1]["control"],
             {"action": "same_as_locale", "reference_locale": "en"})
+
+    def test_human_display_context_rejects_missing_locale_personal_denial_and_foreign_candidate(self):
+        manifest = c.load_evidence_set(self.root)
+        contexts = [context_directory(self.parent, self._testMethodName + locale, manifest, locale)
+            for locale in ("en", "ko")]
+        target = self.parent / (self._testMethodName + "-observations")
+        with self.assertRaisesRegex(ValueError, "both locales"):
+            human_review.capture_viewer_observations(self.root, target, context_paths=contexts[:1],
+                input_fn=lambda: self.fail("missing context must fail before conversation"), output_fn=lambda _: None)
+        with self.assertRaisesRegex(ValueError, "direct human observation is unavailable"):
+            human_review.capture_viewer_observations(self.root, target, context_paths=contexts,
+                input_fn=iter(["2"]).__next__, output_fn=lambda _: None)
+        self.assertFalse(target.exists())
+        value = json.loads((contexts[1] / "display-context.json").read_bytes())
+        value["candidate_head"] = "0" * 40
+        (contexts[1] / "display-context.json").write_text(json.dumps(value))
+        with self.assertRaisesRegex(ValueError, "capture binding"):
+            human_review.capture_viewer_observations(self.root, target, context_paths=contexts,
+                input_fn=lambda: self.fail("foreign candidate must fail before conversation"), output_fn=lambda _: None)
+        self.assertFalse(target.exists())
 
     def test_conversational_human_judgment_generates_reviewable_draft(self):
         target = self.target()
@@ -876,12 +902,14 @@ class WorkflowTests(unittest.TestCase):
 
     def test_same_as_english_requires_the_identical_criterion_and_rebinds_locale_evidence(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
+        manifest = c.load_evidence_set(self.root)
+        contexts = [context_directory(self.parent, self._testMethodName + "-" + locale, manifest, locale)
+            for locale in ("en", "ko")]
         observation_answers = iter([
-            "OBSERVATION:\nEnglish keyboard use was directly observed.\nLIMITS:\nOnly the bounded journey was inspected.",
-            "SAME AS ENGLISH",
-            "OBSERVATION:\nOne Project retained two Work identities.\nLIMITS:\nOnly those sessions were inspected.",
+            "1", "OBSERVATION:\nEnglish keyboard use was directly observed.\nLIMITS:\nOnly the bounded journey was inspected.",
+            "1", "SAME AS ENGLISH",
         ])
-        human_review.capture_viewer_observations(self.root, observation_root,
+        human_review.capture_viewer_observations(self.root, observation_root, context_paths=contexts,
             input_fn=observation_answers.__next__, output_fn=lambda _text: None,
             run_id="d" * 32)
         target = self.target()

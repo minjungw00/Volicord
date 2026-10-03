@@ -693,6 +693,46 @@ class FileBoundaryTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
+    def test_copied_human_display_lineage_uses_only_packaged_candidate_context(self):
+        import campaign
+        import human_review
+        import result_lineage
+        import review_operations as ops
+        import viewer_observation
+        from review_operations_self_test import insufficient_draft
+        from viewer_observation_self_test import context_directory
+        manifest = campaign.load_evidence_set(self.root)
+        prefix = self.parent / "human-display-lineage"
+        prefix.mkdir()
+        contexts = [context_directory(prefix, locale, manifest, locale) for locale in ("en", "ko")]
+        observations = prefix / "observations"
+        # Synthetic declarations are structural controls, never human evidence.
+        human_review.capture_viewer_observations(self.root, observations, context_paths=contexts,
+            input_fn=iter(["1", "OBSERVATION:\nSynthetic declaration fixture.\nLIMITS:\nNo real human verdict.",
+                "1", "SAME AS ENGLISH"]).__next__, output_fn=lambda _: None)
+        target = prefix / "review"
+        ops.prepare(self.root, target, reviewer_kind="human", human_observations=observations,
+            evaluation_path=self.evaluation)
+        insufficient_draft(target)
+        ops.record(target, target / "draft.json")
+        qualified = prefix / "qualification"
+        value = policy.qualify(self.root, self.evaluation, qualified,
+            candidate=manifest["candidate_head"], review_roots=[target])
+        self.assertNotEqual(value["replacement_qualification"], "qualified")
+        published = result_lineage.publish(self.root, self.evaluation, [target],
+            qualified / "qualification.json", output=prefix / "lineage")
+        copied = prefix / "copied"
+        shutil.copytree(published["lineage_root"], copied)
+        with patch.object(campaign, "load_evidence_set", side_effect=AssertionError("original Runtime/campaign access")), \
+             patch.object(viewer_observation, "for_manifest", wraps=viewer_observation.for_manifest) as validate:
+            verified = result_lineage.verify(copied)
+        self.assertFalse(verified["external_staging_paths_used"])
+        self.assertEqual(validate.call_count, 2)
+        for call in validate.call_args_list:
+            self.assertEqual(call.args[0]["candidate_head"], manifest["candidate_head"])
+            self.assertEqual(call.args[1]["context"]["runtime_binding"],
+                json.loads((contexts[0] / "display-context.json").read_bytes())["context"]["runtime_binding"])
+
     def test_real_evidence_reviews_result_revalidation_and_mismatch(self):
         import campaign
         import review_operations as ops

@@ -13,6 +13,8 @@ name = "volicord-viewer"
 path = "src/main.rs"
 
 [dependencies]
+sha2 = "0.10.9"
+serde_json = "1.0"
 getrandom = { version = "0.3.4", features = ["std"] }
 volicord-context = { path = "../volicord-context" }
 volicord-inquiry = { path = "../volicord-inquiry" }
@@ -22,8 +24,6 @@ volicord-projections = { path = "../volicord-projections" }
 volicord-repository-intelligence = { path = "../volicord-repository-intelligence" }
 
 [dev-dependencies]
-sha2 = "0.10.9"
-serde_json = "1.0"
 rustix = { version = "1.1.4", features = ["net"] }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 tempfile = "3.20.0"

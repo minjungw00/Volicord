@@ -332,3 +332,20 @@ exports and browser-reads Goal-only/change/null-verification/later-change prefix
 both locales; the grounded Operations test independently exercises supported authoring
 and whitespace rejection. Source conflict, deletion and format failures retain the
 separate Rust lifecycle coverage.
+
+## Capturing the displayed live state
+
+Live responses include a non-executable observation meta entry identifying the
+actual executable/process, Runtime/Project/view/selected subject, locale/language,
+canonical/Source/Analysis and explanation realization basis. Offline snapshots
+keep their deterministic contract without this live context. Executable hashing
+is primed once at adapter construction, outside request-local render profiles;
+constructor startup and full snapshot export cost remain separate measurements.
+
+The [maintained capture and human-context procedure](../../validation/dogfood/viewer-observation.md)
+uses the existing browser driver to attach to one already displayed local tab.
+It retains screenshot/DOM/context hashes and leaves the browser usable after
+attachment. Capture both locales and preserve separate directories before and
+after generation/mutation. Browser artifacts establish displayed state only;
+human inspection, 200% zoom declarations and experience remain separate. Actual
+native zoom support uses the existing tab-zoom extension, never viewport emulation.

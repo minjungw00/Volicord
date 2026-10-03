@@ -1137,3 +1137,26 @@ Work는 Goal/Checkpoint/verification/review/acceptance의 전체 근거 Source�
 user와 recommendation의 근거 Source를 사용한다. `Current` freshness도 unavailable
 Source를 usable로 만들지 않는다. Source identity/status의 상세값은 evidence inspection에
 보존하며, ordinary gap은 기록된 보고를 현재 저장소 동작으로 승격하지 않는다.
+
+### Live Viewer observation context
+
+Live HTML supplies read-side context schema 1 in an escaped, non-executable meta
+entry. It binds a fresh render ID to actual Linux executable/process start identity,
+opaque Runtime, Project, parsed view/selected subject, fixed locale and requested
+language, canonical read fingerprint, bounded Source-state hash, Analysis identities
+and materialized explanation states. Current realizations additionally retain plan
+fingerprint, recording time and realization hash; stale/unavailable content remains
+withheld. No canonical record, provider request or host trust follows from this data.
+Unavailable observation binding preserves normal reading with a fixed unavailable
+marker and cannot establish captured evidence. The bounded subject list includes
+materialized Overview inputs, not a claim that
+all those subjects are visibly displayed. Snapshot export keeps its existing
+self-contained deterministic contract and has no live process/render context.
+
+The maintained [browser display capture](../../validation/dogfood/viewer-observation.md)
+combines this renderer basis with actual stable DOM, URL, geometry and screenshot
+hashes. It preserves separate before/after generation or mutation artifacts. A
+browser result is supporting display evidence; direct human inspection and its
+limits remain separately declared under the qualitative-review owner. Constructor
+executable hashing, snapshot export, server/render profiling, browser PaintTiming
+and human responsiveness are distinct costs and claims.

@@ -15,6 +15,7 @@ import tempfile
 
 import authority_obligations as authority
 import qualitative_review as review
+import viewer_observation
 
 
 def _ops():
@@ -94,6 +95,11 @@ def _write_create_only(path, data):
         Path(temporary).unlink(missing_ok=True)
 
 
+def observation_confirmation(locale, contexts):
+    identities = ", ".join(c["context"]["render_id"] for c in contexts)
+    return f"Did you personally inspect the live {locale} displays identified by render IDs {identities}, including their actual view/subject/basis? Browser captures alone cannot answer yes."
+
+
 def _live_observation_requests():
     return [
         {
@@ -111,38 +117,45 @@ def _live_observation_requests():
 
 
 def capture_viewer_observations(campaign_root, output, *, input_fn=input, output_fn=print,
-                                run_id=None):
+                                run_id=None, context_paths=()):
     """Capture required direct live Viewer observations."""
     ops, campaign = _ops(), _campaign()
     root, output = campaign_root.resolve(), output.absolute()
     manifest = campaign.load_evidence_set(root)
     evidence_hash = ops.digest(ops.bounded_read(root / "evidence-set.json"))
+    contexts = viewer_observation.load_contexts(context_paths, manifest)
     observer = review.reviewer("human", run_id or secrets.token_hex(16))
     observations, answer_trace = [], []
     for request in _live_observation_requests():
         surface, locale = request["surface"], request["locale"]
         trace = []
+        confirmation = observation_confirmation(locale, contexts[locale])
+        review.require(_yes_no(confirmation, input_fn, output_fn, trace),
+            "direct human observation is unavailable for this displayed context")
         answer = _ask_multiline(request["prompt"], input_fn, output_fn, trace)
         if surface == "live_viewer_observation" and locale == "ko" \
                 and answer.casefold() == "same as english":
             observations.append({"sample_id": "journey-volicord", "surface": surface,
-                "locale": locale,
+                "locale": locale, "contexts": contexts[locale], "personally_observed": True,
                 "control": {"action": "same_as_locale", "reference_locale": "en"},
                 "response": None})
         else:
             observation, limits = _split_observation_and_limits(answer)
             observations.append({"sample_id": "journey-volicord", "surface": surface,
-                "locale": locale,
+                "locale": locale, "contexts": contexts[locale], "personally_observed": True,
                 "control": {"action": "direct", "reference_locale": None},
                 "response": {"observation": observation, "limits": limits}})
         answer_trace.append({"surface": surface, "locale": locale, "turns": trace})
+    # Recheck the original browser receipt/screenshot after the human interaction.
+    review.require(viewer_observation.load_contexts(context_paths, manifest) == contexts,
+        "display evidence changed during human capture")
     value = {"kind": "dogfood_human_observations",
-        "schema_version": 3,
+        "schema_version": 4,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer": observer, "observations": observations}
     data = ops.encoded(value)
     ops.require_review_artifact_safe(data, "human observations contain sensitive payload")
-    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 3,
+    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 4,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer_run_id": observer["run_id"], "observations_sha256": ops.digest(data),
         "answer_trace": answer_trace}
@@ -171,12 +184,13 @@ def load_viewer_observations(path):
         surface, locale = item.get("surface"), item.get("locale")
         request = requests.get((surface, locale), {"prompt": ""})
         expected_trace.append({"surface": surface, "locale": locale, "turns": [
+            {"prompt": observation_confirmation(locale, item.get("contexts", [])) + " (1=yes, 2=no)", "answer": "1"},
             {"prompt": request["prompt"],
              "answer": ("SAME AS ENGLISH" if item.get("control", {}).get("action") == "same_as_locale"
                 else "OBSERVATION:\n" + item.get("response", {}).get("observation", "")
                 + "\nLIMITS:\n" + item.get("response", {}).get("limits", ""))},
         ]})
-    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 3,
+    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 4,
         "candidate_head": value.get("candidate_head"),
         "evidence_set_sha256": value.get("evidence_set_sha256"),
         "observer_run_id": value.get("observer", {}).get("run_id"),

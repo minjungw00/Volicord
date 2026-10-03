@@ -757,3 +757,19 @@ samples/gaps/errors and sampled peaks, with no body/environment tracing or infer
 operation attribution. Unobserved/partial/failed states remain explicit. Focused
 real sibling-process and privacy proof is `dogfood/resource_observer_self_test.py`;
 EOF/registration-failure protocol tests are `volicord-host/mcp_lifecycle`.
+
+## Live Viewer display context
+
+The maintained [display-observation interface](dogfood/viewer-observation.md)
+attaches the existing browser driver to one already displayed local Viewer tab.
+`end-to-end/multi-repository/capture_viewer_context.py` retains actual renderer
+basis, stable DOM/URL/geometry and screenshot hashes. `viewer_context_browser.py`
+provides focused real Chromium support for Work/Decision lifecycle, en/ko,
+attachment/detachment and native 200% tab zoom using the existing explanation
+seed/CLI. It uses labeled structural fixture prose and supplies no human verdict.
+`dogfood-campaign capture-human-viewer-observations` requires repeated
+`--viewer-context` capture directories covering both locales; current schema 4
+retains their basis and separate personal-observation declarations. Review index
+and source-independent lineage consumers validate that binding. Original local
+screenshots remain separately retained. HTTP/markup, browser, human, snapshot
+export and render profiling keep their separate evidence meanings.

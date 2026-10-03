@@ -5,7 +5,7 @@ This contract owns review artifacts and operations, not Product behavior or fina
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 14 / policy revision 13, machine evaluation
-policy `evidence-evaluation-8`, human observation/receipt schema 3, qualification policy
+policy `evidence-evaluation-8`, human observation/receipt schema 4, qualification policy
 `replacement-qualification-9`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
@@ -553,7 +553,17 @@ For direct live observations, human preparation additionally accepts `--human-ob
 pointing to the conversational capture directory. The lower-level JSON-file input remains
 available for automation. The object has kind `dogfood_human_observations`, original `candidate_head`,
 `evidence_set_sha256`, an `observer` using the common human reviewer identity shape, and
-exactly two `observations`: English and Korean live Viewer observations. Long-lived
+exactly two `observations`: English and Korean live Viewer observations. Each retains
+closed browser `contexts` and `personally_observed: true`. The maintained
+[display capture](../../validation/dogfood/viewer-observation.md) attaches to the
+actual existing local tab and binds executable/process, Runtime/Project/view/subject,
+locale, canonical/Source/Analysis and explanation generation state plus DOM/screenshot
+hashes. Both locales require their own captured displays and direct personal inspection
+before a Korean-to-English reference. Generation/mutation observations retain separate
+before/after contexts rather than relabeling the earlier screen. Browser support and
+hash integrity cannot establish human comprehension. Copied review/lineage checks
+bind the context to the packaged candidate and retain the declaration; original local
+capture images remain separately retained. Long-lived
 one-Project/multiple-Work continuity is read from the Volicord journey evidence rather than a
 separate user-authored observation. Each live observation has `sample_id`, typed `surface`, optional `locale`,
 a typed `control`, and either a grouped `{observation, limits}` response or a Korean-to-English

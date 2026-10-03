@@ -619,7 +619,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         require_review_artifact_safe(data, "human observations contain sensitive payload")
         observed = json.loads(data)
         review.require(isinstance(observed, dict) and set(observed) == {"kind", "schema_version", "candidate_head", "evidence_set_sha256", "observer", "observations"}
-            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 3
+            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 4
             and observed["candidate_head"] == manifest["candidate_head"]
             and observed["evidence_set_sha256"] == evidence_hash, "human observation candidate/evidence binding mismatch")
         review.validate_reviewer(observed["observer"], sessions)
@@ -632,11 +632,16 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
             }, "both live Viewer locales require observations")
         for item in observed["observations"]:
             review.require(isinstance(item, dict)
-                and set(item) == {"sample_id", "surface", "locale", "control", "response"}
+                and set(item) == {"sample_id", "surface", "locale", "control", "response", "contexts", "personally_observed"}
                 and item["sample_id"] == c.journey_id("volicord")
                 and item["surface"] == "live_viewer_observation"
                 and item["locale"] in {"en", "ko"},
                 "invalid direct human observation")
+            import viewer_observation
+            review.require(item["personally_observed"] is True and isinstance(item["contexts"], list)
+                and 0 < len(item["contexts"]) <= 64, "human observation lacks displayed context")
+            for context in item["contexts"]:
+                viewer_observation.for_manifest(manifest, context, item["locale"])
             control = item["control"]
             review.require(isinstance(control, dict) and set(control) == {"action", "reference_locale"}
                 and control["action"] in {"direct", "same_as_locale"}, "invalid human observation control")
@@ -656,7 +661,12 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
                     "human locale reference requires a direct English observation")
             identity_key = c.journey_id("volicord") + "-live-" + item["locale"]
             review.require(identity_key not in index["evidence"], "duplicate human observation locale")
-            body = encoded({"binding": {k: observed[k] for k in ("candidate_head", "evidence_set_sha256", "observer")}, **item})
+            journey = manifest["journeys"][c.journey_id("volicord")]
+            display_binding = {"viewer_sha256": manifest["candidate_artifacts"]["volicord-viewer"]["sha256"],
+                "runtime_binding": c.resource_observer.path_binding(Path(journey["runtime_home"])),
+                "project_id": journey["project_id"]}
+            body = encoded({"binding": {**{k: observed[k] for k in ("candidate_head", "evidence_set_sha256", "observer")},
+                "display": display_binding}, **item})
             name = "evidence/" + identity_key + ".json"
             files[name] = body
             pointers, count = locators(body)
@@ -757,6 +767,24 @@ def _load_package(root):
         pointers, count = locators(content)
         review.require(entry["sha256"] == digest(content) and entry["bytes"] == len(content)
             and entry["locators"] == pointers and entry["line_count"] == count, "index locator/content mismatch")
+        if entry["surface"] == "live_viewer_observation":
+            import viewer_observation
+            observed = json.loads(content)
+            review.require(set(observed) == {"binding", "sample_id", "surface", "locale", "control", "response", "contexts", "personally_observed"}
+                and observed.get("personally_observed") is True
+                and observed["sample_id"] == entry["sample_id"]
+                and observed["surface"] == entry["surface"] and observed["locale"] == entry["locale"]
+                and isinstance(observed.get("contexts"), list) and 0 < len(observed["contexts"]) <= 64
+                and set(observed["binding"]) == {"candidate_head", "evidence_set_sha256", "observer", "display"}
+                and observed["binding"]["candidate_head"] == binding["candidate_head"]
+                and observed["binding"]["evidence_set_sha256"] == binding["evidence_set"]["sha256"]
+                and set(observed["binding"]["display"]) == {"viewer_sha256", "runtime_binding", "project_id"},
+                "copied human observation lacks bound display context")
+            for display in observed["contexts"]:
+                viewer_observation.validate_capture(display, candidate_head=binding["candidate_head"],
+                    viewer_sha256=observed["binding"]["display"]["viewer_sha256"],
+                    runtime_binding=observed["binding"]["display"]["runtime_binding"],
+                    project=observed["binding"]["display"]["project_id"],locale=entry["locale"])
         if entry["surface"] == "resource_observation":
             import resource_observer
             resource_observer.validate(json.loads(content))

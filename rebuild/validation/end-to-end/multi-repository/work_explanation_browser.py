@@ -148,7 +148,7 @@ def main():
             result['lifecycle']={'status':'passed','partial_generation':'rejected','revision_mismatch':'rejected','result_basis_preserved':True,'original_runtime':'unchanged','expression_replay':'active-host interpretation unchanged after punctuation-only correction'}
         else:
             result['lifecycle']={'status':'not_run','reason':'No active-host response supplied'}
-        config = {'url': url, 'fixture': fixture, 'output': str(output), 'chromium': str(args.chromium.resolve()),
+        config = {'candidate_head':result['candidate_head'],'viewer_sha256':result['executables']['volicord-viewer']['sha256'],'url': url, 'fixture': fixture, 'output': str(output), 'chromium': str(args.chromium.resolve()),
                   'playwright': str(args.playwright_module.resolve()), 'claim_terms': cases['browser_claim_terms'], 'decision_terms': cases['decision_browser_claim_terms'], 'forbidden_patterns':cases['browser_forbidden_patterns'], 'basis':basis, 'snapshots': snapshots, 'lifecycle_snapshots':lifecycle}
         harness.write_json(output / 'config.json', config)
         run('browser', ['node', Path(__file__).parent / 'viewer_browser_driver.cjs', output / 'config.json', 'work-explanation'])

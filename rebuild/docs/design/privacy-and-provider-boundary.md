@@ -470,3 +470,17 @@ cannot block canonical work or grant host trust/transmission authorization. Mana
 registry and observer artifacts may be deleted independently of canonical memory.
 The maintained schema and retention limits are in
 [resource observation](../../validation/dogfood/resource-observation.md).
+
+### Local live-display capture
+
+The [Viewer display capture](../../validation/dogfood/viewer-observation.md) is an
+explicit local read under the operator's existing Viewer/source access. It attaches
+the maintained browser driver to one exact local tab, retains renderer basis and
+DOM/screenshot hashes, and invokes no provider or host activation. JSON context
+contains no DOM/source/conversation body or authenticity token. Screenshots retain
+actual displayed local content and stay in operator-owned local capture directories;
+they are distinct from the body-free MCP resource telemetry contract. Sharing or
+transmitting them requires its own existing authority. Human review packages retain
+closed context metadata and image hashes; this does not supply person identity,
+comprehension, external authentication or a provider opt-in. Deleting observational
+artifacts changes no canonical memory.

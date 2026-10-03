@@ -14,3 +14,5 @@ pub use http::ViewerServer;
 pub use render::{
     ViewerAdapter, ViewerError, ViewerLocale, ViewerPage, ViewerRenderProfile, ViewerRequest,
 };
+
+mod observation;

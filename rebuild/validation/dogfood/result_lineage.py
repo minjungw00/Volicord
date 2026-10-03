@@ -215,6 +215,11 @@ def verify(root):
         import review_captures
         for entry in preparation['index']['evidence'].values():
             content = operations.bounded_read(operations.safe_path(review_root, entry['path']))
+            if entry['surface'] == 'live_viewer_observation':
+                import viewer_observation
+                observed = json.loads(content)
+                for display in observed['contexts']:
+                    viewer_observation.for_manifest(evidence_set, display, entry['locale'])
             if entry['surface'] == review_explanations.SURFACE:
                 lifecycle = review_explanations.validate(content)
                 review_explanations.verify_manifest(lifecycle, evidence_set)

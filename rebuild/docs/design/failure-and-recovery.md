@@ -403,3 +403,13 @@ mismatch reject subsequent samples. Observer failure preserves earlier samples a
 failed measurement; zero samples never imply zero consumption. Attachment, sampling
 limits/gaps and teardown are inspectable through the maintained
 [observer interface](../../validation/dogfood/resource-observation.md).
+
+### Live display observation failure
+
+Unavailable Linux executable/process binding or render identity leaves the normal
+Viewer read usable with a fixed observation-unavailable marker. The supporting
+capture then fails rather than inventing candidate/display binding. Browser capture
+checks actual DOM, URL and geometry stability, preserves complete process streams
+and exit/timeout details, and disconnects from the existing browser. A failed capture
+cannot supply a human observation context. Observation artifact cleanup never
+retries a canonical mutation, grants trust or closes an external browser/MCP.

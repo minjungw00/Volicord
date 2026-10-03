@@ -146,6 +146,7 @@ pub struct ViewerAdapter {
 
 impl ViewerAdapter {
     pub fn new(operations: LocalOperations) -> Self {
+        crate::observation::prime_process_binding();
         Self { operations }
     }
 
@@ -394,6 +395,15 @@ impl ViewerAdapter {
         html.push_str("<!doctype html><html lang=\"");
         html.push_str(locale_key(request.locale));
         html.push_str("\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Volicord</title>");
+        if !snapshot {
+            match crate::observation::context(self.operations.layout().root(), request, &projection) {
+                Ok(observation) => html.push_str(&format!(
+                    "<meta name=\"volicord-observation\" content=\"{}\">",
+                    escape(&observation.to_string())
+                )),
+                Err(_) => html.push_str("<meta name=\"volicord-observation-unavailable\" content=\"display-binding-unavailable\">"),
+            }
+        }
         html.push_str(STYLE);
         html.push_str(&format!(
             "</head><body data-view=\"{}\" data-viewer-mode=\"{}\"><main>",
@@ -3839,7 +3849,7 @@ const fn text<'a>(locale: ViewerLocale, english: &'a str, korean: &'a str) -> &'
     }
 }
 
-fn locale_key(locale: ViewerLocale) -> &'static str {
+pub(crate) fn locale_key(locale: ViewerLocale) -> &'static str {
     match locale {
         ViewerLocale::English => "en",
         ViewerLocale::Korean => "ko",

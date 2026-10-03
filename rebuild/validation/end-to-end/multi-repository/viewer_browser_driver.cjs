@@ -1,6 +1,8 @@
 // Coupled V11 supporting driver. Automation evaluation never becomes Product JS.
 'use strict';
 const fs = require('node:fs');
+const crypto = require('node:crypto');
+const sha256 = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
 const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
@@ -8,7 +10,7 @@ const mode = process.argv[3];
 if (fs.existsSync(path.join(config.output,`${mode}-result.json`))) throw new Error('Browser results are create-only; use a fresh output directory');
 const {chromium} = require(config.playwright);
 const result = {kind: 'viewer_browser_observations', mode, status: 'not_run', checks: [], requests: [], timings: [], zoom: [], human_acceptance: 'not_established'};
-let context, page, worker;
+let context, page, worker, attached;
 const F = config.fixture;
 const idSelector = id => `[id="${id}"]`;
 const workSelector = key => idSelector(`work-${F.goals[key]}`);
@@ -33,12 +35,25 @@ async function capture(name, target=page.locator('main > section').first()) {
   // surface. Surface screenshots can be blank at deep offsets with tab zoom.
   if (await target.count()) await target.first().evaluate(e=>window.scrollTo({left:0,top:e.getBoundingClientRect().top+scrollY,behavior:'instant'}));
   await frames();
+  const observed=await page.evaluate(()=>({context:JSON.parse(document.querySelector('meta[name="volicord-observation"]').content),dom:document.documentElement.outerHTML}));
+  requireFact(observed.context.process.executable_sha256 === config.viewer_sha256,'displayed_candidate_executable_mismatch');
+  const observedUrl=page.url();
+  const beforeHash=sha256(observed.dom);
   const geometry=await page.evaluate(()=>({scrollX,scrollY,innerWidth,innerHeight,dpr:devicePixelRatio}));
   const session=await context.newCDPSession(page);
   try {
     const image=await session.send('Page.captureScreenshot',{format:'png',fromSurface:false});
     fs.writeFileSync(path.join(config.output,name),Buffer.from(image.data,'base64'));
   } finally {await session.detach();}
+  const afterHash=sha256(await page.evaluate(()=>document.documentElement.outerHTML));
+  const afterGeometry=await page.evaluate(()=>({scrollX,scrollY,innerWidth,innerHeight,dpr:devicePixelRatio}));
+  requireFact(beforeHash===afterHash&&observedUrl===page.url()&&JSON.stringify(geometry)===JSON.stringify(afterGeometry),'display_changed_during_capture');
+  const screenshot=fs.readFileSync(path.join(config.output,name));
+  const receipt={kind:'dogfood_viewer_display_capture',schema_version:1,evidence_class:'browser_display_capture',
+    candidate_head:config.candidate_head,url:page.url(),context:observed.context,dom_sha256:beforeHash,
+    screenshot:{path:name,sha256:sha256(screenshot),bytes:screenshot.length},
+    browser:{version:context.browser().version(),geometry,zoom:result.zoom.at(-1)||null}};
+  (result.display_captures ??= []).push(receipt);
   (result.captures ??= []).push({path:name,mechanism:'Page.captureScreenshot fromSurface=false; browser viewport',...geometry});
 }
 async function go(url) {
@@ -49,7 +64,7 @@ async function go(url) {
   result.timings.push({kind: 'navigation', url, ...navigation,paint:await paint(), note: 'Native PaintTiming marks are measured from navigation start; response completion includes transport; separate Rust render stage profiles are recorded by the parent'});
 }
 async function zoom(factor) {
-  const before = await page.evaluate(() => ({innerWidth, dpr:devicePixelRatio, visualScale:visualViewport.scale}));
+  const before = await page.evaluate(() => ({innerWidth, dpr:devicePixelRatio, visualScale:visualViewport.scale,cssZoom:getComputedStyle(document.documentElement).zoom}));
   const actual = await worker.evaluate(async ({url, factor}) => {
     const tabs = await chrome.tabs.query({});
     const tab = tabs.find(t => t.url === url);
@@ -576,10 +591,106 @@ async function workExplanations() {
   }
 
 }
+
+// Labeled structural generation verifies displayed lifecycle identity, not prose quality.
+async function contextLifecycle() {
+  const {spawnSync}=require('node:child_process');
+  let sequence=0;
+  function operation(args) {
+    const argv=[config.cli,'--runtime',F.runtime,'--project',F.project,'--json',...args];
+    const start=process.hrtime.bigint();
+    const completed=spawnSync(argv[0],argv.slice(1),{cwd:F.repository,encoding:'utf8',timeout:30000,maxBuffer:32<<20});
+    const label=`context-operation-${++sequence}`;
+    fs.writeFileSync(path.join(config.output,label+'.stdout'),completed.stdout||'');
+    fs.writeFileSync(path.join(config.output,label+'.stderr'),completed.stderr||'');
+    (result.operations??=[]).push({argv,exit_code:completed.status,signal:completed.signal,error:completed.error?.code||null,duration_ns:Number(process.hrtime.bigint()-start),stdout:label+'.stdout',stderr:label+'.stderr'});
+    requireFact(completed.status===0&&!completed.error,'explanation_product_operation_failed');
+    return JSON.parse(completed.stdout);
+  }
+  function record(kind,identity,locale) {
+    const selector=kind==='work'?'--work':'--decision';
+    const plan=operation([kind,'explain','prepare',selector,identity,'--language',locale]).plan;
+    const questions=kind==='work'?['purpose','reported_change','expected_effect','verification','next_step']:['user_rationale','recommendation','consequences','applicability'];
+    const response={format_kind:'volicord_explanation',format_version:1,plan_fingerprint:plan.fingerprint,language:locale,
+      generator:{host:'display-context-fixture',session:'synthetic-structural-support',agent:null,model:null},
+      paragraphs:questions.map(question=>({question,text:`Labeled structural fixture ${locale} ${question}`,evidence_keys:plan.evidence.map(e=>e.key)}))};
+    const input=path.join(config.output,`response-${sequence}.json`);fs.writeFileSync(input,JSON.stringify(response));
+    operation([kind,'explain','record',selector,identity,'--language',locale,'--input',input]);
+    return plan;
+  }
+  const work=F.goals.relay,decision=F.decisions.project;
+  const phases={};
+  async function display(phase,kind,identity,locale,state) {
+    const view=kind==='work'?'work':'decisions',selector=kind==='work'?'work':'decision';
+    await go(`${config.url}?view=${view}&${selector}=${identity}&locale=${locale}&language=${locale}`);
+    await zoom(1);
+    const surface=page.locator(idSelector(`${kind}-${identity}`));
+    const reading=surface.locator('.work-explanation,.answer-unavailable').first();
+    requireFact(await reading.count()===1&&await reading.isVisible(),'actual_reading_surface_unavailable');
+    if(state==='current')requireFact((await ordinaryText(reading)).includes(`Labeled structural fixture ${locale}`),'current_answer_not_displayed');
+    await capture(`${phase}-${kind}-${locale}.png`,reading);
+    const observed=result.display_captures.at(-1),answer=observed.context.explanations.find(e=>e.kind===kind&&e.identity===identity);
+    requireFact(answer?.state===state,`displayed_explanation_state:${phase}:${locale}`);
+    requireFact(observed.context.locale===locale&&observed.context.language===locale&&observed.context[`selected_${kind}`]===identity,'displayed_locale_subject_mismatch');
+    phases[`${phase}-${kind}-${locale}`]=observed;
+    fs.writeFileSync(path.join(config.output,`${phase}-${kind}-${locale}.json`),JSON.stringify(observed,null,2));
+    return observed;
+  }
+  await check('actual_display_lifecycle',async()=>{
+    for(const locale of ['en','ko'])await display('absent','work',work,locale,'unavailable');
+    let plan;
+    for(const locale of ['en','ko']){plan=record('work',work,locale);await display('current','work',work,locale,'current');}
+    const goal=plan.evidence.find(e=>e.key==='goal');
+    operation(['advanced','records','correct-context',work,'--revision',String(goal.revision),'--source',goal.sources[0],'--text',goal.content+'.']);
+    for(const locale of ['en','ko'])await display('stale','work',work,locale,'stale');
+    for(const locale of ['en','ko']){record('work',work,locale);await display('regenerated','work',work,locale,'current');}
+    for(const locale of ['en','ko']){await display('absent','decision',decision,locale,'unavailable');record('decision',decision,locale);await display('current','decision',decision,locale,'current');}
+    for(const locale of ['en','ko']) {
+      const before=phases[`current-work-${locale}`],after=phases[`regenerated-work-${locale}`];
+      requireFact(before.context.canonical_read_fingerprint!==after.context.canonical_read_fingerprint&&before.dom_sha256!==after.dom_sha256,'changed_basis_reused');
+      const a=before.context.explanations.find(e=>e.identity===work),b=after.context.explanations.find(e=>e.identity===work);
+      requireFact(a.plan_fingerprint!==b.plan_fingerprint&&a.generated_at_unix_micros!==b.generated_at_unix_micros&&a.realization_sha256!==b.realization_sha256,'generation_identity_reused');
+    }
+    return {states:['unavailable','current','stale','regenerated-current'],locales:['en','ko'],fixture_generation:'labeled structural only',human_judgment:'not_established'};
+  });
+  await check('native_zoom_and_existing_tab_attachment',async()=>{
+    await go(`${config.url}?view=work&work=${work}&locale=en&language=en`);await zoom(1);await zoom(2);await capture('native-200-en.png',page.locator(workSelector('relay')).locator('.work-explanation').first());
+    const render=await page.evaluate(()=>JSON.parse(document.querySelector('meta[name="volicord-observation"]').content).render_id);
+    const argv=[config.capture_tool,'--binary',config.viewer,'--runtime',F.runtime,'--project',F.project,'--cdp-url',`http://127.0.0.1:${config.debug_port}`,'--page-url',page.url(),'--playwright-module',config.playwright,'--output',path.join(config.output,'attached-en')];
+    const completed=spawnSync('python3',argv,{encoding:'utf8',timeout:40000,maxBuffer:32<<20,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+    fs.writeFileSync(path.join(config.output,'attachment.stdout'),completed.stdout||'');fs.writeFileSync(path.join(config.output,'attachment.stderr'),completed.stderr||'');
+    result.attachment_process={exit_code:completed.status,signal:completed.signal,error:completed.error?.code||null};
+    requireFact(completed.status===0&&!completed.error,'existing_tab_capture_failed');
+    const captured=JSON.parse(fs.readFileSync(path.join(config.output,'attached-en/display-context.json'),'utf8'));
+    requireFact(captured.context.render_id===render,'attachment_changed_rendered_page');
+    requireFact(!page.isClosed()&&await page.evaluate(()=>document.body.dataset.viewerMode)==='live','observer_closed_browser');
+    const wrong=[...argv];wrong[wrong.indexOf('--binary')+1]=config.cli;wrong[wrong.indexOf('--output')+1]=path.join(config.output,'wrong-executable');
+    const rejected=spawnSync('python3',wrong,{encoding:'utf8',timeout:40000,maxBuffer:32<<20,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+    fs.writeFileSync(path.join(config.output,'wrong-executable.stdout'),rejected.stdout||'');fs.writeFileSync(path.join(config.output,'wrong-executable.stderr'),rejected.stderr||'');
+    result.wrong_executable_process={exit_code:rejected.status,signal:rejected.signal,error:rejected.error?.code||null};
+    requireFact(rejected.status===1&&!rejected.error&&!fs.existsSync(path.join(config.output,'wrong-executable/display-context.json')),'wrong_executable_observation_accepted');
+    await page.keyboard.press('Home');await frames();
+    await go(`${config.url}?view=work&work=${work}&locale=ko&language=ko`);await zoom(1);await zoom(2);await capture('native-200-ko.png',page.locator(workSelector('relay')).locator('.work-explanation').first());
+    return {observer_detached_browser_still_usable:true,wrong_executable_rejected:true,zoom:2,locales:['en','ko'],attached_render_id:render};
+  });
+}
+
 (async()=>{
   try {
+    if(mode==='observe') {
+      attached=await chromium.connectOverCDP(config.cdp_url,{timeout:10000});
+      const matching=attached.contexts().flatMap(c=>c.pages()).filter(p=>p.url()===config.url);
+      requireFact(matching.length===1,'displayed_viewer_tab_missing_or_ambiguous');
+      page=matching[0];context=page.context();
+      await check('current_display_context',async()=>{
+        requireFact(await page.evaluate(()=>document.body.dataset.viewerMode==='live'),'live_viewer_required');
+        await capture('display.png',page.locator('#no-scroll-target-for-observation'));
+      });
+      result.status=result.checks.some(c=>c.status!=='passed')?'failed':'passed';
+      return;
+    }
     try {
-      context=await chromium.launchPersistentContext(path.join(config.output,`${mode}-profile`),{executablePath:config.chromium,headless:true,ignoreDefaultArgs:mode==='work-explanation'?[]:['--disable-extensions'],args:mode==='work-explanation'?[]:[`--disable-extensions-except=${config.extension}`,`--load-extension=${config.extension}`],viewport:{width:390,height:900}});
+      context=await chromium.launchPersistentContext(path.join(config.output,`${mode}-profile`),{executablePath:config.chromium,headless:true,ignoreDefaultArgs:mode==='work-explanation'?[]:['--disable-extensions'],args:mode==='work-explanation'?[]:[`--disable-extensions-except=${config.extension}`,`--load-extension=${config.extension}`,...(config.debug_port?[`--remote-debugging-port=${config.debug_port}`]:[])],viewport:{width:390,height:900}});
       if(mode!=='work-explanation')worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker',{timeout:15000});
     } catch(error) {result.status='browser_launch_blocked';result.detail=String(error);return;}
     result.browser_version=context.browser().version();
@@ -592,12 +703,12 @@ async function workExplanations() {
         result.checks.push({id:'unexpected_external_or_mutation_request',status:'failed',reason:address});await route.abort();
       } else await route.continue();
     });
-    if(mode==='live')await live();else if(mode==='offline')await offline();else if(mode==='work-explanation')await workExplanations();else throw new Error('Unknown driver mode');
+    if(mode==='live')await live();else if(mode==='offline')await offline();else if(mode==='work-explanation')await workExplanations();else if(mode==='context-lifecycle')await contextLifecycle();else throw new Error('Unknown driver mode');
     requireFact(result.checks.length>0,'no_browser_execution');
     result.status=result.checks.some(c=>c.status!=='passed')?'failed':'passed';
   } catch(error) {result.status='failed';result.detail=String(error);}
   finally {
-    if(context)await context.close();
+    if(attached)await attached.close();else if(context)await context.close();
     fs.writeFileSync(path.join(config.output,`${mode}-result.json`),JSON.stringify(result,null,2)+'\n');
     console.log(JSON.stringify({status:result.status,mode,checks:result.checks.length,failures:result.checks.filter(c=>c.status!=='passed'),detail:result.detail}));
     if(result.status!=='passed')process.exitCode=1;

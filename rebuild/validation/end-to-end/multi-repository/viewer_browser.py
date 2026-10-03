@@ -284,7 +284,7 @@ def main():
         extension.mkdir()
         harness.write_json(extension / "manifest.json", {"manifest_version": 3, "name": "Viewer supporting tab zoom", "version": "1.0", "permissions": ["tabs"], "background": {"service_worker": "worker.js"}})
         (extension / "worker.js").write_text("chrome.runtime.onInstalled.addListener(() => {});\n")
-        config = {"output": str(output), "fixture": fixture, "scenario": json.loads((FIXTURE / "scenario.json").read_text()),
+        config = {"candidate_head":result["candidate_head"],"viewer_sha256":harness.sha256(binaries / "volicord-viewer"),"output": str(output), "fixture": fixture, "scenario": json.loads((FIXTURE / "scenario.json").read_text()),
                   "expected": json.loads((FIXTURE / "expected.json").read_text()), "url": url,
                   "chromium": str(args.chromium.resolve()), "playwright": str(args.playwright_module.resolve()),
                   "extension": str(extension), "snapshots": snapshots, "absent_snapshots": absent_snapshots, "prefix_snapshots":prefix_snapshots}
