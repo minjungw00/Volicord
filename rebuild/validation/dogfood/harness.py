@@ -12122,6 +12122,14 @@ def real_session_fixture(
         ]
     work_events = with_mcp_completions(work_events)
     resume_events = with_mcp_completions(resume_events)
+    # Independently specified sequential support sessions. Historical captures
+    # are never rewritten; these are newly constructed synthetic inputs only.
+    for offset, events in ((0, work_events), (3600, resume_events)):
+        for sequence, value in enumerate(events):
+            stamp = (dt.datetime(2026, 8, 15, tzinfo=dt.timezone.utc) + dt.timedelta(seconds=offset + sequence)).isoformat()
+            value['timestamp'] = stamp
+            if value['type'] == 'session_meta':
+                value['payload']['timestamp'] = stamp
     work_capture.write_text("".join(json.dumps(value, separators=(",", ":")) + "\n" for value in work_events), encoding="utf-8")
     resume_capture.write_text("".join(json.dumps(value, separators=(",", ":")) + "\n" for value in resume_events), encoding="utf-8")
 
@@ -14959,6 +14967,15 @@ def self_test() -> int:
     def store_capture(
         fixture: dict[str, Any], name: str, path: Path, events: list[dict[str, Any]]
     ) -> None:
+        # This self-test helper inserts synthetic operations between existing
+        # fixture events. Give only new events the next declared clock boundary;
+        # preserve present clocks, including deliberately malformed controls.
+        following = events[-1].get("timestamp")
+        for value in reversed(events):
+            if "timestamp" in value:
+                following = value["timestamp"]
+            elif following is not None:
+                value["timestamp"] = following
         path.write_text(
             "".join(json.dumps(value, separators=(",", ":")) + "\n" for value in events),
             encoding="utf-8",
@@ -15053,6 +15070,7 @@ def self_test() -> int:
                 if value.get("payload", {}).get("type")
                 in {"task_complete", "task_completed"}
             )
+        candidate["timestamp"] = events[insertion]["timestamp"]
         events.insert(insertion, candidate)
         store_capture(fixture, "work", path, events)
 
@@ -20918,6 +20936,7 @@ def self_test() -> int:
             .get("turn_id")
         )
         call_id = "recovered-environment-diagnostic"
+        diagnostic_timestamp = events[insertion_index]["timestamp"]
         arguments = json.dumps(
             {
                 "cmd": "python3 -m unittest tests.test_resume",
@@ -20928,7 +20947,7 @@ def self_test() -> int:
         )
         events[insertion_index:insertion_index] = [
             {
-                "timestamp": "2026-08-15T00:00:00Z",
+                "timestamp": diagnostic_timestamp,
                 "type": "response_item",
                 "payload": {
                     "type": "custom_tool_call",
@@ -20945,7 +20964,7 @@ def self_test() -> int:
                 },
             },
             {
-                "timestamp": "2026-08-15T00:00:00Z",
+                "timestamp": diagnostic_timestamp,
                 "type": "response_item",
                 "payload": {
                     "type": "custom_tool_call_output",
@@ -21104,6 +21123,8 @@ def self_test() -> int:
         wait_output["payload"]["output"][1]["text"] = json.dumps(
             final_result, separators=(",", ":")
         )
+        wait_call["timestamp"] = events[output_index + 1]["timestamp"]
+        wait_output["timestamp"] = events[output_index + 1]["timestamp"]
         events[output_index + 1 : output_index + 1] = [wait_call, wait_output]
         store_capture(fixture, "resume", path, events)
 

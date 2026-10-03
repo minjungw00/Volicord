@@ -320,7 +320,12 @@ typed values/fields have explicit markers/counts. Product `transport_omission` o
 their reason, bounds and inspection basis at the original field. Null/empty sections remain
 genuine returned absence. Omissions cannot suppress available contradictory identity or direction.
 Recomputed consistency diagnostics report return-internal role/key/scope/action contradictions;
-the independent historical observer remains the factual machine-policy owner. Contradictory
+the independent observation-time observer remains the factual machine-policy owner.
+Its machine basis retains a per-Recall Goal revision/Source result, mutation invocation/completion
+coordinates, expected/actual revisions, replay disposition and separate correction authorization Source,
+plus any verified start/resume relationship or scoped uncertainty. Parser/evaluator dependency hashing
+includes `codex_events.py`; no historical evaluation is silently upgraded. A missing temporal basis
+leaves review required and cannot waive an independently confirmed shared-answer violation. Contradictory
 returns stay inspectable. Generated prose is not compared with a prescribed paraphrase;
 hashes do not certify prose meaning or generator identity. Language retains the Product
 contract (a bounded nonempty requested language), independently of document cross-locale rules.

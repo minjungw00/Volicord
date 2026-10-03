@@ -766,6 +766,15 @@ capture; no per-session generation quota applies. Model/host claims remain
 self-reported or unknown; a record receipt proves local retention and structural
 linkage, not authorship, translation quality or semantic adequacy.
 
+Naturalistic Recall evidence checks Goal grounding at each observed read, using prior successful
+creation/correction receipts and supported capture relationships rather than the first creation or
+latest export for every read. Successful CAS correction advances the same identity's revision while
+preserving original Goal Sources; its user authorization Source is separate. Failed/replayed/later
+operations cannot manufacture a new historical basis. Missing or overlapping temporal evidence is
+scoped indeterminate evidence; independent identity/action/typed-grounding contradictions remain
+hard findings. Request/completion coordinates and completed handoff/fresh resolution/capture bounds
+support temporal conclusions without certifying Source freshness, semantic equivalence or prose truth.
+
 Phase 8 recorder는 preparation의 candidate/local MCP executable binding과 realizer의
 identity claim을 구분한다. Verified preparation은 exact plan/route의 local evidence일 뿐
 active-host authorship 또는 exact model identity의 attestation이 아니다. 현재 control path가

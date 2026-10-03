@@ -1418,7 +1418,27 @@ substitute for the eight naturalistic sessions.
 Naturalistic shared-answer observation uses explicit Project-scoped `goal_basis`
 identity and canonical Source relationships, never equal Goal text. The separate
 `shared_answer_integrity` fact checks every observed MCP Recall and supported JSON
-CLI Recall against preceding record receipts and immutable same-Work Checkpoints.
+CLI Recall against independently ordered record receipts and immutable same-Work Checkpoints.
+Goal revision is folded separately for each Recall from successful `context_record` creation/
+continuation receipts and `canonical_mutate(correct_context)` or explicitly Project-bound JSON
+`advanced records correct-context` receipts. Expected/actual CAS revisions must agree; a failed
+operation does not advance, and identical replayed receipts neither increment nor rewind state.
+Correction authorization Source IDs are retained in witnesses, never substituted for original
+Goal supporting Sources. The returned answer and latest exported Goal revision are not oracles.
+
+The parser retains uniquely correlated MCP wrapper invocation coordinates separately from completion
+coordinates, plus monotonic timezone-aware raw capture bounds. A same-session mutation applies only
+when its completion precedes the Recall invocation; an evidenced later invocation is excluded.
+An unknown request boundary, overlapping operation or malformed/unrecorded receipt leaves scoped
+indeterminate evidence. Across start/resume, the observer additionally requires distinct fresh sessions,
+same repository/Project, completed start lifecycle with an immutable same-Work handoff receipt,
+subsequent fresh Project resolution before Recall, and strict nonoverlap of the host-recorded capture
+bounds. Session labels, local sequence numbers or clocks alone do not establish this relationship.
+Missing/backward clocks, incomplete handoff or overlapping captures do not establish a cross-session
+order. No session-local sequence is globally sorted. The bounds/receipt/resolve/capture hashes remain
+in the machine basis. An exact asserted immutable Checkpoint can still expose an action contradiction
+without claiming it was latest. Missing Goal/Checkpoint temporal facts cannot suppress available
+Project, Work, action, language/provenance or malformed grounding contradictions.
 It checks selected Work, recorded action, top-level direction, revision and typed
 evidence keys. Generated grounding keys and revision types, requested-language agreement
 and the unverified generator assertion are factual checks. Malformed returned grounding is
@@ -1431,7 +1451,15 @@ not invalidate a valid recorded task action. Generated paraphrase adequacy remai
 qualitative review; no fixed V11 task expectations are used. The shared primitive
 `shared/recorded_action_evidence.py` also supplies the factual part of V11's oracle.
 Focused controls in `dogfood/answer_observations_self_test.py` execute the actual
-Naturalistic consumer with duplicate-title Works and independent CLI/MCP substitutions.
+Naturalistic consumer with duplicate-title Works and independent CLI/MCP substitutions, pre/post
+correction, later/unrelated/failed correction, duplicate receipts, missing predecessor/clock/request,
+overlapping operations, cross-session order and explicit CLI Project binding. The real Product test
+`naturalistic_consumer_checks_product_recalls_across_correction` in Host `answer_consumers` supplies
+actual MCP/CLI Recall returns, actual MCP correction/authorization receipt and fresh Product bundle to
+`answer_product_support.py`, which runs `harness.real_session_evidence()`. Its seed-authoring envelopes
+and capture topology are explicitly synthetic support. Pre-correction Recall remains valid against a
+later revision-2 export; new-revision Recall passes and old-revision-as-current is hard blocking.
+Neither test certifies the full Naturalistic aggregate, host authorship or prose truth.
 
 `dogfood/explanation_evidence.py` owns append-only campaign explanation evidence,
 separately from document realization. Its public campaign commands and ordering
@@ -1442,6 +1470,16 @@ are distinct in evidence-set schema 7. Missing prepared lifecycle inputs, basis
 drift and artifact changes fail collection. Fixture responses establish structure
 only; fresh current-host Work/Decision output through Product prepare/record in
 en/ko is separate focused proof. Neither proof grants review or Phase 9 authority.
+
+Independent rehearsal must challenge both temporal boundaries with fresh evidence: retain and
+verify each explanation's original bytes/current-at-recording state, select the verified scoped
+attempt-chain tip, reject a later incomplete obligation and current Product mismatch, and replay
+the copied publication relation without the original Runtime. For Recall, challenge pre/post/later
+correction, stale revision claimed current, failed/unrelated/replayed receipts, missing or conflicting
+predecessors and overlapping/unknown requests across independently supported session boundaries.
+Missing temporal facts must not waive wrong Project/Work/action or malformed grounding. The maintained
+Product support drivers and consumer fixtures make these controls reproducible; their synthetic capture
+topology and self-authored realization prose cannot replace measured host evidence or human review.
 
 ### Naturalistic workload selection
 

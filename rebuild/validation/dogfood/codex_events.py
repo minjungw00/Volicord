@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import ast
+import datetime as dt
 import hashlib
 import json
 from pathlib import Path
@@ -1451,6 +1452,22 @@ def normalize_turn_lifecycle(events: list[dict[str, Any]]) -> TurnLifecycle:
     return TurnLifecycle(state, tuple(turns), tuple(sorted(set(issues))))
 
 
+def capture_bounds(events):
+    """Retain bounded host clock evidence; missing/backward clocks stay unknown."""
+    values = []
+    try:
+        for event in events:
+            value = dt.datetime.fromisoformat(event['timestamp'].replace('Z', '+00:00'))
+            if value.tzinfo is None:
+                return None
+            values.append(value)
+    except (KeyError, ValueError, TypeError, AttributeError):
+        return None
+    if not values or any(a > b for a,b in zip(values, values[1:])):
+        return None
+    return {'first': values[0].isoformat(), 'last': values[-1].isoformat(), 'last_sequence': len(events) - 1}
+
+
 @dataclass(frozen=True)
 class CodexCapture:
     source_sha256: str
@@ -2117,6 +2134,8 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
     if not turn_lifecycle.turns:
         raise EvidenceError("unsupported capture format: Codex task lifecycle is absent")
     observed_metadata = {
+        "capture_bounds": capture_bounds(events),
+        "mcp_invocations": {},
         "session_meta": {key: value for key, value in meta.items() if key in {
             "id", "session_id", "cwd", "source", "originator", "cli_version",
             "client_version", "thread_source", "source_metadata", "forked_from_id",
@@ -2602,6 +2621,8 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
             wrapper_id, wrapper_data = correlated[0]
             correlated_wrapper_ids.add(wrapper_id)
             wrapper = wrapper_data[2]
+            if wrapper.operation == operation and wrapper.arguments == arguments:
+                observed_metadata['mcp_invocations'][completion_call_id] = wrapper_data[0]
             if wrapper.operation != operation or wrapper.arguments != arguments:
                 outcome = "failed"
                 error = "mcp_wrapper_completion_mismatch"
@@ -2628,6 +2649,12 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
         call_id, operation, arguments, result, outcome, error = normalized
         if call_id is None or operation is None or arguments is None:
             continue
+        candidates = [wrapper for wrapper_id, wrapper in mcp_wrappers.items()
+            if wrapper[1] == turn_id and wrapper[0] < sequence
+            and (wrapper_id not in completions or sequence < completions[wrapper_id][0])
+            and wrapper[2].operation == operation and wrapper[2].arguments == arguments]
+        if len(candidates) == 1:
+            observed_metadata['mcp_invocations'][call_id] = candidates[0][0]
         tool_call_evidence.append(
             _ToolCallEvidence(
                 sequence,

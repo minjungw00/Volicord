@@ -352,3 +352,147 @@ fn recorded_action_is_readable_without_generated_interpretation(
     assert_eq!(answers.provenance, None);
     Ok(())
 }
+
+#[test]
+fn naturalistic_consumer_checks_product_recalls_across_correction(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = reading_fixture::rich_scenario()?;
+    let works = input["works"].as_array_mut().ok_or("works")?;
+    let position = works
+        .iter()
+        .position(|w| w["key"] == "relay")
+        .ok_or("relay")?;
+    let last = works.remove(position);
+    works.push(last);
+    let f = reading_fixture::fixture_scenario(input)?;
+    let work = f.goals["relay"];
+    let subject = ExplanationSubject::Work(work);
+    let basis = f.operations.canonical_basis(f.project)?;
+    let goal = basis
+        .context_items
+        .iter()
+        .find(|g| g.id == work)
+        .ok_or("Goal")?;
+    let cp = basis
+        .checkpoint_history
+        .iter()
+        .find(|c| c.id == f.checkpoints["relay-change"])
+        .ok_or("Checkpoint")?;
+    let realize = |plan: &ExplanationPlan| ExplanationRealization {
+        format_kind: EXPLANATION_KIND.into(),
+        format_version: EXPLANATION_VERSION,
+        plan_fingerprint: plan.fingerprint.clone(),
+        language: "en".into(),
+        generator: ExplanationGenerator {
+            host: "structural-support".into(),
+            session: "authored-fixture".into(),
+            agent: None,
+            model: None,
+        },
+        paragraphs: [
+            ExplanationQuestion::Purpose,
+            ExplanationQuestion::ReportedChange,
+            ExplanationQuestion::ExpectedEffect,
+            ExplanationQuestion::Verification,
+            ExplanationQuestion::NextStep,
+        ]
+        .into_iter()
+        .map(|question| ExplanationParagraph {
+            question,
+            text: format!("Structural support {question:?}"),
+            evidence_keys: plan.evidence.iter().map(|e| e.key.clone()).collect(),
+        })
+        .collect(),
+    };
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let call = |host: &mut HostAdapter,
+                name: &str,
+                arguments: Value|
+     -> Result<Value, Box<dyn std::error::Error>> {
+        let response = host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call", "params":{"name":name,"arguments":arguments}})).ok_or("MCP")?;
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        Ok(response["result"].clone())
+    };
+    let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+    f.operations
+        .record_explanation(f.project, subject, "en", realize(&plan))?;
+    let before = call(
+        &mut host,
+        "recall",
+        json!({"project_id":f.project.to_string(),"requested_language":"en"}),
+    )?;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    assert_eq!(
+        volicord_operations::run_cli(
+            vec![
+                "--runtime".into(),
+                f.operations.layout().root().to_string_lossy().into_owned(),
+                "--project".into(),
+                f.project.to_string(),
+                "--json".into(),
+                "recall".into(),
+                "--language".into(),
+                "en".into()
+            ],
+            &mut stdout,
+            &mut stderr
+        ),
+        volicord_operations::CliExit::SUCCESS
+    );
+    let cli: Value = serde_json::from_slice(&stdout)?;
+    assert_eq!(
+        cli["selected_work"]["answers"],
+        before["structuredContent"]["selected_work"]["answers"]
+    );
+    let args = json!({"project_id":f.project.to_string(),"action":"correct_context","record_id":work.to_string(),
+        "expected_revision":1,"corrected_text":format!("{}.",goal.statement),"user_turn":"Correct punctuation only."});
+    let mutation = call(&mut host, "canonical_mutate", args.clone())?;
+    assert_eq!(mutation["structuredContent"]["revision"], 2);
+    let corrected = f.operations.canonical_basis(f.project)?;
+    let new_goal = corrected
+        .context_items
+        .iter()
+        .find(|g| g.id == work)
+        .ok_or("corrected Goal")?;
+    assert_eq!(new_goal.source_basis, goal.source_basis);
+    assert!(corrected.sources.iter().any(
+        |s| s.source.id.to_string() == mutation["structuredContent"]["user_response_source_id"]
+    ));
+    assert!(!goal
+        .source_basis
+        .iter()
+        .any(|s| s.to_string() == mutation["structuredContent"]["user_response_source_id"]));
+    let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+    f.operations
+        .record_explanation(f.project, subject, "en", realize(&plan))?;
+    let after = call(
+        &mut host,
+        "recall",
+        json!({"project_id":f.project.to_string(),"requested_language":"en"}),
+    )?;
+    let bundle = f._temporary.path().join("final.bundle.json");
+    f.operations.export_bundle(f.project, &bundle)?;
+    let config = json!({"project":f.project.to_string(),"work":work.to_string(),"source":goal.source_basis[0].to_string(),
+        "checkpoint":cp.id.to_string(),"next_step":cp.next_step,"before":before["structuredContent"],"before_cli":cli,
+        "after":after["structuredContent"],"mutation_arguments":args,"mutation_result":mutation,"bundle":bundle});
+    let config_path = f._temporary.path().join("consumer.json");
+    std::fs::write(&config_path, serde_json::to_vec(&config)?)?;
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("crates")?
+        .parent()
+        .ok_or("rebuild")?;
+    let output = std::process::Command::new("python3")
+        .arg(root.join("validation/dogfood/answer_product_support.py"))
+        .arg(config_path)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .output()?;
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
