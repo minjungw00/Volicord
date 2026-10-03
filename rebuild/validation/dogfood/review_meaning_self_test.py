@@ -81,6 +81,24 @@ class MeaningTests(unittest.TestCase):
         self.assertEqual(record['transport'], 'mcp')
         self.assertEqual(record['requested_language'], 'en')
 
+    def test_correction_coordinates_and_revision_receipts_survive_review(self):
+        self.fixture.insert_correction()
+        data, _ = self.capture()
+        value = review_captures.validate(data)
+        correction = next(r for r in value['records'] if r.get('operation') == 'canonical_mutate')
+        body = correction['body']['value']
+        self.assertEqual(body['request']['record_id'], self.answer['selected_work']['work_item_id'])
+        self.assertEqual(body['request']['expected_revision'], 1)
+        self.assertEqual(body['result']['revision'], 2)
+        self.assertEqual(body['result']['identity'], body['request']['record_id'])
+        self.assertEqual(body['result']['record_kind'], 'context_item')
+        self.assertEqual(body['result']['user_response_source_id'], 'fa' * 16)
+        self.assertNotIn('user_turn', body['request'])
+        self.assertNotIn('corrected_text', body['request'])
+        self.assertLess(correction['sequence'], correction['completion_sequence'])
+        pointers, _ = ops.locators(data)
+        self.assertTrue(any(p['value'].endswith('/body/value/result/revision') for p in pointers))
+
     def test_stale_and_absent_keep_the_recorded_action_through_actual_consumer(self):
         for state in ('unavailable', 'stale'):
             self.answer['selected_work']['answers']['explanation_state'] = state

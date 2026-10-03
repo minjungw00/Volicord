@@ -22,7 +22,9 @@ LIMITS = {"source_bytes": codex.MAX_CAPTURE_BYTES, "source_events": codex.MAX_CA
 # Scalar request/outcome fields accompany typed returned meaning; never generic payloads.
 OPERATION_FIELDS = {"action", "project_id", "work_item_id", "source_id", "candidate_id",
     "question_id", "decision_id", "checkpoint_id", "deliberation_candidate_id",
-    "user_response_source_id", "state", "status", "resolution", "outcome", "requested_language"}
+    "user_response_source_id", "state", "status", "resolution", "outcome", "requested_language",
+    "record_id", "record_kind", "identity", "revision", "expected_revision", "replayed",
+    "context_item_id", "role", "canonical_mutation", "work_transition"}
 
 
 def plane():
@@ -173,8 +175,9 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
         records.append({"sequence": request.sequence, "source_sequences": [request.sequence, request.completion_sequence],
             "turn_id": request.turn_id, "call_id": request.call_id, "semantic_role": "question_request",
             "body_value": [{"title": q["title"], "options": q.get("options", [])} for q in questions]})
-    def operation_record(sequence, completion, turn, call_id, operation, outcome, request, result, transport, language):
-        records.append({"sequence": sequence, "source_sequences": sorted(set([sequence, completion])),
+    def operation_record(sequence, completion, turn, call_id, operation, outcome, request, result, transport, language, invocation=None):
+        coordinates = sorted({sequence, completion} | ({invocation} if invocation is not None else set()))
+        records.append({"sequence": min(coordinates), "source_sequences": coordinates,
             "completion_sequence": completion, "turn_id": turn, "call_id": call_id,
             "semantic_role": "volicord_operation", "operation": operation, "outcome": outcome,
             "transport": transport, "requested_language": language,
@@ -187,7 +190,8 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
     for call in capture.tool_calls:
         operation_record(call.sequence, call.completion_sequence, call.turn_id, call.call_id,
             call.operation, call.outcome, call.arguments, call.result, "mcp",
-            call.arguments.get("requested_language", "en"))
+            call.arguments.get("requested_language", "en"),
+            capture.observed_metadata.get('mcp_invocations', {}).get(call.call_id))
     cli_returns = [r for r in answer_observations.returned_recalls(capture) if r['transport'] == 'cli']
     cli_returns += explanation_evidence.measured_cli_operations(capture)
     for returned in cli_returns:

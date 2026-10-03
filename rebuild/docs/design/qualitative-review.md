@@ -323,8 +323,11 @@ Recomputed consistency diagnostics report return-internal role/key/scope/action 
 the independent observation-time observer remains the factual machine-policy owner.
 Its machine basis retains a per-Recall Goal revision/Source result, mutation invocation/completion
 coordinates, expected/actual revisions, replay disposition and separate correction authorization Source,
-plus any verified start/resume relationship or scoped uncertainty. Parser/evaluator dependency hashing
-includes `codex_events.py`; no historical evaluation is silently upgraded. A missing temporal basis
+plus any verified start/resume relationship or scoped uncertainty.
+Reviewer operation projections retain creation/correction identities, expected and returned revisions,
+original creation Source and separate authorization Source, and invocation/completion source coordinates.
+Correction text and authorization bodies are not added to the scalar operation projection.
+Parser/evaluator dependency hashing includes `codex_events.py`; no historical evaluation is silently upgraded. A missing temporal basis
 leaves review required and cannot waive an independently confirmed shared-answer violation. Contradictory
 returns stay inspectable. Generated prose is not compared with a prescribed paraphrase;
 hashes do not certify prose meaning or generator identity. Language retains the Product
