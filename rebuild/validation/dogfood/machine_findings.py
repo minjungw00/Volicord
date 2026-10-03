@@ -22,7 +22,7 @@ class Disposition(StrEnum):
 
 POLICY = json.loads(Path(__file__).with_name("machine-policy.json").read_text())
 POLICY_VERSION = POLICY["revision"]
-FACT_RULES = frozenset({"recorded_decision_integrity", "measured_project_identity",
+FACT_RULES = frozenset({"shared_answer_integrity", "recorded_decision_integrity", "measured_project_identity",
     "measured_session_provenance", "required_validation_execution", "procedure_invocation_counts", "projection_evidence_identity"})
 GIT_RULES = frozenset({"git_history_observation"})
 # Integrity uncertainty cannot admit evidence either. Review cannot waive it.

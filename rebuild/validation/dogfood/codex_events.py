@@ -2936,19 +2936,23 @@ def decode_established_fact_statements(value: Any) -> list[str] | None:
 
 
 def relevant_context_ids(bundle: CanonicalBundle, recall_result: dict[str, Any]) -> list[str] | None:
-    goals = recall_result.get("goals")
-    if not isinstance(goals, list) or not goals or not all(nonempty(value) for value in goals):
+    goals = recall_result.get("goal_basis")
+    if recall_result.get("project_id") != bundle.project_id or not isinstance(goals, list) or not goals:
         return None
     identities: list[str] = []
     for goal in goals:
-        matches = [
-            row.get("id")
-            for row in bundle.rows("context_items")
-            if row.get("role") == "goal" and row.get("statement") == goal and nonempty(row.get("id"))
-        ]
-        if len(matches) != 1:
+        if not isinstance(goal, dict) or goal.get("role") != "goal":
             return None
-        identities.append(str(matches[0]))
+        identity = goal.get("identity")
+        item = bundle.one("context_items", id=identity, project_id=bundle.project_id)
+        sources = [row.get("source_id") for row in sorted(bundle.rows("context_item_sources"),
+            key=lambda row: row.get("position", -1)) if row.get("project_id") == bundle.project_id
+            and row.get("context_item_id") == identity]
+        if (not nonempty(identity) or item is None or item.get("role") != "goal"
+                or goal.get("statement") != item.get("statement")
+                or goal.get("source_ids") != sources or not sources):
+            return None
+        identities.append(identity)
     behavioral = recall_result.get("behaviorally_relevant_context")
     if not isinstance(behavioral, list):
         return None

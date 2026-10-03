@@ -29,6 +29,7 @@ import workload_intents
 import interaction_diagnostics
 import authority_obligations
 import qualitative_review
+import answer_observations
 
 from codex_events import (
     activation_identity,
@@ -9438,7 +9439,10 @@ def real_session_evidence(
         }
         for row in canonical_verification
     ]
+    shared_answer_fact = answer_observations.observe(work_capture, resume_capture, bundle, goal_context_id)
     recall_match_ok = (
+        shared_answer_fact["status"] == "confirmed_pass"
+        and
         bundle is not None
         and recall_call is not None
         and recall_call.arguments.get("project_id") == bundle.project_id
@@ -9634,6 +9638,7 @@ def real_session_evidence(
         for op in ("project_initialize", "project_resolve", "recall") for call in capture.successful_calls(op)
         if nonempty_string(call.result.get("project_id"))}
     facts = {
+        "shared_answer_integrity": shared_answer_fact,
         "projection_evidence_identity": {"status": support_basis["projection_evidence_identity"],
             "basis": {"summary_identity_and_observed_file_hashes": support_basis["projection_evidence_identity"]}},
         "recorded_decision_integrity": {"status": (
@@ -11761,6 +11766,17 @@ def real_session_fixture(
                 "project_id": project,
                 "project_name": "Phase 8 fixture",
                 "goals": [work_user_task],
+                "selected_work": {"work_item_id": context, "checkpoint_ids": [checkpoint],
+                    "answers": {"language": "en", "explanation_state": "unavailable", "provenance": None,
+                        "facts": [{"question": "RecordedNextStep", "role": "deterministic_facts",
+                            "text": f"Recorded next action quotation (original language): {next_step}",
+                            "evidence_keys": [f"checkpoint:{checkpoint}@1:next_step"],
+                            "recorded_action": {"work_item_id": context, "checkpoint_id": checkpoint,
+                                "revision": 1, "field": "next_step", "recorded_text": next_step,
+                                "source_ids": [goal_source], "source_status": [{"source_id": goal_source,
+                                    "availability": "available", "freshness": "current", "snapshot_basis": None}]} }],
+                        "prose": [{"question": "ExplanationAvailability", "role": "unavailable",
+                            "text": "No generated explanation recorded.", "evidence_keys": []}]}},
                 "goal_basis": [{"identity": context, "role": "goal",
                     "statement": work_user_task, "source_ids": [goal_source]}],
                 "behaviorally_relevant_context": [],
@@ -16162,6 +16178,8 @@ def self_test() -> int:
             lambda output: (
                 output.update({"next_step": next_step}),
                 output["checkpoint"].update({"next_step": next_step}),
+                output["selected_work"]["answers"]["facts"][0].update({"text": f"Recorded next action quotation (original language): {next_step}"}),
+                output["selected_work"]["answers"]["facts"][0]["recorded_action"].update({"recorded_text": next_step}),
             ),
         )
 
@@ -16170,7 +16188,8 @@ def self_test() -> int:
             fixture,
             "resume",
             "recall-call",
-            lambda output: output.update({"goals": goals}),
+            lambda output: (output.update({"goals": goals}),
+                [item.update({"statement": statement}) for item, statement in zip(output.get("goal_basis", []), goals)]),
         )
 
     def replace_canonical_goal(

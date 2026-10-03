@@ -1,5 +1,5 @@
 {
-  "revision": 5,
+  "revision": 6,
   "rules": {
     "activation_identity": {
       "authority": "hard_blocking",
@@ -478,6 +478,15 @@
       "owner": "validation-plan.md/repository Git evidence",
       "rationale": "Git state, commits and path correlation are factual observations independent of Work identity; task/repository Git-policy compliance requires actual authority and post-hoc review.",
       "review_groups": []
+    },
+    "shared_answer_integrity": {
+      "authority": "hard_blocking",
+      "uncertainty": "qualitative_review_required",
+      "owner": "projections-and-documents.md/shared RecordedNextStep",
+      "rationale": "Wrong canonical identity, recorded direction, revision or typed grounding contradicts observed Product evidence. Missing historical basis and generated meaning remain review-required.",
+      "review_groups": [
+        "context_recovery"
+      ]
     }
   },
   "work_observations": {

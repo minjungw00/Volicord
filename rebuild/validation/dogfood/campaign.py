@@ -2952,9 +2952,10 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
     result = {"kind": "dogfood_machine_evaluation", "schema_version": 4,
         "candidate_head": manifest["candidate_head"], "evidence_set": campaign["evidence_set"],
         "evaluator_revision": harness.git_head(ROOT), "policy_version": machine_findings.POLICY_VERSION,
-        "evaluator_files": {name: harness.sha256(Path(__file__).with_name(name))
+        "evaluator_files": {name: harness.sha256(Path(__file__).parent / name)
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
-                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py",
+                "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py", "answer_observations.py",
+                "../shared/recorded_action_evidence.py",
                 "evaluation.json", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",

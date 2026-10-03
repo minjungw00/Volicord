@@ -1397,6 +1397,20 @@ resource measurements. Synthetic campaign, resume, document, repository-state,
 machine, review and qualification fixtures are regression support, never a
 substitute for the eight naturalistic sessions.
 
+Naturalistic shared-answer observation uses explicit Project-scoped `goal_basis`
+identity and canonical Source relationships, never equal Goal text. The separate
+`shared_answer_integrity` fact checks every observed MCP Recall and supported JSON
+CLI Recall against preceding record receipts and immutable same-Work Checkpoints.
+It checks selected Work, recorded action, top-level direction, revision and typed
+evidence keys. A contradiction is hard blocking; unavailable observation-time
+basis is indeterminate and review required. Later canonical export does not attest
+historical Source freshness or generated semantics. Absent/stale explanation does
+not invalidate a valid recorded task action. Generated paraphrase adequacy remains
+qualitative review; no fixed V11 task expectations are used. The shared primitive
+`shared/recorded_action_evidence.py` also supplies the factual part of V11's oracle.
+Focused controls in `dogfood/answer_observations_self_test.py` execute the actual
+Naturalistic consumer with duplicate-title Works and independent CLI/MCP substitutions.
+
 ### Naturalistic workload selection
 
 The existing 3 journeys / 5 Works / 3 resume pairs / 8 sessions fit five ordinary

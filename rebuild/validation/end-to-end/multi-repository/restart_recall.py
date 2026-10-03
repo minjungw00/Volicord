@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared"))
+from recorded_action_evidence import recorded_action_errors
 
 
 def _record(inspection: dict[str, Any], kind: str, identity: str) -> dict[str, Any] | None:
@@ -107,61 +112,17 @@ def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any]) -> li
     def require(condition: bool, message: str) -> None:
         if not condition:
             errors.append(message)
-    require(recall.get("next_step") == expected["next_step"], "top-level recorded next action")
+    errors.extend(recorded_action_errors(expected, recall))
     work = recall.get("selected_work")
-    if not isinstance(work, dict):
-        return errors + ["selected Work missing"]
-    require(work.get("work_item_id") == expected["goal_id"], "selected Work identity")
-    checkpoints = work.get("checkpoint_ids")
-    require(isinstance(checkpoints, list) and expected["checkpoint_id"] in checkpoints, "selected Work Checkpoint scope")
-    answers = work.get("answers")
-    if not isinstance(answers, dict):
-        return errors + ["Recall question answers"]
+    if not isinstance(work, dict) or not isinstance(work.get("answers"), dict):
+        return errors
+    answers = work["answers"]
     facts, prose = answers.get("facts"), answers.get("prose")
     if not isinstance(facts, list) or not isinstance(prose, list):
-        return errors + ["shared answer sections"]
+        return errors
     def question(items: list[Any], name: str) -> list[dict[str, Any]]:
         return [a for a in items if isinstance(a, dict) and a.get("question") == name]
-    action_key = f"checkpoint:{expected['checkpoint_id']}@{expected['checkpoint_revision']}:next_step"
     goal_key = f"context_item:{expected['goal_id']}@{expected['goal_revision']}:statement"
-    recorded = question(facts, "RecordedNextStep")
-    require(len(recorded) == 1, "recorded next action answer")
-    require(not question(facts, "NextStepAvailability"), "valid direction declared missing")
-    require(not question(prose, "RecordedNextStep") and not question(facts, "NextStep"), "recorded action role/scope")
-    if len(recorded) == 1:
-        fact = recorded[0]
-        require(fact.get("role") == "deterministic_facts", "recorded action role")
-        require(fact.get("evidence_keys") == [action_key], "recorded action evidence key")
-        require(fact.get("text") in [
-            f"Recorded next action quotation (original language): {expected['next_step']}",
-            f"기록된 다음 행동 인용 (원문 언어): {expected['next_step']}",
-        ], "ordinary recorded next action meaning")
-        basis = fact.get("recorded_action")
-        require(isinstance(basis, dict), "recorded action basis missing")
-        if isinstance(basis, dict):
-            for field, value in (
-                ("work_item_id", expected["goal_id"]), ("checkpoint_id", expected["checkpoint_id"]),
-                ("revision", expected["checkpoint_revision"]), ("field", "next_step"),
-                ("recorded_text", expected["next_step"]),
-            ):
-                require(basis.get(field) == value and (field != "revision" or type(basis.get(field)) is int), f"recorded action {field}")
-            sources = basis.get("source_ids")
-            require(isinstance(sources, list) and all(isinstance(s, str) for s in sources)
-                    and sorted(sources) == sorted(expected["checkpoint_sources"]), "recorded action Source basis")
-            statuses = basis.get("source_status")
-            require(isinstance(statuses, list) and len(statuses) == len(expected["checkpoint_sources"])
-                    and all(isinstance(s, dict) and isinstance(s.get("source_id"), str) for s in statuses)
-                    and sorted(s["source_id"] for s in statuses) == sorted(expected["checkpoint_sources"]), "recorded action Source status scope")
-            if isinstance(statuses, list):
-                source_details = recall.get("source_details", [])
-                for status in statuses:
-                    if not isinstance(status, dict):
-                        continue
-                    visible = [s for s in source_details if isinstance(s, dict) and s.get("identity") == status.get("source_id")] if isinstance(source_details, list) else []
-                    for source in visible:
-                        for field in ("availability", "freshness", "snapshot_basis"):
-                            if field in source:
-                                require(status.get(field) == source[field], f"recorded action Source {field}")
     states = question(facts, "WorkState")
     require(len(states) == 1 and states[0].get("role") == "deterministic_facts"
             and states[0].get("text") in ("Work: paused", "작업: 일시 중지")

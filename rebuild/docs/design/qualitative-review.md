@@ -5,7 +5,7 @@ This contract owns review artifacts and operations, not Product behavior or fina
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 13 / policy revision 12, machine evaluation
-policy `evidence-evaluation-6`, human observation/receipt schema 3, qualification policy
+policy `evidence-evaluation-7`, human observation/receipt schema 3, qualification policy
 `replacement-qualification-8`, and result-lineage schema 1. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
