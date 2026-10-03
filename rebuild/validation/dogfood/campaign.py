@@ -3031,7 +3031,7 @@ def diagnose_campaign(root: Path, output: Path) -> dict[str, Any]:
     """Inspect a historical inventory without replay, repair, or qualification."""
     campaign = read_json(campaign_file(root))
     if (campaign.get("kind") != "phase8_dogfood_campaign"
-            or campaign.get("schema_version") not in {1, 2, 3, 4, 5, 6, 7, 8}
+            or campaign.get("schema_version") not in {1, 2, 3, 4, 5, 6, 7, 8, 9}
             or Path(campaign.get("campaign_root", "")).resolve() != root.resolve()):
         raise CampaignError("unexpected dogfood campaign metadata")
     verify_inventory(root)

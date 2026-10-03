@@ -578,7 +578,7 @@ ACTIVATION_ORDERING_FIXTURE = (
 def assert_inventory_diagnostic(parent: Path, binary: Path) -> None:
     root = parent / "inventory-diagnostic"
     prepare(root, parent / "diagnostic-sources", binary)
-    for version in (7, 3):
+    for version in (9, 7, 3):
         value = campaign.read_json(campaign.campaign_file(root))
         value["schema_version"] = version
         campaign.write_json(campaign.campaign_file(root), value)

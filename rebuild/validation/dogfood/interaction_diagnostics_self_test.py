@@ -63,6 +63,9 @@ class InteractionDiagnosticTests(unittest.TestCase):
                     "evidence", "workload_intent", "learning_collaboration_statement", "_evidence_directory"}
                 natural = {key: value for key, value in descriptor.items() if key in fields}
                 natural["contract"] = "naturalistic-observation-1"
+                # Synthetic unit transport for the current closed descriptor;
+                # this test never supplies measured campaign evidence.
+                natural["evidence_purpose"] = "naturalistic"
                 natural["fresh_resume_user_task"] = None
                 natural["evidence"] = copy.deepcopy(natural["evidence"])
                 natural["evidence"]["captures"].pop("resume", None)
