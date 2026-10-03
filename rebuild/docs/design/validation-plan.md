@@ -809,6 +809,14 @@ continuity를 함께 확인한다. Provider-side deletion은 unsupported로 남�
 
 ## 12. V08 — Linux install과 Codex integration
 
+Current V08 conformance runs executable invariants from the current candidate.
+Historical commit subjects, changed-file whitelists and prior aggregate sentences
+are not prerequisites. `historical_provenance.py` separately validates preserved
+Phase 7 provenance; historical success never becomes current success. Actual
+Work/Decision prepare/record/delete/readback in both languages is required in
+addition to parser parity. Authenticated external probes keep their real authority
+and environment prerequisites.
+
 ### 목표
 
 clean Linux 환경에서 install, Project init, Codex 연결과 health를 반복 가능하게 검증한다.

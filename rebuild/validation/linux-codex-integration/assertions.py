@@ -28,43 +28,6 @@ EXPECTED_GROUPS = {
     "analysis_recovery",
     "failure_cleanup_and_exclusion",
 }
-EXPECTED_COMMITS = {
-    "viewer": (
-        "a6355a9edf5a587a17ad93eeb8357d1de977ba54",
-        "feat: add local project viewer",
-    ),
-    "host_and_install": (
-        "85c876033c35acb5ad95eee3dec223fc91213f50",
-        "feat: add Linux Codex host integration",
-    ),
-    "current_host_source": (
-        "bec6424ee0e7a7f378f2fc799bb58e201cc0c00f",
-        "fix: preserve current-host Source observer",
-    ),
-    "viewer_http": (
-        "55271418ea9f7b621a31250bf086194e7ac92dfd",
-        "fix: make local viewer interactions live",
-    ),
-    "mcp_schemas": (
-        "ecef64e1a3516f4a1aa2ceaaebcc8b84f8b60183",
-        "fix: publish exact MCP tool schemas",
-    ),
-    "analysis_recovery": (
-        "369402c6065232b4ef0a0534340b1b2a447436ad",
-        "feat: add derived analysis repair and reindex",
-    ),
-    "fresh_repository_sources": (
-        "5c20f53a1aa7c0cf64767a3c10e54c0b719f5d6a",
-        "fix: bind rebuilds to fresh repository sources",
-    ),
-    "viewer_request_trust": (
-        "3b48545bd9e2a224d6feb75ae1c743d1af31f4cf",
-        "fix: authenticate local viewer mutations",
-    ),
-}
-# The investigated entry HEAD is authoritative; historical Production subjects
-# above document provenance, not a ceiling on already accepted product changes.
-CURRENT_ENTRY_BASELINE = "c17279bbdd86d7c9f059e64130ceb650f1ce7048"
 
 
 def require(condition: bool, message: str) -> None:
@@ -112,107 +75,8 @@ def main() -> int:
     require(fixture.get("schema_version") == 1, "V08 fixture schema_version changed")
     require(fixture.get("validation_id") == "V08", "fixture is not V08 evidence")
     require(set(fixture.get("groups", {})) == EXPECTED_GROUPS, "V08 evidence groups changed")
-    require(
-        fixture.get("production_commits")
-        == {key: value[0] for key, value in EXPECTED_COMMITS.items()},
-        "V08 Production commit identities changed",
-    )
-
-    for role, (commit, expected_subject) in EXPECTED_COMMITS.items():
-        subject = run(["git", "show", "-s", "--format=%s", commit], capture=True).stdout.strip()
-        require(subject == expected_subject, f"{role} Production commit subject changed")
-
-    changed_since_production = run(
-        ["git", "diff", "--name-only", CURRENT_ENTRY_BASELINE],
-        capture=True,
-    ).stdout.splitlines()
-    production_drift = [
-        path
-        for path in changed_since_production
-        if (
-            path.startswith("rebuild/crates/")
-            and "/tests/" not in path
-        )
-        or path in {
-            "rebuild/Cargo.toml",
-            "rebuild/Cargo.lock",
-            "rebuild/install.sh",
-            "rebuild/docs/linux-codex-setup.md",
-        }
-    ]
-    permitted_activation_drift = {
-        "rebuild/Cargo.toml",
-        "rebuild/Cargo.lock",
-        "rebuild/install.sh",
-        "rebuild/docs/linux-codex-setup.md",
-        "rebuild/crates/volicord-operations/Cargo.toml",
-        "rebuild/crates/volicord-operations/src/cli.rs",
-        "rebuild/crates/volicord-operations/src/codex.rs",
-        "rebuild/crates/volicord-operations/src/session_start_identity.txt",
-        "rebuild/crates/volicord-operations/src/lib.rs",
-        "rebuild/crates/volicord-operations/src/main.rs",
-        "rebuild/crates/volicord-host/README.md",
-        "rebuild/crates/volicord-host/src/mcp.rs",
-        "rebuild/crates/volicord-inquiry/README.md",
-        "rebuild/crates/volicord-inquiry/src/applicability.rs",
-        "rebuild/crates/volicord-inquiry/src/lib.rs",
-        "rebuild/crates/volicord-inquiry/src/model.rs",
-        "rebuild/crates/volicord-inquiry/src/store.rs",
-        "rebuild/crates/volicord-inquiry/src/work_authority.rs",
-        "rebuild/crates/volicord-operations/src/model.rs",
-        "rebuild/crates/volicord-operations/src/operations.rs",
-        "rebuild/crates/volicord-projections/src/candidate_inspection.rs",
-        "rebuild/crates/volicord-viewer/src/render.rs",
-        "rebuild/crates/volicord-viewer/src/render_tests.rs",
-    }
-    require(
-        not set(production_drift) - permitted_activation_drift,
-        f"V08 contains unrelated Production drift: {sorted(set(production_drift) - permitted_activation_drift)}",
-    )
-
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    v08_entries = [
-        entry for entry in manifest.get("fixtures", []) if entry.get("validation_id") == "V08"
-    ]
-    require(
-        [entry.get("id") for entry in v08_entries] == ["v08-linux-codex-integration"],
-        "V08 fixture-manifest entry is missing or ambiguous",
-    )
-    require(REPORT.is_file(), "maintained V08 report is missing")
-    require(PHASE_SUMMARY.is_file(), "maintained Phase 7 summary is missing")
-    require(CODEX_PROBE.is_file(), "maintained authenticated Codex probe is missing")
-    report_text = REPORT.read_text(encoding="utf-8")
-    phase_summary = PHASE_SUMMARY.read_text(encoding="utf-8")
-    for validation_id in ("V06", "V07", "V08", "V10"):
-        require(
-            f"| {validation_id} | passed |" in phase_summary,
-            f"Phase 7 summary does not record {validation_id} as passed",
-        )
-    require(
-        "No accepted Q1–Q13 Decision revisit trigger is active" in phase_summary,
-        "Phase 7 summary hides the accepted-Decision revisit-trigger status",
-    )
-    require("V11" in report_text and "not" in report_text, "V08 report hides the V11 exclusion")
-    normalized_report = " ".join(report_text.split())
-    require(
-        "final aggregate has not yet been run" in normalized_report,
-        "V08 report must not pre-claim the final aggregate",
-    )
-    require(
-        "authenticated Codex product-tool probe passed" in normalized_report,
-        "V08 report does not preserve the observed model-driven product-tool result",
-    )
-    require(
-        "byte-identical after both operations" not in normalized_report
-        and "portable canonical bytes remain identical" not in normalized_report,
-        "V08 report still requires whole-bundle equality after a repository observation",
-    )
-    require(
-        "request-authenticity" in normalized_report
-        and "repository Source" in normalized_report,
-        "V08 report omits a corrected provenance or viewer-trust boundary",
-    )
-
+    # Historical report/commit provenance has a separate explicit entry point.
+    # Current checks use the executable matrix and present Product invariants.
     lifecycle = {row[0]: row[3] for row in fixture["groups"]["clean_linux_install"]}
     require(lifecycle["V08-I07-uninstall-preserves"] ==
             "uninstall removes binaries while logical canonical context and local Project binding survive",
@@ -220,9 +84,6 @@ def main() -> int:
     require(lifecycle["V08-I08-reinstall-preserves"] ==
             "reinstall preserves canonical context by complete typed portable export equality while repository-derived Recall freshness truthfully changes after owned integration removal; fresh analysis adds only its repository Source and restores current freshness",
             "V08-I08 lost canonical-versus-derived continuity")
-    for phrase in ("complete typed portable export equality", "current to stale",
-                   "canonical deletion", "arbitrary Recall", "fresh repository analysis"):
-        require(phrase in normalized_report, f"V08 report lost reinstall contract: {phrase}")
     harness_text = HARNESS.read_text(encoding="utf-8")
     require("reinstall_preserved_recall" not in harness_text,
             "V08 reintroduced whole-Recall persistence evidence")
@@ -323,7 +184,13 @@ def main() -> int:
         discovered += sum(line.endswith(": test") for line in catalog.splitlines())
         run(command)
 
+    run(["cargo", "test", "--manifest-path", "rebuild/Cargo.toml", "-p",
+         "volicord-operations", "--lib", "codex::tests", "--all-features"])
+    run(["cargo", "test", "--manifest-path", "rebuild/Cargo.toml", "-p",
+         "volicord-operations", "--test", "explanation_cli", "--all-features"])
     run([str(HARNESS)])
+    run([sys.executable, str(ROOT / "rebuild/validation/shared/current_cli_parity.py"),
+         "--binary", str(ROOT / "rebuild/target/debug/volicord")])
     print(
         json.dumps(
             {

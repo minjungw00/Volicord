@@ -6,6 +6,16 @@ surface, not a Volicord product command or production architecture.
 
 ## Commands
 
+Current installation/host conformance is `python3
+rebuild/validation/linux-codex-integration/assertions.py`: actual mapped Product
+entry points, repository integration, HTTP authentication/removed routes, repair,
+install/uninstall/reinstall and real Work/Decision CLI explanation lifecycles in
+en/ko. Parser parity alone reports command-shape coverage, not successful
+explanation operations or host generation. The separate
+`linux-codex-integration/historical_provenance.py` inspects preserved Phase 7
+reports/commit identities only and supplies no current Product result.
+Authenticated `codex_probe.py` remains a separate authorized external check.
+
 - `rebuild/scripts/validate self-test` checks command execution, output and
   status preservation, signal reporting, and non-fail-fast aggregation with
   fake commands.

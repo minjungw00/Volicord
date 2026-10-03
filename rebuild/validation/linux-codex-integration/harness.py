@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import atexit
 from copy import deepcopy
 import hashlib
 import json
@@ -363,8 +364,26 @@ def arguments_from_schema(
     return value
 
 
+HOST_PROCESSES = []
+
+
+def cleanup_hosts():
+    for process in HOST_PROCESSES:
+        if process.poll() is None:
+            if process.stdin is not None and not process.stdin.closed:
+                process.stdin.close()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+
+atexit.register(cleanup_hosts)
+
+
 def start_host(binary: Path, env: dict[str, str]) -> subprocess.Popen[str]:
-    return subprocess.Popen(
+    process = subprocess.Popen(
         [str(binary)],
         cwd=ROOT,
         env=env,
@@ -373,6 +392,9 @@ def start_host(binary: Path, env: dict[str, str]) -> subprocess.Popen[str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+
+    HOST_PROCESSES.append(process)
+    return process
 
 
 def stop_host(process: subprocess.Popen[str]) -> None:
@@ -397,18 +419,18 @@ def initialize_host(process: subprocess.Popen[str], request_id: int) -> list[dic
     require(names == EXPECTED_TOOLS, "high-level MCP catalog changed")
     instructions = initialized["result"].get("instructions", "")
     require(
-        "Project-scoped repository work starts with project_resolve" in instructions,
+        "Project work starts with project_resolve" in instructions,
         "Project resolution bootstrap missing",
     )
     require(
         "workflow.required_next_action" in instructions
-        and "do not bypass a blocking workflow transition" in instructions,
+        and "never bypass a blocker" in instructions,
         "tool-driven workflow boundary missing",
     )
     for concise_safety_boundary in (
-        "explicit response from the current host",
-        "separate exact authorization",
-        "actually observed command outcomes",
+        "explicit current-host responses",
+        "separate authorization",
+        "observed outcomes",
     ):
         require(
             concise_safety_boundary in instructions,
@@ -712,13 +734,26 @@ def repository_sources(path: Path) -> list[dict[str, Any]]:
     return [row for row in tables["sources"] if row["source_kind"] == "repository_snapshot"]
 
 
+def current_analysis_metadata(path: Path) -> dict[str, Any]:
+    # Reuse the maintained current-only decoder; no historical analysis fallback.
+    sys.path.insert(0, str(ROOT / "rebuild/validation/end-to-end/multi-repository"))
+    from analysis_metadata import read_metadata
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    require(manifest.get("storage_format") == "volicord.normalized_analysis.v2",
+            "unsupported current Analysis storage")
+    metadata = read_metadata(path, manifest["metadata_blob"])
+    for key in ("format_kind", "format_version", "identity", "project", "generated_at_unix_micros"):
+        require(metadata[key] == manifest[key], f"Analysis manifest/metadata {key} mismatch")
+    return metadata
+
+
 def analysis_lineage(
     path: Path,
     project_id: str,
     analysis_snapshot: str,
     bundle: Path,
 ) -> dict[str, str]:
-    analysis = json.loads(path.read_text(encoding="utf-8"))
+    analysis = current_analysis_metadata(path)
     source = analysis["repository_source"]
     source_basis = source["basis"]
     require(analysis["identity"] == analysis_snapshot, "CLI and stored Analysis Snapshot disagree")
@@ -871,7 +906,7 @@ def exercise_analysis_recovery(
     ).stdout)
     first_path = Path(first_analysis["stored_at"])
     second_path = Path(second_analysis["stored_at"])
-    first_value = json.loads(first_path.read_text(encoding="utf-8"))
+    first_value = current_analysis_metadata(first_path)
     second_bytes = second_path.read_bytes()
 
     stable_source = json.loads(run(
@@ -1031,11 +1066,11 @@ def exercise_analysis_recovery(
     require(repaired["kind"] == "derivedanalysisrepair", "repair used the wrong recovery kind")
     require(
         repaired["discarded_entries"] >= 1,
-        "repair did not discard the corrupt owned entry and prior Project snapshots",
+        "repair did not detach the corrupt owned entry",
     )
     require(Path(repaired["stored_at"]).is_file(), "repair did not publish a fresh analysis")
     repaired_path = Path(repaired["stored_at"])
-    repaired_value = json.loads(repaired_path.read_text(encoding="utf-8"))
+    repaired_value = current_analysis_metadata(repaired_path)
     require(repaired_value, "repair output is unreadable")
     require(
         "src/repair-current.py" in json.dumps(repaired_value),
@@ -1081,6 +1116,8 @@ def exercise_analysis_recovery(
         "repair changed another Project's canonical state",
     )
 
+    retained_after_repair = set(repaired_path.parent.glob("*.json"))
+    require(not first_path.exists(), "repair retained the corrupt manifest")
     (first_repository / "src/current.py").write_text("CURRENT = True\n", encoding="utf-8")
     reindexed = json.loads(run([
         str(cli), "--json", "--repository", str(first_repository), "doctor", "reindex",
@@ -1092,7 +1129,7 @@ def exercise_analysis_recovery(
     )
     reindexed_path = Path(reindexed["stored_at"])
     require(reindexed_path.is_file(), "reindex did not publish replacement analysis")
-    reindexed_value = json.loads(reindexed_path.read_text(encoding="utf-8"))
+    reindexed_value = current_analysis_metadata(reindexed_path)
     require(
         "src/current.py" in json.dumps(reindexed_value),
         "reindex did not observe current authoritative repository input",
@@ -1133,8 +1170,9 @@ def exercise_analysis_recovery(
     analysis_root = runtime / "derived" / "analysis"
     project_analysis = analysis_root / first
     require(
-        [path for path in project_analysis.iterdir() if path.is_file()] == [reindexed_path],
-        "Project derived replacement did not leave exactly one current snapshot",
+        set(project_analysis.glob("*.json")) == retained_after_repair | {reindexed_path}
+        and not first_path.exists(),
+        "repair/reindex lost valid immutable history or retained the corrupt manifest",
     )
     require(
         all(path.is_dir() for path in analysis_root.iterdir()),
@@ -1395,7 +1433,7 @@ def main() -> int:
             baseline["workflow"]["stage"] == "engineering_choice_discovery"
             and baseline["workflow"]["disposition"] == "engineering_choice_discovery_required"
             and baseline["workflow"]["required_next_action"]
-            == {"tool": "engineering_choice_discovery", "action": "record"},
+            == {"tool": "engineering_choice_discovery", "action": "draft"},
             "pre-work analysis did not expose Engineering Choice Discovery",
         )
         checkpoint_choices = [
