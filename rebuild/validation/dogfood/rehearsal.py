@@ -188,14 +188,15 @@ def temporal_controls(root, campaign_root, manifest, temporal):
             'goal_revision': o['goal_basis']['revision'], 'basis_sha256': machine_findings.digest(o['goal_basis'])}
             for o in observations], 'correction': correction[0]}
     outcomes = temporal['outcomes']
-    artifacts = [manifest['artifacts'][f'slots/{slot}/evidence/work.rollout.jsonl']]
+    capture_ref = c.read_json(campaign_root / f'tasks/descriptors/{slot}.json')['evidence']['captures']['work']
+    artifacts = [manifest['artifacts'][capture_ref['file']]]
     outcomes['temporal_recall_correction'] = control_evidence(root, 'temporal_recall_correction',
         'shared_answer_integrity', positive['status'], 'naturalistic_observation', positive['basis'], artifacts)
     # Both actual Product-generated returns are current at their own observation;
     # the later correction is excluded from the earlier response's witness set.
     require(not any(w.get('kind') == 'correct_context' for w in observations[0]['goal_basis']['witnesses']),
         'future correction was applied retroactively')
-    raw = campaign_root / f'slots/{slot}/evidence/work.rollout.jsonl'
+    raw = campaign_root / capture_ref['file']
     original_events = [json.loads(line) for line in raw.read_text().splitlines() if line]
     for control in ('post_correction_old_revision', 'future_correction_scope', 'missing_temporal_evidence', 'missing_temporal_evidence_with_violation'):
         negative = root / ('negative-' + control)
