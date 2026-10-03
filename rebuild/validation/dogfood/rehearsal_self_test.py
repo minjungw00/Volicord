@@ -31,6 +31,16 @@ def passed_result(candidate="a" * 40):
 
 
 class ContractTests(unittest.TestCase):
+    def test_support_memory_and_obligations_use_the_same_purpose(self):
+        import campaign
+        import resource_observer
+        artifacts = {"volicord-mcp": {"sha256": "a" * 64}}
+        memory = resource_observer.initial(artifacts, purpose=purpose.REHEARSAL)
+        obligations = campaign.live_evidence_obligations(artifacts, memory)
+        self.assertEqual(obligations["naturalistic_resource"], memory)
+        self.assertEqual(memory["process_ownership"], "test_support_owned_candidate_process")
+        resource_observer.validate(memory, "a" * 64)
+
     def test_closed_purpose_and_no_measured_approval(self):
         for value in (None, "support", "vscode"):
             with self.assertRaises(ValueError):

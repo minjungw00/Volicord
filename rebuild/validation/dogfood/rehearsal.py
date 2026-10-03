@@ -16,6 +16,7 @@ from pathlib import Path
 import secrets
 import selectors
 import shutil
+import signal
 import subprocess
 import time
 
@@ -167,11 +168,19 @@ class Processes:
     def run(self, argv, *, cwd=c.ROOT, input=None):
         label = f"process-{len(self.records):04d}"
         started = time.monotonic_ns()
-        completed = subprocess.run([str(a) for a in argv], cwd=cwd, input=input,
-            capture_output=True, timeout=300, check=False)
-        self.save(label, completed.stdout, completed.stderr, completed.returncode, started)
-        require(completed.returncode == 0, "Product/support process failed; inspect retained streams")
-        return completed.stdout
+        child = subprocess.Popen([str(a) for a in argv], cwd=cwd,
+            stdin=subprocess.PIPE if input else subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        try:
+            stdout, stderr = child.communicate(input, timeout=300)
+        except BaseException:
+            os.killpg(child.pid, signal.SIGKILL)
+            stdout, stderr = child.communicate(timeout=5)
+            self.save(label, stdout, stderr, child.returncode, started)
+            raise
+        self.save(label, stdout, stderr, child.returncode, started)
+        require(child.returncode == 0, "Product/support process failed; inspect retained streams")
+        return stdout
 
     def save(self, label, stdout, stderr, code, started):
         for name, data in (("stdout", stdout), ("stderr", stderr)):
@@ -256,14 +265,15 @@ def authored_capture(path, repository, revision, session, task, activation, oper
         {"type": "event_msg", "payload": {"type": "task_started", "turn_id": turn}},
         {"type": "event_msg", "payload": {"type": "user_message", "message": task,
             "client_id": "support-user-" + session}}]
-    for number, (name, arguments, result) in enumerate(operations):
+    for number, (name, arguments, result, duration) in enumerate(operations):
         call = session + "-" + str(number)
         events.extend([
             {"type": "event_msg", "payload": {"type": "mcp_tool_call_begin", "turn_id": turn,
                 "call_id": call, "invocation": {"server": "volicord", "tool": name, "arguments": arguments}}},
             {"type": "event_msg", "payload": {"type": "mcp_tool_call_end", "turn_id": turn,
                 "call_id": call, "invocation": {"server": "volicord", "tool": name, "arguments": arguments},
-                "result": {"Ok": {"isError": False, "structuredContent": result}}, "duration": {"secs": 0, "nanos": 1}}}])
+                "result": {"Ok": {"isError": False, "structuredContent": result}},
+                "duration": {"secs": duration // 1_000_000_000, "nanos": duration % 1_000_000_000}}}])
     events.append({"type": "event_msg", "payload": {"type": "task_complete", "turn_id": turn}})
     path.write_text("".join(json.dumps(e) + "\n" for e in events))
     capture = codex_events.load_codex_capture(path)
@@ -331,8 +341,9 @@ def run_sessions(root, campaign_root, binary, logs):
         client = Product(binary.with_name("volicord-mcp"), runtime, repository, logs)
         operations = []
         def call(name, arguments):
+            started = time.monotonic_ns()
             value = client.tool(name, arguments)
-            operations.append((name, arguments, value))
+            operations.append((name, arguments, value, time.monotonic_ns() - started))
             return value
         try:
             if kind == "volicord" and label == "A" and role == "start":
@@ -464,6 +475,10 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--bin-dir", type=Path)
     args = parser.parse_args()
+    def interrupted(signum, frame):
+        raise InterruptedError("rehearsal interrupted")
+    signal.signal(signal.SIGTERM, interrupted)
+    signal.signal(signal.SIGINT, interrupted)
     output = args.output.resolve()
     c.require_current_candidate(args.candidate_head)
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
@@ -484,15 +499,21 @@ def main():
         require(result["executables"] == {name: c.harness.sha256(binary.with_name(name)) for name in c.CANDIDATE_ARTIFACTS},
             "candidate executable drift")
         result["status"] = "passed"
-    except Exception as error:
+    except BaseException as error:
         result["status"], result["failure_kind"] = "failed", type(error).__name__
         (output / "failure.txt").write_text(str(error) + "\n")
     finally:
+        teardown = "completed"
         for client in list(Product.active):
-            client.close()
+            try:
+                client.close()
+            except Exception:
+                teardown = "failed"
+                result["status"] = "failed"
+                result["failure_kind"] = "ProcessTeardownError"
         # Canonical/analysis/source copies stay private; no processes survive into V11.
         result["processes"] = logs.records
-        result["teardown"] = "completed"
+        result["teardown"] = teardown
         result["result_id"] = machine_findings.digest(result)
         c.write_json(output / "result.json", result)
         print(json.dumps({"status": result["status"], "result": str(output / "result.json")}))
