@@ -571,7 +571,8 @@ def explanation_clone(campaign_root, target):
     # Disposable control inputs retain the authentic campaign bindings. Runtime
     # reads still reach the real Product, but all evidence mutations stay here.
     shutil.copytree(campaign_root, target, ignore=shutil.ignore_patterns('repository', 'runtime'))
-    return c.load_campaign(target)
+    # A Campaign itself cannot be relocated. These are disposable artifact
+    # snapshots for the source-independent verifier, not new Campaign roots.
 
 
 def regenerate(root, campaign_root, paths, prepared, binary, logs):
@@ -597,12 +598,20 @@ def regenerate(root, campaign_root, paths, prepared, binary, logs):
         'work_item_id': work, 'receipt': mutation, 'process_identity': client.label})
     outcomes = {}
     negative = root / 'negative-current-plan'
-    copied_campaign = explanation_clone(campaign_root, negative)
-    rejection = rejected_for(lambda: explanation_evidence.require_ready(negative, copied_campaign, mapped), 'basis changed')
+    explanation_clone(campaign_root, negative)
+    rejection = rejected_for(lambda: explanation_evidence.require_ready(negative, campaign, mapped), 'basis changed')
     outcomes['mismatched_final_current_plan'] = control_evidence(root, 'mismatched_final_current_plan',
         'realization_binding', 'confirmed_violation', 'explanation_readiness', rejection,
         [explanation_evidence.binding((negative / selected[0]['preparation']).read_bytes())])
     new = explanation_evidence.prepare(campaign_root, paths, languages=['en', 'ko'], work_ids=[work])
+    # Snapshot an actual, still incomplete Product preparation. The main pipeline
+    # completes that same obligation next; the control retains its earlier state.
+    negative = root / 'negative-pending'
+    explanation_clone(campaign_root, negative)
+    rejection = rejected_for(lambda: explanation_evidence.require_ready(negative, campaign, mapped), 'missing host response')
+    outcomes['incomplete_attempt_fallback'] = control_evidence(root, 'incomplete_attempt_fallback',
+        'realization_binding', 'confirmed_violation', 'explanation_readiness', rejection,
+        [explanation_evidence.binding((negative / new['explanations'][0]['preparation']).read_bytes())])
     complete_explanations(root, campaign_root, new)
     relations = explanation_evidence.require_ready(campaign_root, campaign, mapped)
     require(all(p.read_bytes() == body for p, body in originals.items()), 'historical observation bytes were rewritten')
@@ -633,13 +642,6 @@ def regenerate(root, campaign_root, paths, prepared, binary, logs):
     outcomes['tampered_historical_explanation'] = control_evidence(root, 'tampered_historical_explanation',
         'campaign_inventory', 'confirmed_violation', 'explanation_readiness', rejection,
         [explanation_evidence.binding(damaged.read_bytes())])
-    negative = root / 'negative-pending'
-    copied_campaign = explanation_clone(campaign_root, negative)
-    pending = explanation_evidence.prepare(negative, paths, languages=['en'], work_ids=[work])
-    rejection = rejected_for(lambda: explanation_evidence.require_ready(negative, copied_campaign, mapped), 'missing host response')
-    outcomes['incomplete_attempt_fallback'] = control_evidence(root, 'incomplete_attempt_fallback',
-        'realization_binding', 'confirmed_violation', 'explanation_readiness', rejection,
-        [explanation_evidence.binding((negative / pending['explanations'][0]['preparation']).read_bytes())])
     preparation = c.read_json(historical)
     response = c.read_json(historical.parent / 'response.json')
     failures = []
