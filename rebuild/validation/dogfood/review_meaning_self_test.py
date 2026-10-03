@@ -42,6 +42,17 @@ def rehash_package(root, entry_id, data):
 
 
 class MeaningTests(unittest.TestCase):
+    def test_multiple_nested_omissions_survive_json_key_order(self):
+        # Independently authored incomplete DTO, not a copied rollout.
+        result = {"project_id": "01" * 16, "selected_work": {"work_item_id": "02" * 16}}
+        projected = a.project(result, "recall")
+        self.assertGreater(len(projected["omissions"]), 1)
+        retained = json.loads(json.dumps(projected, sort_keys=True))
+        a.validate(retained)
+        retained["omissions"] = list(reversed(retained["omissions"]))
+        with self.assertRaises(ValueError):
+            a.validate(retained)
+
     def setUp(self):
         self.fixture = AnswerTests()
         self.fixture.setUp()

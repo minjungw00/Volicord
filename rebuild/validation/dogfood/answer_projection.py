@@ -202,8 +202,8 @@ def omissions(value, path=''):
             result.append({'pointer': path, 'reason': 'transport_omission'})
         if UNKNOWN in value:
             result.append({'pointer': path, 'reason': 'unsupported_typed_fields', 'count': value[UNKNOWN]})
-        for key, child in value.items():
-            result.extend(omissions(child, pointer(path, key)))
+        for key in sorted(value):
+            result.extend(omissions(value[key], pointer(path, key)))
     elif isinstance(value, list):
         for n, child in enumerate(value):
             result.extend(omissions(child, pointer(path, n)))
