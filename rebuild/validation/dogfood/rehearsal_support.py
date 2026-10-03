@@ -3,6 +3,8 @@
 Extracted bounded schema construction, without any Final/V11 execution owner.
 These authored assertions demonstrate transport and validation, not semantic truth.
 """
+from typing import Any
+
 ENGINEERING_EFFECT_CATEGORIES = (
     "public_api_shape_or_semantics",
     "compatibility",

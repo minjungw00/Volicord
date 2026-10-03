@@ -6,6 +6,7 @@ import unittest
 
 import evidence_purpose as purpose
 import rehearsal_contract as contract
+import rehearsal  # Import the actual runner and its bounded workflow builders.
 
 
 def passed_result(candidate="a" * 40):
