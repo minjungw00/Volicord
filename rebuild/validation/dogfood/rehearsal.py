@@ -369,7 +369,8 @@ def run_sessions(root, campaign_root, binary, logs):
                 learning = json.loads(FIXTURE.read_bytes())["tasks"][c.work_key(kind, label)]["learning_collaboration_statement"]
                 learning_context = call("context_record", {"project_id": project, "role": "learning",
                     "user_turn": task, "statement": learning}) if learning else None
-                baseline = call("repository_analyze", {"project_id": project})
+                baseline = call("repository_analyze", {"project_id": project,
+                    "excluded_paths": ["crates", "tests", "docs", "xtask"] if kind == "volicord" else []})
                 rehearsal_support.record_support_checkpoint(call, project, goal, baseline, repository,
                     label, learning, learning_context)
             call("recall", {"project_id": project, "requested_language": "en"})
@@ -437,6 +438,12 @@ def pipeline(root, candidate, binary, logs):
     draft_path = review_root / "draft.json"
     draft = c.read_json(draft_path)
     draft["observation_scope"]["limits"] = ["Self-authored support payload; no model quality or human judgment."]
+    coverage = next(a for a in draft["assessments"]
+        if a["criterion_id"] == qualification_policy.COVERAGE_CRITERION)
+    coverage.update(assessment="insufficient_evidence",
+        reasoning="Authored support construction cannot establish ordinary-user interaction coverage.",
+        uncertainty="No measured Naturalistic interaction or independent qualitative judgment is supplied.",
+        counterevidence={"state": "not_observable", "reasoning": "Support construction establishes neither positive nor contrary human experience.", "evidence": []})
     c.write_json(draft_path, draft)
     review.record(review_root, draft_path)
     qualified = qualification_policy.qualify(campaign_root, evaluation_path, root / "qualification",

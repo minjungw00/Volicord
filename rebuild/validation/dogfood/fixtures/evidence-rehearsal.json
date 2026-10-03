@@ -70,6 +70,6 @@
     "operator_approval": "not_provided",
     "human_observations": "not_provided",
     "replacement_qualification": "blocked",
-    "reason": "test support capture provenance cannot supply measured-session qualification; all authored reviews remain not_reviewed"
+    "reason": "Support captures cannot supply measured-session qualification; coverage is explicitly insufficient and other authored reviews remain not_reviewed."
   }
 }

@@ -42,6 +42,14 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(memory["process_ownership"], "test_support_owned_candidate_process")
         resource_observer.validate(memory, "a" * 64)
 
+    def test_authored_provenance_cannot_lose_its_purpose(self):
+        from types import SimpleNamespace
+        for metadata in ({}, {"evidence_purpose": purpose.NATURALISTIC}):
+            capture = SimpleNamespace(observed_metadata={"session_meta": {
+                "source": "self_authored_test_support", "source_metadata": metadata}})
+            with self.assertRaises(ValueError):
+                purpose.capture_purpose(capture)
+
     def test_closed_purpose_and_no_measured_approval(self):
         for value in (None, "support", "vscode"):
             with self.assertRaises(ValueError):

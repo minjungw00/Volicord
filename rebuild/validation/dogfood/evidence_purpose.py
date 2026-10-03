@@ -16,6 +16,10 @@ def validate(value):
 
 def capture_purpose(capture):
     metadata = capture.observed_metadata["session_meta"].get("source_metadata")
+    authored = capture.observed_metadata["session_meta"].get("source") == "self_authored_test_support"
+    if authored or isinstance(metadata, dict) and metadata.get("authorship") == "self_authored_support_not_host_observed":
+        if not isinstance(metadata, dict) or metadata.get("evidence_purpose") != REHEARSAL:
+            raise ValueError("authored support capture cannot be relabeled as measured evidence")
     if isinstance(metadata, dict) and "evidence_purpose" in metadata:
         return validate(metadata["evidence_purpose"])
     return NATURALISTIC
