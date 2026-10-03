@@ -392,8 +392,10 @@ def authored_capture(path, repository, revision, session, task, activation, oper
     for number, (name, arguments, result, duration, started, ended) in enumerate(operations):
         call = session + "-" + str(number)
         events.extend([
-            {"timestamp": started, "type": "event_msg", "payload": {"type": "mcp_tool_call_begin", "turn_id": turn,
-                "call_id": call, "invocation": {"server": "volicord", "tool": name, "arguments": arguments}}},
+            {"timestamp": started, "type": "response_item", "payload": {"type": "custom_tool_call",
+                "name": "exec", "status": "completed", "call_id": call + '-wrapper',
+                "input": 'const r=await tools.mcp__volicord__' + name + '(' + json.dumps(arguments) + '); text(JSON.stringify(r));',
+                "internal_chat_message_metadata_passthrough": {"turn_id": turn}}},
             {"timestamp": ended, "type": "event_msg", "payload": {"type": "mcp_tool_call_end", "turn_id": turn,
                 "call_id": call, "invocation": {"server": "volicord", "tool": name, "arguments": arguments},
                 "result": {"Ok": {"isError": False, "structuredContent": result}},
@@ -408,6 +410,9 @@ def authored_capture(path, repository, revision, session, task, activation, oper
     capture = codex_events.load_codex_capture(path)
     require(capture.repository_scoped_activation_observed and capture.tool_calls,
         "actual hook/response support transport was not normalized")
+    require(all(type(capture.observed_metadata['mcp_invocations'].get(call.call_id)) is int
+        and capture.observed_metadata['mcp_invocations'][call.call_id] < call.completion_sequence
+        for call in capture.tool_calls), 'authored transport omitted supported request coordinates')
 
 
 def repositories(root, candidate, logs):

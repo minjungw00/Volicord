@@ -13,6 +13,30 @@ from rehearsal_test_support import passed_result
 
 
 class ContractTests(unittest.TestCase):
+    def test_authored_transport_retains_supported_request_coordinates(self):
+        # A maintained fake capture tests transport only, never Product behavior.
+        from answer_observations_self_test import AnswerTests
+        fixture = AnswerTests()
+        fixture.setUp()
+        try:
+            path = fixture.root / fixture.descriptor['evidence']['captures']['work']['file']
+            capture = rehearsal.codex_events.load_codex_capture(path)
+            events = [json.loads(line) for line in path.read_text().splitlines()]
+            activation = next(e['payload']['content'][0]['text'] for e in events
+                if e['payload'].get('role') == 'developer')
+            call = capture.calls('context_record')[0]
+            target = fixture.root / 'authored-transport.jsonl'
+            rehearsal.authored_capture(target, capture.cwd, '0' * 40, capture.session_id,
+                'Explicitly fake transport support.', activation,
+                [('context_record', call.arguments, call.result, 1,
+                    '2026-10-03T00:00:00+00:00', '2026-10-03T00:00:01+00:00')])
+            normalized = rehearsal.codex_events.load_codex_capture(target)
+            result = normalized.calls('context_record')[0]
+            self.assertEqual(normalized.observed_metadata['mcp_invocations'][result.call_id], 4)
+            self.assertEqual(result.completion_sequence, 5)
+        finally:
+            fixture.doCleanups()
+
     def test_actual_child_timeout_is_reaped_and_streams_retained(self):
         import os
         import subprocess
