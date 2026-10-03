@@ -73,3 +73,11 @@ closed schemas do not authenticate an operator or attest the truth of manually
 supplied measurements. Real sibling-process proof is `resource_observer_self_test.py
 --binary ABSOLUTE_MCP`; simulated failures in that test are negative support only.
 EOF/protocol/privacy behavior also runs through Rust `volicord-host/mcp_lifecycle`.
+
+The real proof creates a fresh ignored `rebuild/.local/validation/mcp-observer-proof-*`
+directory by default (`--output NEW_DIRECTORY` selects an explicit create-only
+local destination). It retains actual registration/resource files, full subprocess
+stdout/stderr, numeric exits/signals, durations, EOF-to-exit and cooperative observer
+stop-to-exit timing. All test-owned observers are reaped on failure; external MCP
+shutdown remains the host's responsibility. These are focused synthetic protocol
+fixtures, not a Naturalistic campaign or authenticated host activation.
