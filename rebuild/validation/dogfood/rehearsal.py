@@ -389,7 +389,11 @@ def realizations(root, campaign_root, paths):
                 "agent": None, "model": None},
             "paragraphs": [{"question": question,
                 "text": "직접 작성한 구조 검사 입력입니다." if item["language"] == "ko" else "Self-authored structural support input.",
-                "evidence_keys": [plan["evidence"][0]["key"]]} for question in sorted(questions)]}
+                "evidence_keys": [("next_step" if question == "next_step" else
+                    "goal" if question in {"purpose", "reported_change", "expected_effect", "verification"} else
+                    question) if any(e["key"] == ("next_step" if question == "next_step" else
+                    "goal" if question in {"purpose", "reported_change", "expected_effect", "verification"} else
+                    question) for e in plan["evidence"]) else plan["evidence"][0]["key"]]} for question in sorted(questions)]}
         input_path = root / (item["identity"] + ".json")
         c.write_json(input_path, response)
         wrong = copy.deepcopy(response)
