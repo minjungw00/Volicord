@@ -366,9 +366,12 @@ def run_sessions(root, campaign_root, binary, logs):
                 goal = call("context_record", {"project_id": project, "user_turn": task,
                     "role": "goal", "work_transition": "start_new",
                     "statement": "Inspect the shared evidence support scenario."})
-                baseline = call("repository_analyze", {"project_id": project})
                 learning = json.loads(FIXTURE.read_bytes())["tasks"][c.work_key(kind, label)]["learning_collaboration_statement"]
-                rehearsal_support.record_support_checkpoint(call, project, goal, baseline, repository, label, learning)
+                learning_context = call("context_record", {"project_id": project, "role": "learning",
+                    "user_turn": task, "statement": learning}) if learning else None
+                baseline = call("repository_analyze", {"project_id": project})
+                rehearsal_support.record_support_checkpoint(call, project, goal, baseline, repository,
+                    label, learning, learning_context)
             call("recall", {"project_id": project, "requested_language": "en"})
         finally:
             client.close()

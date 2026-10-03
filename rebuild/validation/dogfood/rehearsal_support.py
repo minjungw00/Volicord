@@ -121,7 +121,7 @@ def material_boundary_review(
         for category in ENGINEERING_EFFECT_CATEGORIES
     ]
 
-def record_support_checkpoint(call, project_id, goal, baseline, repository, label, learning_request=None):
+def record_support_checkpoint(call, project_id, goal, baseline, repository, label, learning_request=None, learning_context=None):
     goal_id = goal["context_item_id"]
     baseline_id = baseline["analysis_snapshot_id"]
     repository_source = baseline["repository_source_id"]
@@ -171,10 +171,10 @@ def record_support_checkpoint(call, project_id, goal, baseline, repository, labe
         "engineering_choice_discovery_candidate_id": discovery["discovery_candidate_id"],
         "rationale": "The exact current Goal and source leave only private marker organization open.",
         "behavioral_context_basis": {
-            "context_item_ids": [],
-            "completeness_rationale": "This bounded Work has no consequential non-Goal Context.",
+            "context_item_ids": [learning_context["context_item_id"]] if learning_context else [],
+            "completeness_rationale": "The bounded authored task Learning is included when requested; the private support marker adds no other behavior context.",
         },
-        "learning_participation": ({"state": "active", "user_turn_source_id": goal["source_id"], "verbatim_statement": learning_request} if learning_request else {"state": "inactive"}),
+        "learning_participation": ({"state": "active", "user_turn_source_id": learning_context["source_id"], "verbatim_statement": learning_request} if learning_request else {"state": "inactive"}),
         "judgments": [{
             "choice_id": choice_id,
             "disposition": "agent_owned_implementation_choice",
