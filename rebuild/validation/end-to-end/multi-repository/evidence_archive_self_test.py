@@ -1069,7 +1069,7 @@ def production_scale_archive(root: Path) -> dict[str, int]:
     target = gate / "official-v11" / "work" / "polyglot-medium" / "repository"
     target.mkdir(parents=True)
     commands: list[list[str]] = []
-    for index in range(174):
+    for index in range(196):
         commands.append(
             [
                 "volicord",
@@ -1113,7 +1113,7 @@ def production_scale_archive(root: Path) -> dict[str, int]:
             ],
         ]
     )
-    assert len(commands) == 178
+    assert len(commands) == 200
     for index, command in enumerate(commands):
         result = gate / "official-v11" / "operations" / f"{index:03d}" / "result.json"
         result.parent.mkdir(parents=True)
@@ -1161,13 +1161,14 @@ def production_scale_archive(root: Path) -> dict[str, int]:
         processes = json.loads(
             retained.extractfile("validation-evidence/processes.json").read()
         )
+        process_member_bytes = retained.getmember("validation-evidence/processes.json").size
     process_count = len(processes["processes"])
     argv_entries = sum(len(process["argv"]) for process in processes["processes"])
     role_records = sum(
         len(process["non_structural_argument_roles"])
         for process in processes["processes"]
     )
-    assert process_count >= 178
+    assert process_count >= 200
     assert argv_entries >= 1_116
     assert role_records >= 659
     assert PROMPT_SENTINEL.encode() not in bodies
@@ -1182,7 +1183,7 @@ def production_scale_archive(root: Path) -> dict[str, int]:
         "process_records": process_count,
         "argv_entries": argv_entries,
         "non_structural_argument_role_records": role_records,
-        "processes_member_bytes": len(builder.json_bytes(processes)),
+        "processes_member_bytes": process_member_bytes,
     }
 
 

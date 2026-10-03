@@ -753,6 +753,11 @@ def write_archive(
     source_final_summary_sha256: str | None,
 ) -> dict[str, Any]:
     encoded = {name: json_bytes(value) for name, value in payloads.items()}
+    # Preserve every process record inside the existing member bound. Other
+    # payloads retain their original encoding and execution-bound byte hashes.
+    if "processes.json" in payloads:
+        encoded["processes.json"] = (json.dumps(payloads["processes.json"],
+            separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
     mode_entries = [
         {"path": ARCHIVE_ROOT, "type": "directory", "mode": "0755"},
         {
