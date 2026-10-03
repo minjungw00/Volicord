@@ -298,6 +298,9 @@ def verify(root):
     # Replay the derived semantics, retaining the separately verified technical
     # summary as input. This checks internal agreement, not review truth or
     # external authentication, and never exercises operator authorization.
+    import resource_observer
+    resource_observer.validate(evidence_set["naturalistic_memory_evidence"],
+        evidence_set["candidate_artifacts"]["volicord-mcp"]["sha256"])
     replayed = qualification_policy.combine(evaluation, specs, review_values,
         qualification["technical_gate"], evidence_validity=qualification["evidence_validity"],
         naturalistic_resource=evidence_set.get("naturalistic_memory_evidence"))

@@ -748,3 +748,12 @@ actual product assertions are distinct outcomes; no missing execution is passed.
 These local artifacts may contain original synthetic/source/audit text and absolute
 paths. Keep them out of portable gate summaries and reviewer packages. The existing
 gate capsule/archive remain a separate evidence class and use the existing verifier.
+
+Candidate-owned Linux MCP lifecycle and external Naturalistic RSS observation use
+[resource_observer.py](dogfood/resource-observation.md). Run its foreground start or
+attach before sessions, stop explicitly, and use `dogfood-campaign record-resources`
+before `collect-batch`. Closed schema 2 retains per-instance start/executable binding,
+samples/gaps/errors and sampled peaks, with no body/environment tracing or inferred
+operation attribution. Unobserved/partial/failed states remain explicit. Focused
+real sibling-process and privacy proof is `dogfood/resource_observer_self_test.py`;
+EOF/registration-failure protocol tests are `volicord-host/mcp_lifecycle`.

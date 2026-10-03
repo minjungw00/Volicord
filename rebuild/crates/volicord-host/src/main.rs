@@ -6,6 +6,17 @@ fn main() {
         .map(LocalOperations::new)
         .map(HostAdapter::new)
         .and_then(|mut adapter| {
+            #[cfg(target_os = "linux")]
+            let _lifecycle = match volicord_host::McpLifecycle::register(
+                adapter.operations().layout().root(),
+                adapter.host_session(),
+            ) {
+                Ok(registration) => Some(registration),
+                Err(_) => {
+                    eprintln!("MCP lifecycle observation unavailable");
+                    None
+                }
+            };
             run_stdio(
                 &mut adapter,
                 std::io::stdin().lock(),

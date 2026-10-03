@@ -1398,9 +1398,15 @@ Phase 9 readiness. Result-lineage publication preserves the exact evaluation,
 review, qualification and optional approval bytes outside the immutable campaign.
 A changed candidate requires a new campaign and independent qualification.
 
-Naturalistic MCP memory remains `unsupported_current_architecture` until a
-candidate-bound process/lifecycle observer exists; harness-tree RSS cannot be
-relabeled as Codex's MCP memory. The exact technical gate retains its separate
+Naturalistic MCP resource schema 2 uses the production candidate-owned Linux
+lifecycle channel and a foreground external observer. Preparation is honestly
+`not_observed`; optional current observations preserve measured, partial, failed,
+unsupported and environment-blocked states. The
+[maintained interface](../../validation/dogfood/resource-observation.md) owns bounds,
+identity/privacy/completeness, overhead and teardown proof. Current campaign/evidence
+schemas are 9/8. A real candidate outside the observer's process tree supplies the
+positive fixture; simulated failures supply only negative controls. Harness-tree RSS
+cannot be relabeled as Codex's MCP memory. The exact technical gate retains its separate
 resource measurements. Synthetic campaign, resume, document, repository-state,
 machine, review and qualification fixtures are regression support, never a
 substitute for the eight naturalistic sessions.

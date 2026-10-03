@@ -6,3 +6,8 @@
 mod mcp;
 
 pub use mcp::{run_stdio, HostAdapter, HostError, HOST_TOOL_NAMES};
+
+#[cfg(target_os = "linux")]
+mod lifecycle;
+#[cfg(target_os = "linux")]
+pub use lifecycle::McpLifecycle;

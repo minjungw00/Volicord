@@ -613,7 +613,17 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
     state = campaign.load_campaign(root)
     assert {slot: work["workload_intent"] for slot, work in state["works"].items()} == campaign.workload_intents.WORKLOAD_INTENTS
     assert len(state["journeys"]) == 3 and len(state["works"]) == 5
-    assert state["schema_version"] == 8
+    assert state["schema_version"] == 9
+    resource = parent / "empty-resource-observation.json"
+    campaign.write_json(resource, state["naturalistic_memory_evidence"])
+    assert campaign.record_resources(root, resource)["status"] == "not_observed"
+    try:
+        campaign.record_resources(root, resource)
+    except campaign.CampaignError:
+        pass
+    else:
+        raise AssertionError("resource attachment rewrote immutable observation")
+    assert campaign.load_campaign(root)["naturalistic_memory_evidence"]["measurement"]["peak_rss_bytes"] is None
     assert all("review_slot_id" not in work and "provisional_review" not in work
         and "sealed_semantic_sha256" not in work for work in state["works"].values())
     assert all(work["work_slot_id"] == key for key, work in state["works"].items())
@@ -812,7 +822,7 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
         if work["work_label"] == "A":
             assert work["sessions"]["start"]["session_id"] != work["sessions"]["resume"]["session_id"]
     manifest = campaign.load_evidence_set(root)
-    assert manifest["schema_version"] == 7 and len(manifest["raw_inputs"]) == 8
+    assert manifest["schema_version"] == 8 and len(manifest["raw_inputs"]) == 8
     observed_sources = set()
     for work in manifest["work_evidence"]:
         for session in work["sessions"].values():

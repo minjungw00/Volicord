@@ -137,6 +137,11 @@ impl HostAdapter {
         }
     }
 
+    /// Server-generated correlation, never host authentication or user authority.
+    pub fn host_session(&self) -> &str {
+        &self.host_session
+    }
+
     pub fn operations(&self) -> &LocalOperations {
         &self.operations
     }

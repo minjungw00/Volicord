@@ -303,6 +303,12 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             {"kind": "evidence_set_member", "path": name, **binding},
             sample_ids=sample_ids, suffix=Path(name).suffix)
 
+    if "resources/observation.json" in manifest["artifacts"]:
+        import resource_observer
+        resource_observer.validate(manifest["naturalistic_memory_evidence"],
+            manifest["candidate_artifacts"]["volicord-mcp"]["sha256"])
+        source("campaign-mcp-resources", "resources/observation.json", "resource_observation", None,
+            sample_ids=[c.journey_id(kind) for kind in c.CLASSES])
     work_evidence = {item["work_slot_id"]: item for item in manifest["work_evidence"]}
     journey_final = {item["journey_id"]: item for item in manifest["journey_final_evidence"]}
     journey_samples = []
@@ -751,6 +757,9 @@ def _load_package(root):
         pointers, count = locators(content)
         review.require(entry["sha256"] == digest(content) and entry["bytes"] == len(content)
             and entry["locators"] == pointers and entry["line_count"] == count, "index locator/content mismatch")
+        if entry["surface"] == "resource_observation":
+            import resource_observer
+            resource_observer.validate(json.loads(content))
         if entry["surface"] in review_captures.CAPTURE_SURFACES:
             projected = review_captures.validate(content)
             review.require(entry.get("projection") == review_captures.metadata(content)

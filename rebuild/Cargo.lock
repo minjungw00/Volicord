@@ -878,6 +878,7 @@ dependencies = [
  "tempfile",
  "volicord-context",
  "volicord-inquiry",
+ "volicord-local-platform",
  "volicord-operations",
  "volicord-privacy",
  "volicord-projections",

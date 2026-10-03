@@ -167,3 +167,11 @@ Uninstall deliberately preserves repository config, the runtime, and canonical u
 displayed path. Re-running the install command reinstalls the executables and
 reuses only that current-product runtime. Delete user data only through an
 explicit, separately reviewed action.
+
+On Linux, direct `volicord-mcp` startup publishes minimal local lifecycle registration
+under the selected Runtime's `observations/mcp`. EOF records shutdown and restart
+creates a new process instance. Registration errors are stderr-only and do not
+prevent MCP use or grant trust. This is operational observation outside canonical
+memory. The optional foreground candidate-bound resource observer, retention limits
+and start/attach/stop procedures are documented in
+[resource observation](../validation/dogfood/resource-observation.md).

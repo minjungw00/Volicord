@@ -38,6 +38,7 @@ import review_operations
 import human_review
 import result_lineage
 import repository_state
+import resource_observer
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -182,15 +183,17 @@ def load_campaign(root: Path, *, validate_private: bool = True) -> dict[str, Any
         )
     value = read_json(campaign_file(root))
     if (value.get("kind") != "phase8_dogfood_campaign"
-            or value.get("schema_version") != 8):
+            or value.get("schema_version") != 9):
         raise CampaignError("unexpected dogfood campaign metadata")
     if Path(value.get("campaign_root", "")).resolve() != root.resolve():
         raise CampaignError("campaign metadata is bound to a different root")
-    if (value.get("naturalistic_memory_evidence")
-            != naturalistic_memory_evidence(value.get("candidate_artifacts", {}))):
-        raise CampaignError("naturalistic MCP memory support classification changed")
-    if (value.get("live_evidence_obligations")
-            != live_evidence_obligations(value.get("candidate_artifacts", {}))):
+    try:
+        resource_observer.validate(value.get("naturalistic_memory_evidence", {}),
+            value.get("candidate_artifacts", {}).get("volicord-mcp", {}).get("sha256"))
+    except (ValueError, TypeError, KeyError) as error:
+        raise CampaignError("invalid naturalistic MCP resource evidence") from error
+    if value.get("live_evidence_obligations") != live_evidence_obligations(
+            value.get("candidate_artifacts", {}), value["naturalistic_memory_evidence"]):
         raise CampaignError("live evidence obligation classification changed")
     return value
 
@@ -221,39 +224,12 @@ def bind_candidate_artifacts(binary: Path) -> dict[str, dict[str, str]]:
 def naturalistic_memory_evidence(
     candidate_artifacts: dict[str, dict[str, str]],
 ) -> dict[str, Any]:
-    """Describe the current truthful naturalistic MCP memory coverage boundary."""
-    mcp = candidate_artifacts.get("volicord-mcp", {})
-    return {
-        "kind": "dogfood_naturalistic_mcp_memory_evidence",
-        "schema_version": 1,
-        "status": "unsupported_current_architecture",
-        "candidate_mcp_sha256": mcp.get("sha256"),
-        "process_ownership": "codex_host_external_to_campaign_harness",
-        "configured_launch": "direct_candidate_local_volicord_mcp_executable",
-        "observer_lifecycle": "not_installed",
-        "measurement": {
-            "scope": "no_naturalistic_process_observed",
-            "peak_rss_bytes": None,
-            "sample_count": 0,
-            "mechanism": None,
-            "measurement_errors": [
-                "no_candidate_bound_pid_and_lifecycle_channel_for_external_codex_mcp"
-            ],
-        },
-        "attribution": "no_operation_or_session_memory_attribution_claimed",
-        "privacy": {
-            "rpc_arguments_retained": False,
-            "source_bodies_retained": False,
-            "provider_responses_retained": False,
-            "credentials_retained": False,
-            "conversation_content_retained": False,
-        },
-        "technical_gate_rss_evidence": "retained_separately_not_relabelled_naturalistic",
-    }
+    """Initial truthful state; observation is explicitly attached later."""
+    return resource_observer.initial(candidate_artifacts)
 
 
 def live_evidence_obligations(
-    candidate_artifacts: dict[str, dict[str, str]],
+    candidate_artifacts: dict[str, dict[str, str]], resource=None,
 ) -> dict[str, Any]:
     """Keep deterministic support distinct from required live/naturalistic evidence."""
     return {
@@ -275,7 +251,7 @@ def live_evidence_obligations(
             "browser_input_and_paint": "unmeasured_until_direct_live_observation",
             "proxy_may_be_relabelled_browser_latency": False,
         },
-        "naturalistic_resource": naturalistic_memory_evidence(candidate_artifacts),
+        "naturalistic_resource": resource if resource is not None else naturalistic_memory_evidence(candidate_artifacts),
     }
 
 
@@ -834,9 +810,9 @@ def render_operator_run_sheet(root: Path) -> Path:
         f"`{GIT_STATE_CHECK}`; it is not required and dirty output is valid evidence. "
         "Commit-policy compliance is assessed against the actual task and repository authority in "
         "post-hoc review; the harness does not infer a commit obligation.\n\n"
-        "Naturalistic MCP memory is currently unmeasured: Codex launches the configured "
+        "Use resource_observer.py start/attach before sessions and stop after sessions; record-resources before collection. Codex launches the configured "
         "candidate MCP directly outside the campaign helper's process tree, and this integration has "
-        "no candidate-bound PID/lifecycle observer. Harness-tree RSS remains technical-gate evidence "
+        "candidate-owned lifecycle registration enables external process observation. Harness-tree RSS remains technical-gate evidence "
         "only and is not naturalistic MCP RSS.\n\n"
         + ("\n\n".join(entries) if entries else "No slots are frozen for operator use yet.\n"),
         encoding="utf-8",
@@ -1336,7 +1312,7 @@ def prepare_campaign(
         works[state["work_slot_id"]] = state
         (slot_root(root, slot) / "evidence").mkdir(parents=True)
     campaign = {
-        "kind": "phase8_dogfood_campaign", "schema_version": 8,
+        "kind": "phase8_dogfood_campaign", "schema_version": 9,
         "campaign_id": campaign_id, "campaign_root": str(root),
         "candidate_head": candidate_head, "candidate_binary": str(binary),
         "candidate_artifacts": candidate_artifacts,
@@ -2730,7 +2706,7 @@ def normalize_batch(
     register_artifact(root, root / "batch-intake-summary.json")
     # The manifest closes over exact artifacts, excluding mutable inventory/campaign
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
-    manifest = {"kind": "dogfood_evidence_set", "schema_version": 7,
+    manifest = {"kind": "dogfood_evidence_set", "schema_version": 8,
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
         "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
         "naturalistic_memory_evidence": copy.deepcopy(campaign["naturalistic_memory_evidence"]),
@@ -2750,6 +2726,34 @@ def normalize_batch(
     return {**summary, "evidence_set": campaign["evidence_set"]}
 
 
+def record_resources(root: Path, source: Path) -> dict[str, Any]:
+    campaign = load_campaign_for_mutation(root)
+    verify_candidate_artifacts(campaign)
+    if campaign.get("collection_state") != "pending":
+        raise CampaignError("resource attachment requires an uncollected campaign")
+    data = source.read_bytes()
+    if len(data) > 32 << 20:
+        raise CampaignError("resource evidence exceeds bound")
+    value = resource_observer.validate(json.loads(data),
+        campaign["candidate_artifacts"]["volicord-mcp"]["sha256"])
+    bindings = {(resource_observer.path_binding(Path(j["runtime_home"])),
+        resource_observer.path_binding(Path(j["repository_path"]))) for j in campaign["journeys"].values()}
+    if any((i["identity"]["runtime_binding"], i["identity"]["cwd_binding"]) not in bindings
+            for i in value["instances"]):
+        raise CampaignError("observed process Runtime/repository binding mismatch")
+    destination = root / "resources/observation.json"
+    if destination.exists():
+        raise CampaignError("resource evidence is immutable; start a new campaign")
+    destination.parent.mkdir(exist_ok=True)
+    with destination.open("xb") as output:
+        output.write(data)
+    register_artifact(root, destination)
+    campaign["naturalistic_memory_evidence"] = value
+    campaign["live_evidence_obligations"] = live_evidence_obligations(campaign["candidate_artifacts"], value)
+    save_campaign(root, campaign)
+    return {"status": value["status"], "sample_count": value["measurement"]["sample_count"]}
+
+
 def load_evidence_set(root: Path) -> dict[str, Any]:
     """Read-only identity verification; never repairs or upgrades older campaigns."""
     campaign = load_campaign(root)
@@ -2760,7 +2764,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         or reference.get("sha256") != harness.sha256(root / "evidence-set.json")):
         raise CampaignError("campaign has no intact immutable evidence set")
     manifest = read_json(root / "evidence-set.json")
-    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 7
+    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 8
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
         or manifest.get("candidate_artifacts") != campaign.get("candidate_artifacts")
@@ -2778,6 +2782,13 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
                 or manifest.get("live_evidence_obligations")
                 != campaign.get("live_evidence_obligations")):
         raise CampaignError("evidence-set live evidence obligations changed")
+    resource_observer.validate(manifest["naturalistic_memory_evidence"],
+        manifest["candidate_artifacts"]["volicord-mcp"]["sha256"])
+    if "resources/observation.json" in manifest["artifacts"]:
+        if read_json(root / "resources/observation.json") != manifest["naturalistic_memory_evidence"]:
+            raise CampaignError("resource artifact/manifest disagreement")
+    elif manifest["naturalistic_memory_evidence"] != naturalistic_memory_evidence(manifest["candidate_artifacts"]):
+        raise CampaignError("attached resource evidence lacks immutable artifact")
     for name, binding in manifest["artifacts"].items():
         path = root / name
         if relative(root, path) != name or not path.is_file() or binding != {
@@ -3176,6 +3187,9 @@ def parser() -> argparse.ArgumentParser:
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
     inspect_agent = sub.add_parser("inspect-agent-review",
         help="Present one agent criterion and its bound evidence without suggesting a verdict")
+    resources = sub.add_parser("record-resources", help="Attach immutable candidate-bound MCP observation")
+    resources.add_argument("--campaign-root", required=True)
+    resources.add_argument("--input", required=True)
     capture_human = sub.add_parser("capture-human-viewer-observations",
         help="Conversationally capture candidate-bound live Viewer observations")
     converse_human = sub.add_parser("converse-qualitative-review",
@@ -3319,6 +3333,8 @@ def main() -> int:
             cli_observation_root=Path(args.cli_observations) if args.cli_observations else None)
     elif args.command == "inspect-agent-review":
         value = review_operations.inspect_agent_criterion(root, args.criterion_number)
+    elif args.command == "record-resources":
+        value = record_resources(root, Path(args.input))
     elif args.command == "capture-human-viewer-observations":
         value = human_review.capture_viewer_observations(root, Path(args.output))
     elif args.command == "converse-qualitative-review":

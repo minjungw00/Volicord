@@ -392,3 +392,14 @@ readiness, reuse ancestor evidence, or be waived for validation-only changes.
 filesystem atomicity primitive, retry count/backoff, timeout value, CLI/API와 repair command
 catalog를 선택하지 않는다. Legacy recovery, migration, dual-runtime fallback과 parallel
 production implementation은 recovery path가 아니다.
+
+### Observational MCP lifecycle recovery
+
+Candidate MCP registration is separate from connection and canonical success.
+Startup publication failure leaves the Product usable with a fixed stderr diagnostic;
+EOF records stopped state, restart establishes a new instance, and abrupt termination
+can leave a registration that the external observer marks gone. PID reuse/executable
+mismatch reject subsequent samples. Observer failure preserves earlier samples as
+failed measurement; zero samples never imply zero consumption. Attachment, sampling
+limits/gaps and teardown are inspectable through the maintained
+[observer interface](../../validation/dogfood/resource-observation.md).

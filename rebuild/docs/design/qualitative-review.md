@@ -710,3 +710,9 @@ independent agent review and required human observations. These remain synthetic
 A successful authoritative gate enables a wholly fresh campaign, never Dogfood success
 or Phase 9 approval. All prior failed campaigns remain historical evidence only and
 cannot be rebound to the changed candidate.
+
+Candidate MCP resource observation is an indexed supporting surface independent of
+technical V11 harness-tree RSS and human Viewer judgment. Copied packages validate
+resource schema 2, candidate identity, sample counts/observed peak and explicit
+coverage/failure states through the [resource owner](../../validation/dogfood/resource-observation.md).
+Absent evidence remains unobserved; no operation/Codex-session attribution is inferred.

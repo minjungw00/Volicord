@@ -457,3 +457,16 @@ inspectable해야 하며 raw identity를 safe text identity로 위장하지 않�
 process ordering/timing은 projection 대상이 아니다. 이 bounded known-path 처리는 arbitrary user
 text/secret의 general redaction 보증이 아니며 기존 credential/private-prompt payload rejection을
 약화하지 않는다.
+
+### Local MCP lifecycle and resource observation
+
+Linux MCP lifecycle registration and candidate-bound observer telemetry are local
+operational evidence outside canonical task/Decision authority. Retained fields are
+closed process instance/start/executable binding, opaque Runtime/cwd hashes,
+server-generated session correlation, bounded RSS/timing, lifecycle and finite
+error codes. Neither RPC arguments, full environments, conversation/source bodies,
+provider responses nor credentials may be collected. Registration/observer failure
+cannot block canonical work or grant host trust/transmission authorization. Managed
+registry and observer artifacts may be deleted independently of canonical memory.
+The maintained schema and retention limits are in
+[resource observation](../../validation/dogfood/resource-observation.md).

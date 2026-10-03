@@ -1,5 +1,6 @@
 """Single Phase 8 qualification policy, independent of technical gate execution."""
 import json
+import resource_observer
 from collections import Counter
 from pathlib import Path
 import secrets
@@ -370,8 +371,10 @@ def validate_result(value):
             == _criterion_state(value, browser_criteria())
         and naturalistic["live_browser_input_and_paint"]["snapshot_export_proxy_may_substitute"] is False
         and naturalistic["naturalistic_resource"].get("status")
-            in {"unsupported_current_architecture", "not_provided", "measured"},
+            in resource_observer.STATUSES | {"not_provided"},
         "naturalistic evidence scope or qualification relationship changed")
+    if naturalistic["naturalistic_resource"].get("status") != "not_provided":
+        resource_observer.validate(naturalistic["naturalistic_resource"])
     complete = not (q["unresolved_criteria"] or q["violated_criteria"] or q["human_escalations"] or m["unresolved_findings"])
     review.require("campaign_control_coverage" not in value
         and isinstance(q.get("not_observed_criteria"), list)
