@@ -165,3 +165,38 @@ fn actual_work_and_decision_prepare_record_delete_readback(
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }
+
+#[test]
+fn campaign_explanations_preserve_corrected_history() -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("crates")?
+        .parent()
+        .ok_or("rebuild")?;
+    let head = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(root)
+        .output()?;
+    assert!(head.status.success());
+    // Pin executable bytes against concurrent support builds in Cargo target.
+    let binary = f._temporary.path().join("volicord");
+    std::fs::copy(env!("CARGO_BIN_EXE_volicord"), &binary)?;
+    let config = json!({"binary": binary,
+        "runtime": f.operations.layout().root(), "repository": f.repository,
+        "project": f.project.to_string(), "work": f.goals["relay"].to_string(),
+        "decision": f.decisions["project"].to_string(),
+        "candidate_head": String::from_utf8(head.stdout)?.trim()});
+    let output = Command::new("python3")
+        .arg(root.join("validation/dogfood/explanation_product_support.py"))
+        .arg(serde_json::to_string(&config)?)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .output()?;
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}

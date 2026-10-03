@@ -337,6 +337,15 @@ locator explicitly lacks independent authorship/host-turn attestation; generator
 preparations stay distinct. Steward material has `phase = post_session_steward`; measured
 call/turn/sequence observations have `phase = measured_session` and the raw capture hash.
 Steward generation supplies no earlier adoption, user experience or measured-session claim.
+Explanation attempt/preparation/receipt/index and reviewer lifecycle schema 2 are exact-current
+contracts. `observation_order` binds the immutable attempt and same-scope predecessor; receipts
+repeat it. The collection index and reviewer-safe references carry derived `publication_role`
+(`historical` or `final`) and `selected_identity`. Copied lifecycle context/receipt and private attempt
+hashes retain that relationship. Source-independent lineage verification reconstructs the chain,
+rejecting missing/forked/cross-scope predecessors or forged classification. Historical readback
+remains `current` as observed; classification is a separate relation. Document bindings freeze
+`explanation_publication`. Old schema inputs are not upgraded. Preparer/evaluator/qualification
+identities include the changed producer/consumer hashes.
 
 Typed artifacts have nested JSON pointers into claim text, action, plan content and lifecycle
 stages (up to 8,192 per artifact); exact line locators always remain available. Package and record

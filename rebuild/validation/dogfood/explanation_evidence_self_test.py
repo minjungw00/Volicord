@@ -41,7 +41,7 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
             'language': language, 'fingerprint': plan['fingerprint'], 'generator': response['generator']}}
     readback = {'project_id': project, 'selected_work': {'work_item_id': identity, 'checkpoint_ids': [], 'answers': answers},
         'decisions': [{'identity': identity, 'answers': answers}]}
-    preparation = {'kind': 'dogfood_explanation_preparation', 'schema_version': 1,
+    preparation = {'kind': 'dogfood_explanation_preparation', 'schema_version': e.SCHEMA_VERSION,
         'identity': 'bb' * 16, 'evidence_purpose': 'naturalistic', 'project_id': project, 'subject': subject, 'language': language,
         'plan': plan, 'journey_id': 'journey-volicord', 'candidate_head': 'a' * 40,
         'candidate_executable_sha256': 'c' * 64, 'phase': 'post_session_steward',
@@ -53,8 +53,15 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
     return preparation, response, {'operation': 'explanation_record', 'explanation': retained}, readback
 
 
-def publish_fixture(root, *, kind='work', language='en', before_state='unavailable', mapped=None, candidate=None, subject_id=None, project_id=None, identity=None, paragraph_text=None):
+def publish_fixture(root, *, kind='work', language='en', before_state='unavailable', mapped=None, candidate=None, subject_id=None, project_id=None, identity=None, paragraph_text=None, revision=1):
     preparation, response, record, after = lifecycle(kind, language, before_state)
+    if revision != 1:
+        fingerprint = 'sha256:' + str(revision) * 64
+        preparation['plan']['fingerprint'] = fingerprint
+        response['plan_fingerprint'] = fingerprint
+        for value in (preparation['plan'], record['explanation'], after['selected_work']['answers']['provenance']):
+            value['evidence'][0]['revision'] = revision
+        after['selected_work']['answers']['provenance']['fingerprint'] = fingerprint
     if paragraph_text is not None:
         for paragraph in response['paragraphs']:
             paragraph['text'] = paragraph_text
@@ -85,10 +92,11 @@ def publish_fixture(root, *, kind='work', language='en', before_state='unavailab
                 'text':'Fixture explanation is unavailable.', 'role':'unavailable', 'evidence_keys':[]}])
     preparation['before_observation'] = e.subject_answers(before, preparation['subject'])
     directory = e.entry_path(root, preparation['identity'])
+    preparation['observation_order'] = e.declare_attempt(root, preparation)
     values = {'before': c.json_bytes(before), 'preparation': c.json_bytes(preparation), 'response': c.json_bytes(response),
         'record': c.json_bytes(record), 'after': c.json_bytes(after)}
-    receipt = {'kind': 'dogfood_explanation_receipt', 'schema_version': 1,
-        'identity': preparation['identity'], 'phase': 'post_session_steward',
+    receipt = {'kind': 'dogfood_explanation_receipt', 'schema_version': e.SCHEMA_VERSION,
+        'identity': preparation['identity'], 'observation_order': preparation['observation_order'], 'phase': 'post_session_steward',
         'observed_at': '2026-10-03T00:01:00+00:00',
         'preparation': e.binding(values['preparation']), 'response': e.binding(values['response']),
         'record': e.binding(values['record']), 'readback': e.binding(values['after']),
@@ -103,6 +111,83 @@ def publish_fixture(root, *, kind='work', language='en', before_state='unavailab
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_completed_history_survives_changed_current_basis(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            c.write_json(c.inventory_path(root), c.load_inventory(root))
+            old = publish_fixture(root, identity='ff' * 16)
+            old_bytes = {p.name: p.read_bytes() for p in old.glob('*.json')}
+            new = publish_fixture(root, identity='aa' * 16, revision=2)
+            current = json.loads((new / 'preparation.json').read_bytes())
+            campaign = {'evidence_purpose': 'naturalistic', 'candidate_head': 'a' * 40,
+                'candidate_artifacts': {'volicord': {'sha256': 'c' * 64}},
+                'candidate_binary': '/unused/volicord',
+                'candidate_artifacts': {'volicord': {'sha256': 'c' * 64}},
+                'journeys': {'journey-volicord': {'runtime_home': '/unused/runtime'}}}
+            with patch.object(c, 'candidate_artifact_use'), patch.object(e, 'invoke', return_value=({'plan': current['plan']}, {})), \
+                    patch.object(e, 'read', return_value=(json.loads((new / 'after.json').read_bytes()), {})):
+                e.require_ready(root, campaign, {})
+            self.assertEqual({p.name: p.read_bytes() for p in old.glob('*.json')}, old_bytes)
+
+    def test_publication_scope_history_tampering_and_failed_obligations(self):
+        import review_explanations as review
+        for kind in ('work', 'decision'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary); c.write_json(c.inventory_path(root), c.load_inventory(root))
+                old = publish_fixture(root, kind=kind, identity='ff' * 16)
+                new = publish_fixture(root, kind=kind, identity='aa' * 16, revision=2)
+                ko = publish_fixture(root, kind=kind, language='ko', identity='bb' * 16)
+                other = publish_fixture(root, kind=kind, subject_id='09' * 16, identity='cc' * 16)
+                repeated = publish_fixture(root, kind=kind, identity='dd' * 16, revision=2)
+                relations = e.publication_relations(root)
+                self.assertEqual(relations['ff' * 16], {'publication_role': 'historical', 'selected_identity': 'dd' * 16})
+                self.assertEqual(relations['aa' * 16]['publication_role'], 'historical')
+                self.assertEqual({k for k,v in relations.items() if v['publication_role'] == 'final'}, {'bb' * 16, 'cc' * 16, 'dd' * 16})
+                indexed = e.collection_index(root, {})
+                review.validate_publication_index(indexed)
+                bad = copy.deepcopy(indexed)
+                bad['steward_lifecycles'][0]['publication_role'] = 'historical'
+                bad['steward_lifecycles'][0]['selected_identity'] = 'ee' * 16
+                with self.assertRaises(ValueError):
+                    review.validate_publication_index(bad)
+                (old / 'response.json').write_bytes(b'{}')
+                with self.assertRaises(c.CampaignError):
+                    e.publication_relations(root)
+        # A declared attempt whose Product preparation failed remains an obligation,
+        # even when a later valid observation completes on the same basis.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); c.write_json(c.inventory_path(root), c.load_inventory(root))
+            publish_fixture(root, identity='aa' * 16)
+            context = lifecycle()[0]; context['identity'] = 'bb' * 16
+            e.declare_attempt(root, context)
+            publish_fixture(root, identity='cc' * 16)
+            with self.assertRaisesRegex(c.CampaignError, 'pending or failed'):
+                e.publication_relations(root)
+
+    def test_predecessor_scope_hash_fork_and_schema_cannot_supply_selection(self):
+        for mutation in ('scope', 'hash', 'fork', 'schema'):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary); c.write_json(c.inventory_path(root), c.load_inventory(root))
+                publish_fixture(root, identity='aa' * 16)
+                directory = publish_fixture(root, identity='bb' * 16)
+                path = directory / 'attempt.json'; value = json.loads(path.read_bytes())
+                if mutation == 'scope':
+                    value['language'] = 'ko'
+                elif mutation == 'hash':
+                    value['previous']['attempt']['sha256'] = '0' * 64
+                elif mutation == 'fork':
+                    value['previous'] = None
+                else:
+                    value['schema_version'] = 1
+                # Refresh outer inventory: independently specified relationship
+                # rejection must survive cooperative filesystem rehashing.
+                path.write_bytes(c.json_bytes(value))
+                inventory = c.load_inventory(root)
+                inventory['artifacts'][c.relative(root, path)] = e.binding(path.read_bytes())
+                c.write_json(c.inventory_path(root), inventory)
+                with self.assertRaises(c.CampaignError):
+                    e.ordered_attempts(root)
+
     def test_actual_producer_prepare_record_and_collection_index(self):
         import contextlib
         import shutil
@@ -208,6 +293,7 @@ class LifecycleTests(unittest.TestCase):
             root = Path(temporary);c.write_json(c.inventory_path(root), {'kind': 'phase8_dogfood_evidence_inventory', 'schema_version': 1, 'artifacts': {}})
             directory = publish_fixture(root)
             campaign = {'evidence_purpose': 'naturalistic', 'candidate_head': 'a' * 40, 'candidate_binary': '/unused/volicord',
+                'candidate_artifacts': {'volicord': {'sha256': 'c' * 64}},
                 'journeys': {'journey-volicord': {'runtime_home': '/unused/runtime'}}}
             with patch.object(c, 'candidate_artifact_use'), patch.object(e, 'invoke', return_value=({'plan': {}}, {})):
                 with self.assertRaisesRegex(c.CampaignError, 'basis changed'):

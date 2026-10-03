@@ -344,7 +344,9 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                     if work_evidence[slot]['work_item_id'] == lifecycle['subject']['identity']]
             identity = add('explanation-' + lifecycle['identity'], data, review_explanations.SURFACE,
                 journey_sample_id, {'kind': 'typed_private_lifecycle_selection',
-                    'preparation': lifecycle['preparation'], 'receipt': lifecycle['receipt']}, sample_ids=scope)
+                    'preparation': lifecycle['preparation'], 'receipt': lifecycle['receipt'],
+                    'publication_role': lifecycle['publication_role'], 'selected_identity': lifecycle['selected_identity'],
+                    'observation_order': lifecycle['observation_order']}, sample_ids=scope)
             evidence[identity]['projection'] = projection
         measured = [v for v in manifest['explanation_evidence']['measured_observations']
             if v['session_slot_id'].startswith(journey_sample_id + '-')]

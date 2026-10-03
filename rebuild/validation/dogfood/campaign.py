@@ -3319,11 +3319,7 @@ def main() -> int:
     elif args.command == "record-explanation":
         value = explanation_evidence.record(root, args.explanation_id, Path(args.input).resolve())
     elif args.command == "inspect-explanations":
-        value = {"state": "inspected", "mutation": "none", "explanations": [
-            {"identity": prepared["identity"], "subject": prepared["subject"], "language": prepared["language"],
-             "state": "recorded" if receipt else "prepared", "phase": prepared["phase"]}
-            for prepared, receipt in (explanation_evidence.verify(root, path, allow_unrecorded=True)
-                for path in explanation_evidence.preparations(root))]}
+        value = explanation_evidence.inspect(root)
     elif args.command in {"collect-batch", "prepare-document-realizations", "prepare-explanations"}:
         paths = batch_rollout_paths(
             [Path(path) for path in args.raw_rollout] if args.raw_rollout else None,

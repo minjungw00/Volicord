@@ -749,7 +749,18 @@ record receipt and after-generation shared answer as separate immutable artifact
 Project, subject, language, executable, revisions, Source/snapshot basis, times and
 raw call/turn locators remain bound. A later generation never rewrites a measured
 absent/stale/current answer. Steward generation is explicitly post-session and
-does not establish earlier use, adoption or user experience. Complete requested
+does not establish earlier use, adoption or user experience. Explanation observation order is an append-only, hash-bound predecessor relation
+within exact campaign candidate/executable, raw inputs, journey/Project, subject kind/identity,
+requested language and evidence purpose. Each attempted Product preparation is declared
+before invocation; IDs, file ordering and timestamps do not select publication. Every retained
+completed lifecycle is validated against its own original plan, response, receipt and current-at-recording
+readback. The unique chain tip is selected for final publication and alone must match a fresh
+Product plan and the currently returned realization. Earlier completions remain historical without
+rewriting their bytes or original current state. Repeated preparation on an unchanged basis still
+creates a new publication obligation. Pending/failed preparation, failed recording and unrecorded
+responses block readiness; no abandonment or success-fallback operation exists. A later success
+cannot erase an earlier unresolved obligation. Document preparation freezes the selection; final
+collection rechecks the same readiness and selection. Complete requested
 explanation lifecycles before document realization and final document/Viewer
 capture; no per-session generation quota applies. Model/host claims remain
 self-reported or unknown; a record receipt proves local retention and structural

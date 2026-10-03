@@ -20,7 +20,7 @@ import answer_observations
 import codex_events
 import document_realization
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 WORK_QUESTIONS = {'purpose', 'reported_change', 'expected_effect', 'verification', 'next_step'}
 DECISION_QUESTIONS = {'user_rationale', 'recommendation', 'consequences', 'applicability'}
 
@@ -196,6 +196,93 @@ def preparations(root):
         if name.startswith('explanations/') and name.endswith('/preparation.json')]
 
 
+# Scope includes the complete frozen input identity; a different locale/subject
+# is never a predecessor or a fallback publication candidate.
+SCOPE_FIELDS = ('evidence_purpose', 'candidate_head', 'candidate_executable_sha256',
+    'journey_id', 'project_id', 'subject', 'language', 'raw_inputs')
+
+
+def scope(value):
+    return api().json_bytes({key: value[key] for key in SCOPE_FIELDS})
+
+
+def ordered_attempts(root):
+    """Verify append-only causal links, without filename/time/ID ordering."""
+    inventory = api().load_inventory(root)['artifacts']
+    paths = [root / name for name in inventory
+        if name.startswith('explanations/') and name.endswith('/attempt.json')]
+    values = {}
+    for path in paths:
+        data = bound(root, path)
+        value = json.loads(data)
+        if (set(value) != {'kind', 'schema_version', 'identity', 'previous', *SCOPE_FIELDS}
+                or value['kind'] != 'dogfood_explanation_attempt' or value['schema_version'] != SCHEMA_VERSION
+                or entry_path(root, value['identity']) != path.parent):
+            raise api().CampaignError('explanation attempt identity/schema changed')
+        values[value['identity']] = (value, binding(data))
+    groups = {}
+    for value, digest in values.values():
+        groups.setdefault(scope(value), []).append((value, digest))
+    ordered = []
+    for group in groups.values():
+        following = {}
+        for value, digest in group:
+            previous = value['previous']
+            if previous is not None:
+                if (not isinstance(previous, dict) or set(previous) != {'identity', 'attempt'}
+                        or previous['identity'] not in values):
+                    raise api().CampaignError('explanation predecessor missing')
+                prior, prior_digest = values[previous['identity']]
+                if prior_digest != previous['attempt'] or scope(prior) != scope(value):
+                    raise api().CampaignError('explanation predecessor binding/scope changed')
+            key = previous['identity'] if previous else None
+            if key in following:
+                raise api().CampaignError('explanation observation relationship forks')
+            following[key] = value
+        chain, key = [], None
+        while key in following:
+            value = following[key]
+            chain.append(value)
+            key = value['identity']
+            if len(chain) > len(group):
+                raise api().CampaignError('explanation observation relationship cycles')
+        if len(chain) != len(group):
+            raise api().CampaignError('explanation observation relationship disconnected')
+        ordered.append(chain)
+    prepared_ids = {path.parent.name for path in preparations(root)}
+    if not prepared_ids <= set(values):
+        raise api().CampaignError('explanation preparation has no recorded attempt')
+    return ordered
+
+
+def declare_attempt(root, context):
+    chains = ordered_attempts(root)
+    same = [chain for chain in chains if scope(chain[0]) == scope(context)]
+    previous = same[0][-1] if same else None
+    attempt = {'kind': 'dogfood_explanation_attempt', 'schema_version': SCHEMA_VERSION,
+        'identity': context['identity'], **{k: context[k] for k in SCOPE_FIELDS},
+        'previous': {'identity': previous['identity'], 'attempt': binding(bound(root,
+            entry_path(root, previous['identity']) / 'attempt.json'))} if previous else None}
+    # An obligation exists before Product preparation: failure cannot disappear
+    # or select an older successful observation. No abandon/fallback operation.
+    document_realization.publish(root, {entry_path(root, context['identity']) / 'attempt.json': api().json_bytes(attempt)})
+    return {'attempt': binding(api().json_bytes(attempt)), 'previous': attempt['previous']}
+
+
+def publication_relations(root):
+    relations = {}
+    for chain in ordered_attempts(root):
+        for number, attempt in enumerate(chain):
+            path = entry_path(root, attempt['identity']) / 'preparation.json'
+            if not path.exists():
+                raise api().CampaignError('explanation attempt missing host response/preparation (pending or failed)')
+            verify(root, path)  # Every retained obligation must be completed.
+            relations[attempt['identity']] = {
+                'publication_role': 'final' if number == len(chain) - 1 else 'historical',
+                'selected_identity': chain[-1]['identity']}
+    return relations
+
+
 def prepare(root, raw_paths, *, languages=None, work_ids=None, decision_ids=None):
     c = api()
     campaign = c.load_campaign_for_mutation(root)
@@ -233,6 +320,12 @@ def prepare(root, raw_paths, *, languages=None, work_ids=None, decision_ids=None
                 identity = secrets.token_hex(16)
                 directory = entry_path(root, identity)
                 subject = {'kind': subject_kind, 'identity': subject_id}
+                context = {'identity': identity, 'evidence_purpose': campaign['evidence_purpose'],
+                    'candidate_head': campaign['candidate_head'],
+                    'candidate_executable_sha256': campaign['candidate_artifacts']['volicord']['sha256'],
+                    'journey_id': journey_id, 'project_id': project, 'subject': subject, 'language': language,
+                    'raw_inputs': document_realization.raw_binding(mapped)}
+                observation_order = declare_attempt(root, context)
                 with c.candidate_artifact_use(campaign, ('volicord',)):
                     before, before_process = read(binary, runtime, project, subject, language)
                     result, plan_process = invoke(binary, runtime, project,
@@ -245,6 +338,7 @@ def prepare(root, raw_paths, *, languages=None, work_ids=None, decision_ids=None
                     'identity': identity, 'evidence_purpose': campaign['evidence_purpose'], 'candidate_head': campaign['candidate_head'],
                     'candidate_executable_sha256': campaign['candidate_artifacts']['volicord']['sha256'],
                     'journey_id': journey_id, 'project_id': project, 'subject': subject, 'language': language,
+                    'observation_order': observation_order,
                     'phase': 'post_session_steward', 'observed_at': timestamp(),
                     'raw_inputs': document_realization.raw_binding(mapped),
                     'before_observation': subject_answers(before, subject), 'plan': plan,
@@ -255,6 +349,8 @@ def prepare(root, raw_paths, *, languages=None, work_ids=None, decision_ids=None
                 files[directory / 'before.json'] = c.json_bytes(before)
                 for phase, process in (('before-process', before_process), ('prepare-process', plan_process)):
                     files.update({directory / phase / name: value for name, value in process.items()})
+                document_realization.publish(root, files)
+                files = {}
                 index.append({'identity': identity, 'subject': subject, 'language': language,
                     'preparation': c.relative(root, directory / 'preparation.json')})
     if not index:
@@ -264,7 +360,6 @@ def prepare(root, raw_paths, *, languages=None, work_ids=None, decision_ids=None
         raise c.CampaignError('requested explanation subject is not in measured Projects')
     if any(c.harness.sha256(value.source) != value.capture.source_sha256 for value in mapped.values()):
         raise c.CampaignError('raw inputs changed during explanation preparation')
-    document_realization.publish(root, files)
     return {'state': 'prepared', 'explanations': index, 'qualification_state': 'not_run'}
 
 
@@ -280,6 +375,10 @@ def record(root, identity, input_path):
     evidence_purpose.require_same(campaign, preparation)
     if preparation['candidate_head'] != campaign['candidate_head'] or preparation['candidate_executable_sha256'] != campaign['candidate_artifacts']['volicord']['sha256']:
         raise c.CampaignError('explanation candidate binding changed')
+    chains = ordered_attempts(root)
+    chain = next((chain for chain in chains if scope(chain[0]) == scope(preparation)), [])
+    if not chain or chain[-1]['identity'] != identity:
+        raise c.CampaignError('only the latest explanation attempt can be recorded; older obligation remains unresolved')
     if (directory / 'receipt.json').exists():
         raise c.CampaignError('explanation receipt is immutable; prepare a new observation to regenerate')
     if input_path.is_relative_to(root) and c.relative(root, input_path) in c.load_inventory(root)['artifacts']:
@@ -306,7 +405,8 @@ def record(root, identity, input_path):
         after, read_process = read(binary, runtime, project, subject, language)
     observation = validate_lifecycle(preparation, response, result, after)
     receipt = {'kind': 'dogfood_explanation_receipt', 'schema_version': SCHEMA_VERSION,
-        'identity': identity, 'phase': 'post_session_steward', 'observed_at': timestamp(),
+        'identity': identity, 'observation_order': preparation['observation_order'],
+        'phase': 'post_session_steward', 'observed_at': timestamp(),
         'preparation': binding(preparation_bytes), 'response': binding(data),
         'record': binding(c.json_bytes(result)), 'readback': binding(c.json_bytes(after)),
         'evidence_purpose': preparation['evidence_purpose'], 'candidate_head': preparation['candidate_head'], 'candidate_executable_sha256': preparation['candidate_executable_sha256'],
@@ -332,6 +432,12 @@ def verify(root, preparation_path, *, allow_unrecorded=False):
             or preparation.get('identity') != directory.name or preparation.get('phase') != 'post_session_steward'
             or preparation.get('generator_identity_limit') != 'self_reported_not_independently_verified'):
         raise api().CampaignError('explanation preparation identity/phase/provenance changed')
+    attempt_bytes = bound(root, directory / 'attempt.json')
+    attempt = json.loads(attempt_bytes)
+    if (attempt.get('identity') != preparation['identity'] or scope(attempt) != scope(preparation)
+            or preparation.get('observation_order') != {'attempt': binding(attempt_bytes), 'previous': attempt.get('previous')}):
+        raise api().CampaignError('explanation preparation attempt/order changed')
+    validate_plan(preparation['plan'], preparation['project_id'], preparation['subject'], preparation['language'])
     before = json.loads(bound(root, directory / 'before.json'))
     if before.get('project_id') != preparation['project_id'] or subject_answers(before, preparation['subject']) != preparation['before_observation']:
         raise api().CampaignError('explanation earlier observation changed')
@@ -344,6 +450,8 @@ def verify(root, preparation_path, *, allow_unrecorded=False):
     values = {name: bound(root, directory / (name + '.json')) for name in ('response', 'record', 'after')}
     if (receipt.get('preparation') != binding(preparation_bytes) or receipt.get('response') != binding(values['response'])
             or receipt.get('record') != binding(values['record']) or receipt.get('readback') != binding(values['after'])
+            or receipt.get('kind') != 'dogfood_explanation_receipt' or receipt.get('schema_version') != SCHEMA_VERSION
+            or receipt.get('observation_order') != preparation['observation_order']
             or receipt.get('identity') != preparation['identity'] or receipt.get('phase') != 'post_session_steward'
             or receipt.get('candidate_head') != preparation['candidate_head']
             or receipt.get('candidate_executable_sha256') != preparation['candidate_executable_sha256']
@@ -364,20 +472,43 @@ def verify(root, preparation_path, *, allow_unrecorded=False):
 
 
 def require_ready(root, campaign, mapped):
+    relations = publication_relations(root)
     for path in preparations(root):
         preparation, receipt = verify(root, path)
         evidence_purpose.require_same(campaign, preparation)
-        if preparation['raw_inputs'] != document_realization.raw_binding(mapped) or preparation['candidate_head'] != campaign['candidate_head']:
+        if (preparation['raw_inputs'] != document_realization.raw_binding(mapped) or preparation['candidate_head'] != campaign['candidate_head']
+                or preparation['candidate_executable_sha256'] != campaign['candidate_artifacts']['volicord']['sha256']
+                or preparation['journey_id'] not in campaign['journeys']):
             raise api().CampaignError('explanation preparation does not bind current raw inputs/candidate')
-        # Freshness must survive subsequent steward operations before collection.
+        if relations[preparation['identity']]['publication_role'] != 'final':
+            continue
+        # Only the selected publication must still match the current Product basis.
         journey = campaign['journeys'][preparation['journey_id']]
         binary = Path(campaign['candidate_binary'])
         with api().candidate_artifact_use(campaign, ('volicord',)):
             result, _ = invoke(binary, Path(journey['runtime_home']), preparation['project_id'],
                 [preparation['subject']['kind'], 'explain', 'prepare', '--' + preparation['subject']['kind'],
                     preparation['subject']['identity'], '--language', preparation['language']])
-        if result.get('plan') != preparation['plan']:
-            raise api().CampaignError('recorded explanation basis changed before collection')
+            if result.get('plan') != preparation['plan']:
+                raise api().CampaignError('recorded explanation basis changed before collection')
+            current, _ = read(binary, Path(journey['runtime_home']), preparation['project_id'],
+                preparation['subject'], preparation['language'])
+        validate_lifecycle(preparation, json.loads(bound(root, path.parent / 'response.json')),
+            json.loads(bound(root, path.parent / 'record.json')), current)
+    return relations
+
+
+def inspect(root):
+    values = []
+    for chain in ordered_attempts(root):
+        for attempt in chain:
+            path = entry_path(root, attempt['identity']) / 'preparation.json'
+            preparation, receipt = verify(root, path, allow_unrecorded=True) if path.exists() else (None, None)
+            values.append({'identity': attempt['identity'], 'subject': attempt['subject'], 'language': attempt['language'],
+                'state': 'recorded' if receipt else 'prepared_unrecorded' if preparation else 'pending_or_failed_preparation',
+                'selected_identity': chain[-1]['identity'], 'previous': attempt['previous'],
+                'phase': 'post_session_steward'})
+    return {'state': 'inspected', 'mutation': 'none', 'explanations': values}
 
 
 def measured_cli_operations(capture):
@@ -446,13 +577,15 @@ def collection_index(root, mapped):
                     'language': returned.get('requested_language'),
                     'explanation_state': answers.get('explanation_state') if isinstance(answers, dict) else 'unresolvable',
                     'returned_answer_sha256': binding(api().json_bytes(answers))['sha256'] if isinstance(answers, dict) else None})
+    relations = publication_relations(root)
     steward = []
     for path in preparations(root):
         preparation, receipt = verify(root, path)
         import review_explanations
         projected, _ = review_explanations.project(root, path, evidence_set_sha256='0' * 64)
         review_value = json.loads(projected)
-        steward.append({'identity': preparation['identity'], 'phase': 'post_session_steward',
+        steward.append({'identity': preparation['identity'], **relations[preparation['identity']],
+            'observation_order': preparation['observation_order'], 'phase': 'post_session_steward',
             'subject': preparation['subject'], 'language': preparation['language'],
             'journey_id': preparation['journey_id'], 'project_id': preparation['project_id'],
             'before_state': preparation['before_observation']['state'], 'after_state': receipt['after_state'],

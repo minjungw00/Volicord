@@ -2074,3 +2074,17 @@ inspects retained evidence rather than rerunning Product or authenticating a hum
 Passed technical qualification retains the rehearsal contract/status/result hash;
 qualification validation and copied-lineage replay require that closed identity.
 The inner `not_provided` path has no gate input or retention dependency.
+
+### Temporal explanation evidence support
+
+`explanation_evidence_self_test.py` retains the two-completion correction regression and
+independent pending/failed obligation, unchanged-basis, wrong-current-plan, historical-byte,
+subject/language, relationship and exact-current schema controls. The actual Product test
+`campaign_explanations_preserve_corrected_history` in Operations `explanation_cli` seeds a fresh
+disposable Product fixture and invokes `explanation_product_support.py` through public CLI
+export/prepare/record/correct/readback for Work/Decision in en/ko. Campaign admission and raw
+mapping are explicitly synthetic seams. Punctuation correction uses a distinct authorization
+Source and checks original Goal Source associations. Authored structural payloads cannot prove
+host authorship, translation quality, Naturalistic experience or official gate success.
+Focused campaign, document realization, reviewer and copied-lineage consumers challenge the same
+selection contract. Preserve before/after runner results privately; maintained tests own repeatability.

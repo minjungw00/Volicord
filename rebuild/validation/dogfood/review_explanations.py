@@ -10,9 +10,9 @@ import explanation_evidence as evidence
 import review_captures
 import evidence_purpose
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SURFACE = 'explanation_lifecycle'
-CONTEXT_FIELDS = {'evidence_purpose', 'identity', 'journey_id', 'project_id', 'subject', 'language', 'candidate_head',
+CONTEXT_FIELDS = {'observation_order', 'evidence_purpose', 'identity', 'journey_id', 'project_id', 'subject', 'language', 'candidate_head',
     'candidate_executable_sha256', 'phase', 'observed_at', 'raw_inputs', 'generator_identity_limit',
     'generation_authority', 'canonical_bundle_sha256'}
 
@@ -49,7 +49,7 @@ def project(root, preparation_path, *, evidence_set_sha256):
     preparation, receipt = evidence.verify(root, preparation_path)
     directory = preparation_path.parent
     raw = {name: evidence.bound(root, directory / (name + '.json'))
-        for name in ('preparation', 'before', 'response', 'record', 'after', 'receipt')}
+        for name in ('attempt', 'preparation', 'before', 'response', 'record', 'after', 'receipt')}
     before, before_paths, before_op = subject_read(json.loads(raw['before']), preparation['subject'])
     after, after_paths, after_op = subject_read(json.loads(raw['after']), preparation['subject'])
     inputs = {
@@ -60,6 +60,7 @@ def project(root, preparation_path, *, evidence_set_sha256):
     stages = {name: review_captures.body_projection(value) for name, value in inputs.items()}
     value = {'kind': 'dogfood_review_explanation_lifecycle', 'schema_version': SCHEMA_VERSION,
         'context': {k: preparation[k] for k in CONTEXT_FIELDS},
+        'publication': evidence.publication_relations(root)[preparation['identity']],
         'evidence_set_sha256': evidence_set_sha256,
         'private_artifacts': {name: evidence.binding(data) for name, data in raw.items()},
         'receipt': receipt, 'stages': stages,
@@ -96,11 +97,14 @@ def stage_bindings(value):
 def verify_manifest(value, manifest):
     """Cross-check the copied source manifest, without original private files."""
     o = ops(); context = value['context']
+    validate_publication_index(manifest['explanation_evidence'])
     matches = [v for v in manifest['explanation_evidence']['steward_lifecycles']
         if v['identity'] == context['identity']]
     o.review.require(len(matches) == 1, 'copied lifecycle missing from source evidence index')
     indexed = matches[0]
     o.review.require(all(indexed[k] == context[k] for k in ('subject', 'language', 'journey_id', 'project_id', 'phase'))
+        and indexed['observation_order'] == context['observation_order']
+        and value['publication'] == {k: indexed[k] for k in ('publication_role', 'selected_identity')}
         and indexed['before_state'] == value['before_state'] and indexed['after_state'] == value['after_state']
         and context['candidate_head'] == manifest['candidate_head']
         and context['candidate_executable_sha256'] == manifest['candidate_artifacts']['volicord']['sha256'],
@@ -122,19 +126,60 @@ def verify_manifest(value, manifest):
             'copied lifecycle measured-source binding changed')
 
 
+def validate_publication_index(index):
+    """Replay selection from copied links; labels alone cannot make history."""
+    require = ops().review.require
+    require(index.get('schema_version') == evidence.SCHEMA_VERSION, 'unsupported explanation index')
+    entries = index['steward_lifecycles']
+    by_id = {e['identity']: e for e in entries}
+    require(len(by_id) == len(entries), 'duplicate explanation observation')
+    groups = {}
+    for entry in entries:
+        key = json.dumps({k: entry[k] for k in ('journey_id', 'project_id', 'subject', 'language')}, sort_keys=True)
+        groups.setdefault(key, []).append(entry)
+    for group in groups.values():
+        following = {}
+        for entry in group:
+            order = entry['observation_order']; previous = order['previous']
+            require(set(order) == {'attempt', 'previous'}, 'invalid explanation order')
+            if previous is not None:
+                require(isinstance(previous, dict) and set(previous) == {'identity', 'attempt'}
+                    and previous['identity'] in by_id, 'copied explanation predecessor missing')
+                prior = by_id[previous['identity']]
+                require(prior in group and prior['observation_order']['attempt'] == previous['attempt'],
+                    'copied explanation predecessor scope/hash changed')
+            key = previous['identity'] if previous else None
+            require(key not in following, 'copied explanation relationship forks')
+            following[key] = entry
+        chain, key = [], None
+        while key in following and len(chain) <= len(group):
+            entry = following[key]; chain.append(entry); key = entry['identity']
+        require(len(chain) == len(group), 'copied explanation relationship disconnected/cyclic')
+        for number, entry in enumerate(chain):
+            require(entry['selected_identity'] == chain[-1]['identity']
+                and entry['publication_role'] == ('final' if number == len(chain) - 1 else 'historical'),
+                'copied explanation publication selection changed')
+
+
 def validate(data):
     """Copied packages need neither Runtime Home nor the submitted response path."""
     o = ops(); o.require_review_artifact_safe(data)
     value = json.loads(data)
     o.review.require(isinstance(value, dict) and set(value) == {'kind', 'schema_version', 'context',
         'evidence_set_sha256', 'private_artifacts', 'receipt', 'stages', 'readback_subject_locators',
-        'before_state', 'after_state', 'before_observation', 'limits', 'semantic_complete'}
+        'before_state', 'after_state', 'before_observation', 'limits', 'semantic_complete', 'publication'}
         and value['kind'] == 'dogfood_review_explanation_lifecycle' and value['schema_version'] == SCHEMA_VERSION,
         'unsupported review explanation lifecycle')
     context, receipt = value['context'], value['receipt']
+    publication = value['publication']
+    o.review.require(set(publication) == {'publication_role', 'selected_identity'}
+        and publication['publication_role'] in {'historical', 'final'}
+        and re.fullmatch(r'[0-9a-f]{32}', publication['selected_identity'])
+        and (publication['selected_identity'] == context['identity']) == (publication['publication_role'] == 'final'),
+        'invalid explanation publication relation')
     evidence_purpose.require_same(context, receipt)
     o.review.require(isinstance(receipt, dict) and set(receipt) == {'kind', 'schema_version', 'identity',
-        'evidence_purpose', 'phase', 'observed_at', 'preparation', 'response', 'record', 'readback', 'candidate_head',
+        'evidence_purpose', 'observation_order', 'phase', 'observed_at', 'preparation', 'response', 'record', 'readback', 'candidate_head',
         'candidate_executable_sha256', 'generator_identity_status', 'host_response_locator', 'after_state'},
         'unsupported retained explanation receipt')
     o.review.require(set(context) == CONTEXT_FIELDS and context['phase'] == 'post_session_steward'
@@ -156,9 +201,11 @@ def validate(data):
     o.review.require(started.tzinfo is not None and ended.tzinfo is not None and started <= ended,
         'review explanation observation order changed')
     bindings = value['private_artifacts']
-    o.review.require(set(bindings) == {'preparation', 'before', 'response', 'record', 'after', 'receipt'}
+    o.review.require(set(bindings) == {'attempt', 'preparation', 'before', 'response', 'record', 'after', 'receipt'}
         and all(set(b) == {'bytes', 'sha256'} and type(b['bytes']) is int and b['bytes'] > 0
             and re.fullmatch(r'[0-9a-f]{64}', b['sha256']) for b in bindings.values())
+        and context['observation_order']['attempt'] == bindings['attempt']
+        and receipt['observation_order'] == context['observation_order']
         and receipt['preparation'] == bindings['preparation'] and receipt['response'] == bindings['response']
         and receipt['record'] == bindings['record'] and receipt['readback'] == bindings['after']
         and receipt['kind'] == 'dogfood_explanation_receipt' and receipt['schema_version'] == evidence.SCHEMA_VERSION

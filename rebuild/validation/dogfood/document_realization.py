@@ -349,7 +349,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
         progress({"phase": "mapping_inputs", "completed": 0, "total": 1})
     mapped = c.map_batch_rollouts(root, raw_paths)
     import explanation_evidence
-    explanation_evidence.require_ready(root, campaign, mapped)
+    explanation_publication = explanation_evidence.require_ready(root, campaign, mapped)
     if progress:
         progress({"phase": "mapping_inputs", "completed": 1, "total": 1})
     files, drafts, bindings, index = {}, {}, [], []
@@ -400,7 +400,7 @@ def prepare(root: Path, raw_paths: list[Path], *, progress=None) -> dict[str, An
         raise c.CampaignError("raw inputs changed during realization preparation")
     verify_route(campaign)
     files[binding_path] = c.json_bytes({"candidate_head": campaign["candidate_head"],
-        "campaign_sha256": harness.sha256(c.campaign_file(root)), "raw_inputs": raw_binding(mapped), "documents": bindings})
+        "campaign_sha256": harness.sha256(c.campaign_file(root)), "raw_inputs": raw_binding(mapped), "explanation_publication": explanation_publication, "documents": bindings})
     files[root / "realizer/index.json"] = c.json_bytes({"documents": sorted(index, key=lambda x: x["realization_id"])})
     if progress:
         progress({"phase": "publishing", "completed": 0, "total": 1})
@@ -538,6 +538,9 @@ def require_batch_ready(root: Path, campaign: dict[str, Any], mapped) -> None:
     if not (root / "realization-bindings.json").is_file():
         raise c.CampaignError("prepare and fix all cross-locale realizations before collect-batch")
     bindings = json.loads(bound_bytes(root, root / "realization-bindings.json"))
+    import explanation_evidence
+    if bindings.get("explanation_publication") != explanation_evidence.publication_relations(root):
+        raise c.CampaignError("explanation publication selection differs from frozen document preparation")
     if (bindings["candidate_head"] != campaign["candidate_head"]
         or bindings["campaign_sha256"] != harness.sha256(c.campaign_file(root))
         or bindings["raw_inputs"] != raw_binding(mapped)):

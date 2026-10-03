@@ -401,15 +401,22 @@ class WorkflowTests(unittest.TestCase):
             work_id = hashlib.sha256(b'work:volicord:A').hexdigest()[:32]
             project = hashlib.sha256(b'project:volicord').hexdigest()[:32]
             publish_fixture(cls.root, mapped=mapped, candidate=candidate, subject_id=work_id, project_id=project)
+            publish_fixture(cls.root, mapped=mapped, candidate=candidate, subject_id=work_id, project_id=project,
+                identity='aa' * 16, revision=2)
             canonical = harness.load_canonical_bundle(bundles[c.work_key('volicord', 'B')])
             decision_id = canonical.rows('decisions')[0]['id']
             publish_fixture(cls.root, kind='decision', language='ko', mapped=mapped, candidate=candidate,
                 project_id=project, subject_id=decision_id, identity='cc' * 16, before_state='stale')
             def plan_read(binary, runtime, project, args):
-                subject, language = args[4], args[6]
+                is_read = args[0] in {'status', 'decisions'}
+                subject, language = (None, args[2]) if is_read else (args[4], args[6])
                 plans = [json.loads(explanations.bound(cls.root, path)) for path in explanations.preparations(cls.root)]
-                plan = next(p['plan'] for p in plans if p['subject']['identity'] == subject and p['language'] == language)
-                return {'operation': 'explanation_prepare', 'plan': plan}, {}
+                final = explanations.publication_relations(cls.root)
+                selected = next(p for p in plans if (subject is None or p['subject']['identity'] == subject)
+                    and p['language'] == language and final[p['identity']]['publication_role'] == 'final')
+                if is_read:
+                    return json.loads(explanations.bound(cls.root, explanations.entry_path(cls.root, selected['identity']) / 'after.json')), {}
+                return {'operation': 'explanation_prepare', 'plan': selected['plan']}, {}
             with patch.object(explanations, 'invoke', side_effect=plan_read):
                 c.collect_batch(cls.root, raw, exporter=fixtures.batch_exporter(bundles),
                     documenter=fixtures.documenter, snapshotter=fixtures.snapshotter)
@@ -429,13 +436,17 @@ class WorkflowTests(unittest.TestCase):
         ops.prepare(self.root, target, reviewer_kind='agent', session_id='meaning-reviewer', include_raw=True)
         preparation, _, _ = ops.load_package(target)
         lifecycle_entries = [v for v in preparation['index']['evidence'].values() if v['surface'] == 'explanation_lifecycle']
-        self.assertEqual(len(lifecycle_entries), 2)
+        self.assertEqual(len(lifecycle_entries), 3)
+        roles = []
         for entry in lifecycle_entries:
             value = review_explanations.validate((target / entry['path']).read_bytes())
             review_explanations.verify_manifest(value, c.load_evidence_set(self.root))
+            roles.append(value['publication']['publication_role'])
+            self.assertEqual(entry['origin']['publication_role'], value['publication']['publication_role'])
             self.assertTrue(entry['projection']['semantic_complete'])
             self.assertTrue(any(p['value'].endswith('/paragraphs/0/text') for p in entry['locators']))
             self.assertEqual(value['context']['phase'], 'post_session_steward')
+        self.assertEqual(sorted(roles), ['final', 'final', 'historical'])
         work = preparation['index']['evidence'][c.work_key('volicord', 'A') + '-resume']
         captured = captures.validate((target / work['path']).read_bytes())
         actual = next(r for r in captured['records'] if r.get('operation') == 'recall')
