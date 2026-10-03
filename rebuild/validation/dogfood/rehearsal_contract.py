@@ -164,6 +164,7 @@ def validate_temporal(value, processes):
         require(set(observation) == {'transport', 'call_id', 'sequence', 'completion_sequence', 'invocation_sequence',
             'raw_capture_sha256', 'status', 'goal_revision', 'basis_sha256'} and observation['transport'] == 'mcp'
             and observation['status'] == 'confirmed_pass' and isinstance(observation['call_id'], str)
+            and re.fullmatch(r'[a-zA-Z0-9_-]{1,128}', observation['call_id'])
             and type(observation['goal_revision']) is int
             and all(type(observation[k]) is int and observation[k] >= 0 for k in ('sequence', 'completion_sequence', 'invocation_sequence'))
             and observation['invocation_sequence'] < observation['completion_sequence'], 'missing actual Recall order/status')
@@ -176,6 +177,8 @@ def validate_temporal(value, processes):
         and correction['expected_revision'] == 1 and correction['actual_revision'] == 2
         and correction['authorization_source_id'] == recall['authorization_source_id']
         and correction['supporting_sources_changed'] is False
+        and isinstance(correction['session_id'], str) and re.fullmatch(r'[a-zA-Z0-9_-]{1,128}', correction['session_id'])
+        and isinstance(correction['call_id'], str) and re.fullmatch(r'[a-zA-Z0-9_-]{1,128}', correction['call_id'])
         and observations[0]['raw_capture_sha256'] == correction['raw_capture_sha256'] == observations[1]['raw_capture_sha256']
         and observations[0]['completion_sequence'] < correction['invocation_sequence']
             < correction['completion_sequence'] < observations[1]['invocation_sequence'], 'correction is not between actual Recalls')
@@ -188,6 +191,9 @@ def validate_temporal(value, processes):
             and tuple(outcome[k] for k in ('consumer', 'check', 'status', 'disposition')) == expected,
             'control outcome differs from maintained consumer/policy')
         hash_value(outcome['basis_sha256']); artifact(outcome['finding'])
+        require(isinstance(outcome['error_classes'], list) and len(outcome['error_classes']) <= 2
+            and set(outcome['error_classes']) <= {'generated goal revision basis', 'top-level recorded next action'},
+            'unbounded/private control error content')
         require(isinstance(outcome['artifacts'], list) and outcome['artifacts'], 'pass label has no control artifacts')
         for item in outcome['artifacts']: artifact(item)
         if outcome['consumer'] == 'naturalistic_observation':

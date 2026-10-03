@@ -48,7 +48,7 @@ def temporal_fixture():
             'finding': dict(artifact), 'artifacts': [v['stages']['receipt'] for v in lives] if name == 'historical_explanation_regeneration' else [dict(artifact)],
             'observation_statuses': statuses, 'goal_revisions': revisions,
             'error_classes': ['generated goal revision basis'] if name in {'post_correction_old_revision', 'future_correction_scope'} else (
-                ['recorded action'] if name == 'missing_temporal_evidence_with_violation' else []),
+                ['top-level recorded next action'] if name == 'missing_temporal_evidence_with_violation' else []),
             'rejection_sha256': None if recall or name == 'historical_explanation_regeneration' else 'd' * 64}
     return {'regeneration': {'work_slot_id': 'journey-polyglot-medium-work-a', 'project_id': '02'*16,
         'work_item_id': '03'*16, 'authorization_source_id': '05'*16, 'correction_process': 'support-process-0',

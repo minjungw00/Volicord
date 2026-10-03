@@ -579,9 +579,11 @@ def regenerate(root, campaign_root, paths, prepared, binary, logs):
     campaign = c.load_campaign(campaign_root)
     state = campaign['works'][scenario['work_slot_id']]
     journey = campaign['journeys'][state['journey_id']]
-    selected = [item for item in prepared['explanations'] if item['journey_id'] == state['journey_id']]
+    selected = [item for item in prepared['explanations']
+        if c.read_json(campaign_root / item['preparation'])['journey_id'] == state['journey_id']]
     require(len(selected) == 2 and {i['language'] for i in selected} == {'en', 'ko'}, 'regeneration subject/locale boundary changed')
-    work, project = selected[0]['subject']['identity'], selected[0]['project_id']
+    work = selected[0]['subject']['identity']
+    project = c.read_json(campaign_root / selected[0]['preparation'])['project_id']
     mapped = c.map_batch_rollouts(campaign_root, paths)
     explanation_evidence.require_ready(campaign_root, campaign, mapped)
     originals = {p: p.read_bytes() for item in selected
