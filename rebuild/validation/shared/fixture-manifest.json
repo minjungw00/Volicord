@@ -714,7 +714,7 @@
       "id": "v12-current-codex-mcp-completion",
       "validation_id": "V12",
       "path": "rebuild/validation/dogfood/fixtures",
-      "purpose": "Exercise bounded Codex Extension command, patch, turn interruption/recovery, direct and content-wrapped MCP completion evidence without evaluating JavaScript. Include sanitized independent multi-item durability authority counterfactuals, deterministic multi-Work support explicitly separated from naturalistic evidence, and criterion-specific Viewer/document qualitative-review cases without Question, answer, or keyword-verdict oracles. Include ordinary frozen workload-intent task examples and interaction-coverage insufficiency regressions; metadata contains no semantic expected answers or operation-count quotas.",
+      "purpose": "Exercise bounded Codex Extension command, patch, turn interruption/recovery, direct and content-wrapped MCP completion evidence without evaluating JavaScript. Include sanitized independent multi-item durability authority counterfactuals, deterministic multi-Work support explicitly separated from naturalistic evidence, and criterion-specific Viewer/document qualitative-review cases without Question, answer, or keyword-verdict oracles. Include product-backed correction/regeneration support with retained historical/final explanation selection and observation-time Recall revision controls. Include ordinary frozen workload-intent task examples and interaction-coverage insufficiency regressions; metadata contains no semantic expected answers or operation-count quotas.",
       "expected_entities": [
         "codex-session",
         "command-observation",
@@ -737,7 +737,7 @@
         "Codex-version dispatch or unsupported completion shapes",
         "JavaScript execution or wrapper-output success inference"
       ],
-      "content_sha256": "beb67f69e0c03d79c13d7eaa17682bc4633d1e8ba6880985578834700707ba3d",
+      "content_sha256": "8b01da3f3fa4779fefaeefd16cc0e6f46a0bd4fb3ed43e963ae983d79344204f",
       "origin": "Sanitized self-authored representatives derived from observed current Phase 8 Codex Extension execution and completion envelopes.",
       "license": "CC0-1.0"
     },
