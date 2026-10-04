@@ -190,6 +190,20 @@ class LaunchReadinessTests(unittest.TestCase):
 
 
 class DefinitionDependencyTests(unittest.TestCase):
+    def test_maintained_support_registers_every_readiness_scope_control(self):
+        expected = {
+            'test_unchanged_scope_reuses_numeric_hash_bound_result_without_execution',
+            'test_changed_host_candidate_permissions_or_trust_needs_only_scoped_probe',
+            'test_relevant_configuration_and_filesystem_changes_invalidate_only_smoke',
+            'test_wrong_executable_runtime_or_submitted_observation_is_rejected',
+            'test_inspection_stages_actual_hook_before_trust_without_product_or_writes',
+        }
+        with patch.object(unittest.TextTestRunner, 'run',
+                return_value=SimpleNamespace(wasSuccessful=lambda: True)) as runner:
+            run_contract_tests()
+        names = {test.id().rsplit('.', 1)[-1] for group in runner.call_args.args[0] for test in group}
+        self.assertTrue(expected <= names, 'maintained qualification support omitted readiness controls')
+
     def test_responsibility_matrix_and_scope_guidance_have_one_owner(self):
         import campaign
         root = campaign.ROOT / 'rebuild'
@@ -1387,7 +1401,7 @@ class FileBoundaryTests(unittest.TestCase):
 
 
 def run_contract_tests():
-    result = unittest.TextTestRunner().run(unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls) for cls in (DefinitionDependencyTests, PolicyTests, GateTechnicalBoundaryTests, FileBoundaryTests)))
+    result = unittest.TextTestRunner().run(unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls) for cls in (LaunchReadinessTests, DefinitionDependencyTests, PolicyTests, GateTechnicalBoundaryTests, FileBoundaryTests)))
     if not result.wasSuccessful():
         raise AssertionError('qualification policy regressions failed')
 
