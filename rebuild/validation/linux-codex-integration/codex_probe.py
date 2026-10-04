@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one plain repository task through isolated project-scoped Codex activation."""
+"""Exercise trusted activation and explicit shell readiness in an isolated host probe."""
 
 from __future__ import annotations
 
@@ -182,7 +182,7 @@ def main() -> int:
             "--binary", str(prefix / "bin/volicord"), "--runtime", str(runtime),
             "--repository", str(repository), "--cli-sha256", launch_readiness.digest(prefix / "bin/volicord"),
             "--mcp-sha256", launch_readiness.digest(prefix / "bin/volicord-mcp")]
-        prompt = "Check local Volicord launch readiness by running " + shlex.join(probe_command) + ". Summarize this repository's purpose and current work context. Do not make changes or inspect source files outside this isolated probe repository. Do not inspect credentials or environments; execute the specified readiness command without reading its source."
+        prompt = "Follow the trusted SessionStart guidance: resolve this repository through Volicord project_resolve and read its bounded recall before inspecting or executing repository operations. Then check local Volicord launch readiness by running " + shlex.join(probe_command) + ". Summarize this repository's purpose and current work context. Do not make changes or inspect source files outside this isolated probe repository. Do not inspect credentials or environments; execute the specified readiness command without reading its source."
 
         command = [
             codex,
@@ -312,7 +312,7 @@ def main() -> int:
                 json.dumps(
                     {
                         "status": "failed",
-                        "reason": "plain repository task did not enter Volicord through resolve then Recall",
+                        "reason": "explicit host probe did not enter Volicord through resolve then Recall",
                         "selected_product_tool_calls": [
                             {"server": server, "tool": tool}
                             for server, tool in sorted(set(selected_calls))
