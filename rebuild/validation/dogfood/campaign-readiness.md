@@ -104,6 +104,9 @@ own Phase 9; this session starts no measured campaign.
 After choosing a newly verified clean candidate, install into its isolated prefix and
 retain CLI/MCP/Viewer hashes. Authorize each target with that installed CLI and explicit
 `--runtime`/`--repository`; review exact repository/hook trust in the actual Codex host.
+The Codex tool shell must also allow the exact Runtime: use workspace-write with
+`--add-dir ABSOLUTE_RUNTIME` for a Home outside the target workspace. A read-only
+sandbox can block SQLite opening even when executable binding is correct.
 The hook supplies the shell-quoted installed CLI prefix. Use it for explanation and
 ordinary commands even when bare `volicord` resolves elsewhere. Before measured work,
 run the maintained `linux-codex-integration/launch_readiness.py` through the same actual

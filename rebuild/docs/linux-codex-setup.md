@@ -188,3 +188,12 @@ integration and executable bytes and performs scoped read-only `status` against
 an existing Project. Retain its output privately with the execution result.
 Bare-name realpath/hash drift is disclosed; no global PATH or shell file is changed.
 A local login/non-login reproduction supplies support only, not another host's proof.
+
+The host tool shell must permit access to the selected Runtime as well as the repository.
+Current SQLite store opening and operational coordination need a writable Runtime even
+for a scoped read. With Codex workspace-write, add the exact Runtime using `--add-dir
+/absolute/runtime` when it is outside the workspace. An all-read-only sandbox may therefore
+block the functional readiness probe despite correct executable bytes. This is a distinct
+Runtime-access blocker; do not report it as ready or infer CLI version/PATH cause. The
+isolated authenticated probe authorizes only its disposable Runtime and verifies that its
+read-only task leaves repository files unchanged. No global config or shell file is edited.

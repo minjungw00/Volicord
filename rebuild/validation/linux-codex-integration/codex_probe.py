@@ -182,7 +182,7 @@ def main() -> int:
             "--binary", str(prefix / "bin/volicord"), "--runtime", str(runtime),
             "--repository", str(repository), "--cli-sha256", launch_readiness.digest(prefix / "bin/volicord"),
             "--mcp-sha256", launch_readiness.digest(prefix / "bin/volicord-mcp")]
-        prompt = "Check local Volicord launch readiness by running " + shlex.join(probe_command) + ". Summarize this repository's purpose and current work context. Do not make changes."
+        prompt = "Check local Volicord launch readiness by running " + shlex.join(probe_command) + ". Summarize this repository's purpose and current work context. Do not make changes or inspect source files outside this isolated probe repository. Do not inspect credentials or environments; execute the specified readiness command without reading its source."
 
         command = [
             codex,
@@ -199,11 +199,13 @@ def main() -> int:
             "--ephemeral",
             "--json",
             "--sandbox",
-            "read-only",
+            "workspace-write",
+            "--add-dir", str(runtime),
             "-C",
             str(repository),
             prompt,
         ]
+        repository_before = {str(p.relative_to(repository)):launch_readiness.digest(p) for p in repository.rglob("*") if p.is_file() and ".git" not in p.parts}
         print(f"$ {shlex.join(command)}", flush=True)
         started = time.monotonic_ns()
         process = subprocess.Popen(
@@ -258,6 +260,17 @@ def main() -> int:
                 continue
             if isinstance(value, dict):
                 events.append(value)
+        repository_after = {str(p.relative_to(repository)):launch_readiness.digest(p) for p in repository.rglob("*") if p.is_file() and ".git" not in p.parts}
+        if repository_before != repository_after:
+            return report_blocked("read-only probe task changed repository files", child=child_result)
+        registrations = [json.loads(p.read_bytes()) for p in (runtime / "observations/mcp").glob("*.json")]
+        expected_mcp = launch_readiness.digest(prefix / "bin/volicord-mcp")
+        if not registrations or any(r.get("executable_sha256") != expected_mcp
+                or r.get("executable_path") != str((prefix / "bin/volicord-mcp").resolve())
+                or r.get("runtime_binding") != launch_readiness.hashlib.sha256(str(runtime.resolve()).encode()).hexdigest()
+                or r.get("cwd_binding") != launch_readiness.hashlib.sha256(str(repository.resolve()).encode()).hexdigest()
+                for r in registrations):
+            return report_blocked("actual MCP lifecycle binding missing or mismatched", child=child_result)
         # Require actual host command completion and read-only Product result, not parent PATH.
         shell_proofs = []
         for event in events:
@@ -318,6 +331,9 @@ def main() -> int:
                     "status": "passed",
                     "codex": version,
                     "authenticated": True,
+                    "runtime_access": "workspace_write_with_exact_isolated_runtime",
+                    "repository_unchanged": True,
+                    "mcp_lifecycle_sha256": expected_mcp,
                     "project_scoped_activation": True,
                     "probe_prompt": "explicit_read_only_launch_probe_not_naturalistic_task",
                     "actual_host_tool_shell": shell_proofs,
