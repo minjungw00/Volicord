@@ -197,3 +197,7 @@ block the functional readiness probe despite correct executable bytes. This is a
 Runtime-access blocker; do not report it as ready or infer CLI version/PATH cause. The
 isolated authenticated probe authorizes only its disposable Runtime and verifies that its
 read-only task leaves repository files unchanged. No global config or shell file is edited.
+
+`project_resolve` and `recall` in activation guidance are MCP tools. Use their host
+MCP interface; CLI commands retain their own command groups (such as `status`,
+`recall`, and `work explain`). The installed prefix applies to CLI commands only.

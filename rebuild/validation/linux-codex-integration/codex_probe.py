@@ -182,7 +182,7 @@ def main() -> int:
             "--binary", str(prefix / "bin/volicord"), "--runtime", str(runtime),
             "--repository", str(repository), "--cli-sha256", launch_readiness.digest(prefix / "bin/volicord"),
             "--mcp-sha256", launch_readiness.digest(prefix / "bin/volicord-mcp")]
-        prompt = "Follow the trusted SessionStart guidance: resolve this repository through Volicord project_resolve and read its bounded recall before inspecting or executing repository operations. Then check local Volicord launch readiness by running " + shlex.join(probe_command) + ". Summarize this repository's purpose and current work context. Do not make changes or inspect source files outside this isolated probe repository. Do not inspect credentials or environments; execute the specified readiness command without reading its source."
+        prompt = "Follow the trusted SessionStart guidance: call the Volicord MCP tool project_resolve for this repository and then the MCP tool recall before inspecting or executing repository operations. Then check local Volicord launch readiness by running " + shlex.join(probe_command) + ". Summarize this repository's purpose and current work context. Do not make changes or inspect source files outside this isolated probe repository. Do not inspect credentials or environments; execute the specified readiness command without reading its source."
 
         command = [
             codex,
