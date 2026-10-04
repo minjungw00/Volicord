@@ -198,7 +198,10 @@ class DefinitionDependencyTests(unittest.TestCase):
             'test_wrong_executable_runtime_or_submitted_observation_is_rejected',
             'test_inspection_stages_actual_hook_before_trust_without_product_or_writes',
         }
-        with patch.object(unittest.TextTestRunner, 'run',
+        # Inspect the maintained full registration independently of a focused
+        # unittest invocation's global -k filter.
+        with patch.object(unittest, 'defaultTestLoader', unittest.TestLoader()), \
+             patch.object(unittest.TextTestRunner, 'run',
                 return_value=SimpleNamespace(wasSuccessful=lambda: True)) as runner:
             run_contract_tests()
         names = {test.id().rsplit('.', 1)[-1] for group in runner.call_args.args[0] for test in group}
