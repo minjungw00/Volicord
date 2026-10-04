@@ -820,7 +820,15 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         import subprocess
         import review_operations as ops
         from review_operations_self_test import insufficient_draft
+        import contextlib
+        import io
+        import sys
         before = self.owners.counts.copy()
+        def entry(*arguments):
+            stdout = io.StringIO()
+            with patch.object(sys, 'argv', ['dogfood-campaign', *map(str, arguments)]), contextlib.redirect_stdout(stdout):
+                self.assertEqual(c.main(), 0)
+            return json.loads(stdout.getvalue())
         # Only support Product collection invokes its fake executables. The reuse
         # boundary itself may inspect Git identity but must execute no technical owner.
         original_run = subprocess.run
@@ -848,6 +856,18 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         self.assertEqual(prep['technical_gate']['state'], 'passed')
         self.assertEqual(prep['technical_gate']['execution'], 'reused')
         self.assertEqual(prep['resource_observation'], 'not_selected')
+        # Repeat unchanged preparation for a different campaign label. This
+        # supplies no new candidate qualification or host-readiness claim.
+        with patch.object(harness, 'git_head', return_value=self.candidate), \
+             patch.object(c, 'install_candidate', side_effect=AssertionError('repeat rebuilt candidate')), \
+             patch.object(subprocess, 'run', side_effect=read_only_git), \
+             patch.object(subprocess, 'Popen', side_effect=read_only_spawn):
+            support.prepare(Path(self.temp.name) / 'reuse-repeat-campaign',
+                Path(self.temp.name) / 'reuse-repeat-sources', self.binary,
+                capsule_path=self.path, archive_path=self.archive)
+        self.assertEqual(self.owners.counts, before)
+        # Build the explicitly authored raw support inputs before exercising
+        # collection; fixture construction is not campaign execution.
         # Build/collect the eight raw support slots through maintained consumers.
         captures, bundles = [], {}
         with patch.object(harness, 'git_head', return_value=self.candidate), \
@@ -861,34 +881,64 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
                     if 'resume' in c.session_roles(kind, label): captures.append(resume)
                     bundles[c.work_key(kind, label)] = bundle
             with patch.object(c, 'run_checked', side_effect=support.fake_enable_command):
-                c.activate_all(root)
-            c.collect_batch(root, captures, exporter=support.batch_exporter(bundles),
-                documenter=support.documenter, snapshotter=support.snapshotter)
-            evaluation = c.evaluate_campaign(root)
+                activation = entry('activate-all', '--campaign-root', root)
+            self.assertTrue(all(j['integration_execution'] == 'generated' for j in activation['journeys']))
+            configs = {path: path.read_bytes() for path in root.glob('journeys/*/repository/.codex/*')}
+            with patch.object(c, 'run_checked', side_effect=AssertionError('repeat changed reviewed integration')):
+                activation = entry('activate-all', '--campaign-root', root)
+            self.assertTrue(all(j['integration_execution'] == 'reused' for j in activation['journeys']))
+            self.assertEqual(configs, {path: path.read_bytes() for path in configs})
+            # A reviewed integration mismatch remains a blocker, with no hidden repair.
+            path = next(path for path in configs if path.name == 'volicord-integration.json')
+            original = path.read_bytes()
+            changed = json.loads(original); changed['runtime'] = '/wrong-runtime'
+            path.write_text(json.dumps(changed))
+            with patch.object(c, 'run_checked', side_effect=AssertionError('silent repair')), self.assertRaises(ValueError):
+                entry('activate-all', '--campaign-root', root)
+            path.write_bytes(original)
+            with patch.object(subprocess, 'run', side_effect=read_only_git), \
+                 patch.object(subprocess, 'Popen', side_effect=read_only_spawn), \
+                 patch.object(resource_observer, 'start_identity', side_effect=AssertionError('telemetry PID lookup')), \
+                 patch.object(resource_observer, 'sample', side_effect=AssertionError('telemetry sampling')):
+                with patch.dict(c.collect_batch.__kwdefaults__, {'exporter': support.batch_exporter(bundles),
+                        'documenter': support.documenter, 'snapshotter': support.snapshotter}):
+                    entry('collect-batch', '--campaign-root', root,
+                        *[argument for capture in captures for argument in ('--raw-rollout', capture)])
+                evaluation = entry('evaluate', '--campaign-root', root)
         evaluation_path = root / evaluation['evaluation']
         target = Path(self.temp.name) / 'reuse-review'
         with patch.object(resource_observer, 'observe', side_effect=AssertionError('review started observer')):
-            ops.prepare(root, target, reviewer_kind='agent', session_id='independent-support-review',
-                evaluation_path=evaluation_path)
-            insufficient_draft(target)
-            ops.record(target, target / 'draft.json')
+            with patch.object(subprocess, 'run', side_effect=read_only_git), \
+                 patch.object(subprocess, 'Popen', side_effect=read_only_spawn):
+                entry('prepare-qualitative-review', '--campaign-root', root, '--output', target,
+                    '--reviewer-kind', 'agent', '--review-session-id', 'independent-support-review',
+                    '--machine-evaluation', evaluation_path)
+                insufficient_draft(target)
+                entry('record-qualitative-review', '--review-root', target, '--draft', target / 'draft.json')
         output = Path(self.temp.name) / 'reuse-qualification'
         with patch.object(subprocess, 'run', side_effect=read_only_git), \
              patch.object(subprocess, 'Popen', side_effect=read_only_spawn), \
              patch.object(resource_observer, 'observe', side_effect=AssertionError('qualification started observer')):
-            value = policy.qualify(root, evaluation_path, output, candidate=self.candidate,
-                review_roots=[target], capsule_path=self.path, archive_path=self.archive)
+            value = entry('qualify', '--campaign-root', root, '--machine-evaluation', evaluation_path,
+                '--output', output, '--candidate-head', self.candidate, '--review-root', target,
+                '--gate-capsule', self.path, '--gate-archive', self.archive)
         self.assertEqual(value['technical_gate']['state'], 'passed')
         self.assertEqual(value['naturalistic_evidence']['naturalistic_resource']['status'], 'not_observed')
         self.assertEqual(value['naturalistic_evidence']['naturalistic_resource']['measurement']['peak_rss_bytes'], None)
         self.assertFalse(value['replacement_pass_candidate'])
         self.assertIn(policy.COVERAGE_CRITERION, value['qualitative_review']['unresolved_criteria'])
         self.assertTrue(value['qualitative_review']['human_escalations'])
-        published = result_lineage.publish(root, evaluation_path, [target], output / 'qualification.json')
+        with patch.object(subprocess, 'run', side_effect=read_only_git), \
+             patch.object(subprocess, 'Popen', side_effect=read_only_spawn):
+            published = entry('publish-result-lineage', '--campaign-root', root,
+                '--machine-evaluation', evaluation_path, '--review-root', target,
+                '--qualification', output / 'qualification.json')
         copied = Path(self.temp.name) / 'reuse-copied'
         shutil.copytree(published['lineage_root'], copied)
         with patch.object(c, 'load_evidence_set', side_effect=AssertionError('original campaign used')):
-            result_lineage.verify(copied)
+            with patch.object(subprocess, 'run', side_effect=read_only_git), \
+                 patch.object(subprocess, 'Popen', side_effect=read_only_spawn):
+                entry('verify-result-lineage', '--lineage-root', copied)
         copied_value = json.loads((copied / 'qualification/qualification.json').read_bytes())
         self.assertEqual(copied_value['naturalistic_evidence']['naturalistic_resource']['status'], 'not_observed')
         self.assertEqual(self.owners.counts, before)
