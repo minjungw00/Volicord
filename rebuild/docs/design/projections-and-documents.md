@@ -376,6 +376,56 @@ recording time and generator status without duplicating original evidence text.
 Canonical links cover every used record and Source. No canonical schema, Viewer
 database, provider invocation, background opt-in or adoption authority is introduced.
 
+#### Explanation byte contract
+
+All dimensions are UTF-8 bytes, including JSON string escaping. Character count,
+raw-file length and compact realization length are different measurements.
+
+| Boundary | Inclusive limit | Measurement / action |
+| --- | ---: | --- |
+| Preparation | 131,072 | Complete compact `ExplanationPlan`, including its final fingerprint and retention budget; reject unrepresentable evidence before generation |
+| Response | 16,384 | Compact `ExplanationRealization`, including host/session/agent/model and evidence keys; preserve required paragraphs/grounding when reducing prose or metadata |
+| CLI / Dogfood input file | 65,536 | Raw JSON bytes, including formatting; compact-response validation still applies after parsing; remove whitespace for transport excess |
+| Retained content / decoder | 147,456 | Complete compact `RetainedExplanation` in managed Derived `content`; same limit at record, Privacy body admission and explanation decoding; inspection preserves accepted bodies |
+| Privacy short fields | 16,384 | Purpose, retention basis and unrelated existing short metadata retain their independent bounds |
+
+The retained bound is the supported 128 KiB plan plus the full 16 KiB response,
+not an arbitrary expansion of every Privacy field. Preparation publishes mandatory
+`retention_budget` with `response_byte_limit`, `retained_byte_limit`,
+`metadata_byte_reserve` and `response_byte_capacity`. The reserve is measured by
+serializing the same retained representation used for recording, subtracting the
+serialized realization, with the longest possible signed i64 recording timestamp
+(20 bytes). It includes the complete subject/question, evidence identity/revision/
+field/Source lists, Source status, conflicts, JSON keys/escaping and recorder-assigned
+identity limitation. Only original evidence bodies and Source `observation` are
+excluded, as already required by retention; grounding is never pruned.
+
+An admitted plan reserves the **full** 16,384-byte response. Capacity is not a
+request to shrink a supported response to leftover storage. If required metadata
+plus that supported response cannot fit, preparation rejects the evidence shape
+with measured/reserved and allowed sizes before requesting host generation. Metadata
+alone exceeding the envelope is the same pre-generation insufficiency. Seek Product
+support for an unrepresentable basis; repeated shorten-and-retry cannot repair it.
+Record recomputes the current plan and budget under the mutation lock, validates the
+exact fingerprint/language/grounding, then measures the actual complete envelope
+before opening/writing storage. Size fit never admits a changed/stale plan.
+
+Shared answers and Viewer use the same decoder. CLI `status`/`decisions` and local
+Operations inspection expose full retained provenance. Existing bounded CLI/MCP Recall
+surfaces keep their separate 56 KiB brief / 80 KiB structured / 256 KiB total transport
+bounds and typed whole-field/suffix omissions; an omitted field is not complete
+explanation evidence. Use full local status/decisions or Viewer evidence disclosure
+for that subject/language. `RecordedNextStep` remains independently selected from
+canonical facts. Four documents preserve full generated answer text and fail total
+publication rather than clip it (Markdown 3 MiB, HTML 8 MiB). Viewer HTTP's 64 KiB
+request-body bound applies to mutation requests, not explanation read responses.
+Dogfood retains up to 32 MiB process stdout / 1 MiB stderr; private review body bounds
+remain 1 MiB per selected stage / 32 MiB per projection with explicit incompleteness.
+Those aggregate bounds are not new per-explanation storage/decoder limits.
+`repository_understanding` uses full shared answers and section cardinality bounds;
+its MCP serializer currently has no Recall-style byte ceiling. External host capture
+limits remain separately observable and cannot be inferred from local decode success.
+
 Reads select the latest retained envelope per subject/language and recompute its basis.
 `ExplanationReading` distinguishes Current, Stale, Unavailable, Unsupported and
 Corrupt; only Current carries displayable prose. New/corrected/forgotten evidence,

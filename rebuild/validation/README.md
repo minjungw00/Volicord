@@ -289,6 +289,26 @@ and writes the Product `volicord_explanation` response. The collector uses actua
 Work readback uses `status`; Decision readback uses `decisions`. A subject outside
 the returned bound is explicitly unresolvable. No Work-specific MCP tool exists.
 There is no provider dispatch, new transmission authority or generation quota.
+Input files may contain up to 65,536 raw bytes; the complete compact realization is
+still limited to 16,384 bytes. Current plans expose a mandatory evidence-bound
+`retention_budget` reserving the full response within a 147,456-byte retained body.
+Collector preparation/response/receipt validation and private typed plan projection
+use this same current contract; formatting is not counted as semantic response bytes.
+Metadata-heavy and near-read-limit authored inputs live in
+`end-to-end/multi-repository/fixtures/viewer-reading/explanation-size-cases.json`.
+Set `VOLICORD_EXPLANATION_SIZE_PROOF_DIR` to a fresh absolute ignored directory
+when running `explanation_budgets` to additionally retain every actual child CLI's
+complete stdout/stderr, response input, executable hash/bytes, numeric exit,
+termination and timing. Disposable runtime homes are still removed by the fixture.
+Focused reproduction (not gate/V11/actual-host generation):
+
+```sh
+rebuild/scripts/validate focused explanation-sizes -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-operations --test explanation_budgets -- --nocapture
+rebuild/scripts/validate focused explanation-lifecycle -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-operations --test explanation_cli
+rebuild/scripts/validate focused explanation-content -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-privacy --test privacy_boundary
+rebuild/scripts/validate focused explanation-consumers -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-viewer --test work_explanation
+```
+
 Same-language explanation generation is independent of cross-locale document rules.
 Finish requested lifecycles before `prepare-document-realizations` (when needed),
 then `collect-batch` captures final documents/Viewer. Already-prepared incomplete

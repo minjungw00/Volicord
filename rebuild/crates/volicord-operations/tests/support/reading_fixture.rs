@@ -142,7 +142,13 @@ fn fixture_with_temporary(
                     session: "synthetic".into(),
                     turn: "Self-authored Work reading fixture".into(),
                 },
-                actor: actor(PrincipalKind::User),
+                actor: Principal {
+                    kind: PrincipalKind::User,
+                    identity: input["source_actor_identity"]
+                        .as_str()
+                        .unwrap_or("synthetic-fixture")
+                        .into(),
+                },
                 observer: Some(actor(PrincipalKind::Agent)),
                 availability: Availability::Available,
             },
@@ -158,7 +164,13 @@ fn fixture_with_temporary(
                 payload: SourcePayload::RepositoryCommit {
                     commit: input["shared_commit"].as_str().ok_or("commit")?.into(),
                 },
-                actor: actor(PrincipalKind::Repository),
+                actor: Principal {
+                    kind: PrincipalKind::Repository,
+                    identity: input["source_actor_identity"]
+                        .as_str()
+                        .unwrap_or("synthetic-fixture")
+                        .into(),
+                },
                 observer: Some(actor(PrincipalKind::Agent)),
                 availability: Availability::Available,
             },
@@ -553,4 +565,38 @@ fn fixture_with_temporary(
         decisions,
         purpose,
     })
+}
+
+/// Metadata-heavy input is independent authored fixture data, shared by CLI,
+/// Viewer and document consumer checks. It contains no expected generated prose.
+#[allow(dead_code)]
+pub fn explanation_size_scenario(case: &str) -> Result<Value, Box<dyn std::error::Error>> {
+    let cases:Value=serde_json::from_str(include_str!("../../../../validation/end-to-end/multi-repository/fixtures/viewer-reading/explanation-size-cases.json"))?;
+    let control = &cases[case];
+    let mut scenario = rich_scenario()?;
+    scenario["source_actor_identity"] = serde_json::json!(control["source_actor_unit"]
+        .as_str()
+        .ok_or("actor unit")?
+        .repeat(
+            control["source_actor_repetitions"]
+                .as_u64()
+                .ok_or("actor repetitions")? as usize
+        ));
+    let work = scenario["works"]
+        .as_array_mut()
+        .ok_or("works")?
+        .iter_mut()
+        .find(|w| w["key"] == "relay")
+        .ok_or("relay")?;
+    let checkpoint = work["checkpoints"][0].clone();
+    work["checkpoints"] = serde_json::json!((0..control["same_work_checkpoint_count"]
+        .as_u64()
+        .ok_or("history count")?)
+        .map(|i| {
+            let mut cp = checkpoint.clone();
+            cp["key"] = serde_json::json!(format!("retained-history-{i}"));
+            cp
+        })
+        .collect::<Vec<_>>());
+    Ok(scenario)
 }

@@ -93,7 +93,8 @@ DECISION = {k: optional(t) for k, t in {'identity': S, 'revision': I, 'state': S
 DECISION['identity'] = S
 DECISION['answers'] = ANSWERS
 PLAN = {'project_id': S, 'subject': SUBJECT, 'question': S, 'requested_language': S,
-    'fingerprint': S, 'evidence': [EVIDENCE], 'source_status': [STATUS], 'conflicts': [CONFLICT]}
+    'fingerprint': S, 'evidence': [EVIDENCE], 'source_status': [STATUS], 'conflicts': [CONFLICT],
+    'retention_budget': {k: I for k in ('response_byte_limit', 'retained_byte_limit', 'metadata_byte_reserve', 'response_byte_capacity')}}
 RESPONSE = {'format_kind': S, 'format_version': I, 'plan_fingerprint': S,
     'language': S, 'generator': GENERATOR,
     'paragraphs': [{'question': S, 'text': S, 'evidence_keys': [S]}]}

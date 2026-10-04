@@ -2,7 +2,6 @@
 //! read-time freshness. No read can generate, dispatch, or transmit anything.
 use crate::operations::{now_micros, parse_identity};
 use crate::{Error, LocalOperations};
-use serde_json::Value;
 use volicord_context::{
     CanonicalReadBasis, CheckpointId, ContextItemId, DecisionId, ProjectId, SourceId,
 };
@@ -116,35 +115,23 @@ impl LocalOperations {
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
-        let mut evidence = plan.evidence;
-        for e in &mut evidence {
-            e.content = Value::Null;
-        }
-        let mut source_status = plan.source_status;
-        for status in &mut source_status {
-            if let Some(object) = status.as_object_mut() {
-                object.remove("observation");
-            }
-        }
-        let retained = RetainedExplanation {
-            realization,
-            project_id: project.to_string(),
-            subject,
-            question: plan.question,
-            evidence,
-            source_status,
-            conflicts: plan.conflicts,
-            generated_at_unix_micros: now_micros()?.as_unix_micros(),
-            generator_identity_status: "self_reported_not_independently_verified".into(),
-        };
+        let retained = retain_explanation(&plan, realization, now_micros()?.as_unix_micros());
+        // Revalidate actual serialized bytes before opening or writing the store.
+        let content = encode_retained_explanation(&retained).map_err(Error::new)?;
         let mut privacy = PrivacyStore::open(self.layout().privacy_store())
             .map_err(|e| Error::with_source("cannot open explanation storage", e))?;
         privacy.record_managed_derived(ManagedDerivedDraft { project_id:project, kind:ManagedDerivedKind::CachedSummary,
             provider:None, model:retained.realization.generator.model.clone(), purpose:purpose(subject, language), analysis_snapshot:None,
-            included_sources, canonical_links, content:serde_json::to_string(&retained).map_err(|e|Error::with_source("cannot encode explanation",e))?,
+            included_sources, canonical_links, content,
             uncertainty:None, retained_until:None,
             retention_basis:"Explicit active-host explanation recording; local disposable Derived content; no provider invocation".into() })
-            .map_err(|e|Error::with_source("cannot retain explanation",e))?;
+            .map_err(|e| {
+                if e.kind() == volicord_privacy::ErrorKind::InvalidInput {
+                    Error::new(format!("cannot retain explanation: {e}"))
+                } else {
+                    Error::with_source("explanation storage unavailable; inspect local storage and retry recording; no success receipt was issued",e)
+                }
+            })?;
         Ok(retained)
     }
     pub fn delete_explanations(
@@ -289,14 +276,18 @@ fn decode_explanation(
         ExplanationState::Unavailable,
         "explanation content withheld or unavailable".into(),
     ))?;
-    if content.len() > EXPLANATION_PLAN_BYTE_LIMIT {
+    if content.len() > EXPLANATION_RETAINED_BYTE_LIMIT {
         return Err((
             ExplanationState::Corrupt,
-            "stored explanation exceeds budget".into(),
+            format!("stored explanation envelope is {} bytes; limit {EXPLANATION_RETAINED_BYTE_LIMIT}; explicitly delete and regenerate from current preparation",content.len()),
         ));
     }
-    let envelope: Value =
-        serde_json::from_str(content).map_err(|e| (ExplanationState::Corrupt, e.to_string()))?;
+    let envelope: serde_json::Value = serde_json::from_str(content).map_err(|_| {
+        (
+            ExplanationState::Corrupt,
+            "stored explanation JSON is invalid; explicitly delete and regenerate".into(),
+        )
+    })?;
     if envelope["realization"]["format_kind"] != EXPLANATION_KIND
         || envelope["realization"]["format_version"] != EXPLANATION_VERSION
     {
@@ -305,26 +296,87 @@ fn decode_explanation(
             "unsupported explanation format; explicitly delete and regenerate".into(),
         ));
     }
-    serde_json::from_value(envelope).map_err(|e| (ExplanationState::Corrupt, e.to_string()))
+    serde_json::from_value(envelope).map_err(|_| {
+        (
+            ExplanationState::Corrupt,
+            "stored explanation schema is invalid; explicitly delete and regenerate".into(),
+        )
+    })
 }
 
 fn retained_matches(plan: &ExplanationPlan, retained: &RetainedExplanation) -> bool {
-    let mut evidence = plan.evidence.clone();
-    for e in &mut evidence {
-        e.content = Value::Null;
-    }
-    let mut status = plan.source_status.clone();
-    for s in &mut status {
-        if let Some(o) = s.as_object_mut() {
-            o.remove("observation");
-        }
-    }
-    retained.project_id == plan.project_id
-        && retained.subject == plan.subject
-        && retained.question == plan.question
-        && retained.evidence == evidence
-        && retained.source_status == status
-        && retained.conflicts == plan.conflicts
-        && retained.generator_identity_status == "self_reported_not_independently_verified"
+    *retained
+        == retain_explanation(
+            plan,
+            retained.realization.clone(),
+            retained.generated_at_unix_micros,
+        )
         && validate_explanation(plan, &retained.realization).is_ok()
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+    #[test]
+    fn retained_decoder_uses_the_content_bound_including_formatting() -> Result<(), String> {
+        let retained = RetainedExplanation {
+            realization: ExplanationRealization {
+                format_kind: EXPLANATION_KIND.into(),
+                format_version: EXPLANATION_VERSION,
+                plan_fingerprint: "sha256:".to_owned() + &"a".repeat(64),
+                language: "ko".into(),
+                generator: ExplanationGenerator {
+                    host: "authored-control".into(),
+                    session: "test".into(),
+                    agent: None,
+                    model: None,
+                },
+                paragraphs: Vec::new(),
+            },
+            project_id: "01".repeat(16),
+            subject: ExplanationSubject::Work(ContextItemId::from_bytes([1; 16])),
+            question: "work_outcome".into(),
+            evidence: Vec::new(),
+            source_status: Vec::new(),
+            conflicts: Vec::new(),
+            generated_at_unix_micros: i64::MAX,
+            generator_identity_status: "self_reported_not_independently_verified".into(),
+        };
+        for target in [147455, 147456, 147457] {
+            let mut content = encode_retained_explanation(&retained)?;
+            content.push_str(&" ".repeat(target - content.len()));
+            let result = decode_explanation(Some(&content));
+            if target <= 147456 {
+                assert_eq!(result.map_err(|(_, e)| e)?, retained);
+            } else {
+                let (state, error) = result.err().ok_or("oversize accepted")?;
+                assert_eq!(state, ExplanationState::Corrupt);
+                assert!(error.contains("147457") && error.contains("147456"));
+            }
+        }
+        let mut malformed = serde_json::to_value(&retained).map_err(|e| e.to_string())?;
+        malformed["subject"]["kind"] = serde_json::json!("private-source-sentinel");
+        let error = decode_explanation(Some(&malformed.to_string()))
+            .err()
+            .ok_or("invalid schema accepted")?;
+        assert_eq!(error.0, ExplanationState::Corrupt);
+        assert!(!error.1.contains("private-source-sentinel"));
+        // The writer measures complete compact JSON, including UTF-8 and escaping.
+        for target in [147455, 147456, 147457] {
+            let mut e = retained.clone();
+            e.realization.generator.session = "한\"\\\n".repeat(20);
+            let base = serde_json::to_vec(&e).map_err(|e| e.to_string())?.len();
+            e.realization
+                .generator
+                .session
+                .push_str(&"x".repeat(target - base));
+            let result = encode_retained_explanation(&e);
+            if target <= 147456 {
+                assert_eq!(result?.len(), target);
+            } else {
+                assert!(result.is_err());
+            }
+        }
+        Ok(())
+    }
 }

@@ -138,6 +138,26 @@ the existing canonical forgetting barrier withholds affected content immediately
 Host execution/access/authorization failure is separate from missing canonical facts;
 the product cannot invent that authority or certify submitted prose truth.
 
+Size rejection identifies its dimension: raw input file, complete compact preparation,
+compact realization, retained envelope or managed content body / short metadata field.
+Diagnostics include measured and allowed bytes (bounded file reads may report an
+observed lower bound), a valid recovery action and no submitted Source/prose/credential
+content. Explanation CLI Product rejection exits 1 with no success receipt and no
+misleading usage hint; parser/command-shape errors remain usage exit 2. Compact
+response excess can be retried with reduced prose/generator metadata and intact
+required answers/keys. File excess can first remove formatting whitespace. Retained
+metadata insufficiency must be identified before host generation; it requires Product
+support for the evidence shape rather than endless answer shortening.
+
+Preparation reserves the whole supported response against actual retained metadata
+and worst-case recording-time serialization. Record repeats admission under the
+mutation lock and validates actual retained bytes before storage. Rejected recording
+inserts no partial record, mutates no canonical state and leaves prior valid explanation
+bytes usable on their unchanged basis. Valid subsequent recording remains supported;
+size fit cannot satisfy a pending campaign observation or stale publication binding.
+Malformed retained content reports a fixed repair diagnostic without echoing JSON
+values. Oversized/corrupt content is withheld and explicitly deleted/regenerated.
+
 New document/snapshot publication rechecks the canonical equality basis and the
 latest retained explanation under the existing mutation lock. Changed, deleted,
 unsupported or unavailable dependencies reject publication without a partial file.

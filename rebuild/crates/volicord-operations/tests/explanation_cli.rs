@@ -168,7 +168,9 @@ fn actual_work_and_decision_prepare_record_delete_readback(
 
 #[test]
 fn campaign_explanations_preserve_corrected_history() -> Result<(), Box<dyn std::error::Error>> {
-    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let f = reading_fixture::fixture_scenario(reading_fixture::explanation_size_scenario(
+        "metadata_heavy",
+    )?)?;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .ok_or("crates")?

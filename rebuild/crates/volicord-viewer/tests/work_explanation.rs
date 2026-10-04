@@ -814,3 +814,125 @@ fn recorded_action_preserves_full_text_and_distinguishes_missing_information(
     }
     Ok(())
 }
+
+#[test]
+fn large_retained_envelopes_reach_viewer_documents_and_offline_snapshot(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for case in ["metadata_heavy", "near_read_limit"] {
+        let f =
+            reading_fixture::fixture_scenario(reading_fixture::explanation_size_scenario(case)?)?;
+        let work = f.goals["relay"];
+        let canonical = f.operations.canonical_basis(f.project)?;
+        for language in ["en", "ko"] {
+            let subject = ExplanationSubject::Work(work);
+            let plan = f
+                .operations
+                .prepare_explanation(f.project, subject, language)?;
+            let mut response = fake(&plan);
+            response.language = language.into();
+            let size = serde_json::to_vec(&response)?.len();
+            response.paragraphs[0]
+                .text
+                .push_str(&"x".repeat(16384 - size));
+            let expected = response.paragraphs[0].text.clone();
+            let retained = f
+                .operations
+                .record_explanation(f.project, subject, language, response)?;
+            assert!(serde_json::to_vec(&retained)?.len() > 16384);
+            let decision = f.decisions["project"];
+            let dp = f.operations.prepare_explanation(
+                f.project,
+                ExplanationSubject::Decision(decision),
+                language,
+            )?;
+            let mut dr = fake(&dp);
+            dr.language = language.into();
+            dr.paragraphs = [
+                (ExplanationQuestion::UserRationale, "user_rationale"),
+                (ExplanationQuestion::Recommendation, "recommendation"),
+                (ExplanationQuestion::Consequences, "consequences"),
+                (ExplanationQuestion::Applicability, "applicability"),
+            ]
+            .into_iter()
+            .map(|(question, key)| ExplanationParagraph {
+                question,
+                text: format!("Authored Decision consumer control {question:?}"),
+                evidence_keys: vec![key.into()],
+            })
+            .collect();
+            f.operations.record_explanation(
+                f.project,
+                ExplanationSubject::Decision(decision),
+                language,
+                dr,
+            )?;
+            let restarted = LocalOperations::new(f.operations.layout().clone());
+            let projection =
+                restarted.project_projection_selected(f.project, WorkSelector::ExactWork(work))?;
+            let answers = work_answers(
+                projection.selected_work.as_ref().ok_or("selected")?,
+                language,
+                FixedLocale::English,
+            );
+            assert_eq!(answers.explanation_state, ExplanationState::Current);
+            assert_eq!(answers.prose[0].text, expected);
+            assert!(answers.recorded_next_action().is_some());
+            let page = get(&f, &format!("/?view=work&work={work}&language={language}"));
+            assert!(page.contains(&expected));
+            let decision_page = get(
+                &f,
+                &format!("/?view=decisions&decision={decision}&language={language}"),
+            );
+            assert!(decision_page.contains("Authored Decision consumer control"));
+            let request = DocumentRequest {
+                requested_language: language.into(),
+                fixed_locale: if language == "ko" {
+                    FixedLocale::Korean
+                } else {
+                    FixedLocale::English
+                },
+                generated_at: TimestampMicros::from_unix_micros(123),
+                generator: GeneratorIdentity {
+                    generator: "structural-size-control".into(),
+                    agent: None,
+                    model: None,
+                },
+                requested_destinations: Vec::new(),
+            };
+            let documents = restarted.documents_from_projection(&projection, &request)?;
+            for document in [
+                &documents.project_architecture_guide,
+                &documents.decision_report,
+                &documents.implementation_plan,
+                &documents.handoff_resume,
+            ] {
+                assert!(document.markdown.content.contains(&expected));
+                assert!(document.html.content.contains(&expected));
+                assert!(document
+                    .metadata
+                    .explanations
+                    .iter()
+                    .any(|e| e.subject == subject && e.language == language));
+            }
+            let destination = f._temporary.path().join(format!("{case}-{language}.html"));
+            let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+            let vr = volicord_viewer::ViewerRequest {
+                project_id: f.project,
+                locale: if language == "ko" {
+                    ViewerLocale::Korean
+                } else {
+                    ViewerLocale::English
+                },
+                view: ViewerView::Overview,
+                requested_language: language.into(),
+                guarded_request: None,
+            };
+            viewer.export_snapshot_at(&vr, TimestampMicros::from_unix_micros(123), &destination)?;
+            let snapshot = std::fs::read_to_string(&destination)?;
+            assert!(snapshot.contains(&expected));
+            assert!(snapshot.contains("Authored Decision consumer control"));
+        }
+        assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+    }
+    Ok(())
+}

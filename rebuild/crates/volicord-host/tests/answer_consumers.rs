@@ -496,3 +496,91 @@ fn naturalistic_consumer_checks_product_recalls_across_correction(
     );
     Ok(())
 }
+
+#[test]
+fn metadata_heavy_explanations_remain_bounded_without_replacing_recorded_action(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = reading_fixture::explanation_size_scenario("metadata_heavy")?;
+    let works = input["works"].as_array_mut().ok_or("works")?;
+    let n = works
+        .iter()
+        .position(|w| w["key"] == "relay")
+        .ok_or("relay")?;
+    let last = works.remove(n);
+    works.push(last);
+    let f = reading_fixture::fixture_scenario(input)?;
+    let work = f.goals["relay"];
+    let subject = ExplanationSubject::Work(work);
+    let plan = f.operations.prepare_explanation(f.project, subject, "ko")?;
+    let response = ExplanationRealization {
+        format_kind: EXPLANATION_KIND.into(),
+        format_version: EXPLANATION_VERSION,
+        plan_fingerprint: plan.fingerprint.clone(),
+        language: "ko".into(),
+        generator: ExplanationGenerator {
+            host: "structural-host-control".into(),
+            session: "disposable".into(),
+            agent: None,
+            model: None,
+        },
+        paragraphs: [
+            (ExplanationQuestion::Purpose, "goal"),
+            (ExplanationQuestion::ReportedChange, "result"),
+            (ExplanationQuestion::ExpectedEffect, "result"),
+            (ExplanationQuestion::Verification, "verification"),
+            (ExplanationQuestion::NextStep, "next_step"),
+        ]
+        .into_iter()
+        .map(|(question, key)| ExplanationParagraph {
+            question,
+            text: format!("구조 전송 검증: {question:?}"),
+            evidence_keys: vec![key.into()],
+        })
+        .collect(),
+    };
+    let retained = f
+        .operations
+        .record_explanation(f.project, subject, "ko", response)?;
+    assert!(serde_json::to_vec(&retained)?.len() > 16384);
+    let expected = "Run a browser check with slow responses and confirm loading feedback.";
+    let canonical = f.operations.canonical_basis(f.project)?;
+    for retained in [true, false] {
+        if !retained {
+            f.operations.delete_explanations(f.project, subject)?;
+        }
+        let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+        for tool in ["recall", "repository_understanding"] {
+            let response=host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,
+                "arguments":{"project_id":f.project.to_string(),"requested_language":"ko","fixed_locale":"ko"}}})).ok_or("MCP")?;
+            assert_eq!(response["result"]["isError"], false, "{response}");
+            let data = &response["result"]["structuredContent"];
+            if tool == "recall" {
+                assert!(
+                    serde_json::to_vec(&response)?.len()
+                        <= volicord_operations::HOST_READ_RESULT_BYTE_BUDGET
+                );
+                assert!(
+                    serde_json::to_vec(data)?.len()
+                        <= volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET
+                );
+                assert_eq!(data["next_step"], expected);
+                assert!(data.to_string().contains("serialized_byte_budget"));
+            } else if retained {
+                // repository_understanding is a full local read, not the bounded
+                // Recall wire contract; no fictitious shared byte ceiling.
+                assert_eq!(
+                    data["selected_work"]["answers"]["explanation_state"],
+                    "current"
+                );
+                assert_eq!(
+                    data["selected_work"]["answers"]["provenance"]["fingerprint"],
+                    plan.fingerprint
+                );
+            }
+            assert_eq!(data["selected_work"]["work_item_id"], work.to_string());
+            assert!(data.to_string().contains("RecordedNextStep"));
+        }
+    }
+    assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}

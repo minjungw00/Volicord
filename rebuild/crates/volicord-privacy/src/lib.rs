@@ -24,5 +24,6 @@ pub use model::{
     TransmissionOutcome,
 };
 pub use store::{
-    BackgroundSemanticProvider, PrivacyStore, PRIVACY_SCHEMA_KIND, PRIVACY_SCHEMA_VERSION,
+    BackgroundSemanticProvider, PrivacyStore, MANAGED_DERIVED_CONTENT_BYTE_LIMIT,
+    PRIVACY_SCHEMA_KIND, PRIVACY_SCHEMA_VERSION,
 };

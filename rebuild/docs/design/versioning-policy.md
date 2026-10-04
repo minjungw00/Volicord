@@ -300,6 +300,14 @@ The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Sn
 formats do not change; generated-document metadata is current version 8. A preparation fingerprint binds evidence
 and language; it is neither a format version nor an authenticity certificate.
 
+Explanation size alignment does not change the realization or retained JSON shape,
+so their current version remains 1 and the enclosing Privacy SQL schema remains 1.
+Ephemeral current preparation now includes a mandatory `retention_budget`, hashed
+with the plan's evidence/instructions/language; callers must prepare afresh. No
+old-plan conversion, alternate retained decoder or version-dependent limit exists.
+Historical campaign bytes must not be rewritten to supply current preparation fields;
+fresh validation uses fresh disposable inputs, distinct from original observations.
+
 ## 14. Non-goals
 
 이 문서는 version number, database/schema field, migration engine, serializer, checksum,

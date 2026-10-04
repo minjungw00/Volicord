@@ -23,6 +23,8 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
         'evidence': evidence, 'source_status': [{'identity': source, 'availability': 'Available',
             'freshness': 'Current', 'snapshot': 'a' * 40, 'observation': 'fixture'}],
         'conflicts': [], 'instructions': 'fixture only', 'fingerprint': 'sha256:' + 'a' * 64}
+    plan['retention_budget'] = {'response_byte_limit': 16384, 'retained_byte_limit': 147456,
+        'metadata_byte_reserve': e.retention_metadata_bytes(plan), 'response_byte_capacity': 16384}
     response = {'format_kind': 'volicord_explanation', 'format_version': 1,
         'plan_fingerprint': plan['fingerprint'], 'language': language,
         'generator': {'host': 'authored fixture', 'session': 'fixture-only', 'agent': None, 'model': None},
@@ -80,6 +82,7 @@ def publish_fixture(root, *, kind='work', language='en', before_state='unavailab
         for value in (preparation['plan'], record['explanation'], after['selected_work']['answers']['provenance'],
                 after['decisions'][0]['answers']['provenance']):
             value['subject']['identity'] = list(bytes.fromhex(subject_id))
+    preparation['plan']['retention_budget']['metadata_byte_reserve'] = e.retention_metadata_bytes(preparation['plan'])
     if candidate:
         preparation['candidate_head'] = candidate['candidate_head']
         preparation['candidate_executable_sha256'] = candidate['candidate_artifacts']['volicord']['sha256']
@@ -111,6 +114,26 @@ def publish_fixture(root, *, kind='work', language='en', before_state='unavailab
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_compact_response_budget_counts_unicode_escaping_and_generator_metadata(self):
+        for kind in ('work', 'decision'):
+            for language in ('en', 'ko'):
+                p, original, _, _ = lifecycle(kind, language)
+                for target in (16383, 16384, 16385):
+                    response = copy.deepcopy(original)
+                    response['generator']['model'] = '모델 "model"\\' * 100
+                    response['paragraphs'][0]['text'] += '한글 "quoted"\\\n'
+                    response['paragraphs'][0]['text'] += 'x' * (target - len(e.compact_bytes(response)))
+                    self.assertEqual(len(e.compact_bytes(response)), target)
+                    self.assertGreater(len(json.dumps(response, ensure_ascii=False, indent=2).encode()), 16384)
+                    if target <= 16384:
+                        e.validate_response(p['plan'], response)
+                    else:
+                        with self.assertRaisesRegex(c.CampaignError, 'compact realization JSON is 16385 bytes; limit 16384'):
+                            e.validate_response(p['plan'], response)
+                bad = copy.deepcopy(p['plan']); bad['retention_budget']['metadata_byte_reserve'] += 1
+                with self.assertRaisesRegex(c.CampaignError, 'budget mismatch'):
+                    e.validate_plan(bad, p['project_id'], p['subject'], language)
+
     def test_completed_history_survives_changed_current_basis(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -21,8 +21,29 @@ import codex_events
 import document_realization
 
 SCHEMA_VERSION = 2
+RESPONSE_BYTE_LIMIT = 16384
+PLAN_BYTE_LIMIT = 131072
+RETAINED_BYTE_LIMIT = 147456
+INPUT_BYTE_LIMIT = 65536
 WORK_QUESTIONS = {'purpose', 'reported_change', 'expected_effect', 'verification', 'next_step'}
 DECISION_QUESTIONS = {'user_rationale', 'recommendation', 'consequences', 'applicability'}
+
+
+def compact_bytes(value):
+    """Product compact JSON byte measurement; formatting is a separate boundary."""
+    return json.dumps(value, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode('utf-8')
+
+
+def retention_metadata_bytes(plan):
+    evidence = copy.deepcopy(plan['evidence'])
+    for item in evidence:
+        item['content'] = None
+    retained = {'realization': None, 'project_id': plan['project_id'], 'subject': plan['subject'],
+        'question': plan['question'], 'evidence': evidence,
+        'source_status': [{k: v for k, v in status.items() if k != 'observation'} for status in plan['source_status']],
+        'conflicts': plan['conflicts'], 'generated_at_unix_micros': -(1 << 63),
+        'generator_identity_status': 'self_reported_not_independently_verified'}
+    return len(compact_bytes(retained)) - len(b'null')
 
 
 def api():
@@ -113,6 +134,12 @@ def validate_plan(plan, project, subject, language):
             or api().re.fullmatch(r'sha256:[0-9a-f]{64}', plan.get('fingerprint', '')) is None
             or not isinstance(plan.get('evidence'), list) or not plan['evidence']):
         raise require('Product explanation plan subject/language/basis mismatch')
+    reserve = retention_metadata_bytes(plan)
+    expected_budget = {'response_byte_limit': RESPONSE_BYTE_LIMIT, 'retained_byte_limit': RETAINED_BYTE_LIMIT,
+        'metadata_byte_reserve': reserve, 'response_byte_capacity': RESPONSE_BYTE_LIMIT}
+    if (plan.get('retention_budget') != expected_budget or reserve + RESPONSE_BYTE_LIMIT > RETAINED_BYTE_LIMIT
+            or len(compact_bytes(plan)) > PLAN_BYTE_LIMIT):
+        raise require('Product explanation plan retention/serialization budget mismatch; prepare current evidence before generation')
     evidence = plan['evidence']
     if (len({e.get('key') for e in evidence if isinstance(e, dict)}) != len(evidence)
             or any(not isinstance(e, dict) or not isinstance(e.get('sources'), list)
@@ -123,6 +150,9 @@ def validate_plan(plan, project, subject, language):
 
 
 def validate_response(plan, response):
+    size = len(compact_bytes(response))
+    if size > RESPONSE_BYTE_LIMIT:
+        raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; limit {RESPONSE_BYTE_LIMIT}; reduce prose or generator metadata while preserving required answers/grounding, then retry')
     if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
             'plan_fingerprint', 'language', 'generator', 'paragraphs'}
             or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 1
@@ -164,6 +194,8 @@ def validate_lifecycle(preparation, response, receipt, after):
             or retained.get('generator_identity_status') != 'self_reported_not_independently_verified'
             or type(retained.get('generated_at_unix_micros')) is not int):
         raise api().CampaignError('explanation record receipt subject/revision/Source/provenance mismatch')
+    if len(compact_bytes(retained)) > RETAINED_BYTE_LIMIT:
+        raise api().CampaignError('explanation retained envelope exceeds Product bound; no current readback proof')
     if after.get('project_id') != plan['project_id']:
         raise api().CampaignError('explanation readback Project mismatch')
     observation = subject_answers(after, preparation['subject'])
@@ -383,9 +415,10 @@ def record(root, identity, input_path):
         raise c.CampaignError('explanation receipt is immutable; prepare a new observation to regenerate')
     if input_path.is_relative_to(root) and c.relative(root, input_path) in c.load_inventory(root)['artifacts']:
         raise c.CampaignError('inventory-bound response is not mutable host input')
-    data = input_path.read_bytes()
-    if len(data) > 16384:
-        raise c.CampaignError('explanation host response exceeds Product bound')
+    with input_path.open('rb') as stream:
+        data = stream.read(INPUT_BYTE_LIMIT + 1)
+    if len(data) > INPUT_BYTE_LIMIT:
+        raise c.CampaignError(f'explanation input file exceeds {INPUT_BYTE_LIMIT} bytes (read at least {len(data)}); remove formatting whitespace or reduce response, preserve grounding, then retry')
     response = codex_events.strict_json(data.decode())
     validate_response(preparation['plan'], response)
     journey = campaign['journeys'][preparation['journey_id']]

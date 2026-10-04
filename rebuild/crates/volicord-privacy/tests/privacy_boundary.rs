@@ -871,3 +871,73 @@ fn local_and_provider_deletion_truth_are_separate_and_raw_bodies_are_not_portabl
     );
     Ok(())
 }
+
+#[test]
+fn managed_content_has_its_own_byte_bound_and_short_fields_stay_bounded(
+) -> Result<(), Box<dyn Error>> {
+    use volicord_privacy::MANAGED_DERIVED_CONTENT_BYTE_LIMIT;
+    let f = canonical_fixture()?;
+    let root = tempdir()?;
+    let mut privacy = PrivacyStore::open(root.path().join("bounded.sqlite3"))?;
+    let draft = |bytes: usize| ManagedDerivedDraft {
+        project_id: f.project.id,
+        kind: ManagedDerivedKind::CachedSummary,
+        provider: None,
+        model: None,
+        purpose: "bounded-content control".into(),
+        analysis_snapshot: None,
+        included_sources: vec![f.source_refs[0].clone()],
+        canonical_links: vec![ManagedCanonicalLink::Source(f.source_ids[0])],
+        content: "한".repeat(bytes / 3) + &"x".repeat(bytes % 3),
+        uncertainty: None,
+        retained_until: None,
+        retention_basis: "authored control".into(),
+    };
+    assert_eq!(MANAGED_DERIVED_CONTENT_BYTE_LIMIT, 147456);
+    for bytes in [147455, 147456] {
+        let record = privacy.record_managed_derived(draft(bytes))?;
+        assert_eq!(privacy.get_derived(f.project.id, record.id)?, record);
+    }
+    let before = privacy.inspect_project(f.project.id)?;
+    let error = privacy
+        .record_managed_derived(draft(147457))
+        .err()
+        .ok_or("oversize accepted")?
+        .to_string();
+    assert!(
+        error.contains("content body")
+            && error.contains("147457")
+            && error.contains("147456")
+            && error.contains("retry"),
+        "{error}"
+    );
+    assert!(!error.contains('한'));
+    assert_eq!(before, privacy.inspect_project(f.project.id)?);
+    for field in ["purpose", "retention_basis"] {
+        for size in [16383, 16384, 16385] {
+            let mut d = draft(20000);
+            let value = "가".repeat(size / 3) + &"x".repeat(size % 3);
+            if field == "purpose" {
+                d.purpose = value;
+            } else {
+                d.retention_basis = value;
+            }
+            let before = privacy.inspect_project(f.project.id)?;
+            let result = privacy.record_managed_derived(d);
+            if size <= 16384 {
+                result?;
+            } else {
+                let error = result
+                    .err()
+                    .ok_or("metadata oversize accepted")?
+                    .to_string();
+                assert!(
+                    error.contains("16385") && error.contains("16384") && !error.contains('가'),
+                    "{error}"
+                );
+                assert_eq!(before, privacy.inspect_project(f.project.id)?);
+            }
+        }
+    }
+    Ok(())
+}

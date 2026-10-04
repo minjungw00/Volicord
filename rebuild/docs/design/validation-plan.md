@@ -710,6 +710,19 @@ prerequisite; DOM text success alone cannot establish readable Korean glyphs.
 Reproduction commands and the selected mechanism are maintained in the Viewer README.
 This is focused supporting proof, not an official V11, human assessment or gate.
 
+Focused explanation-size support uses authored `viewer-reading/explanation-size-cases.json`
+and `volicord-operations --test explanation_budgets`: actual binary prepare/record/status/
+decisions for Work/Decision in en/ko, metadata-heavy 3,181-byte realizations and full
+16 KiB responses whose retained envelopes exceed the former 128 KiB decoder limit.
+Independent controls cover inclusive limits and one-byte excess, formatted input,
+UTF-8/escaping, variable generator metadata, impossible metadata before generation,
+stale plans, atomic rejection and a valid retry. Privacy short fields and content
+have separate boundary/inspection tests. Viewer `work_explanation` exercises shared
+answers, all documents and actual offline publication; `explanation_cli` exercises
+real Product-backed Dogfood collection, correction and immutable historical/final
+selection with the metadata-heavy fixture. These are structural support, not fresh
+model generation, authoritative gate, measured Dogfood, human review or Phase 9.
+
 ### Browser supporting observations under V11
 
 The bounded `end-to-end/multi-repository/viewer_browser.py` runner and coupled

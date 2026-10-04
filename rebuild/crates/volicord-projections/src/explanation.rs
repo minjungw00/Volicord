@@ -10,6 +10,22 @@ pub const EXPLANATION_KIND: &str = "volicord_explanation";
 pub const EXPLANATION_VERSION: u32 = 1;
 pub const EXPLANATION_BYTE_LIMIT: usize = 16_384;
 pub const EXPLANATION_PLAN_BYTE_LIMIT: usize = 131_072;
+/// Compact retained JSON: the supported plan plus the full supported response.
+pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize =
+    EXPLANATION_PLAN_BYTE_LIMIT + EXPLANATION_BYTE_LIMIT;
+/// File transport allows formatting; compact realization admission is independent.
+pub const EXPLANATION_INPUT_BYTE_LIMIT: usize = 65_536;
+const GENERATOR_IDENTITY_STATUS: &str = "self_reported_not_independently_verified";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExplanationRetentionBudget {
+    pub response_byte_limit: usize,
+    pub retained_byte_limit: usize,
+    /// Exact compact envelope overhead with the longest possible i64 timestamp.
+    pub metadata_byte_reserve: usize,
+    pub response_byte_capacity: usize,
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "identity", rename_all = "snake_case")]
@@ -63,6 +79,7 @@ pub struct ExplanationPlan {
     pub source_status: Vec<Value>,
     pub conflicts: Vec<Value>,
     pub instructions: String,
+    pub retention_budget: ExplanationRetentionBudget,
     pub fingerprint: String,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -334,10 +351,15 @@ fn finish_plan(
     };
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:format!("{questions} Interpret full source prose in the requested language, not audit clutter. Cite exact evidence keys. Keep checksums when they are subject matter. State missing information, contradictions and uncertainty. Generic implementation-changed prose supports no specific feature. Reports are not independently verified success. Separate work, verification, review and acceptance; earlier checks do not cover later changes. Do not invent user rationale or runtime behavior. Return ExplanationRealization JSON, format_kind volicord_explanation, format_version 1, exact fingerprint/language, self-reported generator host/session/agent/model (null when unknown), and paragraphs question/text/evidence_keys."), fingerprint:String::new() };
+        instructions:format!("{questions} Interpret full source prose in the requested language, not audit clutter. Cite exact evidence keys. Keep checksums when they are subject matter. State missing information, contradictions and uncertainty. Generic implementation-changed prose supports no specific feature. Reports are not independently verified success. Separate work, verification, review and acceptance; earlier checks do not cover later changes. Do not invent user rationale or runtime behavior. Return ExplanationRealization JSON, format_kind volicord_explanation, format_version 1, exact fingerprint/language, self-reported generator host/session/agent/model (null when unknown), and paragraphs question/text/evidence_keys."), retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
+            retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
+    plan.retention_budget = explanation_retention_budget(&plan)?;
+    // Admission includes the final fingerprint, even though the hash preimage
+    // itself has an empty fingerprint. A plan exactly at the limit stays valid.
     let bytes = serde_json::to_vec(&plan).map_err(|e| e.to_string())?;
-    if bytes.len() > EXPLANATION_PLAN_BYTE_LIMIT {
-        return Err("explanation preparation exceeds evidence budget; no source text was silently truncated".into());
+    let size = bytes.len() + "sha256:".len() + 64;
+    if size > EXPLANATION_PLAN_BYTE_LIMIT {
+        return Err(format!("explanation preparation JSON is {size} bytes; limit {EXPLANATION_PLAN_BYTE_LIMIT}; evidence cannot be represented without truncation; seek Product support for this evidence shape before generation"));
     }
     plan.fingerprint = format!("sha256:{:x}", Sha256::digest(bytes));
     Ok(plan)
@@ -348,9 +370,7 @@ pub fn validate_explanation(
     response: &ExplanationRealization,
 ) -> Result<(), String> {
     if response.format_kind != EXPLANATION_KIND || response.format_version != EXPLANATION_VERSION {
-        return Err(
-            "unsupported Work explanation format; regenerate from current preparation".into(),
-        );
+        return Err("unsupported explanation format; regenerate from current preparation".into());
     }
     if response.plan_fingerprint != plan.fingerprint || response.language != plan.requested_language
     {
@@ -359,12 +379,17 @@ pub fn validate_explanation(
     if response.generator.host.trim().is_empty() || response.generator.session.trim().is_empty() {
         return Err("active host and session provenance are required".into());
     }
-    if serde_json::to_vec(response)
+    let response_bytes = serde_json::to_vec(response)
         .map_err(|e| e.to_string())?
-        .len()
-        > EXPLANATION_BYTE_LIMIT
-    {
-        return Err("Work explanation exceeds body budget".into());
+        .len();
+    if response_bytes > EXPLANATION_BYTE_LIMIT {
+        return Err(format!("explanation compact realization JSON is {response_bytes} bytes; limit {EXPLANATION_BYTE_LIMIT}; reduce response prose or generator metadata, preserve required answers and evidence keys, then retry recording"));
+    }
+    let budget = explanation_retention_budget(plan)?;
+    if plan.retention_budget != budget {
+        return Err(
+            "explanation retention budget does not match its evidence basis; prepare again".into(),
+        );
     }
     let required_questions: &[ExplanationQuestion] = match plan.subject {
         ExplanationSubject::Work(_) => &[
@@ -436,4 +461,79 @@ pub fn validate_explanation(
         }
     }
     Ok(())
+}
+
+/// One retained representation for preparation budgeting, recording and freshness.
+/// Original evidence bodies and Source observations stay canonical; all retained
+/// grounding fields remain intact.
+pub fn retain_explanation(
+    plan: &ExplanationPlan,
+    realization: ExplanationRealization,
+    generated_at_unix_micros: i64,
+) -> RetainedExplanation {
+    let mut evidence = plan.evidence.clone();
+    for e in &mut evidence {
+        e.content = Value::Null;
+    }
+    let mut source_status = plan.source_status.clone();
+    for status in &mut source_status {
+        if let Some(object) = status.as_object_mut() {
+            object.remove("observation");
+        }
+    }
+    RetainedExplanation {
+        realization,
+        project_id: plan.project_id.clone(),
+        subject: plan.subject,
+        question: plan.question.clone(),
+        evidence,
+        source_status,
+        conflicts: plan.conflicts.clone(),
+        generated_at_unix_micros,
+        generator_identity_status: GENERATOR_IDENTITY_STATUS.into(),
+    }
+}
+
+fn explanation_retention_budget(
+    plan: &ExplanationPlan,
+) -> Result<ExplanationRetentionBudget, String> {
+    let placeholder = ExplanationRealization {
+        format_kind: String::new(),
+        format_version: EXPLANATION_VERSION,
+        plan_fingerprint: String::new(),
+        language: String::new(),
+        generator: ExplanationGenerator {
+            host: String::new(),
+            session: String::new(),
+            agent: None,
+            model: None,
+        },
+        paragraphs: Vec::new(),
+    };
+    let response_bytes = serde_json::to_vec(&placeholder)
+        .map_err(|e| e.to_string())?
+        .len();
+    let retained = retain_explanation(plan, placeholder, i64::MIN);
+    let metadata_byte_reserve = serde_json::to_vec(&retained)
+        .map_err(|e| e.to_string())?
+        .len()
+        - response_bytes;
+    let required = metadata_byte_reserve + EXPLANATION_BYTE_LIMIT;
+    if required > EXPLANATION_RETAINED_BYTE_LIMIT {
+        return Err(format!("explanation retained envelope needs {required} bytes ({metadata_byte_reserve} metadata plus {EXPLANATION_BYTE_LIMIT} supported response); limit {EXPLANATION_RETAINED_BYTE_LIMIT}; this evidence shape cannot support generation; seek Product support, do not drop grounding or repeatedly shorten the answer"));
+    }
+    Ok(ExplanationRetentionBudget {
+        response_byte_limit: EXPLANATION_BYTE_LIMIT,
+        retained_byte_limit: EXPLANATION_RETAINED_BYTE_LIMIT,
+        metadata_byte_reserve,
+        response_byte_capacity: EXPLANATION_BYTE_LIMIT,
+    })
+}
+
+pub fn encode_retained_explanation(retained: &RetainedExplanation) -> Result<String, String> {
+    let content = serde_json::to_string(retained).map_err(|e| e.to_string())?;
+    if content.len() > EXPLANATION_RETAINED_BYTE_LIMIT {
+        return Err(format!("explanation retained envelope is {} bytes; limit {EXPLANATION_RETAINED_BYTE_LIMIT}; no recording was published; prepare again or seek Product support for this evidence shape",content.len()));
+    }
+    Ok(content)
 }

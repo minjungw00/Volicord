@@ -226,6 +226,23 @@ explicit `evidence`. Four document kinds use the same semantics and disclosure r
 Publication rechecks current canonical and explanation basis; render again after
 correction/forget/deletion. Already exported offline copies cannot be retracted.
 
+Explanation preparation is limited to 131,072 compact JSON bytes, including the
+fingerprint and mandatory `retention_budget`. It reserves required retained metadata
+(including the longest recording timestamp) plus the full supported 16,384-byte
+compact realization. The complete retained body and its shared decoder admit at most
+147,456 bytes. JSON escaping and generator metadata count; UTF-8 characters are not
+single bytes. A CLI/Dogfood response file may contain 65,536 raw bytes so formatting
+need not reduce semantic capacity. Purpose and retention basis remain short fields
+bounded at 16,384 bytes. See the [owning byte contract](../../docs/design/projections-and-documents.md#explanation-byte-contract).
+Oversized responses exit 1 with the failing dimension, sizes and retry action.
+Unrepresentable metadata is rejected at preparation before host generation; preserve
+grounding and seek Product support. Current plans must be prepared again after this
+contract change. Existing bounded MCP/Recall omissions remain explicit; full local
+status/decisions and Viewer disclosures provide the complete retained evidence.
+`work_explanation::large_retained_envelopes_reach_viewer_documents_and_offline_snapshot`
+checks authored metadata-heavy inputs, near-limit readback, all documents and actual
+snapshot publication, without claiming host generation or browser/human comprehension.
+
 ## Reproduce the narrow actual-host reading proof
 
 Use a fresh ignored output directory; the seed creates canonical inputs only and

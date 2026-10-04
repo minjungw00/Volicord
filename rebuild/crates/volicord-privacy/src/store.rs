@@ -22,6 +22,8 @@ pub const PRIVACY_SCHEMA_KIND: &str = "volicord-project-privacy";
 pub const PRIVACY_SCHEMA_VERSION: u32 = 1;
 
 const MAX_TEXT_BYTES: usize = 16_384;
+/// Bounded managed content bodies are distinct from short metadata fields.
+pub const MANAGED_DERIVED_CONTENT_BYTE_LIMIT: usize = 147_456;
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 const MAX_SOURCES: usize = 4_096;
 
@@ -1214,7 +1216,14 @@ fn validate_intent(
 fn validate_derived_draft(draft: &ManagedDerivedDraft) -> Result<(), Error> {
     validate_text("managed Derived purpose", &draft.purpose)?;
     validate_text("managed Derived retention basis", &draft.retention_basis)?;
-    validate_text("managed Derived content", &draft.content)?;
+    if draft.content.len() > MANAGED_DERIVED_CONTENT_BYTE_LIMIT {
+        return Err(Error::new(ErrorKind::InvalidInput,format!(
+            "managed Derived content body is {} UTF-8 bytes; limit {MANAGED_DERIVED_CONTENT_BYTE_LIMIT}; reduce content through its owning producer before retry; no record was inserted", draft.content.len())));
+    }
+    if draft.content.trim().is_empty() || draft.content.contains('\0') {
+        return Err(Error::new(ErrorKind::InvalidInput,
+            "managed Derived content body must be nonempty text without NUL; regenerate valid content before retry"));
+    }
     if draft
         .included_sources
         .iter()
@@ -1267,7 +1276,11 @@ fn validate_locator(locator: &str) -> Result<(), Error> {
 }
 
 fn validate_text(label: &str, value: &str) -> Result<(), Error> {
-    if value.trim().is_empty() || value.len() > MAX_TEXT_BYTES || value.contains('\0') {
+    if value.len() > MAX_TEXT_BYTES {
+        return Err(Error::new(ErrorKind::InvalidInput,format!(
+            "{label} is {} UTF-8 bytes; limit {MAX_TEXT_BYTES}; reduce this metadata field before retry",value.len())));
+    }
+    if value.trim().is_empty() || value.contains('\0') {
         return Err(Error::new(
             ErrorKind::InvalidInput,
             format!("{label} must be non-empty bounded text"),

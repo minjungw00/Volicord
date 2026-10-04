@@ -1,0 +1,24 @@
+{
+  "origin": "Self-authored structural byte controls; no generated prose quality or campaign evidence",
+  "metadata_heavy": {
+    "source_actor_unit": "보존 \"grounding\"\\actor ",
+    "source_actor_repetitions": 500,
+    "same_work_checkpoint_count": 16,
+    "response_bytes": 3181
+  },
+  "near_read_limit": {
+    "source_actor_unit": "a",
+    "source_actor_repetitions": 60000,
+    "same_work_checkpoint_count": 1,
+    "response_bytes": 16384
+  },
+  "invariants": {
+    "plan_bytes": 131072,
+    "compact_response_bytes": 16384,
+    "retained_content_bytes": 147456,
+    "raw_input_bytes": 65536,
+    "privacy_short_field_bytes": 16384,
+    "preserve": ["record identity", "revision", "Source status", "conflicts", "canonical links", "self-reported generator limitation"],
+    "reject_without": ["success receipt", "new retained record", "replacement of prior record", "canonical mutation"]
+  }
+}

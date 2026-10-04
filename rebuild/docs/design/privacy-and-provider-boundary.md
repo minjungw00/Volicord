@@ -114,6 +114,19 @@ the local SQLite content/WAL through existing managed cleanup. Failed sanitizati
 reports incomplete cleanup and supports explicit retry; local success certifies
 neither host memory nor provider-side deletion. No remote request was introduced.
 
+Managed Derived `content` is bounded separately from short text metadata: nonempty,
+NUL-free content bodies have an inclusive 147,456 UTF-8 byte limit. Purpose,
+retention basis and other existing short fields retain their 16,384-byte limits;
+ephemeral background Source body limits are independent. Managed content admission rejects oversized bodies with safe measured/allowed sizes.
+Inspection/get preserve accepted complete content without imposing the short-field
+limit or interpreting explanation JSON; its producer's decoder enforces the same
+147,456-byte read bound and withholds oversized/corrupt prose. Metadata inspection
+and deletion remain available for corrupt disposable content. An
+invalid draft is rejected before ID/time allocation or SQL insertion and cannot
+replace an earlier record. The explanation producer owns its preparation reserve
+and compact realization limits in [Projection](projections-and-documents.md#explanation-byte-contract).
+No second store, privacy schema change or new remote effect is introduced.
+
 ## 4. Background provider opt-in
 
 Background 또는 batch semantic-provider processing은 기본적으로 꺼져 있고 다음
