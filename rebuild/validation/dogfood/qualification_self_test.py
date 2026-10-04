@@ -73,6 +73,32 @@ def promote_lineage_qualification(value, evaluation):
 
 
 class DefinitionDependencyTests(unittest.TestCase):
+    def test_responsibility_matrix_and_scope_guidance_have_one_owner(self):
+        import campaign
+        root = campaign.ROOT / 'rebuild'
+        owner = (root / 'docs/design/validation-plan.md').read_text()
+        matrix = owner.split('### 3.2 Validation responsibility and evidence reuse\n', 1)[1].split('\n## ', 1)[0]
+        categories = {line.split('|')[1].strip() for line in matrix.splitlines()
+            if line.startswith('| ') and not line.startswith(('| Category', '| ---'))}
+        self.assertEqual(categories, {'Focused tests', 'Ordered Final', 'Formal rehearsal',
+            'Provider / V11 technical checks', 'Fixed browser / cost checks',
+            'Current-installation smoke', 'Target / task qualification',
+            'Optional Naturalistic telemetry', 'Raw integrity', 'Agent review',
+            'Human observation', 'Final qualification'})
+        for path in ('validation/README.md', 'docs/design/qualitative-review.md',
+            'validation/dogfood/campaign-readiness.md', 'validation/dogfood/resource-observation.md'):
+            text = (root / path).read_text()
+            with self.subTest(path=path):
+                self.assertIn('validation-plan.md#32-validation-responsibility-and-evidence-reuse', text)
+                self.assertNotIn('| Category | Claim and identity/environment scope |', text)
+                self.assertNotIn('resource schema 2', text)
+        parser = campaign.parser()
+        args = parser.parse_args(['prepare', '--campaign-root', '/unused', '--campaign-id', 'support',
+            '--candidate-head', 'a' * 40, '--repositories', '/unused.json', '--tasks', '/unused-tasks.json'])
+        self.assertFalse(args.observe_resources)
+        self.assertIsNone(args.gate_capsule)
+        self.assertIsNone(args.gate_archive)
+
     def test_definition_is_independent_of_v11_leaf_names_and_count(self):
         for leaves in (('new_v11_only_leaf',), ('renamed_technical_leaf', 'another_new_leaf')):
             with self.subTest(leaves=leaves), \
@@ -467,6 +493,11 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix='volicord-technical-boundary-')
         cls.addClassCleanup(cls.temp.cleanup)
         parent = Path(cls.temp.name)
+        import campaign
+        import campaign_self_test as campaign_fixtures
+        cls.binary = parent / 'bin/volicord'
+        campaign_fixtures.write_fake_binary(cls.binary)
+        cls.artifacts = campaign.bind_candidate_artifacts(cls.binary)
         entrypoint_fixture = runpy.run_path(str(entrypoint))
         candidate, _, _, _ = entrypoint_fixture['make_candidate'](parent)
         # Use the maintained V11 result validator instead of the preflight-only
@@ -530,6 +561,16 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
                 value, execution, path = fake['fake_owner'](kwargs['gate_directory'] / 'dogfood-rehearsal', head,
                     gate.sha256(final), kwargs['gate_directory'].name)
                 value.update(gate.REHEARSAL['expected_from_dependencies'](admitted['dependency_snapshot']['dogfood_rehearsal']))
+                # Bind the synthetic expensive owner's archive to the maintained
+                # support executables used by the actual preparation consumer.
+                hashes = {name: binding['sha256'] for name, binding in cls.artifacts.items()}
+                value['executables'] = hashes
+                value['pipeline']['executables'] = hashes
+                boundaries = value['pipeline']['boundary_evidence']
+                boundaries['retention']['result']['candidate_cli_sha256'] = hashes['volicord']
+                for route in boundaries['launch']['routes']:
+                    route.update(cli_sha256=hashes['volicord'], mcp_sha256=hashes['volicord-mcp'])
+                boundaries['resource']['result']['candidate_mcp_sha256'] = hashes['volicord-mcp']
                 value['result_id'] = gate.REHEARSAL['digest']({k: v for k, v in value.items() if k != 'result_id'})
                 path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n')
                 execution['working_directory'] = str(candidate)
@@ -654,6 +695,137 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         self.assertEqual(result['candidate_head'], self.candidate)
         self.assertEqual(self.capsule['candidate_continuity_checks'][-1]['boundary'], 'archive_publication')
 
+    def test_preparation_and_qualification_reuse_without_technical_execution(self):
+        import campaign as c
+        import campaign_self_test as support
+        import resource_observer
+        import result_lineage
+        import subprocess
+        import review_operations as ops
+        from review_operations_self_test import insufficient_draft
+        before = self.owners.counts.copy()
+        # Only support Product collection invokes its fake executables. The reuse
+        # boundary itself may inspect Git identity but must execute no technical owner.
+        original_run = subprocess.run
+        original_popen = subprocess.Popen
+        def read_only_spawn(argv, *args, **kwargs):
+            if Path(argv[0]).name != 'git':
+                raise AssertionError(f'process spawned during evidence reuse: {argv[0]}')
+            return original_popen(argv, *args, **kwargs)
+        def read_only_git(argv, *args, **kwargs):
+            if Path(argv[0]).name != 'git':
+                raise AssertionError(f'technical execution during evidence reuse: {argv[0]}')
+            return original_run(argv, *args, **kwargs)
+        with patch.object(resource_observer, 'observe', side_effect=AssertionError('observer started')), \
+             patch.object(c, 'install_candidate', side_effect=AssertionError('candidate rebuilt')), \
+             patch.object(subprocess, 'run', side_effect=read_only_git), \
+             patch.object(subprocess, 'Popen', side_effect=read_only_spawn):
+            # Fixture cloning and identity qualification are authored support;
+            # prepare_campaign and verify_technical are the real consumers.
+            with patch.object(harness, 'git_head', return_value=self.candidate):
+                support.prepare(Path(self.temp.name) / 'reuse-campaign',
+                    Path(self.temp.name) / 'reuse-sources', self.binary,
+                    capsule_path=self.path, archive_path=self.archive)
+        root = Path(self.temp.name) / 'reuse-campaign'
+        prep = c.read_json(root / 'preparation.json')
+        self.assertEqual(prep['technical_gate']['state'], 'passed')
+        self.assertEqual(prep['technical_gate']['execution'], 'reused')
+        self.assertEqual(prep['resource_observation'], 'not_selected')
+        # Build/collect the eight raw support slots through maintained consumers.
+        captures, bundles = [], {}
+        with patch.object(harness, 'git_head', return_value=self.candidate), \
+             patch.object(harness, 'git_clean', return_value=True), \
+             patch.object(resource_observer, 'observe', side_effect=AssertionError('collection started observer')):
+            for kind in c.CLASSES:
+                for label in c.work_labels(kind):
+                    _, work, resume, bundle = support.fixture_for(
+                        Path(self.temp.name) / 'reuse-fixtures', kind, label, campaign_root=root)
+                    captures.append(work)
+                    if 'resume' in c.session_roles(kind, label): captures.append(resume)
+                    bundles[c.work_key(kind, label)] = bundle
+            with patch.object(c, 'run_checked', side_effect=support.fake_enable_command):
+                c.activate_all(root)
+            c.collect_batch(root, captures, exporter=support.batch_exporter(bundles),
+                documenter=support.documenter, snapshotter=support.snapshotter)
+            evaluation = c.evaluate_campaign(root)
+        evaluation_path = root / evaluation['evaluation']
+        target = Path(self.temp.name) / 'reuse-review'
+        with patch.object(resource_observer, 'observe', side_effect=AssertionError('review started observer')):
+            ops.prepare(root, target, reviewer_kind='agent', session_id='independent-support-review',
+                evaluation_path=evaluation_path)
+            insufficient_draft(target)
+            ops.record(target, target / 'draft.json')
+        output = Path(self.temp.name) / 'reuse-qualification'
+        with patch.object(subprocess, 'run', side_effect=read_only_git), \
+             patch.object(subprocess, 'Popen', side_effect=read_only_spawn), \
+             patch.object(resource_observer, 'observe', side_effect=AssertionError('qualification started observer')):
+            value = policy.qualify(root, evaluation_path, output, candidate=self.candidate,
+                review_roots=[target], capsule_path=self.path, archive_path=self.archive)
+        self.assertEqual(value['technical_gate']['state'], 'passed')
+        self.assertEqual(value['naturalistic_evidence']['naturalistic_resource']['status'], 'not_observed')
+        self.assertEqual(value['naturalistic_evidence']['naturalistic_resource']['measurement']['peak_rss_bytes'], None)
+        self.assertFalse(value['replacement_pass_candidate'])
+        self.assertIn(policy.COVERAGE_CRITERION, value['qualitative_review']['unresolved_criteria'])
+        self.assertTrue(value['qualitative_review']['human_escalations'])
+        published = result_lineage.publish(root, evaluation_path, [target], output / 'qualification.json')
+        copied = Path(self.temp.name) / 'reuse-copied'
+        shutil.copytree(published['lineage_root'], copied)
+        with patch.object(c, 'load_evidence_set', side_effect=AssertionError('original campaign used')):
+            result_lineage.verify(copied)
+        copied_value = json.loads((copied / 'qualification/qualification.json').read_bytes())
+        self.assertEqual(copied_value['naturalistic_evidence']['naturalistic_resource']['status'], 'not_observed')
+        self.assertEqual(self.owners.counts, before)
+
+    def test_candidate_executable_binding_remains_required(self):
+        self.assertEqual(policy.verify_technical(self.candidate, self.path, self.archive,
+            candidate_artifacts=self.artifacts)['state'], 'passed')
+        for name in self.artifacts:
+            changed = copy.deepcopy(self.artifacts)
+            changed[name]['sha256'] = 'f' * 64
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'candidate executable mismatch'):
+                policy.verify_technical(self.candidate, self.path, self.archive, candidate_artifacts=changed)
+
+    def test_preparation_rejects_inapplicable_supplied_technical_evidence(self):
+        import campaign as c
+        import campaign_self_test as support
+        tampered = self.path.parent / 'preparation-tampered.tar.gz'
+        tampered.write_bytes(self.archive.read_bytes()[:100])
+        incompatible = self.path.parent / 'preparation-incompatible.json'
+        changed = copy.deepcopy(self.capsule)
+        changed['dogfood_rehearsal']['contract'] = 'incompatible-producing-contract'
+        incompatible.write_bytes(policy.operations.encoded(changed))
+        cases = [('missing-pair', self.path, None, self.candidate),
+            ('failed', self.failed_path, self.failed_archive, self.candidate),
+            ('tampered', self.path, tampered, self.candidate),
+            ('incompatible', incompatible, self.archive, self.candidate),
+            ('wrong-candidate', self.path, self.archive, 'f' * 40)]
+        counts = self.owners.counts.copy()
+        with patch.object(c, 'install_candidate', side_effect=AssertionError('technical prerequisite rebuilt candidate')):
+            for label, capsule, archive, candidate in cases:
+                root = Path(self.temp.name) / f'prepare-{label}'
+                with self.subTest(label=label), patch.object(harness, 'git_head', return_value=candidate):
+                    with self.assertRaises((ValueError, OSError, EOFError)):
+                        support.prepare(root, Path(self.temp.name) / f'sources-{label}', self.binary,
+                            capsule_path=capsule, archive_path=archive)
+                    self.assertFalse((root / 'preparation.json').exists())
+        self.assertEqual(self.owners.counts, counts)
+
+    def test_opt_in_records_selection_without_starting_observation(self):
+        import campaign as c
+        import campaign_self_test as support
+        import resource_observer as observer
+        root = Path(self.temp.name) / 'selected-not-started'
+        with patch.object(observer, 'observe', side_effect=AssertionError('selection started observation')):
+            support.prepare(root, Path(self.temp.name) / 'selected-sources', self.binary, observe_resources=True)
+        preparation = c.read_json(root / 'preparation.json')
+        self.assertEqual(preparation['resource_observation'], 'selected')
+        self.assertEqual(preparation['technical_gate']['state'], 'not_provided')
+        resource = preparation['naturalistic_memory_evidence']
+        self.assertEqual(resource, observer.initial(preparation['candidate_artifacts']))
+        self.assertEqual(resource['observer_lifecycle'], 'not_started')
+        self.assertIsNone(resource['measurement']['peak_rss_bytes'])
+        self.assertIn('explicitly selected', (root / 'operator/RUN-SHEET.md').read_text())
+
     def test_final_capsule_mutations_are_rejected(self):
         def publication(value):
             return value['candidate_continuity_checks'][-1]
@@ -729,6 +901,62 @@ class FileBoundaryTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.temp.cleanup()
+
+    def test_partial_resource_attachment_is_preserved_and_malformed_input_rejected(self):
+        import campaign as c
+        import campaign_self_test as support
+        import resource_observer as observer
+        import result_lineage
+        from resource_coverage_self_test import observation, omit
+        binary = Path(c.load_campaign(self.root)['candidate_binary'])
+        with patch.object(harness, 'git_clean', return_value=True):
+            root, raw, bundles = support.prepared_batch(self.parent, 'partial-resource-campaign', binary,
+                observe_resources=True)
+            campaign = c.load_campaign(root)
+            resource = observation(2, candidate=campaign['candidate_artifacts']['volicord-mcp']['sha256'],
+                purpose='naturalistic')
+            journey = campaign['journeys']['journey-volicord']
+            runtime = observer.path_binding(Path(journey['runtime_home']))
+            resource['runtimes'][0]['runtime_binding'] = runtime
+            for instance in resource['instances']:
+                instance['identity'].update(runtime_binding=runtime,
+                    cwd_binding=observer.path_binding(Path(journey['repository_path'])))
+            for tick in resource['ticks']: tick['runtimes'][0]['runtime_binding'] = runtime
+            invalid = omit(copy.deepcopy(resource))
+            source = self.parent / 'invalid-resource.json'
+            c.write_json(source, invalid)
+            with self.assertRaisesRegex(ValueError, 'running instance lacks tick sample'):
+                c.record_resources(root, source)
+            self.assertFalse((root / 'resources/observation.json').exists())
+            # A scoped failed tick preserves other genuine samples as partial.
+            partial = omit(copy.deepcopy(resource))
+            partial['ticks'][3]['runtimes'][0]['registered'][0]['state'] = 'inaccessible'
+            partial['instances'][0]['errors'] = ['inaccessible']
+            partial['measurement']['measurement_errors'] = ['inaccessible']
+            partial['status'] = 'partial'
+            for label, mutate in (
+                ('candidate', lambda v: v.update(candidate_mcp_sha256='f' * 64)),
+                ('privacy', lambda v: v['privacy'].update(credentials_retained=True)),
+                ('binding', lambda v: v['instances'][0]['identity'].update(cwd_binding='f' * 64))):
+                invalid = copy.deepcopy(partial); mutate(invalid); c.write_json(source, invalid)
+                with self.subTest(label=label), self.assertRaises(ValueError): c.record_resources(root, source)
+            c.write_json(source, partial)
+            c.record_resources(root, source)
+            self.assertEqual(c.load_campaign(root)['naturalistic_memory_evidence'], partial)
+            c.write_json(source, observer.initial(campaign['candidate_artifacts']))
+            with self.assertRaisesRegex(ValueError, 'immutable'): c.record_resources(root, source)
+            c.collect_batch(root, raw, exporter=support.batch_exporter(bundles),
+                documenter=support.documenter, snapshotter=support.snapshotter)
+            evaluation = c.evaluate_campaign(root)
+        output = self.parent / 'partial-resource-qualified'
+        value = policy.qualify(root, root / evaluation['evaluation'], output, candidate=campaign['candidate_head'])
+        self.assertEqual(value['naturalistic_evidence']['naturalistic_resource'], partial)
+        published = result_lineage.publish(root, root / evaluation['evaluation'], [], output / 'qualification.json')
+        copied = self.parent / 'partial-resource-lineage'
+        shutil.copytree(published['lineage_root'], copied)
+        result_lineage.verify(copied)
+        retained = json.loads((copied / 'qualification/qualification.json').read_bytes())
+        self.assertEqual(retained['naturalistic_evidence']['naturalistic_resource'], partial)
 
     def test_copied_lineage_rejects_rehashed_missing_process_sample(self):
         import campaign
@@ -821,7 +1049,8 @@ class FileBoundaryTests(unittest.TestCase):
                 candidate=campaign.load_campaign(self.root)['candidate_head'], review_roots=[target])
             self.assertNotEqual(value['replacement_qualification'], 'qualified')
             self.assertEqual(value['technical_gate']['state'], 'not_provided')
-            technical_verifier.assert_called_once_with(campaign.load_campaign(self.root)['candidate_head'], None, None)
+            technical_verifier.assert_called_once_with(campaign.load_campaign(self.root)['candidate_head'], None, None,
+                candidate_artifacts=campaign.load_campaign(self.root)['candidate_artifacts'])
             self.assertEqual(policy.verify_qualification(output / 'qualification.json'), value)
             with self.assertRaisesRegex(ValueError, 'cannot replace'):
                 policy.approve(output / 'qualification.json', self.parent / 'approval', operator='operator', statement='approve-phase-9')
@@ -960,6 +1189,12 @@ class FileBoundaryTests(unittest.TestCase):
         self.assertEqual(value['qualitative_review_runs'], [])
         self.assertTrue(value['qualitative_review']['unresolved_criteria'])
         self.assertFalse(value['replacement_pass_candidate'])
+        import resource_observer
+        manifest = campaign.load_evidence_set(self.root)
+        self.assertNotIn('resources/observation.json', manifest['artifacts'])
+        initial = resource_observer.initial(manifest['candidate_artifacts'])
+        self.assertEqual(manifest['naturalistic_memory_evidence'], initial)
+        self.assertEqual(value['naturalistic_evidence']['naturalistic_resource'], initial)
         published = result_lineage.publish(self.root, self.evaluation, [], output / 'qualification.json')
         copied = self.parent / 'copied-no-review-lineage'
         shutil.copytree(published['lineage_root'], copied)
@@ -969,6 +1204,8 @@ class FileBoundaryTests(unittest.TestCase):
             verified = result_lineage.verify(copied)
             self.assertEqual(verified['review_run_ids'], [])
             self.assertFalse(verified['external_staging_paths_used'])
+            copied_value = json.loads((copied / 'qualification/qualification.json').read_bytes())
+            self.assertEqual(copied_value['naturalistic_evidence']['naturalistic_resource'], initial)
             changed = copy.deepcopy(value)
             promote_lineage_qualification(changed, json.loads(self.evaluation.read_bytes()))
             rehash_lineage_qualification(copied, changed)

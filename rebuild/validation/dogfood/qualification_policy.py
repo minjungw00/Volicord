@@ -248,7 +248,7 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
     return result
 
 
-def verify_technical(candidate, capsule_path, archive_path):
+def verify_technical(candidate, capsule_path, archive_path, *, candidate_artifacts=None):
     """Read-only reuse of the maintained gate's independent verifier and capsule contract."""
     if capsule_path is None and archive_path is None:
         return {"state": "not_provided"}
@@ -283,6 +283,10 @@ def verify_technical(candidate, capsule_path, archive_path):
     # JSON encoding also distinguishes booleans from numerically equal values.
     review.require(operations.encoded(capsule) == operations.encoded(expected),
         "final capsule differs from verified archive completion/publication")
+    if candidate_artifacts is not None and capsule["phase_8_ready"]:
+        review.require({name: binding["sha256"] for name, binding in candidate_artifacts.items()}
+            == capsule["dogfood_rehearsal"]["result"]["executables"],
+            "technical gate candidate executable mismatch")
     return {"rehearsal": {key: capsule["dogfood_rehearsal"][key]
             for key in ("contract", "status", "result_sha256")},
         "state": "passed" if capsule["phase_8_ready"] else "failed", "candidate_head": candidate,
@@ -323,7 +327,8 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
     for value in reviews:
         review.require(all(set(ids) <= consumed_ids for ids in value["resolves_review_runs"].values()),
             "human resolution references an unconsumed review run")
-    technical = verify_technical(candidate, capsule_path, archive_path)
+    technical = verify_technical(candidate, capsule_path, archive_path,
+        candidate_artifacts=manifest["candidate_artifacts"])
     result = {"kind": "phase8_dogfood_result", "schema_version": 3, "candidate_head": candidate,
         "evidence_set": evaluation["evidence_set"], "evaluator_revision": campaign.harness.git_head(campaign.ROOT),
         "policy": identity(), "evaluation_run": {"run_id": evaluation["run_id"], "sha256": campaign.harness.sha256(evaluation_path)},

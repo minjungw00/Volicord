@@ -255,6 +255,7 @@ def prepare(
     root: Path,
     source_root: Path,
     binary: Path,
+    **preparation_options,
 ) -> None:
     source = repository_input(root.parent / f"{root.name}-repositories.json", source_root)
     original_clean = harness.git_clean
@@ -307,6 +308,7 @@ def prepare(
             candidate_binary=binary,
             enable=False,
             cloner=fake_clone,
+            **preparation_options,
         )
     finally:
         harness.git_clean = original_clean
@@ -460,9 +462,10 @@ def prepared_batch(
     parent: Path,
     name: str,
     binary: Path,
+    **preparation_options,
 ) -> tuple[Path, list[Path], dict[str, Path]]:
     root = parent / name
-    prepare(root, parent / f"{name}-sources", binary)
+    prepare(root, parent / f"{name}-sources", binary, **preparation_options)
     captures: list[Path] = []
     bundles: dict[str, Path] = {}
     for kind in campaign.CLASSES:
@@ -632,6 +635,13 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
     assert (root / "operator/RUN-SHEET.md").read_text().count("### Session `") == 8
     run_sheet = root / "operator/RUN-SHEET.md"
     guidance = run_sheet.read_text()
+    preparation = campaign.read_json(root / "preparation.json")
+    assert preparation["resource_observation"] == "not_selected"
+    assert preparation["technical_gate"]["state"] == "not_provided"
+    assert "Resource observation is not selected" in guidance
+    for operation in ("resource_observer.py start", "--waiting-runtime", "--state active",
+                      "record-resources", "EOF", "PID"):
+        assert operation not in guidance, f"default run sheet requires {operation}"
     assert "repository-owned Git policy" in guidance
     assert "dirty carryover across distinct Works" in guidance
     assert "harness does not infer a commit obligation" in guidance

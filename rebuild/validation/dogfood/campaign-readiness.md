@@ -3,8 +3,11 @@
 Status: proposed preparation only. No task is approved/frozen; no measured session,
 human verdict, Project Purpose or Phase 9 approval is supplied by this pack. The
 local rehearsal checks handling of support evidence. It cannot authorize launch.
-The current verified technical capsule/archive must identify the exact clean
+The applicable verified technical capsule/archive must identify the exact clean
 candidate chosen for a new campaign; changed candidates require fresh evidence.
+The [validation responsibility/reuse matrix](../../docs/design/validation-plan.md#32-validation-responsibility-and-evidence-reuse)
+owns claims, reuse, invalidation and user actions. New campaign IDs and “final”
+session labels alone do not require Final, formal rehearsal, provider or V11 execution.
 
 ## Targets and ordinary task proposals
 
@@ -16,7 +19,7 @@ qualification result. Do not slice a repository to fit a class or weaken a floor
 
 | Journey | Proposed target | Revision and qualification prerequisite |
 | --- | --- | --- |
-| Volicord | This repository | Exact newly validated candidate HEAD; never an earlier support fixture or rollout |
+| Volicord | This repository | Exact technically qualified candidate HEAD; never an earlier support fixture or rollout |
 | Small Python | pallets/click | `2c8cd3ac958a7eb316d67f2d316c27086c4c0369`; `LICENSE.txt`, BSD-3-Clause; must pass the 8–250 file and application/boundary requirements before selection |
 | Polyglot medium | tree-sitter/tree-sitter | `74b7d0c951ebdab16a8a4d64e7cf81e56046408a`; `LICENSE`, MIT; must pass the 100-file, three official languages and useful cross-component boundary requirements |
 
@@ -43,7 +46,7 @@ artificial forks or Question/Learning quotas to task files.
 
 ## Coverage and evidence locations
 
-This table is an observer run sheet, separate from measured task instructions.
+This table is an operator coverage guide, separate from measured task instructions.
 Keep actual outcomes open: satisfaction, violation, insufficiency and a justified
 absence are determined after observation under `qualitative-review.md`.
 
@@ -56,14 +59,20 @@ absence are determined after observation under `qualitative-review.md`.
 | Appropriate no-Question behavior | Routine C and B when source authority settles outcomes | Raw interactions, source authority, commitments, focused execution and post-hoc independent review. No Question count threshold; distinguish correct uninterrupted work, missing opportunity and unsupported policy selection. |
 | en/ko current/stale/unavailable content | Post-session real Work/Decision explanations and live Viewer | Supported prepare/record/readback, immutable explanation lifecycle plan/response/receipt; displayed context and screenshot receipts for each locale and state. Record omissions and uncertain translations; earlier current content cannot attest a later stale display. |
 | Human accessibility and responsiveness | Live Viewer for retained campaign subjects | Personal inspection of both locales, keyboard/focus/non-color cues, 390/768/1440 widths and real 200% zoom through maintained observation capture. Images/timings alone do not assert human experience. |
-| Naturalistic MCP memory | Actual host-owned MCP instances during measured chats | Candidate executable/Runtime registration, positive samples and attachment/detachment/coverage via `resource_observer.py`; attach using `record-resources`. Support-owned or V11 harness RSS cannot fill this slot. |
+| Optional Naturalistic MCP memory | Only explicitly selected characterization of actual host-owned MCP instances | Default is not selected: initialized `not_observed`, null/unmeasured values and no observer operations. Opt-in uses the [resource interfaces](resource-observation.md). Submitted samples retain strict validation; support-owned or V11 RSS cannot fill this slot. |
 | CLI usability | Each actual repository class | Isolated `collect-cli-observations` after evidence publication; bind exact evidence set, review its seven per-class assessments separately from live-human Viewer evidence. |
 
 ## Launch and retention
 
-1. Independently verify the exact-candidate archive and capsule through
-   `verify-validation-archive` and `qualification_policy.verify_technical()`.
-   Preserve exits, candidate and archive SHA-256. Do not reuse a standalone rehearsal.
+1. Consume applicable retained exact-candidate technical evidence. `prepare`
+   accepts `--gate-capsule CAPSULE --gate-archive ARCHIVE` and calls
+   `qualification_policy.verify_technical()`, including the maintained independent
+   archive verifier and actual installed executable binding. Preserve output,
+   exits, candidate and archive SHA-256. Missing evidence is `not_provided`;
+   failed evidence is a prerequisite failure and malformed/inapplicable evidence
+   is rejected. Preparation starts no technical execution or provider transmission.
+   Replace required invalid evidence through the authoritative gate in a separately
+   authorized session; a standalone rehearsal cannot substitute.
 2. Resolve target qualification, useful authorized tasks, and any user Purpose.
    Freeze only approved exact task bytes through `dogfood-campaign prepare` in a
    fresh root. Label all proposals as proposed until this action has succeeded.
@@ -71,10 +80,12 @@ absence are determined after observation under `qualitative-review.md`.
    Verify installed CLI/MCP/Viewer hashes, static integration, actual activation,
    raw metadata and first-turn/Runtime/workspace binding. Empty/ambiguous attribution
    is a launch blocker, not Product success.
-4. Start a privacy-bounded observer before measured MCP work. Confirm an actual
-   executable/Runtime-bound instance, nonzero samples, bounded cadence and explicit
-   partial/unobserved states. Preserve observer CPU/RSS separately. Never include
-   argv, full environments, credentials or source bodies in telemetry.
+4. Use the default user-experience resource scope: `prepare` records
+   `resource_observation: not_selected` in preparation. No observer terminal,
+   active/waiting switching, PID lookup, EOF confirmation or setup-registration
+   cleanup is required solely for telemetry. `--observe-resources` records
+   `selected` without starting anything; then use the explicit resource procedure
+   below. Selection cannot claim measurement or satisfy any other evidence criterion.
 5. Run 3 journeys / 5 Works / 3 fresh resume pairs / 8 slots on fresh copies and
    Runtime Homes. Keep task authorization separate from any provider opt-in.
    This pack and the two technical-gate transmission approvals grant neither.
@@ -90,7 +101,9 @@ absence are determined after observation under `qualitative-review.md`.
    never prefill satisfaction or an observer identity.
 8. Qualify with the verified current technical capsule/archive plus recorded review
    roots. Leave conflicts, high-impact insufficiency, missing humans and incomplete
-   Naturalistic resource coverage visible. Publish lineage, copy it and verify it
+   selected Naturalistic resource limitations visible. Unselected telemetry does
+   not block collection, evaluation, reviewer preparation or qualification.
+   Publish lineage, copy it and verify it
    independently; retain original private captures/screenshots separately with a
    hash manifest for later content inspection. Archive summaries do not contain images.
 
@@ -99,9 +112,9 @@ into a success report. Historical failures and support fixtures remain immutable
 and nonqualifying. Replacement qualification and explicit operator approval still
 own Phase 9; this session starts no measured campaign.
 
-## Fresh-campaign shell and observer procedure
+## Fresh-campaign shell readiness
 
-After choosing a newly verified clean candidate, install into its isolated prefix and
+After choosing an applicable verified clean candidate, install into its isolated prefix and
 retain CLI/MCP/Viewer hashes. Authorize each target with that installed CLI and explicit
 `--runtime`/`--repository`; review exact repository/hook trust in the actual Codex host.
 The Codex tool shell must also allow the exact Runtime: use workspace-write with
@@ -115,14 +128,29 @@ Retain output and numeric completion alongside activation/runtime binding. Paren
 authenticated MCP alone, or local shell simulation does not satisfy this host-shell proof.
 A wrong executable or Runtime is rejected; disclose bare-name realpath/hash drift.
 
-Start one operator observer before sequential chats. Declare independently known inactive
-Homes using repeated `--waiting-runtime`; all others remain unknown. Use observer `expect
---output DIRECTORY --runtime HOME --state active` immediately before each host launch,
-and `--state waiting` only after actual completion/EOF; use unknown where the lifecycle
-is not established. Never mark a disappeared process stopped. Stop the observer after
-expected windows close, retain raw lifecycle/expectation/sample/interruption evidence,
-and attach once with `record-resources` before `collect-batch`. The expectation procedure
-belongs to the operator boundary; frozen user task bytes remain unchanged.
+Permission or host-shell changes require the affected local smoke check; they do
+not invalidate unrelated retained technical claims. Existing approved tasks and
+adopted Purpose need no reacquisition solely because preparation guidance changed.
+
+## Optional resource characterization
+
+Select `--observe-resources` only when characterization is intended; it records
+scope in existing preparation, with no profile framework or resource schema change.
+The [resource owner](resource-observation.md) defines `start/attach/expect/stop`
+and `record-resources`, privacy and per-running-instance completeness. Selected but
+not started remains initialized/unmeasured. Attempted partial/failed observation
+must retain its raw facts and limitations and must not be replaced by initialization.
+Malformed attached evidence remains invalid even when characterization was optional.
+
+For an already frozen campaign that promised telemetry, retain its original
+operator resource plan and add a separate dated operator scope-change record
+alongside it, outside the inventoried campaign. Bind the campaign ID, original
+candidate and preparation/resource-plan hashes; state old/new intended scope,
+reason and actual attempt status with available observation paths/hashes. An
+existing plain operator record needs no new decoder or schema. Retain it with
+delivery evidence. Do not rewrite frozen preparation, tasks or observations, or
+infer “not selected” from a missing attachment. This record changes operator scope
+only and implements no future or automatic monitoring.
 
 For review delivery retain the candidate capsule/archive and verification, candidate
 artifact hashes, campaign preparation and inventory, eight exact task files and their
@@ -130,7 +158,8 @@ hashes, five Work/eight slot descriptors, explicit task/repository/launch approv
 repository revisions/origin/license/qualification, Runtime/repository integration and
 readiness/activation bindings, immutable raw captures and collection/evaluation outputs.
 Include all explanation attempt/preparation/response/record/receipt/readback files,
-document realization inputs, resource observations, Git observations, CLI observations,
+document realization inputs, resource scope records and any attempted observations,
+Git observations, CLI observations,
 review preparation/input/index and resulting review/qualification/copied-lineage artifacts.
 Keep screenshots/raw logs separately where required; portable bounded hashes do not
 replace them. Verify available hashes and list missing delivery members explicitly.

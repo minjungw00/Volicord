@@ -746,9 +746,13 @@ cannot be rebound to the changed candidate.
 
 Candidate MCP resource observation is an indexed supporting surface independent of
 technical V11 harness-tree RSS and human Viewer judgment. Copied packages validate
-resource schema 2, candidate identity, sample counts/observed peak and explicit
+resource schema 3, candidate identity, sample counts/observed peak and explicit
 coverage/failure states through the [resource owner](../../validation/dogfood/resource-observation.md).
 Absent evidence remains unobserved; no operation/Codex-session attribution is inferred.
+Resource selection belongs to operator preparation. Unselected initialized
+`not_observed` stays nonblocking through collection, evaluation, review and copied
+qualification; it awards no other criterion. Selected-but-not-started and attempted
+partial/failed evidence retain their actual states; invalid submission is rejected.
 
 ## Evidence purpose and pipeline support
 
@@ -771,7 +775,7 @@ required review and human gaps; no enclosing unpublished archive is an input.
 
 The [campaign preparation pack](../../validation/dogfood/campaign-readiness.md)
 records pinned target proposals, unresolved target/task authorization, exact-user
-Purpose provenance, coverage collection paths, observer launch checks and separate
+Purpose provenance, coverage collection paths, optional resource scope and separate
 en/ko human display-context requirements. Proposed tasks become frozen only after
 user approval and successful maintained preparation; outcomes remain future evidence.
 Local support pipeline success does not authorize measured launch or Phase 9.

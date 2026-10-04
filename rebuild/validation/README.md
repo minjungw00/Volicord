@@ -216,6 +216,12 @@ manifest contains exactly five Work-slot mappings with `start` files and
 sheet. Volicord A → Resume A → B → C shares one Project, workspace and Runtime
 Home while retaining three Work identities. Small-Python and Polyglot each
 have their own Project, workspace and Runtime Home.
+Supply retained `--gate-capsule <capsule> --gate-archive <archive>` to `prepare`
+for read-only technical verification and installed executable binding. Missing
+evidence remains `not_provided`; failed or invalid supplied evidence is a real
+prerequisite failure, never an automatic gate invocation. `qualify` independently
+rechecks the same exact-candidate technical inputs. See the
+[responsibility/reuse matrix](../docs/design/validation-plan.md#32-validation-responsibility-and-evidence-reuse).
 
 The operator explicitly controls repository and SessionStart-hook trust,
 runs eight distinct fresh Codex CLI or VS Code extension sessions with the frozen task bytes,
@@ -779,10 +785,17 @@ These local artifacts may contain original synthetic/source/audit text and absol
 paths. Keep them out of portable gate summaries and reviewer packages. The existing
 gate capsule/archive remain a separate evidence class and use the existing verifier.
 
-Candidate-owned Linux MCP lifecycle and external Naturalistic RSS observation use
-[resource_observer.py](dogfood/resource-observation.md). Run its foreground start or
-attach before sessions, stop explicitly, and use `dogfood-campaign record-resources`
-before `collect-batch`. Closed schema 2 retains per-instance start/executable binding,
+Candidate-owned Linux MCP lifecycle and optional external Naturalistic RSS observation use
+[resource_observer.py](dogfood/resource-observation.md). Default `prepare` records
+`resource_observation: not_selected`; initialized `not_observed` and null/unmeasured
+values traverse collection, evaluation, review, qualification and copied lineage.
+No telemetry operations are required. Explicit `--observe-resources` records
+selection only. When selected, use foreground start/attach, expect, stop and
+`dogfood-campaign record-resources` before `collect-batch`. Preserve attempted
+partial/failed observations; malformed submission is rejected rather than reset.
+Existing frozen promises require a separate operator scope-change record as
+described in [preparation guidance](dogfood/campaign-readiness.md#optional-resource-characterization).
+Closed schema 3 retains per-instance start/executable binding,
 samples/gaps/errors and sampled peaks, with no body/environment tracing or inferred
 operation attribution. Unobserved/partial/failed states remain explicit. Focused
 real sibling-process and privacy proof is `dogfood/resource_observer_self_test.py`;
@@ -832,7 +845,7 @@ measured campaign use, human observations or Phase 9 approval.
 The [measured campaign preparation pack](dogfood/campaign-readiness.md) keeps
 proposed targets/tasks separate from approved frozen inputs and observed outcomes.
 It maps required Learning, semantic understanding, Work/Decision comprehension,
-no-Question behavior, en/ko content, accessibility, CLI and Naturalistic memory
+no-Question behavior, en/ko content, accessibility, CLI and optional Naturalistic memory
 evidence to maintained collection/review paths. User Purpose and human verdicts
 remain absent until actually supplied; technical transmission approvals grant no
 measured campaign launch.

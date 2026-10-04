@@ -1,5 +1,27 @@
 # Candidate MCP resource observation
 
+Resource characterization is explicit opt-in. The default user-experience campaign
+requires no observer terminal, active/waiting switching, PID lookup, EOF confirmation
+or setup-registration cleanup solely for telemetry. `dogfood-campaign prepare`
+records `resource_observation: not_selected` in its existing preparation;
+`--observe-resources` records `selected` and starts nothing. Both initially retain
+the existing schema-3 `not_observed` artifact and null/unmeasured resource values.
+Continue directly through `collect-batch`, evaluation, review, qualification and
+copied lineage when not selected; missing human/Learning/interaction evidence still
+has its original effect. The [responsibility/reuse matrix](../../docs/design/validation-plan.md#32-validation-responsibility-and-evidence-reuse)
+owns evidence responsibilities; technical V11 and formal observer rehearsal controls
+remain required for technical qualification and cannot be copied into user-run RSS.
+
+Selection and evidence are separate facts: not selected, selected but not started,
+attempted partial/failed and valid measured evidence are distinct. Preserve attempt
+outputs, even if no samples were possible. Never erase them or attach an initialized
+object to make an attempt look unselected. Optionality does not relax submitted
+evidence validation. A frozen campaign's earlier telemetry promise requires a
+separate retained [operator scope-change record](campaign-readiness.md#optional-resource-characterization)
+outside frozen manifests; absence of an attachment alone establishes no selection state.
+
+## Explicit opt-in procedure
+
 The maintained foreground interface is `resource_observer.py start|attach|expect|stop`.
 Start and attach use the same discovery path and can observe an already running
 candidate. Neither starts a host, changes direct executable integration, grants
@@ -11,7 +33,7 @@ python3 rebuild/validation/dogfood/resource_observer.py stop --output NEW_OBSERV
 rebuild/scripts/dogfood-campaign record-resources --campaign-root ROOT --input NEW_OBSERVER_DIRECTORY/resource.json
 ```
 
-Run start in an operator-owned terminal before the chats. Stop in another terminal,
+When selected, run start in an operator-owned terminal before the chats. Stop in another terminal,
 or use Ctrl-C. Stop writes a cooperative stop request, bounded by the next sampling
 interval; it never kills an external host process. Duration expiry also stops.
 `attach --binary ABSOLUTE_MCP --runtime ABSOLUTE_RUNTIME --output NEW_DIRECTORY`
@@ -82,7 +104,7 @@ stop-to-exit timing. All test-owned observers are reaped on failure; external MC
 shutdown remains the host's responsibility. These are focused synthetic protocol
 fixtures, not a Naturalistic campaign or authenticated host activation.
 
-## Runtime expectations and coverage
+## Runtime expectations and coverage when selected
 
 Each configured Runtime starts `unknown`. Before starting the observer, the operator
 may independently declare not-yet-launched Homes with repeated `--waiting-runtime

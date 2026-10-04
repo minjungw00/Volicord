@@ -1328,6 +1328,14 @@ and writes the eight-entry run sheet. Task bytes must uniquely identify each
 role within one journey. The five Work states are `frozen` before activation.
 Preparation assigns no expected semantic behavior, evaluator-private profile,
 materiality quota, Learning obligation, provisional review, or semantic seal.
+`prepare --gate-capsule CAPSULE --gate-archive ARCHIVE` consumes applicable
+retained evidence through `qualification_policy.verify_technical()` and binds
+installed executable hashes. Preparation records `technical_gate`; absent inputs
+are `not_provided`, failed supplied prerequisites and invalid inputs are rejected,
+and no technical execution is started. Default `resource_observation: not_selected`
+is recorded in existing preparation; `--observe-resources` records `selected`
+without starting observation. The [responsibility/reuse matrix](#32-validation-responsibility-and-evidence-reuse)
+owns what those facts establish and what must be newly observed.
 
 `activate-all` verifies complete frozen preparation, exact candidate artifacts,
 inventory, repository identity and task binding before enabling candidate
@@ -1462,7 +1470,7 @@ Phase 9 readiness. Result-lineage publication preserves the exact evaluation,
 review, qualification and optional approval bytes outside the immutable campaign.
 A changed candidate requires a new campaign and independent qualification.
 
-Naturalistic MCP resource schema 2 uses the production candidate-owned Linux
+Naturalistic MCP resource schema 3 uses the production candidate-owned Linux
 lifecycle channel and a foreground external observer. Preparation is honestly
 `not_observed`; optional current observations preserve measured, partial, failed,
 unsupported and environment-blocked states. The
@@ -2136,7 +2144,7 @@ content/browser/cost proofs remain separate candidate-bound supporting evidence.
 
 The [campaign preparation pack](../../validation/dogfood/campaign-readiness.md)
 records pinned target proposals, unresolved target/task authorization, exact-user
-Purpose provenance, coverage collection paths, observer launch checks and separate
+Purpose provenance, coverage collection paths, optional resource scope and separate
 en/ko human display-context requirements. Proposed tasks become frozen only after
 user approval and successful maintained preparation; outcomes remain future evidence.
 Local support pipeline success does not authorize measured launch or Phase 9.

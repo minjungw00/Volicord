@@ -749,6 +749,23 @@ def assert_operator_artifacts_do_not_leak(root: Path) -> None:
 
 def render_operator_run_sheet(root: Path) -> Path:
     campaign = load_campaign(root)
+    preparation = read_json(root / "preparation.json")
+    resource_scope = preparation.get("resource_observation", "unspecified")
+    technical_state = preparation.get("technical_gate", {"state": "not_provided"})["state"]
+    resource_guidance = (
+        "Resource observation was explicitly selected for characterization. Follow "
+        "rebuild/validation/dogfood/resource-observation.md using start/attach, expect, stop "
+        "and record-resources. Until actually started, evidence remains not_observed. "
+        "Retain attempted partial/failed observations and actual coverage; selection is no measurement. "
+        if resource_scope == "selected" else
+        "Resource observation is not selected for this user-experience run. Evidence stays "
+        "not_observed with null/unmeasured resource values; proceed directly to collect-batch "
+        "without telemetry operations. Optional characterization is described in "
+        "rebuild/validation/dogfood/resource-observation.md. "
+        if resource_scope == "not_selected" else
+        "Resource scope was not recorded by this preparation. Preserve any existing promise "
+        "and record a scope change separately before omitting selected characterization. "
+    )
     entries_by_repository: dict[str, list[str]] = {kind: [] for kind in CLASSES}
     sequence_complete = all(
         state.get("state") == "frozen" for state in campaign["works"].values()
@@ -813,10 +830,12 @@ def render_operator_run_sheet(root: Path) -> Path:
         f"`{GIT_STATE_CHECK}`; it is not required and dirty output is valid evidence. "
         "Commit-policy compliance is assessed against the actual task and repository authority in "
         "post-hoc review; the harness does not infer a commit obligation.\n\n"
-        "Use resource_observer.py start/attach before sessions; declare known inactive Homes with --waiting-runtime, and expect --state active before each launch, waiting after confirmed completion. Unknown absence remains uncovered. Stop after sessions; record-resources before collection. Codex launches the configured "
-        "candidate MCP directly outside the campaign helper's process tree, and this integration has "
-        "candidate-owned lifecycle registration enables external process observation. Harness-tree RSS remains technical-gate evidence "
-        "only and is not naturalistic MCP RSS.\n\n"
+        + resource_guidance
+        + "Technical V11/resource rehearsal evidence remains separate from user-run resources.\n\n"
+        + f"Prepared technical prerequisite: {technical_state}. "
+        "Use applicable verified exact-candidate capsule/archive with qualify; preparation "
+        "does not execute a gate or establish user/human outcomes. Missing or failed technical "
+        "evidence remains a prerequisite issue.\n\n"
         + ("\n\n".join(entries) if entries else "No slots are frozen for operator use yet.\n"),
         encoding="utf-8",
     )
@@ -1233,6 +1252,8 @@ def prepare_campaign(
     candidate_binary: Path | None = None, enable: bool = False,
     cloner: Callable[[Path, Path, str], None] = clone_repository,
     purpose: str = evidence_purpose.NATURALISTIC,
+    capsule_path: Path | None = None, archive_path: Path | None = None,
+    observe_resources: bool = False,
 ) -> dict[str, Any]:
     root = root.resolve()
     if root.exists() and any(root.iterdir()):
@@ -1244,6 +1265,10 @@ def prepare_campaign(
         raise CampaignError("campaign identity must be a bounded filesystem-safe value")
     require_current_candidate(candidate_head)
     evidence_purpose.validate(purpose)
+    import qualification_policy
+    technical = qualification_policy.verify_technical(candidate_head, capsule_path, archive_path)
+    if technical["state"] == "failed":
+        raise CampaignError("campaign technical prerequisite failed")
     definition = harness.load_definition()
     raw_input = read_json(repository_input)
     specs = repository_spec_map(raw_input)
@@ -1261,6 +1286,11 @@ def prepare_campaign(
     root.chmod(0o700)
     binary = candidate_binary.resolve() if candidate_binary else install_candidate(root)
     candidate_artifacts = bind_candidate_artifacts(binary)
+    if technical["state"] == "passed":
+        # Recheck the retained evidence with the actual installed executable binding.
+        # Candidate equality remains mandatory even when binaries are identical.
+        technical = qualification_policy.verify_technical(candidate_head, capsule_path, archive_path,
+            candidate_artifacts=candidate_artifacts)
     realization_route = (document_realization.route(binary)
         if document_realization.required(document_language, viewer_locale) else None)
     journeys = {}
@@ -1344,6 +1374,8 @@ def prepare_campaign(
         "resume_pair_count": harness.QUALIFICATION_RESUME_PAIR_COUNT,
         "session_count": BATCH_CAPTURE_COUNT, "candidate_local_install": str(binary),
         "candidate_artifacts": candidate_artifacts,
+        "technical_gate": technical,
+        "resource_observation": "selected" if observe_resources else "not_selected",
         "naturalistic_memory_evidence": resource_observer.initial(candidate_artifacts, purpose=purpose),
         "live_evidence_obligations": live_evidence_obligations(candidate_artifacts,
             resource_observer.initial(candidate_artifacts, purpose=purpose)),
@@ -3157,6 +3189,10 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("--candidate-head", required=True)
     prepare.add_argument("--repositories", required=True)
     prepare.add_argument("--tasks", required=True, help="JSON mapping five Work slots to eight UTF-8 task files")
+    prepare.add_argument("--gate-capsule", help="Retained exact-candidate technical capsule; verified without execution")
+    prepare.add_argument("--gate-archive", help="Matching retained technical archive")
+    prepare.add_argument("--observe-resources", action="store_true",
+        help="Select optional operator characterization; starts no observer")
     activate = sub.add_parser("activate-journey")
     activate_every = sub.add_parser("activate-all")
     collect_b = sub.add_parser("collect-batch")
@@ -3305,7 +3341,11 @@ def main() -> int:
         return 0
     root = Path(getattr(args, "campaign_root", None) or args.review_root).resolve()
     if args.command == "prepare":
-        value = prepare_campaign(root, args.campaign_id, args.candidate_head, Path(args.repositories).resolve(), Path(args.tasks).resolve())
+        value = prepare_campaign(root, args.campaign_id, args.candidate_head,
+            Path(args.repositories).resolve(), Path(args.tasks).resolve(),
+            capsule_path=Path(args.gate_capsule) if args.gate_capsule else None,
+            archive_path=Path(args.gate_archive) if args.gate_archive else None,
+            observe_resources=args.observe_resources)
     elif args.command == "activate-journey":
         value = activate_journey(root, args.repository_class)
     elif args.command == "activate-all":
