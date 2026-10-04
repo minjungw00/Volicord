@@ -120,3 +120,16 @@ remain `not_observed` (or blocked/failed), including all-waiting Homes. Current 
 3 is the sole decoder; historical schema-2 files remain immutable diagnostic evidence.
 No continuous coverage, absolute peak, Codex-session or operation attribution follows.
 Runtime/cwd remain hashes; declarations retain no argv, environment, source or secrets.
+
+At each tick and Runtime, the sampled identity set must equal the registered
+`running` identity set. Each reference binds exactly one sample from that instance
+within the tick's half-open interval (the final interval includes detachment).
+Removing both a sample and its reference while retaining `running` is invalid,
+even after counts, peaks, status or wrapper hashes are recalculated. Another
+instance's sample and global/tick/lifetime errors cannot supply that coverage.
+Schema 3 already records scoped failure through the same tick's registered
+`inaccessible`, `gone` or `identity_rejected` fact; these recompute limitations,
+never measured success. Later stop/failure facts cannot excuse an earlier missing
+running sample. No schema transition or historical evidence rewrite is needed.
+`resource_coverage_self_test.py` independently tests these primitive relationships
+and their campaign/qualification consumers; the real observer proof invokes it.

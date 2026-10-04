@@ -851,15 +851,24 @@ cross-subject/locale substitution and false old-current claims. A missing tempor
 indeterminate; an independent contradictory action remains hard-blocking. These mutated verifier
 inputs are separate from actual Product positives and supply no measured or human evidence.
 
-The mandatory rehearsal's `boundary_evidence` supplies four new evidence-bound controls:
+The mandatory rehearsal's `boundary_evidence` supplies five evidence-bound controls:
 `retention_metadata_round_trip`, `retention_oversize_atomic`, `candidate_shell_route`, and
-`resource_expectation_lifecycle`. The metadata-heavy fixture traverses actual candidate
+`resource_expectation_lifecycle`, and `partial_process_sampling`. The metadata-heavy fixture traverses actual candidate
 CLI and campaign prepare/record/readback/collection/review in Work/Decision en/ko.
 A disposable oversize Product failure preserves the accepted prior record; it creates no
 unresolved campaign obligation. Login/non-login shadowing runs under isolated installation,
 Runtime and repository paths with spaces. Real sibling processes prove waiting/unknown/
 active gaps, sequential EOF, abrupt exit, pre-attachment exit, active stop and interruption;
 identity/access/registration/gap negative controls remain separately identified.
+Two concurrent real instances supply the retained partial-sampling mutation: one
+sample and its tick reference are removed, derived counts/peak recalculated, and
+the current validator must reject it specifically for missing running-instance
+coverage before the untouched observation is verified again. The portable receipt
+retains only the relevant current tick/sample fields and opaque instance/Runtime
+bindings. Its independent contract oracle recomputes the complete positive basis
+and the exact mutation; missing evidence, another instance's sample/reference and
+rehashed passed claims cannot satisfy the mandatory control. Sequential EOF covers
+three Runtime Homes, including future waiting Homes.
 The bounded receipt binds stages, byte sizes, candidate hashes, per-case outcomes and
 actual wrapper streams. Bare success labels and rehashed missing controls are rejected.
 Local shell support reports `actual_host_proof=not_supplied_by_local_rehearsal`.

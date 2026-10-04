@@ -10,6 +10,7 @@ import sys
 import tempfile
 from contextlib import nullcontext
 import time
+import unittest
 from unittest.mock import patch
 import resource_observer as observer
 
@@ -25,6 +26,9 @@ def main():
     p.add_argument('--binary', type=Path, default=Path('rebuild/target/debug/volicord-mcp'))
     p.add_argument('--output', type=Path, help='Create-only local proof directory; default rebuild/.local/validation')
     args = p.parse_args(); binary = args.binary.resolve()
+    import resource_coverage_self_test
+    focused = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromModule(resource_coverage_self_test))
+    assert focused.wasSuccessful(), 'independent tick/instance controls failed'
     artifacts = {'volicord-mcp': {'path':str(binary), 'sha256':observer.digest(binary)}}
     processes, watchers, process_records = [], [], []
     identity_controls = {}

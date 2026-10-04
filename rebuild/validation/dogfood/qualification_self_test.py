@@ -123,6 +123,23 @@ class PolicyTests(unittest.TestCase):
     def result(self, reviews=None, technical=None):
         return policy.combine(self.evaluation, self.specs, reviews if reviews is not None else [self.agent, self.human], technical or self.technical)
 
+    def test_qualification_rehash_cannot_normalize_missing_instance_sample(self):
+        import qualification_policy as policy
+        import machine_findings as m
+        from resource_coverage_self_test import observation, omit
+        value = {'kind': 'phase8_dogfood_result', 'schema_version': 3,
+            'policy': policy.identity(), 'candidate_head': 'a' * 40,
+            'evaluator_revision': 'b' * 40, 'run_nonce': 'c' * 32, **self.result()}
+        resource = observation(2, purpose='naturalistic')
+        value['naturalistic_evidence']['naturalistic_resource'] = resource
+        value['run_id'] = m.digest(value)
+        policy.validate_result(value)
+        omit(resource)
+        value['run_id'] = m.digest({k: v for k, v in value.items() if k != 'run_id'})
+        with self.assertRaisesRegex(ValueError, 'running instance lacks tick sample'):
+            policy.validate_result(value)
+
+
     def test_sparse_interaction_coverage_is_unresolved_not_product_failure(self):
         cid = "campaign/campaign_interaction/interaction_coverage_adequacy"
         for value in (self.agent, self.human):
@@ -712,6 +729,38 @@ class FileBoundaryTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.temp.cleanup()
+
+    def test_copied_lineage_rejects_rehashed_missing_process_sample(self):
+        import campaign
+        import result_lineage
+        import review_operations as ops
+        from resource_coverage_self_test import observation, omit
+        output = self.parent / 'resource-qualification'
+        value = policy.qualify(self.root, self.evaluation, output,
+            candidate=campaign.load_campaign(self.root)['candidate_head'])
+        copied = self.parent / 'resource-copied-lineage'
+        result_lineage.publish(self.root, self.evaluation, [], output / 'qualification.json', copied)
+        self.assertFalse(result_lineage.verify(copied)['external_staging_paths_used'])
+        # Refresh all qualification/index/receipt hashes. The resource primitive
+        # contradiction must fail before any later equality with campaign inputs.
+        changed = copy.deepcopy(value)
+        changed['naturalistic_evidence']['naturalistic_resource'] = omit(observation(2, purpose='naturalistic'))
+        changed['run_id'] = m.digest({k: v for k, v in changed.items() if k != 'run_id'})
+        path = copied / 'qualification/qualification.json'
+        path.chmod(0o600); path.write_bytes(ops.encoded(changed))
+        index = json.loads((copied / 'index.json').read_bytes())
+        index['qualification'].update(run_id=changed['run_id'], sha256=ops.digest(path.read_bytes()))
+        index['lineage_id'] = m.digest({k: v for k, v in index.items() if k != 'lineage_id'})
+        data = ops.encoded(index)
+        receipt = json.loads((copied / 'receipt.json').read_bytes())
+        receipt.update(lineage_id=index['lineage_id'], index_sha256=ops.digest(data))
+        receipt['artifacts'] = {name: result_lineage._binding((copied / name).read_bytes())
+            for name in receipt['artifacts']}
+        for name, body in (('index.json', data), ('receipt.json', ops.encoded(receipt))):
+            path = copied / name; path.chmod(0o600); path.write_bytes(body)
+        with patch.object(campaign, 'load_evidence_set', side_effect=AssertionError('original campaign access')):
+            with self.assertRaisesRegex(ValueError, 'running instance lacks tick sample'):
+                result_lineage.verify(copied)
 
     def test_copied_human_display_lineage_uses_only_packaged_candidate_context(self):
         import campaign

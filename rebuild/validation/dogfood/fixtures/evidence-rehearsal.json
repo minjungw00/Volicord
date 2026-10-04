@@ -77,7 +77,8 @@
     "retention_metadata_round_trip",
     "retention_oversize_atomic",
     "candidate_shell_route",
-    "resource_expectation_lifecycle"
+    "resource_expectation_lifecycle",
+    "partial_process_sampling"
   ],
   "expected_inner": {
     "technical_gate": "not_provided",

@@ -764,7 +764,7 @@ def pipeline(root, candidate, binary, logs):
     checked["copied_semantic_rehash"] = copied_control(copied)
     temporal['copied'] = copied_temporal(copied, temporal)
     checked.update(dict.fromkeys(temporal['outcomes'], 'passed'))
-    checked.update(dict.fromkeys(('retention_metadata_round_trip','retention_oversize_atomic','candidate_shell_route','resource_expectation_lifecycle'), 'passed'))
+    checked.update(dict.fromkeys(('retention_metadata_round_trip','retention_oversize_atomic','candidate_shell_route','resource_expectation_lifecycle','partial_process_sampling'), 'passed'))
     require(set(checked) == set(json.loads(FIXTURE.read_bytes())["controls"]), "rehearsal control coverage changed")
     return {"evidence_set_sha256": c.harness.sha256(root / "campaign-unavailable/evidence-set.json"),
         "executables": {name: item["sha256"] for name, item in manifest["candidate_artifacts"].items()},

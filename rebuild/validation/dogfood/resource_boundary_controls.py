@@ -9,6 +9,15 @@ import time
 import resource_observer as o
 
 
+def coverage_primitives(value):
+    """Bounded rehearsal receipt of current fields; private identities stay local."""
+    return {'ticks': copy.deepcopy(value['ticks']), 'duration_ns': value['duration_ns'],
+        'interval_ns': value['interval_ns'], 'status': value['status'],
+        'measurement': {k: value['measurement'][k] for k in ('sample_count', 'peak_rss_bytes')},
+        'instances': [{'identity': {k: i['identity'][k] for k in ('instance_id', 'runtime_binding')},
+            'samples': copy.deepcopy(i['samples'])} for i in value['instances']]}
+
+
 def run(binary, root):
     root.mkdir(parents=True, exist_ok=False)
     repository = root / 'repository'; repository.mkdir()
@@ -55,6 +64,35 @@ def run(binary, root):
         active = launch(runtimes[0])
         one = observe('active_runtime', [runtimes[0]])
         assert one['status'] == 'measured'
+        concurrent = launch(runtimes[0])
+        both = observe('concurrent_runtime', [runtimes[0]])
+        assert both['status'] == 'measured' and len(both['instances']) == 2
+        bad = copy.deepcopy(both)
+        tick_index = 1
+        omitted = bad['instances'][0]['identity']['instance_id']
+        bad['instances'][0]['samples'].pop(tick_index)
+        bad['ticks'][tick_index]['runtimes'][0]['sampled'].remove(omitted)
+        numbers = [s['rss_bytes'] for i in bad['instances'] for s in i['samples']]
+        bad['measurement'].update(sample_count=len(numbers), peak_rss_bytes=max(numbers))
+        mutation_path = root / 'partial_process_sampling.json'
+        mutation_path.write_text(json.dumps(bad, sort_keys=True) + '\n')
+        try: o.validate(json.loads(mutation_path.read_bytes()))
+        except o.ObservationError as error:
+            assert str(error) == 'running instance lacks tick sample', 'wrong integrity rejection'
+        else: raise AssertionError('partial per-instance sampling accepted')
+        # Restoration is the untouched retained observation, not regenerated data.
+        restored = json.loads((root / 'concurrent_runtime.json').read_bytes())
+        assert o.validate(restored)['status'] == 'measured' and restored == both
+        results['partial_process_sampling'] = {'status': 'rejected', 'tick_index': tick_index,
+            'omitted_instance_id': omitted, 'basis_sha256': o.digest(root / 'concurrent_runtime.json'),
+            'mutated_sha256': o.digest(mutation_path), 'restored_sha256': o.digest(root / 'concurrent_runtime.json'),
+            'original': coverage_primitives(both), 'mutated': coverage_primitives(bad),
+            'rejection': 'running instance lacks tick sample'}
+        finish(concurrent)
+        # Use fresh waiting Homes; a stopped-only, never-sampled attachment is a
+        # separate unsampled limitation rather than part of this active proof.
+        runtimes[0] = root / 'single-active'; runtimes[0].mkdir()
+        finish(active); active = launch(runtimes[0])
         waiting = {o.path_binding(runtimes[1]):'waiting'}
         plus = observe('active_plus_waiting', runtimes, expectations=waiting)
         assert plus['status'] == 'measured'
@@ -75,8 +113,8 @@ def run(binary, root):
         assert interrupted['status']=='partial' and interrupted['termination']=='interrupted'
         assert interrupted['measurement']['sample_count'] > 0 and 'observer_interrupted' in interrupted['measurement']['measurement_errors']
         finish(active)
-        # Fresh registries allow the observer to arm before two sequential real launches.
-        sequential = [root/'sequential-a', root/'sequential-b']
+        # Future Homes stay waiting across three sequential real activations.
+        sequential = [root/'sequential-a', root/'sequential-b', root/'sequential-c']
         for r in sequential: r.mkdir()
         phase, current = 0, None
         def events():
@@ -84,11 +122,12 @@ def run(binary, root):
             phase += 1
             if phase == 2: current = launch(sequential[0])
             if phase == 5: finish(current); current = launch(sequential[1])
-            if phase == 8: finish(current)
+            if phase == 8: finish(current); current = launch(sequential[2])
+            if phase == 11: finish(current)
             return {}
-        seq = observe('sequential_eof', sequential, duration_seconds=2.25, interval_ms=250,
+        seq = observe('sequential_eof', sequential, duration_seconds=3, interval_ms=250,
             expectations={o.path_binding(r):'waiting' for r in sequential}, expectation_reader=events)
-        assert phase >= 8 and seq['status'] == 'measured' and len(seq['instances']) == 2
+        assert phase >= 11 and seq['status'] == 'measured' and len(seq['instances']) == 3
         assert all(i['samples'] and i['identity']['state']=='stopped' and i['lifecycle']=='stopped' for i in seq['instances'])
         # Real sampled instance killed after one tick; useful samples cannot erase disappearance.
         abrupt_runtime = root/'abrupt'; abrupt_runtime.mkdir(); killed = launch(abrupt_runtime)

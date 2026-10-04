@@ -430,6 +430,40 @@ class WorkflowTests(unittest.TestCase):
     def target(self):
         return self.parent / self._testMethodName
 
+    def test_resource_projection_rejects_rehashed_partial_instance_sampling(self):
+        from resource_coverage_self_test import observation, omit
+        import machine_findings
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='resource-reviewer')
+        resource = observation(2, purpose='naturalistic')
+        for missing in (False, True):
+            if missing: omit(resource)
+            data = ops.encoded(resource)
+            name = 'evidence/campaign-mcp-resources.json'
+            path = target / name
+            if path.exists(): path.chmod(0o600)
+            path.write_bytes(data)
+            preparation = json.loads((target / 'preparation.json').read_bytes())
+            pointers, lines = ops.locators(data)
+            preparation['index']['evidence']['campaign-mcp-resources'] = {
+                'path': name, 'bytes': len(data), 'sha256': ops.digest(data),
+                'sample_id': None, 'surface': 'resource_observation', 'locale': None,
+                'sample_ids': [], 'origin': {'kind': 'evidence_set_member', 'path': 'resources/observation.json',
+                    'bytes': len(data), 'sha256': ops.digest(data)}, 'locators': pointers, 'line_count': lines}
+            preparation['package_id'] = machine_findings.digest({'binding': preparation['binding'],
+                'index': preparation['index'], 'unavailable_surfaces': preparation['unavailable_surfaces']})
+            encoded = ops.encoded(preparation)
+            path = target / 'preparation.json'; path.chmod(0o600); path.write_bytes(encoded)
+            package = json.loads((target / 'package.json').read_bytes())
+            package.update(package_id=preparation['package_id'], preparation_sha256=ops.digest(encoded))
+            package['artifacts'][name] = {'bytes': len(data), 'sha256': ops.digest(data)}
+            package['artifacts'] = {name: {'bytes': len((target / name).read_bytes()),
+                'sha256': ops.digest((target / name).read_bytes())} for name in package['artifacts']}
+            path = target / 'package.json'; path.chmod(0o600); path.write_bytes(ops.encoded(package))
+            if missing:
+                with self.assertRaisesRegex(ValueError, 'running instance lacks tick sample'): ops.load_package(target)
+            else: ops.load_package(target)
+
     def test_collected_lifecycle_and_returned_meaning_reach_review_with_exact_locators(self):
         import review_explanations
         target = self.target()

@@ -145,6 +145,44 @@ class ContractTests(unittest.TestCase):
             with self.subTest(mutation=mutation),self.assertRaises((ValueError,TypeError,KeyError)):
                 contract.validate_result(value,'a'*40)
 
+    def test_partial_sampling_requires_independently_checked_primitives_after_rehash(self):
+        from unittest.mock import patch
+        import resource_observer
+        original = passed_result()
+        # Portable verification has no dependency on rerunning the resource
+        # validator or trusting the generator's declared rejection.
+        with patch.object(resource_observer, 'validate', side_effect=AssertionError('observer oracle reused')):
+            contract.validate_result(original, 'a' * 40)
+            for mutation in ('missing','label_only','no_samples','other_instance_sample','other_reference',
+                    'wrong_instance','wrong_tick','passed','wrong_reason','missing_restoration','derived_peak'):
+                value = copy.deepcopy(original)
+                results = value['pipeline']['boundary_evidence']['resource']['result']['results']
+                control = results['partial_process_sampling']
+                if mutation == 'missing': results.pop('partial_process_sampling')
+                elif mutation == 'label_only': results['partial_process_sampling'] = 'passed'
+                elif mutation == 'no_samples': control['original']['instances'][0]['samples'] = []
+                elif mutation == 'other_instance_sample':
+                    control['mutated']['instances'][0]['samples'].insert(1,
+                        copy.deepcopy(control['mutated']['instances'][1]['samples'][1]))
+                elif mutation == 'other_reference':
+                    control['mutated']['ticks'][1]['runtimes'][0]['sampled'] = [control['omitted_instance_id']]
+                elif mutation == 'wrong_instance': control['omitted_instance_id'] = control['original']['instances'][1]['identity']['instance_id']
+                elif mutation == 'wrong_tick': control['tick_index'] = 2
+                elif mutation == 'passed': control['status'] = 'passed'
+                elif mutation == 'wrong_reason': control['rejection'] = 'sample timing outside tick'
+                elif mutation == 'missing_restoration': control.pop('restored_sha256')
+                elif mutation == 'derived_peak': control['mutated']['measurement']['peak_rss_bytes'] = 0
+                if isinstance(results.get('partial_process_sampling'), dict):
+                    # Recompute hashes too: rejection must follow the primitive
+                    # contradiction or missing evidence, rather than a stale hash.
+                    control['basis_sha256'] = control['restored_sha256'] = contract.digest(control['original'])
+                    results['concurrent_runtime']['artifact_sha256'] = control['basis_sha256']
+                    control['mutated_sha256'] = contract.digest(control['mutated'])
+                    if mutation == 'missing_restoration': control.pop('restored_sha256')
+                value['result_id'] = contract.digest({k:v for k,v in value.items() if k != 'result_id'})
+                with self.subTest(mutation=mutation), self.assertRaises((ValueError, TypeError, KeyError)):
+                    contract.validate_result(value, 'a' * 40)
+
     def test_rehashed_temporal_claims_require_actual_retained_evidence(self):
         original = passed_result()
         for mutation in ('missing', 'labels_only', 'no_process', 'no_receipt', 'drop_history',

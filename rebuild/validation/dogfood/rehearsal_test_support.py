@@ -77,16 +77,35 @@ def boundary_fixture():
             'cli_sha256':'b'*64,'mcp_sha256':'b'*64,'runtime_binding':'6'*64,'repository_binding':'7'*64,
             'process':'support-process-'+str(index+2),'output':stream} for index,shell in enumerate(('non_login','login'))],
         'negative_controls':{'wrong_executable':'rejected','wrong_runtime':'rejected'}}
-    cases={'active_runtime':('measured',None), 'active_plus_waiting':('measured',None),
+    cases={'active_runtime':('measured',None), 'concurrent_runtime':('measured',None), 'active_plus_waiting':('measured',None),
         'active_plus_unknown':('partial','unknown_coverage'), 'missing_expected':('partial','missing_registration'),
         'stop_during_active':('partial','active_at_detach'), 'observer_interruption':('partial','observer_interrupted'),
         'sequential_eof':('measured',None), 'abrupt_exit':('partial','process_gone'),
         'pre_attachment_exit':('not_observed','unsampled_instance'), 'zero_expected_samples':('not_observed','missing_registration')}
     results={name:{'status':status,'sample_count':1 if status in {'measured','partial'} else 0,
         'measurement_errors':[error] if error else [],'termination':'stop_requested' if name=='stop_during_active' else 'interrupted' if name=='observer_interruption' else 'duration_elapsed',
-        'lifecycles':['stopped','stopped'] if name=='sequential_eof' else ['gone'] if name=='abrupt_exit' else ['running_at_detach'],
+        'lifecycles':['stopped','stopped','stopped'] if name=='sequential_eof' else ['gone'] if name=='abrupt_exit' else ['running_at_detach'],
         'artifact_sha256':'1'*64} for name,(status,error) in cases.items()}
     results['forged_completion']={'status':'rejected','mutations':5,'basis_sha256':'1'*64}
+    import copy
+    ids = ['01' * 16, '02' * 16]
+    original = {'status':'measured', 'duration_ns':100_000_000, 'interval_ns':50_000_000,
+        'measurement':{'sample_count':4,'peak_rss_bytes':4096},
+        'instances':[{'identity':{'instance_id':ident,'runtime_binding':'b'*64},
+            'samples':[{'elapsed_ns':1,'rss_bytes':1024}, {'elapsed_ns':50_000_001,'rss_bytes':4096}]}
+            for ident in ids],
+        'ticks':[{'elapsed_ns':tick*50_000_000, 'errors':[], 'runtimes':[{'runtime_binding':'b'*64,
+            'expectation':'unknown','authority':'none','sampled':list(ids),
+            'registered':[{'instance_id':ident,'state':'running'} for ident in ids]}]} for tick in range(2)]}
+    mutated = copy.deepcopy(original)
+    mutated['instances'][0]['samples'].pop(1)
+    mutated['ticks'][1]['runtimes'][0]['sampled'].remove(ids[0])
+    mutated['measurement']['sample_count'] = 3
+    results['concurrent_runtime']['sample_count'] = 4
+    results['partial_process_sampling'] = {'status':'rejected', 'tick_index':1,
+        'omitted_instance_id':ids[0], 'basis_sha256':'1'*64,
+        'mutated_sha256':'2'*64, 'restored_sha256':'1'*64, 'original':original,
+        'mutated':mutated, 'rejection':'running instance lacks tick sample'}
     resource={'kind':'resource_boundary_support','candidate_mcp_sha256':'b'*64,'results':results,
         'processes':[{'label':'mcp-0','exit_code':-9,'termination':'sigkill','duration_ns':1,
             'stdout_sha256':'1'*64,'stderr_sha256':'2'*64}], 'evidence_role':'real_sibling_support_not_host_or_naturalistic'}

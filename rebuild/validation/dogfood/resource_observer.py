@@ -180,8 +180,14 @@ def coverage_errors(value):
                 if item['state'] == 'gone': errors.add('process_gone')
                 if item['state'] == 'identity_rejected': errors.add('registration_changed')
                 if item['state'] == 'inaccessible': errors.add('inaccessible')
-            if not set(r['sampled']) <= {i for i, state in states.items() if state == 'running'}:
+            running = {i for i, state in states.items() if state == 'running'}
+            if not set(r['sampled']) <= running:
                 raise ObservationError('sample outside running lifecycle')
+            # Failure facts are scoped by registered instance and tick (inaccessible,
+            # gone or identity_rejected). Neither another instance's RSS nor a
+            # global/lifetime error can cover an unsampled running registration.
+            if running != set(r['sampled']):
+                raise ObservationError('running instance lacks tick sample')
             for ident in r['sampled']:
                 seen_samples.setdefault(ident, []).append(index)
             if not r['sampled'] and not states:
@@ -197,7 +203,9 @@ def coverage_errors(value):
             raise ObservationError('sample/tick coverage mismatch')
         for index, sample_record in zip(indices, instance['samples']):
             end = value['ticks'][index+1]['elapsed_ns'] if index+1 < len(value['ticks']) else value['duration_ns']
-            if not value['ticks'][index]['elapsed_ns'] <= sample_record['elapsed_ns'] <= end:
+            if (sample_record['elapsed_ns'] < value['ticks'][index]['elapsed_ns']
+                or (sample_record['elapsed_ns'] >= end if index+1 < len(value['ticks'])
+                    else sample_record['elapsed_ns'] > end)):
                 raise ObservationError('sample timing outside tick')
         if (instance['lifecycle'] == 'stopped') != (instance['identity']['state'] == 'stopped') and instance['lifecycle'] != 'identity_rejected':
             raise ObservationError('lifecycle/stop evidence disagreement')

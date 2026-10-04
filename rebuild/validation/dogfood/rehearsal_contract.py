@@ -1,5 +1,6 @@
 """Bounded rehearsal evidence contract; no Product execution or archive dependency."""
 import hashlib
+import copy
 import json
 from pathlib import Path
 import re
@@ -16,7 +17,7 @@ def require(value, message):
 
 CONTRACT = "product-backed-dogfood-evidence-rehearsal-1"
 FIXTURE = Path(__file__).with_name("fixtures") / "evidence-rehearsal.json"
-PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_support.py", "retention_support.py", "resource_boundary_controls.py", "resource_observer_self_test.py", "../linux-codex-integration/launch_readiness.py", "../../crates/volicord-viewer/tests/work_explanation.rs", "../../crates/volicord-operations/tests/support/reading_fixture.rs", "rehearsal_contract.py", "evidence_purpose.py", "campaign.py", "codex_events.py",
+PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_support.py", "retention_support.py", "resource_boundary_controls.py", "resource_observer_self_test.py", "resource_coverage_self_test.py", "../linux-codex-integration/launch_readiness.py", "../../crates/volicord-viewer/tests/work_explanation.rs", "../../crates/volicord-operations/tests/support/reading_fixture.rs", "rehearsal_contract.py", "evidence_purpose.py", "campaign.py", "codex_events.py",
     "answer_observations.py", "explanation_evidence.py", "document_realization.py",
     "review_operations.py", "review_captures.py", "review_explanations.py",
     "qualification_policy.py", "result_lineage.py", "resource_observer.py", "harness.py",
@@ -39,7 +40,7 @@ TEMPORAL_CONTROLS = {
     'missing_temporal_evidence': ('naturalistic_observation', 'shared_answer_integrity', 'indeterminate', 'qualitative_review_required'),
     'missing_temporal_evidence_with_violation': ('naturalistic_observation', 'shared_answer_integrity', 'confirmed_violation', 'hard_blocking'),
 }
-BOUNDARY_CONTROLS = ('retention_metadata_round_trip', 'retention_oversize_atomic', 'candidate_shell_route', 'resource_expectation_lifecycle')
+BOUNDARY_CONTROLS = ('retention_metadata_round_trip', 'retention_oversize_atomic', 'candidate_shell_route', 'resource_expectation_lifecycle', 'partial_process_sampling')
 CONTROLS = ('duplicate_titles', 'contradictory_shared_answer', 'missing_explanation_plan', 'mismatched_explanation_response', 'review_projection_omission', 'changed_artifact', 'memory_binary_mismatch', 'absent_human_observations', 'rehearsal_not_measured', 'copied_semantic_rehash', *TEMPORAL_CONTROLS, *BOUNDARY_CONTROLS)
 TOPOLOGY = {'repository_journeys': 3, 'work_items': 5, 'resume_pairs': 3, 'fresh_sessions': 8, 'work_distribution': {'volicord': 3, 'small-python': 1, 'polyglot-medium': 1}, 'resume_repository_classes': ['polyglot-medium', 'small-python', 'volicord']}
 
@@ -154,12 +155,12 @@ def validate_boundaries(value, processes, executables):
     require(set(resource)=={'kind','candidate_mcp_sha256','results','processes','evidence_role'}
         and resource['kind']=='resource_boundary_support' and resource['candidate_mcp_sha256']==executables['volicord-mcp']
         and resource['evidence_role']=='real_sibling_support_not_host_or_naturalistic', 'resource identity changed')
-    expected={'active_runtime':('measured',None), 'active_plus_waiting':('measured',None),
+    expected={'active_runtime':('measured',None), 'concurrent_runtime':('measured',None), 'active_plus_waiting':('measured',None),
         'active_plus_unknown':('partial','unknown_coverage'), 'missing_expected':('partial','missing_registration'),
         'stop_during_active':('partial','active_at_detach'), 'observer_interruption':('partial','observer_interrupted'),
         'sequential_eof':('measured',None), 'abrupt_exit':('partial','process_gone'),
         'pre_attachment_exit':('not_observed','unsampled_instance'), 'zero_expected_samples':('not_observed','missing_registration')}
-    require(set(resource['results'])==set(expected)|{'forged_completion'}, 'missing resource boundary cases')
+    require(set(resource['results'])==set(expected)|{'forged_completion','partial_process_sampling'}, 'missing resource boundary cases')
     for name,(status,error) in expected.items():
         result=resource['results'][name]
         require(set(result)=={'status','sample_count','measurement_errors','termination','lifecycles','artifact_sha256'}
@@ -168,8 +169,9 @@ def validate_boundaries(value, processes, executables):
             and (not result['measurement_errors'] if error is None else error in result['measurement_errors']), 'resource semantic outcome changed')
         require(result['termination']==('stop_requested' if name=='stop_during_active' else 'interrupted' if name=='observer_interruption' else 'duration_elapsed'), 'resource stop/interruption fact changed')
         hash_value(result['artifact_sha256'])
-    require(resource['results']['sequential_eof']['lifecycles']==['stopped','stopped']
+    require(resource['results']['sequential_eof']['lifecycles']==['stopped','stopped','stopped']
         and resource['results']['abrupt_exit']['lifecycles']==['gone'], 'normal/uncertain termination conflated')
+    validate_partial_sampling(resource['results']['partial_process_sampling'], resource['results']['concurrent_runtime'])
     forged=resource['results']['forged_completion']
     require(set(forged)=={'status','mutations','basis_sha256'} and forged['status']=='rejected' and forged['mutations']==5
         and forged['basis_sha256']==resource['results']['missing_expected']['artifact_sha256'], 'forged completion control absent')
@@ -184,6 +186,81 @@ def validate_boundaries(value, processes, executables):
         and checks['pid_reuse']==checks['executable_mismatch']=='rejected' and checks['observer_failure']=='failed'
         and checks['sample_gap']=='partial', 'missing resource identity/error controls')
     for name in ('inaccessible','disappearance','pid_reuse_simulated','registration_failure'): hash_value(checks[name])
+
+
+def validate_partial_sampling(value, positive):
+    """Independent portable oracle over retained current-contract primitive fields.
+
+    This does not call the observer validator or trust a control's passed label.
+    No executable/Runtime paths, process bodies or registration secrets are copied.
+    """
+    require(isinstance(value, dict) and set(value) == {'status','tick_index','omitted_instance_id',
+        'basis_sha256','mutated_sha256','restored_sha256','original','mutated','rejection'},
+        'missing partial process sampling evidence')
+    require(value['status'] == 'rejected' and value['rejection'] == 'running instance lacks tick sample'
+        and value['basis_sha256'] == value['restored_sha256'] == positive['artifact_sha256'],
+        'partial sampling lacks actual rejection/restoration')
+    hash_value(value['mutated_sha256'])
+    require(value['mutated_sha256'] != value['basis_sha256'], 'partial sampling was not mutated')
+    original = value['original']
+    require(isinstance(original, dict) and set(original) == {'ticks','instances','duration_ns','interval_ns','measurement','status'}
+        and original['status'] == 'measured' and type(original['duration_ns']) is int
+        and type(original['interval_ns']) is int and 50_000_000 <= original['interval_ns'] <= 60_000_000_000
+        and isinstance(original['ticks'], list) and 2 <= len(original['ticks']) <= 20
+        and isinstance(original['instances'], list) and len(original['instances']) == 2,
+        'missing complete concurrent primitive basis')
+    instances = {}
+    runtime = None
+    for item in original['instances']:
+        require(set(item) == {'identity','samples'} and set(item['identity']) == {'instance_id','runtime_binding'},
+            'unexpected partial sampling identity content')
+        ident = item['identity']['instance_id']; identity(ident); hash_value(item['identity']['runtime_binding'])
+        require(ident not in instances and isinstance(item['samples'], list), 'duplicate/invalid process primitive')
+        if runtime is None: runtime = item['identity']['runtime_binding']
+        require(item['identity']['runtime_binding'] == runtime, 'foreign Runtime sample')
+        instances[ident] = item
+    last = -1
+    for index, tick in enumerate(original['ticks']):
+        require(set(tick) == {'elapsed_ns','errors','runtimes'} and type(tick['elapsed_ns']) is int
+            and last < tick['elapsed_ns'] <= original['duration_ns'] and tick['errors'] == []
+            and isinstance(tick['runtimes'], list) and len(tick['runtimes']) == 1,
+            'invalid concurrent tick basis')
+        if last >= 0: require(tick['elapsed_ns'] - last <= original['interval_ns'] * 2, 'concurrent basis has gap')
+        last = tick['elapsed_ns']
+        rt = tick['runtimes'][0]
+        require(set(rt) == {'runtime_binding','expectation','authority','registered','sampled'}
+            and rt['runtime_binding'] == runtime and rt['expectation'] == 'unknown' and rt['authority'] == 'none'
+            and isinstance(rt['registered'], list) and len(rt['registered']) == 2
+            and all(set(r) == {'instance_id','state'} and r['state'] == 'running' for r in rt['registered'])
+            and {r['instance_id'] for r in rt['registered']} == set(instances)
+            and isinstance(rt['sampled'], list) and len(rt['sampled']) == 2 and set(rt['sampled']) == set(instances),
+            'concurrent basis lacks per-instance sampling')
+        end = original['ticks'][index+1]['elapsed_ns'] if index+1 < len(original['ticks']) else original['duration_ns']
+        for item in instances.values():
+            require(len(item['samples']) == len(original['ticks']), 'basis sample/tick count mismatch')
+            sample = item['samples'][index]
+            require(set(sample) == {'elapsed_ns','rss_bytes'} and type(sample['elapsed_ns']) is int
+                and tick['elapsed_ns'] <= sample['elapsed_ns']
+                and (sample['elapsed_ns'] < end if index+1 < len(original['ticks']) else sample['elapsed_ns'] <= end)
+                and type(sample['rss_bytes']) is int and sample['rss_bytes'] >= 0,
+                'basis sample identity/tick mismatch')
+    def derived(payload):
+        numbers = [s['rss_bytes'] for i in payload['instances'] for s in i['samples']]
+        return {'sample_count':len(numbers), 'peak_rss_bytes':max(numbers)}
+    require(original['measurement'] == derived(original)
+        and original['measurement']['sample_count'] == positive['sample_count'], 'basis derived measurements disagree')
+    index = value['tick_index']; ident = value['omitted_instance_id']
+    require(type(index) is int and 0 <= index < len(original['ticks']) and ident in instances,
+        'missing omitted tick/instance identity')
+    expected = copy.deepcopy(original)
+    next(i for i in expected['instances'] if i['identity']['instance_id'] == ident)['samples'].pop(index)
+    expected['ticks'][index]['runtimes'][0]['sampled'].remove(ident)
+    expected['measurement'] = derived(expected)
+    require(value['mutated'] == expected, 'partial sampling mutation does not match retained instance/tick')
+    # The exact transformation keeps both running facts but only the other
+    # instance's sample. Rehashed passed claims cannot erase that contradiction.
+    require(len(expected['ticks'][index]['runtimes'][0]['sampled']) == 1,
+        'partial sampling did not preserve the other process sample')
 
 
 def hash_value(value):

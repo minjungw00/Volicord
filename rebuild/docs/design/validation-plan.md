@@ -2193,11 +2193,20 @@ Runtime/repository binding. Historical campaign resource files are not decoded t
 a compatibility branch, relabeled or rewritten. Operator declarations are independent
 expectation evidence, not authenticated process or human/session attribution.
 
+Every tick's registered `running` instance must have its own same-Runtime sample
+reference and primitive sample in that tick interval. Schema 3's instance-scoped
+`inaccessible`, `gone` and `identity_rejected` tick states already preserve failure
+limitations; global errors, another instance's sample or a later confirmed stop
+cannot cover an unsampled running fact. Independent retained-evidence mutations
+remove both sample and reference and recalculate counts/peak; validation must still
+reject them. Waiting and positively confirmed termination remain valid controls.
+
 ### Required retention and launch rehearsal controls
 
 The existing mandatory local stage additionally requires `retention_metadata_round_trip`,
-`retention_oversize_atomic`, `candidate_shell_route`, and `resource_expectation_lifecycle`.
-Its closed `boundary_evidence` binds actual successful wrapper/process streams to four
+`retention_oversize_atomic`, `candidate_shell_route`, `resource_expectation_lifecycle`,
+and `partial_process_sampling`.
+Its closed `boundary_evidence` binds actual successful wrapper/process streams to five
 metadata-heavy Work/Decision en/ko prepare/record/readback and campaign collection/review
 lifecycles, inclusive retained-size bounds, atomic actionable oversize failure, explicit
 installed CLI/Runtime/repository routes in conflicting login/non-login shells, and real
@@ -2210,3 +2219,14 @@ consumers use this one closed contract; no old-stage decoder or additional exter
 is introduced. Actual-host tool-shell readiness remains separately required and is not
 supplied by these local shell controls. Gate ordering, transmission scopes, resource
 ceilings, topology and expected unresolved inner qualification remain unchanged.
+
+The partial-sampling control mutates an actual retained two-instance observation,
+removing one instance's sample and sampled reference while keeping both running
+facts and recalculating derived measurements. It must fail for the running-instance
+integrity reason, then validate the untouched retained positive again. The portable
+rehearsal receipt retains the relevant current tick/sample primitive fields and
+opaque bindings, excluding private registration paths. Its independent verifier
+checks full positive coverage, sample timing, counts/peak and the exact negative
+transformation without invoking the observer validator. Missing evidence, replacing
+the sample/reference with the other instance's, or rehashed passed claims fail.
+The same lifecycle proof exercises three sequential Homes and normal EOF.
