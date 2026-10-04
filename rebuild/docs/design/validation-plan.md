@@ -333,6 +333,22 @@ attempted, observation facts cannot be erased or relabelled as unselected. Froze
 campaign promises require a separate retained operator scope-change record rather
 than rewriting manifests, task approvals or historical observations.
 
+Current-installation readiness is owned by the existing Linux/Codex integration operator
+path in [Linux setup](../linux-codex-setup.md). Generate actual integration before hook
+review, satisfy only missing host trust/exact Runtime access, and run a scoped smoke in
+that actual execution channel. `launch_readiness.py` retains minimal context in its existing
+result: candidate/install/CLI/MCP route and bytes, relevant integration/permission config,
+Runtime/store access identity and caller-observed host/sandbox/trust conditions. Hash-bound
+stdout and numeric execution permit same-context reuse without Product execution. Relevant
+scope changes rerun only that local smoke; unrelated task/config/campaign-label changes
+require none. Local/elevated channels cannot attest default VS Code use; older evidence
+without context remains a separate raw-host review, never a fabricated reused identity.
+Unselected telemetry requires no lifecycle/PID/EOF/cleanup actions. Conflicting Runtime use,
+wrong executable, required locks and actual connection failures retain independent blockers.
+The changed remediation HEAD requires its own gate; later unchanged campaign preparation
+consumes that candidate archive without a second gate. Support regression coverage lives
+in the existing qualification/campaign consumers and leaves human criteria unresolved.
+
 ## 4. 실행 순서
 
 ```text

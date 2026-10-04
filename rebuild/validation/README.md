@@ -16,6 +16,13 @@ explanation operations or host generation. The separate
 reports/commit identities only and supplies no current Product result.
 Authenticated `codex_probe.py` remains a separate authorized external check.
 
+Campaign launch uses the existing [Linux/Codex integration readiness owner](../docs/linux-codex-setup.md):
+inspect actual generated integration before hook approval, satisfy only missing exact
+Runtime permission/trust, and reuse hash-bound successful readiness for unchanged actual
+host scope. The current qualification self-test covers scope invalidation and no-resource
+consumer entry points without a new gate stage. Technical gate validation of a changed HEAD
+remains distinct from preparing later campaigns on that already validated candidate.
+
 - `rebuild/scripts/validate self-test` checks command execution, output and
   status preservation, signal reporting, and non-fail-fast aggregation with
   fake commands.

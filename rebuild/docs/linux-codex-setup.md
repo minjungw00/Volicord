@@ -189,14 +189,59 @@ an existing Project. Retain its output privately with the execution result.
 Bare-name realpath/hash drift is disclosed; no global PATH or shell file is changed.
 A local login/non-login reproduction supplies support only, not another host's proof.
 
-The host tool shell must permit access to the selected Runtime as well as the repository.
-Current SQLite store opening and operational coordination need a writable Runtime even
-for a scoped read. With Codex workspace-write, add the exact Runtime using `--add-dir
-/absolute/runtime` when it is outside the workspace. An all-read-only sandbox may therefore
-block the functional readiness probe despite correct executable bytes. This is a distinct
-Runtime-access blocker; do not report it as ready or infer CLI version/PATH cause. The
-isolated authenticated probe authorizes only its disposable Runtime and verifies that its
-read-only task leaves repository files unchanged. No global config or shell file is edited.
+The host tool shell must permit writes to the exact selected Runtime as well as the
+repository. SQLite opening and operational coordination need a writable Runtime even
+for a scoped read. Before a smoke check, generate integration with the candidate's
+`codex enable` (campaigns use `activate-all`) and inspect the actual config/hook with
+`launch_readiness.py --inspect` plus the same route/hash arguments. Inspection starts
+no Product process and grants no trust. Any host workspace-trust prerequisite remains
+user-owned; hook-specific approval follows availability of the actual hook content.
+
+For the VS Code extension, use the trusted repository's `.codex/config.toml` and
+merge only the selected absolute Runtime into `[sandbox_workspace_write].writable_roots`
+while using workspace-write. Preserve existing entries and settings; inspect the
+proposed exact root before applying it. The CLI and IDE share config layers, as
+[official config basics](https://learn.chatgpt.com/docs/config-file/config-basic) and
+[the writable-roots reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+describe. `codex --add-dir /absolute/runtime` applies to that CLI invocation and does
+not configure the VS Code extension. A config file is no proof of effective permission
+or trust. A read-only or managed-policy restriction remains a precise Runtime-access
+blocker; broad roots, disabled sandboxing and elevated-only success cannot resolve a
+default-sandbox readiness claim.
+
+For repeatable observations, supply `--context /private/current-context.json` to the
+same readiness owner in the actual tool shell. The closed context contains
+`candidate_head`, `execution_channel` (`vscode_tool_shell`, `codex_cli_tool_shell`, or
+`local_subprocess`), `host_version`, `sandbox_mode` (`workspace-write` or `read-only`),
+`sandbox_permissions` (`use_default` or `require_escalated`), absolute `writable_roots`,
+`workspace_trust` and `hook_trust` (`user_confirmed` or `unverified`), and
+`permission_basis` (the retained actual effective-policy observation's identity).
+The steward records these observed conditions, never invents them from successful
+installation, and retains their raw host evidence privately. Context is cooperative
+operator metadata, not host authentication. No context means local execution only
+and no automatic reuse. Do not label a local subprocess as a VS Code tool shell.
+
+Retain readiness stdout and its existing numeric execution result with
+`exit_code`, `termination`, and `stdout_sha256`. An unchanged preparation supplies
+those files through `--reuse-output` and `--reuse-execution`, with current `--context`.
+The owner verifies executable bytes, route, relevant integration/permission config,
+Runtime/store access identities and host conditions before reusing the scoped status
+and bounded Runtime-write observation. It reports `checked`, `reused`, and `unverified`
+separately. Changed relevant scope runs only this local smoke; invalid or incomplete
+submitted evidence is rejected. It never executes installation, Final, rehearsal,
+provider or V11. Ordinary task bytes, campaign labels, unrelated config and bare PATH
+drift do not invalidate a matching observation. Existing observations without the new
+context are still inspectable with their raw host evidence; they are not retroactively
+assigned a fabricated automatic-reuse scope. A steward can retain an independent
+same-context review rather than launch redundant setup chats.
+
+Readiness proves the recorded channel/scope at its observation. Actual SessionStart
+and MCP connection still need raw host evidence and each measured session's activation;
+current locks, conflicting Runtime use and later Product health remain independently
+subject to Product checks. Resource observation is optional: no observer, PID lookup,
+EOF confirmation, expectation switching or registry cleanup is required for an
+unselected campaign. Previously adopted Purpose retains its actual Context/Source
+provenance; setup success establishes no new user authority or measured onboarding.
 
 `project_resolve` and `recall` in activation guidance are MCP tools. Use their host
 MCP interface; CLI commands retain their own command groups (such as `status`,

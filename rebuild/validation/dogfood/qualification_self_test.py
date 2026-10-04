@@ -72,6 +72,123 @@ def promote_lineage_qualification(value, evaluation):
         value["naturalistic_evidence"]["naturalistic_resource"])
 
 
+class LaunchReadinessTests(unittest.TestCase):
+    """Environment scope controls, with authored Product-read expectations."""
+    def setUp(self):
+        import importlib.util
+        import campaign
+        self.temp = tempfile.TemporaryDirectory(prefix='volicord-readiness-')
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.binary = root / 'install with spaces/bin/volicord'
+        self.binary.parent.mkdir(parents=True)
+        for name in ('volicord', 'volicord-mcp'):
+            shutil.copy2('/bin/true', self.binary.with_name(name))
+        self.repository = root / 'repository'; self.repository.mkdir()
+        self.runtime = root / 'runtime'; self.runtime.mkdir()
+        (self.runtime / 'canonical.sqlite3').write_bytes(b'support store identity')
+        import campaign_self_test as support
+        support.write_static_integration(self.repository, self.runtime, self.binary)
+        path = campaign.ROOT / 'rebuild/validation/linux-codex-integration/launch_readiness.py'
+        spec = importlib.util.spec_from_file_location('scope_readiness_test', path)
+        self.owner = importlib.util.module_from_spec(spec); spec.loader.exec_module(self.owner)
+        self.context = {'candidate_head': 'a' * 40, 'execution_channel': 'vscode_tool_shell',
+            'host_version': 'authored-host-version', 'sandbox_mode': 'workspace-write',
+            'sandbox_permissions': 'use_default', 'writable_roots': [str(self.runtime)],
+            'workspace_trust': 'user_confirmed', 'hook_trust': 'user_confirmed',
+            'permission_basis': 'authored-effective-policy'}
+        self.hashes = [self.owner.digest(self.binary), self.owner.digest(self.binary.with_name('volicord-mcp'))]
+
+    def probe(self, **kwargs):
+        return self.owner.probe(self.binary, self.runtime, self.repository, *self.hashes,
+            context=kwargs.pop('context', self.context), **kwargs)
+
+    def first(self):
+        with patch.object(self.owner, 'scoped_status', return_value=({'project_id': '1' * 32}, '2' * 64)) as status:
+            value = self.probe()
+            status.assert_called_once_with(self.binary, self.runtime, self.repository)
+        self.assertEqual(value['execution'], 'checked')
+        return value
+
+    def test_unchanged_scope_reuses_numeric_hash_bound_result_without_execution(self):
+        value = self.first()
+        stdout = Path(self.temp.name) / 'stdout.log'
+        stdout.write_text(json.dumps(value))
+        result = Path(self.temp.name) / 'result.json'
+        result.write_text(json.dumps({'exit_code': 0, 'termination': None,
+            'stdout_sha256': self.owner.digest(stdout)}))
+        previous = self.owner.retained_observation(stdout, result)
+        with patch.object(self.owner.subprocess, 'run', side_effect=AssertionError('redundant subprocess')), \
+             patch.object(self.owner.tempfile, 'TemporaryFile', side_effect=AssertionError('redundant permission write')):
+            repeated = self.probe(previous=previous)
+            self.assertEqual(repeated['execution'], 'reused')
+            self.assertEqual(repeated['reused'], ['Runtime_write', 'scoped_status'])
+            self.assertEqual(repeated['readback_sha256'], '2' * 64)
+            self.assertEqual(self.probe(previous=repeated)['execution'], 'reused')
+        for change in ({'exit_code': 1}, {'termination': 'timeout'}, {'stdout_sha256': 'f' * 64}):
+            record = {'exit_code': 0, 'termination': None, 'stdout_sha256': self.owner.digest(stdout)}
+            record.update(change); result.write_text(json.dumps(record))
+            with self.assertRaises(ValueError): self.owner.retained_observation(stdout, result)
+
+    def test_changed_host_candidate_permissions_or_trust_needs_only_scoped_probe(self):
+        previous = self.first()
+        for key, changed in (('candidate_head', 'b' * 40), ('execution_channel', 'codex_cli_tool_shell'),
+                ('host_version', 'changed-version'), ('permission_basis', 'changed-effective-policy'),
+                ('sandbox_permissions', 'require_escalated'), ('hook_trust', 'unverified')):
+            context = {**self.context, key: changed}
+            with self.subTest(key=key), patch.object(self.owner, 'scoped_status',
+                    return_value=({'project_id': '1' * 32}, '3' * 64)) as status:
+                self.assertEqual(self.probe(context=context, previous=previous)['execution'], 'checked')
+                status.assert_called_once()
+        for key, changed in (('sandbox_mode', 'read-only'), ('writable_roots', [])):
+            with self.subTest(key=key), patch.object(self.owner.subprocess, 'run', side_effect=AssertionError('missing permission')):
+                with self.assertRaisesRegex(ValueError, 'Runtime write permission missing'):
+                    self.probe(context={**self.context, key: changed}, previous=previous)
+
+    def test_relevant_configuration_and_filesystem_changes_invalidate_only_smoke(self):
+        previous = self.first()
+        config = self.repository / '.codex/config.toml'
+        original = config.read_text()
+        config.write_text('model = "unrelated-task-model"\n' + original)
+        with patch.object(self.owner, 'scoped_status', side_effect=AssertionError('unrelated change')):
+            self.assertEqual(self.probe(previous=previous)['execution'], 'reused')
+        config.write_text(original.replace('timeout = 5', 'timeout = 6'))
+        with patch.object(self.owner, 'scoped_status', return_value=({'project_id': '1' * 32}, '3' * 64)) as status:
+            self.assertEqual(self.probe(previous=previous)['execution'], 'checked'); status.assert_called_once()
+        config.write_text(original)
+        self.runtime.chmod(0o700)
+        with patch.object(self.owner, 'scoped_status', return_value=({'project_id': '1' * 32}, '3' * 64)) as status:
+            self.assertEqual(self.probe(previous=previous)['execution'], 'checked'); status.assert_called_once()
+        with patch.object(self.owner.tempfile, 'TemporaryFile', side_effect=PermissionError('sandbox denied')):
+            with self.assertRaisesRegex(ValueError, 'Runtime write permission missing'): self.probe()
+
+    def test_wrong_executable_runtime_or_submitted_observation_is_rejected(self):
+        previous = self.first()
+        self.binary.write_bytes(self.binary.read_bytes() + b'changed')
+        with patch.object(self.owner.subprocess, 'run', side_effect=AssertionError('wrong bytes')):
+            with self.assertRaisesRegex(ValueError, 'mismatch'): self.probe(previous=previous)
+        shutil.copy2('/bin/true', self.binary)
+        with self.assertRaisesRegex(ValueError, 'mismatch'):
+            self.owner.probe(self.binary, Path(self.temp.name) / 'wrong', self.repository, *self.hashes)
+        for changed in ({'status': 'failed'}, {'exit_code': 1}, {'project_id': None}, {'readback_sha256': None}):
+            with self.subTest(changed=changed), self.assertRaises(ValueError): self.probe(previous={**previous, **changed})
+
+    def test_inspection_stages_actual_hook_before_trust_without_product_or_writes(self):
+        with patch.object(self.owner.subprocess, 'run', side_effect=AssertionError('inspection executed Product')), \
+             patch.object(self.owner.tempfile, 'TemporaryFile', side_effect=AssertionError('inspection wrote Runtime')):
+            value = self.probe(inspect=True)
+        self.assertEqual(value['status'], 'unverified')
+        self.assertIn(str(self.runtime), value['runtime_permission_config'])
+        import shlex
+        self.assertEqual(shlex.split(value['review_hook']),
+            [str(self.binary), '--runtime', str(self.runtime), '--repository', str(self.repository), 'codex', 'hook'])
+        with patch.object(self.owner, 'scoped_status', return_value=({'project_id': '1' * 32}, '2' * 64)):
+            local = self.probe(context={**self.context, 'execution_channel': 'local_subprocess'})
+        self.assertIn('other_host_tool_shell', local['unverified'])
+        with patch.object(self.owner, 'scoped_status', return_value=({'project_id': '1' * 32}, '2' * 64)) as status:
+            self.assertEqual(self.probe(previous=local)['execution'], 'checked'); status.assert_called_once()
+
+
 class DefinitionDependencyTests(unittest.TestCase):
     def test_responsibility_matrix_and_scope_guidance_have_one_owner(self):
         import campaign

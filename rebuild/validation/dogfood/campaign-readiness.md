@@ -76,7 +76,10 @@ absence are determined after observation under `qualitative-review.md`.
 2. Resolve target qualification, useful authorized tasks, and any user Purpose.
    Freeze only approved exact task bytes through `dogfood-campaign prepare` in a
    fresh root. Label all proposals as proposed until this action has succeeded.
-3. The user grants repository and SessionStart-hook trust for the prepared copies.
+3. Run `activate-all` to generate actual inspectable repository integration; existing
+   matching owned content is verified and reused. Satisfy any separate host workspace
+   trust prerequisite, then let the user review the actual hook and grant only missing
+   hook trust. Prepare the exact Runtime permission in the intended host before smoke.
    Verify installed CLI/MCP/Viewer hashes, static integration, actual activation,
    raw metadata and first-turn/Runtime/workspace binding. Empty/ambiguous attribution
    is a launch blocker, not Product success.
@@ -117,20 +120,30 @@ own Phase 9; this session starts no measured campaign.
 After choosing an applicable verified clean candidate, install into its isolated prefix and
 retain CLI/MCP/Viewer hashes. Authorize each target with that installed CLI and explicit
 `--runtime`/`--repository`; review exact repository/hook trust in the actual Codex host.
-The Codex tool shell must also allow the exact Runtime: use workspace-write with
-`--add-dir ABSOLUTE_RUNTIME` for a Home outside the target workspace. A read-only
-sandbox can block SQLite opening even when executable binding is correct.
-The hook supplies the shell-quoted installed CLI prefix. Use it for explanation and
-ordinary commands even when bare `volicord` resolves elsewhere. Before measured work,
-run the maintained `linux-codex-integration/launch_readiness.py` through the same actual
-tool-shell channel with its explicit binary/runtime/repository and expected CLI/MCP hashes.
-Retain output and numeric completion alongside activation/runtime binding. Parent PATH,
-authenticated MCP alone, or local shell simulation does not satisfy this host-shell proof.
-A wrong executable or Runtime is rejected; disclose bare-name realpath/hash drift.
+Use the single maintained [integration/readiness procedure](../../docs/linux-codex-setup.md)
+for inspectable configuration, exact Runtime permissions, actual tool-shell smoke and
+same-context reuse. VS Code uses its shared trusted project config with workspace-write
+and the exact additional Runtime root; CLI `--add-dir` affects only that invocation.
+The hook supplies the quoted absolute CLI route for ordinary operations and explanations.
+MCP activation alone supplies no tool-shell CLI proof.
 
-Permission or host-shell changes require the affected local smoke check; they do
-not invalidate unrelated retained technical claims. Existing approved tasks and
-adopted Purpose need no reacquisition solely because preparation guidance changed.
+The steward retains host-context metadata and hash-bound numeric readiness stdout/result
+privately. A matching `--context` plus `--reuse-output`/`--reuse-execution` reuses the
+observation without Product execution. Changed relevant host, executable, integration
+or Runtime permissions require only the scoped check; invalid submitted reuse is explicit.
+Report reused, checked and unverified claims separately. No additional setup/recheck chats
+are required for unchanged applicable observations. Older successful observations may be
+reviewed against their actual raw host/permission/config evidence; do not manufacture new
+host context or rewrite the original result to enable automatic reuse. Local simulation
+and elevated-only success supply no default VS Code proof.
+
+Existing approved tasks and adopted Purpose need no reacquisition solely because guidance
+or another development checkout changed. Continue a frozen campaign using its original
+clean candidate-source checkout's maintained campaign interfaces, exact installed artifacts,
+verified archive and initialized resource state. The current source checkout cannot mutate
+another candidate's campaign. New-candidate selection requires supported new preparation
+and technical binding, followed by fresh measured sessions; never overwrite the old frozen
+candidate fields or count its setup as unaided onboarding.
 
 ## Optional resource characterization
 

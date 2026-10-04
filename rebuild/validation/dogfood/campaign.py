@@ -791,8 +791,8 @@ def render_operator_run_sheet(root: Path) -> Path:
                     f"- Frozen task SHA-256: `{task['sha256']}`\n\n"
                     "Copy the exact UTF-8 bytes from the raw `.txt` artifact. Do not copy or "
                     "retype the task from Markdown, and do not add, remove, escape, or normalize "
-                    "any character. Explicitly inspect and approve repository and hook trust in "
-                    "Codex CLI or the VS Code extension. Start this task in its own fresh thread, send only the frozen task, "
+                    "any character. Use the already reviewed integration and same-context readiness. "
+                    "Satisfy only missing repository/hook trust in the selected host. Start this task in its own fresh thread, send only the frozen task, "
                     "and preserve the raw rollout file. Do not run campaign collection between chats.\n"
                 )
     entries = [
@@ -806,9 +806,17 @@ def render_operator_run_sheet(root: Path) -> Path:
         "# Naturalistic Dogfood Operator Run Sheet\n\n"
         "This helper does not grant repository or hook trust and does not start Codex sessions. "
         "Use this operator material after all five Works and eight session tasks are frozen. "
-        "The campaign steward may run `activate-all`; activation never grants trust. The helper "
+        "The campaign steward runs `activate-all` to generate inspectable integration before hook review; "
+        "unchanged owned integration is verified and reused. Activation never grants trust. The helper "
         "verifies the production-owned static MCP and SessionStart files, but that does not prove that "
         "Codex executed SessionStart; every raw session still requires runtime activation evidence. "
+        "Use `linux-codex-integration/launch_readiness.py --inspect` with the frozen absolute CLI, "
+        "Runtime/repository and executable hashes to inspect the actual hook and exact Runtime permission "
+        "guidance. For VS Code use its shared trusted project config; CLI `--add-dir` configures only "
+        "that CLI invocation. Satisfy missing trust/permission before a scoped actual-host smoke. "
+        "Retain readiness stdout, numeric execution and current host context privately; reuse matching "
+        "scope with `--context`, `--reuse-output` and `--reuse-execution`. A changed condition needs only "
+        "that scoped smoke. Local/elevated success cannot prove another/default host channel. "
         "If trust or activation is uncertain, inspect it before sending any frozen task. Run all "
         "eight fresh start/resume chats, preserve their raw rollouts, and provide the eight files once "
         "to the steward. When explanations are needed, first run `prepare-explanations --campaign-root ROOT "
@@ -1162,28 +1170,23 @@ def activate_journey(root: Path, kind: str) -> dict[str, Any]:
     manifest = repository / ".codex/volicord-integration.json"
     with candidate_artifact_use(campaign, ("volicord", "volicord-mcp")):
         if manifest.exists():
-            run_checked([
-                str(binary), "--runtime", state["runtime_home"], "--json",
-                "--repository", str(repository), "codex", "disable",
-            ])
-        result = run_checked(
-            [
+            # Preserve reviewed hook/config bytes. A changed owned route is a
+            # blocker to repair explicitly, never silently disable/rebind it.
+            result = None
+            verification = verify_static_codex_integration(repository, Path(state["runtime_home"]), binary)
+        else:
+            result = run_checked([
                 str(binary), "--runtime", state["runtime_home"], "--json",
                 "--repository", str(repository), "codex", "enable",
-            ]
-        )
-        verification = verify_static_codex_integration(
-            repository,
-            Path(state["runtime_home"]),
-            binary,
-            result,
-        )
+            ])
+            verification = verify_static_codex_integration(repository, Path(state["runtime_home"]), binary, result)
     state["codex_enabled"] = True
     save_campaign(root, campaign)
     return {
         "journey_id": state["journey_id"],
         "repository_class": kind,
         "enable_result": result,
+        "integration_execution": "reused" if result is None else "generated",
         "static_verification": verification,
     }
 
