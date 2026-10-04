@@ -2192,3 +2192,21 @@ Collection, review and copied-lineage validators recompute current verdict and f
 Runtime/repository binding. Historical campaign resource files are not decoded through
 a compatibility branch, relabeled or rewritten. Operator declarations are independent
 expectation evidence, not authenticated process or human/session attribution.
+
+### Required retention and launch rehearsal controls
+
+The existing mandatory local stage additionally requires `retention_metadata_round_trip`,
+`retention_oversize_atomic`, `candidate_shell_route`, and `resource_expectation_lifecycle`.
+Its closed `boundary_evidence` binds actual successful wrapper/process streams to four
+metadata-heavy Work/Decision en/ko prepare/record/readback and campaign collection/review
+lifecycles, inclusive retained-size bounds, atomic actionable oversize failure, explicit
+installed CLI/Runtime/repository routes in conflicting login/non-login shells, and real
+sibling lifecycle/coverage positives plus identity/error negatives. The support roots,
+Source actors, realizations and operation schedule are authored fixtures, never human
+or measured Naturalistic evidence. Invalid/missing/misclassified controls remain rejected
+even if the outer summary is rehashed. Producer identities include every boundary runner,
+readiness probe and shared Rust fixture constructor. Existing archive/dependency/technical
+consumers use this one closed contract; no old-stage decoder or additional external stage
+is introduced. Actual-host tool-shell readiness remains separately required and is not
+supplied by these local shell controls. Gate ordering, transmission scopes, resource
+ceilings, topology and expected unresolved inner qualification remain unchanged.

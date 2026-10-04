@@ -27,6 +27,7 @@ def main():
     args = p.parse_args(); binary = args.binary.resolve()
     artifacts = {'volicord-mcp': {'path':str(binary), 'sha256':observer.digest(binary)}}
     processes, watchers, process_records = [], [], []
+    identity_controls = {}
     proof_parent = Path(__file__).resolve().parents[2]/'.local/validation'
     proof_parent.mkdir(parents=True, exist_ok=True)
     if args.output:
@@ -127,10 +128,12 @@ def main():
             assert observer.sample(reg, artifacts['volicord-mcp']['sha256'], {}) > 0
             reused = copy.deepcopy(reg); reused['start_ticks'] += 1
             require_rejected(lambda: observer.sample(reused, artifacts['volicord-mcp']['sha256'], {}))
+            identity_controls['pid_reuse']='rejected'
             wrong = copy.deepcopy(reg); wrong['executable_sha256'] = '0'*64
             require_rejected(lambda: observer.sample(wrong, artifacts['volicord-mcp']['sha256'], {}))
             wrongpath = copy.deepcopy(reg); wrongpath['executable_path'] = '/bin/false'
             require_rejected(lambda: observer.sample(wrongpath, artifacts['volicord-mcp']['sha256'], {}))
+            identity_controls['executable_mismatch']='rejected'
             # Closed telemetry rejects deliberate content/environment/RPC fields.
             for field in ['rpc_arguments','conversation_body','source_body','provider_response','credentials','environment']:
                 bad=copy.deepcopy(result);bad[field]=sentinel
@@ -147,8 +150,12 @@ def main():
                 simulated=observer.observe(artifacts,[runtime],duration_seconds=.4,interval_ms=50,proc_sample=failure)
                 assert simulated['status'] in {'not_observed','environment_blocked'} and simulated['measurement']['peak_rss_bytes'] is None
                 assert simulated['measurement']['sample_count']==0
+                label='inaccessible' if isinstance(exception,PermissionError) else 'disappearance' if isinstance(exception,FileNotFoundError) else 'pid_reuse_simulated'
+                path=root/(label+'.json');path.write_text(json.dumps(simulated,sort_keys=True)+'\n')
+                identity_controls[label]=observer.digest(path)
             def failure(*args): raise RuntimeError(sentinel)
             failed=observer.observe(artifacts,[runtime],duration_seconds=.4,interval_ms=50,proc_sample=failure)
+            identity_controls['observer_failure']='failed'
             assert failed['status']=='failed' and sentinel not in json.dumps(failed), failed
             assert active.poll() is None
             finish(active)
@@ -163,6 +170,7 @@ def main():
             # Stopped entries cannot become samples; use a running fixture solely for gap control.
             active,_=launch()
             gaps=observer.observe(artifacts,[runtime],duration_seconds=.4,interval_ms=50,proc_sample=slow)
+            identity_controls['sample_gap']='partial'
             assert gaps['status']=='partial' and 'gap' in gaps['measurement']['measurement_errors']
             finish(active)
             # Broken registration publication does not disable canonical/MCP operations.
@@ -180,10 +188,11 @@ def main():
             blocked_stderr = child.stderr.read()
             save_process(child, child.proof_label, child.proof_stdout+child.stdout.read(), blocked_stderr, 'stdin_eof', time.monotonic_ns()-child.proof_started)
             assert child.returncode==0 and 'lifecycle observation unavailable' in blocked_stderr
+            identity_controls['registration_failure']=observer.digest(root/'registration-failure.json')
             import resource_boundary_controls
             boundaries = resource_boundary_controls.run(binary, root/'boundary-controls')
             print(json.dumps({'status':'passed','positive':'three real sibling candidate processes',
-                'boundary_controls':boundaries,'candidate_mcp_sha256':artifacts['volicord-mcp']['sha256'], 'measurement_status':result['status'],'measurement_errors':result['measurement']['measurement_errors'],
+                'identity_controls':identity_controls,'boundary_controls':boundaries,'candidate_mcp_sha256':artifacts['volicord-mcp']['sha256'], 'measurement_status':result['status'],'measurement_errors':result['measurement']['measurement_errors'],
                 'sample_count':result['measurement']['sample_count'],'observed_peak_rss_bytes':result['measurement']['peak_rss_bytes'],
                 'candidate_startup_to_initialize_ns':startup,
                 'registration_duration_ns':[r['registration_duration_ns'] for r in registrations],

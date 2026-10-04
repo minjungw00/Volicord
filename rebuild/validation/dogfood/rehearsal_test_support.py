@@ -59,6 +59,43 @@ def temporal_fixture():
             'recall_capture': dict(artifact), 'evaluation': dict(artifact)}}
 
 
+def boundary_fixture():
+    """Explicit synthetic contract fixture; no Product/host execution claim."""
+    stream={'bytes':1,'sha256':'1'*64}
+    stages={name:dict(stream) for name in ('attempt','preparation','response','record','after','receipt')}
+    lives=[{'subject_kind':kind,'language':language,'source_count':30,'response_bytes':3181,
+        'retained_bytes':20000,'after_state':'current','identity':str(index+1)*32,
+        'stages':stages,'copied_review':stream} for index,(kind,language) in enumerate(
+            [(k,l) for k in ('work','decision') for l in ('en','ko')])]
+    retention={'kind':'retention_boundary_support','candidate_cli_sha256':'b'*64,'lifecycles':lives,
+        'collection_index':stream,'oversize':{'exit_code':1,'termination':'exited','duration_ns':10,
+            'prior_record_preserved':True,'actionable_byte_error':True,'stdout':stream,'stderr':stream,'readback':stream},
+        'evidence_role':'authored_real_product_not_host_semantic_or_naturalistic'}
+    launch={'kind':'launch_boundary_support','execution_channel':'local_subprocess_support',
+        'actual_host_proof':'not_supplied_by_local_rehearsal','project_id':'5'*32,'mcp_process':'support-process-4',
+        'routes':[{'shell':shell,'bare_matches_candidate':shell=='non_login','status':'ready',
+            'cli_sha256':'b'*64,'mcp_sha256':'b'*64,'runtime_binding':'6'*64,'repository_binding':'7'*64,
+            'process':'support-process-'+str(index+2),'output':stream} for index,shell in enumerate(('non_login','login'))],
+        'negative_controls':{'wrong_executable':'rejected','wrong_runtime':'rejected'}}
+    cases={'active_runtime':('measured',None), 'active_plus_waiting':('measured',None),
+        'active_plus_unknown':('partial','unknown_coverage'), 'missing_expected':('partial','missing_registration'),
+        'stop_during_active':('partial','active_at_detach'), 'observer_interruption':('partial','observer_interrupted'),
+        'sequential_eof':('measured',None), 'abrupt_exit':('partial','process_gone'),
+        'pre_attachment_exit':('not_observed','unsampled_instance'), 'zero_expected_samples':('not_observed','missing_registration')}
+    results={name:{'status':status,'sample_count':1 if status in {'measured','partial'} else 0,
+        'measurement_errors':[error] if error else [],'termination':'stop_requested' if name=='stop_during_active' else 'interrupted' if name=='observer_interruption' else 'duration_elapsed',
+        'lifecycles':['stopped','stopped'] if name=='sequential_eof' else ['gone'] if name=='abrupt_exit' else ['running_at_detach'],
+        'artifact_sha256':'1'*64} for name,(status,error) in cases.items()}
+    results['forged_completion']={'status':'rejected','mutations':5,'basis_sha256':'1'*64}
+    resource={'kind':'resource_boundary_support','candidate_mcp_sha256':'b'*64,'results':results,
+        'processes':[{'label':'mcp-0','exit_code':-9,'termination':'sigkill','duration_ns':1,
+            'stdout_sha256':'1'*64,'stderr_sha256':'2'*64}], 'evidence_role':'real_sibling_support_not_host_or_naturalistic'}
+    controls=dict.fromkeys(('inaccessible','disappearance','pid_reuse_simulated','registration_failure'),'1'*64)
+    controls.update(pid_reuse='rejected',executable_mismatch='rejected',observer_failure='failed',sample_gap='partial')
+    return {'retention':{'process':'support-process-0','output':stream,'result':retention},'launch':launch,
+        'resource':{'process':'support-process-1','output':stream,'result':resource,'identity_controls':controls}}
+
+
 def passed_result(candidate="a" * 40):
     """Explicit fake execution owner for orchestration/portable contract tests."""
     fixture = json.loads(contract.FIXTURE.read_bytes())
@@ -72,7 +109,7 @@ def passed_result(candidate="a" * 40):
             "unresolved_criteria_count": 200, "hard_findings": [],
             "copied_lineage_id": "f" * 64, "copied_verification": "verified", "resource_sample_count": 3,
             "topology": json.loads(Path(__file__).with_name("evaluation.json").read_bytes())["qualification_policy"]["campaign_topology"],
-            "measured_evidence_eligible": False, "controls": dict.fromkeys(fixture["controls"], "passed"), "temporal_evidence": temporal_fixture()},
+            "measured_evidence_eligible": False, "controls": dict.fromkeys(fixture["controls"], "passed"), "temporal_evidence": temporal_fixture(), "boundary_evidence": boundary_fixture()},
         "processes": [{"identity": "support-process-" + str(i), "exit_code": 0,
             "termination": "exited", "duration_ns": 100,
             "stdout": {"bytes": 1, "sha256": "1" * 64}, "stderr": {"bytes": 0, "sha256": "2" * 64}}

@@ -737,7 +737,7 @@
         "Codex-version dispatch or unsupported completion shapes",
         "JavaScript execution or wrapper-output success inference"
       ],
-      "content_sha256": "8b01da3f3fa4779fefaeefd16cc0e6f46a0bd4fb3ed43e963ae983d79344204f",
+      "content_sha256": "7de0dc4fb932e6d057502295830b7426692a5ae9f8a7e52e8140dc9420102dc4",
       "origin": "Sanitized self-authored representatives derived from observed current Phase 8 Codex Extension execution and completion envelopes.",
       "license": "CC0-1.0"
     },

@@ -315,7 +315,16 @@ fn seed_work_explanation_runtime() -> Result<(), Box<dyn std::error::Error>> {
         .map(std::path::PathBuf::from)
         .unwrap_or(disposable.path().to_owned());
     std::fs::create_dir_all(&output)?;
-    let f = reading_fixture::rich_fixture_in(&output)?;
+    let f = if let Some(case) = std::env::var_os("VOLICORD_EXPLANATION_SIZE_CASE") {
+        reading_fixture::scenario_in(
+            &output,
+            reading_fixture::explanation_size_scenario(
+                case.to_str().ok_or("fixture case must be UTF-8")?,
+            )?,
+        )?
+    } else {
+        reading_fixture::rich_fixture_in(&output)?
+    };
     let manifest = serde_json::json!({"project":f.project.to_string(),"runtime":f.operations.layout().root(),"repository":f.repository,
         "decisions":f.decisions.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(),
         "goals":f.goals.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>()});

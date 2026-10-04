@@ -850,3 +850,20 @@ Disposable controls reject mismatched current plans, tampering, pending-attempt 
 cross-subject/locale substitution and false old-current claims. A missing temporal receipt is
 indeterminate; an independent contradictory action remains hard-blocking. These mutated verifier
 inputs are separate from actual Product positives and supply no measured or human evidence.
+
+The mandatory rehearsal's `boundary_evidence` supplies four new evidence-bound controls:
+`retention_metadata_round_trip`, `retention_oversize_atomic`, `candidate_shell_route`, and
+`resource_expectation_lifecycle`. The metadata-heavy fixture traverses actual candidate
+CLI and campaign prepare/record/readback/collection/review in Work/Decision en/ko.
+A disposable oversize Product failure preserves the accepted prior record; it creates no
+unresolved campaign obligation. Login/non-login shadowing runs under isolated installation,
+Runtime and repository paths with spaces. Real sibling processes prove waiting/unknown/
+active gaps, sequential EOF, abrupt exit, pre-attachment exit, active stop and interruption;
+identity/access/registration/gap negative controls remain separately identified.
+The bounded receipt binds stages, byte sizes, candidate hashes, per-case outcomes and
+actual wrapper streams. Bare success labels and rehashed missing controls are rejected.
+Local shell support reports `actual_host_proof=not_supplied_by_local_rehearsal`.
+The separately authorized `linux-codex-integration/codex_probe.py --model EXACT_MODEL`
+requires actual completed host command output from the maintained read-only readiness
+probe, along with candidate-bound MCP resolve/Recall. Its prompt is an explicit probe,
+not a frozen Naturalistic task; no third gate transmission is added.

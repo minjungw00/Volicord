@@ -16,7 +16,7 @@ def require(value, message):
 
 CONTRACT = "product-backed-dogfood-evidence-rehearsal-1"
 FIXTURE = Path(__file__).with_name("fixtures") / "evidence-rehearsal.json"
-PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "rehearsal_contract.py", "evidence_purpose.py", "campaign.py", "codex_events.py",
+PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_support.py", "retention_support.py", "resource_boundary_controls.py", "resource_observer_self_test.py", "../linux-codex-integration/launch_readiness.py", "../../crates/volicord-viewer/tests/work_explanation.rs", "../../crates/volicord-operations/tests/support/reading_fixture.rs", "rehearsal_contract.py", "evidence_purpose.py", "campaign.py", "codex_events.py",
     "answer_observations.py", "explanation_evidence.py", "document_realization.py",
     "review_operations.py", "review_captures.py", "review_explanations.py",
     "qualification_policy.py", "result_lineage.py", "resource_observer.py", "harness.py",
@@ -39,7 +39,8 @@ TEMPORAL_CONTROLS = {
     'missing_temporal_evidence': ('naturalistic_observation', 'shared_answer_integrity', 'indeterminate', 'qualitative_review_required'),
     'missing_temporal_evidence_with_violation': ('naturalistic_observation', 'shared_answer_integrity', 'confirmed_violation', 'hard_blocking'),
 }
-CONTROLS = ('duplicate_titles', 'contradictory_shared_answer', 'missing_explanation_plan', 'mismatched_explanation_response', 'review_projection_omission', 'changed_artifact', 'memory_binary_mismatch', 'absent_human_observations', 'rehearsal_not_measured', 'copied_semantic_rehash', *TEMPORAL_CONTROLS)
+BOUNDARY_CONTROLS = ('retention_metadata_round_trip', 'retention_oversize_atomic', 'candidate_shell_route', 'resource_expectation_lifecycle')
+CONTROLS = ('duplicate_titles', 'contradictory_shared_answer', 'missing_explanation_plan', 'mismatched_explanation_response', 'review_projection_omission', 'changed_artifact', 'memory_binary_mismatch', 'absent_human_observations', 'rehearsal_not_measured', 'copied_semantic_rehash', *TEMPORAL_CONTROLS, *BOUNDARY_CONTROLS)
 TOPOLOGY = {'repository_journeys': 3, 'work_items': 5, 'resume_pairs': 3, 'fresh_sessions': 8, 'work_distribution': {'volicord': 3, 'small-python': 1, 'polyglot-medium': 1}, 'resume_repository_classes': ['polyglot-medium', 'small-python', 'volicord']}
 
 def identities():
@@ -69,7 +70,7 @@ def validate_result(value, candidate, *, expected_identities=None):
     require(set(pipeline) == {"evidence_set_sha256", "evaluation_run_id", "qualification_run_id",
         "expected_inner_verdict", "technical_evidence", "human_observations", "unresolved_criteria_count",
         "hard_findings", "copied_lineage_id", "copied_verification", "resource_sample_count", "topology",
-        "measured_evidence_eligible", "controls", "executables", "temporal_evidence"}, "unexpected pipeline content")
+        "measured_evidence_eligible", "controls", "executables", "temporal_evidence", "boundary_evidence"}, "unexpected pipeline content")
     for key in ("evidence_set_sha256", "evaluation_run_id", "qualification_run_id", "copied_lineage_id"):
         require(re.fullmatch(r"[0-9a-f]{64}", pipeline[key]), "invalid pipeline identity")
     require(pipeline["expected_inner_verdict"] == EXPECTED_INNER
@@ -96,7 +97,93 @@ def validate_result(value, candidate, *, expected_identities=None):
                 and type(record[stream]["bytes"]) is int and record[stream]["bytes"] >= 0
                 and re.fullmatch(r"[0-9a-f]{64}", record[stream]["sha256"]), "invalid process stream evidence")
     validate_temporal(pipeline['temporal_evidence'], records)
+    validate_boundaries(pipeline['boundary_evidence'], records, value['executables'])
     return value
+
+
+def validate_boundaries(value, processes, executables):
+    require(isinstance(value, dict) and set(value)=={'retention','launch','resource'}, 'missing boundary rehearsal evidence')
+    def process_ref(name, output=None):
+        found=next((p for p in processes if p['identity']==name), None)
+        require(found is not None and found['exit_code']==0 and found['termination']=='exited', 'boundary process absent/failed')
+        if output is not None:
+            require(output==found['stdout'] and output['bytes']>0, 'boundary output lacks actual process binding')
+    for name in ('retention','resource'):
+        wrapper=value[name]
+        require(set(wrapper)==({'process','output','result'} if name=='retention' else {'process','output','result','identity_controls'}), 'unexpected boundary wrapper')
+        process_ref(wrapper['process'],wrapper['output'])
+    retention=value['retention']['result']
+    require(set(retention)=={'kind','candidate_cli_sha256','lifecycles','collection_index','oversize','evidence_role'}
+        and retention['kind']=='retention_boundary_support' and retention['candidate_cli_sha256']==executables['volicord']
+        and retention['evidence_role']=='authored_real_product_not_host_semantic_or_naturalistic', 'retention identity changed')
+    artifact(retention['collection_index'])
+    lives=retention['lifecycles']
+    require(len(lives)==4 and {(v['subject_kind'],v['language']) for v in lives}=={(k,l) for k in ('work','decision') for l in ('en','ko')}
+        and len({v['identity'] for v in lives})==4, 'missing many-Source language/subject cases')
+    for life in lives:
+        require(set(life)=={'subject_kind','language','source_count','response_bytes','retained_bytes','after_state','identity','stages','copied_review'}
+            and type(life['source_count']) is int and life['source_count']>=2 and life['response_bytes']==3181
+            and type(life['retained_bytes']) is int and 16384<life['retained_bytes']<=147456
+            and life['after_state']=='current', 'retention boundary was not exercised')
+        identity(life['identity']); artifact(life['copied_review'])
+        require(set(life['stages'])=={'attempt','preparation','response','record','after','receipt'}, 'missing retained Product/campaign stages')
+        for stage in life['stages'].values(): artifact(stage)
+    negative=retention['oversize']
+    require(set(negative)=={'exit_code','termination','duration_ns','prior_record_preserved','actionable_byte_error','stdout','stderr','readback'}
+        and type(negative['exit_code']) is int and negative['exit_code']>0 and negative['termination']=='exited'
+        and type(negative['duration_ns']) is int and negative['duration_ns']>=0
+        and negative['prior_record_preserved'] is True and negative['actionable_byte_error'] is True, 'oversize atomic failure absent')
+    artifact(negative['stderr']); artifact(negative['readback'])
+    require(set(negative['stdout'])=={'bytes','sha256'} and type(negative['stdout']['bytes']) is int and negative['stdout']['bytes']>=0, 'missing oversize stdout')
+    hash_value(negative['stdout']['sha256'])
+    launch=value['launch']
+    require(set(launch)=={'kind','execution_channel','actual_host_proof','project_id','mcp_process','routes','negative_controls'}
+        and launch['kind']=='launch_boundary_support' and launch['execution_channel']=='local_subprocess_support'
+        and launch['actual_host_proof']=='not_supplied_by_local_rehearsal'
+        and launch['negative_controls']=={'wrong_executable':'rejected','wrong_runtime':'rejected'}, 'local launch support promoted to host proof')
+    identity(launch['project_id']);process_ref(launch['mcp_process'])
+    routes=launch['routes']
+    require(len(routes)==2 and {r['shell'] for r in routes}=={'login','non_login'}, 'missing login/non-login route')
+    for r in routes:
+        require(set(r)=={'shell','bare_matches_candidate','status','cli_sha256','mcp_sha256','runtime_binding','repository_binding','process','output'}
+            and r['status']=='ready' and r['bare_matches_candidate'] is (r['shell']=='non_login')
+            and r['cli_sha256']==executables['volicord'] and r['mcp_sha256']==executables['volicord-mcp'], 'shadow route identity changed')
+        hash_value(r['runtime_binding']);hash_value(r['repository_binding']);process_ref(r['process'],r['output'])
+    require(routes[0]['runtime_binding']==routes[1]['runtime_binding'] and routes[0]['repository_binding']==routes[1]['repository_binding'], 'shell binding drift')
+    resource=value['resource']['result']
+    require(set(resource)=={'kind','candidate_mcp_sha256','results','processes','evidence_role'}
+        and resource['kind']=='resource_boundary_support' and resource['candidate_mcp_sha256']==executables['volicord-mcp']
+        and resource['evidence_role']=='real_sibling_support_not_host_or_naturalistic', 'resource identity changed')
+    expected={'active_runtime':('measured',None), 'active_plus_waiting':('measured',None),
+        'active_plus_unknown':('partial','unknown_coverage'), 'missing_expected':('partial','missing_registration'),
+        'stop_during_active':('partial','active_at_detach'), 'observer_interruption':('partial','observer_interrupted'),
+        'sequential_eof':('measured',None), 'abrupt_exit':('partial','process_gone'),
+        'pre_attachment_exit':('not_observed','unsampled_instance'), 'zero_expected_samples':('not_observed','missing_registration')}
+    require(set(resource['results'])==set(expected)|{'forged_completion'}, 'missing resource boundary cases')
+    for name,(status,error) in expected.items():
+        result=resource['results'][name]
+        require(set(result)=={'status','sample_count','measurement_errors','termination','lifecycles','artifact_sha256'}
+            and result['status']==status and type(result['sample_count']) is int
+            and (result['sample_count']>0 if status in {'measured','partial'} else result['sample_count']==0)
+            and (not result['measurement_errors'] if error is None else error in result['measurement_errors']), 'resource semantic outcome changed')
+        require(result['termination']==('stop_requested' if name=='stop_during_active' else 'interrupted' if name=='observer_interruption' else 'duration_elapsed'), 'resource stop/interruption fact changed')
+        hash_value(result['artifact_sha256'])
+    require(resource['results']['sequential_eof']['lifecycles']==['stopped','stopped']
+        and resource['results']['abrupt_exit']['lifecycles']==['gone'], 'normal/uncertain termination conflated')
+    forged=resource['results']['forged_completion']
+    require(set(forged)=={'status','mutations','basis_sha256'} and forged['status']=='rejected' and forged['mutations']==5
+        and forged['basis_sha256']==resource['results']['missing_expected']['artifact_sha256'], 'forged completion control absent')
+    require(resource['processes'] and any(p['exit_code']==-9 and p['termination']=='sigkill' for p in resource['processes']), 'abrupt exit lacks real process result')
+    for p in resource['processes']:
+        require(set(p)=={'label','exit_code','termination','duration_ns','stdout_sha256','stderr_sha256'}
+            and p['exit_code']==(-9 if p['termination']=='sigkill' else 0) and p['termination'] in {'sigkill','stdin_eof'}
+            and type(p['duration_ns']) is int and p['duration_ns']>=0, 'resource process outcome missing')
+        hash_value(p['stdout_sha256']);hash_value(p['stderr_sha256'])
+    checks=value['resource']['identity_controls']
+    require(set(checks)=={'pid_reuse','executable_mismatch','inaccessible','disappearance','pid_reuse_simulated','observer_failure','sample_gap','registration_failure'}
+        and checks['pid_reuse']==checks['executable_mismatch']=='rejected' and checks['observer_failure']=='failed'
+        and checks['sample_gap']=='partial', 'missing resource identity/error controls')
+    for name in ('inaccessible','disappearance','pid_reuse_simulated','registration_failure'): hash_value(checks[name])
 
 
 def hash_value(value):

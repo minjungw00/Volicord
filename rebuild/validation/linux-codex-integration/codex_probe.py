@@ -173,6 +173,10 @@ def main() -> int:
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
             return report_blocked("isolated setup could not reach the authenticated turn", error=str(error))
 
+        shadow = temporary / "conflicting bin"; shadow.mkdir()
+        (shadow / "volicord").write_text("#!/bin/sh\nexit 64\n")
+        (shadow / "volicord").chmod(0o755)
+        env["PATH"] = str(shadow) + ":" + env["PATH"]
         project_id = initialized["project_id"]
         probe_command = [sys.executable, "-B", str(Path(launch_readiness.__file__).resolve()),
             "--binary", str(prefix / "bin/volicord"), "--runtime", str(runtime),

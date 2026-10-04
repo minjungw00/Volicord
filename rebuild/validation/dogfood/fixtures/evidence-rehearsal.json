@@ -73,7 +73,11 @@
     "post_correction_old_revision",
     "future_correction_scope",
     "missing_temporal_evidence",
-    "missing_temporal_evidence_with_violation"
+    "missing_temporal_evidence_with_violation",
+    "retention_metadata_round_trip",
+    "retention_oversize_atomic",
+    "candidate_shell_route",
+    "resource_expectation_lifecycle"
   ],
   "expected_inner": {
     "technical_gate": "not_provided",

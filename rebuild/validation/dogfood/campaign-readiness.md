@@ -98,3 +98,39 @@ Observe outcomes in new immutable records, never by editing this proposed pack
 into a success report. Historical failures and support fixtures remain immutable
 and nonqualifying. Replacement qualification and explicit operator approval still
 own Phase 9; this session starts no measured campaign.
+
+## Fresh-campaign shell and observer procedure
+
+After choosing a newly verified clean candidate, install into its isolated prefix and
+retain CLI/MCP/Viewer hashes. Authorize each target with that installed CLI and explicit
+`--runtime`/`--repository`; review exact repository/hook trust in the actual Codex host.
+The hook supplies the shell-quoted installed CLI prefix. Use it for explanation and
+ordinary commands even when bare `volicord` resolves elsewhere. Before measured work,
+run the maintained `linux-codex-integration/launch_readiness.py` through the same actual
+tool-shell channel with its explicit binary/runtime/repository and expected CLI/MCP hashes.
+Retain output and numeric completion alongside activation/runtime binding. Parent PATH,
+authenticated MCP alone, or local shell simulation does not satisfy this host-shell proof.
+A wrong executable or Runtime is rejected; disclose bare-name realpath/hash drift.
+
+Start one operator observer before sequential chats. Declare independently known inactive
+Homes using repeated `--waiting-runtime`; all others remain unknown. Use observer `expect
+--output DIRECTORY --runtime HOME --state active` immediately before each host launch,
+and `--state waiting` only after actual completion/EOF; use unknown where the lifecycle
+is not established. Never mark a disappeared process stopped. Stop the observer after
+expected windows close, retain raw lifecycle/expectation/sample/interruption evidence,
+and attach once with `record-resources` before `collect-batch`. The expectation procedure
+belongs to the operator boundary; frozen user task bytes remain unchanged.
+
+For review delivery retain the candidate capsule/archive and verification, candidate
+artifact hashes, campaign preparation and inventory, eight exact task files and their
+hashes, five Work/eight slot descriptors, explicit task/repository/launch approvals,
+repository revisions/origin/license/qualification, Runtime/repository integration and
+readiness/activation bindings, immutable raw captures and collection/evaluation outputs.
+Include all explanation attempt/preparation/response/record/receipt/readback files,
+document realization inputs, resource observations, Git observations, CLI observations,
+review preparation/input/index and resulting review/qualification/copied-lineage artifacts.
+Keep screenshots/raw logs separately where required; portable bounded hashes do not
+replace them. Verify available hashes and list missing delivery members explicitly.
+An attachment omission does not establish absence on the operator's machine. Historical
+campaign bytes and eight old rollouts remain original-candidate diagnostics; a changed
+candidate requires a future fresh measured campaign and cannot reuse their receipts.

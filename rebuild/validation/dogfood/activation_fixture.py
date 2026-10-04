@@ -25,8 +25,10 @@ def production_binary() -> Path:
 
 def production_context(repository: Path, session_id: str, source: str = "startup") -> str:
     repository = repository.resolve()
+    binary = production_binary()
+    runtime = repository / ".local/activation-fixture-runtime"
     result = subprocess.run(
-        [str(production_binary()), "--repository", str(repository), "codex", "hook"],
+        [str(binary), "--runtime", str(runtime), "--repository", str(repository), "codex", "hook"],
         input=json.dumps({
             "hook_event_name": "SessionStart", "session_id": session_id,
             "cwd": str(repository), "source": source, "model": "fixture",
@@ -36,7 +38,8 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     output = json.loads(result.stdout)["hookSpecificOutput"]
     assert output["hookEventName"] == "SessionStart"
     context = output["additionalContext"]
-    assert len(context.encode("utf-8")) < 4096
+    assert "CLI route:" in context and str(binary) in context and str(runtime) in context and str(repository) in context
+    assert len("\n".join(line for line in context.splitlines() if not line.startswith("CLI route:")).encode("utf-8")) < 4096
     assert "Record only observed outcomes; retain no raw arguments" in context
     assert "exact transient invocation and numeric exit/termination observable for the same execution through polling" in context
     assert "For verified completion/pause, rerun relevant bounded verification after the final meaningful mutation" in context

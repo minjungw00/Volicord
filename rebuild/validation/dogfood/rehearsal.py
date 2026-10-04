@@ -35,6 +35,7 @@ import qualitative_review
 import resource_observer
 import result_lineage
 import rehearsal_support
+import launch_boundary_support
 import review_captures
 import review_operations as review
 
@@ -688,7 +689,30 @@ def realizations(root, campaign_root, paths, binary, logs):
     return temporal
 
 
+def boundary_controls(root, binary, logs):
+    seed = root / 'retention-fixture'
+    seed.mkdir()
+    logs.run(['env', 'VOLICORD_EXPLANATION_FIXTURE_ROOT='+str(seed),
+        'VOLICORD_EXPLANATION_SIZE_CASE=metadata_heavy', 'cargo', 'test', '--manifest-path',
+        'rebuild/Cargo.toml', '-p', 'volicord-viewer', '--test', 'work_explanation',
+        'seed_work_explanation_runtime', '--', '--exact'])
+    retained = logs.run([sys.executable, '-B', Path(__file__).with_name('retention_support.py'),
+        '--binary', binary, '--fixture', seed/'fixture.json', '--output', root/'retention-proof'])
+    retention = {'process':logs.records[-1]['identity'], 'output':explanation_evidence.binding(retained),
+        'result':json.loads(retained)}
+    launch = launch_boundary_support.run(root/'launch-proof', binary, logs, Product)
+    observed = logs.run([sys.executable, '-B', Path(__file__).with_name('resource_observer_self_test.py'),
+        '--binary', binary.with_name('volicord-mcp'), '--output', root/'resource-boundary-proof'])
+    proof = json.loads(observed)
+    require(proof['status']=='passed' and proof['candidate_mcp_sha256']==c.harness.sha256(binary.with_name('volicord-mcp')),
+        'resource boundary proof lacks candidate binding')
+    resource = {'process':logs.records[-1]['identity'], 'output':explanation_evidence.binding(observed),
+        'result':proof['boundary_controls'], 'identity_controls':proof['identity_controls']}
+    return {'retention':retention, 'launch':launch, 'resource':resource}
+
+
 def pipeline(root, candidate, binary, logs):
+    boundaries = boundary_controls(root, binary, logs)
     campaign_root = root / "campaign"
     c.prepare_campaign(campaign_root, "evidence-rehearsal-" + secrets.token_hex(8), candidate,
         repositories(root, candidate, logs), tasks(root), candidate_binary=binary, purpose=purpose.REHEARSAL)
@@ -740,6 +764,7 @@ def pipeline(root, candidate, binary, logs):
     checked["copied_semantic_rehash"] = copied_control(copied)
     temporal['copied'] = copied_temporal(copied, temporal)
     checked.update(dict.fromkeys(temporal['outcomes'], 'passed'))
+    checked.update(dict.fromkeys(('retention_metadata_round_trip','retention_oversize_atomic','candidate_shell_route','resource_expectation_lifecycle'), 'passed'))
     require(set(checked) == set(json.loads(FIXTURE.read_bytes())["controls"]), "rehearsal control coverage changed")
     return {"evidence_set_sha256": c.harness.sha256(root / "campaign-unavailable/evidence-set.json"),
         "executables": {name: item["sha256"] for name, item in manifest["candidate_artifacts"].items()},
@@ -751,7 +776,7 @@ def pipeline(root, candidate, binary, logs):
         "copied_lineage_id": verification["lineage_id"], "copied_verification": "verified",
         "resource_sample_count": manifest["naturalistic_memory_evidence"]["measurement"]["sample_count"],
         "topology": qualified["campaign_topology"], "measured_evidence_eligible": False, "controls": checked,
-        "temporal_evidence": temporal}
+        "temporal_evidence": temporal, "boundary_evidence": boundaries}
 
 
 def main():
