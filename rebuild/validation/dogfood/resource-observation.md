@@ -1,6 +1,6 @@
 # Candidate MCP resource observation
 
-The maintained foreground interface is `resource_observer.py start|attach|stop`.
+The maintained foreground interface is `resource_observer.py start|attach|expect|stop`.
 Start and attach use the same discovery path and can observe an already running
 candidate. Neither starts a host, changes direct executable integration, grants
 Codex trust nor signals an MCP. For a prepared clean-candidate campaign:
@@ -45,12 +45,12 @@ processes, scheduling gaps (> twice the requested interval), observer failure,
 zero samples and sample/instance bounds retain finite error codes and partial/failed
 or unobserved states. No error message copies arbitrary input or an environment.
 
-Resource schema 2 has a closed key allowlist and closed lifecycle identity, tick,
+Resource schema 3 has a closed key allowlist and closed lifecycle identity, tick,
 sample, privacy and measurement objects. RSS is `/proc/PID/status` VmRSS in kernel
 kB, converted at 1024 bytes per unit; timing is monotonic nanoseconds from attachment.
 This kernel counter is an approximate observation. `peak_rss_bytes` is the greatest
 observed individual-instance sample, not an absolute maximum, concurrent sum or
-operation peak. A measured state requires samples and no recorded gaps/errors;
+operation peak. A measured state requires samples and no recomputed coverage limitations or recorded gaps/errors;
 partial and failed states preserve valid earlier samples. Neither status attests
 continuous whole-session coverage. Tick/sample timestamps expose attachment delay
 and actual coverage. A stopped pre-attachment instance remains unsampled.
@@ -81,3 +81,42 @@ stdout/stderr, numeric exits/signals, durations, EOF-to-exit and cooperative obs
 stop-to-exit timing. All test-owned observers are reaped on failure; external MCP
 shutdown remains the host's responsibility. These are focused synthetic protocol
 fixtures, not a Naturalistic campaign or authenticated host activation.
+
+## Runtime expectations and coverage
+
+Each configured Runtime starts `unknown`. Before starting the observer, the operator
+may independently declare not-yet-launched Homes with repeated `--waiting-runtime
+ABSOLUTE_RUNTIME`. This means armed/waiting, not proof that any absent process is idle.
+Retain the declaration in the observer's per-Runtime initial expectation. Immediately
+before a launch, declare its expected activity through the maintained operator surface:
+
+```text
+python3 rebuild/validation/dogfood/resource_observer.py expect --output OBSERVER_DIRECTORY --runtime ABSOLUTE_RUNTIME --state active
+```
+
+After the host confirms work completion and actual MCP EOF shutdown, use the same
+command with `--state waiting`. An unknown launch/completion must use `--state unknown`.
+These operator assertions never authenticate host activity or stop a process. Do not
+put observer operations or evaluator instructions into frozen task text. One observer
+can arm all known inactive Homes before sequential chats; actual registration/sample
+facts independently record activity even while a Home was declared waiting.
+
+Each tick retains every configured Runtime's expectation/authority, registered instance
+states and sampled identities. Running requires positive Product registration and
+verified RSS. Stopped requires Product `state=stopped` with lifetime; registry absence,
+SIGKILL or /proc disappearance remain uncertain (`gone`). Rejected identity and
+inaccessible processes retain their errors; an exited pre-attachment instance is
+unsampled. Restart requires a distinct instance/start identity. No registration under
+`unknown` means unknown coverage; absence under `active` means missing expected activity.
+A running registration that cannot be sampled remains incomplete. Confirmed stopped
+instances with earlier samples preserve those samples; stopped-only attachment is not
+measurement. Explicit active expectation remains an incomplete open window at observer
+detachment, even with valid samples. Operator stop and interruption never close active
+work; interruption retains its own fact and makes otherwise sampled evidence partial.
+
+The validator recomputes status, peaks, counts, scheduling gaps, sample/tick agreement,
+unknown/expected coverage and lifecycle limitations from these facts. No-sample campaigns
+remain `not_observed` (or blocked/failed), including all-waiting Homes. Current schema
+3 is the sole decoder; historical schema-2 files remain immutable diagnostic evidence.
+No continuous coverage, absolute peak, Codex-session or operation attribution follows.
+Runtime/cwd remain hashes; declarations retain no argv, environment, source or secrets.

@@ -2178,3 +2178,17 @@ Source and checks original Goal Source associations. Authored structural payload
 host authorship, translation quality, Naturalistic experience or official gate success.
 Focused campaign, document realization, reviewer and copied-lineage consumers challenge the same
 selection contract. Preserve before/after runner results privately; maintained tests own repeatability.
+
+### Runtime coverage boundary support
+
+Current resource schema 3 retains operator waiting/active/unknown expectations and
+all Runtime tick registrations/samples. Real sibling controls exercise active plus
+known waiting, unknown/expected gaps, sequential launches and EOF, sampled abrupt
+exit, pre-attachment exit, zero samples, active detachment and observer interruption.
+The maintained lifecycle self-test additionally checks registration failure, PID reuse,
+restart, inaccessible identity and sample gaps. Simulations are negative support only;
+raw earlier samples, process exits and stop/interruption facts remain inspectable.
+Collection, review and copied-lineage validators recompute current verdict and frozen
+Runtime/repository binding. Historical campaign resource files are not decoded through
+a compatibility branch, relabeled or rewritten. Operator declarations are independent
+expectation evidence, not authenticated process or human/session attribution.

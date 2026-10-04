@@ -813,7 +813,7 @@ def render_operator_run_sheet(root: Path) -> Path:
         f"`{GIT_STATE_CHECK}`; it is not required and dirty output is valid evidence. "
         "Commit-policy compliance is assessed against the actual task and repository authority in "
         "post-hoc review; the harness does not infer a commit obligation.\n\n"
-        "Use resource_observer.py start/attach before sessions and stop after sessions; record-resources before collection. Codex launches the configured "
+        "Use resource_observer.py start/attach before sessions; declare known inactive Homes with --waiting-runtime, and expect --state active before each launch, waiting after confirmed completion. Unknown absence remains uncovered. Stop after sessions; record-resources before collection. Codex launches the configured "
         "candidate MCP directly outside the campaign helper's process tree, and this integration has "
         "candidate-owned lifecycle registration enables external process observation. Harness-tree RSS remains technical-gate evidence "
         "only and is not naturalistic MCP RSS.\n\n"
@@ -2751,6 +2751,8 @@ def record_resources(root: Path, source: Path) -> dict[str, Any]:
     evidence_purpose.require_same(campaign, value)
     bindings = {(resource_observer.path_binding(Path(j["runtime_home"])),
         resource_observer.path_binding(Path(j["repository_path"]))) for j in campaign["journeys"].values()}
+    if not {r["runtime_binding"] for r in value["runtimes"]} <= {r for r, _ in bindings}:
+        raise CampaignError("observed Runtime expectation binding mismatch")
     if any((i["identity"]["runtime_binding"], i["identity"]["cwd_binding"]) not in bindings
             for i in value["instances"]):
         raise CampaignError("observed process Runtime/repository binding mismatch")
@@ -2798,6 +2800,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         raise CampaignError("evidence-set live evidence obligations changed")
     resource_observer.validate(manifest["naturalistic_memory_evidence"],
         manifest["candidate_artifacts"]["volicord-mcp"]["sha256"])
+    resource_observer.validate_bindings(manifest["naturalistic_memory_evidence"], manifest["journeys"])
     if "resources/observation.json" in manifest["artifacts"]:
         if read_json(root / "resources/observation.json") != manifest["naturalistic_memory_evidence"]:
             raise CampaignError("resource artifact/manifest disagreement")

@@ -311,6 +311,7 @@ def verify(root):
     import resource_observer
     resource_observer.validate(evidence_set["naturalistic_memory_evidence"],
         evidence_set["candidate_artifacts"]["volicord-mcp"]["sha256"])
+    resource_observer.validate_bindings(evidence_set["naturalistic_memory_evidence"], evidence_set["journeys"])
     replayed = qualification_policy.combine(evaluation, specs, review_values,
         qualification["technical_gate"], evidence_validity=qualification["evidence_validity"],
         naturalistic_resource=evidence_set.get("naturalistic_memory_evidence"))

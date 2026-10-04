@@ -433,3 +433,13 @@ checks actual DOM, URL and geometry stability, preserves complete process stream
 and exit/timeout details, and disconnects from the existing browser. A failed capture
 cannot supply a human observation context. Observation artifact cleanup never
 retries a canonical mutation, grants trust or closes an external browser/MCP.
+
+Per-Runtime operational coverage is separate from process termination. Operator-known
+not-yet-launched Homes may be armed/waiting; undeclared absence is unknown, and an
+explicit active expectation with no sampleable candidate remains incomplete. Positive
+registration/RSS, Product EOF stop, uncertain disappearance, identity rejection and
+observer interruption remain distinct facts. Stop does not close an expected active
+window or erase earlier gaps/samples. Current validators recompute completeness from
+retained per-Runtime tick facts, not an operator's verdict. Sequential observation does
+not count independently known waiting Homes as lost data, and zero samples never qualify
+as measured. These declarations carry no canonical or host-trust authority.

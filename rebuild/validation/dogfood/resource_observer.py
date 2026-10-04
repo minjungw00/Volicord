@@ -14,14 +14,14 @@ import re
 import resource
 import time
 
-SCHEMA = 2
+SCHEMA = 3
 MAX_INSTANCES = 1024
 MAX_TICKS = 20000
 MAX_SAMPLES = 20000
 STATUSES = {'not_observed', 'measured', 'partial', 'failed', 'environment_blocked', 'unsupported'}
 ERRORS = {'missing_registration', 'invalid_registration', 'inaccessible', 'process_gone',
     'pid_reused', 'executable_mismatch', 'registration_changed', 'observer_failure', 'gap',
-    'instance_bound', 'artifact_changed', 'sample_bound', 'unsupported_proc', 'unsampled_instance'}
+    'instance_bound', 'artifact_changed', 'sample_bound', 'unsupported_proc', 'unsampled_instance', 'unknown_coverage', 'active_at_detach', 'observer_interrupted'}
 PRIVACY = {name: False for name in ('rpc_arguments_retained', 'source_bodies_retained',
     'provider_responses_retained', 'credentials_retained', 'conversation_content_retained',
     'process_environment_retained')}
@@ -59,7 +59,7 @@ def initial(artifacts, *, purpose="naturalistic"):
         'observer_lifecycle': 'not_started', 'measurement': {'scope': 'registered_candidate_mcp_instances',
             'peak_rss_bytes': None, 'sample_count': 0, 'mechanism': 'linux_proc_status_vmrss_kib',
             'measurement_errors': [], 'peak_meaning': 'observed_sample_peak_not_absolute_maximum'},
-        'instances': [], 'ticks': [], 'interval_ns': None, 'duration_ns': 0,
+        'runtimes': [], 'instances': [], 'ticks': [], 'interval_ns': None, 'duration_ns': 0,
         'termination': 'not_started', 'observer_cpu_ns': 0, 'observer_peak_rss_bytes': None,
         'attribution': 'no_operation_or_codex_session_memory_attribution_claimed',
         'privacy': dict(PRIVACY), 'technical_gate_rss_evidence': 'retained_separately_not_relabelled_naturalistic'}
@@ -136,6 +136,93 @@ def sample(reg, expected_hash, cache):
     return value
 
 
+def coverage_errors(value):
+    errors = set()
+    identities = {i['identity']['instance_id']: i for i in value['instances']}
+    bindings = {r['runtime_binding'] for r in value['runtimes']}
+    if len(bindings) != len(value['runtimes']) or len(bindings) > MAX_INSTANCES:
+        raise ObservationError('invalid Runtime coverage')
+    for r in value['runtimes']:
+        if set(r) != {'runtime_binding', 'initial_expectation'} or not HEX.fullmatch(r['runtime_binding']) or r['initial_expectation'] not in {'waiting','active','unknown'}:
+            raise ObservationError('invalid Runtime expectation')
+    if any(i['identity']['runtime_binding'] not in bindings for i in value['instances']):
+        raise ObservationError('foreign Runtime identity')
+    seen_samples, stopped = {}, set()
+    previous = None
+    for index, tick in enumerate(value['ticks']):
+        if previous is not None and tick['elapsed_ns'] - previous > value['interval_ns'] * 2:
+            errors.add('gap')
+        previous = tick['elapsed_ns']
+        if {r['runtime_binding'] for r in tick['runtimes']} != bindings or len(tick['runtimes']) != len(bindings):
+            raise ObservationError('missing Runtime tick coverage')
+        for r in tick['runtimes']:
+            if (set(r) != {'runtime_binding','expectation','authority','registered','sampled'}
+                or r['expectation'] not in {'waiting','active','unknown'}
+                or r['authority'] not in {'operator','none'}
+                or (r['authority'] == 'none') != (r['expectation'] == 'unknown')
+                or not isinstance(r['registered'], list) or not isinstance(r['sampled'], list)
+                or len(set(r['sampled'])) != len(r['sampled'])):
+                raise ObservationError('invalid Runtime tick')
+            states = {}
+            for item in r['registered']:
+                ident = item.get('instance_id')
+                if (set(item) != {'instance_id','state'} or ident in states or ident not in identities
+                    or identities[ident]['identity']['runtime_binding'] != r['runtime_binding']
+                    or item['state'] not in {'running','stopped','gone','identity_rejected','inaccessible'}):
+                    raise ObservationError('invalid Runtime lifecycle fact')
+                if ident in stopped and item['state'] not in {'stopped','identity_rejected'}:
+                    raise ObservationError('stopped instance restarted without new identity')
+                if item['state'] == 'stopped':
+                    if identities[ident]['identity']['state'] != 'stopped':
+                        raise ObservationError('stop lacks Product lifecycle evidence')
+                    stopped.add(ident)
+                states[ident] = item['state']
+                if item['state'] == 'gone': errors.add('process_gone')
+                if item['state'] == 'identity_rejected': errors.add('registration_changed')
+                if item['state'] == 'inaccessible': errors.add('inaccessible')
+            if not set(r['sampled']) <= {i for i, state in states.items() if state == 'running'}:
+                raise ObservationError('sample outside running lifecycle')
+            for ident in r['sampled']:
+                seen_samples.setdefault(ident, []).append(index)
+            if not r['sampled'] and not states:
+                if r['expectation'] == 'active': errors.add('missing_registration')
+                elif r['expectation'] == 'unknown': errors.add('unknown_coverage')
+            elif r['expectation'] == 'active' and not r['sampled']:
+                # Operator active windows end only through an explicit expectation update.
+                errors.add('missing_registration')
+        errors.update(tick['errors'])
+    for ident, instance in identities.items():
+        indices = seen_samples.get(ident, [])
+        if len(indices) != len(instance['samples']):
+            raise ObservationError('sample/tick coverage mismatch')
+        for index, sample_record in zip(indices, instance['samples']):
+            end = value['ticks'][index+1]['elapsed_ns'] if index+1 < len(value['ticks']) else value['duration_ns']
+            if not value['ticks'][index]['elapsed_ns'] <= sample_record['elapsed_ns'] <= end:
+                raise ObservationError('sample timing outside tick')
+        if (instance['lifecycle'] == 'stopped') != (instance['identity']['state'] == 'stopped') and instance['lifecycle'] != 'identity_rejected':
+            raise ObservationError('lifecycle/stop evidence disagreement')
+        if instance['lifecycle'] == 'stopped' and ident not in stopped:
+            raise ObservationError('stop missing from tick facts')
+        if not instance['samples']: errors.add('unsampled_instance')
+        if instance['lifecycle'] == 'gone': errors.add('process_gone')
+        if instance['lifecycle'] == 'identity_rejected': errors.add('registration_changed')
+        errors.update(instance['errors'])
+    if value['termination'] == 'interrupted': errors.add('observer_interrupted')
+    if value['ticks'] and value['duration_ns'] - value['ticks'][-1]['elapsed_ns'] > value['interval_ns'] * 2:
+        errors.add('gap')
+    if value['ticks'] and value['termination'] in {'stop_requested','duration_elapsed','interrupted'}:
+        if any(r['expectation'] == 'active' for r in value['ticks'][-1]['runtimes']):
+            errors.add('active_at_detach')
+    return sorted(errors)
+
+
+def verdict(value, numbers, errors):
+    if 'unsupported_proc' in errors: return 'unsupported'
+    if value['termination'] == 'failed': return 'failed'
+    if numbers: return 'partial' if errors else 'measured'
+    return 'environment_blocked' if 'inaccessible' in errors else 'not_observed'
+
+
 def validate(value, expected_hash=None):
     template = initial({'volicord-mcp': {'sha256': value.get('candidate_mcp_sha256')}}, purpose=value.get('evidence_purpose'))
     if (set(value) != set(template) or value['kind'] != template['kind'] or value['schema_version'] != SCHEMA
@@ -178,14 +265,16 @@ def validate(value, expected_hash=None):
         errors.update(instance['errors'])
     last = -1
     for tick in value['ticks']:
-        if (set(tick) != {'elapsed_ns', 'errors'} or type(tick['elapsed_ns']) is not int
+        if (set(tick) != {'elapsed_ns', 'errors', 'runtimes'} or type(tick['elapsed_ns']) is not int
             or not last < tick['elapsed_ns'] <= value['duration_ns'] or not isinstance(tick['errors'], list)
             or not set(tick['errors']) <= ERRORS):
             raise ObservationError('invalid tick or telemetry payload')
         last = tick['elapsed_ns']; errors.update(tick['errors'])
+    errors = coverage_errors(value)
     m = value['measurement']
     if (len(numbers) > MAX_SAMPLES or type(m['sample_count']) is not int or m['sample_count'] != len(numbers) or m['peak_rss_bytes'] != (max(numbers) if numbers else None)
-        or m['measurement_errors'] != sorted(errors)
+        or m['measurement_errors'] != errors
+        or value['status'] != verdict(value, numbers, errors)
         or (value['status'] == 'measured' and (not numbers or errors or value['termination'] == 'failed'))
         or (value['status'] == 'not_observed' and numbers)
         or (value['status'] == 'failed' and value['observer_lifecycle'] != 'failed')):
@@ -193,15 +282,28 @@ def validate(value, expected_hash=None):
     return value
 
 
-def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=None, proc_sample=sample, purpose="naturalistic"):
+def validate_bindings(value, journeys):
+    """Recompute frozen opaque bindings without reading repository/runtime content."""
+    pairs = {(path_binding(Path(j['runtime_home'])), path_binding(Path(j['repository_path'])))
+        for j in journeys.values()}
+    if (not {r['runtime_binding'] for r in value['runtimes']} <= {r for r, _ in pairs}
+        or any((i['identity']['runtime_binding'], i['identity']['cwd_binding']) not in pairs for i in value['instances'])):
+        raise ObservationError('observed Runtime/repository binding mismatch')
+    return value
+
+
+def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=None, proc_sample=sample, purpose="naturalistic", expectations=None, expectation_reader=None):
     if not 50 <= interval_ms <= 60000 or not 0 <= duration_seconds <= 86400:
         raise ObservationError('invalid observation bounds')
     result = initial(artifacts, purpose=purpose)
     result['interval_ns'] = interval_ms * 1_000_000
+    expectations = dict(expectations or {})
+    result['runtimes'] = [{'runtime_binding':path_binding(r), 'initial_expectation':expectations.get(path_binding(r), 'unknown')} for r in runtimes]
     start, cpu = time.monotonic_ns(), time.process_time_ns()
     instances, cache, rejected = {}, {}, set()
     total_samples = 0
     previous, terminate = None, 'duration_elapsed'
+    runtime_ticks, elapsed = None, 0
     environment_status = None
     deadline = start + int(duration_seconds * 1_000_000_000)
     executable = Path(artifacts['volicord-mcp']['path'])
@@ -214,17 +316,25 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
         while time.monotonic_ns() < deadline:
             elapsed = time.monotonic_ns() - start
             errors, found = set(), False
+            runtime_ticks = []
+            if expectation_reader is not None:
+                expectations.update(expectation_reader())
             if previous is not None and elapsed - previous > result['interval_ns'] * 2:
                 errors.add('gap')
             previous = elapsed
             if len(result['ticks']) >= MAX_TICKS:
                 raise ObservationError('sample_bound')
             for runtime in runtimes:
+                binding = path_binding(runtime)
+                state = expectations.get(binding, 'unknown')
+                rt = {'runtime_binding':binding, 'expectation':state, 'authority':'none' if state == 'unknown' else 'operator', 'registered':[], 'sampled':[]}
+                runtime_ticks.append(rt)
+                seen = set()
                 directory = runtime / 'observations/mcp'
                 if directory.is_symlink() or (runtime / 'observations').is_symlink():
                     errors.add('invalid_registration'); continue
                 paths = sorted(directory.glob('*.json'))[:MAX_INSTANCES + 1]
-                if not paths: errors.add('missing_registration')
+                # Empty registration alone proves neither idleness nor lost activity.
                 if len(paths) > MAX_INSTANCES:
                     raise ObservationError('instance_bound')
                 for path in paths:
@@ -234,7 +344,9 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
                         if reg['executable_sha256'] != result['candidate_mcp_sha256']:
                             raise ObservationError('executable_mismatch')
                         ident = reg['instance_id']
+                        seen.add(ident)
                         if ident in rejected:
+                            rt['registered'].append({'instance_id':ident, 'state':'identity_rejected'})
                             continue
                         if ident not in instances:
                             if len(instances) >= MAX_INSTANCES:
@@ -243,12 +355,14 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
                                 'errors':[], 'binding_state':'unverified'}
                         item = instances[ident]
                         immutable = REG_KEYS - {'state','lifetime_ns'}
-                        if any(item['identity'][k] != reg[k] for k in immutable):
+                        if any(item['identity'][k] != reg[k] for k in immutable) or (item['identity']['state'] == 'stopped' and reg['state'] != 'stopped'):
                             item['errors'] = sorted(set(item['errors']) | {'registration_changed'})
-                            item['lifecycle'] = 'identity_rejected'; rejected.add(ident); continue
+                            item['lifecycle'] = 'identity_rejected'; rejected.add(ident)
+                            rt['registered'].append({'instance_id':ident, 'state':'identity_rejected'}); continue
                         if reg['state'] == 'stopped':
                             item['lifecycle'] = 'stopped'
                             item['identity'] = reg
+                            rt['registered'].append({'instance_id':ident, 'state':'stopped'})
                             continue
                         try:
                             measured = proc_sample(reg, result['candidate_mcp_sha256'], cache)
@@ -257,6 +371,8 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
                             total_samples += 1
                             item['samples'].append({'elapsed_ns':time.monotonic_ns() - start,'rss_bytes':measured})
                             item['binding_state'] = 'verified'
+                            rt['sampled'].append(ident)
+                            rt['registered'].append({'instance_id':ident, 'state':'running'})
                         except (OSError, ObservationError) as error:
                             if str(error) == 'sample_bound': raise
                             code = ('process_gone' if isinstance(error, FileNotFoundError) else
@@ -266,11 +382,19 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
                             if code in {'pid_reused','executable_mismatch'}:
                                 item['lifecycle'] = 'identity_rejected'; rejected.add(ident)
                             elif code == 'process_gone': item['lifecycle'] = 'gone'
+                            rt['registered'].append({'instance_id':ident, 'state':'identity_rejected' if code in {'pid_reused','executable_mismatch'} else 'gone' if code == 'process_gone' else 'inaccessible'})
                     except (OSError, ValueError, TypeError, KeyError) as error:
                         if isinstance(error, ObservationError) and str(error) in {'sample_bound','instance_bound'}: raise
                         errors.add(str(error) if isinstance(error, ObservationError) and str(error) in ERRORS else 'invalid_registration')
-            if not found: errors.add('missing_registration')
-            result['ticks'].append({'elapsed_ns':elapsed, 'errors':sorted(errors)})
+                for ident, item in instances.items():
+                    if item['identity']['runtime_binding'] == binding and ident not in seen:
+                        state = 'stopped' if item['identity']['state'] == 'stopped' else 'gone'
+                        if state == 'gone':
+                            item['lifecycle'] = 'gone'
+                            item['errors'] = sorted(set(item['errors']) | {'process_gone'})
+                        rt['registered'].append({'instance_id':ident, 'state':state})
+            result['ticks'].append({'elapsed_ns':elapsed, 'errors':sorted(errors), 'runtimes':runtime_ticks})
+            runtime_ticks = None
             if stop is not None and stop():
                 terminate = 'stop_requested'; break
             time.sleep(min(interval_ms / 1000, max(0, (deadline - time.monotonic_ns()) / 1e9)))
@@ -284,7 +408,19 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
         if len(result['ticks']) >= MAX_TICKS:
             result['ticks'][-1]['errors'] = sorted(set(result['ticks'][-1]['errors']) | {code})
         else:
-            result['ticks'].append({'elapsed_ns':time.monotonic_ns() - start, 'errors':[code]})
+            result['ticks'].append({'elapsed_ns':time.monotonic_ns() - start, 'errors':[code], 'runtimes':[{'runtime_binding':r['runtime_binding'], 'expectation':r['initial_expectation'], 'authority':'none' if r['initial_expectation']=='unknown' else 'operator', 'registered':[], 'sampled':[]} for r in result['runtimes']]})
+    if runtime_ticks is not None:
+        # Preserve a partly sampled tick on interruption/failure; never orphan earlier samples.
+        present = {r['runtime_binding'] for r in runtime_ticks}
+        for r in result['runtimes']:
+            if r['runtime_binding'] not in present:
+                state = expectations.get(r['runtime_binding'], 'unknown')
+                runtime_ticks.append({'runtime_binding':r['runtime_binding'], 'expectation':state,
+                    'authority':'none' if state=='unknown' else 'operator', 'registered':[], 'sampled':[]})
+        partial = {'elapsed_ns':elapsed, 'errors':[], 'runtimes':runtime_ticks}
+        if result['ticks'] and result['ticks'][-1]['elapsed_ns'] > elapsed:
+            partial['errors'] = result['ticks'].pop()['errors']
+        result['ticks'].append(partial)
     result.update(instances=list(instances.values()), duration_ns=time.monotonic_ns() - start,
         observer_cpu_ns=time.process_time_ns() - cpu, termination=terminate,
         observer_lifecycle='failed' if terminate == 'failed' else 'stopped')
@@ -293,25 +429,37 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
         if not item['samples']:
             item['errors'] = sorted(set(item['errors']) | {'unsampled_instance'})
     samples = [s['rss_bytes'] for i in result['instances'] for s in i['samples']]
-    errors = sorted({e for t in result['ticks'] for e in t['errors']} | {e for i in result['instances'] for e in i['errors']})
+    errors = coverage_errors(result)
     result['measurement'].update(sample_count=len(samples), peak_rss_bytes=max(samples) if samples else None,
         measurement_errors=errors)
-    result['status'] = environment_status or ('failed' if terminate == 'failed' else 'partial' if samples and errors else
-        'measured' if samples else 'environment_blocked' if 'inaccessible' in errors else 'not_observed')
+    result['status'] = verdict(result, samples, errors)
     validate(result)
     return result
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('command', choices=['start','attach','stop'])
+    p.add_argument('command', choices=['start','attach','expect','stop'])
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--campaign-root', type=Path)
     p.add_argument('--binary', type=Path, help='Standalone candidate attachment; no campaign qualification')
     p.add_argument('--runtime', type=Path, action='append', default=[])
     p.add_argument('--duration-seconds', type=float, default=60)
     p.add_argument('--interval-ms', type=int, default=250)
+    p.add_argument('--waiting-runtime', type=Path, action='append', default=[], help='Operator declares not-yet-started Runtime; never inferred from absence')
+    p.add_argument('--state', choices=['waiting','active','unknown'])
     args = p.parse_args()
+    if args.command == 'expect':
+        if len(args.runtime) != 1 or args.state is None or not (args.output/'control.json').is_file() or (args.output/'resource.json').exists():
+            raise ObservationError('running observer, one Runtime and state required')
+        control = json.loads((args.output/'control.json').read_bytes())
+        binding = path_binding(args.runtime[0])
+        if binding not in control['runtime_bindings']: raise ObservationError('unconfigured Runtime expectation')
+        target = args.output / ('expect-' + binding + '.json')
+        temporary = target.with_suffix('.tmp')
+        temporary.write_text(json.dumps({'runtime_binding':binding, 'expectation':args.state}))
+        temporary.replace(target)
+        return 0
     if args.command == 'stop':
         control = args.output / 'control.json'
         if not control.is_file() or (args.output / 'resource.json').exists():
@@ -334,8 +482,18 @@ def main():
         candidate_head = None
     args.output.mkdir(mode=0o700, parents=True, exist_ok=False)
     campaign.write_json(args.output / 'control.json', {'kind':'mcp_resource_observer_control',
-        'candidate_head':candidate_head, 'candidate_mcp_sha256':artifacts['volicord-mcp']['sha256']})
-    result = observe(artifacts, runtimes,
+        'candidate_head':candidate_head, 'candidate_mcp_sha256':artifacts['volicord-mcp']['sha256'], 'runtime_bindings':[path_binding(r) for r in runtimes]})
+    waiting = {path_binding(r):'waiting' for r in args.waiting_runtime}
+    if not set(waiting) <= {path_binding(r) for r in runtimes}: raise ObservationError('unconfigured waiting Runtime')
+    def read_expectations():
+        current = {}
+        for path in args.output.glob('expect-*.json'):
+            event = json.loads(path.read_bytes())
+            if set(event) != {'runtime_binding','expectation'} or event['runtime_binding'] not in {path_binding(r) for r in runtimes} or event['expectation'] not in {'waiting','active','unknown'}:
+                raise ObservationError('invalid_registration')
+            current[event['runtime_binding']] = event['expectation']
+        return current
+    result = observe(artifacts, runtimes, expectations=waiting, expectation_reader=read_expectations,
         duration_seconds=args.duration_seconds, interval_ms=args.interval_ms,
         stop=lambda: (args.output / 'stop.request').exists())
     campaign.write_json(args.output / 'resource.json', result)

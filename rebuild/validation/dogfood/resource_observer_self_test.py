@@ -157,7 +157,7 @@ def main():
             assert unobserved['status']=='not_observed' and 'unsampled_instance' in unobserved['measurement']['measurement_errors']
             empty=root/'empty';empty.mkdir()
             missing=observer.observe(artifacts,[empty],duration_seconds=.4,interval_ms=50)
-            assert missing['status']=='not_observed' and missing['measurement']['measurement_errors']==['missing_registration']
+            assert missing['status']=='not_observed' and missing['measurement']['measurement_errors']==['unknown_coverage']
             def slow(*args): time.sleep(.15);return 123
             gaps=observer.observe(artifacts,[runtime],duration_seconds=.4,interval_ms=50,proc_sample=slow)
             # Stopped entries cannot become samples; use a running fixture solely for gap control.
@@ -173,12 +173,17 @@ def main():
             child.stdin.write('{"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}\n');child.stdin.flush()
             child.proof_stdout = child.stdout.readline()
             assert json.loads(child.proof_stdout)['id']==2
+            rejected_registration = observer.observe(artifacts, [blocked], duration_seconds=.3, interval_ms=50, expectations={observer.path_binding(blocked):'active'})
+            assert rejected_registration['status']=='not_observed' and 'missing_registration' in rejected_registration['measurement']['measurement_errors']
+            (root/'registration-failure.json').write_text(json.dumps(rejected_registration,sort_keys=True)+'\n')
             child.stdin.close();child.wait(timeout=5)
             blocked_stderr = child.stderr.read()
             save_process(child, child.proof_label, child.proof_stdout+child.stdout.read(), blocked_stderr, 'stdin_eof', time.monotonic_ns()-child.proof_started)
             assert child.returncode==0 and 'lifecycle observation unavailable' in blocked_stderr
+            import resource_boundary_controls
+            boundaries = resource_boundary_controls.run(binary, root/'boundary-controls')
             print(json.dumps({'status':'passed','positive':'three real sibling candidate processes',
-                'measurement_status':result['status'],'measurement_errors':result['measurement']['measurement_errors'],
+                'boundary_controls':boundaries,'candidate_mcp_sha256':artifacts['volicord-mcp']['sha256'], 'measurement_status':result['status'],'measurement_errors':result['measurement']['measurement_errors'],
                 'sample_count':result['measurement']['sample_count'],'observed_peak_rss_bytes':result['measurement']['peak_rss_bytes'],
                 'candidate_startup_to_initialize_ns':startup,
                 'registration_duration_ns':[r['registration_duration_ns'] for r in registrations],

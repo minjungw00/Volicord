@@ -476,7 +476,7 @@ text/secret의 general redaction 보증이 아니며 기존 credential/private-p
 Linux MCP lifecycle registration and candidate-bound observer telemetry are local
 operational evidence outside canonical task/Decision authority. Retained fields are
 closed process instance/start/executable binding, opaque Runtime/cwd hashes,
-server-generated session correlation, bounded RSS/timing, lifecycle and finite
+server-generated session correlation, bounded RSS/timing, per-Runtime operator expectation/authority and tick coverage, lifecycle and finite
 error codes. Neither RPC arguments, full environments, conversation/source bodies,
 provider responses nor credentials may be collected. Registration/observer failure
 cannot block canonical work or grant host trust/transmission authorization. Managed
