@@ -122,7 +122,7 @@ def validate_boundaries(value, processes, executables):
         and len({v['identity'] for v in lives})==4, 'missing many-Source language/subject cases')
     for life in lives:
         require(set(life)=={'subject_kind','language','source_count','response_bytes','retained_bytes','after_state','identity','stages','copied_review'}
-            and type(life['source_count']) is int and life['source_count']>=2 and life['response_bytes']==3181
+            and type(life['source_count']) is int and life['source_count']>=32 and life['response_bytes']==3181
             and type(life['retained_bytes']) is int and 16384<life['retained_bytes']<=147456
             and life['after_state']=='current', 'retention boundary was not exercised')
         identity(life['identity']); artifact(life['copied_review'])

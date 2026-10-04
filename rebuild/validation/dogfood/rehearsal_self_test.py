@@ -123,7 +123,7 @@ class ContractTests(unittest.TestCase):
     def test_rehashed_boundary_claims_require_actual_semantic_and_process_evidence(self):
         original=passed_result()
         for mutation in ('missing','labels_only','missing_process','missing_stage','old_limit','locale','oversize_success',
-                'wrong_cli','hide_shadow','host_claim','active_gap_as_measured','gone_as_eof','zero_as_measured','no_identity','changed_output'):
+                'few_sources','wrong_cli','hide_shadow','host_claim','active_gap_as_measured','gone_as_eof','zero_as_measured','no_identity','changed_output'):
             value=copy.deepcopy(original); boundary=value['pipeline']['boundary_evidence']
             if mutation=='missing': value['pipeline'].pop('boundary_evidence')
             elif mutation=='labels_only': value['pipeline']['boundary_evidence']=dict.fromkeys(contract.BOUNDARY_CONTROLS,'passed')
@@ -132,6 +132,7 @@ class ContractTests(unittest.TestCase):
             elif mutation=='old_limit': boundary['retention']['result']['lifecycles'][0]['retained_bytes']=16000
             elif mutation=='locale': boundary['retention']['result']['lifecycles'][0]['language']='ko'
             elif mutation=='oversize_success': boundary['retention']['result']['oversize']['exit_code']=0
+            elif mutation=='few_sources': boundary['retention']['result']['lifecycles'][0]['source_count']=3
             elif mutation=='wrong_cli': boundary['launch']['routes'][0]['cli_sha256']='0'*64
             elif mutation=='hide_shadow': boundary['launch']['routes'][1]['bare_matches_candidate']=True
             elif mutation=='host_claim': boundary['launch']['actual_host_proof']='passed'

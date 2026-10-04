@@ -48,7 +48,7 @@ def run(binary, fixture, root):
             receipt=json.loads(e.bound(root,directory/'record.json'))
             retained=receipt['explanation']; size=len(e.compact_bytes(retained))
             assert 16384 < size <= e.RETAINED_BYTE_LIMIT
-            assert retained['realization']==response and len(retained['source_status'])>=2
+            assert retained['realization']==response and len(retained['source_status'])>=32
             lives.append({'subject_kind':plan['subject']['kind'],'language':plan['requested_language'],
                 'source_count':len(retained['source_status']),'response_bytes':3181,'retained_bytes':size,
                 'after_state':'current','identity':item['identity'],

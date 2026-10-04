@@ -867,3 +867,8 @@ The separately authorized `linux-codex-integration/codex_probe.py --model EXACT_
 requires actual completed host command output from the maintained read-only readiness
 probe, along with candidate-bound MCP resolve/Recall. Its prompt is an explicit probe,
 not a frozen Naturalistic task; no third gate transmission is added.
+
+The retention size fixture adds 32 distinct bounded supporting Sources to both Goal and
+recommendation bases; Work and Decision retain 35 and 34 Source statuses respectively.
+The current boundary receipt requires at least 32, rather than substituting long actor
+metadata for a many-Source case. Prose and fixture Source observations remain authored support.

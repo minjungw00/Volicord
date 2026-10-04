@@ -63,7 +63,7 @@ def boundary_fixture():
     """Explicit synthetic contract fixture; no Product/host execution claim."""
     stream={'bytes':1,'sha256':'1'*64}
     stages={name:dict(stream) for name in ('attempt','preparation','response','record','after','receipt')}
-    lives=[{'subject_kind':kind,'language':language,'source_count':30,'response_bytes':3181,
+    lives=[{'subject_kind':kind,'language':language,'source_count':34,'response_bytes':3181,
         'retained_bytes':20000,'after_state':'current','identity':str(index+1)*32,
         'stages':stages,'copied_review':stream} for index,(kind,language) in enumerate(
             [(k,l) for k in ('work','decision') for l in ('en','ko')])]

@@ -209,6 +209,34 @@ fn fixture_with_temporary(
             .id;
         commands.insert(key, source);
     }
+    let mut goal_sources = vec![user];
+    let mut recommendation_sources = vec![commit];
+    for index in 0..input["additional_supporting_source_count"]
+        .as_u64()
+        .unwrap_or(0)
+    {
+        let source = store
+            .record_source(
+                op(&mut counter),
+                project.id,
+                SourceDraft {
+                    expected_project_revision: project.revision,
+                    payload: SourcePayload::RepositoryCommit {
+                        commit: format!("authored-support-{index}"),
+                    },
+                    actor: Principal {
+                        kind: PrincipalKind::Repository,
+                        identity: format!("bounded-source-{index}"),
+                    },
+                    observer: Some(actor(PrincipalKind::Agent)),
+                    availability: Availability::Available,
+                },
+            )?
+            .value
+            .id;
+        goal_sources.push(source);
+        recommendation_sources.push(source);
+    }
     let record_goal =
         |store: &mut Store, counter: &mut u128, role, text: &str, paths: Vec<String>| {
             store
@@ -221,7 +249,7 @@ fn fixture_with_temporary(
                         statement: text.into(),
                         provenance_role: StatementProvenanceRole::UserStatement,
                         author: actor(PrincipalKind::User),
-                        source_basis: vec![user],
+                        source_basis: goal_sources.clone(),
                         applicability: ApplicabilityScope {
                             paths,
                             components: Vec::new(),
@@ -313,7 +341,7 @@ fn fixture_with_temporary(
                             .as_str()
                             .unwrap_or("Agent rationale")
                             .into(),
-                        source_basis: vec![commit],
+                        source_basis: recommendation_sources.clone(),
                     },
                     trade_offs: Vec::new(),
                     uncertainty: Vec::new(),
@@ -574,6 +602,8 @@ pub fn explanation_size_scenario(case: &str) -> Result<Value, Box<dyn std::error
     let cases:Value=serde_json::from_str(include_str!("../../../../validation/end-to-end/multi-repository/fixtures/viewer-reading/explanation-size-cases.json"))?;
     let control = &cases[case];
     let mut scenario = rich_scenario()?;
+    scenario["additional_supporting_source_count"] =
+        control["additional_supporting_source_count"].clone();
     scenario["source_actor_identity"] = serde_json::json!(control["source_actor_unit"]
         .as_str()
         .ok_or("actor unit")?
