@@ -300,6 +300,39 @@ gate-produced final 없이 V11 consumption을 주장하거나, required target�
 관찰 순서와 모순되는 조합은 거부한다. 별도 failure schema, numeric capsule version 또는
 legacy decoder는 두지 않는다.
 
+### 3.2 Validation responsibility and evidence reuse
+
+This matrix owns validation responsibilities and reuse boundaries. A campaign ID,
+session label such as “final”, or instruction-only preparation change does not
+invalidate applicable evidence. Claims remain limited to the recorded candidate,
+producing contract, inputs and environment; reuse never asserts an unobserved user
+experience. A new candidate or invalid/inapplicable required technical evidence
+still needs the authoritative gate in §3.1. Focused success is not an aggregate pass.
+
+| Category | Claim and identity/environment scope | Reuse condition | Invalidation / new observation | Genuinely user-owned action |
+| --- | --- | --- | --- | --- |
+| Focused tests | Named checks on recorded source, fixtures, command and tools; support only | Relevant inputs and assumptions unchanged; retained numeric outcome and streams | Changed relevant code/fixture/tool assumption or missing/failed result requires that focused check | None for local checks; authorize any actual external transmission separately |
+| Ordered Final | Exact clean candidate's ordered workspace aggregate and mapped test execution | Verified gate capsule/archive for that exact candidate and applicable producing contract | Different candidate, failed/tampered/missing aggregate or incompatible contract requires gate; similar binaries cannot establish candidate equality | Current transmission authority only if the replacement gate reaches an external stage |
+| Formal rehearsal | Gate-owned local Product/collection/review/lineage and technical observer controls, bound to Final/candidate/executables | Same verified exact-candidate gate artifact, including current rehearsal contract and controls | Missing/failed controls, altered executable/source binding or incompatible producer; standalone diagnostic cannot substitute | None; authored fixtures supply no user or human outcomes |
+| Provider / V11 technical checks | Recorded provider/model/source scope and three-target technical integration, resource budgets and credential audit | Applicable passed exact-candidate archive/capsule independently verified and consumed by `qualification_policy.verify_technical()` | Candidate/contract/binding/integrity failure or changed environment assumption limits affected claim; required replacement execution goes through gate | Explicit applicable current authority for future real transmissions; reading recorded evidence needs no new approval |
+| Fixed browser / cost checks | Candidate-bound synthetic browser/render/profile measurements with recorded browser, driver, fixture and host | Exact recorded candidate and applicable fixture/tool/environment scope; retained artifact verified by its owner | Changed relevant candidate/browser/driver/fixture or resource environment requires affected supporting check; no claim of human experience | None for local support; personally observe actual Viewer separately |
+| Current-installation smoke | Actual installed CLI/MCP/Viewer, Runtime, repository, host-shell permissions, trust and activation readiness | Installation/host/permissions/bindings remain applicable and actual activation is still observed in each raw session | Local permission, path, executable, Runtime or host change requires local readiness check; it does not invalidate unrelated technical claims | Grant repository/hook trust in the actual host; authorize intended target work |
+| Target / task qualification | Exact target revision/origin/license/class floors and approved exact ordinary task bytes | Same qualified target and authorized task scope; existing approvals and adopted Purpose remain applicable | Changed target/task/scope or failed class qualification requires affected preparation; README never supplies Purpose | Select useful tasks, authorize changes and supply ordinary task/resume text; declare Purpose or its absence |
+| Optional Naturalistic telemetry | Only actual candidate-bound per-instance samples and lifecycle/coverage in selected windows | Retain valid observation within its actual candidate/Runtime/window; never reuse V11 RSS as user-run telemetry | Default not selected retains initialized `not_observed` and null/unmeasured values. Selected but not started remains unmeasured; attempts preserve partial/failed facts. Malformed submission is rejected, never reset | None on default user-experience path; operator explicitly selects and runs characterization when desired |
+| Raw integrity | Frozen task/session/activation/candidate, inventory, privacy and source binding of exact submitted bytes | Immutable same evidence set passes maintained integrity checks | Tampering, candidate/binary mismatch, malformed raw/resource evidence or changed binding rejects processing; fresh campaign needs fresh raw sessions | Perform actual authorized sessions and provide original captures; never edit historical evidence |
+| Agent review | Independent evidence-grounded semantic judgment over exact evidence/rubric/policy identities | Same recorded judgment remains applicable to its bound inputs; preparation does not pre-award quality | New evidence or applicable policy/rubric change needs new append-only review; conflicts/high-impact gaps retain escalation | No substitute user judgment; actual independent agent assesses Learning, grounding and interaction coverage |
+| Human observation | Personally inspected en/ko live displays, accessibility/responsiveness, multi-Work and applicable Decision comprehension | Same captured display/evidence and recorded human scope; bounded reuse only as allowed by qualitative-review owner | New displayed state, changed evidence, required omission or conflict needs actual personal observation/resolution | Personally inspect required surfaces and give judgments; agent-authored support cannot satisfy this |
+| Final qualification | Exact candidate technical evidence plus immutable campaign, evaluation, reviews, topology and required human criteria | Maintained consumer verifies original inputs; copied lineage replays only packaged claims | Missing technical evidence stays `not_provided`/unresolved; verified failed evidence blocks; invalid/inapplicable evidence rejects. Required Learning/human/coverage gaps and hard findings remain effective | Explicit replacement/Phase 9 approval only after complete qualification; no such approval is implied by preparation |
+
+Preparation and qualification consume retained evidence; neither invokes a nested
+gate nor reacquires provider authority to read it. Preserve actual verifier errors
+and prerequisite states. A successful archive check establishes recorded integrity,
+not current host readiness, naturalistic adoption or human comprehension. Optional
+telemetry selection is an operator preparation fact, not an evidence verdict; once
+attempted, observation facts cannot be erased or relabelled as unselected. Frozen
+campaign promises require a separate retained operator scope-change record rather
+than rewriting manifests, task approvals or historical observations.
+
 ## 4. 실행 순서
 
 ```text
@@ -1908,10 +1941,13 @@ continuity record when completion restores readiness. The prior continuity prefi
 other fields must remain unchanged; the publication observation must bind the same HEAD
 and a clean worktree through the gate-owned candidate check. Failed or blocked completion
 cannot be promoted by publication. Before fresh Dogfood preparation, the real
-`qualification_policy.verify_technical()` must consume that candidate's newly produced
+`qualification_policy.verify_technical()` must consume that candidate's applicable retained
 gate capsule/archive successfully, with its output and numeric exit preserved.
 Policy changes never trigger expensive technical execution.
-The engineering final HEAD requires its own gate-owned authoritative admission and maintained gate; standalone diagnostic admission is optional.
+Use the [responsibility/reuse matrix](#32-validation-responsibility-and-evidence-reuse)
+to distinguish candidate technical qualification from current-installation readiness
+and fresh user observation. A different engineering candidate requires its own gate;
+an already verified applicable exact candidate does not require another execution.
 
 Focused capture/campaign, real-Git repository-state, evidence-controls and machine
 self-tests exercise both Codex surfaces, strict negative provenance and activation

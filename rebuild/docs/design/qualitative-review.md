@@ -593,6 +593,10 @@ Identity remains self-reported; do not use agent-generated claims of a human exp
 
 `qualify` combines evidence validity, verified exact-candidate technical gate, hard machine
 facts, resolved semantic findings, common review completion and targeted human escalations.
+The [validation responsibility/reuse matrix](validation-plan.md#32-validation-responsibility-and-evidence-reuse)
+owns technical reuse, local readiness and fresh observation boundaries. Reading
+applicable technical evidence requires no new provider transmission authority and
+never supplies missing Learning, interaction coverage or personal human judgment.
 `approve-phase-9` then requires explicit operator authorization of a fully qualified run.
 Approval rechecks the exact original inputs; it cannot replace missing evidence or review.
 The common review result itself always retains `phase_9_ready = false`.

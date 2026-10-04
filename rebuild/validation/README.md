@@ -804,6 +804,12 @@ and source-independent lineage consumers validate that binding. Original local
 screenshots remain separately retained. HTTP/markup, browser, human, snapshot
 export and render profiling keep their separate evidence meanings.
 
+Validation claims, reuse/invalidation and user-owned actions are defined once in
+the [validation responsibility/reuse matrix](../docs/design/validation-plan.md#32-validation-responsibility-and-evidence-reuse).
+Campaign preparation consumes applicable exact-candidate technical evidence; a new
+campaign ID or “final” session label alone does not require technical execution.
+Current-installation readiness and fresh user/human observations retain their own scopes.
+
 ## Product-backed Dogfood evidence rehearsal
 
 ```sh
