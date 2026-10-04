@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import launch_readiness
 import argparse
 import json
 import os
@@ -173,7 +174,12 @@ def main() -> int:
             return report_blocked("isolated setup could not reach the authenticated turn", error=str(error))
 
         project_id = initialized["project_id"]
-        prompt = "Summarize this repository's purpose and current work context. Do not make changes."
+        probe_command = [sys.executable, "-B", str(Path(launch_readiness.__file__).resolve()),
+            "--binary", str(prefix / "bin/volicord"), "--runtime", str(runtime),
+            "--repository", str(repository), "--cli-sha256", launch_readiness.digest(prefix / "bin/volicord"),
+            "--mcp-sha256", launch_readiness.digest(prefix / "bin/volicord-mcp")]
+        prompt = "Check local Volicord launch readiness by running " + shlex.join(probe_command) + ". Summarize this repository's purpose and current work context. Do not make changes."
+
         command = [
             codex,
             "--dangerously-bypass-hook-trust",
@@ -248,6 +254,24 @@ def main() -> int:
                 continue
             if isinstance(value, dict):
                 events.append(value)
+        # Require actual host command completion and read-only Product result, not parent PATH.
+        shell_proofs = []
+        for event in events:
+            item = event.get("item", {})
+            if (item.get("type") == "command_execution" and item.get("status") == "completed"
+                and item.get("exit_code") == 0 and "launch_readiness.py" in item.get("command", "")):
+                for line in item.get("aggregated_output", "").splitlines():
+                    try:
+                        proof = json.loads(line)
+                    except ValueError:
+                        continue
+                    if (proof.get("status") == "ready" and proof.get("project_id") == project_id
+                        and proof.get("cli_sha256") == launch_readiness.digest(prefix / "bin/volicord")
+                        and proof.get("mcp_sha256") == launch_readiness.digest(prefix / "bin/volicord-mcp")
+                        and proof.get("invoked_executable") == str((prefix / "bin/volicord").resolve())):
+                        shell_proofs.append(proof)
+        if not shell_proofs:
+            return report_blocked("actual host tool-shell launch-readiness proof missing", child=child_result)
         selected_calls = [found for event in events if (found := tool_call(event)) is not None]
         calls = [
             found
@@ -291,7 +315,8 @@ def main() -> int:
                     "codex": version,
                     "authenticated": True,
                     "project_scoped_activation": True,
-                    "plain_repository_prompt": True,
+                    "probe_prompt": "explicit_read_only_launch_probe_not_naturalistic_task",
+                    "actual_host_tool_shell": shell_proofs,
                     "project_id": project_id,
                     "observed_product_tool_calls": [
                         {"server": server, "tool": tool}

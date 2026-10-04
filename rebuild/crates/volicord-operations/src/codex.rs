@@ -23,7 +23,13 @@ const EXCLUDE_END: &str = "# END Volicord Codex integration";
 // host session ID UTF-8); it is correlation evidence, not authentication.
 const ACTIVATION_IDENTITY: &str = include_str!("session_start_identity.txt");
 
-fn activation_context(cwd: &Path, session_id: &str) -> String {
+fn activation_context(
+    cwd: &Path,
+    session_id: &str,
+    runtime: &Path,
+    executable: &Path,
+    repository: &Path,
+) -> String {
     let mut binding = Sha256::new();
     binding.update(cwd.to_string_lossy().as_bytes());
     binding.update([0]);
@@ -32,7 +38,13 @@ fn activation_context(cwd: &Path, session_id: &str) -> String {
         .trim_end()
         .replace("{binding}", &format!("{:x}", binding.finalize()));
     let continuation = crate::operations::WORK_AUTHORITY_CONTINUATION;
-    format!("{identity}\nStart project work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Recall is not completion. Task direction is RecordedNextStep; repair is separate. For useful prose under current host authority: CLI work explain prepare/record --work ID or decision explain prepare/record --decision ID; --language, --input FILE for record. No Work MCP tool or generation quota. Run explicitly requested tests/build/lint/verification to termination before completion; report blockers. Prior Checkpoint or inspection cannot substitute. Inspect/explain-only requests need no execution. {continuation} Explicit learning/explanation participation in this bounded Goal stays active with its exact current-host Source/verbatim statement even if all dimensions are routine. Per-dimension learning value is separate: routine detail requires no Learning Deliberation, Question, or Decision. Otherwise default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation. After inquiry_frontier clear answers, call decision_record promptly: existing valid presentation_receipt_id, exact revision, exact current user_turn. No repeat confirmation of unchanged Questions. Explanation is not a Decision; clarify ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Use caller-supplied current-host response; never infer a Decision from recommendation or silence. Stronger confirmation is only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Never infer user authority from agent recommendation or transmit sources without separate exact provider authorization. For verified completion/pause, rerun relevant bounded verification after the final meaningful mutation. Pre-mutation success, inspection, prior Checkpoint or prose cannot certify later changes. Use standalone bounded verification for unambiguous terminal evidence; compound diagnostics may be useful but mixed/ambiguous commands cannot be sole terminal evidence. Keep exact transient invocation and numeric exit/termination observable for the same execution through polling. Record only observed outcomes; retain no raw arguments. No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation. No-write research/prototype conclusions using execution need a completed bounded scratch experiment: exact invocation and actual numeric exit/termination from that execution. Diagnostics may precede it; afterward normally only read-only inspection/reporting that preserves its evidence basis before Checkpoint. After later substantive executable diagnostics, establish a later bounded experiment with observed numeric completion. Checkpoint records no repository changed paths and the terminal experiment evidence, not an earlier superseded run. Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. No ceremony off-project.")
+    let route = format!(
+        "{} --runtime {} --repository {}",
+        shell_quote(executable),
+        shell_quote(runtime),
+        shell_quote(repository)
+    );
+    format!("{identity}\nCLI route: {route}. Use this prefix for CLI operations; bare-name PATH is not candidate identity.\nStart project work with project_resolve; follow workflow.required_next_action until blocks_ordinary_work is false. Recall is not completion. Task direction is RecordedNextStep; repair is separate. For useful prose under current host authority: CLI work explain prepare/record --work ID or decision explain prepare/record --decision ID; --language, --input FILE for record. No Work MCP tool or generation quota. Run explicitly requested tests/build/lint/verification to termination before completion; report blockers. Prior Checkpoint or inspection cannot substitute. Inspect/explain-only requests need no execution. {continuation} Explicit learning/explanation participation in this bounded Goal stays active with its exact current-host Source/verbatim statement even if all dimensions are routine. Per-dimension learning value is separate: routine detail requires no Learning Deliberation, Question, or Decision. Otherwise default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation. After inquiry_frontier clear answers, call decision_record promptly: existing valid presentation_receipt_id, exact revision, exact current user_turn. No repeat confirmation of unchanged Questions. Explanation is not a Decision; clarify ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Use caller-supplied current-host response; never infer a Decision from recommendation or silence. Stronger confirmation is only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Never infer user authority from agent recommendation or transmit sources without separate exact provider authorization. For verified completion/pause, rerun relevant bounded verification after the final meaningful mutation. Pre-mutation success, inspection, prior Checkpoint or prose cannot certify later changes. Use standalone bounded verification for unambiguous terminal evidence; compound diagnostics may be useful but mixed/ambiguous commands cannot be sole terminal evidence. Keep exact transient invocation and numeric exit/termination observable for the same execution through polling. Record only observed outcomes; retain no raw arguments. No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation. No-write research/prototype conclusions using execution need a completed bounded scratch experiment: exact invocation and actual numeric exit/termination from that execution. Diagnostics may precede it; afterward normally only read-only inspection/reporting that preserves its evidence basis before Checkpoint. After later substantive executable diagnostics, establish a later bounded experiment with observed numeric completion. Checkpoint records no repository changed paths and the terminal experiment evidence, not an earlier superseded run. Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. No ceremony off-project.")
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -78,7 +90,7 @@ pub(crate) fn execute(
         }
         "hook" => {
             let repository = PathBuf::from(cursor.next("authorized repository path")?);
-            session_start(&repository, input)
+            session_start(&repository, runtime.root(), input)
         }
         _ => Err(usage(
             "codex requires enable ABSOLUTE_REPOSITORY or disable ABSOLUTE_REPOSITORY",
@@ -263,7 +275,11 @@ fn disable(repository: &Path) -> Result<Value, Error> {
     Ok(json!({"operation":"codex_disable","repository":repository,"changed":true}))
 }
 
-fn session_start(repository: &Path, input: &mut dyn Read) -> Result<Option<Value>, Error> {
+fn session_start(
+    repository: &Path,
+    runtime: &Path,
+    input: &mut dyn Read,
+) -> Result<Option<Value>, Error> {
     if !repository.is_absolute() {
         return Err(Error::new("authorized repository path must be absolute"));
     }
@@ -294,7 +310,7 @@ fn session_start(repository: &Path, input: &mut dyn Read) -> Result<Option<Value
     Ok(Some(json!({
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": activation_context(&cwd, &event.session_id),
+            "additionalContext": activation_context(&cwd, &event.session_id, runtime, &env::current_exe().map_err(|e| Error::with_source("cannot locate installed CLI", e))?, repository),
         }
     })))
 }
@@ -893,7 +909,7 @@ mod tests {
         for source in ["startup", "resume", "clear", "compact"] {
             let encoded = event(&child, source);
             let mut input = encoded.as_slice();
-            let output = session_start(&authorized, &mut input)
+            let output = session_start(&authorized, Path::new("/runtime"), &mut input)
                 .expect("matching hook")
                 .expect("activation context");
             assert_eq!(
@@ -902,7 +918,13 @@ mod tests {
             );
             assert_eq!(
                 output["hookSpecificOutput"]["additionalContext"],
-                activation_context(&child, "session")
+                activation_context(
+                    &child,
+                    "session",
+                    Path::new("/runtime"),
+                    &env::current_exe().expect("executable"),
+                    &authorized
+                )
             );
             let context = output["hookSpecificOutput"]["additionalContext"]
                 .as_str()
@@ -974,15 +996,22 @@ mod tests {
             ));
             assert!(!context.contains("submit a Question Candidate"));
             assert!(
-                context.len() < 4096,
-                "activation context should stay compact"
+                context
+                    .lines()
+                    .filter(|line| !line.starts_with("CLI route:"))
+                    .map(|line| line.len() + 1)
+                    .sum::<usize>()
+                    < 4096,
+                "activation guidance should stay compact independently of installed path lengths"
             );
         }
         let encoded = event(&unauthorized, "startup");
         let mut input = encoded.as_slice();
-        assert!(session_start(&authorized, &mut input)
-            .expect("nonmatching hook")
-            .is_none());
+        assert!(
+            session_start(&authorized, Path::new("/runtime"), &mut input)
+                .expect("nonmatching hook")
+                .is_none()
+        );
 
         let runtime = temporary.path().join("must-not-exist-runtime");
         for (cwd, expects_context) in [(&unauthorized, false), (&child, true)] {
@@ -1018,7 +1047,13 @@ mod tests {
                 );
                 assert_eq!(
                     output["hookSpecificOutput"]["additionalContext"],
-                    activation_context(cwd, "session")
+                    activation_context(
+                        cwd,
+                        "session",
+                        &runtime,
+                        &env::current_exe().expect("executable"),
+                        &authorized
+                    )
                 );
             }
             assert!(!runtime.exists());

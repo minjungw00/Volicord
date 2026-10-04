@@ -1268,9 +1268,9 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-v08-") as directory:
         temporary = Path(directory)
         home = temporary / "home"
-        prefix = temporary / "prefix"
-        runtime = temporary / "runtime"
-        repository = temporary / "repository"
+        prefix = temporary / "prefix with spaces"
+        runtime = temporary / "runtime with spaces"
+        repository = temporary / "repository with spaces"
         unauthorized_repository = temporary / "unauthorized-repository"
         legacy = temporary / "legacy-runtime"
         codex_home = home / ".codex"
@@ -1352,7 +1352,8 @@ def main() -> int:
                     "permission_mode": "default", "transcript_path": None}),
                 text=True, capture_output=True, timeout=handler["timeout"], check=True)
             context = json.loads(hook.stdout)["hookSpecificOutput"]["additionalContext"]
-            require(len(context.encode()) < 4096, "installed SessionStart context exceeded its bound")
+            require(len("\n".join(line for line in context.splitlines() if not line.startswith("CLI route:")).encode()) < 4096, "installed SessionStart context exceeded its bound")
+            require("CLI route: " + shlex.join([str(cli), "--runtime", str(runtime), "--repository", str(repository)]) in context or ("CLI route:" in context and str(cli) in context and str(runtime) in context and str(repository) in context), "installed CLI route missing")
             for rule in (
                 "No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation",
                 "No-write research/prototype conclusions using execution need a completed bounded scratch experiment",
@@ -1382,6 +1383,38 @@ def main() -> int:
                 env,
             ).stdout
         )
+        # Actual installed guidance and conflicting login/non-login tool shells.
+        import launch_readiness
+        shadow = temporary / "shadow bin"
+        shadow.mkdir()
+        (shadow / "volicord").write_text("#!/bin/sh\nexit 64\n")
+        (shadow / "volicord").chmod(0o755)
+        probe_args = [sys.executable, str(Path(launch_readiness.__file__)),
+            "--binary", str(cli), "--runtime", str(runtime), "--repository", str(repository),
+            "--cli-sha256", launch_readiness.digest(cli),
+            "--mcp-sha256", launch_readiness.digest(prefix / "bin/volicord-mcp")]
+        for flags in ("-c", "-lc"):
+            # Set only fixture PATH inside the shell, after its startup handling.
+            command = "PATH=" + shlex.quote(str(shadow) + ":" + env["PATH"]) + " " + shlex.join(probe_args)
+            ready = json.loads(run(["/bin/sh", flags, command], env).stdout)
+            require(ready["status"] == "ready" and not ready["bare_matches_candidate"], "shadow was hidden")
+            require(ready["project_id"] == initialized["project_id"], "probe used foreign Runtime")
+        zsh = shutil.which("zsh")
+        require(zsh is not None, "current zsh login/non-login control unavailable")
+        startup = temporary / "fixture shell startup"; startup.mkdir()
+        (startup / ".zprofile").write_text("export PATH=" + shlex.quote(str(shadow) + ":" + env["PATH"]) + "\n")
+        for flags, matches in (("-c", True), ("-lc", False)):
+            ready = json.loads(run([zsh, flags, shlex.join(probe_args)], env | {"ZDOTDIR":str(startup)}).stdout)
+            require(ready["bare_matches_candidate"] is matches and ready["status"] == "ready",
+                "isolated login startup drift did not retain the explicit candidate route")
+        for wrong in ((shadow / "volicord", runtime), (cli, temporary / "wrong runtime")):
+            try:
+                launch_readiness.probe(wrong[0], wrong[1], repository,
+                    launch_readiness.digest(cli), launch_readiness.digest(prefix / "bin/volicord-mcp"))
+            except (ValueError, OSError):
+                pass
+            else:
+                raise AssertionError("wrong route became candidate-ready")
         project_id = initialized["project_id"]
         require(initialized["binding"]["path"] == str(repository.resolve()), "Project binding mismatch")
 

@@ -243,6 +243,10 @@ authorization으로 시작한다. 설치된 CLI가 trusted project의 `.codex/co
 context로 전달할 뿐, 직접 MCP를 호출하거나 Project/Runtime Home/repository content를
 읽지 않는다. Project와 hook trust는 Codex와 user의 authority이며 adapter가 대신
 설정하지 않는다. 다른 repository에는 이 project layer의 authority가 없다.
+Hook context는 설치된 CLI 절대 경로와 explicit Runtime/repository의 quoted command prefix도
+전달한다. 이후 tool shell의 PATH는 별도이므로 MCP 연결이나 parent PATH로 CLI identity를
+추론하지 않는다. Read-only readiness probe는 같은 tool-shell channel에서 설치 manifest,
+CLI/MCP bytes와 scoped Product read를 검증하며 bare-name drift를 공개한다.
 
 현재 host의 explicit Guarded confirmation request/response transport는 Host and User
 Adapters가 소유한다. Host가 confirmation을 elicitation할 수 없으면 같은 logical

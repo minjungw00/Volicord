@@ -175,3 +175,16 @@ prevent MCP use or grant trust. This is operational observation outside canonica
 memory. The optional foreground candidate-bound resource observer, retention limits
 and start/attach/stop procedures are documented in
 [resource observation](../validation/dogfood/resource-observation.md).
+
+For measured shell use, take the CLI path from the repository ownership manifest
+and use `'/installed/bin/volicord' --runtime '/selected/runtime' --repository
+'/selected/repository'` for every operation, including explanation prepare/record.
+SessionStart supplies this quoted route; it cannot inspect a later tool shell.
+Parent PATH, a successful MCP connection, and `--help` do not prove CLI readiness.
+Run `rebuild/validation/linux-codex-integration/launch_readiness.py` in that actual
+tool-shell channel with `--binary`, `--runtime`, `--repository`, `--cli-sha256`
+and `--mcp-sha256` from the selected candidate artifacts. It compares installed
+integration and executable bytes and performs scoped read-only `status` against
+an existing Project. Retain its output privately with the execution result.
+Bare-name realpath/hash drift is disclosed; no global PATH or shell file is changed.
+A local login/non-login reproduction supplies support only, not another host's proof.
