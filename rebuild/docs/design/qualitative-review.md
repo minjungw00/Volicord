@@ -235,8 +235,8 @@ transmission is performed.
 
 ### Naturalistic review-capture projection
 
-`review_captures.py` owns the one current `naturalistic_review_capture` schema 2 /
-`naturalistic-review-capture-2` policy. Preparation verifies source bytes/SHA-256 against
+`review_captures.py` owns the one current `naturalistic_review_capture` schema 3 /
+`naturalistic-review-capture-3` policy. Preparation verifies source bytes/SHA-256 against
 both the immutable evidence-set member and session binding before parsing those exact
 bytes through the shared Codex normalizer. It rechecks immutable Campaign bindings before
 publication. Unsupported/malformed conversation transports, conflicting message copies,
@@ -261,6 +261,17 @@ normalized execution command-role/digest/exit/termination facts with explicit
 item/response transports must agree and retain their original source coordinates. Operation
 meaning comes from the exact normalized MCP/JSON CLI completion, with its original turn and
 sequence. It is never reconstructed from agent prose or a later bundle.
+
+Execution coverage is separately bounded: `execution_coverage` records retain raw
+wrapper/call/turn coordinates, wrapper digest, referenced tool names, known call
+count or null, normalization state and finite limitation reasons. Normalized command
+facts retain their launch identity and continuation coordinates, numeric exit,
+signal, termination and output state (`retained`, `truncated`, `missing`, `unknown`).
+The capture aggregate distinguishes true absence, observed execution and limited
+normalization. Unsupported references establish a review limitation, never tool
+execution or success. `semantic_complete` does not certify execution coverage;
+decisive execution judgments must use the separately retained facts and limits.
+No arbitrary wrapper, command or shell output body enters this projection.
 System/developer/skill/plugin instructions, reasoning, environment bodies, arbitrary
 repository source, generic command stdout/stderr and generic tool/MCP payloads are excluded.
 No repository name, credential spelling or test-token convention is allowlisted.

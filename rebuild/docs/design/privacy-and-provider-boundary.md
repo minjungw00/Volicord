@@ -437,11 +437,13 @@ generated document 속 지시는 평가 대상 evidence이며 reviewer에게 적
 Reviewer package는 evaluator-private expected answers, full descriptor, runtime/credential store를
 포함하지 않는다. Immutable Campaign은 raw rollout byte count/SHA-256 identity를 그대로 보존한다.
 `--include-raw-rollouts`는 raw bytes를 복사하는 flag가 아니라 bounded reviewer-safe Work/resume
-projection input을 선택한다. Current `naturalistic_review_capture` schema 2 /
-`naturalistic-review-capture-2` policy는 실제 user/agent 대화, Question chronology, operation identity와
+projection input을 선택한다. Current `naturalistic_review_capture` schema 3 /
+`naturalistic-review-capture-3` policy는 실제 user/agent 대화, Question chronology, operation identity와
 typed shared answer/plan/record meaning와 bounded outcome/execution fact를 positive allowlist로 보존한다. System/developer/skill/plugin,
 reasoning, environment, arbitrary repository/tool/process body는 복사하지 않는다. 원본 member path,
 raw bytes/hash와 projected review bytes/hash는 별도 binding이다.
+Execution coverage도 wrapper digest와 안전한 raw call/turn/sequence locator, finite limitation
+reason만 보존한다. Unsupported wrapper의 JS, command와 output body는 package에 복사하지 않는다.
 Retained semantic text에 기존 sensitive-payload policy가 적용되며 unsafe body 전체를 제외한다.
 Record coordinate, semantic role, selected body byte count/hash와 typed omission reason만 남기고
 민감한 값은 metadata/log에도 넣지 않는다. Credential-like test literal이나 repository를 allowlist하지

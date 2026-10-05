@@ -1757,6 +1757,36 @@ distinct: `Script completed` alone never supplies inner success. Numeric exits
 Measured explanation CLI operations retain these outcomes alongside returned JSON;
 failed or unresolvable execution never supplies a successful Product receipt.
 
+`CodexCapture.execution_wrappers` additionally retains each lexically shell-bearing
+exec wrapper, including unsupported cells. `ExecutionWrapperObservation` stores
+only wrapper SHA-256, safe raw call/turn, invocation/completion sequences, referenced
+tool names, a bounded known call count (or null), normalization state and finite
+limitation reasons. Tool-like strings, comments, regex and template text do not
+create observations; template interpolation references are coverage only. A raw
+reference is not proof that a tool or shell ran. `normalized`, `indeterminate`,
+`unsupported` and true absence are distinct; zero normalized commands with an
+unsupported wrapper is **limited** coverage, never zero execution evidence.
+
+`measured_cli_operations()` and the measured explanation collection index retain
+unresolvable `execution_observation` entries without returned Product meaning.
+Whole-shell numeric outcomes do not certify individual compound CLI statements;
+non-JSON output, file redirection, output truncation and unresolved inner meaning
+remain inspectable limits. Interaction diagnostics retain the same wrapper coverage.
+Required-validation observations with unresolved execution after their mutation
+boundary remain indeterminate/review-required, including when no validator was
+automatically parsed. Available confirmed numeric failures remain independently hard.
+Checkpoint reconciliation distinguishes missing raw execution from unresolved raw
+normalization without inventing an execution/outcome match.
+
+Reviewer capture schema 3 retains bounded `execution_coverage` records and aggregate
+coverage separately from semantic completeness, plus execution launch/continuation
+coordinates, numeric exit/signal/termination and output-retention state. No command,
+JS or shell output body is copied. Current unsupported forms include mixed MCP/state
+code, dynamic arguments/forwarding, and `Promise.allSettled` callbacks. These remain
+review evidence, never successful operations. The read-only eight-rollout diagnostic
+and Session 2 consumer handoff are in
+[`execution-observation-remediation.md`](../../validation/dogfood/execution-observation-remediation.md).
+
 Hidden pre-Discovery investigation has explicit `complete`, `indeterminate` and `missing`
 evidence states. Successful numeric execution of a supported inspection or successful structured
 `repository_understanding` is complete. When numeric execution evidence is unavailable, a closed
@@ -1913,8 +1943,8 @@ Work identity를 보존한 세 projection에 적용된다. CLI group만 `volicor
 `polyglot-medium` repository class별 일곱 criterion으로 생성된다. Dedicated observation이 없는
 class는 일곱 bounded unresolved gap을 남기며 `not_applicable`로 숨기지 않는다.
 
-Naturalistic review-capture support는 `review_captures.py`의 current schema 2 /
-`naturalistic-review-capture-2` policy를 사용한다. Immutable source member bytes/hash를 projection
+Naturalistic review-capture support는 `review_captures.py`의 current schema 3 /
+`naturalistic-review-capture-3` policy를 사용한다. Immutable source member bytes/hash를 projection
 전에 검증하며 origin raw identity와 projected artifact identity를 분리한다. User/agent/Question
 semantic omission은 typed reason과 count를 남기고 required direct capture에 대한 `satisfied` 및
 `violated`를 거부한다. `insufficient_evidence`는 observation gap이며 Product failure가 아니다.

@@ -34,6 +34,9 @@ def recall_identity_errors(result, project=None, work_id=None):
         and g.get('identity') == recalled] if isinstance(goals, list) else []
     if len(matching) != 1:
         errors.append('Goal basis identity')
+    elif 'source_ids' in matching[0] and (not isinstance(matching[0]['source_ids'], list)
+            or not all(identity(value) for value in matching[0]['source_ids'])):
+        errors.append('Goal basis Sources malformed')
     if result.get('read_only') is not True:
         errors.append('read-only Recall assertion')
     return errors
@@ -302,6 +305,19 @@ def observe(work, resume, bundle, work_id):
                 if immutable and (asserted.get('revision') != immutable.get('revision')
                         or asserted.get('work_item_id') != immutable.get('work_item_id')):
                     errors.append('asserted immutable Checkpoint identity/revision')
+                if immutable:
+                    asserted_sources = [row['source_id'] for row in sorted(bundle.rows('checkpoint_source_relations'),
+                        key=lambda row: row.get('position', -1)) if row.get('project_id') == bundle.project_id
+                        and row.get('checkpoint_id') == immutable['id'] and row.get('relation_kind') == 'supported_by']
+                    errors.extend(recorded_action_errors({'project_id': bundle.project_id,
+                        'goal_id': immutable.get('work_item_id'), 'checkpoint_id': immutable['id'],
+                        'checkpoint_revision': immutable['revision'], 'checkpoint_sources': asserted_sources,
+                        'next_step': immutable.get('next_step')}, result))
+                goals = result.get('goal_basis')
+                matching = [g for g in goals if isinstance(g, dict) and g.get('role') == 'goal'
+                    and g.get('identity') == expected_work] if isinstance(goals, list) else []
+                if len(matching) == 1 and goal['sources'] is not None and 'source_ids' in matching[0] and matching[0]['source_ids'] != goal['sources']:
+                    errors.append('observation-time Goal supporting Sources')
                 if bundle and result.get('project_id') != bundle.project_id:
                     errors.append('Project identity')
                 selected = result.get('selected_work')

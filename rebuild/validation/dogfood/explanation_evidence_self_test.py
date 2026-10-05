@@ -28,6 +28,14 @@ class MeasuredExecutionTests(unittest.TestCase):
             self.assertEqual([v['result'] for v in observed], returned)
             self.assertEqual([v['exit_code'] for v in observed], [0, 0, 0])
             self.assertEqual(len({v['call_id'] for v in observed}), 3)
+            from types import SimpleNamespace
+            with tempfile.TemporaryDirectory() as temporary:
+                index = e.collection_index(Path(temporary), {('volicord', 'A', 'start'): SimpleNamespace(capture=capture)})
+                self.assertEqual(json.loads(json.dumps(index)), index)
+                measured = index['measured_observations']
+                # The authored readback contains both a Work and a Decision answer.
+                self.assertEqual([v['exit_code'] for v in measured], [0, 0, 0, 0])
+                self.assertTrue(all(v['raw_call_id'] == 'test' for v in measured))
             # A numeric failure cannot acquire a successful Product receipt.
             failed = helper.command(source, [json.dumps({'output': json.dumps(result), 'exit_code': 143}) for result in returned])
             self.assertTrue(all(v['result'] is None and v['exit_code'] == 143 for v in e.measured_cli_operations(failed)))

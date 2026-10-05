@@ -141,13 +141,13 @@ class CurrentExecutionTests(unittest.TestCase):
             path.write_text("".join(json.dumps(e) + "\n" for e in [*events[:3], *body]))
             return load_codex_capture(path)
 
-    def command(self, source, parts, *, raw_output=None):
+    def command(self, source, parts, *, raw_output=None, call_id='test'):
         metadata = {"turn_id": "sanitized-execution-turn"}
         return self.capture([
             {"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec",
-             "status": "completed", "call_id": "test", "input": source,
+             "status": "completed", "call_id": call_id, "input": source,
              "internal_chat_message_metadata_passthrough": metadata}},
-            {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": "test",
+            {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": call_id,
              "output": raw_output if raw_output is not None else [{"type": "input_text", "text": p} for p in
                         ["Script completed\nWall time 0.1 seconds\nOutput:\n", *parts]],
              "internal_chat_message_metadata_passthrough": metadata}},
@@ -411,6 +411,38 @@ class CurrentExecutionTests(unittest.TestCase):
         signaled = self.command(source, ['{"output":"terminated","exit_code":-15}']).commands[0]
         self.assertEqual((signaled.exit_code, signaled.signal_number, signaled.termination), (-15, 15, 'signaled'))
 
+    def test_duplicate_status_keys_cannot_overwrite_failure_in_existing_grammars(self):
+        prefix = 'const r=await tools.exec_command({cmd:"cargo test"});'
+        ambiguous = '{"output":"failed","exit_code":143,"exit_code":0}'
+        for source, parts in ((prefix + 'text(r);', [ambiguous]),
+                (prefix + 'text(r.output);text(JSON.stringify({exit_code:r.exit_code}));',
+                    ['failed', '{"exit_code":143,"exit_code":0}']),
+                ('const [a,b]=await Promise.all([tools.exec_command({cmd:"cargo test"}),tools.exec_command({cmd:"git diff --check"})]);'
+                    + 'text("first:"+JSON.stringify(a));text("second:"+JSON.stringify(b));',
+                    ['first:' + ambiguous, 'second:{"output":"","exit_code":0}'])):
+            with self.subTest(source=source):
+                capture = self.command(source, parts)
+                self.assertIsNone(capture.commands[0].exit_code)
+                self.assertEqual(capture.execution_wrappers[0].state, 'indeterminate')
+
+    def test_malformed_process_ids_and_private_wrapper_ids_cannot_bind_success(self):
+        source = 'text(await tools.exec_command({cmd:"cargo test"}));'
+        for process in (True, '73', 73.0):
+            with self.subTest(process=process):
+                capture = self.command(source, [json.dumps({'output': 'done', 'exit_code': 0, 'session_id': process})])
+                self.assertIsNone(capture.commands[0].exit_code)
+                self.assertEqual(capture.execution_wrappers[0].state, 'indeterminate')
+        continuation = source + 'text(await tools.write_stdin({session_id:1,chars:""}));'
+        capture = self.command(continuation, ['{"output":"pending","session_id":1}',
+            '{"output":"done","exit_code":0,"session_id":true}'])
+        self.assertIsNone(capture.commands[0].exit_code)
+        self.assertIn('continuation_result_unresolvable', capture.execution_wrappers[0].reasons)
+        capture = self.command(source, ['{"output":"done","exit_code":0}'], call_id='private subject in identity')
+        self.assertEqual(capture.commands, ())
+        self.assertIsNone(capture.execution_wrappers[0].call_id)
+        self.assertIn('wrapper_identity_unresolvable', capture.execution_wrappers[0].reasons)
+        self.assertNotIn('private subject', json.dumps(capture.execution_evidence()))
+
     def test_tool_like_text_and_dynamic_direct_calls_are_not_normalized(self):
         for source in ('text("tools.exec_command({cmd: \\\"cargo test\\\"})");',
                 '// tools.exec_command({cmd:"cargo test"})',
@@ -418,6 +450,75 @@ class CurrentExecutionTests(unittest.TestCase):
                 'text(await tools.exec_command({cmd:load("cmd")}));',
                 'text(await tools.exec_command({cmd:`cargo ${name}`}));'):
             self.assertIsNone(parse_custom_call(source))
+
+    def test_unsupported_execution_reaches_final_consumers_without_private_bodies(self):
+        import explanation_evidence
+        import harness
+        import interaction_diagnostics
+        source = ('const r=await tools.exec_command({cmd:"volicord --json work explain prepare --work private-subject"});'
+            'const p=JSON.parse(r.output);store("private-plan",p);text(p.plan);')
+        capture = self.command(source, ['{"output":"private-output","exit_code":0}'])
+        self.assertEqual(capture.commands, ())
+        self.assertEqual(capture.execution_wrappers[0].state, 'unsupported')
+        self.assertEqual(capture.execution_evidence()['state'], 'limited')
+        self.assertIsNone(capture.execution_wrappers[0].observed_call_count)
+        values = explanation_evidence.measured_cli_operations(capture)
+        self.assertEqual(values[0]['operation'], 'execution_observation')
+        self.assertIsNone(values[0]['result'])
+        self.assertIsNone(values[0]['exit_code'])
+        self.assertNotIn('private-plan', json.dumps(values))
+        self.assertNotIn('private-output', json.dumps(values))
+        summary = interaction_diagnostics.work_summary({}, capture, None, None)
+        self.assertEqual(summary['sessions'][0]['execution_coverage']['unsupported_wrapper_count'], 1)
+        validation = harness.meaningful_resume_validation(capture, 0)
+        self.assertFalse(validation['qualified'])
+        self.assertEqual(validation['unsupported_execution_count'], 1)
+        self.assertEqual(harness.required_validation_machine_status(validation, {'state': 'unavailable'}), 'indeterminate')
+
+    def test_tool_like_literals_comments_and_regex_are_not_execution_coverage(self):
+        for source in ('text("tools.exec_command({cmd: \\\"cargo test\\\"})");',
+                "text('tools.write_stdin({session_id:73})');",
+                '// tools.exec_command({cmd:"cargo test"})',
+                '/* tools.write_stdin({session_id:73}) */ text("done");',
+                'text(`tools.exec_command({cmd:"cargo test"})`);',
+                'text(/tools.exec_command\\(x\\)/.test("x"));'):
+            with self.subTest(source=source):
+                capture = self.command(source, ['unrelated'])
+                self.assertEqual(capture.execution_wrappers, ())
+                self.assertEqual(capture.execution_evidence()['state'], 'not_observed')
+        dynamic_template = self.command('text(`${await tools.exec_command({cmd:load("cmd")})}`);', ['unknown'])
+        self.assertEqual(dynamic_template.execution_wrappers[0].state, 'unsupported')
+
+    def test_orphan_continuation_and_missing_or_truncated_result_are_explicit(self):
+        orphan = self.command('text(await tools.write_stdin({session_id:73,chars:""}));',
+            ['{"output":"done","exit_code":0}'])
+        self.assertEqual(orphan.commands, ())
+        self.assertIn('continuation_launch_unobserved', orphan.execution_wrappers[0].reasons)
+        missing = self.command('text(await tools.exec_command({cmd:"cargo test"}));', ['{"output":'])
+        self.assertEqual(missing.execution_wrappers[0].state, 'indeterminate')
+        self.assertEqual(missing.commands[0].output_state, 'missing')
+        truncated = self.command('text(await tools.exec_command({cmd:"cargo test",max_output_tokens:1000}));',
+            ['{"output":"bounded output","exit_code":0,"original_token_count":5000}'])
+        self.assertEqual(truncated.commands[0].output_state, 'truncated')
+        self.assertEqual(truncated.commands[0].exit_code, 0)
+
+    def test_unsupported_later_wrapper_cannot_certify_validation_success(self):
+        import harness
+        metadata = {'turn_id': 'sanitized-execution-turn'}
+        body = []
+        for identity, source in [('test', 'text(await tools.exec_command({cmd:"cargo test"}));'),
+                ('unknown', 'text(await tools.exec_command({cmd:load("private-command")}));')]:
+            body += [{'type': 'response_item', 'payload': {'type': 'custom_tool_call', 'name': 'exec',
+                'status': 'completed', 'call_id': identity, 'input': source,
+                'internal_chat_message_metadata_passthrough': metadata}},
+                {'type': 'response_item', 'payload': {'type': 'custom_tool_call_output', 'call_id': identity,
+                'output': [{'type': 'input_text', 'text': 'Script completed\nWall time 0.1 seconds\nOutput:\n'},
+                    {'type': 'input_text', 'text': '{"output":"passed","exit_code":0}'}],
+                'internal_chat_message_metadata_passthrough': metadata}}]
+        result = harness.meaningful_resume_validation(self.capture(body), 0)
+        self.assertEqual(result['terminal_exit_code'], 0)
+        self.assertFalse(result['qualified'])
+        self.assertTrue(result['incomplete_evidence'])
 
 
 def check_capture_regressions():

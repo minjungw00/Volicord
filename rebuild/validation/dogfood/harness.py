@@ -2427,6 +2427,8 @@ def meaningful_resume_validation(
             "ambiguous_failure_count": 0,
             "exploration_execution_count": 0,
             "verification_executions": [],
+            "unsupported_execution_count": 0,
+            "execution_coverage_limits": [],
             "incomplete_evidence": True,
         }
     all_commands = [
@@ -2452,6 +2454,9 @@ def meaningful_resume_validation(
         if command.sequence > after_sequence
         and dogfood_command_role(command.parsed_command, capture.cwd) == "exploration"
     ]
+    coverage_limits = [dict(vars(item), raw_capture_sha256=capture.source_sha256)
+        for item in capture.execution_wrappers
+        if item.sequence > after_sequence and item.state != 'normalized']
     def completed(command: Any) -> bool:
         return (command.evidence_state == "completed"
             and type(command.exit_code) is int
@@ -2607,7 +2612,7 @@ def meaningful_resume_validation(
         })
     successful_commands = [command for command in commands if succeeded(command)]
     qualified = bool(successful_commands and not hard_failures and not ambiguous_failures
-        and not unresolved_environment and not unknown_after_validation
+        and not unresolved_environment and not unknown_after_validation and not coverage_limits
         and all(completed(command) for command in commands))
     intermediate_failures = [command for command in commands
         if completed(command) and not succeeded(command)
@@ -2626,7 +2631,9 @@ def meaningful_resume_validation(
         "terminal_execution_identity": terminal.execution_identity if terminal else None,
         "terminal_group_index": terminal.group_index if terminal else None,
         "intermediate_failure_count": len(intermediate_failures),
-        "indeterminate_execution_count": len(indeterminate) + len(unknown_after_validation),
+        "indeterminate_execution_count": len(indeterminate) + len(unknown_after_validation) + len(coverage_limits),
+        "unsupported_execution_count": len(coverage_limits),
+        "execution_coverage_limits": coverage_limits,
         "unclassified_after_validation_count": len(unknown_after_validation),
         "recovered_intermediate_failure": bool(recovered_environment or recovered_failures),
         "unresolved_terminal_failure": bool(hard_failures),
@@ -2639,7 +2646,7 @@ def meaningful_resume_validation(
         "verification_executions": executions,
         "incomplete_evidence": (terminal is None or any(not completed(command) for command in commands)
             or bool(unknown_after_validation) or bool(ambiguous_failures)
-            or bool(unresolved_environment)),
+            or bool(unresolved_environment) or bool(coverage_limits)),
     }
 
 
@@ -2655,6 +2662,8 @@ def required_validation_machine_status(
     if validation["qualified"]:
         return "confirmed_pass"
     if validation["terminal_sequence"] is None:
+        if validation.get('unsupported_execution_count'):
+            return 'indeterminate'
         return "not_observed"
     return "indeterminate"
 
@@ -8360,8 +8369,11 @@ def checkpoint_verification_evidence(
             and command.termination == termination
         ]
         if not commands:
+            coverage_limits = [dict(vars(item), raw_capture_sha256=work.source_sha256)
+                for item in work.execution_wrappers if item.sequence < call.sequence and item.state != 'normalized']
             conflicts.append({
-                "kind": "raw_canonical_outcome_conflict" if raw_commands else "raw_execution_missing",
+                "kind": "raw_canonical_outcome_conflict" if raw_commands else 'raw_execution_unresolvable' if coverage_limits else "raw_execution_missing",
+                'execution_coverage_limits': coverage_limits,
                 "position": position,
                 "invocation_fingerprint": invocation_fingerprint,
                 "canonical_outcome": {"exit_code": exit_code, "termination": termination},
@@ -9681,6 +9693,12 @@ def real_session_evidence(
             else "confirmed_pass" if resolve_call and recall_call else "confirmed_violation"),
             "basis": {"resume_project_resolve_count": len(resume_capture.successful_calls("project_resolve")) if resume_capture else 0,
                 "resume_recall_count": len(resume_capture.successful_calls("recall")) if resume_capture else 0,
+                'resume_project_resolve_attempt_count': len(resume_capture.calls('project_resolve')) if resume_capture else 0,
+                'resume_recall_attempt_count': len(resume_capture.calls('recall')) if resume_capture else 0,
+                'resume_read_observations': [{'operation': call.operation, 'call_id': call.call_id,
+                    'sequence': call.sequence, 'completion_sequence': call.completion_sequence, 'outcome': call.outcome}
+                    for call in sorted(resume_capture.tool_calls, key=lambda value: value.sequence)
+                    if call.operation in {'recall', 'project_resolve'}] if resume_capture else [],
                 "work_tool_call_count": len(work_capture.tool_calls) if work_capture else 0,
                 "resume_tool_call_count": len(resume_capture.tool_calls) if resume_capture else 0}},
     }

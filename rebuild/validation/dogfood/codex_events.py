@@ -589,6 +589,60 @@ class CommandObservation:
     raw_call_id: str | None = None
     continuation_coordinates: tuple[tuple[str, str, int, int, int], ...] = ()
     signal_number: int | None = None
+    output_state: str = 'unknown'
+
+
+@dataclass(frozen=True)
+class ExecutionWrapperObservation:
+    """Bounded raw locator and normalization coverage, never a success assertion."""
+    sequence: int
+    completion_sequence: int | None
+    turn_id: str | None
+    call_id: str | None
+    wrapper_sha256: str
+    tool_names: tuple[str, ...]
+    observed_call_count: int | None
+    state: str
+    reasons: tuple[str, ...]
+
+    def __post_init__(self):
+        if not supported_execution_wrapper(vars(self)):
+            raise EvidenceError('unsupported execution coverage observation')
+
+
+EXECUTION_LIMIT_REASONS = {'unsupported_wrapper_grammar', 'wrapper_identity_unresolvable',
+    'wrapper_completion_unresolvable', 'command_completion_indeterminate',
+    'continuation_result_unresolvable', 'continuation_launch_unobserved'}
+
+
+def safe_execution_id(value):
+    return value if isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,256}', value) else None
+
+
+def supported_execution_wrapper(value):
+    safe_id = lambda item: item is None or safe_execution_id(item) is not None
+    return (isinstance(value, dict) and set(value) == {'sequence', 'completion_sequence', 'turn_id',
+        'call_id', 'wrapper_sha256', 'tool_names', 'observed_call_count', 'state', 'reasons'}
+        and type(value['sequence']) is int and value['sequence'] >= 0
+        and (value['completion_sequence'] is None or type(value['completion_sequence']) is int
+            and value['completion_sequence'] > value['sequence'])
+        and safe_id(value['turn_id']) and safe_id(value['call_id'])
+        and isinstance(value['wrapper_sha256'], str) and re.fullmatch(r'[0-9a-f]{64}', value['wrapper_sha256']) is not None
+        and isinstance(value['tool_names'], (tuple, list)) and bool(value['tool_names'])
+        and all(name in {'exec_command', 'write_stdin'} for name in value['tool_names'])
+        and list(value['tool_names']) == sorted(set(value['tool_names']))
+        and (value['observed_call_count'] is None or type(value['observed_call_count']) is int
+            and 1 <= value['observed_call_count'] <= 16)
+        and value['state'] in {'normalized', 'unsupported', 'indeterminate'}
+        and isinstance(value['reasons'], (tuple, list))
+        and all(reason in EXECUTION_LIMIT_REASONS for reason in value['reasons'])
+        and list(value['reasons']) == sorted(set(value['reasons']))
+        and (value['turn_id'] is not None and value['call_id'] is not None
+            or 'wrapper_identity_unresolvable' in value['reasons'])
+        and (value['state'] != 'normalized' or value['observed_call_count'] is not None
+            and value['turn_id'] is not None and value['call_id'] is not None
+            and value['completion_sequence'] is not None)
+        and bool(value['reasons']) == (value['state'] != 'normalized'))
 
 
 @dataclass(frozen=True)
@@ -1049,6 +1103,106 @@ def parse_direct_execution_sequence(value: str) -> tuple[ParsedCustomCall, ...] 
     return tuple(calls) if calls else None
 
 
+def execution_tool_references(source: Any) -> tuple[str, ...]:
+    """Lexical references only, excluding strings, comments and regex bodies.
+
+    This scan does not prove execution or interpret JS. It merely prevents a
+    shell-bearing unsupported cell from being silently represented as absence.
+    Template interpolation code is scanned, while template text is skipped.
+    """
+    if not isinstance(source, str):
+        return ()
+    tokens, found = [], set()
+    identifier = re.compile(r'[A-Za-z_$][A-Za-z0-9_$]*')
+    def push(token):
+        tokens.append(token)
+        if len(tokens) > 3:
+            del tokens[0]
+        if len(tokens) == 3 and tokens[:2] == ['tools', '.'] and tokens[2] in {'exec_command', 'write_stdin'}:
+            found.add(tokens[2])
+    offset, template_depth = 0, []
+    in_template = False
+    while offset < len(source):
+        character = source[offset]
+        if in_template:
+            if character == '\\':
+                offset += 2
+                continue
+            if character == '`':
+                in_template = False
+            elif source.startswith('${', offset):
+                template_depth.append(0)
+                in_template = False
+                push(';')
+                offset += 2
+                continue
+            offset += 1
+            continue
+        if character in ' \t\r\n':
+            offset += 1
+            continue
+        if source.startswith('//', offset):
+            end = source.find('\n', offset + 2)
+            offset = end if end >= 0 else len(source)
+            continue
+        if source.startswith('/*', offset):
+            end = source.find('*/', offset + 2)
+            offset = end + 2 if end >= 0 else len(source)
+            continue
+        if character in '\"\'':
+            quote = character
+            offset += 1
+            while offset < len(source):
+                if source[offset] == '\\':
+                    offset += 2
+                elif source[offset] == quote:
+                    offset += 1
+                    break
+                else:
+                    offset += 1
+            push('literal')
+            continue
+        if character == '`':
+            in_template = True
+            offset += 1
+            push('literal')
+            continue
+        if character == '/' and (not tokens or tokens[-1] in {'=', '(', ',', '[', ':', ';', '{', 'return', '!', '>'}):
+            # Regex lexical body, including escaped slash and character classes.
+            offset += 1
+            bracket = False
+            while offset < len(source):
+                if source[offset] == '\\':
+                    offset += 2
+                    continue
+                if source[offset] == '[':
+                    bracket = True
+                elif source[offset] == ']':
+                    bracket = False
+                elif source[offset] == '/' and not bracket:
+                    offset += 1
+                    break
+                offset += 1
+            push('literal')
+            continue
+        if template_depth:
+            if character == '{':
+                template_depth[-1] += 1
+            elif character == '}':
+                if template_depth[-1] == 0:
+                    template_depth.pop()
+                    in_template = True
+                    offset += 1
+                    push(';')
+                    continue
+                template_depth[-1] -= 1
+        match = identifier.match(source, offset)
+        token = match[0] if match else character
+        push(token)
+        offset += len(token)
+    return tuple(sorted(found))
+
+
 def parse_mcp_wrapper(value: Any) -> ParsedMcpWrapper | None:
     """Parse only a single static Volicord invocation for completion correlation."""
     if not isinstance(value, str) or len(value.encode("utf-8")) > 64 * 1024:
@@ -1302,8 +1456,8 @@ def custom_correlated_command_result(
     if header is None or header.group("body"):
         return None
     try:
-        status = json.loads(parts[2])
-    except json.JSONDecodeError:
+        status = strict_json(parts[2])
+    except (ValueError, RecursionError):
         return None
     if (
         not isinstance(status, dict)
@@ -1390,6 +1544,17 @@ def custom_output_object(value: Any) -> dict[str, Any] | None:
     except (ValueError, RecursionError):
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def forwarded_output_state(result, arguments):
+    if not isinstance(result, dict) or not isinstance(result.get('output'), str):
+        return 'missing'
+    original = result.get('original_token_count')
+    limit = arguments.get('max_output_tokens', 10000) if isinstance(arguments, dict) else 10000
+    if (type(original) is int and type(limit) is int and original > limit > 0
+            or result['output'].startswith('Warning: truncated output (original token count:')):
+        return 'truncated'
+    return 'retained'
 
 
 @dataclass(frozen=True)
@@ -1526,6 +1691,21 @@ class CodexCapture:
     path_observations: tuple[PathObservation, ...]
     commands: tuple[CommandObservation, ...]
     async_question_requests: tuple[AsyncQuestionRequest, ...] = ()
+    execution_wrappers: tuple[ExecutionWrapperObservation, ...] = ()
+
+    def execution_evidence(self) -> dict[str, Any]:
+        observations = [dict(vars(item), raw_capture_sha256=self.source_sha256,
+            tool_names=list(item.tool_names), reasons=list(item.reasons))
+            for item in self.execution_wrappers]
+        return {'state': ('not_observed' if not observations and not self.commands
+            else 'limited' if any(item.state != 'normalized' for item in self.execution_wrappers)
+            or any(command.evidence_state != 'completed' for command in self.commands) else 'observed'),
+            'normalized_command_count': len(self.commands),
+            'completed_command_count': sum(command.evidence_state == 'completed' for command in self.commands),
+            'failed_command_count': sum(command.evidence_state == 'completed' and command.exit_code != 0 for command in self.commands),
+            'unsupported_wrapper_count': sum(item.state == 'unsupported' for item in self.execution_wrappers),
+            'indeterminate_wrapper_count': sum(item.state == 'indeterminate' for item in self.execution_wrappers),
+            'wrappers': observations}
 
     def provenance_evidence(self) -> dict[str, Any]:
         """Host-recorded observations; source/originator do not attest a UI."""
@@ -2193,6 +2373,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
     activation_states: list[tuple[int, str]] = []
     async_calls: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     async_outputs: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    shell_wrappers = []
 
     for sequence, event in enumerate(events):
         payload = event.get("payload")
@@ -2323,7 +2504,11 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
             call_id = payload.get("call_id")
             metadata = payload.get("internal_chat_message_metadata_passthrough")
             turn_id = metadata.get("turn_id") if isinstance(metadata, dict) else None
-            if parsed is not None and nonempty(call_id) and nonempty(turn_id):
+            referenced = execution_tool_references(payload.get('input')) if payload.get('name') == 'exec' else ()
+            if referenced:
+                shell_wrappers.append((sequence, turn_id, call_id, referenced,
+                    sha256_bytes(payload['input'].encode('utf-8')), parsed))
+            if parsed is not None and safe_execution_id(call_id) and safe_execution_id(turn_id):
                 if str(call_id) in calls:
                     raise EvidenceError("Codex capture reuses a supported custom call identity")
                 calls[str(call_id)] = (sequence, str(turn_id), parsed)
@@ -2376,6 +2561,9 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
     tool_call_evidence: list[_ToolCallEvidence] = []
     commands: list[CommandObservation] = []
     pending_commands: dict[int, dict[str, Any]] = {}
+    wrapper_limits: dict[str, set[str]] = {}
+    def wrapper_limit(call_id, reason):
+        wrapper_limits.setdefault(call_id, set()).add(reason)
     executions = []
     for call_id, (sequence, turn_id, parsed) in sorted(
         calls.items(), key=lambda item: item[1][0]
@@ -2394,6 +2582,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
             executions.append((call_id, sequence, turn_id, parsed, completion, 0))
     for call_id, sequence, turn_id, parsed, completion, wrapper_index in executions:
         if completion is None or completion[0] <= sequence or completion[1] != turn_id:
+            wrapper_limit(call_id, 'wrapper_completion_unresolvable')
             if parsed.tool_name != "exec_command":
                 continue
             completion = (sequence, turn_id, None)
@@ -2414,11 +2603,16 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                 or not isinstance(session_id_value, int)
                 or not isinstance(result, dict)
             ):
+                wrapper_limit(call_id, 'continuation_result_unresolvable')
                 continue
             pending = pending_commands.get(session_id_value)
             if pending is None:
+                wrapper_limit(call_id, 'continuation_launch_unobserved')
                 continue
             result_session_id = result.get("session_id")
+            if result_session_id is not None and type(result_session_id) is not int:
+                wrapper_limit(call_id, 'continuation_result_unresolvable')
+                continue
             if result_session_id is not None and result_session_id != session_id_value:
                 raise EvidenceError("Codex command continuation identity conflicts")
             output = result.get("output")
@@ -2431,10 +2625,13 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                     or not -2_147_483_647 <= exit_code <= 2_147_483_647
                 )
             ):
+                wrapper_limit(call_id, 'continuation_result_unresolvable')
                 continue
             pending["output"] += output
             pending["completion_sequence"] = completion_sequence
             pending['continuations'].append((call_id, turn_id, sequence, completion_sequence, wrapper_index))
+            output_state = forwarded_output_state(result, parsed.arguments)
+            pending['output_state'] = 'truncated' if 'truncated' in {pending['output_state'], output_state} else output_state
             if isinstance(exit_code, int):
                 commands.append(
                     CommandObservation(
@@ -2452,6 +2649,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                         pending['raw_call_id'],
                         tuple(pending['continuations']),
                         -exit_code if exit_code < 0 else None,
+                        pending['output_state'],
                     )
                 )
                 del pending_commands[session_id_value]
@@ -2465,6 +2663,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
             normalized_results: list[tuple[str, int | None]] | None = None
             execution_session_id: int | None = None
             malformed = False
+            output_states = ['unknown'] * len(arguments)
             if parsed.output_mode in {"named_result", "labeled_results"}:
                 values = []
                 if parsed.output_mode == "named_result":
@@ -2477,10 +2676,11 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                         and not CUSTOM_OUTPUT_HEADER.fullmatch(parts[0]).group("body")):
                         for prefix, part in zip(parsed.result_keys, parts[1:], strict=True):
                             try:
-                                values.append(json.loads(part[len(prefix):]) if part.startswith(prefix) else None)
-                            except json.JSONDecodeError:
+                                values.append(strict_json(part[len(prefix):]) if part.startswith(prefix) else None)
+                            except (ValueError, RecursionError):
                                 values.append(None)
                 if len(values) == len(arguments) and all(isinstance(v, dict) for v in values):
+                    output_states = [forwarded_output_state(value, argument) for value, argument in zip(values, arguments)]
                     normalized_results = []
                     for value in values:
                         output, code = value.get("output"), value.get("exit_code")
@@ -2520,6 +2720,8 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                 )
                 if parsed.output_mode == "result" and result is None and raw_output is not None:
                     malformed = True
+                if parsed.output_mode == 'result':
+                    output_states = [forwarded_output_state(result, arguments[0])]
                 if parsed.output_mode == "projection":
                     if isinstance(result, dict) and set(result) <= set(parsed.result_keys):
                         result = {"output": "", **result}
@@ -2559,7 +2761,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                     "template_exit",
                 } and correlated is None:
                     exit_code = None
-                if not isinstance(output, str) or (
+                if (raw_session_id is not None and type(raw_session_id) is not int) or not isinstance(output, str) or (
                     exit_code is not None
                     and (
                         isinstance(exit_code, bool)
@@ -2587,6 +2789,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                     'raw_call_id': call_id,
                     'group_index': wrapper_index,
                     'continuations': [],
+                    'output_state': output_states[0],
                 }
                 continue
             for group_index, (arguments_value, normalized) in enumerate(
@@ -2609,6 +2812,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                         call_id,
                         (),
                         -exit_code if isinstance(exit_code, int) and exit_code < 0 else None,
+                        output_states[group_index],
                     )
                 )
 
@@ -2634,6 +2838,8 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                 "indeterminate",
                 pending['raw_call_id'],
                 tuple(pending['continuations']),
+                None,
+                pending['output_state'],
             )
         )
 
@@ -2740,10 +2946,39 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
     )
     commands = [
         command if turn_lifecycle.contains_completion(command.turn_id, command.sequence, command.completion_sequence)
-        else replace(command, exit_code=None, termination=None, evidence_state="indeterminate")
+        else replace(command, exit_code=None, signal_number=None, termination=None, evidence_state="indeterminate")
         for command in commands
     ]
     commands.sort(key=lambda value: (value.sequence, value.group_index))
+    execution_wrappers = []
+    safe_id = safe_execution_id
+    for sequence, turn_id, call_id, tools_referenced, wrapper_hash, parsed in shell_wrappers:
+        completion = completions.get(call_id)
+        related = [command for command in commands if command.raw_call_id == call_id
+            or any(coordinate[0] == call_id for coordinate in command.continuation_coordinates)]
+        reasons = set(wrapper_limits.get(call_id, ()))
+        if parsed is None:
+            state, count = 'unsupported', None
+            reasons.add('unsupported_wrapper_grammar')
+        else:
+            count = len(parsed.arguments) if parsed.tool_name == 'direct_sequence' or isinstance(parsed.arguments, tuple) else 1
+            if any(command.evidence_state != 'completed' for command in related):
+                reasons.add('command_completion_indeterminate')
+            state = 'indeterminate' if reasons or not related else 'normalized'
+            if not related and not reasons:
+                reasons.add('command_completion_indeterminate')
+        if safe_id(call_id) is None or safe_id(turn_id) is None:
+            state = 'unsupported'
+            reasons.add('wrapper_identity_unresolvable')
+        correlated_completion = (completion[0] if completion and completion[0] > sequence
+            and completion[1] == turn_id else None)
+        if correlated_completion is None:
+            reasons.add('wrapper_completion_unresolvable')
+            if state == 'normalized':
+                state = 'indeterminate'
+        execution_wrappers.append(ExecutionWrapperObservation(sequence, correlated_completion,
+            safe_id(turn_id), safe_id(call_id), wrapper_hash, tools_referenced, count,
+            state, tuple(sorted(reasons))))
     if any(value.turn_id not in known_turn_ids for value in raw_path_observations):
         raise EvidenceError("Codex file change refers to an unknown turn identity")
     path_observations = merge_path_observation_evidence(raw_path_observations)
@@ -2822,6 +3057,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
         path_observations=tuple(path_observations),
         commands=tuple(commands),
         async_question_requests=tuple(async_question_requests),
+        execution_wrappers=tuple(execution_wrappers),
     )
 
 

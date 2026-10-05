@@ -453,7 +453,7 @@
       "authority": "hard_blocking",
       "uncertainty": "qualitative_review_required",
       "owner": "product-charter.md/verification",
-      "rationale": "An evidence-attributable numeric failed required validation after the final material mutation is disqualifying. Broader diagnostics, baseline/environment failures, recovery and raw/canonical conflicts retain distinct evidence-backed states; ambiguity is reviewable and never success.",
+      "rationale": "An evidence-attributable numeric failed required validation after the final material mutation is disqualifying. Broader diagnostics, baseline/environment failures, recovery and raw/canonical conflicts retain distinct evidence-backed states; ambiguity is reviewable and never success. Unsupported or unresolved execution wrappers are scoped observation limits, including when no command was parsed; missing automatic results prove neither absence nor success.",
       "review_groups": [
         "context_recovery"
       ]

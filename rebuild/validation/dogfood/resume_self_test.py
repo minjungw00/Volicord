@@ -139,6 +139,12 @@ class ResumeTests(unittest.TestCase):
         issue = EvidenceTransportIssue(later.sequence, later.turn_id, later.call_id,
             'volicord', 'recall', 'malformed_mcp_completion')
         self.failure(replace(capture, evidence_transport_issues=(issue,)), 'recall_transport_incomplete', 'evidence')
+        wrong_work = replace(later, result={**later.result,
+            'checkpoint': {**later.result['checkpoint'], 'work_item_id': 'ff' * 16},
+            'selected_work': {**later.result['selected_work'], 'work_item_id': 'ff' * 16},
+            'goal_basis': [{'role': 'goal', 'identity': 'ff' * 16}]})
+        self.failure(replace(capture, tool_calls=tuple(wrong_work if c is later else c
+            for c in capture.tool_calls)), 'recall_identity_or_project_invalid', 'evidence')
 
     def test_failed_read_before_or_after_success_does_not_erase_identity(self):
         capture = self.completed_no_write()

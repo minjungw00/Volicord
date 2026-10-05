@@ -58,6 +58,13 @@ class AnswerTests(unittest.TestCase):
         self.assertEqual(fact['status'], 'confirmed_pass', fact)
         self.assertEqual(result['checks']['recall_matches_checkpoint_decision_and_context'], 'passed')
 
+    def test_unavailable_explanation_still_checks_goal_source_provenance(self):
+        for sources in (['ff' * 16], ['malformed'], None):
+            wrong = copy.deepcopy(self.answer)
+            wrong['goal_basis'][0]['source_ids'] = sources
+            _, fact = self.evaluate(wrong)
+            self.assertEqual(fact['status'], 'confirmed_violation', fact)
+
     def test_cli_mcp_and_both_wrong_even_with_correct_legacy_fields(self):
         for transport in ('cli', 'mcp', 'both'):
             for mutation in ('identity', 'direction', 'basis'):
@@ -227,7 +234,23 @@ class AnswerTests(unittest.TestCase):
             event['timestamp'] = original[0]['timestamp']
         # A distinct wrapper/result pair, before the supported later read.
         index = self.events.index(original[0])
-        self.events[index:index] = copies
+        records = []
+        turn = next(e['payload']['turn_id'] for e in self.events if e['payload'].get('type') == 'task_started')
+        for kind, identity in [('work', self.answer['selected_work']['work_item_id']), ('decision', '07' * 16)]:
+            call_id = kind + '-explanation-record'
+            receipt = {'operation': 'explanation_record', 'explanation': {
+                'project_id': self.answer['project_id'], 'subject': {'kind': kind, 'identity': list(bytes.fromhex(identity))}}}
+            common = {'timestamp': original[0]['timestamp'], 'type': 'response_item'}
+            metadata = {'turn_id': turn}
+            records += [common | {'payload': {'type': 'custom_tool_call', 'name': 'exec', 'status': 'completed',
+                'call_id': call_id, 'input': 'text(await tools.exec_command(' + json.dumps({
+                    'cmd': 'volicord --json ' + kind + ' explain record --' + kind + ' ' + identity}) + '));',
+                'internal_chat_message_metadata_passthrough': metadata}},
+                common | {'payload': {'type': 'custom_tool_call_output', 'call_id': call_id,
+                    'output': [{'type': 'input_text', 'text': 'Script completed\nWall time 0.1 seconds\nOutput:\n'},
+                        {'type': 'input_text', 'text': json.dumps({'exit_code': 0, 'output': json.dumps(receipt)})}],
+                    'internal_chat_message_metadata_passthrough': metadata}}]
+        self.events[index:index] = copies + records
         _, fact = self.evaluate(self.generated_answer())
         self.assertEqual(fact['status'], 'confirmed_pass', fact)
         reads = [o for o in fact['basis']['observations'] if o['transport'] == 'mcp']
@@ -236,6 +259,11 @@ class AnswerTests(unittest.TestCase):
         cap = h.load_codex_capture(self.path)
         self.assertEqual([c.result['selected_work']['answers']['explanation_state']
             for c in cap.successful_calls('recall')], ['unavailable', 'current'])
+        import explanation_evidence
+        recorded = explanation_evidence.measured_cli_operations(cap)
+        self.assertEqual([v['operation'] for v in recorded], ['explanation_record', 'explanation_record'])
+        self.assertTrue(all(v['result'] is not None and v['exit_code'] == 0
+            and reads[0]['sequence'] < v['sequence'] < reads[1]['sequence'] for v in recorded))
 
     def test_later_unrelated_and_failed_corrections_do_not_advance_basis(self):
         for kwargs in ({'after': True}, {'identity': 'fb' * 16}, {'failed': True}):

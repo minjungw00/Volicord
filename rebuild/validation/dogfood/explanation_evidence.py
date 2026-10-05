@@ -549,31 +549,66 @@ def measured_cli_operations(capture):
     values = []
     for command in capture.commands:
         argvs = codex_events.command_argvs(command.parsed_command)
-        if len(argvs) != 1 or Path(argvs[0][0]).name != 'volicord' or '--json' not in argvs[0]:
+        candidates = [argv for argv in argvs if Path(argv[0]).name == 'volicord'
+            and not set(argv[1:]) & {'--help', '-h', '--version', '-V'}]
+        if not candidates:
+            if codex_events.command_role(command.parsed_command) == 'unknown':
+                values.append({'transport': 'cli', 'call_id': command.execution_identity,
+                    'raw_call_id': command.raw_call_id, 'turn_id': command.turn_id,
+                    'sequence': command.sequence, 'completion_sequence': command.completion_sequence,
+                    'group_index': command.group_index, 'operation': 'execution_observation',
+                    'requested_language': 'en', 'result': None, 'exit_code': command.exit_code,
+                    'termination': command.termination, 'signal_number': command.signal_number,
+                    'evidence_state': command.evidence_state,
+                    'output_state': command.output_state,
+                    'execution_scope': 'whole_shell_invocation',
+                    'limit': 'inner_command_meaning_unresolvable'})
             continue
-        argv = argvs[0]
-        expected = next(('explanation_' + argv[n + 2] for n, arg in enumerate(argv[:-2])
-            if arg in {'work', 'decision'} and argv[n + 1] == 'explain' and argv[n + 2] in {'prepare', 'record'}), None)
-        if expected is None:
-            expected = 'project_status' if 'status' in argv else 'decisions' if 'decisions' in argv else None
-        if expected is None:
+        # Multiple shell statements cannot share one successful Product receipt.
+        # Retain a safely identified operation, with no inferred inner outcome.
+        for argv in candidates:
+            values.extend(_measured_cli_operation(command, argv, len(argvs) == 1))
+    for wrapper in capture.execution_wrappers:
+        if wrapper.state == 'normalized':
             continue
-        result = None
-        if command.exit_code == 0 and command.evidence_state == 'completed':
-            try:
-                result = codex_events.strict_json(command.output)
-            except (ValueError, UnicodeError):
-                pass
-        values.append({'transport': 'cli', 'call_id': command.execution_identity, 'turn_id': command.turn_id,
-            'sequence': command.sequence, 'completion_sequence': command.completion_sequence,
-            'raw_call_id': command.raw_call_id, 'group_index': command.group_index,
-            'continuation_coordinates': command.continuation_coordinates,
-            'exit_code': command.exit_code, 'termination': command.termination,
-            'signal_number': command.signal_number, 'evidence_state': command.evidence_state,
-            'operation': expected,
-            'requested_language': argv[argv.index('--language') + 1] if '--language' in argv and argv.index('--language') + 1 < len(argv) else 'en',
-            'result': result})
-    return values
+        values.append({'transport': 'cli', 'call_id': 'execution_wrapper:' + (wrapper.call_id or str(wrapper.sequence)),
+            'raw_call_id': wrapper.call_id, 'turn_id': wrapper.turn_id,
+            'sequence': wrapper.sequence, 'completion_sequence': wrapper.completion_sequence,
+            'operation': 'execution_observation', 'requested_language': 'en', 'result': None,
+            'evidence_state': wrapper.state, 'exit_code': None, 'termination': None,
+            'execution_scope': 'unresolved_wrapper', 'coverage': dict(vars(wrapper)),
+            'limit': 'execution_wrapper_not_normalized'})
+    # This projection is compared to the immutable JSON collection index later.
+    return codex_events.strict_json(codex_events.canonical_json(sorted(values,
+        key=lambda value: (value['sequence'], value.get('group_index', -1)))).decode('utf-8'))
+
+
+def _measured_cli_operation(command, argv, unique):
+    expected = next(('explanation_' + argv[n + 2] for n, arg in enumerate(argv[:-2])
+        if arg in {'work', 'decision'} and argv[n + 1] == 'explain' and argv[n + 2] in {'prepare', 'record'}), None)
+    if expected is None:
+        expected = 'project_status' if 'status' in argv else 'decisions' if 'decisions' in argv else None
+    if expected is None:
+        return []
+    result = None
+    if unique and '--json' in argv and command.exit_code == 0 and command.evidence_state == 'completed' and command.termination == 'exited':
+        try:
+            result = codex_events.strict_json(command.output)
+        except (ValueError, UnicodeError):
+            pass
+    return [{'transport': 'cli', 'call_id': command.execution_identity, 'turn_id': command.turn_id,
+        'sequence': command.sequence, 'completion_sequence': command.completion_sequence,
+        'raw_call_id': command.raw_call_id, 'group_index': command.group_index,
+        'continuation_coordinates': command.continuation_coordinates,
+        'exit_code': command.exit_code, 'termination': command.termination,
+        'signal_number': command.signal_number, 'evidence_state': command.evidence_state,
+        'output_state': command.output_state,
+        'execution_scope': 'whole_shell_invocation',
+        'limit': ('compound_inner_outcome_unresolved' if not unique else 'json_output_not_requested'
+            if '--json' not in argv else 'returned_json_unresolvable' if result is None else None),
+        'operation': expected,
+        'requested_language': argv[argv.index('--language') + 1] if '--language' in argv and argv.index('--language') + 1 < len(argv) else 'en',
+        'result': result}]
 
 
 def collection_index(root, mapped):
@@ -588,9 +623,10 @@ def collection_index(root, mapped):
             common = {'phase': 'measured_session', 'session_slot_id': api().session_slot_id(*slot),
                 'raw_capture_sha256': capture.source_sha256, **{k: v for k, v in returned.items() if k != 'result'},
                 'returned_payload_sha256': binding(api().json_bytes(result))['sha256'],
-                'review_meaning_sha256': binding(api().json_bytes(answer_projection.project(result, returned['operation'])))['sha256']}
+                'review_meaning_sha256': binding(api().json_bytes(answer_projection.project(result, returned['operation'])))['sha256']
+                    if returned['operation'] in answer_projection.SCHEMAS else None}
             if not isinstance(result, dict):
-                measured.append(common | {'state': 'unresolvable', 'limit': 'returned JSON unavailable'})
+                measured.append(common | {'state': 'unresolvable', 'limit': returned.get('limit') or 'returned JSON unavailable'})
                 continue
             if returned['operation'] in {'explanation_prepare', 'explanation_record'}:
                 payload = result.get('plan') if returned['operation'] == 'explanation_prepare' else result.get('explanation')

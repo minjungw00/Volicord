@@ -340,6 +340,42 @@ class ProjectionTests(unittest.TestCase):
             self.assertNotIn("output", fact)
             self.assertNotIn("parsed_command", fact)
 
+    def test_execution_projection_distinguishes_absence_failure_and_unsupported(self):
+        source = Path(__file__).with_name('fixtures') / 'current-codex-execution-evidence.jsonl'
+        original = [json.loads(line) for line in source.read_text().splitlines()][:3]
+        metadata = {'turn_id': 'sanitized-execution-turn'}
+        for code, wrapper, expected in (
+                (0, 'text("tools.exec_command in a string");', 'not_observed'),
+                (0, 'text(await tools.exec_command({cmd:"cargo test"}));', 'observed'),
+                (143, 'text(await tools.exec_command({cmd:"cargo test"}));', 'observed'),
+                (0, 'const r=await tools.exec_command({cmd:"private-command"});store("private",r);text(r.output);', 'limited')):
+            events = original + [
+                {'type': 'response_item', 'payload': {'type': 'custom_tool_call', 'name': 'exec', 'status': 'completed',
+                    'call_id': 'coverage-test', 'input': wrapper, 'internal_chat_message_metadata_passthrough': metadata}},
+                {'type': 'response_item', 'payload': {'type': 'custom_tool_call_output', 'call_id': 'coverage-test',
+                    'output': [{'type': 'input_text', 'text': 'Script completed\nWall time 0.1 seconds\nOutput:\n'},
+                        {'type': 'input_text', 'text': json.dumps({'output': 'private-output', 'exit_code': code})}],
+                    'internal_chat_message_metadata_passthrough': metadata}}]
+            raw = ''.join(json.dumps(event) + '\n' for event in events).encode()
+            capture = codex_events.parse_codex_capture(raw)
+            projected, _ = captures.project(raw, origin={'kind': 'evidence_set_member', 'path': 'fixture.jsonl',
+                'raw_bytes': len(raw), 'raw_sha256': ops.digest(raw)}, role='start', session_id=capture.session_id,
+                candidate_head='a' * 40, evidence_set_sha256='b' * 64)
+            value = captures.validate(projected)
+            self.assertEqual(value['execution_coverage']['state'], expected)
+            self.assertEqual(value['execution_coverage']['failed_command_count'], int(code == 143))
+            self.assertNotIn(b'private-command', projected)
+            self.assertNotIn(b'private-output', projected)
+            corrupted = copy.deepcopy(value)
+            corrupted['execution_coverage']['failed_command_count'] = bool(code == 143)
+            with self.assertRaisesRegex(ValueError, 'execution coverage counts'):
+                captures.validate(ops.encoded(corrupted))
+            if expected == 'limited':
+                coverage = next(r for r in value['records'] if r['semantic_role'] == 'execution_coverage')
+                self.assertEqual(coverage['state'], 'unsupported')
+                self.assertEqual(coverage['source_sequences'], [3, 4])
+                self.assertIsNone(coverage['observed_call_count'])
+
     def test_maintained_capture_owners_schema_and_help_agree(self):
         import assertions
         assertions.check_review_capture_contract()

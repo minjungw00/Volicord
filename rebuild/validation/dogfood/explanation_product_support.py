@@ -23,8 +23,10 @@ def run(config):
         root = Path(temporary)
         raw = root / 'synthetic-capture.jsonl'; raw.write_text('Labeled support capture seam; no measured host activity.\n')
         capture = SimpleNamespace(source_sha256=c.harness.sha256(raw), session_id='support-only',
-            successful_calls=lambda operation: [SimpleNamespace(result={'project_id': project})]
-                if operation == 'project_resolve' else [], commands=[])
+            successful_calls=lambda operation: [SimpleNamespace(operation='project_resolve',
+                arguments={'repository': str(repository)}, result={'project_id': project})]
+                if operation == 'project_resolve' else [], commands=[], execution_wrappers=(),
+            transport_issues=lambda *operations: [])
         mapped = {('volicord', 'A', 'start'): SimpleNamespace(source=raw, capture=capture)}
         artifact = {'path': str(binary), 'sha256': c.harness.sha256(binary)}
         campaign = {'evidence_purpose': 'dogfood_rehearsal', 'candidate_head': config['candidate_head'],

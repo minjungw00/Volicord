@@ -68,6 +68,8 @@ def work_summary(descriptor, work, resume, bundle):
             "learning_participation_observations": participation,
             "learning_deliberation_activity": deliberations,
             "recall_sequences": [c.sequence for c in calls if c.operation == "recall"],
+            'project_resolve_sequences': [c.sequence for c in calls if c.operation == 'project_resolve'],
+            'execution_coverage': capture.execution_evidence(),
             "fresh_user_thread": capture.fresh_user_thread})
     # Canonical sessions are inferred only from returned Source identities, never raw thread labels.
     canonical_sessions = {s.get("detail_two") for s in (bundle.rows("sources") if bundle else ())

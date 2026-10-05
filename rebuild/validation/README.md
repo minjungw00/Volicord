@@ -261,7 +261,7 @@ verification preserve the exact evidence and decision chain.
 
 `prepare-qualitative-review --include-raw-rollouts` selects immutable raw Work/resume
 inputs for bounded reviewer-safe conversation projections under the current
-`naturalistic_review_capture` schema 2 / `naturalistic-review-capture-2` policy.
+`naturalistic_review_capture` schema 3 / `naturalistic-review-capture-3` policy.
 It copies no complete raw rollout. Each index entry distinguishes origin member/raw
 bytes/SHA-256 from projected review bytes/SHA-256 and exposes limits, omission counts
 and semantic completeness. Irrelevant tool/source/process bodies are excluded by
@@ -271,6 +271,11 @@ missing typed fields and bounded transport omissions remain explicit. No credent
 literal is allowlisted. A semantically incomplete required capture forces evidence
 insufficiency for decisive interaction judgments, including campaign coverage. See
 `docs/design/qualitative-review.md` for the maintained schema and exact restrictions.
+Execution coverage is separate from semantic completeness: wrapper digests and safe
+raw locators preserve unsupported/indeterminate execution without copying JS,
+commands or output. Whole-shell exits do not establish compound CLI operation
+success. The focused [remediation handoff](dogfood/execution-observation-remediation.md)
+records supported grammars, bounded limitations and the read-only corpus diagnostic.
 Private explanation lifecycles are selected separately from measured Work/resume returns, with
 nested claim/plan/readback JSON pointers and exact private-versus-projected hash bindings.
 Copied lineage verifies these relationships without the original response file or runtime.

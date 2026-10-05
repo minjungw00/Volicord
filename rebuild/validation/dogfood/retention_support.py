@@ -23,7 +23,9 @@ def run(binary, fixture, root):
     project, work, decision = fixture['project'], fixture['goals']['relay'], fixture['decisions']['project']
     raw=root/'support-capture.jsonl'; raw.write_text('Explicit authored capture seam, no measured interaction.\n')
     capture=SimpleNamespace(source_sha256=c.harness.sha256(raw),session_id='retention-support',
-        successful_calls=lambda operation:[SimpleNamespace(result={'project_id':project})] if operation=='project_resolve' else [], commands=[])
+        successful_calls=lambda operation:[SimpleNamespace(operation='project_resolve',
+            arguments={'repository':str(repository)}, result={'project_id':project})] if operation=='project_resolve' else [],
+        commands=[], execution_wrappers=(), transport_issues=lambda *operations: [])
     mapped={('volicord','A','start'):SimpleNamespace(source=raw,capture=capture)}
     artifacts={name:{'path':str(binary.with_name(name)),'sha256':c.harness.sha256(binary.with_name(name))} for name in c.CANDIDATE_ARTIFACTS}
     campaign={'evidence_purpose':'dogfood_rehearsal','candidate_head':c.harness.git_head(c.ROOT),

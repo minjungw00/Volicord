@@ -1477,6 +1477,8 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
     resolves = capture.successful_calls("project_resolve")
     recalls = capture.successful_calls("recall")
     checkpoints = capture.successful_calls("checkpoint_record")
+    if capture.transport_issues('project_resolve'):
+        raise ResumeContractError('recall_identity_or_project_invalid')
     if capture.transport_issues("recall"):
         raise ResumeContractError("recall_transport_incomplete")
     if not recalls and capture.calls("recall"):

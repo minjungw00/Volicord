@@ -11,8 +11,8 @@ import answer_projection
 import answer_observations
 import explanation_evidence
 
-SCHEMA_VERSION = 2
-POLICY = "naturalistic-review-capture-2"
+SCHEMA_VERSION = 3
+POLICY = "naturalistic-review-capture-3"
 MAX_BODY_BYTES = 1 << 20
 MAX_PROJECTION_BYTES = 32 << 20
 CAPTURE_SURFACES = {"work_capture", "resume_capture"}
@@ -196,6 +196,8 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
     cli_returns += explanation_evidence.measured_cli_operations(capture)
     for returned in cli_returns:
         operation = returned.get('operation', 'recall')
+        if operation == 'execution_observation':
+            continue  # Retained below as bounded execution/coverage facts, not a Product receipt.
         operation_record(returned['sequence'], returned['completion_sequence'], returned['turn_id'],
             returned['call_id'], operation, 'success' if isinstance(returned['result'], dict) else 'unresolvable',
             {}, returned['result'], 'cli', returned['requested_language'])
@@ -209,14 +211,23 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
     for sequence in capture.compacted_sequences:
         records.append({"sequence": sequence, "source_sequences": [sequence], "semantic_role": "context_compacted"})
     for command in capture.commands:
-        records.append({"sequence": command.sequence, "source_sequences": sorted(set([command.sequence, command.completion_sequence])),
+        coordinates = [command.sequence, command.completion_sequence]
+        coordinates += [sequence for coordinate in command.continuation_coordinates for sequence in coordinate[2:4]]
+        records.append({"sequence": command.sequence, "source_sequences": sorted(set(coordinates)),
             "turn_id": command.turn_id, "semantic_role": "execution_fact",
             "completion_sequence": command.completion_sequence, "group_index": command.group_index,
             "command_role": codex.command_role(command.parsed_command),
             "normalized_command_sha256": ops.digest(ops.encoded(command.parsed_command)),
             "output_retention": "non_semantic_by_design",
             "exit_code": command.exit_code, "evidence_state": command.evidence_state,
-            "termination": command.termination})
+            "termination": command.termination, 'signal_number': command.signal_number,
+            'output_state': command.output_state,
+            'execution_identity': command.execution_identity, 'raw_call_id': command.raw_call_id,
+            'continuation_coordinates': command.continuation_coordinates})
+    for wrapper in capture.execution_wrappers:
+        records.append({'semantic_role': 'execution_coverage', **vars(wrapper),
+            'source_sequences': sorted({wrapper.sequence} | ({wrapper.completion_sequence}
+                if wrapper.completion_sequence is not None else set()))})
     for issue in capture.evidence_transport_issues:
         records.append({"sequence": issue.sequence, "source_sequences": [issue.sequence],
             "turn_id": issue.turn_id, "call_id": issue.call_id, "operation": issue.operation,
@@ -233,7 +244,8 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
         "policy": POLICY, "origin": origin, "session_id": session_id, "role": role,
         "candidate_head": candidate_head, "evidence_set_sha256": evidence_set_sha256,
         "fresh_user_thread": capture.fresh_user_thread, "limits": LIMITS,
-        "source_record_count": len(events), "records": records, "excluded_records": excluded}
+        "source_record_count": len(events), "records": records, "excluded_records": excluded,
+        'execution_coverage': {k: v for k, v in capture.execution_evidence().items() if k != 'wrappers'}}
     value.update(counts(value))
     projected = ops.encoded(value)
     validate(projected)
@@ -273,6 +285,7 @@ def validate(data):
     required = {"evidence_purpose", "kind", "schema_version", "policy", "origin", "session_id", "role", "candidate_head",
         "evidence_set_sha256", "fresh_user_thread", "limits", "source_record_count", "records", "excluded_records",
         "retained_record_count", "omitted_record_count", "non_semantic_omission_count", "semantic_omission_count", "semantic_complete"}
+    required.add('execution_coverage')
     ops.review.require(isinstance(value, dict) and set(value) == required
         and value["kind"] == "naturalistic_review_capture" and value["schema_version"] == SCHEMA_VERSION
         and value["policy"] == POLICY and value["limits"] == LIMITS and len(data) <= MAX_PROJECTION_BYTES,
@@ -304,7 +317,10 @@ def validate(data):
         "turn_terminal": {"turn_id", "state"},
         "context_compacted": set(),
         "execution_fact": {"turn_id", "completion_sequence", "group_index", "command_role",
-            "normalized_command_sha256", "output_retention", "exit_code", "evidence_state", "termination"},
+            "normalized_command_sha256", "output_retention", "exit_code", "evidence_state", "termination",
+            'execution_identity', 'raw_call_id', 'continuation_coordinates', 'signal_number', 'output_state'},
+        'execution_coverage': {'completion_sequence', 'turn_id', 'call_id', 'wrapper_sha256',
+            'tool_names', 'observed_call_count', 'state', 'reasons'},
         "transport_issue": {"turn_id", "call_id", "operation", "reason"},
     }
     previous = -1
@@ -317,6 +333,25 @@ def validate(data):
             and all(type(s) is int and 0 <= s < value["source_record_count"] for s in record["source_sequences"]),
             "malformed review capture coordinates")
         previous = record["sequence"]
+        if record['semantic_role'] == 'execution_coverage':
+            ops.review.require(codex.supported_execution_wrapper({k: v for k, v in record.items()
+                if k not in {'semantic_role', 'source_sequences'}}), 'invalid execution coverage')
+        if record['semantic_role'] == 'execution_fact':
+            code, signal = record['exit_code'], record['signal_number']
+            ops.review.require(record['evidence_state'] in {'completed', 'indeterminate'}
+                and record['output_state'] in {'unknown', 'retained', 'truncated', 'missing'}
+                and (code is None or type(code) is int and abs(code) <= 2_147_483_647)
+                and (signal is None or type(signal) is int and signal > 0)
+                and (record['evidence_state'] != 'completed' or type(code) is int
+                    and record['termination'] == ('signaled' if code < 0 else 'exited'))
+                and (code is None or signal == (-code if code < 0 else None))
+                and record['output_retention'] == 'non_semantic_by_design'
+                and isinstance(record['continuation_coordinates'], list)
+                and all(isinstance(item, list) and len(item) == 5 and all(type(s) is int
+                    and 0 <= s < value['source_record_count'] for s in item[2:4])
+                    and type(item[4]) is int and 0 <= item[4] < 16
+                    and all(isinstance(s, str) and s for s in item[:2]) for item in record['continuation_coordinates']),
+                'invalid execution fact')
         body = record.get("body")
         if record["semantic_role"] in SEMANTIC_ROLES | {"volicord_operation"}:
             ops.review.require(isinstance(body, dict) and set(body) == {
@@ -360,4 +395,18 @@ def validate(data):
         for s in range(value["source_record_count"]) if s not in used]
         and all(type(value[key]) is type(expected) and value[key] == expected for key, expected in counts(value).items()),
         "review capture projection omission/count inconsistency")
+    facts = [r for r in value['records'] if r['semantic_role'] == 'execution_fact']
+    wrappers = [r for r in value['records'] if r['semantic_role'] == 'execution_coverage']
+    expected_coverage = {'state': ('not_observed' if not facts and not wrappers else 'limited'
+        if any(r['state'] != 'normalized' for r in wrappers) or any(r['evidence_state'] != 'completed' for r in facts)
+        else 'observed'), 'normalized_command_count': len(facts),
+        'completed_command_count': sum(r['evidence_state'] == 'completed' for r in facts),
+        'failed_command_count': sum(r['evidence_state'] == 'completed' and r['exit_code'] != 0 for r in facts),
+        'unsupported_wrapper_count': sum(r['state'] == 'unsupported' for r in wrappers),
+        'indeterminate_wrapper_count': sum(r['state'] == 'indeterminate' for r in wrappers)}
+    ops.review.require(isinstance(value['execution_coverage'], dict)
+        and set(value['execution_coverage']) == set(expected_coverage)
+        and all(type(value['execution_coverage'][key]) is type(expected)
+            and value['execution_coverage'][key] == expected for key, expected in expected_coverage.items()),
+        'execution coverage counts differ from retained facts')
     return value
