@@ -626,3 +626,107 @@ fn polyglot_current_work_keeps_same_work_history_flow_grounding(
     assert!(explained_relations.contains(BOUNDARY_TO_CONSUMER));
     Ok(())
 }
+
+#[test]
+fn work_limitations_require_actual_affected_inventory_scope(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_repository_intelligence::{Capability, CapabilityState};
+    let (projection, analysis) = build_projection_scenario(
+        &[
+            ("src/lib.rs", "pub fn work() {}"),
+            ("other/query.cpp", "void query() {}"),
+        ],
+        &["src/lib.rs"],
+        &[vec!["src/lib.rs"]],
+        64,
+        |analysis| {
+            let report = analysis
+                .capabilities
+                .iter_mut()
+                .find(|r| {
+                    r.language == Some(Language::Rust) && r.capability == Capability::Structural
+                })
+                .ok_or("missing Rust structural capability")?;
+            report.state = CapabilityState::Failed;
+            report.reason = Some("selected Rust parser failed".into());
+            report.user_visible_consequence = Some("Work declarations cannot be verified".into());
+            report.usable_remainder = Some("Inventory and canonical Work remain usable".into());
+            Ok(())
+        },
+    )?;
+    assert!(analysis
+        .capabilities
+        .iter()
+        .any(|r| r.language == Some(Language::Cpp) && r.state != CapabilityState::Available));
+    assert!(projection
+        .repository_map
+        .gaps
+        .iter()
+        .any(|g| g.language == Some(Language::Cpp)));
+    assert!(projection
+        .answer_capability_gaps
+        .iter()
+        .all(|g| g.language != Some(Language::Cpp)));
+    let failed = projection
+        .answer_capability_gaps
+        .iter()
+        .find(|g| g.reason == "selected Rust parser failed")
+        .ok_or("relevant failure hidden")?;
+    assert_eq!(failed.state, CapabilityState::Failed);
+    assert_eq!(
+        failed.user_visible_consequence.as_deref(),
+        Some("Work declarations cannot be verified")
+    );
+    assert_eq!(
+        failed.usable_remainder.as_deref(),
+        Some("Inventory and canonical Work remain usable")
+    );
+    let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+    assert!(understanding
+        .architecture
+        .gaps
+        .iter()
+        .all(|g| g.language != Some(Language::Cpp)));
+    Ok(())
+}
+
+#[test]
+fn same_language_failure_outside_work_does_not_limit_selected_answer(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_repository_intelligence::{AreaId, AreaKind, Capability, CapabilityState};
+    let (projection, _) = build_projection_scenario(
+        &[
+            ("src/lib.rs", "pub fn work() {}"),
+            ("unrelated/broken.rs", "pub fn other() {}"),
+        ],
+        &["src/lib.rs"],
+        &[vec!["src/lib.rs"]],
+        64,
+        |analysis| {
+            let report = analysis
+                .capabilities
+                .iter_mut()
+                .find(|r| {
+                    r.language == Some(Language::Rust) && r.capability == Capability::Structural
+                })
+                .ok_or("missing Rust structural capability")?;
+            report.state = CapabilityState::Partial;
+            report.reason = Some("unrelated file failed".into());
+            report.coverage.failed = vec![AreaId {
+                kind: AreaKind::File,
+                path: "unrelated/broken.rs".into(),
+            }];
+            Ok(())
+        },
+    )?;
+    assert!(projection
+        .repository_map
+        .gaps
+        .iter()
+        .any(|g| g.reason == "unrelated file failed"));
+    assert!(!projection
+        .answer_capability_gaps
+        .iter()
+        .any(|g| g.reason == "unrelated file failed"));
+    Ok(())
+}

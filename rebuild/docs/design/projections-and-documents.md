@@ -1266,3 +1266,19 @@ browser result is supporting display evidence; direct human inspection and its
 limits remain separately declared under the qualitative-review owner. Constructor
 executable hashing, snapshot export, server/render profiling, browser PaintTiming
 and human responsiveness are distinct costs and claims.
+
+### Contextual answer limitations
+
+`ProjectProjection.answer_capability_gaps` is selected before display bounds from
+actual Analysis Snapshot inventory, selected Work paths/Source locators/code links,
+selected Decision applicability or selected code entity. A capability language name
+alone proves no relevance. A failed scope outside the selected paths does not limit
+that answer even when the language is the same. Repository-scoped reading considers
+actual observed files rather than capabilities for absent languages. Scoped failures
+retain state, affected areas, reason, usable remainder and user-visible consequence.
+`answer_issues` separates selected Source and requested graph failures from exhaustive
+`issues`/`repository_map.gaps`. Ordinary reads with code `NotRequested` have no missing
+code-body warning; this is materialization intent, not an analyzer failure. Canonical
+limits remain distinct. Viewer consumers render contextual limits ordinarily and keep
+repository/runtime diagnostics inspectable in evidence disclosures. Blocking canonical
+runtime failure remains ordinary; unrelated auxiliary health is audit evidence.

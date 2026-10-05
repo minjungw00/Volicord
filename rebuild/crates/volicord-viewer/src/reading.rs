@@ -105,7 +105,11 @@ pub(super) fn warnings(
         "limitations",
         text(request.locale, "Material limitations", "중요한 한계"),
     );
-    if health.state != HealthState::Healthy {
+    if health
+        .issues
+        .iter()
+        .any(|i| i.scope == "canonical" || i.scope == "runtime")
+    {
         html.push_str(&format!(
             "<p class=\"state\" data-state=\"{}\">{}: {}</p>",
             health_state_key(health.state),
@@ -113,10 +117,59 @@ pub(super) fn warnings(
             escape(health_state_label(health.state, request.locale))
         ));
     }
-    if projection.sections.code == volicord_projections::ReadSectionState::NotRequested {
-        empty_state(html, text(request.locale, "Code bodies not requested. Stored coverage and freshness remain visible; open Code Understanding for relationships.", "코드 본문은 요청하지 않음. 저장된 coverage와 freshness는 표시되며 관계는 코드 이해에서 확인하세요."));
-    }
     html.push_str("<ul class=\"gap-list\">");
+    for issue in health
+        .issues
+        .iter()
+        .filter(|i| i.scope == "canonical" || i.scope == "runtime")
+    {
+        list_item(html, &format!("{}: {}", issue.scope, issue.detail));
+    }
+    for issue in projection
+        .answer_issues
+        .iter()
+        .filter(|i| i.kind != ProjectionIssueKind::Bound)
+        .take(32)
+    {
+        list_item(html, &format!("{}: {}", issue.affected_scope, issue.reason));
+    }
+    for gap in &projection.answer_capability_gaps {
+        list_item(
+            html,
+            &format!(
+                "{} / {:?} / {:?}: {}. {} {}",
+                gap.area,
+                gap.capability,
+                gap.state,
+                gap.reason,
+                gap.user_visible_consequence
+                    .as_deref()
+                    .unwrap_or("This scope cannot support a complete current code answer."),
+                gap.usable_remainder
+                    .as_deref()
+                    .unwrap_or("Canonical memory remains readable.")
+            ),
+        );
+    }
+    for item in &projection.resume.risks_assumptions_and_limits {
+        list_item(html, &item.statement);
+    }
+    for limit in projection.resume.known_limits.iter().filter(|limit| {
+        !projection
+            .issues
+            .iter()
+            .any(|i| i.affected_scope == "derived_analysis" && i.reason == **limit)
+    }) {
+        list_item(html, limit);
+    }
+    html.push_str("</ul>");
+    html.push_str("<details><summary>");
+    html.push_str(text(
+        request.locale,
+        "Repository and runtime diagnostics",
+        "저장소 및 런타임 진단",
+    ));
+    html.push_str("</summary><ul>");
     for issue in &health.issues {
         list_item(html, &format!("{}: {}", issue.scope, issue.detail));
     }
@@ -124,17 +177,10 @@ pub(super) fn warnings(
         .issues
         .iter()
         .filter(|i| i.kind != ProjectionIssueKind::Bound)
-        .take(32)
     {
         list_item(html, &format!("{}: {}", issue.affected_scope, issue.reason));
     }
-    for item in &projection.resume.risks_assumptions_and_limits {
-        list_item(html, &item.statement);
-    }
-    for limit in &projection.resume.known_limits {
-        list_item(html, limit);
-    }
-    html.push_str("</ul>");
+    html.push_str("</ul></details>");
     if request.requested_language != locale_key(request.locale) {
         empty_state(html,text(request.locale,"Recorded Work interpretations appear only for their exact requested language. Original quotations preserve their source language; fixed labels use the selected locale.","기록된 작업 해석은 정확히 일치하는 요청 언어로만 표시합니다. 원문 인용은 원래 언어를 유지하며 고정 설명은 선택한 UI 언어를 사용합니다."));
     }

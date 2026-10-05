@@ -480,7 +480,8 @@ fn requested_sections_preserve_metadata_and_refuse_incomplete_documents(
         assert_eq!(profile.health_analysis_snapshot_decodes, 0);
         assert_eq!(profile.document_generations, 0);
         assert_eq!(profile.document_preview, std::time::Duration::ZERO);
-        assert!(page.html.contains("Code bodies not requested"));
+        assert!(!page.html.contains("Code bodies not requested"));
+        assert!(page.html.contains("Repository and runtime diagnostics"));
         let (projection, _) = viewer.operations().project_projection_read_profiled(
             fixture.project,
             WorkSelector::ExactWork(fixture.goals["older"]),

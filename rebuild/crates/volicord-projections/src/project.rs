@@ -225,6 +225,7 @@ pub struct CapabilityGap {
     pub reason: String,
     pub affected_areas: Vec<String>,
     pub usable_remainder: Option<String>,
+    pub user_visible_consequence: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -826,6 +827,10 @@ pub struct WorkReadCost {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
+    /// Contextual answer limits, selected before capability/list bounds. Raw
+    /// repository diagnostics remain in repository_map and issues.
+    pub answer_capability_gaps: Vec<CapabilityGap>,
+    pub answer_issues: Vec<ProjectionIssue>,
     /// Ephemeral equality binding for new read/export; not canonical authority.
     pub canonical_read_fingerprint: String,
     pub sections: ProjectReadSections,
@@ -1009,6 +1014,7 @@ pub fn build_project_projection(
     let mut issues = source_issues(reading_canonical);
     issues.extend_from_slice(inputs.analysis_issues);
     let graph = projection_graph(reading_canonical, analyses);
+    let answer_capability_gaps = contextual_capability_gaps(&inputs, topology_canonical, &graph);
     let selected_entity = inputs.detail.entity.as_deref().and_then(|id| {
         graph
             .entities
@@ -1377,6 +1383,29 @@ pub fn build_project_projection(
         .collect();
     sort_projection_issues(&mut issues);
     let health = health_from_issues(&issues);
+    let answer_sources = if let Some(work) = &selected_work {
+        work.source_basis.clone()
+    } else if let Some(decision) = &selected_decision {
+        decision.decision.source_basis.clone()
+    } else {
+        reading_canonical
+            .sources
+            .iter()
+            .map(|s| s.source.id)
+            .collect()
+    };
+    let answer_issues = issues
+        .iter()
+        .filter(|issue| {
+            issue.kind == ProjectionIssueKind::WrongProject
+                || (issue.affected_scope == "derived_analysis" && inputs.requirements.code)
+                || (issue.affected_scope == "canonical_source"
+                    && answer_sources
+                        .iter()
+                        .any(|id| id.to_string() == issue.identity))
+        })
+        .cloned()
+        .collect();
     let overview = ProjectOverview {
         project_id: reading_canonical.project.id,
         project_name: reading_canonical.project.display_name.clone(),
@@ -1401,6 +1430,8 @@ pub fn build_project_projection(
         health,
     };
     Ok(ProjectProjection {
+        answer_capability_gaps,
+        answer_issues,
         canonical_read_fingerprint: crate::canonical_read_fingerprint(inputs.canonical),
         sections: ProjectReadSections {
             code: if !inputs.requirements.code {
@@ -2300,6 +2331,171 @@ fn source_issues(canonical: &CanonicalReadBasis) -> Vec<ProjectionIssue> {
         .collect()
 }
 
+/// Relevance requires an actual inventory/Source/entity intersection in the
+/// selected answer scope. A language label alone is never an intersection.
+fn contextual_capability_gaps(
+    inputs: &ProjectProjectionInputs<'_>,
+    canonical: &CanonicalReadBasis,
+    graph: &ProjectionGraph<'_>,
+) -> Vec<CapabilityGap> {
+    let repository_scope = inputs.selection == crate::WorkSelector::Repository
+        && inputs.detail.entity.is_none()
+        && inputs.detail.decision.is_none();
+    let mut paths = Vec::new();
+    if let Some(id) = &inputs.detail.entity {
+        paths.extend(
+            graph
+                .entities
+                .iter()
+                .filter(|e| e.identity == *id)
+                .map(|e| e.area.path.clone()),
+        );
+    } else if let Some(id) = inputs.detail.decision {
+        for d in canonical
+            .active_decisions
+            .iter()
+            .chain(&canonical.superseded_decisions)
+            .filter(|d| d.decision.id == id)
+        {
+            paths.extend(d.decision.applicability.paths.clone());
+            paths.extend(
+                graph
+                    .entities
+                    .iter()
+                    .filter(|e| {
+                        d.decision
+                            .applicability
+                            .components
+                            .iter()
+                            .any(|c| c == &e.area.path || e.display_name.as_ref() == Some(c))
+                    })
+                    .map(|e| e.area.path.clone()),
+            );
+        }
+    } else if !repository_scope {
+        for cp in current_work_checkpoints(canonical) {
+            paths.extend(cp.changed_paths.clone());
+        }
+        for goal in canonical
+            .context_items
+            .iter()
+            .filter(|c| c.role == ContextItemRole::Goal)
+        {
+            paths.extend(goal.applicability.paths.clone());
+        }
+        for source in &canonical.sources {
+            if canonical
+                .context_items
+                .iter()
+                .any(|c| c.source_basis.contains(&source.source.id))
+                || current_work_checkpoints(canonical)
+                    .iter()
+                    .any(|c| c.changed_source_basis.contains(&source.source.id))
+            {
+                if let SourcePayload::File { locator, .. } | SourcePayload::Symbol { locator, .. } =
+                    &source.source.payload
+                {
+                    paths.push(locator.clone());
+                }
+            }
+        }
+        // Coarse RepositorySnapshot Source equality cannot make every file
+        // a code seed. Explicit canonical links and component identities can.
+        paths.extend(
+            graph
+                .entities
+                .iter()
+                .filter(|e| {
+                    e.canonical_links.iter().any(|link| match link {
+                        CanonicalReference::ContextItem(r) => {
+                            canonical.context_items.iter().any(|c| c.id == r.identity())
+                        }
+                        CanonicalReference::Checkpoint(r) => current_work_checkpoints(canonical)
+                            .iter()
+                            .any(|c| c.id == r.identity()),
+                        _ => false,
+                    }) || canonical.context_items.iter().any(|c| {
+                        c.applicability.components.iter().any(|component| {
+                            component == &e.area.path || e.display_name.as_ref() == Some(component)
+                        })
+                    })
+                })
+                .map(|e| e.area.path.clone()),
+        );
+    }
+    let overlaps = |a: &str, b: &str| {
+        a.is_empty()
+            || a == "."
+            || b.is_empty()
+            || b == "."
+            || path_matches(a, b)
+            || path_matches(b, a)
+    };
+    let mut gaps = Vec::new();
+    let bases = inputs
+        .analyses
+        .iter()
+        .filter(|a| a.project.identity() == canonical.project.id)
+        .map(|a| (a.identity, &a.capabilities, &a.inventory.entries))
+        .chain(
+            inputs
+                .metadata
+                .iter()
+                .filter(|a| a.project.identity() == canonical.project.id)
+                .map(|a| (a.identity, &a.capabilities, &a.inventory.entries)),
+        );
+    for (identity, capabilities, entries) in bases {
+        for report in capabilities
+            .iter()
+            .filter(|r| r.state != CapabilityState::Available)
+        {
+            let affected = report
+                .coverage
+                .failed
+                .iter()
+                .chain(&report.coverage.unavailable)
+                .chain(&report.coverage.unsupported)
+                .chain(&report.coverage.stale)
+                .collect::<Vec<_>>();
+            let area_affected = |path: &str| {
+                overlaps(&report.area.path, path)
+                    && (affected.is_empty() || affected.iter().any(|a| overlaps(&a.path, path)))
+            };
+            let relevant = entries.iter().any(|entry| {
+                entry.entry_kind == volicord_repository_intelligence::EntryKind::File
+                    && !entry.classifications.iter().any(|c| {
+                        matches!(c,
+                        volicord_repository_intelligence::InventoryClassification::Ignored
+                        | volicord_repository_intelligence::InventoryClassification::Generated
+                        | volicord_repository_intelligence::InventoryClassification::Vendor
+                        | volicord_repository_intelligence::InventoryClassification::Binary)
+                    })
+                    && report
+                        .language
+                        .as_ref()
+                        .is_none_or(|l| entry.language.as_ref() == Some(l))
+                    && area_affected(&entry.area.path)
+                    && (repository_scope || paths.iter().any(|p| overlaps(p, &entry.area.path)))
+            }) || (report.language.is_none()
+                && report.capability == Capability::Inventory
+                && (repository_scope || paths.iter().any(|p| area_affected(p))));
+            if relevant {
+                gaps.push(capability_gap(identity, report));
+            }
+        }
+    }
+    gaps.sort_by(|a, b| {
+        (&a.analysis_snapshot, &a.area, &a.language, a.capability).cmp(&(
+            &b.analysis_snapshot,
+            &b.area,
+            &b.language,
+            b.capability,
+        ))
+    });
+    gaps.dedup();
+    gaps
+}
+
 fn capability_gap(
     analysis_snapshot: AnalysisSnapshotId,
     report: &CapabilityReport,
@@ -2326,6 +2522,7 @@ fn capability_gap(
             .map(|area| area.path.clone())
             .collect(),
         usable_remainder: report.usable_remainder.clone(),
+        user_visible_consequence: report.user_visible_consequence.clone(),
     }
 }
 

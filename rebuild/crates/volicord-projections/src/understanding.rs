@@ -466,7 +466,7 @@ pub fn build_project_understanding(
             omitted_count: omitted_unresolved_relations,
         });
     }
-    let mut gaps = projection.repository_map.gaps.clone();
+    let mut gaps = projection.answer_capability_gaps.clone();
     bound_section(&mut gaps, limit, "architecture.gaps", &mut omissions);
 
     let explanation_relationships = relationships
@@ -2059,6 +2059,8 @@ mod tests {
             checkpoint: checkpoint.clone(),
         };
         ProjectProjection {
+            answer_capability_gaps: Vec::new(),
+            answer_issues: Vec::new(),
             work_read_cost: crate::WorkReadCost::default(),
             canonical_read_fingerprint: String::new(),
             sections: crate::ProjectReadSections {
