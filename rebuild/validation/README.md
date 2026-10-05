@@ -285,6 +285,22 @@ Focused reproduction uses `rebuild/scripts/validate focused LABEL -- python3` wi
 fixtures establish structure only. Genuine host prose must independently use the supported
 prepare/record/readback commands under current interactive authority.
 
+Shared-answer diagnostics distinguish supported lifecycle absence and supported serialized
+omission from insufficient observation and confirmed contradiction. Initial Recall needs
+independent initialization/record evidence to certify an empty Project; an empty return
+alone stays indeterminate. Later Work creation cannot invalidate that earlier read. Resumed
+Work/Checkpoint absence remains hard when retained independent evidence requires them.
+Generated subject omission needs the exact provenance object's supported field-count
+marker (or a whole-subject byte marker). Ancestor/sibling markers, invalid counts and
+present wrong identity/language/revision/Source never waive contradictions. Review basis
+retains each validated marker and field scope; prose adequacy remains qualitative.
+Focused controls run the current Naturalistic consumer and finding construction:
+
+```sh
+rebuild/scripts/validate focused shared-answers -- env PYTHONPATH=rebuild/validation/dogfood python3 -m unittest answer_observations_self_test machine_findings_self_test resume_self_test
+rebuild/scripts/validate focused product-answers -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-host --test answer_consumers
+```
+
 Naturalistic target Git state is factual review evidence. Dogfood requires no Work
 commit, clean distinct-Work boundary or clean final target. Zero/multiple commits,
 dirty cross-Work state and later combined commits remain collectible. The run sheet

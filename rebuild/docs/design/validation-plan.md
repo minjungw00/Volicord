@@ -1603,6 +1603,23 @@ evidence keys. Generated grounding keys and revision types, requested-language a
 and the unverified generator assertion are factual checks. Malformed returned grounding is
 a violation rather than an observer exception; scoped generated-field transport omissions
 remain indeterminate and cannot excuse available wrong direction or provenance.
+The shared omission decoder accepts only the serializer's exact positive-integer count/byte
+forms with their matching reason/basis: whole-field `exact_json_bytes`, object
+`omitted_field_count`, or stable-array-suffix `omitted_count`. Counts are mutually exclusive;
+foreign scope/unknown marker fields and over-broad counts are invalid. A parent field-count
+marker applies only to absent fields in that exact enclosing current DTO, with a retained
+member and the exact missing required-field count (allowing genuinely optional members).
+It never excuses a present ordinary value. A marker on Recall, answers or a sibling cannot
+excuse missing generated subject in provenance. Subject/Project, language/generator status,
+evidence identity/revision/field/Sources and prose omissions use the same field helper.
+Evidence suffixes preserve visible-prefix contradictions. Every accepted scoped field
+omission retains its raw marker, exact field and JSON scope in machine review basis; no
+omitted value is reconstructed from prose, a later response or export. An omitted subject
+leaves bounded indeterminate evidence while other visible grounding checks continue.
+Machine finding construction separately indexes supported absence, supported omission,
+insufficient evidence and confirmed contradiction; their scopes may coexist, and a
+contradiction always retains hard-blocking precedence.
+
 A contradiction is hard blocking; unavailable observation-time
 basis is indeterminate and review required. Later canonical export does not attest
 historical Source freshness or generated semantics. Absent/stale explanation does
@@ -1618,6 +1635,14 @@ actual MCP/CLI Recall returns, actual MCP correction/authorization receipt and f
 `answer_product_support.py`, which runs `harness.real_session_evidence()`. Its seed-authoring envelopes
 and capture topology are explicitly synthetic support. Pre-correction Recall remains valid against a
 later revision-2 export; new-revision Recall passes and old-revision-as-current is hard blocking.
+Additional current-consumer controls insert initial Recall before Goal creation (with and
+without an independent initialization witness, with and without later creation), new Goal
+without Checkpoint, valid resume and missing/wrong Work, Project, Goal or Checkpoint revision.
+MCP/CLI generated controls retain the reviewed seven-field parent omission, one-field and
+whole-subject omissions, missing subject without a marker, foreign ancestor/sibling/suffix
+markers, wrong reason/basis/count/extra scope, and wrong present subject/Project/language/
+revision/evidence identity/Sources despite a valid omission. Coupled provenance/evidence/
+prose omissions also traverse `real_session_evidence()` and machine finding construction.
 Neither test certifies the full Naturalistic aggregate, host authorship or prose truth.
 
 `dogfood/explanation_evidence.py` owns append-only campaign explanation evidence,

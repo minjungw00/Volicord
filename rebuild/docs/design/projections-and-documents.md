@@ -553,6 +553,17 @@ Analysis identity와 field scope로 기존 canonical/candidate/repository inspec
 다시 읽는다. 비정상적으로 큰 현재 field도 의미를 추측한 축약문으로 대체하지 않는다.
 CLI와 MCP는 같은 shared brief, omission과 expansion basis를 사용한다.
 
+Naturalistic observer는 이 serializer contract의 exact whole-field byte marker,
+same-object field-count marker와 stable array suffix marker를 구분한다. Field-count
+marker는 같은 current DTO의 absent field와 일치하는 count만 설명하며 다른 ancestor나
+sibling의 marker는 generated provenance의 subject omission 근거가 아니다. Present
+Project/Work/subject, language, revision 또는 Source contradiction은 marker로 면제되지
+않는다. 유효하게 생략된 subject와 결합된 grounding field는 marker 원문, field와 scope를
+review evidence에 보존한 bounded indeterminate 관찰이다. 다른 visible grounding 검사는
+계속 수행하며 omitted value를 prose나 later response/export에서 추론하지 않는다.
+Generated prose adequacy는 계속 qualitative review다.
+
+
 Learning resume는 Candidate Inspection의 content/forgetting boundary 안에 있는
 전용 subprojection이다. Full `CandidateInspection`을 Recall에 복사하지 않는다.
 Candidate/revision, Goal/baseline/discovery/review/dimension identity, current learning

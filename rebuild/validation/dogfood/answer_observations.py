@@ -11,7 +11,8 @@ import sys
 import codex_events as c
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'shared'))
-from recorded_action_evidence import recorded_action_errors, transport_omission
+from recorded_action_evidence import field_omission, recorded_action_errors, transport_omission
+from answer_projection import PROVENANCE, ANSWERS, CLAIM, EVIDENCE
 
 
 def recall_identity_errors(result, project=None, work_id=None, *, work_state='required', checkpoint_state='required'):
@@ -60,9 +61,14 @@ def recall_identity_errors(result, project=None, work_id=None, *, work_state='re
     return errors
 
 
-def bounded_field(value, field):
-    return transport_omission(value.get(field)) or (field not in value
-        and transport_omission({'transport_omission': value.get('transport_omission')}))
+def bounded_field(value, field, contract):
+    return field_omission(value, field, fields=contract,
+        optional={'recorded_action'} if contract is CLAIM else ())
+
+
+def suffix_omission(values):
+    return (isinstance(values, list) and bool(values) and transport_omission(values[-1])
+        and 'omitted_count' in values[-1]['transport_omission'])
 
 
 def returned_recalls(capture):
@@ -71,7 +77,8 @@ def returned_recalls(capture):
     values = [{'transport': 'mcp', 'call_id': call.call_id, 'turn_id': call.turn_id,
         'sequence': call.sequence, 'completion_sequence': call.completion_sequence,
         'invocation_sequence': capture.observed_metadata.get('mcp_invocations', {}).get(call.call_id),
-        'requested_language': call.arguments.get('requested_language', 'en'), 'result': call.result} for call in capture.successful_calls('recall')]
+        'requested_language': call.arguments.get('requested_language', 'en'),
+        'requested_project': call.arguments.get('project_id'), 'result': call.result} for call in capture.successful_calls('recall')]
     for command in capture.commands:
         argvs = c.command_argvs(command.parsed_command)
         if len(argvs) != 1:
@@ -87,7 +94,8 @@ def returned_recalls(capture):
                 pass
         values.append({'transport': 'cli', 'call_id': command.execution_identity,
             'turn_id': command.turn_id, 'sequence': command.sequence,
-            'completion_sequence': command.completion_sequence, 'invocation_sequence': command.sequence, 'requested_language': argv[argv.index('--language') + 1] if '--language' in argv and argv.index('--language') + 1 < len(argv) else 'en', 'result': result})
+            'completion_sequence': command.completion_sequence, 'invocation_sequence': command.sequence,
+            'requested_project': argv[argv.index('--project') + 1] if '--project' in argv and argv.index('--project') + 1 < len(argv) else None, 'requested_language': argv[argv.index('--language') + 1] if '--language' in argv and argv.index('--language') + 1 < len(argv) else 'en', 'result': result})
     return sorted(values, key=lambda value: value['sequence'])
 
 
@@ -328,8 +336,16 @@ def observe(work, resume, bundle, work_id):
     observations = []
     for capture in (work, resume):
         for returned in returned_recalls(capture):
-            errors, limits = [], []
+            errors, limits, omissions = [], [], []
+            def omitted(value, field, contract, scope):
+                report = bounded_field(value, field, contract)
+                if report:
+                    evidence = {"scope": scope, "field": field, **report}
+                    if evidence not in omissions:
+                        omissions.append(evidence)
+                return report
             result = returned['result']
+            project = bundle.project_id if bundle else returned.get('requested_project')
             # Only previously observed authoring is a temporal witness. No latest
             # bundle selection and no use of returned identity to choose an oracle.
             relationship = resume_relationship(work, resume, bundle, work_id, returned) if capture is resume else None
@@ -361,7 +377,7 @@ def observe(work, resume, bundle, work_id):
             if not isinstance(result, dict):
                 limits.append('returned_json_unresolvable')
             else:
-                errors.extend(recall_identity_errors(result, bundle.project_id if bundle else None, expected_work,
+                errors.extend(recall_identity_errors(result, project, expected_work,
                     work_state=lifecycle['work'], checkpoint_state=lifecycle['checkpoint']))
                 errors.extend(goal['errors'])
                 if lifecycle['work'] != 'absent':
@@ -426,9 +442,9 @@ def observe(work, resume, bundle, work_id):
                 answers = selected.get('answers') if isinstance(selected, dict) else None
                 if isinstance(answers, dict):
                     state, provenance = answers.get('explanation_state'), answers.get('provenance')
-                    prose = answers.get('prose', [])
+                    prose = answers.get('prose')
                     if not isinstance(prose, list):
-                        if bounded_field(answers, 'prose'):
+                        if omitted(answers, 'prose', ANSWERS, '/selected_work/answers'):
                             limits.append('generated prose unavailable through scoped transport omission')
                         else:
                             errors.append('shared prose section malformed')
@@ -436,84 +452,139 @@ def observe(work, resume, bundle, work_id):
                     if state not in {'current', 'unavailable', 'stale', 'corrupt', 'unsupported'}:
                         errors.append('explanation availability state')
                     if state == 'current':
-                        subject = provenance.get('subject') if isinstance(provenance, dict) else None
+                        scope = '/selected_work/answers/provenance'
+                        generated_work = expected_work or selected.get('work_item_id')
+                        provenance_omitted = omitted(answers, 'provenance', ANSWERS, '/selected_work/answers')
+                        if provenance_omitted:
+                            limits.append('generated provenance unavailable through scoped transport omission')
+                            provenance = {}
+                        elif not isinstance(provenance, dict):
+                            errors.append('generated Work/Project scope')
+                            provenance = {}
+                        project_value = provenance.get('project_id')
+                        if provenance_omitted or omitted(provenance, 'project_id', PROVENANCE, scope):
+                            limits.append('generated Project scope unavailable through scoped transport omission')
+                        elif (not isinstance(project_value, str) or re.fullmatch(r'[0-9a-f]{32}', project_value) is None
+                                or project is not None and project_value != project):
+                            errors.append('generated Work/Project scope')
+                        subject = provenance.get('subject')
                         identity = subject.get('identity') if isinstance(subject, dict) else None
-                        expected_identity = expected_work or work_id
-                        if (not isinstance(provenance, dict)
-                                or not isinstance(provenance.get('project_id'), str)
-                                or re.fullmatch(r'[0-9a-f]{32}', provenance['project_id']) is None
-                                or bundle and provenance['project_id'] != bundle.project_id
-                                or not isinstance(subject, dict) or subject.get('kind') != 'work'
+                        if provenance_omitted or omitted(provenance, 'subject', PROVENANCE, scope):
+                            limits.append('generated subject scope unavailable through scoped transport omission')
+                        elif (not isinstance(subject, dict) or subject.get('kind') != 'work'
                                 or not isinstance(identity, list) or len(identity) != 16
                                 or not all(type(value) is int and 0 <= value <= 255 for value in identity)
-                                or expected_identity is not None and identity != list(bytes.fromhex(expected_identity))):
+                                or generated_work is not None and (not isinstance(generated_work, str)
+                                    or re.fullmatch(r'[0-9a-f]{32}', generated_work) is None
+                                    or identity != list(bytes.fromhex(generated_work)))):
                             errors.append('generated Work/Project scope')
-                        else:
-                            for name, expected_value in (('language', returned['requested_language']),
-                                    ('generator_identity_status', 'self_reported_not_independently_verified')):
-                                if provenance.get(name) != expected_value:
-                                    if bounded_field(provenance, name):
-                                        limits.append(f'generated {name} unavailable through scoped transport omission')
-                                    else:
-                                        errors.append('generated language/provenance assertion')
-                            evidence = provenance.get('evidence')
-                            bounded_evidence = transport_omission(evidence) or (isinstance(evidence, list)
-                                and any(transport_omission(e) for e in evidence)) or bounded_field(provenance, 'evidence')
-                            errors.extend(goal['errors'])
-                            limits.extend(goal['limits'])
-                            for key, identity, revision, field in (
-                                    ('next_step', checkpoint_id, checkpoint_revision, 'next_step'),
-                                    ('goal', expected_work or work_id, goal['revision'], 'statement')):
-                                matches = [e for e in evidence if isinstance(e, dict) and e.get('key') == key] if isinstance(evidence, list) else []
-                                if not matches and bounded_evidence:
-                                    limits.append(f'generated {key} basis unavailable through scoped transport omission')
-                                elif (len(matches) != 1 or type(matches[0].get('revision')) is not int or matches[0].get('revision', 0) < 1
-                                        or not isinstance(matches[0].get('sources'), list)
-                                        or not all(isinstance(v, str) and re.fullmatch(r'[0-9a-f]{32}', v) for v in matches[0]['sources']) or matches[0].get('field') != field or not isinstance(matches[0].get('identity'), str)
-                                        or re.fullmatch(r'[0-9a-f]{32}', matches[0]['identity']) is None
-                                        or identity is not None and matches[0].get('identity') != identity
-                                        or revision is not None and matches[0].get('revision') != revision):
-                                    errors.append(f'generated {key} revision basis')
-                                elif (sources if key == 'next_step' else goal['sources']) is not None and matches[0].get('sources') != (sources if key == 'next_step' else goal['sources']):
-                                    errors.append(f'generated {key} Source basis')
-                            evidence = provenance.get('evidence')
-                            if (not isinstance(evidence, list) and not bounded_evidence or isinstance(evidence, list)
-                                    and any((not isinstance(e, dict) or not isinstance(e.get('key'), str))
-                                        and not transport_omission(e) for e in evidence)):
-                                errors.append('generated evidence keys malformed')
-                            keys = {e['key'] for e in evidence if isinstance(e, dict) and isinstance(e.get('key'), str)} if isinstance(evidence, list) else set()
-                            for paragraph in prose if isinstance(prose, list) else []:
-                                if transport_omission(paragraph):
-                                    limits.append('generated paragraph unavailable through scoped transport omission')
-                                    continue
-                                if not isinstance(paragraph, dict) or paragraph.get('role') != 'generated_interpretation':
-                                    errors.append('generated paragraph role/grounding')
-                                    continue
-                                if bounded_field(paragraph, 'text'):
-                                    limits.append('generated paragraph text unavailable through scoped transport omission')
-                                elif not isinstance(paragraph.get('text'), str) or not paragraph['text'].strip():
-                                    errors.append('generated paragraph role/grounding')
-                                cited = paragraph.get('evidence_keys')
-                                if bounded_field(paragraph, 'evidence_keys'):
-                                    limits.append('generated paragraph grounding unavailable through scoped transport omission')
-                                elif not isinstance(cited, list):
-                                    errors.append('generated paragraph role/grounding')
+                        for name, expected_value in (('language', returned['requested_language']),
+                                ('generator_identity_status', 'self_reported_not_independently_verified')):
+                            if provenance.get(name) != expected_value:
+                                if provenance_omitted or omitted(provenance, name, PROVENANCE, scope):
+                                    limits.append(f'generated {name} unavailable through scoped transport omission')
                                 else:
-                                    for cited_key in cited:
-                                        if transport_omission(cited_key) or isinstance(cited_key, str) and cited_key not in keys and bounded_evidence:
-                                            limits.append('generated paragraph grounding unavailable through scoped transport omission')
-                                        elif not isinstance(cited_key, str) or cited_key not in keys:
-                                            errors.append('generated paragraph role/grounding')
+                                    errors.append('generated language/provenance assertion')
+                        evidence = provenance.get('evidence')
+                        bounded_evidence = provenance_omitted or omitted(provenance, 'evidence', PROVENANCE, scope)
+                        if suffix_omission(evidence):
+                            bounded_evidence = True
+                            limits.append('generated evidence suffix unavailable through scoped transport omission')
+                            omissions.append({'scope': scope + '/evidence', 'placement': 'stable_suffix',
+                                'marker': evidence[-1]['transport_omission']})
+                        for index, item in enumerate(evidence if isinstance(evidence, list) else []):
+                            if transport_omission(item) and 'exact_json_bytes' in item['transport_omission']:
+                                bounded_evidence = True
+                                limits.append('generated evidence item unavailable through scoped transport omission')
+                                omissions.append({'scope': scope + '/evidence/' + str(index), 'placement': 'whole_item',
+                                    'marker': item['transport_omission']})
+                            if omitted(item, 'key', EVIDENCE, scope + '/evidence/' + str(index)):
+                                bounded_evidence = True
+                        errors.extend(goal['errors'])
+                        limits.extend(goal['limits'])
+                        for key, identity, revision, field in (
+                                ('next_step', checkpoint_id, checkpoint_revision, 'next_step'),
+                                ('goal', generated_work, goal['revision'], 'statement')):
+                            matches = [e for e in evidence if isinstance(e, dict) and e.get('key') == key] if isinstance(evidence, list) else []
+                            if not matches and bounded_evidence:
+                                limits.append(f'generated {key} basis unavailable through scoped transport omission')
+                            elif len(matches) != 1:
+                                errors.append(f'generated {key} revision basis')
+                            else:
+                                item = matches[0]
+                                item_scope = scope + '/evidence/' + str(evidence.index(item))
+                                expected_sources = sources if key == 'next_step' else goal['sources']
+                                for name, expected_value in (('identity', identity), ('revision', revision),
+                                        ('field', field), ('sources', expected_sources)):
+                                    if omitted(item, name, EVIDENCE, item_scope):
+                                        limits.append(f'generated {key} {name} unavailable through scoped transport omission')
+                                        continue
+                                    value = item.get(name)
+                                    if name == 'sources' and suffix_omission(value):
+                                        prefix = value[:-1]
+                                        if (not all(isinstance(v, str) and re.fullmatch(r'[0-9a-f]{32}', v) for v in prefix)
+                                                or expected_value is not None and (prefix != expected_value[:len(prefix)]
+                                                    or value[-1]['transport_omission']['omitted_count'] != len(expected_value) - len(prefix))):
+                                            errors.append(f'generated {key} Source basis')
+                                        limits.append(f'generated {key} sources unavailable through scoped transport omission')
+                                        omissions.append({'scope': item_scope + '/sources', 'placement': 'stable_suffix',
+                                            'marker': value[-1]['transport_omission']})
+                                        continue
+                                    valid = (isinstance(value, str) and re.fullmatch(r'[0-9a-f]{32}', value) is not None
+                                        if name == 'identity' else type(value) is int and value > 0
+                                        if name == 'revision' else isinstance(value, list) and all(
+                                            isinstance(v, str) and re.fullmatch(r'[0-9a-f]{32}', v) for v in value)
+                                        if name == 'sources' else isinstance(value, str))
+                                    if not valid or expected_value is not None and value != expected_value:
+                                        errors.append(f'generated {key} Source basis' if name == 'sources'
+                                            else f'generated {key} revision basis')
+                        evidence = provenance.get('evidence')
+                        if not isinstance(evidence, list) and not bounded_evidence:
+                            errors.append('generated evidence keys malformed')
+                        for index, item in enumerate(evidence if isinstance(evidence, list) else []):
+                            if transport_omission(item) and (index == len(evidence) - 1 and suffix_omission(evidence)
+                                    or 'exact_json_bytes' in item['transport_omission']):
+                                continue
+                            if (not isinstance(item, dict) or not isinstance(item.get('key'), str)) and not omitted(
+                                    item, 'key', EVIDENCE, scope + '/evidence/' + str(index)):
+                                errors.append('generated evidence keys malformed')
+                        keys = {e['key'] for e in evidence if isinstance(e, dict) and isinstance(e.get('key'), str)} if isinstance(evidence, list) else set()
+                        for paragraph_index, paragraph in enumerate(prose):
+                            if transport_omission(paragraph):
+                                limits.append('generated paragraph unavailable through scoped transport omission')
+                                continue
+                            if not isinstance(paragraph, dict) or paragraph.get('role') != 'generated_interpretation':
+                                errors.append('generated paragraph role/grounding')
+                                continue
+                            if omitted(paragraph, 'text', CLAIM, '/selected_work/answers/prose/' + str(paragraph_index)):
+                                limits.append('generated paragraph text unavailable through scoped transport omission')
+                            elif not isinstance(paragraph.get('text'), str) or not paragraph['text'].strip():
+                                errors.append('generated paragraph role/grounding')
+                            cited = paragraph.get('evidence_keys')
+                            if omitted(paragraph, 'evidence_keys', CLAIM, '/selected_work/answers/prose/' + str(paragraph_index)):
+                                limits.append('generated paragraph grounding unavailable through scoped transport omission')
+                            elif not isinstance(cited, list):
+                                errors.append('generated paragraph role/grounding')
+                            else:
+                                for cited_key in cited:
+                                    if transport_omission(cited_key) or isinstance(cited_key, str) and cited_key not in keys and bounded_evidence:
+                                        limits.append('generated paragraph grounding unavailable through scoped transport omission')
+                                    elif not isinstance(cited_key, str) or cited_key not in keys:
+                                        errors.append('generated paragraph role/grounding')
                         limits.append('generated prose adequacy requires qualitative review')
                     elif provenance is not None or any(isinstance(p, dict) and p.get('question') == 'NextStep' for p in prose if isinstance(prose, list)):
                         errors.append('unusable generated direction revived')
+            scope_conflict = any(error in {'Project identity', 'selected Work identity',
+                'generated Work/Project scope'} for error in errors)
+            for report in omissions:
+                report['scope_status'] = 'contradicted' if scope_conflict else 'bounded'
             status = ('confirmed_violation' if errors else 'indeterminate'
                 if any('unavailable' in limit or 'unresolvable' in limit for limit in limits) else 'confirmed_pass')
             observations.append({k: v for k, v in returned.items() if k != 'result'} | {
                 'raw_capture_sha256': capture.source_sha256, 'status': status,
                 'errors': sorted(set(errors)), 'limits': sorted(set(limits)),
                 'basis_kind': 'observation_time_authoring_and_immutable_checkpoint',
-                'goal_basis': goal, 'lifecycle_basis': lifecycle,
+                'goal_basis': goal, 'lifecycle_basis': lifecycle, 'transport_omissions': omissions,
                 'source_status_basis': 'returned_observation_only_not_later_bundle'})
     status = ('confirmed_violation' if any(o['status'] == 'confirmed_violation' for o in observations)
         else 'indeterminate' if any(o['status'] == 'indeterminate' for o in observations)

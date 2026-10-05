@@ -143,6 +143,8 @@ def from_observation(observation):
                 "supported_absence": [o["call_id"] for o in observations
                     if "absent" in (o.get("lifecycle_basis", {}).get("work"),
                         o.get("lifecycle_basis", {}).get("checkpoint"))],
+                "supported_omission": [o["call_id"] for o in observations
+                    if any(r.get("scope_status") == "bounded" for r in o.get("transport_omissions", []))],
                 "insufficient_evidence": [o["call_id"] for o in observations
                     if o["status"] == Status.INDETERMINATE],
                 "confirmed_contradiction": [o["call_id"] for o in observations

@@ -222,9 +222,12 @@ class AnswerTests(unittest.TestCase):
         work['answers'].update(explanation_state='current', provenance={
             'project_id': correct['project_id'], 'subject': {'kind': 'work', 'identity': list(bytes.fromhex(work['work_item_id']))},
             'language': 'en', 'generator_identity_status': 'self_reported_not_independently_verified',
+            'question': 'work', 'fingerprint': 'ab' * 32, 'generated_at_unix_micros': 1,
+            'generator': {'host': 'fixture', 'session': 'fixture', 'agent': None, 'model': None},
+            'source_status': [], 'conflicts': [],
             'evidence': [{'key': 'next_step', 'identity': action['checkpoint_id'], 'revision': 1,
-                'field': 'next_step', 'sources': action['source_ids']},
-                {'key': 'goal', 'identity': work['work_item_id'], 'revision': 1, 'field': 'statement', 'sources': action['source_ids']}]},
+                'field': 'next_step', 'sources': action['source_ids'], 'record_kind': 'checkpoint', 'content': None},
+                {'key': 'goal', 'identity': work['work_item_id'], 'revision': 1, 'field': 'statement', 'sources': action['source_ids'], 'record_kind': 'context_item', 'content': None}]},
             prose=[{'question': 'NextStep', 'role': 'generated_interpretation',
                 'text': 'Continue the task using the recorded action.', 'evidence_keys': ['next_step']}])
         return correct
@@ -531,6 +534,138 @@ class AnswerTests(unittest.TestCase):
             _, fact = self.evaluate(wrong)
             self.assertEqual(fact['status'], 'confirmed_violation', (mutation, fact))
             self.assertEqual(m.disposition('shared_answer_integrity', fact['status']), 'hard_blocking')
+
+    def subject_omitted_answer(self):
+        value = self.generated_answer()
+        provenance = value['selected_work']['answers']['provenance']
+        del provenance['subject']
+        provenance['transport_omission'] = {'reason': 'serialized_byte_budget',
+            'omitted_field_count': 1, 'basis': 'inspect the authoritative record at this identity'}
+        return value
+
+    def test_generated_subject_parent_omission_retains_exact_reason_and_scope(self):
+        for shape in ('subject_only', 'reviewed_seven_fields', 'whole_subject'):
+            with self.subTest(shape=shape):
+                self.setUp()
+                value = self.subject_omitted_answer()
+                provenance = value['selected_work']['answers']['provenance']
+                if shape == 'reviewed_seven_fields':
+                    for field in ('generator', 'generator_identity_status', 'fingerprint',
+                            'generated_at_unix_micros', 'question', 'source_status'):
+                        del provenance[field]
+                    provenance['transport_omission']['omitted_field_count'] = 7
+                elif shape == 'whole_subject':
+                    del provenance['transport_omission']
+                    provenance['subject'] = {'transport_omission': {'reason': 'serialized_byte_budget',
+                        'exact_json_bytes': 92, 'basis': 'inspect the complete field on the authoritative parent record'}}
+                result, fact = self.evaluate(value, cli=value)
+                self.assertEqual(fact['status'], 'indeterminate', fact)
+                for observation in fact['basis']['observations']:
+                    self.assertNotIn('generated Work/Project scope', observation['errors'])
+                    report = next(r for r in observation['transport_omissions'] if r['field'] == 'subject')
+                    self.assertEqual(report['scope'], '/selected_work/answers/provenance')
+                    expected_marker = provenance.get('transport_omission', provenance.get('subject', {}).get('transport_omission'))
+                    self.assertEqual(report['marker'], expected_marker)
+                    self.assertIn('generated prose adequacy requires qualitative review', observation['limits'])
+                finding = next(f for f in m.from_observation(result) if f['check'] == 'shared_answer_integrity')
+                self.assertEqual(finding['disposition'], 'qualitative_review_required')
+                self.assertEqual(len(finding['basis']['answer_observation_states']['supported_omission']), 2)
+
+    def test_absent_subject_requires_same_provenance_field_marker(self):
+        for mode in ('no_marker', 'answers_ancestor', 'recall_ancestor', 'sibling_paragraph',
+                'suffix_marker', 'wrong_reason', 'wrong_basis', 'foreign_scope', 'too_many_fields', 'multiple_counts', 'bool_count'):
+            with self.subTest(mode=mode):
+                self.setUp()
+                value = self.subject_omitted_answer(); answers = value['selected_work']['answers']
+                provenance = answers['provenance']; marker = provenance['transport_omission']
+                if mode == 'no_marker':
+                    del provenance['transport_omission']
+                elif mode in ('answers_ancestor', 'recall_ancestor', 'sibling_paragraph'):
+                    del provenance['transport_omission']
+                    destination = answers if mode == 'answers_ancestor' else value if mode == 'recall_ancestor' else answers['prose'][0]
+                    destination['transport_omission'] = marker
+                elif mode == 'suffix_marker':
+                    del marker['omitted_field_count']; marker.update(omitted_count=1,
+                        basis='same parent identity, field and stable input order; inspect the authoritative record')
+                elif mode == 'wrong_reason':
+                    marker['reason'] = 'scope'
+                elif mode == 'wrong_basis':
+                    marker['basis'] = 'any missing field'
+                elif mode == 'foreign_scope':
+                    marker['project_id'] = 'ff' * 16
+                elif mode == 'too_many_fields':
+                    marker['omitted_field_count'] = 99
+                elif mode == 'multiple_counts':
+                    marker['exact_json_bytes'] = 900
+                else:
+                    marker['omitted_field_count'] = True
+                _, fact = self.evaluate(value)
+                self.assertEqual(fact['status'], 'confirmed_violation', fact)
+                self.assertIn('generated Work/Project scope', fact['basis']['observations'][0]['errors'])
+
+    def test_supported_subject_omission_cannot_mask_present_contradictions(self):
+        for field in ('subject', 'project', 'work', 'language', 'revision', 'source', 'identity'):
+            with self.subTest(field=field):
+                self.setUp()
+                value = self.subject_omitted_answer(); provenance = value['selected_work']['answers']['provenance']
+                if field == 'subject':
+                    provenance['subject'] = {'kind': 'work', 'identity': [255] * 16}
+                    del provenance['fingerprint']  # Marker remains a valid one-field omission.
+                elif field == 'project':
+                    provenance['project_id'] = 'ff' * 16
+                elif field == 'work':
+                    value['selected_work']['work_item_id'] = 'malformed'
+                elif field == 'language':
+                    provenance['language'] = 'ko'
+                elif field == 'revision':
+                    provenance['evidence'][1]['revision'] = 2
+                elif field == 'source':
+                    provenance['evidence'][1]['sources'] = ['ff' * 16]
+                else:
+                    provenance['evidence'][1]['identity'] = 'ff' * 16
+                result, fact = self.evaluate(value)
+                self.assertEqual(fact['status'], 'confirmed_violation', fact)
+                finding = next(f for f in m.from_observation(result) if f['check'] == 'shared_answer_integrity')
+                self.assertEqual(finding['disposition'], 'hard_blocking')
+                if field in ('project', 'work'):
+                    self.assertEqual(finding['basis']['answer_observation_states']['supported_omission'], [])
+                    self.assertTrue(all(r['scope_status'] == 'contradicted'
+                        for r in fact['basis']['observations'][0]['transport_omissions']))
+
+    def test_requested_project_conflict_remains_hard_without_bundle(self):
+        self.descriptor['evidence']['canonical_bundle']['sha256'] = 'f' * 64
+        value = self.subject_omitted_answer()
+        value['selected_work']['answers']['provenance']['project_id'] = 'ff' * 16
+        _, fact = self.evaluate(value)
+        self.assertEqual(fact['status'], 'confirmed_violation', fact)
+        self.assertIn('generated Work/Project scope', fact['basis']['observations'][0]['errors'])
+        value = self.subject_omitted_answer(); value['project_id'] = 'ff' * 16
+        _, fact = self.evaluate(value)
+        self.assertEqual(fact['status'], 'confirmed_violation', fact)
+        self.assertIn('Project identity', fact['basis']['observations'][0]['errors'])
+
+    def test_coupled_generated_fields_use_same_scoped_omission_contract(self):
+        for field in ('project_id', 'evidence_identity', 'evidence_revision', 'evidence_sources',
+                'prose_parent', 'provenance_parent'):
+            with self.subTest(field=field):
+                self.setUp()
+                value = self.generated_answer(); answers = value['selected_work']['answers']
+                target = answers['provenance']
+                if field.startswith('evidence_'):
+                    target = target['evidence'][0]; member = field.removeprefix('evidence_')
+                elif field.endswith('_parent'):
+                    target = answers; member = field.removesuffix('_parent')
+                    answers['diagnostic'] = None
+                else:
+                    member = field
+                del target[member]
+                target['transport_omission'] = {'reason': 'serialized_byte_budget', 'omitted_field_count': 1,
+                    'basis': 'inspect the authoritative record at this identity'}
+                _, fact = self.evaluate(value)
+                self.assertEqual(fact['status'], 'indeterminate', (field, fact))
+                value['next_step'] = 'Wrong recorded direction'
+                _, fact = self.evaluate(value)
+                self.assertEqual(fact['status'], 'confirmed_violation', (field, fact))
 
     def test_scoped_generated_omissions_are_indeterminate_without_excusing_wrong_values(self):
         marker = {'transport_omission': {'reason': 'serialized_byte_budget', 'omitted_count': 1,

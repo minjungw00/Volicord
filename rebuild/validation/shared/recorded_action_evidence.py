@@ -16,8 +16,43 @@ def transport_omission(value):
         'omitted_field_count': 'inspect the authoritative record at this identity',
         'exact_json_bytes': 'inspect the complete field on the authoritative parent record',
     }
-    return any(type(marker.get(k)) is int and marker[k] > 0 and marker.get('basis') == basis
-        for k, basis in bases.items())
+    counts = set(marker) & set(bases)
+    if len(counts) != 1:
+        return False
+    count = next(iter(counts))
+    allowed = {'reason', 'basis', count}
+    if count == 'omitted_count':
+        allowed.add('first_omitted_identity')
+        # The serializer may expose any bounded JSON identity representation.
+        # This hint is never used to infer missing canonical content.
+    return (set(marker) <= allowed and type(marker[count]) is int and marker[count] > 0
+        and marker.get('basis') == bases[count])
+
+
+def field_omission(value, field, *, fields, optional=()):
+    """Prove a whole-field or exact same-object field-count omission.
+
+    The caller supplies the current enclosing DTO contract. An array suffix,
+    foreign ancestor marker, unexpected scope keys or a present ordinary value
+    cannot stand in for an omitted field. Return the exact marker for review.
+    """
+    if not isinstance(value, dict) or field not in fields:
+        return None
+    if field in value:
+        child = value[field]
+        if transport_omission(child) and 'exact_json_bytes' in child['transport_omission']:
+            return {'placement': 'whole_field', 'marker': child['transport_omission']}
+        return None
+    marker = value.get('transport_omission')
+    if not transport_omission({'transport_omission': marker}) or 'omitted_field_count' not in marker:
+        return None
+    present = set(value) - {'transport_omission'}
+    if not present or not present <= set(fields):
+        return None
+    missing = set(fields) - present
+    if not len(missing - set(optional)) <= marker['omitted_field_count'] <= len(missing):
+        return None
+    return {'placement': 'parent_fields', 'marker': marker}
 
 
 def recorded_action_errors(expected, recall):
@@ -43,7 +78,8 @@ def recorded_action_errors(expected, recall):
     if not isinstance(facts, list):
         return errors + ["shared answer sections"]
     if not isinstance(prose, list):
-        if not transport_omission(prose):
+        if not field_omission(answers, 'prose',
+                fields={'facts', 'prose', 'explanation_state', 'diagnostic', 'provenance'}):
             return errors + ["shared answer sections"]
         # Only the visible recorded action is checked here. The caller retains
         # the generated-prose observation gap; the V11 oracle still requires its
