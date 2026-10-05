@@ -816,6 +816,15 @@ capture; no per-session generation quota applies. Model/host claims remain
 self-reported or unknown; a record receipt proves local retention and structural
 linkage, not authorship, translation quality or semantic adequacy.
 
+Naturalistic identity observation distinguishes an empty Project, a new Goal/Work without a
+meaningful Checkpoint, a Work with a Checkpoint, and an existing-Work resume. Project
+initialization and observation-time record receipts establish these states independently
+of the answer. Supported null Work/Checkpoint values are absence, rather than identity
+contradictions. Unproved lifecycle/temporal state stays indeterminate; a later export cannot
+make a future Work mandatory at an earlier read. Independently expected resume identity,
+present wrong Project/Work/Goal/Checkpoint and conflicting visible Source evidence remain
+hard findings. These observer rules do not change Product serialization or Work selection.
+
 Naturalistic Recall evidence checks Goal grounding at each observed read, using prior successful
 creation/correction receipts and supported capture relationships rather than the first creation or
 latest export for every read. Successful CAS correction advances the same identity's revision while

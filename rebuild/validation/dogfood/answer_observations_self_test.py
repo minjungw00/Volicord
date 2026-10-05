@@ -53,6 +53,89 @@ class AnswerTests(unittest.TestCase):
         result = h.real_session_evidence(self.descriptor, kind='volicord', cycle=1, repository_revision='0' * 40)
         return result, result['machine_facts']['shared_answer_integrity']
 
+    def initial_recall(self, *, after_goal=False, initialize=True, later_work=True):
+        """Insert a measured read before creation, keeping the later export intact."""
+        reference = self.descriptor['evidence']['captures']['work']
+        path = self.root / reference['file']
+        events = [json.loads(line) for line in path.read_text().splitlines()]
+        operation = 'repository_analyze' if after_goal else 'context_record'
+        index = next(i for i, event in enumerate(events) if event['payload'].get('type') == 'custom_tool_call'
+            and f'__{operation}(' in event['payload'].get('input', ''))
+        empty = {'project_id': '01' * 16, 'selected_work': None, 'checkpoint': None,
+            'goal_basis': [], 'next_step': None, 'read_only': True}
+        if after_goal:
+            empty['goal_basis'] = copy.deepcopy(self.answer['goal_basis'])
+            empty['selected_work'] = {'work_item_id': '08' * 16, 'checkpoint_ids': [],
+                'answers': {'explanation_state': 'unavailable', 'provenance': None, 'prose': [],
+                    'facts': [{'question': 'NextStepAvailability', 'role': 'unavailable',
+                        'text': 'No next action is recorded: this Work has no Checkpoint.', 'evidence_keys': []}]}}
+        turn = events[index]['payload']['internal_chat_message_metadata_passthrough']['turn_id']
+        additions = [
+            {'timestamp': events[index]['timestamp'], 'type': 'response_item', 'payload': {
+                'type': 'custom_tool_call', 'name': 'exec', 'call_id': 'initial-wrapper', 'status': 'completed',
+                'input': 'const r=await tools.mcp__volicord__recall({"project_id":"' + '01' * 16 + '"}); text(JSON.stringify(r));',
+                'internal_chat_message_metadata_passthrough': {'turn_id': turn}}},
+            {'timestamp': events[index]['timestamp'], 'type': 'event_msg', 'payload': {
+                'type': 'mcp_tool_call_end', 'call_id': 'initial', 'turn_id': turn,
+                'invocation': {'server': 'volicord', 'tool': 'recall', 'arguments': {'project_id': '01' * 16}},
+                'result': {'Ok': {'content': [{'type': 'text', 'text': json.dumps(empty)}],
+                    'structuredContent': empty, 'isError': False}}}}]
+        events[index:index] = additions
+        if not later_work:
+            events = events[:index + len(additions)] + [events[-1]]
+            self.descriptor['evidence']['captures'].pop('resume')
+        if not initialize:
+            events = [event for event in events if 'initialize-call' not in event['payload'].get('call_id', '')]
+        path.write_text(''.join(json.dumps(event) + '\n' for event in events))
+        reference['sha256'] = h.sha256(path)
+        return self.evaluate(), empty
+
+    def test_initial_empty_recall_and_later_creation_do_not_require_future_work(self):
+        for later_work in (False, True):
+            with self.subTest(later_work=later_work):
+                self.setUp()
+                (result, fact), _ = self.initial_recall(later_work=later_work)
+                observation = fact['basis']['observations'][0]
+                self.assertEqual(observation['status'], 'confirmed_pass', observation)
+                self.assertEqual(observation['lifecycle_basis']['work'], 'absent')
+                finding = next(f for f in m.from_observation(result) if f['check'] == 'shared_answer_integrity')
+                self.assertEqual(finding['disposition'], 'advisory')
+
+    def test_initial_absence_without_independent_empty_state_is_indeterminate(self):
+        (result, fact), _ = self.initial_recall(initialize=False)
+        observation = fact['basis']['observations'][0]
+        self.assertEqual(observation['status'], 'indeterminate', observation)
+        self.assertEqual(observation['errors'], [])
+        finding = next(f for f in m.from_observation(result) if f['check'] == 'shared_answer_integrity')
+        self.assertEqual(finding['disposition'], 'qualitative_review_required')
+
+    def test_new_goal_without_meaningful_checkpoint_is_supported(self):
+        (_, fact), _ = self.initial_recall(after_goal=True)
+        observation = fact['basis']['observations'][0]
+        self.assertEqual(observation['status'], 'confirmed_pass', observation)
+        self.assertEqual(observation['lifecycle_basis']['expected_work'], '08' * 16)
+        self.assertEqual(observation['lifecycle_basis']['checkpoint'], 'absent')
+
+    def test_resume_absence_and_present_identity_conflicts_remain_hard(self):
+        for field in ('selected_work', 'checkpoint', 'project_id', 'work', 'goal', 'revision'):
+            with self.subTest(field=field):
+                self.setUp()
+                wrong = copy.deepcopy(self.answer)
+                if field in ('selected_work', 'checkpoint'):
+                    wrong[field] = None
+                elif field == 'project_id':
+                    wrong[field] = 'ff' * 16
+                elif field == 'work':
+                    wrong['selected_work']['work_item_id'] = 'ff' * 16
+                elif field == 'goal':
+                    wrong['goal_basis'][0]['identity'] = 'ff' * 16
+                else:
+                    wrong['checkpoint']['revision'] = 2
+                result, fact = self.evaluate(wrong)
+                self.assertEqual(fact['status'], 'confirmed_violation', fact)
+                finding = next(f for f in m.from_observation(result) if f['check'] == 'shared_answer_integrity')
+                self.assertEqual(finding['disposition'], 'hard_blocking')
+
     def test_valid_unavailable_explanation_keeps_recorded_action(self):
         result, fact = self.evaluate()
         self.assertEqual(fact['status'], 'confirmed_pass', fact)

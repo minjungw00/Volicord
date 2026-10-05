@@ -1564,6 +1564,20 @@ Naturalistic shared-answer observation uses explicit Project-scoped `goal_basis`
 identity and canonical Source relationships, never equal Goal text. The separate
 `shared_answer_integrity` fact checks every observed MCP Recall and supported JSON
 CLI Recall against independently ordered record receipts and immutable same-Work Checkpoints.
+Lifecycle absence is resolved independently of the returned Recall. A prior successful
+same-Project initialization proves an empty Project until witnessed Goal creation; a fresh
+Goal creation receipt supports a Work without a meaningful Checkpoint until publication.
+Selected Work and Goal are required after creation, while a Checkpoint is required after
+an ordered same-Work publication or independently bound completed-Work/fresh-resolution
+relationship. The latter proves existence, separately from the stronger handoff relationship
+required to fold historical Goal revisions. A resume's independently bound canonical Work
+cannot disappear merely because its answer returns null. Explicit null and missing required
+fields differ. A start with no independent empty-state witness remains indeterminate, even
+when its answer is empty. Later Goal/Checkpoint receipts and exports do not retroactively
+require those identities at an earlier read. Machine basis retains lifecycle states, receipt
+coordinates, capture hashes, supported-absence and insufficient-evidence classifications;
+any independent contradiction still takes hard-blocking precedence.
+
 Goal revision is folded separately for each Recall from successful `context_record` creation/
 continuation receipts and `canonical_mutate(correct_context)` or explicitly Project-bound JSON
 `advanced records correct-context` receipts. Expected/actual CAS revisions must agree; a failed

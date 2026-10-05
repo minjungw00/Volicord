@@ -134,7 +134,21 @@ def from_observation(observation):
     for rule, fact in sorted(observation.get("machine_facts", {}).items()):
         if rule not in FACT_RULES:
             raise ValueError("unknown audited fact rule")
-        findings.append(finding(rule, fact["status"], fact["basis"]))
+        basis = fact["basis"]
+        if rule == "shared_answer_integrity":
+            # Keep supported absence distinct from missing temporal evidence;
+            # neither changes the authority of an independently proved conflict.
+            observations = basis.get("observations", [])
+            basis = {**basis, "answer_observation_states": {
+                "supported_absence": [o["call_id"] for o in observations
+                    if "absent" in (o.get("lifecycle_basis", {}).get("work"),
+                        o.get("lifecycle_basis", {}).get("checkpoint"))],
+                "insufficient_evidence": [o["call_id"] for o in observations
+                    if o["status"] == Status.INDETERMINATE],
+                "confirmed_contradiction": [o["call_id"] for o in observations
+                    if o["status"] == Status.VIOLATION],
+            }}
+        findings.append(finding(rule, fact["status"], basis))
     return findings
 
 
