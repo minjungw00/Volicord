@@ -566,6 +566,10 @@ def measured_cli_operations(capture):
                 pass
         values.append({'transport': 'cli', 'call_id': command.execution_identity, 'turn_id': command.turn_id,
             'sequence': command.sequence, 'completion_sequence': command.completion_sequence,
+            'raw_call_id': command.raw_call_id, 'group_index': command.group_index,
+            'continuation_coordinates': command.continuation_coordinates,
+            'exit_code': command.exit_code, 'termination': command.termination,
+            'signal_number': command.signal_number, 'evidence_state': command.evidence_state,
             'operation': expected,
             'requested_language': argv[argv.index('--language') + 1] if '--language' in argv and argv.index('--language') + 1 < len(argv) else 'en',
             'result': result})

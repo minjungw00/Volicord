@@ -8,6 +8,39 @@ from unittest.mock import patch
 
 import campaign as c
 import explanation_evidence as e
+import capture_self_test as captures
+
+
+class MeasuredExecutionTests(unittest.TestCase):
+    def test_corpus_shaped_explanation_lifecycle_reaches_final_consumer(self):
+        helper = captures.CurrentExecutionTests()
+        for kind in ('work', 'decision'):
+            preparation, _, record, readback = lifecycle(kind)
+            commands = [f'volicord --runtime /private/runtime --repository /phase8/repository --json {kind} explain prepare --{kind} {"08" * 16} --language en',
+                f'volicord --runtime /private/runtime --repository /phase8/repository --json {kind} explain record --plan /private/plan.json --response /private/response.json',
+                'volicord --json status' if kind == 'work' else 'volicord --json decisions']
+            source = '\n'.join('text(await tools.exec_command(' + json.dumps({'cmd': cmd}) + '));' for cmd in commands)
+            returned = [{'plan': preparation['plan']}, record, readback]
+            capture = helper.command(source, [json.dumps({'output': json.dumps(result), 'exit_code': 0}) for result in returned])
+            observed = e.measured_cli_operations(capture)
+            self.assertEqual([v['operation'] for v in observed], ['explanation_prepare', 'explanation_record',
+                'project_status' if kind == 'work' else 'decisions'])
+            self.assertEqual([v['result'] for v in observed], returned)
+            self.assertEqual([v['exit_code'] for v in observed], [0, 0, 0])
+            self.assertEqual(len({v['call_id'] for v in observed}), 3)
+            # A numeric failure cannot acquire a successful Product receipt.
+            failed = helper.command(source, [json.dumps({'output': json.dumps(result), 'exit_code': 143}) for result in returned])
+            self.assertTrue(all(v['result'] is None and v['exit_code'] == 143 for v in e.measured_cli_operations(failed)))
+
+    def test_corpus_shaped_test_execution_reaches_validation_consumer(self):
+        import harness
+        capture = captures.CurrentExecutionTests().command(
+            'text(await tools.exec_command({cmd:"rebuild/scripts/validate focused reuse -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-operations --test analysis_reuse"}));',
+            ['{"output":"tests passed","exit_code":143}'])
+        result = harness.meaningful_resume_validation(capture, 0)
+        self.assertFalse(result['qualified'])
+        self.assertTrue(result['unresolved_terminal_failure'])
+        self.assertEqual(result['terminal_execution_identity'], 'custom_call:test:0')
 
 
 def lifecycle(kind='work', language='en', before_state='unavailable'):

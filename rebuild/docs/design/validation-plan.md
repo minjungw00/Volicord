@@ -1738,6 +1738,25 @@ exit and termination; actual nonzero verification fails and incomplete execution
 Session 1's 256 KiB MCP Recall budget remains unchanged. Sanitized bounded Recall and chronology
 regressions live in `resume_self_test.py` and run in the maintained campaign self-test.
 
+The bounded Codex custom-call parser supports whole-cell direct
+`text(await tools.exec_command({...}));` and `write_stdin` forwarding, including
+up to sixteen sequential direct calls with exactly one separate JSON result item
+per call after an empty completed-wrapper header. It also retains the maintained
+assigned-result, literal-string binding, numeric template/projection, and static
+`Promise.all` indexed/named/labeled grammars. Arguments use the existing closed
+JSON-like literal parser; no JavaScript evaluation, expression recovery or arbitrary
+AST interpretation occurs. Extra output, ambiguous item cardinality, mixed dynamic
+code and unmatched result fields cannot establish correlated completion.
+
+Raw capture hash, wrapper call/turn, invocation/completion sequence and group index
+bind each normalized command. `write_stdin` joins only the captured numeric process
+session from its original launch, retaining the launch execution identity and every
+continuation coordinate. Wrapper completion, tool return and shell termination are
+distinct: `Script completed` alone never supplies inner success. Numeric exits
+(including 143), negative signal exits and indeterminate completion remain separate.
+Measured explanation CLI operations retain these outcomes alongside returned JSON;
+failed or unresolvable execution never supplies a successful Product receipt.
+
 Hidden pre-Discovery investigation has explicit `complete`, `indeterminate` and `missing`
 evidence states. Successful numeric execution of a supported inspection or successful structured
 `repository_understanding` is complete. When numeric execution evidence is unavailable, a closed

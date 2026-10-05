@@ -14336,7 +14336,7 @@ def self_test() -> int:
         raise AssertionError("current execution fixture lost command order, outcome, or output state")
     long_running = execution_capture.commands[-1]
     if (
-        long_running.execution_identity != "process_session:77"
+        long_running.execution_identity != "custom_call:call-long-launch:0"
         or long_running.evidence_state != "completed"
         or long_running.sequence >= long_running.completion_sequence
     ):
@@ -21165,7 +21165,7 @@ def self_test() -> int:
     if (
         long_running_result["checks"]["meaningful_recalled_continuation"]
         != "passed"
-        or long_running_command.execution_identity != "process_session:501"
+        or long_running_command.execution_identity != "custom_call:volicord-resume-verification-call-1:0"
         or long_running_command.evidence_state != "completed"
         or long_running_command.exit_code != 0
     ):

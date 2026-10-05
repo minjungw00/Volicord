@@ -935,8 +935,9 @@ def main() -> int:
     checked = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(AnswerTests))
     if not checked.wasSuccessful():
         raise AssertionError("shared answer consumer regressions failed")
-    from explanation_evidence_self_test import LifecycleTests
-    checked = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(LifecycleTests))
+    from explanation_evidence_self_test import LifecycleTests, MeasuredExecutionTests
+    checked = unittest.TextTestRunner().run(unittest.TestSuite(
+        unittest.defaultTestLoader.loadTestsFromTestCase(case) for case in (LifecycleTests, MeasuredExecutionTests)))
     if not checked.wasSuccessful():
         raise AssertionError("explanation lifecycle regressions failed")
     from review_meaning_self_test import MeaningTests

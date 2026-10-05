@@ -586,6 +586,9 @@ class CommandObservation:
     output_was_empty: bool
     execution_identity: str | None = None
     evidence_state: str = "indeterminate"
+    raw_call_id: str | None = None
+    continuation_coordinates: tuple[tuple[str, str, int, int, int], ...] = ()
+    signal_number: int | None = None
 
 
 @dataclass(frozen=True)
@@ -857,6 +860,9 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
     """Recognize one bounded current exec-cell call without evaluating JavaScript."""
     if not isinstance(value, str) or len(value.encode("utf-8")) > 64 * 1024:
         return None
+    direct = parse_direct_execution_sequence(value)
+    if direct is not None:
+        return direct[0] if len(direct) == 1 else ParsedCustomCall('direct_sequence', direct, 'ordered_results')
     # Only immutable literal strings; no substitution inside strings or captured JS execution.
     bindings: dict[str, str] = {}
     declaration = re.compile(r'\s*const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*("(?:\\.|[^"\\])*")\s*;')
@@ -1015,6 +1021,32 @@ def parse_custom_call(value: Any) -> ParsedCustomCall | None:
         else "output"
     )
     return ParsedCustomCall(tool_name, arguments, mode, tuple(sorted(correlated_fields or ())))
+
+
+def parse_direct_execution_sequence(value: str) -> tuple[ParsedCustomCall, ...] | None:
+    """Closed sequential forwarding grammar, with one output item per call.
+
+    No expressions, callbacks, comments, dynamic bindings or extra output. Parsing
+    consumes literals and punctuation only; JavaScript is never executed.
+    """
+    prefix = re.compile(r'\s*text\s*\(\s*await\s+tools\.(exec_command|write_stdin)\s*\(')
+    suffix = re.compile(r'\s*\)\s*\)\s*;')
+    offset, calls = 0, []
+    while offset < len(value) and value[offset:].strip():
+        match = prefix.match(value, offset)
+        if match is None or len(calls) >= 16:
+            return None
+        parser = JsLiteralParser(value[match.end():])
+        try:
+            arguments = parser.value()
+        except (EvidenceError, RecursionError):
+            return None
+        closing = suffix.match(value, match.end() + parser.offset)
+        if closing is None or not isinstance(arguments, dict):
+            return None
+        calls.append(ParsedCustomCall(match[1], arguments, 'result'))
+        offset = closing.end()
+    return tuple(calls) if calls else None
 
 
 def parse_mcp_wrapper(value: Any) -> ParsedMcpWrapper | None:
@@ -1354,8 +1386,8 @@ def custom_output_object(value: Any) -> dict[str, Any] | None:
     if body is None:
         return None
     try:
-        parsed = json.loads(body)
-    except json.JSONDecodeError:
+        parsed = strict_json(body)
+    except (ValueError, RecursionError):
         return None
     return parsed if isinstance(parsed, dict) else None
 
@@ -2344,10 +2376,23 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
     tool_call_evidence: list[_ToolCallEvidence] = []
     commands: list[CommandObservation] = []
     pending_commands: dict[int, dict[str, Any]] = {}
+    executions = []
     for call_id, (sequence, turn_id, parsed) in sorted(
         calls.items(), key=lambda item: item[1][0]
     ):
         completion = completions.get(call_id)
+        if parsed.tool_name == 'direct_sequence':
+            parts = custom_output_parts(completion[2]) if completion else None
+            header = CUSTOM_OUTPUT_HEADER.fullmatch(parts[0]) if parts else None
+            correlated = bool(parts and len(parts) == len(parsed.arguments) + 1
+                and header and not header['body'])
+            for index, child in enumerate(parsed.arguments):
+                child_completion = (completion[0], completion[1],
+                    [{'type': 'input_text', 'text': part} for part in (parts[0], parts[index + 1])]) if correlated else None
+                executions.append((call_id, sequence, turn_id, child, child_completion, index))
+        else:
+            executions.append((call_id, sequence, turn_id, parsed, completion, 0))
+    for call_id, sequence, turn_id, parsed, completion, wrapper_index in executions:
         if completion is None or completion[0] <= sequence or completion[1] != turn_id:
             if parsed.tool_name != "exec_command":
                 continue
@@ -2383,26 +2428,30 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                 and (
                     isinstance(exit_code, bool)
                     or not isinstance(exit_code, int)
-                    or not 0 <= exit_code <= 2_147_483_647
+                    or not -2_147_483_647 <= exit_code <= 2_147_483_647
                 )
             ):
                 continue
             pending["output"] += output
             pending["completion_sequence"] = completion_sequence
+            pending['continuations'].append((call_id, turn_id, sequence, completion_sequence, wrapper_index))
             if isinstance(exit_code, int):
                 commands.append(
                     CommandObservation(
                         pending["sequence"],
                         completion_sequence,
                         pending["turn_id"],
-                        0,
+                        pending['group_index'],
                         pending["arguments"],
                         exit_code,
-                        "exited",
+                        'signaled' if exit_code < 0 else 'exited',
                         pending["output"],
                         not pending["output"].strip(),
-                        f"process_session:{session_id_value}",
+                        pending['execution_identity'],
                         "completed",
+                        pending['raw_call_id'],
+                        tuple(pending['continuations']),
+                        -exit_code if exit_code < 0 else None,
                     )
                 )
                 del pending_commands[session_id_value]
@@ -2515,7 +2564,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                     and (
                         isinstance(exit_code, bool)
                         or not isinstance(exit_code, int)
-                        or not 0 <= exit_code <= 2_147_483_647
+                        or not (-2_147_483_647 if parsed.output_mode == 'result' else 0) <= exit_code <= 2_147_483_647
                     )
                 ):
                     malformed = raw_output is not None
@@ -2534,6 +2583,10 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                     "turn_id": turn_id,
                     "arguments": arguments[0],
                     "output": normalized_results[0][0],
+                    'execution_identity': f'custom_call:{call_id}:{wrapper_index}',
+                    'raw_call_id': call_id,
+                    'group_index': wrapper_index,
+                    'continuations': [],
                 }
                 continue
             for group_index, (arguments_value, normalized) in enumerate(
@@ -2545,14 +2598,17 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                         sequence,
                         completion_sequence,
                         turn_id,
-                        group_index,
+                        group_index + wrapper_index,
                         arguments_value,
                         exit_code,
-                        "exited" if isinstance(exit_code, int) else None,
+                        ('signaled' if exit_code < 0 else 'exited') if isinstance(exit_code, int) else None,
                         output,
                         not output.strip(),
-                        f"custom_call:{call_id}:{group_index}",
+                        f"custom_call:{call_id}:{group_index + wrapper_index}",
                         "completed" if isinstance(exit_code, int) else "indeterminate",
+                        call_id,
+                        (),
+                        -exit_code if isinstance(exit_code, int) and exit_code < 0 else None,
                     )
                 )
 
@@ -2568,14 +2624,16 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                 pending["sequence"],
                 pending["completion_sequence"],
                 pending["turn_id"],
-                0,
+                pending['group_index'],
                 pending["arguments"],
                 None,
                 None,
                 pending["output"],
                 not pending["output"].strip(),
-                f"process_session:{session_id_value}",
+                pending['execution_identity'],
                 "indeterminate",
+                pending['raw_call_id'],
+                tuple(pending['continuations']),
             )
         )
 

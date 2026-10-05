@@ -372,6 +372,53 @@ class CurrentExecutionTests(unittest.TestCase):
                        'const [a,b]=await Promise.all(commands.map(c=>tools.exec_command(c)));text(JSON.stringify({a,b}));'):
             self.assertIsNone(parse_custom_call(source))
 
+    def test_direct_calls_and_ordered_results_keep_distinct_execution_identities(self):
+        source = ('text(await tools.exec_command({cmd:"cargo test"}));\n'
+            'text(await tools.exec_command({cmd:"python3 -m pytest -q"}));')
+        capture = self.command(source, [json.dumps({'output': 'first', 'exit_code': 143}),
+            json.dumps({'output': 'second', 'exit_code': 0})])
+        self.assertEqual([c.exit_code for c in capture.commands], [143, 0])
+        self.assertEqual([c.output for c in capture.commands], ['first', 'second'])
+        self.assertEqual([c.execution_identity for c in capture.commands], ['custom_call:test:0', 'custom_call:test:1'])
+        self.assertEqual([c.group_index for c in capture.commands], [0, 1])
+        for parts in ([json.dumps({'output': 'only one', 'exit_code': 0})],
+                [json.dumps({'output': 'a', 'exit_code': 0})] * 3):
+            ambiguous = self.command(source, parts)
+            self.assertEqual(len(ambiguous.commands), 2)
+            self.assertTrue(all(c.exit_code is None for c in ambiguous.commands))
+
+    def test_direct_continuation_is_joined_to_its_launch(self):
+        source = ('text(await tools.exec_command({cmd:"cargo test",yield_time_ms:1000}));'
+            'text(await tools.write_stdin({session_id:73,chars:"",yield_time_ms:1000}));'
+            'text(await tools.exec_command({cmd:"git diff --stat"}));')
+        capture = self.command(source, [json.dumps({'output': 'start\n', 'session_id': 73}),
+            json.dumps({'output': 'done\n', 'exit_code': 0}), json.dumps({'output': 'diff', 'exit_code': 1})])
+        self.assertEqual([c.exit_code for c in capture.commands], [0, 1])
+        self.assertEqual(capture.commands[0].output, 'start\ndone\n')
+        self.assertEqual(capture.commands[0].execution_identity, 'custom_call:test:0')
+        self.assertEqual(capture.commands[0].continuation_coordinates[0][-1], 1)
+        wrong = source.replace('session_id:73', 'session_id:74')
+        self.assertIsNone(self.command(wrong, [json.dumps({'output': 'start', 'session_id': 73}),
+            json.dumps({'output': 'unrelated', 'exit_code': 0}), json.dumps({'output': '', 'exit_code': 0})]).commands[0].exit_code)
+
+    def test_wrapper_completion_cannot_supply_inner_success(self):
+        source = 'text(await tools.exec_command({cmd:"cargo test"}));'
+        for part in ('tests passed', '{"output":"passed"}',
+                '{"output":"passed","exit_code":0,"exit_code":143}', '{"output":',
+                '{"output":"passed","exit_code":true}'):
+            capture = self.command(source, [part])
+            self.assertIsNone(capture.commands[0].exit_code)
+        signaled = self.command(source, ['{"output":"terminated","exit_code":-15}']).commands[0]
+        self.assertEqual((signaled.exit_code, signaled.signal_number, signaled.termination), (-15, 15, 'signaled'))
+
+    def test_tool_like_text_and_dynamic_direct_calls_are_not_normalized(self):
+        for source in ('text("tools.exec_command({cmd: \\\"cargo test\\\"})");',
+                '// tools.exec_command({cmd:"cargo test"})',
+                '/* tools.exec_command({cmd:"cargo test"}) */ text("done");',
+                'text(await tools.exec_command({cmd:load("cmd")}));',
+                'text(await tools.exec_command({cmd:`cargo ${name}`}));'):
+            self.assertIsNone(parse_custom_call(source))
+
 
 def check_capture_regressions():
     suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls)
