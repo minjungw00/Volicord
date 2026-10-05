@@ -456,3 +456,13 @@ window or erase earlier gaps/samples. Current validators recompute completeness 
 retained per-Runtime tick facts, not an operator's verdict. Sequential observation does
 not count independently known waiting Homes as lost data, and zero samples never qualify
 as measured. These declarations carry no canonical or host-trust authority.
+
+Explicit local analysis records a bounded operation receipt after success or failure;
+a failed newest attempt can coexist with a retained prior Analysis Snapshot. Read-side
+status retains the prior snapshot's actual coverage/freshness rather than presenting
+it as the failed attempt's successful result. Receipt publication failure is itself
+an operation-observation failure; it does not roll back published analysis or claim
+canonical work failed. Missing/corrupt/non-current receipts cannot prove a latest
+attempt. The safe action remains explicit `volicord analyze` after restoring the
+reported repository/analyzer prerequisite, or `volicord doctor repair` for unreadable
+stored analysis. Ordinary reading performs neither action.

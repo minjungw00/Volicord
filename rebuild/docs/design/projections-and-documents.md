@@ -1282,3 +1282,13 @@ code-body warning; this is materialization intent, not an analyzer failure. Cano
 limits remain distinct. Viewer consumers render contextual limits ordinarily and keep
 repository/runtime diagnostics inspectable in evidence disclosures. Blocking canonical
 runtime failure remains ordinary; unrelated auxiliary health is audit evidence.
+
+`ProjectProjection.repository_analysis` and `ProjectUnderstanding.repository_analysis`
+expose the bounded shared status to Viewer consumers; `volicord status --json`
+exposes the same model. Session 2 should render `state`, independently preserved
+`freshness`, `coverage` plus `omitted_coverage_count`, `latest_attempt`,
+`latest_attempt_error`, `retained_prior_result`, `diagnostic` and `refresh_command`.
+Snapshot identities/generation time belong to evidence details. The command is text
+guidance, not a supported Viewer analysis POST. Missing historical attempt receipts
+cannot establish a latest-attempt success. No automatic analyzer execution or automatic
+explanation regeneration is added by status reads or explicit analysis refresh.

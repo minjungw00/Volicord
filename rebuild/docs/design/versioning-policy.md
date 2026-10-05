@@ -321,3 +321,10 @@ decode 또는 adopt하는 durable input format이 아니므로 별도 versioned 
 freshness 설명용이며 canonical schema, portable bundle 또는 generated-document metadata로
 해석하지 않는다. Future에 snapshot ingest/adoption을 지원하려면 그때 별도 current-only
 format contract가 필요하다.
+
+Local `volicord_analysis_attempt` receipts use exact current format version 1,
+independent of Analysis Snapshot and canonical formats. The read checks kind/version
+before typed decode and rejects non-current, malformed, oversized or identity-mismatched
+receipts as unknown attempt history. There is no migration or alternative decoder.
+These local operational receipts are neither portable canonical content nor analysis
+freshness evidence; missing historical receipts imply no knowledge of earlier attempts.

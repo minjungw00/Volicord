@@ -5,6 +5,7 @@
 //! and portable-format meaning to their existing subsystem owners.
 
 mod analysis_io;
+mod analysis_status;
 mod analysis_storage;
 mod cli;
 mod codex;

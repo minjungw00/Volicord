@@ -1087,6 +1087,7 @@ fn status(
     };
     Ok(json!({
         "operation":"project_status",
+        "repository_analysis":understanding.repository_analysis,
         "project_id":understanding.project_id.to_string(),
         "project_name":understanding.project_name,
         "health":debug_name(understanding.health),

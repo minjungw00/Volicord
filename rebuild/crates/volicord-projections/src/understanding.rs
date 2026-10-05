@@ -231,6 +231,7 @@ impl WorkOverview {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectUnderstanding {
+    pub repository_analysis: crate::RepositoryAnalysisReading,
     pub work_overview: WorkOverview,
     pub selection: crate::WorkSelection,
     pub selected_work: Option<UnderstandingWork>,
@@ -503,6 +504,7 @@ pub fn build_project_understanding(
     bound_section(&mut issues, limit, "evidence.issues", &mut omissions);
 
     ProjectUnderstanding {
+        repository_analysis: projection.repository_analysis.clone(),
         selection: projection.selection,
         selected_work: projection.selected_work.clone(),
         selected_work_decisions: projection.selected_work_decisions.clone(),
@@ -2059,6 +2061,7 @@ mod tests {
             checkpoint: checkpoint.clone(),
         };
         ProjectProjection {
+            repository_analysis: crate::RepositoryAnalysisReading::absent(false),
             answer_capability_gaps: Vec::new(),
             answer_issues: Vec::new(),
             work_read_cost: crate::WorkReadCost::default(),

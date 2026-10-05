@@ -517,3 +517,9 @@ policy. Neither supplies user authority or resource body access. Actual user mar
 remains semantic evidence. Private copied result lineage retains immutable raw replay
 inputs for source comparison; reviewer packages and technical archives retain their
 existing separate allowlists. Local verification grants no transmission authority.
+
+Read-side repository analysis status and explicit local `volicord analyze` remain
+local processing. Analysis-attempt receipts contain bounded operation metadata and
+failure labels, never transmitted Source bodies. They grant no provider opt-in and
+create no Work, Decision, Purpose, correction or Checkpoint. A status refresh command
+is guidance to the existing local operation, not Viewer-side authority to mutate.

@@ -518,21 +518,25 @@ impl LocalOperations {
         let operation_id = new_operation_id()?;
         let started_at = now_micros()?;
         let monotonic = Instant::now();
-        let prepared = self.prepare_analysis_basis(project_id, started_at)?;
-        self.analyze_from_basis(
-            operation_id,
-            started_at,
-            monotonic,
-            prepared.root,
-            prepared.requested_path,
-            prepared.canonical,
-            prepared.repository_source,
-            prepared.repository_worktree,
-            excluded_paths,
-            false,
-            None,
-            previous,
-        )
+        let result = (|| {
+            let prepared = self.prepare_analysis_basis(project_id, started_at)?;
+            self.analyze_from_basis(
+                operation_id,
+                started_at,
+                monotonic,
+                prepared.root,
+                prepared.requested_path,
+                prepared.canonical,
+                prepared.repository_source,
+                prepared.repository_worktree,
+                excluded_paths,
+                false,
+                None,
+                previous,
+            )
+        })();
+        self.record_analysis_attempt(project_id, operation_id, &result)?;
+        result
     }
 
     fn observe_repository_worktree(
@@ -2727,6 +2731,7 @@ impl LocalOperations {
             bound: ProjectionBound::default(),
         })
         .map_err(|error| Error::with_source("Work selection failed", error))?;
+        self.attach_analysis_attempt(project_id, &mut projection.repository_analysis);
         let explanation_basis_preparations = self.attach_explanations(&canonical, &mut projection);
         let projection_build = projection_started.elapsed();
         let work_read_cost = projection.work_read_cost;
@@ -4859,7 +4864,10 @@ fn collect_orphan_analysis_blobs(project_directory: &Path) -> Result<u64, Error>
     Ok(deleted)
 }
 
-fn publish_bytes_no_replace(destination: &Path, bytes: &[u8]) -> Result<PublicationOutcome, Error> {
+pub(crate) fn publish_bytes_no_replace(
+    destination: &Path,
+    bytes: &[u8],
+) -> Result<PublicationOutcome, Error> {
     publish_with(destination, |file| file.write_all(bytes))
 }
 

@@ -6,6 +6,8 @@
 
 mod answers;
 pub use answers::*;
+mod analysis_status;
+pub use analysis_status::*;
 mod candidate_inspection;
 mod documents;
 mod explanation;

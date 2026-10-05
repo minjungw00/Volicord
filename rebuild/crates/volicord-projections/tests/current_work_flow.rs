@@ -730,3 +730,75 @@ fn same_language_failure_outside_work_does_not_limit_selected_answer(
         .any(|g| g.reason == "unrelated file failed"));
     Ok(())
 }
+
+#[test]
+fn analysis_status_distinguishes_current_coverage_from_partial_failed_and_unknown(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::RepositoryAnalysisState;
+    use volicord_repository_intelligence::{Capability, CapabilityState, FreshnessState};
+    for (changed_capability, state, freshness, expected) in [
+        (
+            Capability::Structural,
+            CapabilityState::Available,
+            FreshnessState::Current,
+            RepositoryAnalysisState::Current,
+        ),
+        (
+            Capability::Structural,
+            CapabilityState::Partial,
+            FreshnessState::Current,
+            RepositoryAnalysisState::Partial,
+        ),
+        (
+            Capability::Structural,
+            CapabilityState::Failed,
+            FreshnessState::Current,
+            RepositoryAnalysisState::Failed,
+        ),
+        (
+            Capability::Structural,
+            CapabilityState::Available,
+            FreshnessState::Stale,
+            RepositoryAnalysisState::Stale,
+        ),
+        (
+            Capability::Structural,
+            CapabilityState::Available,
+            FreshnessState::Unknown,
+            RepositoryAnalysisState::FreshnessUnknown,
+        ),
+    ] {
+        let (projection, _) = build_projection_scenario(
+            &[("src/lib.rs", "pub fn work() {}")],
+            &["src/lib.rs"],
+            &[vec!["src/lib.rs"]],
+            64,
+            |a| {
+                for report in &mut a.capabilities {
+                    report.state = CapabilityState::Available;
+                }
+                let report = a
+                    .capabilities
+                    .iter_mut()
+                    .find(|r| {
+                        r.capability == changed_capability && r.language == Some(Language::Rust)
+                    })
+                    .ok_or("structural Rust")?;
+                report.state = state;
+                a.freshness.state = freshness;
+                Ok(())
+            },
+        )?;
+        assert_eq!(projection.repository_analysis.state, expected);
+        assert_eq!(
+            projection
+                .repository_analysis
+                .freshness
+                .as_ref()
+                .ok_or("freshness")?
+                .state,
+            freshness
+        );
+    }
+    Ok(())
+}

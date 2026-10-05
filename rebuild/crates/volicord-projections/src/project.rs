@@ -827,6 +827,7 @@ pub struct WorkReadCost {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
+    pub repository_analysis: crate::RepositoryAnalysisReading,
     /// Contextual answer limits, selected before capability/list bounds. Raw
     /// repository diagnostics remain in repository_map and issues.
     pub answer_capability_gaps: Vec<CapabilityGap>,
@@ -1014,6 +1015,45 @@ pub fn build_project_projection(
     let mut issues = source_issues(reading_canonical);
     issues.extend_from_slice(inputs.analysis_issues);
     let graph = projection_graph(reading_canonical, analyses);
+    let repository_analysis = inputs
+        .analyses
+        .iter()
+        .filter(|a| a.project.identity() == reading_canonical.project.id)
+        .map(|a| {
+            crate::RepositoryAnalysisReading::stored(
+                a.identity,
+                a.repository_snapshot,
+                a.generated_at_unix_micros,
+                &a.freshness,
+                &a.capabilities,
+                &a.inventory.entries,
+            )
+        })
+        .chain(
+            inputs
+                .metadata
+                .iter()
+                .filter(|a| a.project.identity() == reading_canonical.project.id)
+                .map(|a| {
+                    crate::RepositoryAnalysisReading::stored(
+                        a.identity,
+                        a.repository_snapshot,
+                        a.generated_at_unix_micros,
+                        &a.freshness,
+                        &a.capabilities,
+                        &a.inventory.entries,
+                    )
+                }),
+        )
+        .max_by_key(|a| (a.generated_at_unix_micros, a.analysis_snapshot))
+        .unwrap_or_else(|| {
+            crate::RepositoryAnalysisReading::absent(
+                inputs
+                    .analysis_issues
+                    .iter()
+                    .any(|i| i.affected_scope == "derived_analysis"),
+            )
+        });
     let answer_capability_gaps = contextual_capability_gaps(&inputs, topology_canonical, &graph);
     let selected_entity = inputs.detail.entity.as_deref().and_then(|id| {
         graph
@@ -1430,6 +1470,7 @@ pub fn build_project_projection(
         health,
     };
     Ok(ProjectProjection {
+        repository_analysis,
         answer_capability_gaps,
         answer_issues,
         canonical_read_fingerprint: crate::canonical_read_fingerprint(inputs.canonical),

@@ -611,3 +611,26 @@ analysis identity를 함께 rebind하며, 동일한 새 observation에서 full r
 Semantic lookup은 source line 경계를 한 번 index하고 declaration arity를 fact마다 한 번
 계산하여 같은 이름의 후보를 반복 검사할 때 재사용한다. CRLF/Unicode/빈 줄 및 unknown
 arity와 ambiguity의 의미는 바뀌지 않는다. 이 index는 해당 analysis 실행 안에서만 산다.
+
+### User-facing stored analysis state
+
+`RepositoryAnalysisReading` is a read projection over existing Analysis Snapshot or
+AnalysisMetadata, capability coverage and current repository comparison. `Absent`
+means no stored analysis; `Unavailable` means its stored basis could not be read.
+`Current` means compared source basis is current and observed capability scopes are
+available; `Partial` retains current comparison with limited coverage. `Stale` and
+`FreshnessUnknown` come from existing content/inventory/Git/worktree comparison,
+never elapsed time or Git HEAD alone. `Failed` means an observed capability failure
+or a recorded later failed explicit attempt. Freshness, capability states and
+`retained_prior_result` remain separate even when the overall state is Failed.
+
+Coverage is classified before its 32-entry display bound with an exact omitted
+count. Full capability/audit inspection remains separate. Local Operations records
+bounded immutable local analysis-attempt receipts after explicit `analyze`; receipts
+carry operation identity, completion time and outcome, not code or canonical Work.
+Unknown/malformed receipt history is an explicit `latest_attempt_error`, never a
+successful latest attempt. Historical snapshots predate receipts and cannot prove
+an unrecorded attempt. `refresh_command` exposes existing `volicord analyze` (or
+`volicord doctor repair` for unreadable storage); it grants no Viewer mutation or
+background transmission authority. Read paths compare repository observations and
+read receipts but never run analyzers, record Sources or mutate canonical state.
