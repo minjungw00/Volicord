@@ -6,9 +6,11 @@ repaired; Product reads use the observed executable and private Runtime copies.
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone
+import ast
 import copy
 import json
 from pathlib import Path
+import posixpath
 import re
 import secrets
 import shutil
@@ -140,6 +142,35 @@ def producer_paths():
     return {path.relative_to(api().ROOT).as_posix(): path for path in sorted(set(paths))}
 
 
+def recorded_producer_names(root):
+    """Read static producer declarations, never execute historical code.
+
+    An append-only consumer verifies the producer's actual dependency inventory;
+    adding a current test dependency cannot invalidate a historical publication.
+    """
+    prefix = root / 'collection/producers'
+    def declaration(name, variable):
+        try:
+            tree = ast.parse(operations.bounded_read(prefix / name).decode('utf-8'))
+        except (SyntaxError, UnicodeError) as error:
+            raise api().CampaignError('recorded producer declaration malformed') from error
+        matches = [node.value for node in tree.body if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == variable for target in node.targets)]
+        if len(matches) != 1:
+            raise api().CampaignError('recorded producer declaration missing or ambiguous')
+        value = ast.literal_eval(matches[0])
+        if not isinstance(value, tuple) or not value or any(not isinstance(n, str) or not n for n in value):
+            raise api().CampaignError('recorded producer declaration malformed')
+        return value
+    base = 'rebuild/validation/dogfood/'
+    names = {posixpath.normpath(base + name) for name in declaration(base + 'rehearsal_contract.py', 'PRODUCER_FILES')}
+    names.update(declaration(base + 'collection_runs.py', 'OWNER_FILES'))
+    names.add(base + 'collection_runs.py')
+    if any(not name.startswith('rebuild/') or '..' in name.split('/') for name in names):
+        raise api().CampaignError('unsafe recorded producer dependency')
+    return names
+
+
 def verify_collector_revision(value):
     """Exact immutable Git revision, not a claim that current Product ran chats."""
     for name, expected in value["producers"].items():
@@ -232,7 +263,7 @@ def verify(root, manifest, *, publication_output=True):
                 or type(expected['bytes']) is not int or expected['bytes'] < 0
                 or path.is_symlink() or binding(path) != expected):
                 raise c.CampaignError("collection retained input/producer changed")
-    if set(value["producers"]) != set(producer_paths()):
+    if set(value["producers"]) != recorded_producer_names(root):
         raise c.CampaignError("collection producer dependency inventory changed")
     if value["mode"] == "reprocess":
         verify_collector_revision(value)

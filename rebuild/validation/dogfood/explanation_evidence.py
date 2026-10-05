@@ -623,7 +623,11 @@ def collection_index(root, mapped):
         for returned in sorted(returned_values, key=lambda value: value['sequence']):
             result = returned['result']
             common = {'phase': 'measured_session', 'session_slot_id': api().session_slot_id(*slot),
-                'raw_capture_sha256': capture.source_sha256, **{k: v for k, v in returned.items() if k != 'result'},
+                # Request Project is an observation-time integrity input, not a
+                # returned-meaning/lifecycle index field. Keep the existing
+                # immutable index responsibility independent of that observer.
+                'raw_capture_sha256': capture.source_sha256, **{k: v for k, v in returned.items()
+                    if k not in {'result', 'requested_project'}},
                 'returned_payload_sha256': binding(api().json_bytes(result))['sha256'],
                 'review_meaning_sha256': binding(api().json_bytes(answer_projection.project(result, returned['operation'])))['sha256']
                     if returned['operation'] in answer_projection.SCHEMAS else None}

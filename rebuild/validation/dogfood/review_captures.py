@@ -95,7 +95,8 @@ def page_metadata(event, sequence, current_turn, capture):
 
 def supported_page_id(value):
     return value is None or (isinstance(value, str) and 0 < len(value) <= 256
-                            and value == value.strip() and all(ord(c) >= 32 for c in value))
+                            and value == value.strip()
+                            and all(ord(c) >= 32 and not 127 <= ord(c) <= 159 for c in value))
 
 
 def agent_records(events, capture):
@@ -220,7 +221,7 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
         if event["type"] == "event_msg" and p.get("type") == "user_message" and not any(
             t.text == p.get("message") and t.user_turn_id == p.get("client_id") for t in capture.user_turns):
             raise ValueError("unsupported review user interaction")
-        if event["type"] == "event_msg" and p.get("type") in {"task_completed", "turn_aborted"}:
+        if event["type"] == "event_msg" and p.get("type") in {"task_complete", "task_completed", "turn_aborted"}:
             current_turn = None
     records.extend(agent_records(events, capture))
     request_sequences = {r.sequence for r in capture.async_question_requests}

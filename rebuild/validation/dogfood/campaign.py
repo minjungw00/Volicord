@@ -3277,6 +3277,7 @@ def parser() -> argparse.ArgumentParser:
     publish_lineage.add_argument("--review-root", action="append", default=[])
     publish_lineage.add_argument("--qualification", required=True)
     publish_lineage.add_argument("--approval")
+    publish_lineage.add_argument("--previous-evaluation", help="Exact historical comparison bytes retained in the private lineage")
     publish_lineage.add_argument("--output")
     verify_lineage = sub.add_parser("verify-result-lineage",
         help="Verify a copied result lineage without original staging paths")
@@ -3433,7 +3434,8 @@ def main() -> int:
         value = result_lineage.publish(root, Path(args.machine_evaluation),
             [Path(path) for path in args.review_root], Path(args.qualification),
             Path(args.output) if args.output else None,
-            Path(args.approval) if args.approval else None)
+            Path(args.approval) if args.approval else None,
+            Path(args.previous_evaluation) if args.previous_evaluation else None)
     elif args.command == "finalize-manifest":
         value = {"manifest": str(finalize_manifest(root))}
     elif args.command == "prepare-qualitative-review":

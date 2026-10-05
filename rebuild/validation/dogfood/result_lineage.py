@@ -50,7 +50,7 @@ def _evaluation_specs(evaluation):
 
 
 def publish(campaign_root, evaluation_path, review_roots, qualification_path,
-            output=None, approval_path=None):
+            output=None, approval_path=None, previous_evaluation=None):
     """Copy exact immutable results into a discoverable sibling package."""
     import campaign
 
@@ -81,9 +81,20 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
         "evaluation/receipt.json": operations.bounded_read(evaluation_path.with_name("receipt.json")),
         "qualification/qualification.json": qualification_data,
     }
+    # Retain exact immutable replay inputs, including raw conversations. This is
+    # the private lineage, never the reviewer-safe package or technical archive.
     for name in manifest['artifacts']:
-        if name.startswith('collection/'):
-            files['source/' + name] = operations.bounded_read(campaign_root / name)
+        files['source/' + name] = operations.bounded_read(campaign_root / name)
+    if evaluation['previous_evaluation'] is not None:
+        review.require(previous_evaluation is not None,
+            'historical comparison requires the exact previous evaluation bytes')
+        data = operations.bounded_read(previous_evaluation)
+        review.require(evaluation_runs.historical_reference(previous_evaluation,
+            manifest['candidate_head'], evaluation['evidence_set']) == evaluation['previous_evaluation'],
+            'historical evaluation reference changed')
+        files['evaluation/previous-evaluation.json'] = data
+    else:
+        review.require(previous_evaluation is None, 'unexpected historical evaluation input')
     if (campaign_root / 'collection/publication.json').is_file():
         files['source/collection/publication.json'] = operations.bounded_read(campaign_root / 'collection/publication.json')
     reviews, observed_references = [], []
@@ -206,6 +217,13 @@ def verify(root):
     collection_runs.verify(root / 'source', evidence_set)
     evaluation_path = operations.safe_path(root, index["evaluation"]["path"])
     evaluation = evaluation_runs.load(evaluation_path)
+    previous_path = root / 'evaluation/previous-evaluation.json'
+    if evaluation['previous_evaluation'] is not None:
+        review.require(evaluation_runs.historical_reference(previous_path,
+            evaluation['candidate_head'], evaluation['evidence_set']) == evaluation['previous_evaluation'],
+            'copied historical evaluation reference changed')
+    else:
+        review.require(not previous_path.exists(), 'unexpected copied historical evaluation')
     evidence_purpose.require_same(index, evidence_set, evaluation)
     review.require(index["evaluation"] == {"run_id": evaluation["run_id"],
         "path": "evaluation/evaluation.json", "sha256": operations.digest(operations.bounded_read(evaluation_path)),
@@ -240,6 +258,12 @@ def verify(root):
                 review.require(evidence_set['artifacts'].get(origin['path']) == {
                     'bytes': origin['raw_bytes'], 'sha256': origin['raw_sha256']},
                     'copied returned answer source binding changed')
+                raw = operations.bounded_read(operations.safe_path(root / 'source', origin['path']),
+                    maximum=review_captures.LIMITS['source_bytes'])
+                expected, _ = review_captures.project(raw, origin=origin,
+                    role=capture['role'], session_id=capture['session_id'],
+                    candidate_head=capture['candidate_head'], evidence_set_sha256=capture['evidence_set_sha256'])
+                review.require(content == expected, 'copied conversation projection differs from immutable source')
                 for returned in capture['records']:
                     if (returned['semantic_role'] != 'volicord_operation'
                             or returned['body']['state'] != 'retained'):
@@ -341,6 +365,15 @@ def verify(root):
             "operator_approval": value["operator_approval"]}
             and operations.bounded_read(operations.safe_path(root, "approval/qualification.json")) == qualification_data,
             "result lineage approval binding changed")
+    # Recompute with the same observation engine, never outer verdict labels.
+    # No Product execution, provider, Runtime or mutable staging path is used.
+    import campaign
+    for name, binding in evidence_set['artifacts'].items():
+        review.require(_binding(operations.bounded_read(operations.safe_path(root / 'source', name))) == binding,
+            'copied evaluation source artifact changed')
+    review.require(campaign.evaluate_works(root / 'source', evidence_set) == evaluation['works']
+        and campaign.evaluate_journeys(evidence_set) == evaluation['journeys'],
+        'copied evaluation differs from recomputed immutable observations')
     return {"state": "verified", "lineage_id": index["lineage_id"],
         "candidate_head": index["candidate_head"], "evaluation_run_id": evaluation["run_id"],
         "review_run_ids": [item["run_id"] for item in review_refs],

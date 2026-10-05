@@ -338,6 +338,7 @@ class ProjectionTests(unittest.TestCase):
         for key, value in (('role', 'assistant'), ('type', 'other')):
             event = copy.deepcopy(base); event['payload'][key] = value; variants.append(event)
         event = copy.deepcopy(base); event['type'] = 'event_msg'; variants.append(event)
+        variants.extend(self.page_event(identity) for identity in ('x' * 257, 'page\x7f', 'page\x85'))
         # Known but inactive turn cannot authorize metadata in the current turn.
         for event in variants:
             with self.subTest(event=event):

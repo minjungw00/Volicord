@@ -509,3 +509,11 @@ transmitting them requires its own existing authority. Human review packages ret
 closed context metadata and image hashes; this does not supply person identity,
 comprehension, external authentication or a provider opt-in. Deleting observational
 artifacts changes no canonical memory.
+
+Typed Codex Page host metadata has the narrow review-plane contract in
+`qualitative-review.md`: null selection is a typed coordinate/reason exclusion;
+a selected Page identity is bounded context under the unchanged sensitive/body
+policy. Neither supplies user authority or resource body access. Actual user markup
+remains semantic evidence. Private copied result lineage retains immutable raw replay
+inputs for source comparison; reviewer packages and technical archives retain their
+existing separate allowlists. Local verification grants no transmission authority.

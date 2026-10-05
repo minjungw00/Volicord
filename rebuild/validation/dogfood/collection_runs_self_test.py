@@ -101,6 +101,18 @@ class CollectionTests(unittest.TestCase):
             self.process(source_sha256='00' * 32)
         self.assertFalse(self.output.exists())
 
+    def test_recorded_producer_inventory_survives_current_dependency_addition(self):
+        self.process()
+        actual = runs.producer_paths()
+        with patch.object(runs, 'producer_paths', return_value={**actual,
+                'rebuild/validation/dogfood/future-support.py': self.parent / 'unavailable'}):
+            self.assertEqual(runs.verify_publication(self.output)['state'], 'verified')
+        # Recorded dependency loss is still rejected, independently of current inventory.
+        path = self.output / 'collection/producers/rebuild/validation/dogfood/rehearsal_contract.py'
+        path.chmod(0o600); path.write_bytes(path.read_bytes() + b'\n# changed producer\n')
+        with self.assertRaises(ValueError):
+            runs.verify_publication(self.output)
+
     def test_wrong_candidate_binary_retains_normalization_stops_dependents(self):
         self.binary.write_bytes(b'changed executable')
         result, observed = self.process()

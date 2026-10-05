@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import harness as h
 import machine_findings as m
@@ -108,6 +109,20 @@ class AnswerTests(unittest.TestCase):
         self.assertEqual(observation['errors'], [])
         finding = next(f for f in m.from_observation(result) if f['check'] == 'shared_answer_integrity')
         self.assertEqual(finding['disposition'], 'qualitative_review_required')
+
+    def test_request_project_integrity_input_does_not_expand_return_index(self):
+        import codex_events
+        import explanation_evidence
+        capture = codex_events.load_codex_capture(self.path)
+        returned = __import__('answer_observations').returned_recalls(capture)
+        self.assertTrue(returned)
+        self.assertTrue(all(r['requested_project'] == '01' * 16 for r in returned))
+        mapped = {('volicord', 'A', 'resume'): type('Retained', (), {'capture': capture})()}
+        with patch.object(explanation_evidence, 'preparations', return_value=[]):
+            index = explanation_evidence.collection_index(self.root, mapped)
+        self.assertTrue(index['measured_observations'])
+        self.assertTrue(all('requested_project' not in r for r in index['measured_observations']))
+        self.assertTrue(all(r['returned_payload_sha256'] for r in index['measured_observations']))
 
     def test_new_goal_without_meaningful_checkpoint_is_supported(self):
         (_, fact), _ = self.initial_recall(after_goal=True)

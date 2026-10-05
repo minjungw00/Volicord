@@ -910,7 +910,7 @@ stage absence, incompatible order, duplicate invocations, changed source/binary
 identities, contradictory inner verdicts and retained raw/private content.
 
 The current rehearsal contract additionally requires a process-bound
-`collection_support` receipt from thirteen authored controls. Repeated and later
+`collection_support` receipt from twenty-four authored controls. Repeated and later
 conflicting Recall, bounded direct shell parsing, unsupported execution reaching
 review, immutable old-candidate/new-collector publication, source/raw mutation,
 candidate/collector/rejection identities and dependent-stage stopping execute through

@@ -25,9 +25,20 @@ PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_suppo
     "answer_projection.py", "support_evidence.py", "authority_obligations.py", "cli_observations.py",
     "qualitative_review.py", "workload_intents.py", "identity_provenance.py", "repository_state.py",
     "interaction_diagnostics.py", "../shared/recorded_action_evidence.py", "../../install.sh", "../../scripts/dogfood-campaign",
-    "collection_support.py", "collection_runs_self_test.py", "campaign_self_test.py", "resume_self_test.py", "capture_self_test.py")
+    "collection_support.py", "collection_runs_self_test.py", "campaign_self_test.py", "resume_self_test.py", "capture_self_test.py",
+    "answer_observations_self_test.py", "review_operations_self_test.py", "qualification_self_test.py",
+    "review_meaning_self_test.py", "fixtures/typed-host-page.json")
 
 COLLECTION_CONTROLS = {
+    'initial_project_recall_without_work': 'answer_observations_self_test.AnswerTests.test_initial_empty_recall_and_later_creation_do_not_require_future_work',
+    'resumed_work_identity_conflict': 'answer_observations_self_test.AnswerTests.test_resume_absence_and_present_identity_conflicts_remain_hard',
+    'scoped_generated_subject_omission': 'answer_observations_self_test.AnswerTests.test_generated_subject_parent_omission_retains_exact_reason_and_scope',
+    'present_generated_subject_contradiction': 'answer_observations_self_test.AnswerTests.test_supported_subject_omission_cannot_mask_present_contradictions',
+    'typed_null_page_metadata': 'review_operations_self_test.ProjectionTests.test_typed_null_page_is_bounded_host_exclusion',
+    'user_markup_remains_semantic': 'review_operations_self_test.ProjectionTests.test_page_markup_without_host_typing_never_excludes_user_text',
+    'copied_host_and_answer_lineage': 'qualification_self_test.FileBoundaryTests.test_host_metadata_user_prose_and_history_replay_from_copied_inputs',
+    'request_scope_keeps_return_index_stable': 'answer_observations_self_test.AnswerTests.test_request_project_integrity_input_does_not_expand_return_index',
+    'recorded_collection_dependencies': 'collection_runs_self_test.CollectionTests.test_recorded_producer_inventory_survives_current_dependency_addition',
     'project_not_found_before_initialization': 'resume_self_test.ResumeTests.test_project_not_found_before_initialization_is_not_an_identity',
     'project_not_found_identity_conflict': 'resume_self_test.ResumeTests.test_project_not_found_cannot_hide_identity_conflicts',
     'repeated_same_work_recall': 'resume_self_test.ResumeTests.test_repeated_same_work_recalls_preserve_identity',

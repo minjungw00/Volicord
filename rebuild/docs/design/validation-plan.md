@@ -1481,7 +1481,7 @@ remains unresolved. Copied result lineage also retains collection provenance.
 
 The mandatory local rehearsal contract is now
 `product-backed-dogfood-evidence-rehearsal-2`. A process-bound authored support
-receipt executes thirteen finite controls: repeated same-Work and conflicting
+receipt executes twenty-four finite controls: repeated same-Work and conflicting
 Recall, bounded direct shell parsing, unsupported execution reaching review and
 never certifying success, old-candidate/new-collector publication, source/raw
 mutation, candidate/binary/collector mismatch, historical rejection preservation,
@@ -1492,6 +1492,20 @@ user's retained campaign. Historical technical archives retain their recorded
 candidate/producer contract and must not be upgraded into proof of these new
 collector controls; original-candidate verification is distinct from the new
 development HEAD's gate.
+The same support receipt now includes independent initial-Project/no-Work Recall,
+resumed Work identity conflict, scoped generated-subject omission, wrong present
+subject, typed null-Page metadata, and actual user markup controls. All execute
+through the maintained observation/projection consumers; labels-only control
+changes still fail the process-bound receipt validator.
+
+Immutable collection verification reads the producer dependency inventory from
+its retained static `PRODUCER_FILES` and `OWNER_FILES` declarations without executing
+historical code. Current dependencies govern new publications, not past identities.
+Returned-meaning/lifecycle indexing excludes the observer-only `requested_project`
+field: request scope stays in the new machine basis and retained operation request,
+while immutable returned payload/index identities stay unchanged. No recollection,
+index upgrade, alternate projection engine or source rewriting is required.
+
 
 Support evaluation consumes the producer's Work-specific activation summary:
 `journey_id`, `work_slot_id`, repository class and start activation must agree;
@@ -2075,7 +2089,7 @@ re-evaluation; `--previous-evaluation <file>` retains the original run ID and by
 hash for comparison without interpreting historical policy as current authority.
 Missing historical evidence is never synthesized or upgraded.
 
-Machine schema 3 separates Product `candidate_head`, evidence-set SHA-256,
+Machine schema 4 separates Product `candidate_head`, evidence-set SHA-256,
 `evaluator_revision` and implementation file hashes, policy revision/hash, random
 run nonce/content-derived run ID, and consumed qualitative review IDs (empty for
 machine-only evaluation). A later evaluator HEAD may inspect an older candidate;

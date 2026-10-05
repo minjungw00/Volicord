@@ -1087,6 +1087,147 @@ class FileBoundaryTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
+    def test_host_metadata_user_prose_and_history_replay_from_copied_inputs(self):
+        import campaign as c
+        import campaign_self_test as support
+        import result_lineage
+        import review_operations as ops
+        import review_captures
+        from review_operations_self_test import ProjectionTests, rollout_bytes, insufficient_draft
+        from review_meaning_self_test import rehash_package
+        binary = Path(c.load_campaign(self.root)['candidate_binary'])
+        with patch.object(harness, 'git_clean', return_value=True):
+            root, raw, bundles = support.prepared_batch(self.parent, 'typed-host-lineage-campaign', binary)
+            for path in raw:
+                events = __import__('codex_events').capture_events(path.read_bytes())
+                terminal = max(i for i, e in enumerate(events) if e['payload'].get('type') in {'task_complete', 'task_completed'})
+                turn = events[terminal]['payload']['turn_id']
+                page = ProjectionTests().page_event()
+                page['payload']['internal_chat_message_metadata_passthrough']['turn_id'] = turn
+                # No source session is reused or measured: these are authored support bytes.
+                user_text = 'Explain this literal tag: ' + page['payload']['content'][0]['text']
+                events[terminal:terminal] = [page, {'type': 'event_msg', 'payload': {'type': 'user_message',
+                    'message': user_text, 'client_id': 'fixture-literal-user'}}]
+                path.write_bytes(rollout_bytes(events))
+            c.collect_batch(root, raw, exporter=support.batch_exporter(bundles),
+                documenter=support.documenter, snapshotter=support.snapshotter)
+        old = c.evaluate_campaign(root, self.parent / 'typed-host-history')
+        previous = Path(old['evaluation']); old_bytes = previous.read_bytes()
+        new = c.evaluate_campaign(root, self.parent / 'typed-host-current', previous=previous)
+        evaluation = Path(new['evaluation'])
+        target = self.parent / 'typed-host-review'
+        ops.prepare(root, target, reviewer_kind='agent', session_id='authored-separate-host-review',
+            evaluation_path=evaluation, include_raw=True)
+        prepared, _, _ = ops.load_package(target)
+        entries = [(k, v) for k, v in prepared['index']['evidence'].items()
+            if v['surface'] in review_captures.CAPTURE_SURFACES]
+        self.assertEqual(len(entries), 8)
+        for _, entry in entries:
+            capture = review_captures.validate((target / entry['path']).read_bytes())
+            self.assertEqual(len(capture['host_metadata']), 1)
+            self.assertIn(user_text, [r['body']['value'] for r in capture['records']
+                if r['semantic_role'] == 'user_turn'])
+        # Source-independent review package verifies while original paths are unavailable.
+        copied_review = self.parent / 'typed-host-review-copy'; shutil.copytree(target, copied_review)
+        hidden = root.with_name(root.name + '-unavailable'); root.rename(hidden)
+        try:
+            ops.load_package(copied_review)
+        finally:
+            hidden.rename(root)
+        insufficient_draft(target); ops.record(target, target / 'draft.json')
+        qualification = self.parent / 'typed-host-qualification'
+        policy.qualify(root, evaluation, qualification, candidate=c.load_campaign(root)['candidate_head'],
+            review_roots=[target])
+        lineage = self.parent / 'typed-host-lineage'
+        result_lineage.publish(root, evaluation, [target], qualification / 'qualification.json',
+            output=lineage, previous_evaluation=previous)
+        copied = self.parent / 'typed-host-lineage-copy'; shutil.copytree(lineage, copied)
+        hidden_parent = self.parent.with_name(self.parent.name + '-unavailable')
+        with tempfile.TemporaryDirectory() as detached_parent:
+            detached = Path(detached_parent) / 'lineage'; shutil.copytree(copied, detached)
+            self.parent.rename(hidden_parent)
+            try:
+                self.assertFalse(result_lineage.verify(detached)['external_staging_paths_used'])
+            finally:
+                hidden_parent.rename(self.parent)
+        self.assertEqual(previous.read_bytes(), old_bytes)
+        with self.assertRaises(ValueError): c.evaluate_campaign(root, previous.parent)
+        self.assertEqual(previous.read_bytes(), old_bytes)
+        # Fully refresh all outer wrappers: immutable-source replay must still reject.
+        for control in ('drop_host', 'user_as_host', 'false_answer_pass', 'evaluator', 'history', 'source'):
+            tampered = self.parent / ('typed-host-tamper-' + control); shutil.copytree(copied, tampered)
+            index = json.loads((tampered / 'index.json').read_bytes())
+            if control in {'drop_host', 'user_as_host'}:
+                reference = index['qualitative_reviews'][0]
+                review_root = tampered / reference['root']
+                prep = json.loads((review_root / 'preparation.json').read_bytes())
+                eid = next(k for k, v in prep['index']['evidence'].items() if v['surface'] == 'work_capture')
+                path = review_root / prep['index']['evidence'][eid]['path']; capture = json.loads(path.read_bytes())
+                if control == 'drop_host':
+                    sequence = capture['host_metadata'][0]['sequence']; capture['host_metadata'] = []
+                    capture['excluded_records'] = [({'sequence': sequence, 'reason': 'non_semantic_by_design'}
+                        if r['sequence'] == sequence else r) for r in capture['excluded_records']]
+                else:
+                    user = next(r for r in capture['records'] if r['semantic_role'] == 'user_turn'
+                        and r['body']['value'].startswith('Explain this literal tag:'))
+                    capture['records'].remove(user)
+                    host = {**capture['host_metadata'][0], 'sequence': user['sequence'], 'message_id': 'false-host'}
+                    capture['host_metadata'].append(host)
+                    capture['host_metadata'].sort(key=lambda r: r['sequence'])
+                    capture['excluded_records'].append({**host, 'reason': 'host_page_no_selection'})
+                    capture['excluded_records'].sort(key=lambda r: r['sequence'])
+                    capture.update(review_captures.counts(capture))
+                rehash_package(review_root, eid, ops.encoded(capture))
+                package = json.loads((review_root / 'package.json').read_bytes())
+                prep = json.loads((review_root / 'preparation.json').read_bytes())
+                value = json.loads((review_root / 'recorded/review.json').read_bytes())
+                value['preparation_sha256'] = package['preparation_sha256']; data = ops.encoded(value)
+                receipt = json.loads((review_root / 'recorded/receipt.json').read_bytes())
+                receipt.update(preparation_sha256=package['preparation_sha256'], review_sha256=ops.digest(data),
+                    result=review.validate_value(prep, package['preparation_sha256'], value))
+                for name, body in (('recorded/review.json', data), ('recorded/receipt.json', ops.encoded(receipt))):
+                    p = review_root / name; p.chmod(0o600); p.write_bytes(body)
+                reference.update(preparation_sha256=package['preparation_sha256'],
+                    review_sha256=ops.digest(data), package_id=package['package_id'])
+                qpath = tampered / 'qualification/qualification.json'; qvalue = json.loads(qpath.read_bytes())
+                qvalue['qualitative_review_runs'][0].update(preparation_sha256=package['preparation_sha256'],
+                    review_sha256=ops.digest(data))
+                qvalue['run_id'] = m.digest({k: v for k, v in qvalue.items() if k != 'run_id'})
+                qpath.chmod(0o600); qpath.write_bytes(ops.encoded(qvalue))
+                index['qualification'].update(run_id=qvalue['run_id'], sha256=ops.digest(qpath.read_bytes()))
+                expected_error = 'conversation projection differs'
+            else:
+                path = tampered / 'evaluation/evaluation.json'
+                value = json.loads(path.read_bytes())
+                if control == 'false_answer_pass':
+                    work = value['works'][0]
+                    work['observation']['machine_facts']['shared_answer_integrity']['status'] = 'confirmed_pass'
+                    expected_error = 'findings do not preserve'
+                elif control == 'evaluator':
+                    value['evaluator_revision'] = '0' * 40
+                    expected_error = 'evaluation binding changed'
+                elif control == 'history':
+                    value['previous_evaluation']['sha256'] = '0' * 64
+                    expected_error = 'historical evaluation reference changed'
+                else:
+                    origin = entries[0][1]['origin']['path']
+                    path = tampered / 'source' / origin; path.chmod(0o600); path.write_bytes(path.read_bytes() + b'\n')
+                    expected_error = 'source|raw|artifact|binding'
+                if control != 'source':
+                    value['run_id'] = m.digest({k: v for k, v in value.items() if k != 'run_id'})
+                    path.chmod(0o600); path.write_bytes(ops.encoded(value))
+                    receipt_path = path.with_name('receipt.json'); receipt_path.chmod(0o600)
+                    receipt_path.write_bytes(ops.encoded({'kind': 'dogfood_evaluation_receipt',
+                        'run_id': value['run_id'], 'evaluation_sha256': ops.digest(path.read_bytes())}))
+            index['lineage_id'] = m.digest({k: v for k, v in index.items() if k != 'lineage_id'})
+            path = tampered / 'index.json'; path.chmod(0o600); path.write_bytes(ops.encoded(index))
+            receipt = json.loads((tampered / 'receipt.json').read_bytes())
+            receipt.update(lineage_id=index['lineage_id'], index_sha256=ops.digest(path.read_bytes()))
+            receipt['artifacts'] = {name: result_lineage._binding((tampered / name).read_bytes()) for name in receipt['artifacts']}
+            path = tampered / 'receipt.json'; path.chmod(0o600); path.write_bytes(ops.encoded(receipt))
+            with self.subTest(control=control), self.assertRaisesRegex(ValueError, expected_error):
+                result_lineage.verify(tampered)
+
     def test_partial_resource_attachment_is_preserved_and_malformed_input_rejected(self):
         import campaign as c
         import campaign_self_test as support

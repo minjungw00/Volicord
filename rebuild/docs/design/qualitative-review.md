@@ -828,3 +828,23 @@ Purpose provenance, coverage collection paths, optional resource scope and separ
 en/ko human display-context requirements. Proposed tasks become frozen only after
 user approval and successful maintained preparation; outcomes remain future evidence.
 Local support pipeline success does not authorize measured launch or Phase 9.
+
+### Copied remediation evidence verification
+
+The private result lineage retains every immutable evidence-set artifact needed
+by the current observation engine, separately from reviewer-safe packages and the
+bounded technical gate archive. It reproduces each packaged conversation projection
+from the copied immutable raw bytes, including typed host classification, actual user
+prose, semantic omissions and execution coverage. Rehashed exclusion deletion or
+user-as-host classification is rejected against those original bytes. It also
+recomputes Work/journey observations before accepting copied evaluation results;
+changing R1/R2 verdict labels cannot replace recomputation. No Product execution,
+Runtime, provider or original mutable staging path is used.
+
+A lineage for an evaluation with `previous_evaluation` requires
+`publish-result-lineage --previous-evaluation <exact-historical-file>` and copies
+those bytes as `evaluation/previous-evaluation.json`. Its historical run/hash must
+match the new evaluation's comparison reference; it is never upgraded or overwritten.
+Reviewer-only package verification continues to establish selected shape/hash/internal
+consistency, not authenticated host provenance or semantic truth. Independent source
+comparison belongs to the private copied lineage that actually retains raw inputs.
