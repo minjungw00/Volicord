@@ -837,7 +837,10 @@ bounded technical gate archive. It reproduces each packaged conversation project
 from the copied immutable raw bytes, including typed host classification, actual user
 prose, semantic omissions and execution coverage. Rehashed exclusion deletion or
 user-as-host classification is rejected against those original bytes. It also
-recomputes Work/journey observations before accepting copied evaluation results;
+recomputes Work/journey observations and compares their canonical JSON bytes before
+accepting copied evaluation results. In-memory execution-coverage tuples and their
+published JSON arrays have the same meaning; sequence, reason and value changes
+remain mismatches. It does not compare Python container implementation types;
 changing R1/R2 verdict labels cannot replace recomputation. No Product execution,
 Runtime, provider or original mutable staging path is used.
 

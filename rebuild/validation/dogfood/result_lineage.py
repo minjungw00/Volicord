@@ -371,8 +371,10 @@ def verify(root):
     for name, binding in evidence_set['artifacts'].items():
         review.require(_binding(operations.bounded_read(operations.safe_path(root / 'source', name))) == binding,
             'copied evaluation source artifact changed')
-    review.require(campaign.evaluate_works(root / 'source', evidence_set) == evaluation['works']
-        and campaign.evaluate_journeys(evidence_set) == evaluation['journeys'],
+    review.require(operations.encoded(campaign.evaluate_works(root / 'source', evidence_set))
+            == operations.encoded(evaluation['works'])
+        and operations.encoded(campaign.evaluate_journeys(evidence_set))
+            == operations.encoded(evaluation['journeys']),
         'copied evaluation differs from recomputed immutable observations')
     return {"state": "verified", "lineage_id": index["lineage_id"],
         "candidate_head": index["candidate_head"], "evaluation_run_id": evaluation["run_id"],

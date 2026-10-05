@@ -1106,8 +1106,18 @@ class FileBoundaryTests(unittest.TestCase):
                 page['payload']['internal_chat_message_metadata_passthrough']['turn_id'] = turn
                 # No source session is reused or measured: these are authored support bytes.
                 user_text = 'Explain this literal tag: ' + page['payload']['content'][0]['text']
+                metadata = {'turn_id': turn}
                 events[terminal:terminal] = [page, {'type': 'event_msg', 'payload': {'type': 'user_message',
-                    'message': user_text, 'client_id': 'fixture-literal-user'}}]
+                    'message': user_text, 'client_id': 'fixture-literal-user'}},
+                    {'type': 'response_item', 'payload': {'type': 'custom_tool_call', 'name': 'exec',
+                        'status': 'completed', 'call_id': 'unsupported-fixture-shell',
+                        'input': 'text(await tools.exec_command({cmd:load("private-command")}));',
+                        'internal_chat_message_metadata_passthrough': metadata}},
+                    {'type': 'response_item', 'payload': {'type': 'custom_tool_call_output',
+                        'call_id': 'unsupported-fixture-shell',
+                        'output': [{'type': 'input_text', 'text': 'Script completed\nOutput:\n'},
+                            {'type': 'input_text', 'text': '{"output":"bounded fixture","exit_code":0}'}],
+                        'internal_chat_message_metadata_passthrough': metadata}}]
                 path.write_bytes(rollout_bytes(events))
             c.collect_batch(root, raw, exporter=support.batch_exporter(bundles),
                 documenter=support.documenter, snapshotter=support.snapshotter)
@@ -1115,6 +1125,16 @@ class FileBoundaryTests(unittest.TestCase):
         previous = Path(old['evaluation']); old_bytes = previous.read_bytes()
         new = c.evaluate_campaign(root, self.parent / 'typed-host-current', previous=previous)
         evaluation = Path(new['evaluation'])
+        # Real execution coverage uses immutable Python tuples; publication stores
+        # JSON arrays. Copied replay must compare the same serialized meaning.
+        manifest = c.load_evidence_set(root)
+        replayed = c.evaluate_works(root, manifest)
+        published_works = json.loads(evaluation.read_bytes())['works']
+        limits = replayed[0]['observation']['machine_facts']['required_validation_execution']['basis']['execution_coverage_limits']
+        self.assertTrue(limits)
+        self.assertIsInstance(limits[0]['reasons'], tuple)
+        self.assertNotEqual(replayed, published_works)
+        self.assertEqual(ops.encoded(replayed), ops.encoded(published_works))
         target = self.parent / 'typed-host-review'
         ops.prepare(root, target, reviewer_kind='agent', session_id='authored-separate-host-review',
             evaluation_path=evaluation, include_raw=True)
@@ -1125,6 +1145,7 @@ class FileBoundaryTests(unittest.TestCase):
         for _, entry in entries:
             capture = review_captures.validate((target / entry['path']).read_bytes())
             self.assertEqual(len(capture['host_metadata']), 1)
+            self.assertEqual(capture['execution_coverage']['unsupported_wrapper_count'], 1)
             self.assertIn(user_text, [r['body']['value'] for r in capture['records']
                 if r['semantic_role'] == 'user_turn'])
         # Source-independent review package verifies while original paths are unavailable.
@@ -1148,6 +1169,11 @@ class FileBoundaryTests(unittest.TestCase):
             self.parent.rename(hidden_parent)
             try:
                 self.assertFalse(result_lineage.verify(detached)['external_staging_paths_used'])
+                changed = copy.deepcopy(replayed)
+                changed[0]['observation']['machine_facts']['required_validation_execution']['basis']['execution_coverage_limits'][0]['reasons'] += ('invented_coverage_reason',)
+                with patch.object(c, 'evaluate_works', return_value=changed), self.assertRaisesRegex(
+                        ValueError, 'recomputed immutable observations'):
+                    result_lineage.verify(detached)
             finally:
                 hidden_parent.rename(self.parent)
         self.assertEqual(previous.read_bytes(), old_bytes)
