@@ -30,6 +30,16 @@ class ContractTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises((ValueError, TypeError, KeyError)):
                 contract.validate_result(value, 'a' * 40)
 
+    def test_latest_work_control_cannot_be_deleted_from_rehashed_receipt(self):
+        value = passed_result()
+        support = value['pipeline']['collection_support']['result']
+        name = 'latest_work_raw_transition_reaches_campaign_and_machine_consumers'
+        support['checks'] = [check for check in support['checks'] if check['id'] != name]
+        support['result_id'] = contract.digest({k: v for k, v in support.items() if k != 'result_id'})
+        value['result_id'] = contract.digest({k: v for k, v in value.items() if k != 'result_id'})
+        with self.assertRaises(ValueError):
+            contract.validate_result(value, 'a' * 40)
+
     def test_authored_transport_retains_supported_request_coordinates(self):
         # A maintained fake capture tests transport only, never Product behavior.
         from answer_observations_self_test import AnswerTests

@@ -297,7 +297,7 @@ retains each validated marker and field scope; prose adequacy remains qualitativ
 Focused controls run the current Naturalistic consumer and finding construction:
 
 ```sh
-rebuild/scripts/validate focused shared-answers -- env PYTHONPATH=rebuild/validation/dogfood python3 -m unittest answer_observations_self_test machine_findings_self_test resume_self_test
+rebuild/scripts/validate focused shared-answers -- env PYTHONPATH=rebuild/validation/dogfood python3 -m unittest latest_work_self_test answer_observations_self_test machine_findings_self_test resume_self_test
 rebuild/scripts/validate focused product-answers -- cargo test --manifest-path rebuild/Cargo.toml -p volicord-host --test answer_consumers
 ```
 
@@ -910,7 +910,7 @@ stage absence, incompatible order, duplicate invocations, changed source/binary
 identities, contradictory inner verdicts and retained raw/private content.
 
 The current rehearsal contract additionally requires a process-bound
-`collection_support` receipt from twenty-four authored controls. Repeated and later
+`collection_support` receipt from forty-two authored controls. Repeated and later
 conflicting Recall, bounded direct shell parsing, unsupported execution reaching
 review, immutable old-candidate/new-collector publication, source/raw mutation,
 candidate/collector/rejection identities and dependent-stage stopping execute through
@@ -918,6 +918,15 @@ the maintained support consumers. The receipt binds exact test identities/counts
 and child output. These fixtures do not replay the user's historical campaign.
 Historical technical archives keep their original candidate/producer contract;
 they cannot acquire these new collector controls through rehashing.
+
+The maintained `latest_work_self_test.LatestWorkTests` controls independently encode
+checkpoint-first selection, Project-wide absence before Goal fallback, A/B publication
+order, later Goal/Checkpoint boundaries, unknown chronology, and independent resume,
+Project, Goal and revision contradictions. They include actual raw-fixture parser/harness/
+machine finding consumption and controlled A/B response swaps and prior-Checkpoint removal.
+Expected Work values are explicit source-contract assertions, never helper-generated.
+The formal `collection_support` receipt binds these exact tests and the current producer
+inventory; removing a selector control and rehashing the receipt is rejected.
 
 The fixture's `temporal_scenarios` independently exercises Small Python Recall correction and
 polyglot en/ko explanation regeneration. These remain five Works/eight authored support slots.

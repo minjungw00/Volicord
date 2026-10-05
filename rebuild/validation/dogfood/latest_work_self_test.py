@@ -36,8 +36,10 @@ class LatestWorkTests(unittest.TestCase):
             for op in ('project_initialize', 'context_record', 'checkpoint_record')}
 
     def scenario(self, events, *, returned_work=A, checkpoint=CPA, missing_request=None,
-                 overlap=None, resume=False, revision=1, wrong_project=False, future=None, wrong_goal=False):
+                 overlap=None, resume=False, revision=1, wrong_project=False, future=None, wrong_goal=False, malformed=None, continued=None, wrong_sources=False):
         """Explicit receipts/answers; no oracle output feeds expected values."""
+        if resume:
+            events = [('init', None), ('goal', A), ('cp', A)] + events
         calls, invocations = [], {}
         for index, (operation, identity) in enumerate(events, 1):
             op = {'init': 'project_initialize', 'goal': 'context_record', 'cp': 'checkpoint_record'}[operation]
@@ -54,6 +56,12 @@ class LatestWorkTests(unittest.TestCase):
                 completion_sequence=index * 4 + 1, arguments=args, result=receipt)
             calls.append(call)
             invocations[call.call_id] = index * 4
+        if malformed is not None:
+            calls[malformed] = replace(calls[malformed], outcome='failed', error='malformed_mcp_completion')
+        if continued is not None:
+            calls[continued] = replace(calls[continued],
+                arguments=dict(calls[continued].arguments, work_transition='continue'),
+                result=dict(calls[continued].result, canonical_mutation=False))
         if missing_request is not None:
             invocations.pop(calls[missing_request].call_id)
         if overlap is not None:
@@ -73,6 +81,8 @@ class LatestWorkTests(unittest.TestCase):
                 'role': 'unavailable', 'text': 'No next action is recorded: this Work has no Checkpoint.', 'evidence_keys': []}]
         if wrong_goal:
             answer['goal_basis'][0]['identity'] = C
+        if wrong_sources:
+            answer['goal_basis'][0]['source_ids'] = ['ff' * 16]
         self.returned_answer = answer
         if wrong_project:
             answer['project_id'] = 'ff' * 16
@@ -97,7 +107,8 @@ class LatestWorkTests(unittest.TestCase):
             reads = [replace(call, result=answer) if call.operation == 'recall' else call
                 for call in self.resume.tool_calls]
             capture = replace(self.resume, tool_calls=tuple(reads), commands=())
-            selection = a.observe(replace(self.work, tool_calls=self.work.tool_calls + tuple(calls)), capture, bundle, A)
+            selection = a.observe(replace(self.work, tool_calls=tuple(calls), commands=(),
+                observed_metadata={**self.work.observed_metadata, 'mcp_invocations': invocations}), capture, bundle, A)
         else:
             selection = a.observe(capture, None, bundle, A)
         finding = next(f for f in m.from_observation({'checks': {}, 'machine_facts': {
@@ -137,6 +148,18 @@ class LatestWorkTests(unittest.TestCase):
         self.check([('init', None), ('goal', A), ('cp', A), ('goal', B), ('cp', B)],
             None, returned_work=B, checkpoint=None, missing_request=4, status='confirmed_violation')
 
+    def test_malformed_checkpoint_completion_is_uncertainty_not_failed_write(self):
+        self.check([('init', None), ('goal', A), ('cp', A), ('goal', B)], None,
+            returned_work=B, checkpoint=None, malformed=2, status='indeterminate')
+
+    def test_repeated_checkpoint_receipt_cannot_supersede_newer_publication(self):
+        self.check([('init', None), ('goal', A), ('cp', A), ('goal', B), ('cp', B), ('cp', A)],
+            B, checkpoint=CPB)
+
+    def test_continuation_is_not_newest_goal_creation(self):
+        self.check([('init', None), ('goal', A), ('goal', B), ('goal', A)], B, continued=3)
+        self.check([('init', None), ('goal', A)], None, continued=1, status='indeterminate')
+
     def test_fresh_goal_without_empty_project_witness_cannot_prove_no_prior_checkpoint(self):
         self.check([('goal', B)], None, returned_work=B, status='indeterminate')
 
@@ -168,6 +191,11 @@ class LatestWorkTests(unittest.TestCase):
         self.check([('goal', B)], None, returned_work=B, wrong_goal=True, status='confirmed_violation')
         self.check([('goal', A), ('cp', A)], None, checkpoint=CPA, revision=2,
             missing_request=1, status='confirmed_violation')
+        observation, _ = self.scenario([('goal', B), ('cp', B)], returned_work=A,
+            checkpoint=CPA, resume=True, malformed=4, wrong_sources=True)
+        self.assertEqual(observation['lifecycle_basis']['selector_basis'], 'unknown')
+        self.assertIn('observation-time Goal supporting Sources', observation['errors'])
+        self.assertEqual(observation['status'], 'confirmed_violation')
 
     def test_raw_transition_reaches_campaign_and_machine_consumers(self):
         # Add the new Goal and read to original authored raw fixture bytes. The
@@ -212,6 +240,8 @@ class LatestWorkTests(unittest.TestCase):
 
     def test_resume_identity_conflict_is_not_masked_by_selector(self):
         observation, finding = self.scenario([('goal', B), ('cp', B)], returned_work=B, checkpoint=CPB, resume=True)
+        self.assertEqual(observation['lifecycle_basis']['expected_work'], B)
+        self.assertEqual(observation['lifecycle_basis']['selector_basis'], 'latest_checkpoint')
         self.assertEqual(observation['status'], 'confirmed_violation', observation)
         self.assertIn('resume Work identity', observation['errors'])
         self.assertEqual(finding['disposition'], 'hard_blocking')

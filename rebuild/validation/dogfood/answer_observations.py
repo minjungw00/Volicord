@@ -306,9 +306,11 @@ def lifecycle_at(work, resume, capture, returned, bundle, work_id, relationship)
     for source in scopes:
         last_checkpoint_completion, last_goal_completion = -1, -1
         for call in sorted(source.tool_calls, key=lambda call: call.completion_sequence):
+            outcome = ('indeterminate' if call.error in {'malformed_mcp_completion',
+                'mcp_wrapper_completion_mismatch', 'ambiguous_mcp_wrapper_correlation'} else call.outcome)
             if (call.operation not in {'project_initialize', 'context_record', 'checkpoint_record', 'canonical_mutate'}
                     or call.arguments.get('project_id', call.result.get('project_id')) not in (None, project)
-                    or call.outcome == 'failed'):
+                    or outcome == 'failed'):
                 continue
             invocation = source.observed_metadata.get('mcp_invocations', {}).get(call.call_id)
             if source is capture and invocation is not None and invocation > returned['completion_sequence']:
@@ -328,7 +330,7 @@ def lifecycle_at(work, resume, capture, returned, bundle, work_id, relationship)
             witnesses.append(witness)
             ordered = (invocation is not None and invocation < call.completion_sequence
                 and (source is not capture or boundary is not None and call.completion_sequence < boundary))
-            if not ordered or call.outcome != 'succeeded' or other_mutation:
+            if not ordered or outcome != 'succeeded' or other_mutation:
                 checkpoint_unknown |= is_checkpoint or other_mutation
                 goal_unknown |= is_goal or other_mutation
                 if call.operation == 'project_initialize':
@@ -344,10 +346,14 @@ def lifecycle_at(work, resume, capture, returned, bundle, work_id, relationship)
                     goal_unknown = True
                 elif not identity(receipt.get('context_item_id')):
                     goal_unknown = True
+                elif type(receipt.get('revision')) is not int or receipt['revision'] < 1:
+                    goal_unknown = True
                 elif (call.arguments.get('work_transition') != 'continue'
                         and receipt.get('canonical_mutation') is not False):
-                    goal_unknown |= invocation <= last_goal_completion
+                    goal_unknown |= invocation <= last_goal_completion or receipt['revision'] != 1
                     latest_goal = receipt['context_item_id']
+                elif latest_goal is None:
+                    goal_unknown = True  # Continuation cannot establish an empty-state creation.
                 last_goal_completion = max(last_goal_completion, call.completion_sequence)
             else:
                 receipt = call.result
@@ -465,7 +471,7 @@ def observe(work, resume, bundle, work_id):
                         'next_step': immutable.get('next_step')}, result))
                 goals = result.get('goal_basis')
                 matching = [g for g in goals if isinstance(g, dict) and g.get('role') == 'goal'
-                    and g.get('identity') == expected_work] if isinstance(goals, list) else []
+                    and g.get('identity') == goal_work] if isinstance(goals, list) else []
                 if len(matching) == 1 and goal['sources'] is not None and 'source_ids' in matching[0] and matching[0]['source_ids'] != goal['sources']:
                     errors.append('observation-time Goal supporting Sources')
                 if bundle and result.get('project_id') != bundle.project_id:

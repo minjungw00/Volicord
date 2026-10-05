@@ -931,8 +931,9 @@ def assert_checkpoint_free_completed_resume_collects(parent: Path, binary: Path)
 
 def main() -> int:
     from answer_observations_self_test import AnswerTests
+    from latest_work_self_test import LatestWorkTests
     import unittest
-    checked = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(AnswerTests))
+    checked = unittest.TextTestRunner().run(unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(case) for case in (AnswerTests, LatestWorkTests)))
     if not checked.wasSuccessful():
         raise AssertionError("shared answer consumer regressions failed")
     from explanation_evidence_self_test import LifecycleTests, MeasuredExecutionTests
