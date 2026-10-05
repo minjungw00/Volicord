@@ -155,11 +155,8 @@ pub fn prepare_explanation(
         }
     };
     let index = crate::reading::WorkHistoryIndex::new(canonical);
-    let selected = index
-        .0
-        .get(&work)
-        .ok_or("Work not found in this Project")?
-        .materialize(canonical);
+    let history = index.0.get(&work).ok_or("Work not found in this Project")?;
+    let selected = history.materialize(canonical);
     let mut evidence = Vec::new();
     let mut add = |key: &str, basis: &crate::ReadingBasis, content: Value| {
         let (kind, identity) = match basis.record {
@@ -236,11 +233,40 @@ pub fn prepare_explanation(
             &Some(observation.clone()),
         );
     }
-    for cp in canonical
-        .checkpoint_history
-        .iter()
-        .filter(|cp| cp.project_id == canonical.project.id && cp.work_item_id == Some(work))
-    {
+    for cp in &history.checkpoints {
+        if cp
+            .state_change
+            .as_deref()
+            .is_some_and(|text| !text.trim().is_empty())
+        {
+            let basis = crate::reading::reading_basis(
+                canonical,
+                crate::ReadingRecord::Checkpoint(cp.id),
+                cp.revision,
+                "state_change",
+                cp.source_basis.clone(),
+            );
+            add(
+                &format!("change:{}", cp.id),
+                &basis,
+                json!({"reported_change":cp.state_change,"observed_at":cp.recorded_at.as_unix_micros()}),
+            );
+        }
+        if !cp.changed_paths.is_empty() || !cp.changed_source_basis.is_empty() {
+            let basis = crate::reading::reading_basis(
+                canonical,
+                crate::ReadingRecord::Checkpoint(cp.id),
+                cp.revision,
+                "changed_paths,changed_source_basis",
+                cp.changed_source_basis.clone(),
+            );
+            add(
+                &format!("change_scope:{}", cp.id),
+                &basis,
+                json!({"paths":cp.changed_paths,
+                "source_ids":cp.changed_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>() }),
+            );
+        }
         let basis = crate::reading::reading_basis(
             canonical,
             crate::ReadingRecord::Checkpoint(cp.id),
@@ -346,8 +372,8 @@ fn finish_plan(
         .map(|r| json!({"from":r.from_identity,"relation":r.relation_kind,"to":r.to_identity}))
         .collect();
     let questions = match subject {
-        ExplanationSubject::Work(_) => "Answer purpose, reported_change, expected_effect, verification and next_step (optional limits).",
-        ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). Missing user rationale stays missing; agent rationale never supplies it.",
+        ExplanationSubject::Work(_) => "Answer purpose, reported_change, expected_effect, verification and next_step (optional limits). Explain the problem or goal first, then what was changed or investigated and how the reported before/after behavior differs. Use change:* history when a later result only reports verification or resumption; retain observation chronology. Describe behavior only when full report/Source prose supports it. Distinguish the reported result from its verification and state the next meaningful limitation; paths alone prove neither a feature nor runtime effect.",
+        ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). State the actual user choice or delegation distinctly from the agent's recommended alternative. Explain alternative consequences/trade-offs as expectations, the recommendation's evidence basis, and applicable scope/assumptions/revisit conditions. Missing user rationale stays missing; agent rationale never supplies it. Choosing an option does not prove its implementation or performance.",
     };
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,

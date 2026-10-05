@@ -2508,3 +2508,22 @@ checks full positive coverage, sample timing, counts/peak and the exact negative
 transformation without invoking the observer validator. Missing evidence, replacing
 the sample/reference with the other instance's, or rehashed passed claims fail.
 The same lifecycle proof exercises three sequential Homes and normal EOF.
+
+### Focused understanding and analysis remediation
+
+Independent controls in `current_work_flow` cover unrelated language capability,
+same-language out-of-scope failure, retained related reason/remainder/consequence,
+shared Repository Source without unrelated Work seeds, actual reference versus call
+meaning and absent/current/partial/failed/stale/unknown analysis state.
+`read_freshness::analysis_status_is_explicit_read_only_and_retains_failed_attempt_basis`
+uses the public selective read and explicit analyze operations without a Work, proving
+metadata-only decoding, no read mutation, content-based stale detection, unavailable
+comparison, retained failed-attempt basis, explicit recovery and non-current receipt
+rejection. Existing recovery/privacy/consumer controls remain required. Work preparation
+controls independently compare full same-Work report fields/revisions/Sources and
+missing user rationale against canonical inputs rather than regenerated prose.
+
+Focused runs preserve full streams, numeric exit/termination and before/after analyze
+samples under ignored `.local/`. These controls do not rerun historical Dogfood sessions
+or supply Final/gate/V11 or current-candidate human qualification. Historical b57b47a5
+Agent/Human reviews remain immutable diagnostic evidence for their own Product candidate.

@@ -83,6 +83,7 @@ pub struct UnderstandingDecision {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnderstandingArchitecture {
+    pub flow_evidence: ArchitectureFlowEvidence,
     /// Snapshot-bound nodes copied from inspectable Repository Intelligence
     /// entities. Narrative realization cannot add nodes to this collection.
     pub components: Vec<MapEntity>,
@@ -94,6 +95,20 @@ pub struct UnderstandingArchitecture {
     /// grounded relation hop from one of those seeds.
     pub selection_basis: Vec<UnderstandingArchitectureSelection>,
     pub gaps: Vec<CapabilityGap>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArchitectureFlowState {
+    NotRequested,
+    AnalysisUnavailable,
+    NoResolvedCalls,
+    SyntacticCalls,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchitectureFlowEvidence {
+    pub state: ArchitectureFlowState,
+    pub relation_ids: Vec<String>,
+    pub missing_evidence: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -475,7 +490,7 @@ pub fn build_project_understanding(
         .chain(&unresolved_relationships)
         .cloned()
         .collect::<Vec<_>>();
-    let deterministic_explanations = deterministic_explanations(
+    let mut deterministic_explanations = deterministic_explanations(
         &components,
         &explanation_relationships,
         &selection_basis,
@@ -484,6 +499,51 @@ pub fn build_project_understanding(
         limit,
         &mut omissions,
     );
+
+    if projection.sections.code == crate::ReadSectionState::NotRequested {
+        deterministic_explanations.retain(|e| e.kind != UnderstandingExplanationKind::Gap);
+    }
+    let call_relations = relationships
+        .iter()
+        .filter(|r| is_flow_relation(r))
+        .map(|r| r.identity.clone())
+        .collect::<Vec<_>>();
+    let flow_evidence = ArchitectureFlowEvidence {
+        state: match projection.sections.code {
+            crate::ReadSectionState::NotRequested => ArchitectureFlowState::NotRequested,
+            crate::ReadSectionState::Unavailable => ArchitectureFlowState::AnalysisUnavailable,
+            crate::ReadSectionState::Available if call_relations.is_empty() => {
+                ArchitectureFlowState::NoResolvedCalls
+            }
+            crate::ReadSectionState::Available => ArchitectureFlowState::SyntacticCalls,
+        },
+        relation_ids: call_relations,
+        missing_evidence: if projection.sections.code == crate::ReadSectionState::NotRequested {
+            Vec::new()
+        } else {
+            let mut missing = vec!["Stored static analysis does not observe runtime execution, data flow or control flow.".into()];
+            if !relationships.iter().any(is_flow_relation) {
+                missing.push("No resolved CallsSyntactically relation connects entities in the selected scope; dependencies and symbol references do not establish calls.".into());
+                missing.extend(
+                    gaps.iter()
+                        .filter(|g| {
+                            matches!(
+                                g.capability,
+                                volicord_repository_intelligence::Capability::Structural
+                                    | volicord_repository_intelligence::Capability::Semantic
+                            )
+                        })
+                        .map(|g| {
+                            format!(
+                                "{} / {:?} / {:?}: {}",
+                                g.area, g.capability, g.state, g.reason
+                            )
+                        }),
+                );
+            }
+            missing
+        },
+    };
 
     let mut generated_interpretations = projection.repository_map.agent_interpretations.clone();
     generated_interpretations.sort_by(|left, right| left.identity.cmp(&right.identity));
@@ -523,6 +583,7 @@ pub fn build_project_understanding(
         risks_assumptions_and_limits,
         known_limits,
         architecture: UnderstandingArchitecture {
+            flow_evidence,
             components,
             relationships,
             selection_basis,
@@ -905,9 +966,9 @@ fn deterministic_explanations(
     });
     decision_explanations.sort_by(|left, right| left.identity.cmp(&right.identity));
 
-    if !relationship_explanations
+    if !relationships
         .iter()
-        .any(|explanation| explanation.kind == UnderstandingExplanationKind::Flow)
+        .any(|r| is_flow_relation(r) && r.target_entity.is_some())
     {
         relationship_explanations.push(flow_gap_explanation(components, gaps));
     }
@@ -1303,8 +1364,8 @@ fn flow_gap_explanation(
     let mut explanation = UnderstandingExplanation {
         identity: "deterministic:gap:visible-flow".to_owned(),
         kind: UnderstandingExplanationKind::Gap,
-        english: "No resolved import, include, call, reference, or implementation flow is available among the displayed entities; no execution or data-flow path is inferred.".to_owned(),
-        korean: "표시된 엔터티 사이에 확인된 import, include, call, reference 또는 implementation 흐름이 없습니다. 실행 경로나 데이터 흐름을 추론하지 않습니다.".to_owned(),
+        english: "No resolved syntactic call connects the displayed entities. Containment, imports, symbol references and implementation relationships do not establish execution, data or control flow.".to_owned(),
+        korean: "표시된 엔터티 사이에 확인된 구문 호출이 없습니다. 포함, import, 심볼 참조 및 구현 관계는 실행·데이터·제어 흐름의 근거가 아닙니다.".to_owned(),
         evidence_classes: if gaps.is_empty() {
             vec![UnderstandingEvidenceClass::StructuralFact]
         } else {
@@ -1419,17 +1480,7 @@ fn is_explanatory_relation(relation: &MapRelation) -> bool {
 }
 
 fn is_flow_relation(relation: &MapRelation) -> bool {
-    matches!(
-        relation.kind.as_str(),
-        "Imports"
-            | "Includes"
-            | "CallsSyntactically"
-            | "References"
-            | "ResolvesTo"
-            | "InstantiatedBy"
-            | "Implements"
-            | "Overrides"
-    )
+    relation.role() == crate::CodeRelationshipRole::SyntacticCall
 }
 
 fn relation_narrative(
@@ -1914,7 +1965,7 @@ mod tests {
         assert!(flow_gap.relation_basis.is_empty());
         assert!(flow_gap
             .english
-            .contains("no execution or data-flow path is inferred"));
+            .contains("do not establish execution, data or control flow"));
     }
 
     #[test]

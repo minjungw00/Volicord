@@ -202,3 +202,87 @@ fn campaign_explanations_preserve_corrected_history() -> Result<(), Box<dyn std:
     );
     Ok(())
 }
+
+#[test]
+fn work_preparation_keeps_change_meaning_before_later_verification_report(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::ExplanationSubject;
+    let f = reading_fixture::fixture()?;
+    let work = f.goals["older"];
+    let before = f.operations.canonical_basis(f.project)?;
+    let plan = f
+        .operations
+        .prepare_explanation(f.project, ExplanationSubject::Work(work), "en")?;
+    let reports = plan
+        .evidence
+        .iter()
+        .filter(|e| e.key.starts_with("change:"))
+        .collect::<Vec<_>>();
+    assert!(reports.len() >= 2);
+    for checkpoint in before.checkpoint_history.iter().filter(|c| {
+        c.work_item_id == Some(work)
+            && c.state_change
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty())
+    }) {
+        let evidence = reports
+            .iter()
+            .find(|e| e.identity == checkpoint.id.to_string())
+            .ok_or("lost same-Work change report")?;
+        assert_eq!(
+            evidence.content["reported_change"],
+            serde_json::json!(checkpoint.state_change)
+        );
+        assert_eq!(evidence.revision, checkpoint.revision);
+        assert_eq!(evidence.field, "state_change");
+        assert_eq!(
+            evidence.sources,
+            checkpoint
+                .source_basis
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        );
+    }
+    assert!(!reports.iter().any(|e| before
+        .checkpoint_history
+        .iter()
+        .any(|c| c.id.to_string() == e.identity && c.work_item_id != Some(work))));
+    assert!(plan
+        .evidence
+        .iter()
+        .any(|e| e.key.starts_with("change_scope:")
+            && !e.content["paths"]
+                .as_array()
+                .ok_or("paths")
+                .unwrap()
+                .is_empty()));
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    let decision = f.operations.prepare_explanation(
+        f.project,
+        ExplanationSubject::Decision(f.decisions["explicit"]),
+        "en",
+    )?;
+    assert!(decision
+        .evidence
+        .iter()
+        .find(|e| e.key == "user_rationale")
+        .ok_or("user reason")?
+        .content
+        .is_null());
+    assert!(decision
+        .evidence
+        .iter()
+        .find(|e| e.key == "choice")
+        .ok_or("choice")?
+        .content["chosen_alternative_key"]
+        .is_string());
+    assert!(decision
+        .evidence
+        .iter()
+        .find(|e| e.key == "recommendation")
+        .ok_or("recommendation")?
+        .content["rationale"]
+        .is_string());
+    Ok(())
+}

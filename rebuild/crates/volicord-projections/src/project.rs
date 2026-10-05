@@ -214,6 +214,30 @@ pub struct MapRelation {
     pub diagnostics: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodeRelationshipRole {
+    Containment,
+    Dependency,
+    SyntacticCall,
+    SymbolReference,
+    TypeRelationship,
+    Other,
+}
+impl MapRelation {
+    pub fn role(&self) -> CodeRelationshipRole {
+        match self.kind.as_str() {
+            "Contains" | "Declares" | "Defines" => CodeRelationshipRole::Containment,
+            "Imports" | "Includes" | "Exports" => CodeRelationshipRole::Dependency,
+            "CallsSyntactically" => CodeRelationshipRole::SyntacticCall,
+            "References" | "ResolvesTo" => CodeRelationshipRole::SymbolReference,
+            "Implements" | "Overrides" | "Inherits" | "InstantiatedBy" | "TypeOf" => {
+                CodeRelationshipRole::TypeRelationship
+            }
+            _ => CodeRelationshipRole::Other,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapabilityGap {
     pub analysis_snapshot: AnalysisSnapshotId,
@@ -2486,10 +2510,9 @@ fn contextual_capability_gaps(
                 .map(|a| (a.identity, &a.capabilities, &a.inventory.entries)),
         );
     for (identity, capabilities, entries) in bases {
-        for report in capabilities
-            .iter()
-            .filter(|r| r.state != CapabilityState::Available)
-        {
+        for report in capabilities.iter().filter(|r| {
+            r.state != CapabilityState::Available && r.capability != Capability::AgentAssisted
+        }) {
             let affected = report
                 .coverage
                 .failed
@@ -2633,21 +2656,20 @@ fn path_matches(scope: &str, locator: &str) -> bool {
 fn source_matches_code(
     canonical: &CanonicalReadBasis,
     ids: &[SourceId],
-    entity_source: SourceId,
+    _entity_source: SourceId,
     locator: &str,
 ) -> bool {
     ids.iter().any(|id| {
-        *id == entity_source
-            || canonical.sources.iter().any(|source| {
-                source.source.id == *id
-                    && match &source.source.payload {
-                        SourcePayload::File { locator: path, .. }
-                        | SourcePayload::Symbol { locator: path, .. } => {
-                            path_matches(path, locator)
-                        }
-                        _ => false,
-                    }
-            })
+        // Shared RepositorySnapshot provenance identifies the observation,
+        // not a Work's affected entity. Only a bounded locator seeds code.
+        canonical.sources.iter().any(|source| {
+            source.source.id == *id
+                && match &source.source.payload {
+                    SourcePayload::File { locator: path, .. }
+                    | SourcePayload::Symbol { locator: path, .. } => path_matches(path, locator),
+                    _ => false,
+                }
+        })
     })
 }
 

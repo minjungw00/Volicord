@@ -1292,3 +1292,38 @@ Snapshot identities/generation time belong to evidence details. The command is t
 guidance, not a supported Viewer analysis POST. Missing historical attempt receipts
 cannot establish a latest-attempt success. No automatic analyzer execution or automatic
 explanation regeneration is added by status reads or explicit analysis refresh.
+
+### Explanation meaning and directed relationship evidence
+
+Work preparation now carries complete same-Work `change:<Checkpoint>` report prose
+and `change_scope:<Checkpoint>` paths/changed Sources in chronological evidence, in
+addition to independently selected latest result/state/verification/review/acceptance.
+A later verification/resume report therefore cannot erase the earlier change meaning
+from interpretation input. The active host explains goal/problem, changed or investigated
+behavior, supported before/after effect, actual verification and next meaningful limit;
+paths, generic change prose and a completed state alone prove no runtime improvement.
+Decision interpretation distinguishes actual user choice/delegation, alternative expected
+consequences/trade-offs, agent recommendation basis, user reason only when present, and
+scope/assumptions/revisit conditions. Recording still validates grounding structure,
+not prose entailment; source-rich and absent-evidence controls remain independent.
+
+Shared Repository Snapshot Source provenance binds observation identity but does not
+seed every code entity into a Work. Work architecture seeds use bounded File/Symbol
+locators, changed paths, explicit canonical links or declared component identity;
+only actual incident relationships supply neighbors. Unrelated repository entities
+remain inspectable in repository scope. `CodeRelationshipRole` separates containment,
+dependency, syntactic call, symbol reference, type relationship and other evidence.
+Dependencies, declaration/containment, symbol resolution and implementation are not
+execution/data/control flow. Only exact `CallsSyntactically` relations supply the
+current static call-flow diagram; unresolved targets retain their own evidence and
+never become invented endpoints. `UnderstandingArchitecture.flow_evidence` reports
+NotRequested, AnalysisUnavailable, NoResolvedCalls or SyntacticCalls, exact retained
+relation identities and missing evidence. Static calls still cannot prove runtime
+execution, dynamic dispatch, data/control flow or cross-process behavior. Missing
+resolved calls produce an explicit scoped gap, not a disconnected flow node list.
+An unrequested code section has no material missing-flow warning.
+
+Agent-assisted availability belongs to analysis status/audit rather than contextual
+analyzer limits: retained Work/Decision explanations use the canonical active-host
+plan and do not consume a repository agent-assisted adapter. Underlying capability
+reports remain inspectable and retain their actual state.

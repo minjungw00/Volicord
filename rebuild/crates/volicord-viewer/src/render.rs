@@ -1635,16 +1635,7 @@ fn render_understanding_evidence(
 }
 
 fn is_flow_relation(relation: &MapRelation) -> bool {
-    [
-        "CallsSyntactically",
-        "Imports",
-        "Includes",
-        "References",
-        "ResolvesTo",
-        "InstantiatedBy",
-    ]
-    .iter()
-    .any(|kind| relation.kind.contains(kind))
+    relation.role() == volicord_projections::CodeRelationshipRole::SyntacticCall
 }
 
 const fn map_relation_class_key(class: MapRelationClass) -> &'static str {

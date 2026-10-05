@@ -619,7 +619,7 @@ fn polyglot_current_work_keeps_same_work_history_flow_grounding(
     let explained_relations = understanding
         .deterministic_explanations
         .iter()
-        .filter(|explanation| explanation.kind == UnderstandingExplanationKind::Flow)
+        .filter(|explanation| explanation.kind == UnderstandingExplanationKind::Relationship)
         .flat_map(|explanation| explanation.relation_basis.iter().map(String::as_str))
         .collect::<std::collections::BTreeSet<_>>();
     assert!(explained_relations.contains(NATIVE_TO_BOUNDARY));
@@ -800,5 +800,84 @@ fn analysis_status_distinguishes_current_coverage_from_partial_failed_and_unknow
             freshness
         );
     }
+    Ok(())
+}
+
+#[test]
+fn shared_repository_source_does_not_seed_unrelated_work_components(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (projection, _) = build_projection(
+        &[
+            ("src/lib.rs", "pub fn work() {}"),
+            ("unrelated/other.rs", "pub fn other() {}"),
+        ],
+        "src/lib.rs",
+        64,
+    )?;
+    assert!(projection
+        .repository_map
+        .entities
+        .iter()
+        .any(|e| e.locator == "unrelated/other.rs"));
+    assert!(projection
+        .current_work_topology
+        .entities
+        .iter()
+        .all(|e| e.locator != "unrelated/other.rs"));
+    assert!(projection.current_work_code.iter().all(|link| !projection
+        .repository_map
+        .entities
+        .iter()
+        .any(|e| e.identity == link.entity_identity && e.locator == "unrelated/other.rs")));
+    let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+    assert!(understanding
+        .architecture
+        .components
+        .iter()
+        .all(|e| e.locator != "unrelated/other.rs"));
+    Ok(())
+}
+
+#[test]
+fn reference_and_containment_evidence_never_claims_execution_flow(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::{ArchitectureFlowState, CodeRelationshipRole};
+    let (projection, _) = build_projection_scenario(
+        &[
+            ("src/lib.rs", "pub fn work() {}"),
+            ("src/neighbor.rs", "pub fn neighbor() {}"),
+        ],
+        &["src/lib.rs"],
+        &[vec!["src/lib.rs"]],
+        64,
+        |a| add_fixture_flow_relation(a, "fixture-reference", "src/lib.rs", "src/neighbor.rs"),
+    )?;
+    let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+    assert!(understanding
+        .architecture
+        .relationships
+        .iter()
+        .any(|r| r.identity == "fixture-reference"
+            && r.role() == CodeRelationshipRole::SymbolReference));
+    assert_eq!(
+        understanding.architecture.flow_evidence.state,
+        ArchitectureFlowState::NoResolvedCalls
+    );
+    assert!(understanding
+        .architecture
+        .flow_evidence
+        .relation_ids
+        .is_empty());
+    assert!(understanding
+        .architecture
+        .flow_evidence
+        .missing_evidence
+        .iter()
+        .any(|s| s.contains("CallsSyntactically")));
+    assert!(!understanding
+        .deterministic_explanations
+        .iter()
+        .any(|e| e.kind == UnderstandingExplanationKind::Flow
+            && e.relation_basis.iter().any(|id| id == "fixture-reference")));
     Ok(())
 }

@@ -43,11 +43,12 @@ pub use project::{
     build_memory_inspection, build_project_projection, CandidateDependencyFailure,
     CandidateDependencyFailureKind, CandidateDependencyState, CandidateProjectionInput,
     CanonicalInspectionItem, CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry,
-    CurrentWorkCodeLink, CurrentWorkPathBasis, CurrentWorkTopology, DecisionContextCodeLink,
-    MapEntity, MapInterpretation, MapRelation, MapRelationClass, MemoryInspectionProjection,
-    ProjectOverview, ProjectProjection, ProjectProjectionInputs, ProjectReadSections,
-    ProjectionBound, ProjectionDetail, ProjectionHealth, ProjectionIssue, ProjectionIssueKind,
-    ProjectionReadRequirements, ReadSectionState, RepositoryMap, SourceStatusSummary, WorkReadCost,
+    CodeRelationshipRole, CurrentWorkCodeLink, CurrentWorkPathBasis, CurrentWorkTopology,
+    DecisionContextCodeLink, MapEntity, MapInterpretation, MapRelation, MapRelationClass,
+    MemoryInspectionProjection, ProjectOverview, ProjectProjection, ProjectProjectionInputs,
+    ProjectReadSections, ProjectionBound, ProjectionDetail, ProjectionHealth, ProjectionIssue,
+    ProjectionIssueKind, ProjectionReadRequirements, ReadSectionState, RepositoryMap,
+    SourceStatusSummary, WorkReadCost,
 };
 pub use recall::{
     build_resume_brief, build_resume_brief_from_metadata, BriefContextItem, BriefDecision,
@@ -56,11 +57,12 @@ pub use recall::{
 };
 pub use trigger::{RecallTriggerOutcome, SessionRecallTrigger};
 pub use understanding::{
-    build_project_understanding, ProjectUnderstanding, UnderstandingArchitecture,
-    UnderstandingArchitectureSelection, UnderstandingArchitectureSelectionBasis,
-    UnderstandingBound, UnderstandingDecision, UnderstandingEvidence, UnderstandingEvidenceClass,
-    UnderstandingExplanation, UnderstandingExplanationKind, UnderstandingOmission,
-    UnderstandingWork, UnderstandingWorkState, UnresolvedWorkGrouping, WorkOverview, WorkSection,
+    build_project_understanding, ArchitectureFlowEvidence, ArchitectureFlowState,
+    ProjectUnderstanding, UnderstandingArchitecture, UnderstandingArchitectureSelection,
+    UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingDecision,
+    UnderstandingEvidence, UnderstandingEvidenceClass, UnderstandingExplanation,
+    UnderstandingExplanationKind, UnderstandingOmission, UnderstandingWork, UnderstandingWorkState,
+    UnresolvedWorkGrouping, WorkOverview, WorkSection,
 };
 
 pub use reading::{
