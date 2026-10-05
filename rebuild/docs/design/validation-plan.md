@@ -2391,6 +2391,11 @@ reject them. Waiting and positively confirmed termination remain valid controls.
 
 ### Required retention and launch rehearsal controls
 
+Post-session resume materialization records `runtime_home_copied` from the
+actual Runtime path used by its candidate operations. Immutable reprocessing
+therefore reports its private copy; live collection reports the original Home.
+This collection-time fact does not describe the measured fresh-session launch.
+
 The Project identity observer distinguishes a successful `project_resolve` lookup
 with `status = not_found` and no Project identity in either request or response
 from calls that assert an identity. This lookup supplies no identity; later explicit

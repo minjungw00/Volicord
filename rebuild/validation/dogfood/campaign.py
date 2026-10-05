@@ -2126,7 +2126,7 @@ def extract_resume_evidence(
         "resume_capture_sha256": capture.source_sha256,
         "canonical_bundle_sha256": harness.sha256(bundle),
         "descriptor_evidence_completed": True,
-        "runtime_home_copied": False,
+        "runtime_home_copied": runtime != Path(state["runtime_home"]),
         "document_evidence": document_result,
         "viewer_snapshot_evidence": snapshot_result,
     }

@@ -79,6 +79,9 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(len(observed), 3)
         self.assertEqual(c.load_campaign(self.source)['collection_state'], 'pending')
         manifest = c.load_evidence_set(self.output)
+        self.assertTrue(all(entry['resume_evidence']['runtime_home_copied']
+            for entry in c.read_json(self.output / 'batch-intake-summary.json')['works']
+            if entry['work_label'] == 'A'))
         run = runs.verify(self.output, manifest)
         self.assertEqual(run['candidate_head'], '12' * 20)
         self.assertEqual(run['collector_revision'], self.expected_collector)
