@@ -28,6 +28,8 @@ PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_suppo
     "collection_support.py", "collection_runs_self_test.py", "campaign_self_test.py", "resume_self_test.py", "capture_self_test.py")
 
 COLLECTION_CONTROLS = {
+    'project_not_found_before_initialization': 'resume_self_test.ResumeTests.test_project_not_found_before_initialization_is_not_an_identity',
+    'project_not_found_identity_conflict': 'resume_self_test.ResumeTests.test_project_not_found_cannot_hide_identity_conflicts',
     'repeated_same_work_recall': 'resume_self_test.ResumeTests.test_repeated_same_work_recalls_preserve_identity',
     'later_recall_identity_conflict': 'resume_self_test.ResumeTests.test_later_recall_conflict_or_malformed_identity_is_hard',
     'bounded_direct_shell_wrapper': 'capture_self_test.CurrentExecutionTests.test_direct_calls_and_ordered_results_keep_distinct_execution_identities',

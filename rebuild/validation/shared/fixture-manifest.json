@@ -732,14 +732,16 @@
         "structured-result|proves|successful-operation",
         "criterion-evidence|independently-supports|qualitative-assessment",
         "collection-run|preserves|observed-product-candidate",
-        "collector-revision|independently-produces|immutable-evidence-publication"
+        "collector-revision|independently-produces|immutable-evidence-publication",
+        "not-found-without-identity|precedes|explicit-project-initialization",
+        "not-found-identity-conflict|cannot_be_coerced_to|project-identity-success"
       ],
       "expected_unsupported": [
         "private rollout content or credentials",
         "Codex-version dispatch or unsupported completion shapes",
         "JavaScript execution or wrapper-output success inference"
       ],
-      "content_sha256": "05135e0dbf960e42945aef351199b01a3d33110cf29aafcadd3071e341860c4c",
+      "content_sha256": "432c1d0ac16ff24dae990d56efb9f9defdff50475272c15fe12521bfe11d23bd",
       "origin": "Sanitized self-authored representatives derived from observed current Phase 8 Codex Extension execution and completion envelopes.",
       "license": "CC0-1.0"
     },

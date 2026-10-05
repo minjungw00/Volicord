@@ -2391,6 +2391,13 @@ reject them. Waiting and positively confirmed termination remain valid controls.
 
 ### Required retention and launch rehearsal controls
 
+The Project identity observer distinguishes a successful `project_resolve` lookup
+with `status = not_found` and no Project identity in either request or response
+from calls that assert an identity. This lookup supplies no identity; later explicit
+initialization/Recall must still supply the single consistent Project. Malformed,
+missing resolved identities and contradictory not-found identity fields remain
+integrity errors. Mandatory authored collection controls cover both boundaries.
+
 The existing mandatory local stage additionally requires `retention_metadata_round_trip`,
 `retention_oversize_atomic`, `candidate_shell_route`, `resource_expectation_lifecycle`,
 and `partial_process_sampling`.

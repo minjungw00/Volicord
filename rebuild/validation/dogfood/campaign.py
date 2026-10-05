@@ -1404,7 +1404,13 @@ def observed_project_ids(capture: Any) -> list[str]:
         raise CampaignError('Project identity transport is incomplete')
     observed = [call for operation in ('project_initialize', 'project_resolve', 'recall')
         for call in capture.successful_calls(operation)]
-    if any(PROJECT_ID.fullmatch(str(call.result.get('project_id', ''))) is None
+    # A successful lookup may establish absence before explicit initialization.
+    # Only its exact no-identity result is exempt from identity validation.
+    observed = [call for call in observed if not (call.operation == 'project_resolve'
+        and call.result.get('status') == 'not_found' and 'project_id' not in call.result
+        and 'project_id' not in call.arguments)]
+    if any(call.operation == 'project_resolve' and call.result.get('status') == 'not_found'
+            or PROJECT_ID.fullmatch(str(call.result.get('project_id', ''))) is None
             or call.operation != 'project_initialize' and call.arguments.get('project_id', call.result.get('project_id')) != call.result.get('project_id')
             for call in observed):
         raise CampaignError('Project identity is malformed or conflicting')

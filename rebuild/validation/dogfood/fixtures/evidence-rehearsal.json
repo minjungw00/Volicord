@@ -79,6 +79,8 @@
     "candidate_shell_route",
     "resource_expectation_lifecycle",
     "partial_process_sampling",
+    "project_not_found_before_initialization",
+    "project_not_found_identity_conflict",
     "repeated_same_work_recall",
     "later_recall_identity_conflict",
     "bounded_direct_shell_wrapper",

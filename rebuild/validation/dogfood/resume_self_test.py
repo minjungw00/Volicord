@@ -29,6 +29,29 @@ class ResumeTests(unittest.TestCase):
     def inspect(self, capture=None):
         return campaign.inspect_resume(capture or self.capture, self.descriptor, self.state)
 
+    def unresolved_project_lookup(self):
+        recall = self.capture.successful_calls('recall')[0]
+        return replace(recall, operation='project_resolve', call_id='authored-not-found',
+            arguments={'repository': '/phase8/repository'}, result={'status': 'not_found'})
+
+    def test_project_not_found_before_initialization_is_not_an_identity(self):
+        absent = self.unresolved_project_lookup()
+        initialized = replace(absent, operation='project_initialize', call_id='authored-initialize',
+            result={'project_id': self.state['project_id']})
+        capture = replace(self.capture, tool_calls=(absent, initialized, *self.capture.tool_calls))
+        self.assertEqual(campaign.observed_project_ids(capture), [self.state['project_id']])
+        self.assertEqual(campaign.observed_project_ids(replace(capture, tool_calls=(absent,))), [])
+
+    def test_project_not_found_cannot_hide_identity_conflicts(self):
+        absent = self.unresolved_project_lookup()
+        cases = [replace(absent, result={'status': 'not_found', 'project_id': value})
+            for value in (None, 'malformed', self.state['project_id'])]
+        cases += [replace(absent, arguments={**absent.arguments, 'project_id': self.state['project_id']}),
+            replace(absent, result={'status': 'resolved'})]
+        for call in cases:
+            with self.subTest(call=call), self.assertRaises(campaign.CampaignError):
+                campaign.observed_project_ids(replace(self.capture, tool_calls=(call, *self.capture.tool_calls)))
+
     def failure(self, capture, basis, domain):
         with self.assertRaises(campaign.ResumeContractError) as raised:
             self.inspect(capture)
