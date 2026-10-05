@@ -878,6 +878,18 @@ def assert_checkpoint_free_completed_resume_collects(parent: Path, binary: Path)
         lines.append(line.replace("paused", "completed").replace(
             f'"commit_hash":"{baseline}"', f'"commit_hash":"{committed}"'))
     resume.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    events = [json.loads(line) for line in lines]
+    repeated = []
+    for event in events:
+        if 'recall-call' not in event.get('payload', {}).get('call_id', ''):
+            continue
+        duplicate = copy.deepcopy(event)
+        duplicate['payload']['call_id'] = duplicate['payload']['call_id'].replace('recall-call', 'recall-again-call')
+        duplicate['timestamp'] = events[-1]['timestamp']
+        repeated.append(duplicate)
+    assert repeated, 'fixture must contain original Recall transports'
+    events[-1:-1] = repeated
+    resume.write_text(''.join(json.dumps(event) + '\n' for event in events), encoding='utf-8')
     bundle = bundles[campaign.work_key("volicord", "A")]
     envelope = json.loads(bundle.read_text(encoding="utf-8").replace("paused", "completed"))
     payload = envelope["payload"]
@@ -891,6 +903,7 @@ def assert_checkpoint_free_completed_resume_collects(parent: Path, binary: Path)
     finally:
         campaign.run_checked = original_run_checked
     no_write = campaign.load_codex_capture(resume)
+    assert len(no_write.successful_calls('recall')) == 2
     assert not no_write.successful_calls("checkpoint_record")
     assert not harness.meaningful_work_path_observations(no_write)
     descriptor = campaign.read_json(campaign.frozen_descriptor_path(root, "volicord", "A"))

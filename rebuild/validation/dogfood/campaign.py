@@ -1398,9 +1398,17 @@ def prepare_campaign(
 
 
 def observed_project_ids(capture: Any) -> list[str]:
+    if capture.transport_issues('project_resolve', 'project_initialize', 'recall'):
+        raise CampaignError('Project identity transport is incomplete')
+    observed = [call for operation in ('project_initialize', 'project_resolve', 'recall')
+        for call in capture.successful_calls(operation)]
+    if any(PROJECT_ID.fullmatch(str(call.result.get('project_id', ''))) is None
+            or call.operation != 'project_initialize' and call.arguments.get('project_id', call.result.get('project_id')) != call.result.get('project_id')
+            for call in observed):
+        raise CampaignError('Project identity is malformed or conflicting')
     values = {
         str(call.result.get("project_id"))
-        for operation in ("project_initialize", "project_resolve")
+        for operation in ("project_initialize", "project_resolve", "recall")
         for call in capture.successful_calls(operation)
         if PROJECT_ID.fullmatch(str(call.result.get("project_id", "")))
     }
@@ -1415,19 +1423,13 @@ def observed_work_item_ids(capture: Any, role: str) -> list[str]:
         ids = checkpoint_ids
     elif role == "resume":
         recalls = capture.successful_calls("recall")
-        if len(recalls) != 1:
-            raise CampaignError("fresh resume must expose one canonical Recall")
-        result = recalls[0].result
-        checkpoint = result.get("checkpoint")
-        goals = result.get("goal_basis")
-        if not isinstance(checkpoint, dict) or not isinstance(goals, list):
-            raise CampaignError("fresh resume lacks structured Recall Work identity")
-        recalled = checkpoint.get("work_item_id")
-        matching_goals = [item for item in goals if isinstance(item, dict)
-            and item.get("role") == "goal" and item.get("identity") == recalled]
-        if len(matching_goals) != 1:
-            raise CampaignError("fresh resume Recall Work identity is absent or ambiguous")
-        ids = [recalled, *checkpoint_ids]
+        if not recalls or capture.transport_issues('recall'):
+            raise CampaignError("fresh resume lacks complete canonical Recall evidence")
+        import answer_observations
+        if any(answer_observations.recall_identity_errors(call.result, call.arguments.get('project_id'))
+                for call in recalls):
+            raise CampaignError("fresh resume Recall identity is malformed or conflicting")
+        ids = [call.result['checkpoint']['work_item_id'] for call in recalls] + checkpoint_ids
     else:
         raise CampaignError("unknown Work session role")
     if not ids or any(not isinstance(value, str) or PROJECT_ID.fullmatch(value) is None
@@ -1479,21 +1481,22 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
         raise ResumeContractError("recall_transport_incomplete")
     if not recalls and capture.calls("recall"):
         raise ResumeContractError("recall_operation_failed")
-    if len(resolves) != 1 or len(recalls) != 1 or capture.successful_calls("project_initialize"):
+    if not resolves or not recalls or capture.successful_calls("project_initialize"):
         raise ResumeContractError(
             "recall_identity_or_project_invalid"
         )
+    resolves = sorted(resolves, key=lambda call: call.sequence)
+    recalls = sorted(recalls, key=lambda call: call.sequence)
     resolve, recall = resolves[0], recalls[0]
-    if recall.result.get("read_only") is not True or "checkpoint" not in recall.result:
+    if any(call.result.get("read_only") is not True or "checkpoint" not in call.result for call in recalls):
         raise ResumeContractError("recall_transport_incomplete")
     project_id = resolve.result.get("project_id")
     if (
-        resolve.result.get("status") != "found"
+        any(call.result.get('status') != 'found' or call.result.get('project_id') != project_id for call in resolves)
         or not PROJECT_ID.fullmatch(str(project_id or ""))
-        or project_id != recall.arguments.get("project_id")
-        or project_id != recall.result.get("project_id")
+        or any(project_id != call.arguments.get('project_id') or project_id != call.result.get('project_id') for call in recalls)
         or project_id != state.get("project_id")
-        or resolve.completion_sequence >= recall.sequence
+        or any(not any(r.completion_sequence < call.sequence for r in resolves) for call in recalls)
     ):
         raise ResumeContractError(
             "recall_identity_or_project_invalid"

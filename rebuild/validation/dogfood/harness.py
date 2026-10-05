@@ -7627,12 +7627,17 @@ def learning_recall_facts(
     materiality_obligations: Any,
     learning_basis: dict[str, Any] | None,
 ) -> tuple[bool, dict[str, Any]]:
-    if resume is None:
-        return False, {}
-    recalls = resume.successful_calls("recall")
-    if len(recalls) != 1:
-        return False, {"matching_recall_count": len(recalls)}
-    recall = recalls[0]
+    recalls = resume.successful_calls('recall') if resume else []
+    values = [_learning_recall_observation(call, materiality_obligations, learning_basis) for call in recalls]
+    if len(values) == 1:
+        return values[0]
+    return bool(values) and all(valid for valid, _ in values), {
+        'matching_recall_count': len(recalls),
+        'observations': [dict(basis, call_id=call.call_id, sequence=call.sequence)
+            for call, (_, basis) in zip(recalls, values)]}
+
+
+def _learning_recall_observation(recall, materiality_obligations, learning_basis):
     context = recall.result.get("learning_context")
     health = recall.result.get("learning_context_health", {})
     if has_obligation(materiality_obligations, "learning_deliberation"):
@@ -9246,8 +9251,12 @@ def real_session_evidence(
             and resume_capture.repository_scoped_activation_observed
         )
     )
-    resolve_call = unique_call(resume_capture, "project_resolve")
-    recall_call = unique_call(resume_capture, "recall")
+    resolves = resume_capture.successful_calls('project_resolve') if resume_capture else []
+    recalls = resume_capture.successful_calls('recall') if resume_capture else []
+    # The earliest read anchors pre-work ordering only. All reads are independently
+    # checked by shared_answer_integrity; neither earliest nor latest is an oracle.
+    resolve_call = min(resolves, key=lambda call: call.sequence, default=None)
+    recall_call = min(recalls, key=lambda call: call.sequence, default=None)
     learning_recall_ok, learning_recall_basis = learning_recall_facts(
         resume_capture, materiality_obligations,
         learning_basis if materiality_ok and learning_participation_ok
@@ -9287,6 +9296,10 @@ def real_session_evidence(
         and resolved_binding.get("availability") == "available"
         and resolve_call.completion_sequence < recall_call.sequence
         and not resume_capture.successful_calls("project_initialize")
+        and all(call.result.get('status') == 'found'
+            and call.result.get('project_id') == bundle.project_id
+            and call.arguments.get('repository') == str(resume_capture.cwd) for call in resolves)
+        and all(any(r.completion_sequence < call.sequence for r in resolves) for call in recalls)
     )
     first_inspection = (
         resume_capture.first_inspection_after(recall_call.completion_sequence)

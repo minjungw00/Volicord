@@ -27,7 +27,7 @@ class AnswerTests(unittest.TestCase):
             self.output['output'][1]['text'] = json.dumps(answer)
             for event in self.events:
                 payload = event['payload']
-                if payload.get('type') == 'mcp_tool_call_end' and payload.get('invocation', {}).get('tool') == 'recall':
+                if payload.get('type') == 'mcp_tool_call_end' and payload.get('call_id') == 'exec-' + self.output['call_id']:
                     payload['result']['Ok']['structuredContent'] = copy.deepcopy(answer)
         if cli is not None:
             turn = next(event['payload']['turn_id'] for event in self.events
@@ -215,6 +215,27 @@ class AnswerTests(unittest.TestCase):
         observations = fact['basis']['observations']
         self.assertEqual([o['goal_basis']['revision'] for o in observations], [1, 2])
         self.assertEqual([o['transport'] for o in observations], ['cli', 'mcp'])
+
+    def test_two_mcp_reads_keep_unavailable_then_current_observations(self):
+        wrapper_id = self.output['call_id']
+        original = [e for e in self.events if e['payload'].get('call_id') in
+            {wrapper_id, 'exec-' + wrapper_id}]
+        copies = copy.deepcopy(original)
+        for event in copies:
+            event['payload']['call_id'] = ('exec-first-' + wrapper_id
+                if event['payload']['call_id'].startswith('exec-') else 'first-' + wrapper_id)
+            event['timestamp'] = original[0]['timestamp']
+        # A distinct wrapper/result pair, before the supported later read.
+        index = self.events.index(original[0])
+        self.events[index:index] = copies
+        _, fact = self.evaluate(self.generated_answer())
+        self.assertEqual(fact['status'], 'confirmed_pass', fact)
+        reads = [o for o in fact['basis']['observations'] if o['transport'] == 'mcp']
+        self.assertEqual(len(reads), 2)
+        self.assertLess(reads[0]['sequence'], reads[1]['sequence'])
+        cap = h.load_codex_capture(self.path)
+        self.assertEqual([c.result['selected_work']['answers']['explanation_state']
+            for c in cap.successful_calls('recall')], ['unavailable', 'current'])
 
     def test_later_unrelated_and_failed_corrections_do_not_advance_basis(self):
         for kwargs in ({'after': True}, {'identity': 'fb' * 16}, {'failed': True}):

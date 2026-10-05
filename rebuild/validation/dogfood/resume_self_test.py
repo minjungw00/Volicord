@@ -95,6 +95,61 @@ class ResumeTests(unittest.TestCase):
             executable_work_scope=None, descriptor_scope_paths=[])
         self.assertEqual(facts["mode"], "verified_state_continuation")
 
+    def repeated_capture(self, count=2):
+        """Authored control: same paused Work, explanation recorded between reads.
+
+        Derived from the reviewed Volicord A resume interaction shape, without
+        copying private transcript bodies or treating it as a new measured chat.
+        """
+        capture = self.completed_no_write()
+        recall = capture.successful_calls("recall")[0]
+        reads = [recall]
+        for index in range(1, count):
+            reads.append(replace(recall, call_id=f"repeated-recall-{index}",
+                sequence=100 + index * 2, completion_sequence=101 + index * 2,
+                result={**recall.result, 'selected_work': {**recall.result['selected_work'],
+                    'answers': {**recall.result['selected_work']['answers'], 'explanation_state': 'current'}}}))
+        return replace(capture, tool_calls=(*capture.tool_calls, *reads[1:]))
+
+    def test_repeated_same_work_recalls_preserve_identity(self):
+        for count in (2, 3):
+            capture = self.repeated_capture(count)
+            self.assertEqual(campaign.observed_work_item_ids(capture, "resume"), [self.state["work_item_id"]])
+            self.assertEqual(self.inspect(capture), self.state["project_id"])
+            self.assertEqual(len(capture.successful_calls("recall")), count)
+
+    def test_repeated_project_resolution_is_not_identity_failure(self):
+        capture = self.repeated_capture()
+        resolve = capture.successful_calls('project_resolve')[0]
+        duplicate = replace(resolve, call_id='resolve-again', sequence=90, completion_sequence=91)
+        self.assertEqual(self.inspect(replace(capture, tool_calls=(*capture.tool_calls, duplicate))), self.state['project_id'])
+        wrong = replace(duplicate, result={**duplicate.result, 'project_id': 'ff' * 16})
+        self.failure(replace(capture, tool_calls=(*capture.tool_calls, wrong)), 'recall_identity_or_project_invalid', 'evidence')
+
+    def test_later_recall_conflict_or_malformed_identity_is_hard(self):
+        capture = self.repeated_capture()
+        later = capture.successful_calls('recall')[-1]
+        for result in ({**later.result, 'project_id': 'ff' * 16},
+                {**later.result, 'selected_work': {**later.result['selected_work'], 'work_item_id': 'ff' * 16}},
+                {**later.result, 'checkpoint': {**later.result['checkpoint'], 'revision': True}},
+                {**later.result, 'goal_basis': []}):
+            changed = replace(later, result=result)
+            bad = replace(capture, tool_calls=tuple(changed if c is later else c for c in capture.tool_calls))
+            self.failure(bad, 'recall_identity_or_project_invalid', 'evidence')
+        issue = EvidenceTransportIssue(later.sequence, later.turn_id, later.call_id,
+            'volicord', 'recall', 'malformed_mcp_completion')
+        self.failure(replace(capture, evidence_transport_issues=(issue,)), 'recall_transport_incomplete', 'evidence')
+
+    def test_failed_read_before_or_after_success_does_not_erase_identity(self):
+        capture = self.completed_no_write()
+        recall = capture.successful_calls('recall')[0]
+        for sequence in (recall.sequence - 1, 102):
+            failed = replace(recall, call_id='failed-read', sequence=sequence,
+                completion_sequence=sequence + 1, outcome='failed', result={})
+            changed = replace(capture, tool_calls=(*capture.tool_calls, failed))
+            self.assertEqual(self.inspect(changed), self.state['project_id'])
+            self.assertEqual(len(changed.calls('recall')), 2)
+
     def test_completed_no_write_resume_can_start_on_committed_descendant(self):
         repository = self.root / "repository"
         repository.mkdir()
@@ -133,6 +188,7 @@ class ResumeTests(unittest.TestCase):
         other_work = "ff" * 16
         changed = replace(recall, result={**recall.result,
             "checkpoint": {**recall.result["checkpoint"], "work_item_id": other_work},
+            "selected_work": {**recall.result['selected_work'], 'work_item_id': other_work},
             "goal_basis": [{"identity": other_work, "role": "goal"}]})
         wrong_work = replace(capture, tool_calls=tuple(changed if c is recall else c
             for c in capture.tool_calls))
@@ -538,7 +594,7 @@ class LearningContinuityTests(unittest.TestCase):
         value = self.evaluate_capture(replace(self.resume, tool_calls=(*self.resume.tool_calls, repeated)))
         findings = {f["check"]: f for f in machine.from_observation(value)}
         self.assertEqual(findings["procedure_invocation_counts"]["disposition"], "advisory")
-        self.assertEqual(findings["repository_bound_project_resolution"]["disposition"], "qualitative_review_required")
+        self.assertEqual(findings["repository_bound_project_resolution"]["status"], "confirmed_pass")
         self.assertEqual(findings["measured_project_identity"]["status"], "confirmed_pass")
         conflict = replace(repeated, result={**repeated.result, "project_id": "ff" * 16})
         value = self.evaluate_capture(replace(self.resume, tool_calls=(*self.resume.tool_calls, conflict)))

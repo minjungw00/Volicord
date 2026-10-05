@@ -1703,6 +1703,24 @@ human authority-obligation review가 계속 소유한다. Sanitized frontier reg
 
 ### Resume evidence and verification chronology
 
+Resume intake derives one Work from **all** successfully observed structured Recall
+reads and any new Checkpoint, retaining each call and sequence. Multiple read-only
+Recall or same-Project `project_resolve` calls are permitted; exact counts remain
+`procedure_invocation_counts` advisory evidence. Every successful resolution and
+Recall must bind the same declared Project/Work. Malformed structured identity,
+transport-incomplete Recall and later conflicting identity remain hard evidence
+failures; a successful sibling read cannot repair them. A failed Product read
+remains an observed failure and does not erase a separate valid read.
+
+The earliest successful read anchors pre-work ordering only. Shared-answer integrity
+checks every read against its own invocation/completion window, ordered authoring
+receipts, immutable asserted Checkpoint and Goal basis. Neither first nor last read
+is a semantic oracle. Supported intervening corrections or explanation recording
+may change revision/state, including `unavailable` → `current`. Confirmed identity,
+action or grounding contradictions are hard; unavailable temporal basis is scoped
+`indeterminate` / qualitative-review-required. Procedural order and useful recovery
+remain qualitative; raw/session/candidate/fresh-thread checks are unchanged.
+
 Maintained resume reasons are `recall_transport_incomplete`, `recall_identity_or_project_invalid`,
 `recall_operation_failed`, `pre_recall_repository_access_or_order_violation`, `baseline_invalid`,
 `scope_or_authority_missing`, `post_change_validation_missing`, `terminal_validation_failed`,

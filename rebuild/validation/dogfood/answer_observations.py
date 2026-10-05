@@ -14,6 +14,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'shared'))
 from recorded_action_evidence import recorded_action_errors, transport_omission
 
 
+def recall_identity_errors(result, project=None, work_id=None):
+    """Validate each structured read independently; repetition supplies no oracle."""
+    identity = lambda value: isinstance(value, str) and re.fullmatch(r'[0-9a-f]{32}', value) is not None
+    if not isinstance(result, dict):
+        return ['structured Recall unavailable']
+    errors = []
+    if not identity(result.get('project_id')) or project is not None and result.get('project_id') != project:
+        errors.append('Project identity')
+    selected, checkpoint, goals = result.get('selected_work'), result.get('checkpoint'), result.get('goal_basis')
+    recalled = checkpoint.get('work_item_id') if isinstance(checkpoint, dict) else None
+    if (not identity(recalled) or work_id is not None and recalled != work_id
+            or not isinstance(selected, dict) or selected.get('work_item_id') != recalled):
+        errors.append('selected Work identity')
+    if (not isinstance(checkpoint, dict) or not identity(checkpoint.get('identity'))
+            or type(checkpoint.get('revision')) is not int or checkpoint['revision'] < 1):
+        errors.append('Checkpoint identity/revision')
+    matching = [g for g in goals if isinstance(g, dict) and g.get('role') == 'goal'
+        and g.get('identity') == recalled] if isinstance(goals, list) else []
+    if len(matching) != 1:
+        errors.append('Goal basis identity')
+    if result.get('read_only') is not True:
+        errors.append('read-only Recall assertion')
+    return errors
+
+
 def bounded_field(value, field):
     return transport_omission(value.get(field)) or (field not in value
         and transport_omission({'transport_omission': value.get('transport_omission')}))
@@ -268,6 +293,15 @@ def observe(work, resume, bundle, work_id):
             if not isinstance(result, dict):
                 limits.append('returned_json_unresolvable')
             else:
+                errors.extend(recall_identity_errors(result, bundle.project_id if bundle else None, expected_work))
+                errors.extend(goal['errors'])
+                limits.extend(goal['limits'])
+                asserted = result.get('checkpoint')
+                immutable = bundle.one('checkpoints', project_id=bundle.project_id,
+                    id=asserted.get('identity')) if bundle and isinstance(asserted, dict) else None
+                if immutable and (asserted.get('revision') != immutable.get('revision')
+                        or asserted.get('work_item_id') != immutable.get('work_item_id')):
+                    errors.append('asserted immutable Checkpoint identity/revision')
                 if bundle and result.get('project_id') != bundle.project_id:
                     errors.append('Project identity')
                 selected = result.get('selected_work')
