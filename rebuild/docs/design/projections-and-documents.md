@@ -836,6 +836,17 @@ make a future Work mandatory at an earlier read. Independently expected resume i
 present wrong Project/Work/Goal/Checkpoint and conflicting visible Source evidence remain
 hard findings. These observer rules do not change Product serialization or Work selection.
 
+Naturalistic observation-time `LatestWork` follows the Product selector: the latest
+applicable, independently ordered Checkpoint selects its associated Work; only established
+Project-wide Checkpoint absence permits the newest Goal fallback. A new Goal without its
+own Checkpoint does not prove Project-wide absence or override another Work's Checkpoint.
+Missing request/publication chronology or prior-state coverage leaves selector expectation
+unknown. Retained initialization, Goal and Checkpoint receipt coordinates establish the
+basis; later final exports only corroborate exact immutable records. The basis retains
+`latest_checkpoint`, `latest_goal`, `empty_project` or `unknown` separately from the
+independently bound resume Work. Resume contradictions and known Checkpoint existence
+remain checkable even when the latest selector is unknown.
+
 Naturalistic Recall evidence checks Goal grounding at each observed read, using prior successful
 creation/correction receipts and supported capture relationships rather than the first creation or
 latest export for every read. Successful CAS correction advances the same identity's revision while

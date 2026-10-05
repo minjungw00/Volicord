@@ -286,50 +286,116 @@ def goal_basis_at(work, resume, capture, returned, project, work_id, relationshi
 
 
 def lifecycle_at(work, resume, capture, returned, bundle, work_id, relationship):
-    """Absence needs independent creation evidence, never an empty answer.
+    """Resolve LatestWork from ordered observation-time receipts, checkpoint first.
 
-    A later export corroborates a witnessed receipt; it cannot select the Work
-    at an earlier read. Unwitnessed/overlapping transitions leave scoped unknowns.
+    Receipt order establishes publication order, never final-export chronology.
+    Goal fallback needs a witnessed empty Project and no possible Checkpoint.
+    Resume identity is an independent constraint, not a selector substitute.
+    Returns the serializable basis and the independently selected receipt.
     """
-    project = bundle.project_id if bundle else None
+    project = bundle.project_id if bundle else returned.get('requested_project')
     boundary = returned['invocation_sequence']
-    prior = [call for call in capture.tool_calls if boundary is not None
-        and call.completion_sequence < boundary and call.outcome == 'succeeded'
-        and call.arguments.get('project_id', call.result.get('project_id')) == project]
-    initializations = [call for call in prior if call.operation == 'project_initialize'
-        and call.result.get('project_id') == project]
-    goals = [call for call in prior if call.operation == 'context_record'
-        and call.arguments.get('role') == 'goal' and call.result.get('role') == 'goal'
-        and call.result.get('project_id') == project]
-    expected = goals[-1].result.get('context_item_id') if goals else None
     existence = (resume_relationship(work, resume, bundle, work_id, returned, handoff_only=False)
         if capture is resume else None)
-    if capture is resume:
-        # Work identity is already independently bound by the canonical Goal and
-        # original receipts. Revision ordering can remain unknown separately.
-        expected = work_id
-    checkpoints = [call for call in prior if call.operation == 'checkpoint_record'
-        and call.arguments.get('goal_context_id') == expected]
-    uncertain = boundary is None or any(call.operation in {'context_record', 'checkpoint_record', 'canonical_mutate'}
-        and call.arguments.get('project_id') in (None, project) and call.outcome != 'failed'
-        and (capture.observed_metadata.get('mcp_invocations', {}).get(call.call_id) is None
-            or capture.observed_metadata['mcp_invocations'][call.call_id] <= returned['completion_sequence'])
-        and (boundary is None or call.completion_sequence >= boundary)
-        for call in capture.tool_calls)
-    work_state = 'required' if expected is not None else 'absent' if initializations and not uncertain else 'unknown'
-    created = bool(goals and goals[-1].result.get('revision') == 1
-        and (goals[-1].result.get('canonical_mutation') is True
-            or initializations and goals[-1].arguments.get('work_transition') != 'continue'
-            and initializations[-1].completion_sequence < goals[-1].completion_sequence))
-    checkpoint_state = ('required' if checkpoints or existence else
-        'absent' if not uncertain and (work_state == 'absent' or created) else 'unknown')
-    witnesses = [{'operation': call.operation, 'call_id': call.call_id,
-        'completion_sequence': call.completion_sequence, 'raw_capture_sha256': capture.source_sha256}
-        for call in initializations + goals + checkpoints]
+    scopes = [work, capture] if capture is resume and existence else [capture]
+    empty, latest_goal, latest, expected = False, None, None, None
+    checkpoint_unknown, goal_unknown, checkpoint_exists = False, False, False
+    witnesses, errors, limits = [], [], []
+    seen_checkpoints = {}
+    identity = lambda value: isinstance(value, str) and re.fullmatch(r'[0-9a-f]{32}', value) is not None
+    for source in scopes:
+        last_checkpoint_completion, last_goal_completion = -1, -1
+        for call in sorted(source.tool_calls, key=lambda call: call.completion_sequence):
+            if (call.operation not in {'project_initialize', 'context_record', 'checkpoint_record', 'canonical_mutate'}
+                    or call.arguments.get('project_id', call.result.get('project_id')) not in (None, project)
+                    or call.outcome == 'failed'):
+                continue
+            invocation = source.observed_metadata.get('mcp_invocations', {}).get(call.call_id)
+            if source is capture and invocation is not None and invocation > returned['completion_sequence']:
+                continue  # Later state cannot decide an earlier Recall.
+            is_goal = call.operation == 'context_record' and call.arguments.get('role') == 'goal'
+            is_checkpoint = call.operation == 'checkpoint_record'
+            # In-place Goal correction preserves record creation order. Its CAS/
+            # supporting Sources are checked separately by goal_basis_at.
+            other_mutation = call.operation == 'canonical_mutate' and not (
+                call.arguments.get('action') == 'correct_context')
+            if not (is_goal or is_checkpoint or other_mutation or call.operation == 'project_initialize'):
+                continue
+            witness = {'operation': call.operation, 'call_id': call.call_id,
+                'sequence': call.sequence, 'invocation_sequence': invocation,
+                'completion_sequence': call.completion_sequence,
+                'raw_capture_sha256': source.source_sha256, 'session_id': source.session_id}
+            witnesses.append(witness)
+            ordered = (invocation is not None and invocation < call.completion_sequence
+                and (source is not capture or boundary is not None and call.completion_sequence < boundary))
+            if not ordered or call.outcome != 'succeeded' or other_mutation:
+                checkpoint_unknown |= is_checkpoint or other_mutation
+                goal_unknown |= is_goal or other_mutation
+                if call.operation == 'project_initialize':
+                    empty = False
+                continue
+            if call.operation == 'project_initialize':
+                if call.result.get('project_id') == project and not latest_goal and not latest:
+                    empty = True
+            elif is_goal:
+                receipt = call.result
+                if receipt.get('project_id') != project or receipt.get('role') != 'goal':
+                    errors.append('Goal creation receipt Project/role disagreement')
+                    goal_unknown = True
+                elif not identity(receipt.get('context_item_id')):
+                    goal_unknown = True
+                elif (call.arguments.get('work_transition') != 'continue'
+                        and receipt.get('canonical_mutation') is not False):
+                    goal_unknown |= invocation <= last_goal_completion
+                    latest_goal = receipt['context_item_id']
+                last_goal_completion = max(last_goal_completion, call.completion_sequence)
+            else:
+                receipt = call.result
+                associated = call.arguments.get('goal_context_id')
+                if receipt.get('goal_context_id') != associated:
+                    errors.append('Checkpoint receipt Work disagreement')
+                    checkpoint_unknown = True
+                if (not identity(receipt.get('checkpoint_id')) or not identity(associated)
+                        or type(receipt.get('revision')) is not int or receipt['revision'] < 1):
+                    checkpoint_unknown = True
+                key = receipt.get('checkpoint_id') if isinstance(receipt.get('checkpoint_id'), str) else None
+                publication = (associated, receipt.get('revision'), call.arguments.get('next_step'))
+                if key in seen_checkpoints:
+                    if seen_checkpoints[key] != publication:
+                        errors.append('Checkpoint receipt identity/revision disagreement')
+                        checkpoint_unknown = True
+                    continue  # Same immutable receipt cannot become a new publication.
+                seen_checkpoints[key] = publication
+                # A replayed publication without its original receipt has unknown order.
+                checkpoint_exists |= (identity(receipt.get('checkpoint_id'))
+                    and identity(associated) and type(receipt.get('revision')) is int and receipt['revision'] > 0)
+                if receipt.get('replayed') is True:
+                    checkpoint_unknown = True
+                checkpoint_unknown |= invocation <= last_checkpoint_completion
+                last_checkpoint_completion = max(last_checkpoint_completion, call.completion_sequence)
+                latest = call
+    if boundary is None:
+        checkpoint_unknown = goal_unknown = True
+    if latest and not checkpoint_unknown:
+        expected = latest.arguments['goal_context_id']
+        selector_basis = 'latest_checkpoint'
+    elif empty and not checkpoint_unknown and not goal_unknown:
+        expected = latest_goal
+        selector_basis = 'latest_goal' if latest_goal else 'empty_project'
+    else:
+        selector_basis = 'unknown'
+        limits.append('observation-time LatestWork selector basis unavailable')
+    if selector_basis == 'unknown':
+        latest = None
+    work_state = 'required' if expected is not None else 'absent' if selector_basis == 'empty_project' else 'unknown'
+    checkpoint_state = ('required' if latest or checkpoint_exists or existence else 'absent' if selector_basis in {'empty_project', 'latest_goal'} else 'unknown')
     return {'work': work_state, 'checkpoint': checkpoint_state, 'expected_work': expected,
+        'selector_basis': selector_basis, 'errors': errors, 'limits': limits,
+        'resume_expected_work': work_id if capture is resume else None,
+        'resume_checkpoint_required': bool(existence),
         'call_role': 'resume' if capture is resume else 'start',
         'witnesses': witnesses, 'existence_relationship': existence,
-        'revision_relationship': relationship}
+        'revision_relationship': relationship}, latest
 
 
 def observe(work, resume, bundle, work_id):
@@ -349,26 +415,21 @@ def observe(work, resume, bundle, work_id):
             # Only previously observed authoring is a temporal witness. No latest
             # bundle selection and no use of returned identity to choose an oracle.
             relationship = resume_relationship(work, resume, bundle, work_id, returned) if capture is resume else None
-            lifecycle = lifecycle_at(work, resume, capture, returned, bundle, work_id, relationship)
+            lifecycle, latest = lifecycle_at(work, resume, capture, returned, bundle, work_id, relationship)
             expected_work = lifecycle['expected_work']
-            prior = [call for source in (work, resume) if source
-                for call in source.successful_calls('checkpoint_record')
-                if (source is work and capture is resume and relationship or source is capture
-                    and call.completion_sequence < (returned['invocation_sequence'] if returned['invocation_sequence'] is not None else returned['sequence']))
-                and call.arguments.get('project_id') == (bundle.project_id if bundle else None)
-                and call.arguments.get('goal_context_id') == expected_work]
-            latest = prior[-1] if prior else None
+            limits.extend(lifecycle['limits'])
+            errors.extend(lifecycle['errors'])
             if latest is None and work and lifecycle['checkpoint'] != 'absent':
-                # Corroborate the exact asserted immutable Checkpoint, without
-                # asserting it was latest or deriving any Goal revision from it.
+                # Exact asserted records can expose contradictions without proving
+                # that they were latest. This never supplies selector expectation.
                 known = [call for call in work.successful_calls('checkpoint_record')
                     if call.arguments.get('project_id') == (bundle.project_id if bundle else None)
-                    and call.arguments.get('goal_context_id') == expected_work
                     and isinstance(result, dict) and isinstance(result.get('checkpoint'), dict)
                     and result['checkpoint'].get('identity') == call.result.get('checkpoint_id')]
                 latest = known[-1] if known else None
                 limits.append('observation-time Checkpoint ordering unavailable')
-            goal = goal_basis_at(work, resume, capture, returned, bundle.project_id if bundle else None, expected_work, relationship)
+            goal_work = expected_work or lifecycle['resume_expected_work']
+            goal = goal_basis_at(work, resume, capture, returned, project, goal_work, relationship)
             checkpoint = bundle.one('checkpoints', project_id=bundle.project_id,
                 id=latest.result.get('checkpoint_id')) if bundle and latest else None
             sources = None
@@ -379,6 +440,12 @@ def observe(work, resume, bundle, work_id):
             else:
                 errors.extend(recall_identity_errors(result, project, expected_work,
                     work_state=lifecycle['work'], checkpoint_state=lifecycle['checkpoint']))
+                if lifecycle['resume_expected_work'] is not None:
+                    resume_errors = recall_identity_errors(result, project, lifecycle['resume_expected_work'],
+                        work_state='required', checkpoint_state='required' if lifecycle['resume_checkpoint_required'] else 'unknown')
+                    errors.extend(resume_errors)
+                    if 'selected Work identity' in resume_errors:
+                        errors.append('resume Work identity')
                 errors.extend(goal['errors'])
                 if lifecycle['work'] != 'absent':
                     limits.extend(goal['limits'])
@@ -414,15 +481,16 @@ def observe(work, resume, bundle, work_id):
                     sources = [row['source_id'] for row in sorted(bundle.rows('checkpoint_source_relations'),
                         key=lambda row: row.get('position', -1)) if row.get('project_id') == bundle.project_id
                         and row.get('checkpoint_id') == checkpoint['id'] and row.get('relation_kind') == 'supported_by']
-                    expected = {'project_id': bundle.project_id, 'goal_id': expected_work,
+                    expected = {'project_id': bundle.project_id, 'goal_id': checkpoint.get('work_item_id'),
                         'checkpoint_id': checkpoint['id'], 'checkpoint_revision': checkpoint['revision'],
                         'checkpoint_sources': sources, 'next_step': latest.arguments.get('next_step')}
-                    if checkpoint.get('work_item_id') != expected_work or checkpoint.get('next_step') != expected['next_step']:
+                    if (checkpoint.get('work_item_id') != latest.arguments.get('goal_context_id')
+                            or checkpoint.get('next_step') != expected['next_step']):
                         errors.append('authoring and immutable Checkpoint disagree')
                     errors.extend(recorded_action_errors(expected, result))
                     cp = result.get('checkpoint')
                     if not isinstance(cp, dict) or any(cp.get(key) != value for key, value in (
-                            ('identity', checkpoint['id']), ('revision', checkpoint['revision']), ('work_item_id', expected_work))):
+                            ('identity', checkpoint['id']), ('revision', checkpoint['revision']), ('work_item_id', checkpoint.get('work_item_id')))):
                         errors.append('observation-time Checkpoint identity/revision')
                 else:
                     if lifecycle['checkpoint'] == 'absent':
@@ -435,10 +503,15 @@ def observe(work, resume, bundle, work_id):
                     else:
                         limits.append('observation-time Checkpoint basis unavailable')
                     if latest:
-                        expected = {'project_id': bundle.project_id, 'goal_id': expected_work,
+                        expected = {'project_id': bundle.project_id, 'goal_id': latest.arguments.get('goal_context_id'),
                             'checkpoint_id': latest.result.get('checkpoint_id'), 'checkpoint_revision': latest.result.get('revision'),
                             'next_step': latest.arguments.get('next_step')}
                         errors.extend(recorded_action_errors(expected, result))
+                        cp = result.get('checkpoint')
+                        if not isinstance(cp, dict) or any(cp.get(key) != value for key, value in (
+                                ('identity', latest.result.get('checkpoint_id')), ('revision', latest.result.get('revision')),
+                                ('work_item_id', latest.arguments.get('goal_context_id')))):
+                            errors.append('observation-time Checkpoint identity/revision')
                 answers = selected.get('answers') if isinstance(selected, dict) else None
                 if isinstance(answers, dict):
                     state, provenance = answers.get('explanation_state'), answers.get('provenance')

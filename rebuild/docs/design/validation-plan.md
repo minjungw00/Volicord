@@ -1578,19 +1578,24 @@ Naturalistic shared-answer observation uses explicit Project-scoped `goal_basis`
 identity and canonical Source relationships, never equal Goal text. The separate
 `shared_answer_integrity` fact checks every observed MCP Recall and supported JSON
 CLI Recall against independently ordered record receipts and immutable same-Work Checkpoints.
-Lifecycle absence is resolved independently of the returned Recall. A prior successful
-same-Project initialization proves an empty Project until witnessed Goal creation; a fresh
-Goal creation receipt supports a Work without a meaningful Checkpoint until publication.
-Selected Work and Goal are required after creation, while a Checkpoint is required after
-an ordered same-Work publication or independently bound completed-Work/fresh-resolution
-relationship. The latter proves existence, separately from the stronger handoff relationship
-required to fold historical Goal revisions. A resume's independently bound canonical Work
-cannot disappear merely because its answer returns null. Explicit null and missing required
-fields differ. A start with no independent empty-state witness remains indeterminate, even
-when its answer is empty. Later Goal/Checkpoint receipts and exports do not retroactively
-require those identities at an earlier read. Machine basis retains lifecycle states, receipt
-coordinates, capture hashes, supported-absence and insufficient-evidence classifications;
-any independent contradiction still takes hard-blocking precedence.
+Lifecycle and LatestWork selection are resolved independently of the returned Recall.
+A prior successful same-Project initialization proves an empty Project until witnessed
+creation. The latest applicable, ordered Checkpoint selects its explicit Work; a later
+Goal alone does not override it. Only independently established Project-wide Checkpoint
+absence permits latest-Goal fallback. Fresh Goal creation without initial-state coverage
+cannot establish that no older Checkpoint exists. Missing or overlapping publication/request
+chronology leaves the selector unknown instead of choosing a plausible returned Work.
+A resume's independently bound Work remains a separate required identity; selector
+inference cannot conceal another-Work resume. Known prior Checkpoint existence still
+requires a Checkpoint even when its latest identity is unknown. Exact asserted immutable
+records remain usable for contradictions without asserting that they were latest.
+The completed-Work/fresh-resolution relationship establishes cross-capture publication
+order, separately from the stronger handoff relationship used for historical Goal revision
+folding. Later Goal/Checkpoint receipts and exports do not retroactively require identities
+at earlier reads. Machine basis retains selector/lifecycle states, request/completion
+coordinates, session/capture hashes, supported absence and insufficient evidence;
+independent Project, Work, Goal, revision, action and Source contradictions retain
+hard-blocking precedence.
 
 Goal revision is folded separately for each Recall from successful `context_record` creation/
 continuation receipts and `canonical_mutate(correct_context)` or explicitly Project-bound JSON
