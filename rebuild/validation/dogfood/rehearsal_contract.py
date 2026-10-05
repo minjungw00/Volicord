@@ -30,9 +30,6 @@ PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_suppo
     "review_meaning_self_test.py", "fixtures/typed-host-page.json")
 
 COLLECTION_CONTROLS = {
-    'exact_goal_list_bound_grounding': 'answer_observations_self_test.AnswerTests.test_exact_goal_list_bound_uses_independently_grounded_selected_goal',
-    'exact_goal_list_bound_missing_basis': 'answer_observations_self_test.AnswerTests.test_exact_goal_list_bound_without_selected_basis_is_indeterminate',
-    'exact_goal_list_bound_contradictions': 'answer_observations_self_test.AnswerTests.test_goal_list_bound_cannot_mask_wrong_scope_revision_sources_or_duplicates',
     'latest_work_malformed_checkpoint_completion_is_uncertainty_not_failed_write': 'latest_work_self_test.LatestWorkTests.test_malformed_checkpoint_completion_is_uncertainty_not_failed_write',
     'latest_work_repeated_checkpoint_receipt_cannot_supersede_newer_publication': 'latest_work_self_test.LatestWorkTests.test_repeated_checkpoint_receipt_cannot_supersede_newer_publication',
     'latest_work_continuation_is_not_newest_goal_creation': 'latest_work_self_test.LatestWorkTests.test_continuation_is_not_newest_goal_creation',
@@ -51,6 +48,9 @@ COLLECTION_CONTROLS = {
     'latest_work_unknown_selection_keeps_goal_and_revision_contradictions': 'latest_work_self_test.LatestWorkTests.test_unknown_selection_keeps_goal_and_revision_contradictions',
     'latest_work_raw_transition_reaches_campaign_and_machine_consumers': 'latest_work_self_test.LatestWorkTests.test_raw_transition_reaches_campaign_and_machine_consumers',
     'latest_work_resume_identity_conflict_is_not_masked_by_selector': 'latest_work_self_test.LatestWorkTests.test_resume_identity_conflict_is_not_masked_by_selector',
+    'exact_goal_list_bound_grounding': 'answer_observations_self_test.AnswerTests.test_exact_goal_list_bound_uses_independently_grounded_selected_goal',
+    'exact_goal_list_bound_missing_basis': 'answer_observations_self_test.AnswerTests.test_exact_goal_list_bound_without_selected_basis_is_indeterminate',
+    'exact_goal_list_bound_contradictions': 'answer_observations_self_test.AnswerTests.test_goal_list_bound_cannot_mask_wrong_scope_revision_sources_or_duplicates',
     'initial_project_recall_without_work': 'answer_observations_self_test.AnswerTests.test_initial_empty_recall_and_later_creation_do_not_require_future_work',
     'resumed_work_identity_conflict': 'answer_observations_self_test.AnswerTests.test_resume_absence_and_present_identity_conflicts_remain_hard',
     'scoped_generated_subject_omission': 'answer_observations_self_test.AnswerTests.test_generated_subject_parent_omission_retains_exact_reason_and_scope',
