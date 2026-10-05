@@ -102,6 +102,47 @@ class AnswerTests(unittest.TestCase):
                 finding = next(f for f in m.from_observation(result) if f['check'] == 'shared_answer_integrity')
                 self.assertEqual(finding['disposition'], 'advisory')
 
+    def bounded_goal_answer(self):
+        value = copy.deepcopy(self.answer)
+        value['goal_basis'] = []
+        value['omissions'] = [{'identity': '08' * 16, 'kind': 'context_goal',
+            'reason': 'bound', 'expandable_basis': 'expand context_goal by identity'}]
+        value['selected_work']['evidence'] = {'goal': {'basis': {
+            'record_kind': 'context_item', 'identity': '08' * 16, 'revision': 1,
+            'field': 'statement', 'source_ids': ['03' * 16]}}}
+        return value
+
+    def test_exact_goal_list_bound_uses_independently_grounded_selected_goal(self):
+        _, fact = self.evaluate(self.bounded_goal_answer())
+        self.assertEqual(fact['status'], 'confirmed_pass', fact)
+        self.assertIn('supported omission: exact Goal identity omitted from bounded global list',
+            fact['basis']['observations'][0]['limits'])
+
+    def test_exact_goal_list_bound_without_selected_basis_is_indeterminate(self):
+        value = self.bounded_goal_answer()
+        del value['selected_work']['evidence']
+        _, fact = self.evaluate(value)
+        self.assertEqual(fact['status'], 'indeterminate', fact)
+        self.assertEqual(fact['basis']['observations'][0]['errors'], [])
+
+    def test_goal_list_bound_cannot_mask_wrong_scope_revision_sources_or_duplicates(self):
+        for mutation in ('work', 'project', 'goal', 'revision', 'sources', 'duplicate', 'foreign_omission', 'missing_report'):
+            with self.subTest(mutation=mutation):
+                self.setUp()
+                value = self.bounded_goal_answer()
+                basis = value['selected_work']['evidence']['goal']['basis']
+                if mutation == 'work': value['selected_work']['work_item_id'] = 'ff' * 16
+                elif mutation == 'project': value['project_id'] = 'ff' * 16
+                elif mutation == 'goal': basis['identity'] = 'ff' * 16
+                elif mutation == 'revision': basis['revision'] = 2
+                elif mutation == 'sources': basis['source_ids'] = ['ff' * 16]
+                elif mutation == 'duplicate': value['goal_basis'] = [copy.deepcopy(self.answer['goal_basis'][0])] * 2
+                elif mutation == 'foreign_omission': value['omissions'][0]['identity'] = 'ff' * 16
+                else: del value['omissions']
+                _, fact = self.evaluate(value)
+                self.assertEqual(fact['status'], 'confirmed_violation', fact)
+                self.assertEqual(m.disposition('shared_answer_integrity', fact['status']), 'hard_blocking')
+
     def test_initial_absence_without_independent_empty_state_is_indeterminate(self):
         (result, fact), _ = self.initial_recall(initialize=False)
         observation = fact['basis']['observations'][0]

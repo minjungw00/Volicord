@@ -15,6 +15,16 @@ from recorded_action_evidence import field_omission, recorded_action_errors, tra
 from answer_projection import PROVENANCE, ANSWERS, CLAIM, EVIDENCE
 
 
+def omitted_goal(result, work_id):
+    """An exact canonical section-bound report, never generic omission authority."""
+    reports = result.get('omissions') if isinstance(result, dict) else None
+    if not isinstance(reports, list) or work_id is None:
+        return None
+    return next((r for r in reports if isinstance(r, dict) and r == {
+        'identity': work_id, 'kind': 'context_goal', 'reason': 'bound',
+        'expandable_basis': 'expand context_goal by identity'}), None)
+
+
 def recall_identity_errors(result, project=None, work_id=None, *, work_state='required', checkpoint_state='required'):
     """Present contradictions are independent of lifecycle/temporal limitations.
 
@@ -54,7 +64,8 @@ def recall_identity_errors(result, project=None, work_id=None, *, work_state='re
                 errors.append('Goal basis Sources malformed')
         matching = [g for g in goals if isinstance(g, dict) and g.get('identity') == (work_id or selected_id)]
         if ((work_state == 'absent' and goals) or (selected is None and goals)
-                or (work_state == 'required' or selected is not None) and len(matching) != 1):
+                or (work_state == 'required' or selected is not None) and len(matching) != 1
+                and not (not matching and omitted_goal(result, work_id or selected_id))):
             errors.append('Goal basis identity')
     if result.get('read_only') is not True:
         errors.append('read-only Recall assertion')
@@ -474,6 +485,24 @@ def observe(work, resume, bundle, work_id):
                     and g.get('identity') == goal_work] if isinstance(goals, list) else []
                 if len(matching) == 1 and goal['sources'] is not None and 'source_ids' in matching[0] and matching[0]['source_ids'] != goal['sources']:
                     errors.append('observation-time Goal supporting Sources')
+                if not matching and omitted_goal(result, goal_work):
+                    # The global Goal list is bounded independently of selected
+                    # Work. Its exact omission cannot erase visible contradictions
+                    # or replace missing observation-time authoring evidence.
+                    selected_goal = result.get('selected_work')
+                    evidence = selected_goal.get('evidence') if isinstance(selected_goal, dict) else None
+                    reading = evidence.get('goal') if isinstance(evidence, dict) else None
+                    basis = reading.get('basis') if isinstance(reading, dict) else None
+                    if not isinstance(basis, dict):
+                        limits.append('selected Goal basis unavailable after exact Goal-list bound omission')
+                    else:
+                        for field, expected in (('record_kind', 'context_item'), ('identity', goal_work),
+                                ('field', 'statement'), ('revision', goal['revision']), ('source_ids', goal['sources'])):
+                            if expected is None or field not in basis:
+                                limits.append('selected Goal basis unavailable after exact Goal-list bound omission')
+                            elif basis[field] != expected or field == 'revision' and type(basis[field]) is not int:
+                                errors.append('selected Goal observation-time basis')
+                        limits.append('supported omission: exact Goal identity omitted from bounded global list')
                 if bundle and result.get('project_id') != bundle.project_id:
                     errors.append('Project identity')
                 selected = result.get('selected_work')

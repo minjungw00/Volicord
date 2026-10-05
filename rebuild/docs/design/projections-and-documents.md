@@ -855,6 +855,11 @@ operations cannot manufacture a new historical basis. Missing or overlapping tem
 scoped indeterminate evidence; independent identity/action/typed-grounding contradictions remain
 hard findings. Request/completion coordinates and completed handoff/fresh resolution/capture bounds
 support temporal conclusions without certifying Source freshness, semantic equivalence or prose truth.
+The global Goal list is bounded separately from selected Work. An exact `context_goal`/`bound`
+omission for that Goal permits checking its selected-Work Goal reading basis against independently
+witnessed identity, revision and supporting Sources. Missing selected basis stays indeterminate;
+generic/foreign omission reports, duplicates and visible scope or grounding contradictions cannot
+excuse an identity failure.
 
 Phase 8 recorder는 preparation의 candidate/local MCP executable binding과 realizer의
 identity claim을 구분한다. Verified preparation은 exact plan/route의 local evidence일 뿐

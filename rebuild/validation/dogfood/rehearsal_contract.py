@@ -30,6 +30,9 @@ PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_suppo
     "review_meaning_self_test.py", "fixtures/typed-host-page.json")
 
 COLLECTION_CONTROLS = {
+    'exact_goal_list_bound_grounding': 'answer_observations_self_test.AnswerTests.test_exact_goal_list_bound_uses_independently_grounded_selected_goal',
+    'exact_goal_list_bound_missing_basis': 'answer_observations_self_test.AnswerTests.test_exact_goal_list_bound_without_selected_basis_is_indeterminate',
+    'exact_goal_list_bound_contradictions': 'answer_observations_self_test.AnswerTests.test_goal_list_bound_cannot_mask_wrong_scope_revision_sources_or_duplicates',
     'latest_work_malformed_checkpoint_completion_is_uncertainty_not_failed_write': 'latest_work_self_test.LatestWorkTests.test_malformed_checkpoint_completion_is_uncertainty_not_failed_write',
     'latest_work_repeated_checkpoint_receipt_cannot_supersede_newer_publication': 'latest_work_self_test.LatestWorkTests.test_repeated_checkpoint_receipt_cannot_supersede_newer_publication',
     'latest_work_continuation_is_not_newest_goal_creation': 'latest_work_self_test.LatestWorkTests.test_continuation_is_not_newest_goal_creation',
