@@ -78,7 +78,20 @@
     "retention_oversize_atomic",
     "candidate_shell_route",
     "resource_expectation_lifecycle",
-    "partial_process_sampling"
+    "partial_process_sampling",
+    "repeated_same_work_recall",
+    "later_recall_identity_conflict",
+    "bounded_direct_shell_wrapper",
+    "unsupported_execution_reaches_review",
+    "unsupported_execution_cannot_pass",
+    "old_candidate_new_collector_publication",
+    "source_hash_rejection",
+    "candidate_binary_prerequisite",
+    "source_mutation_rejection",
+    "candidate_rebinding_rejection",
+    "collector_identity_rejection",
+    "historical_rejection_preservation",
+    "raw_mutation_rejection"
   ],
   "expected_inner": {
     "technical_gate": "not_provided",

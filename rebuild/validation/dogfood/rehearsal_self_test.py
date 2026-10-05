@@ -13,6 +13,23 @@ from rehearsal_test_support import passed_result
 
 
 class ContractTests(unittest.TestCase):
+    def test_collection_support_rejects_rehashed_omission_and_false_execution(self):
+        for mutation in ('missing', 'labels_only', 'not_run', 'drop_check', 'different_test', 'no_process', 'wrong_output'):
+            value = passed_result()
+            support = value['pipeline']['collection_support']
+            if mutation == 'missing': value['pipeline'].pop('collection_support')
+            elif mutation == 'labels_only': support['result']['checks'] = dict.fromkeys(contract.COLLECTION_CONTROLS, 'passed')
+            elif mutation == 'not_run': support['result']['checks'][0].update(tests_run=0, status='not_run')
+            elif mutation == 'drop_check': support['result']['checks'].pop()
+            elif mutation == 'different_test': support['result']['checks'][0]['test_name'] = 'unrelated_test'
+            elif mutation == 'no_process': support['process_identity'] = 'not-executed'
+            else: value['processes'][-1]['stdout']['sha256'] = '0' * 64
+            if mutation != 'missing':
+                support['result']['result_id'] = contract.digest({k: v for k, v in support['result'].items() if k != 'result_id'})
+            value['result_id'] = contract.digest({k: v for k, v in value.items() if k != 'result_id'})
+            with self.subTest(mutation=mutation), self.assertRaises((ValueError, TypeError, KeyError)):
+                contract.validate_result(value, 'a' * 40)
+
     def test_authored_transport_retains_supported_request_coordinates(self):
         # A maintained fake capture tests transport only, never Product behavior.
         from answer_observations_self_test import AnswerTests

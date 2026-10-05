@@ -712,6 +712,9 @@ def boundary_controls(root, binary, logs):
 
 
 def pipeline(root, candidate, binary, logs):
+    collection_support = {'result': json.loads(logs.run([
+        sys.executable, '-B', Path(__file__).with_name('collection_support.py')]))}
+    collection_support['process_identity'] = logs.records[-1]['identity']
     boundaries = boundary_controls(root, binary, logs)
     campaign_root = root / "campaign"
     c.prepare_campaign(campaign_root, "evidence-rehearsal-" + secrets.token_hex(8), candidate,
@@ -765,6 +768,8 @@ def pipeline(root, candidate, binary, logs):
     temporal['copied'] = copied_temporal(copied, temporal)
     checked.update(dict.fromkeys(temporal['outcomes'], 'passed'))
     checked.update(dict.fromkeys(('retention_metadata_round_trip','retention_oversize_atomic','candidate_shell_route','resource_expectation_lifecycle','partial_process_sampling'), 'passed'))
+    from rehearsal_contract import COLLECTION_CONTROLS
+    checked.update({entry['id']: entry['status'] for entry in collection_support['result']['checks']})
     require(set(checked) == set(json.loads(FIXTURE.read_bytes())["controls"]), "rehearsal control coverage changed")
     return {"evidence_set_sha256": c.harness.sha256(root / "campaign-unavailable/evidence-set.json"),
         "executables": {name: item["sha256"] for name, item in manifest["candidate_artifacts"].items()},
@@ -776,7 +781,7 @@ def pipeline(root, candidate, binary, logs):
         "copied_lineage_id": verification["lineage_id"], "copied_verification": "verified",
         "resource_sample_count": manifest["naturalistic_memory_evidence"]["measurement"]["sample_count"],
         "topology": qualified["campaign_topology"], "measured_evidence_eligible": False, "controls": checked,
-        "temporal_evidence": temporal, "boundary_evidence": boundaries}
+        "temporal_evidence": temporal, "boundary_evidence": boundaries, "collection_support": collection_support}
 
 
 def main():

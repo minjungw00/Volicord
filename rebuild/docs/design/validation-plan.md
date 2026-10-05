@@ -1479,6 +1479,20 @@ for eight new chats. A successful evidence set enables the existing append-only
 evaluation and review owners independently of machine pass. Human-only evidence
 remains unresolved. Copied result lineage also retains collection provenance.
 
+The mandatory local rehearsal contract is now
+`product-backed-dogfood-evidence-rehearsal-2`. A process-bound authored support
+receipt executes thirteen finite controls: repeated same-Work and conflicting
+Recall, bounded direct shell parsing, unsupported execution reaching review and
+never certifying success, old-candidate/new-collector publication, source/raw
+mutation, candidate/binary/collector mismatch, historical rejection preservation,
+and prerequisite-dependent stopping. Counts/statuses and exact test identities
+must agree with the actual child output. Missing/labels-only/rehashed control
+claims fail independent archive verification. These are support fixtures, not the
+user's retained campaign. Historical technical archives retain their recorded
+candidate/producer contract and must not be upgraded into proof of these new
+collector controls; original-candidate verification is distinct from the new
+development HEAD's gate.
+
 Support evaluation consumes the producer's Work-specific activation summary:
 `journey_id`, `work_slot_id`, repository class and start activation must agree;
 resume activation is true for the three Work A slots and exactly `not_applicable`

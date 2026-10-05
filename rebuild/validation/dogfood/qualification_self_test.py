@@ -13,6 +13,7 @@ import harness
 import qualitative_review as review
 import qualitative_review_self_test as fixtures
 import qualification_policy as policy
+import rehearsal_contract
 
 
 def evaluation():
@@ -65,7 +66,7 @@ def promote_lineage_qualification(value, evaluation):
         qualitative[field] = []
     qualitative["state"] = "complete"
     value["machine_summary"]["hard_findings"] = []
-    value["technical_gate"] = {"state": "passed", "candidate_head": value["candidate_head"], "rehearsal": {"contract": "product-backed-dogfood-evidence-rehearsal-1", "status": "passed", "result_sha256": "8" * 64}}
+    value["technical_gate"] = {"state": "passed", "candidate_head": value["candidate_head"], "rehearsal": {"contract": rehearsal_contract.CONTRACT, "status": "passed", "result_sha256": "8" * 64}}
     value.update(evidence_validity="valid", replacement_qualification="qualified",
         replacement_pass_candidate=True)
     value["naturalistic_evidence"] = policy.naturalistic_summary(value, evaluation,
@@ -278,7 +279,7 @@ class PolicyTests(unittest.TestCase):
         self.human_prep["reviewer"]["run_id"] = "b" * 32
         self.human = fixtures.completed(self.human_prep)
         self.evaluation = evaluation()
-        self.technical = {"state": "passed", "candidate_head": "a" * 40, "rehearsal": {"contract": "product-backed-dogfood-evidence-rehearsal-1", "status": "passed", "result_sha256": "8" * 64}}
+        self.technical = {"state": "passed", "candidate_head": "a" * 40, "rehearsal": {"contract": rehearsal_contract.CONTRACT, "status": "passed", "result_sha256": "8" * 64}}
 
     def result(self, reviews=None, technical=None):
         return policy.combine(self.evaluation, self.specs, reviews if reviews is not None else [self.agent, self.human], technical or self.technical)

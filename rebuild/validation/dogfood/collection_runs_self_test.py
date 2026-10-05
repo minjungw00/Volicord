@@ -154,7 +154,8 @@ class CollectionTests(unittest.TestCase):
         self.reject_run_mutation('collector_revision', '56' * 20)
 
     def test_historical_rejection_omission_rejected(self):
-        self.reject_run_mutation('rejected_attempts', [])
+        # Even retained unindexed source diagnostics require explicit references.
+        self.reject_run_mutation('rejected_attempts', ['rejected/0'])
 
     def test_raw_mutation_rejected(self):
         self.process()

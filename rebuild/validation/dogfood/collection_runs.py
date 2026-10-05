@@ -71,7 +71,15 @@ def verify_publication(root):
     """Copied publications verify using bounded retained files, never live state."""
     c = api()
     publication = c.read_json(root / 'collection/publication.json')
-    if publication.get('publication_id') != machine.digest({k: v for k, v in publication.items() if k != 'publication_id'}):
+    run = c.read_json(root / 'collection/run.json')
+    common = {'kind', 'schema_version', 'collection_run_id', 'candidate_head', 'collector_revision',
+        'blocker', 'collection_state', 'completed_at', 'evidence_set', 'publication_id'}
+    expected_fields = common | ({'dependent_stages'} if publication.get('collection_state') == 'incomplete' else set())
+    if (set(publication) != expected_fields or publication.get('kind') != 'dogfood_collection_publication'
+        or type(publication.get('schema_version')) is not int or publication['schema_version'] != 1
+        or any(publication.get(key) != run.get(other) for key, other in (
+            ('collection_run_id', 'run_id'), ('candidate_head', 'candidate_head'), ('collector_revision', 'collector_revision')))
+        or publication.get('publication_id') != machine.digest({k: v for k, v in publication.items() if k != 'publication_id'})):
         raise c.CampaignError('collection publication hash changed')
     c.verify_inventory(root)
     if publication['collection_state'] == 'collected':
@@ -107,6 +115,20 @@ def verify_publication(root):
 
 def binding(path):
     return {"bytes": path.stat().st_size, "sha256": api().harness.sha256(path)}
+
+
+def rejected_reference(path):
+    if path.stat().st_size > operations.MAX_FILE_BYTES:
+        return False
+    try:
+        value = json.loads(path.read_bytes())
+    except (ValueError, UnicodeError):
+        return False
+    def contains(item):
+        if isinstance(item, dict):
+            return item.get('collection_state') == 'rejected' or any(contains(v) for v in item.values())
+        return isinstance(item, list) and any(contains(v) for v in item)
+    return contains(value)
 
 
 def producer_paths():
@@ -158,7 +180,8 @@ def request(root, raw_paths, *, mode, rejected=()):
         "collector_revision": c.harness.git_head(c.ROOT), "run_nonce": secrets.token_hex(16),
         "started_at": datetime.now(timezone.utc).isoformat(),
         "inputs": {name: binding(path) for name, path in files.items()},
-        "rejected_attempts": [f"rejected/{i}" for i in range(len(rejected))],
+        "rejected_attempts": sorted(name for name, path in files.items()
+            if name.startswith('rejected/') or rejected_reference(path)),
         "producers": {name: binding(path) for name, path in producers.items()},
         "policy": {"contract": CONTRACT, "sha256": machine.digest({name: binding(c.ROOT / name) for name in OWNER_FILES})}}
     value["run_id"] = machine.digest(value)
@@ -190,7 +213,11 @@ def verify(root, manifest, *, publication_output=True):
     """Verify retained provenance without the source campaign or staging Runtime."""
     c = api()
     value = c.read_json(root / "collection/run.json")
-    if (value.get("kind") != "dogfood_collection_run" or value.get("schema_version") != 1
+    fields = {'kind', 'schema_version', 'contract', 'mode', 'source_campaign', 'candidate_head',
+        'candidate_artifacts', 'collector_revision', 'run_nonce', 'started_at', 'inputs',
+        'rejected_attempts', 'producers', 'policy', 'run_id'}
+    if (set(value) != fields or value.get("kind") != "dogfood_collection_run"
+        or type(value.get('schema_version')) is not int or value.get("schema_version") != 1
         or value.get("contract") != CONTRACT or value.get("mode") not in {"live", "reprocess"}
         or value.get("run_id") != machine.digest({k: v for k, v in value.items() if k != "run_id"})
         or manifest.get("collection_run") != {"path": "collection/run.json", "run_id": value["run_id"],
@@ -201,7 +228,9 @@ def verify(root, manifest, *, publication_output=True):
     for key, prefix in (("inputs", "collection/inputs/"), ("producers", "collection/producers/")):
         for name, expected in value[key].items():
             path = operations.safe_path(root, prefix + name)
-            if path.is_symlink() or binding(path) != expected:
+            if (not isinstance(expected, dict) or set(expected) != {'bytes', 'sha256'}
+                or type(expected['bytes']) is not int or expected['bytes'] < 0
+                or path.is_symlink() or binding(path) != expected):
                 raise c.CampaignError("collection retained input/producer changed")
     if set(value["producers"]) != set(producer_paths()):
         raise c.CampaignError("collection producer dependency inventory changed")
@@ -223,7 +252,8 @@ def verify(root, manifest, *, publication_output=True):
         raise c.CampaignError('collection omitted an inventoried source artifact')
     if value['mode'] == 'live' and value['candidate_head'] != value['collector_revision']:
         raise c.CampaignError('live collection must be candidate-owned')
-    rejected = sorted(name for name in value["inputs"] if name.startswith("rejected/"))
+    rejected = sorted(name for name in value["inputs"] if name.startswith("rejected/")
+        or rejected_reference(root / 'collection/inputs' / name))
     if sorted(value["rejected_attempts"]) != rejected:
         raise c.CampaignError("historical rejected attempt omitted")
     owners = {name: value["producers"][name] for name in OWNER_FILES}
@@ -306,6 +336,8 @@ def reprocess(source, raw_paths, output, *, source_sha256, rejected=(),
             c.verify_candidate_artifacts(campaign)
             for identity, journey in campaign["journeys"].items():
                 runtime, repository = Path(journey["runtime_home"]), Path(journey["repository_path"])
+                if not (runtime / 'canonical.sqlite3').is_file():
+                    raise c.CampaignError('original candidate canonical store unavailable: ' + str(runtime / 'canonical.sqlite3'))
                 c.verify_static_codex_integration(repository, runtime, Path(campaign["candidate_binary"]))
                 repositories[identity] = c.repository_state.observe(repository)[0]
                 before = tree_identity(runtime)

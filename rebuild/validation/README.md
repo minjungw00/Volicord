@@ -893,6 +893,16 @@ binding. Archive verification preserves blocked evidence and rejects historical
 stage absence, incompatible order, duplicate invocations, changed source/binary
 identities, contradictory inner verdicts and retained raw/private content.
 
+The current rehearsal contract additionally requires a process-bound
+`collection_support` receipt from thirteen authored controls. Repeated and later
+conflicting Recall, bounded direct shell parsing, unsupported execution reaching
+review, immutable old-candidate/new-collector publication, source/raw mutation,
+candidate/collector/rejection identities and dependent-stage stopping execute through
+the maintained support consumers. The receipt binds exact test identities/counts
+and child output. These fixtures do not replay the user's historical campaign.
+Historical technical archives keep their original candidate/producer contract;
+they cannot acquire these new collector controls through rehashing.
+
 The fixture's `temporal_scenarios` independently exercises Small Python Recall correction and
 polyglot en/ko explanation regeneration. These remain five Works/eight authored support slots.
 Completed revision-1 and revision-2 explanation bytes survive collection/review/copied lineage;

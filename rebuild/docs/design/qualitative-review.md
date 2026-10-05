@@ -105,6 +105,16 @@ ID/hash, rubric/policy revision and hash, and reviewer run identity. The same
 explicitly unverified: no maintained attestation can verify these fields. An
 arbitrary model string never becomes verified through evidence hashing.
 
+Current evidence-set schema 9 additionally binds a separate collection run.
+Historical reprocessing preserves the observed Product candidate and source
+campaign/input hashes while identifying the current collector and its policy
+independently. The immutable source's rejection and post-session steward/resource
+scope remain evidence; current collection/evaluation cannot turn them into new
+measured Product use. An incomplete collection has no review/evaluation prerequisite
+and leaves dependent stages `not_run` with the exact collection blocker. After
+publication, review remains available regardless of machine pass and human-only
+experiences remain unresolved.
+
 An agent must name a session distinct from all evaluated work/resume sessions.
 That correlation is self-reported, not authenticated session identity. The run
 records the relationship and explicitly declines statistical independence: shared
@@ -636,6 +646,12 @@ run/policy/state and approval identity through relative paths; `receipt.json` bi
 byte. Verification uses only that copied package, so `/tmp` and arbitrary original staging paths
 are neither serialized dependencies nor required for discovery. Publishing a later result creates
 a new lineage directory and never rewrites or relabels historical evidence.
+
+Current copied lineage includes exact collection run, retained producer/input
+provenance and publication output identity. Original paths in provenance are
+historical origin facts; verification never reads the original campaign/Runtime.
+Missing/inconsistent collection identities or omitted historical rejection are
+rejected independently of rehashed outer lineage receipts.
 
 Verification also replays `qualification_policy.combine()` from the packaged evaluation and
 recorded reviews and compares every derived aggregate field with the preserved qualification.

@@ -134,6 +134,17 @@ def passed_result(candidate="a" * 40):
             "stdout": {"bytes": 1, "sha256": "1" * 64}, "stderr": {"bytes": 0, "sha256": "2" * 64}}
             for i in range(16)]}
     value["result_id"] = contract.digest(value)
+    support = {'kind': 'dogfood_collection_support', 'purpose': 'self_authored_support',
+        'checks': [{'id': key, 'test_name': name, 'tests_run': 1, 'status': 'passed', 'failures': 0, 'errors': 0}
+            for key, name in contract.COLLECTION_CONTROLS.items()]}
+    support['result_id'] = contract.digest(support)
+    value['pipeline']['collection_support'] = {'process_identity': 'collection-support-process', 'result': support}
+    body = (json.dumps(support, indent=2, sort_keys=True) + '\n').encode()
+    value['processes'].append({'identity': 'collection-support-process', 'exit_code': 0,
+        'termination': 'exited', 'duration_ns': 100,
+        'stdout': {'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()},
+        'stderr': {'bytes': 0, 'sha256': hashlib.sha256(b'').hexdigest()}})
+    value['result_id'] = contract.digest({k: v for k, v in value.items() if k != 'result_id'})
     return value
 
 

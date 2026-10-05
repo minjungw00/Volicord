@@ -15,7 +15,7 @@ def require(value, message):
     if not value:
         raise ValueError(message)
 
-CONTRACT = "product-backed-dogfood-evidence-rehearsal-1"
+CONTRACT = "product-backed-dogfood-evidence-rehearsal-2"
 FIXTURE = Path(__file__).with_name("fixtures") / "evidence-rehearsal.json"
 PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_support.py", "retention_support.py", "resource_boundary_controls.py", "resource_observer_self_test.py", "resource_coverage_self_test.py", "../linux-codex-integration/launch_readiness.py", "../../crates/volicord-viewer/tests/work_explanation.rs", "../../crates/volicord-operations/tests/support/reading_fixture.rs", "rehearsal_contract.py", "evidence_purpose.py", "campaign.py", "collection_runs.py", "codex_events.py",
     "answer_observations.py", "explanation_evidence.py", "document_realization.py",
@@ -24,7 +24,24 @@ PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_suppo
     "evaluation.json", "evaluation_runs.py", "machine_findings.py", "machine-policy.json",
     "answer_projection.py", "support_evidence.py", "authority_obligations.py", "cli_observations.py",
     "qualitative_review.py", "workload_intents.py", "identity_provenance.py", "repository_state.py",
-    "interaction_diagnostics.py", "../shared/recorded_action_evidence.py", "../../install.sh", "../../scripts/dogfood-campaign")
+    "interaction_diagnostics.py", "../shared/recorded_action_evidence.py", "../../install.sh", "../../scripts/dogfood-campaign",
+    "collection_support.py", "collection_runs_self_test.py", "campaign_self_test.py", "resume_self_test.py", "capture_self_test.py")
+
+COLLECTION_CONTROLS = {
+    'repeated_same_work_recall': 'resume_self_test.ResumeTests.test_repeated_same_work_recalls_preserve_identity',
+    'later_recall_identity_conflict': 'resume_self_test.ResumeTests.test_later_recall_conflict_or_malformed_identity_is_hard',
+    'bounded_direct_shell_wrapper': 'capture_self_test.CurrentExecutionTests.test_direct_calls_and_ordered_results_keep_distinct_execution_identities',
+    'unsupported_execution_reaches_review': 'capture_self_test.CurrentExecutionTests.test_unsupported_execution_reaches_final_consumers_without_private_bodies',
+    'unsupported_execution_cannot_pass': 'capture_self_test.CurrentExecutionTests.test_unsupported_later_wrapper_cannot_certify_validation_success',
+    'old_candidate_new_collector_publication': 'collection_runs_self_test.CollectionTests.test_old_candidate_new_collector_immutable_publication_and_copy',
+    'source_hash_rejection': 'collection_runs_self_test.CollectionTests.test_wrong_source_hash_fails_before_product_reads',
+    'candidate_binary_prerequisite': 'collection_runs_self_test.CollectionTests.test_wrong_candidate_binary_retains_normalization_stops_dependents',
+    'source_mutation_rejection': 'collection_runs_self_test.CollectionTests.test_source_mutation_during_product_read_rejects_publication',
+    'candidate_rebinding_rejection': 'collection_runs_self_test.CollectionTests.test_candidate_rebinding_rejected',
+    'collector_identity_rejection': 'collection_runs_self_test.CollectionTests.test_collector_tampering_rejected',
+    'historical_rejection_preservation': 'collection_runs_self_test.CollectionTests.test_historical_rejection_omission_rejected',
+    'raw_mutation_rejection': 'collection_runs_self_test.CollectionTests.test_raw_mutation_rejected',
+}
 
 
 EXPECTED_INNER = "unresolved"
@@ -41,7 +58,7 @@ TEMPORAL_CONTROLS = {
     'missing_temporal_evidence_with_violation': ('naturalistic_observation', 'shared_answer_integrity', 'confirmed_violation', 'hard_blocking'),
 }
 BOUNDARY_CONTROLS = ('retention_metadata_round_trip', 'retention_oversize_atomic', 'candidate_shell_route', 'resource_expectation_lifecycle', 'partial_process_sampling')
-CONTROLS = ('duplicate_titles', 'contradictory_shared_answer', 'missing_explanation_plan', 'mismatched_explanation_response', 'review_projection_omission', 'changed_artifact', 'memory_binary_mismatch', 'absent_human_observations', 'rehearsal_not_measured', 'copied_semantic_rehash', *TEMPORAL_CONTROLS, *BOUNDARY_CONTROLS)
+CONTROLS = ('duplicate_titles', 'contradictory_shared_answer', 'missing_explanation_plan', 'mismatched_explanation_response', 'review_projection_omission', 'changed_artifact', 'memory_binary_mismatch', 'absent_human_observations', 'rehearsal_not_measured', 'copied_semantic_rehash', *TEMPORAL_CONTROLS, *BOUNDARY_CONTROLS, *COLLECTION_CONTROLS)
 TOPOLOGY = {'repository_journeys': 3, 'work_items': 5, 'resume_pairs': 3, 'fresh_sessions': 8, 'work_distribution': {'volicord': 3, 'small-python': 1, 'polyglot-medium': 1}, 'resume_repository_classes': ['polyglot-medium', 'small-python', 'volicord']}
 
 def identities():
@@ -71,7 +88,7 @@ def validate_result(value, candidate, *, expected_identities=None):
     require(set(pipeline) == {"evidence_set_sha256", "evaluation_run_id", "qualification_run_id",
         "expected_inner_verdict", "technical_evidence", "human_observations", "unresolved_criteria_count",
         "hard_findings", "copied_lineage_id", "copied_verification", "resource_sample_count", "topology",
-        "measured_evidence_eligible", "controls", "executables", "temporal_evidence", "boundary_evidence"}, "unexpected pipeline content")
+        "measured_evidence_eligible", "controls", "executables", "temporal_evidence", "boundary_evidence", "collection_support"}, "unexpected pipeline content")
     for key in ("evidence_set_sha256", "evaluation_run_id", "qualification_run_id", "copied_lineage_id"):
         require(re.fullmatch(r"[0-9a-f]{64}", pipeline[key]), "invalid pipeline identity")
     require(pipeline["expected_inner_verdict"] == EXPECTED_INNER
@@ -99,7 +116,25 @@ def validate_result(value, candidate, *, expected_identities=None):
                 and re.fullmatch(r"[0-9a-f]{64}", record[stream]["sha256"]), "invalid process stream evidence")
     validate_temporal(pipeline['temporal_evidence'], records)
     validate_boundaries(pipeline['boundary_evidence'], records, value['executables'])
+    validate_collection_support(pipeline['collection_support'], records)
     return value
+
+
+def validate_collection_support(value, processes):
+    require(isinstance(value, dict) and set(value) == {'process_identity', 'result'}, 'missing collection support execution')
+    result = value['result']
+    require(isinstance(result, dict) and set(result) == {'kind', 'purpose', 'checks', 'result_id'}
+        and result['kind'] == 'dogfood_collection_support' and result['purpose'] == 'self_authored_support'
+        and result['result_id'] == digest({k: v for k, v in result.items() if k != 'result_id'}),
+        'invalid collection support receipt')
+    expected = [{'id': key, 'test_name': name, 'tests_run': 1, 'status': 'passed', 'failures': 0, 'errors': 0}
+        for key, name in COLLECTION_CONTROLS.items()]
+    require(result['checks'] == expected, 'required collection support was omitted or not executed')
+    matches = [p for p in processes if p['identity'] == value['process_identity']]
+    body = (json.dumps(result, indent=2, sort_keys=True) + '\n').encode()
+    require(len(matches) == 1 and matches[0]['exit_code'] == 0 and matches[0]['termination'] == 'exited'
+        and matches[0]['stdout'] == {'bytes': len(body), 'sha256': hashlib.sha256(body).hexdigest()},
+        'collection support does not bind actual process output')
 
 
 def validate_boundaries(value, processes, executables):
