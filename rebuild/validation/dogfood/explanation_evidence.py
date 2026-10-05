@@ -69,6 +69,7 @@ def bound(root, path):
 
 
 def invoke(binary, runtime, project, args):
+    runtime = __import__("collection_runs").runtime_path(runtime)
     argv = [str(binary), '--runtime', str(runtime), '--project', project, '--json', *args]
     started = timestamp()
     import time
@@ -83,6 +84,7 @@ def invoke(binary, runtime, project, args):
         'exit_code': code, 'termination': termination,
         'stdout': binding(stdout), 'stderr': binding(stderr),
         'command': args[:], 'candidate_executable_sha256': api().harness.sha256(binary)}
+    __import__('collection_runs').record_product_read(meta, stdout, stderr)
     if termination != 'exited' or code != 0:
         # Failed process truth is retained privately, even before publication.
         destination = api().ROOT / 'rebuild/.local/explanation-process-failures' / secrets.token_hex(16)

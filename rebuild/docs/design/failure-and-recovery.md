@@ -232,6 +232,19 @@ success를 함께 보존한다. Aggregate caller는 모든 bounded child outcome
 failure/partial/degraded를 판정하며 첫 실패에서 나머지 독립 작업을 조용히 생략하지
 않는다.
 
+Retained Naturalistic campaign reprocessing is a validation correction, not a
+Product retry or source repair. A separate immutable collection run may normalize
+the original observations with a new collector revision while retaining the exact
+observed candidate and historical rejection. Product-dependent materialization
+requires the original executable/repository/canonical inputs and verified private
+Runtime copies. Missing material yields a bounded incomplete publication with one
+causal blocker; evaluation/CLI/review/qualification/lineage dependencies are
+`not_run` with that prerequisite, never independent Product failures. Source or
+collector drift rejects publication. Original campaign bytes, late resource limits
+and post-session explanation provenance remain unchanged. The validation owner
+defines collection/publication verification and the exact affected observation;
+missing post-session material does not by itself require eight new measured chats.
+
 ## 5. Repair와 rebuild
 
 `repair`는 authoritative 또는 durable state가 invariant를 만족하도록 검증된

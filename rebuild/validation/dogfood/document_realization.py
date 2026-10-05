@@ -563,7 +563,7 @@ def generate(root: Path, kind: str, work_label: str, project_id: str, document_k
         preparation, draft = fixed(root, campaign, key, document_kind)
         if preparation["project_id"] != project_id:
             raise c.CampaignError("fixed realization Project differs from journey evidence")
-        content = consume(Path(campaign["candidate_binary"]), Path(campaign["journeys"][key]["runtime_home"]),
+        content = consume(Path(campaign["candidate_binary"]), __import__("collection_runs").runtime_path(Path(campaign["journeys"][key]["runtime_home"])),
                           preparation, draft, format_name, allow_bound_runtime=True)
         verify_route(campaign)
     except c.CampaignError as error:

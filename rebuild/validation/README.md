@@ -621,6 +621,29 @@ rebuild/scripts/validate focused realistic-corpus-qualification -- python3 rebui
 ```
 
 The finite machine authority/rationale/owner table is `dogfood/machine-policy.json`.
+For a retained pending campaign whose collector was corrected, use:
+
+```sh
+rebuild/scripts/dogfood-campaign reprocess-collection --campaign-root SOURCE --source-campaign-sha256 HASH --rollout-directory RAW --rejected-attempt REJECTED_OUTPUT --output NEW_PUBLICATION
+rebuild/scripts/dogfood-campaign verify-collection --campaign-root NEW_PUBLICATION
+```
+
+The current clean collector revision must contain all recorded producer bytes.
+The Product candidate, executable hashes, tasks and eight sessions remain those
+of `SOURCE`. Repeat `--rejected-attempt` for related historical process/diagnostic
+files outside the inventoried observations. The publication is disjoint and
+create-only; it retains exact source/input/producer bytes, policy/run identities,
+and original rejection. Verified private Runtime copies isolate post-session
+Product reads from the original campaign. Explanation packages are checked and
+retained, not regenerated, and no resource observer is started.
+Schema 9 evidence sets require collection provenance; copied publications and
+result lineage verify it without the mutable staging Runtime. Run `evaluate` and
+review preparation against the new publication only after collection succeeded.
+An incomplete publication exits nonzero, preserves normalization and the precise
+post-session blocker, and records dependent stages `not_run` with their causal
+prerequisite. It does not require a new measured campaign merely because a
+post-session artifact is unavailable. No human observation is inferred.
+
 Intact older evidence uses `dogfood-campaign evaluate` without changing its Product
 candidate. An incomplete historical campaign without `evidence-set.json` may use
 `dogfood-campaign diagnose --campaign-root <old> --output <new>` for a separate, explicitly

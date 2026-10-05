@@ -430,6 +430,16 @@ handling도 정의하지 않는다.
 
 ## Qualitative reviewer evidence boundary
 
+Immutable collection reprocessing remains local validation work. Exact source,
+raw/frozen input and producer bytes stay in the private disjoint publication;
+they do not enlarge the reviewer allowlist or authorize provider transmission.
+Original candidate Product reads use verified disposable Runtime copies, with
+canonical/repository binding retained, and their actual post-session streams and
+timestamps are private collection evidence. Existing steward explanations and
+resource limitations are not regenerated or relabeled as measured-session use.
+Copied lineage may retain private collection provenance; sharing it still requires
+applicable authority. Human observations are not synthesized from that provenance.
+
 Post-campaign reviewer preparation은 current-host access에 필요한 bounded local evidence를
 제공하며 background source transmission을 실행하거나 승인하지 않는다. Agent/human kind와
 self-reported identity는 검증된 candidate/evidence hash binding과 분리한다. Rollout, repository,

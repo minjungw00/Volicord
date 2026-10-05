@@ -40,6 +40,7 @@ import human_review
 import result_lineage
 import repository_state
 import resource_observer
+import collection_runs
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -1108,10 +1109,11 @@ def load_frozen_descriptor(
 
 
 
-def verify_frozen_campaign(root: Path, campaign: dict[str, Any]) -> None:
+def verify_frozen_campaign(root: Path, campaign: dict[str, Any], *, verify_executables: bool = True) -> None:
     """Verify the complete deterministic run sheet before any activation."""
     verify_inventory(root)
-    verify_candidate_artifacts(campaign)
+    if verify_executables:
+        verify_candidate_artifacts(campaign)
     expected_works = {work_key(kind, label) for kind in CLASSES for label in work_labels(kind)}
     expected_journeys = {journey_id(kind) for kind in CLASSES}
     if set(campaign.get("works", {})) != expected_works or set(campaign.get("journeys", {})) != expected_journeys:
@@ -2002,7 +2004,7 @@ def extract_resume_evidence(
     descriptor_path, descriptor = load_frozen_descriptor(root, kind, work, campaign)
     project_id = state["project_id"] if integrity_only else inspect_resume(capture, descriptor, state)
     binary = Path(campaign["candidate_binary"])
-    runtime = Path(state["runtime_home"])
+    runtime = collection_runs.runtime_path(Path(state["runtime_home"]))
     repository = Path(state["repository_path"])
     bundle = work_root(root, kind, work) / "context.bundle.json"
     with candidate_artifact_use(campaign, ("volicord",)):
@@ -2434,6 +2436,7 @@ def collect_batch(
             raise IntegrityError("destination_collision", CampaignError("batch evidence destination must be absent and distinct from its source"))
     baseline = {name: (root / name).read_bytes() for name in
                 ["campaign.json", "evidence-inventory.json"]}
+    collection_run, collection_inputs, collection_producers = collection_runs.request(root, raw_paths, mode="live")
     stage = Path(tempfile.mkdtemp(prefix=".batch-intake-", dir=root))
     try:
         for name in load_inventory(root)["artifacts"]:
@@ -2442,6 +2445,7 @@ def collect_batch(
         staged_campaign = copy.deepcopy(campaign)
         staged_campaign["campaign_root"] = str(stage)
         save_campaign(stage, staged_campaign)
+        collection_runs.retain(stage, collection_run, collection_inputs, collection_producers)
         for (kind, work, role), rollout in sorted(mapped.items()):
             destination = work_root(stage, kind, work) / "evidence" / f"{role}.rollout.jsonl"
             copy_exact(rollout.source, destination)
@@ -2457,6 +2461,7 @@ def collect_batch(
         staged_campaign = load_campaign(stage)
         staged_campaign["campaign_root"] = str(root)
         save_campaign(stage, staged_campaign)
+        collection_runs.unchanged(collection_run, collection_inputs, collection_producers)
         # No supported capture/extraction failure reaches publication as an exception.
         publish_batch(root, stage, baseline)
         return summary
@@ -2552,11 +2557,8 @@ def work_capture_failure_result(kind: str, work: str, error: harness.WorkCapture
             "work": work, "basis": error.basis, "failed_checks": [error.check]}
 
 
-def normalize_batch(
-    root: Path, mapped: dict[tuple[str, str, str], MappedRollout], *,
-    exporter=default_export, documenter=generate_document, snapshotter=generate_viewer_snapshot,
-) -> dict[str, Any]:
-    """Freeze observations and supported outputs without behavioral qualification."""
+def resolve_batch_identities(root: Path, mapped):
+    """Read immutable captures before any candidate-dependent materialization."""
     campaign = load_campaign(root)
     captures_by_work: dict[tuple[str, str], dict[str, Any]] = {}
     journey_projects: dict[str, str] = {}
@@ -2612,6 +2614,16 @@ def normalize_batch(
     for identity, project_id in journey_projects.items():
         campaign["journeys"][identity]["project_id"] = project_id
     save_campaign(root, campaign)
+
+    return campaign, captures_by_work, journey_projects, journey_work_ids, work_item_ids
+
+
+def normalize_batch(
+    root: Path, mapped: dict[tuple[str, str, str], MappedRollout], *,
+    exporter=default_export, documenter=generate_document, snapshotter=generate_viewer_snapshot,
+) -> dict[str, Any]:
+    """Freeze observations and supported outputs without behavioral qualification."""
+    campaign, captures_by_work, journey_projects, journey_work_ids, work_item_ids = resolve_batch_identities(root, mapped)
 
     revision_evidence = collect_journey_git_evidence(campaign, mapped)
     for identity, lineage in revision_evidence.items():
@@ -2757,7 +2769,10 @@ def normalize_batch(
     register_artifact(root, root / "batch-intake-summary.json")
     # The manifest closes over exact artifacts, excluding mutable inventory/campaign
     # metadata and all future evaluation runs. Its byte hash is its stable identity.
-    manifest = {"kind": "dogfood_evidence_set", "schema_version": 8,
+    manifest = {"kind": "dogfood_evidence_set", "schema_version": 9,
+        "collection_run": {"path": "collection/run.json",
+            "run_id": read_json(root / "collection/run.json")["run_id"],
+            "sha256": harness.sha256(root / "collection/run.json")},
         "campaign_id": campaign["campaign_id"], "candidate_head": campaign["candidate_head"],
         "evidence_purpose": campaign["evidence_purpose"],
         "candidate_artifacts": copy.deepcopy(campaign["candidate_artifacts"]),
@@ -2811,6 +2826,7 @@ def record_resources(root: Path, source: Path) -> dict[str, Any]:
 
 def load_evidence_set(root: Path) -> dict[str, Any]:
     """Read-only identity verification; never repairs or upgrades older campaigns."""
+    collection_runs.require_publication(root)
     campaign = load_campaign(root)
     verify_inventory(root)
     reference = campaign.get("evidence_set")
@@ -2820,7 +2836,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         raise CampaignError("campaign has no intact immutable evidence set")
     manifest = read_json(root / "evidence-set.json")
     evidence_purpose.require_same(campaign, manifest, read_json(root / "preparation.json"))
-    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 8
+    if (manifest.get("kind") != "dogfood_evidence_set" or manifest.get("schema_version") != 9
         or manifest.get("candidate_head") != campaign["candidate_head"]
         or manifest.get("campaign_id") != campaign["campaign_id"]
         or manifest.get("candidate_artifacts") != campaign.get("candidate_artifacts")
@@ -2883,6 +2899,7 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
     if manifest.get("explanation_evidence") != explanation_evidence.collection_index(root, mapped):
         raise CampaignError("immutable explanation observation/lifecycle index changed")
     integrity_check("project_binding", verify_retained_repository_states, root, manifest)
+    collection_runs.verify(root, manifest)
     return manifest
 
 
@@ -3043,7 +3060,7 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
                 "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py", "answer_observations.py", "explanation_evidence.py", "answer_projection.py", "review_captures.py", "review_explanations.py", "review_operations.py",
                 "../shared/recorded_action_evidence.py",
-                "evaluation.json", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py", "evidence_purpose.py")},
+                "evaluation.json", "collection_runs.py", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py", "evidence_purpose.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
         "evaluation_state": "produced", "qualification_state": "not_run", "works": works,
@@ -3203,6 +3220,14 @@ def parser() -> argparse.ArgumentParser:
         help="Select optional operator characterization; starts no observer")
     activate = sub.add_parser("activate-journey")
     activate_every = sub.add_parser("activate-all")
+    reprocess = sub.add_parser("reprocess-collection", help="Publish retained observations without mutating or rebinding their Product campaign")
+    reprocess.add_argument("--campaign-root", required=True)
+    reprocess.add_argument("--source-campaign-sha256", required=True)
+    reprocess.add_argument("--rollout-directory", required=True)
+    reprocess.add_argument("--rejected-attempt", action="append", default=[])
+    reprocess.add_argument("--output", required=True)
+    verify_collection = sub.add_parser("verify-collection", help="Independently verify a copied collection publication")
+    verify_collection.add_argument("--campaign-root", required=True)
     collect_b = sub.add_parser("collect-batch")
     prepare_explanations = sub.add_parser("prepare-explanations", help="Prepare private post-session Work/Decision explanation evidence before document realization")
     record_explanation = sub.add_parser("record-explanation", help="Record an active-host response through the existing Product CLI and retain readback")
@@ -3381,6 +3406,12 @@ def main() -> int:
                  else document_realization.prepare(root, paths, progress=document_realization.stderr_progress)
                  if args.command == "prepare-document-realizations"
                  else collect_batch(root, paths))
+    elif args.command == "reprocess-collection":
+        value = collection_runs.reprocess(root, batch_rollout_paths(None, Path(args.rollout_directory)),
+            Path(args.output), source_sha256=args.source_campaign_sha256,
+            rejected=[Path(p) for p in args.rejected_attempt])
+    elif args.command == "verify-collection":
+        value = collection_runs.verify_publication(root)
     elif args.command == "diagnose":
         value = diagnose_campaign(root, Path(args.output))
     elif args.command == "evaluate":
@@ -3424,7 +3455,7 @@ def main() -> int:
     else:
         value = review_operations.package_review(root, Path(args.output))
     print(json.dumps(value, indent=2, sort_keys=True))
-    return 0
+    return 1 if args.command == "reprocess-collection" and value["collection_state"] != "collected" else 0
 
 
 if __name__ == "__main__":

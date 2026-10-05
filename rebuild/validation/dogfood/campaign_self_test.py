@@ -832,7 +832,7 @@ def assert_current_campaign_contract(parent: Path, binary: Path) -> None:
         if work["work_label"] == "A":
             assert work["sessions"]["start"]["session_id"] != work["sessions"]["resume"]["session_id"]
     manifest = campaign.load_evidence_set(root)
-    assert manifest["schema_version"] == 8 and len(manifest["raw_inputs"]) == 8
+    assert manifest["schema_version"] == 9 and len(manifest["raw_inputs"]) == 8
     observed_sources = set()
     for work in manifest["work_evidence"]:
         for session in work["sessions"].values():

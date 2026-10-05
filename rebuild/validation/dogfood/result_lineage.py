@@ -81,6 +81,11 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
         "evaluation/receipt.json": operations.bounded_read(evaluation_path.with_name("receipt.json")),
         "qualification/qualification.json": qualification_data,
     }
+    for name in manifest['artifacts']:
+        if name.startswith('collection/'):
+            files['source/' + name] = operations.bounded_read(campaign_root / name)
+    if (campaign_root / 'collection/publication.json').is_file():
+        files['source/collection/publication.json'] = operations.bounded_read(campaign_root / 'collection/publication.json')
     reviews, observed_references = [], []
     for review_root in review_roots:
         review_root = review_root.resolve()
@@ -194,8 +199,11 @@ def verify(root):
         "result lineage evidence-set binding changed")
     evidence_set = json.loads(evidence_data)
     review.require(evidence_set.get("kind") == "dogfood_evidence_set"
+        and evidence_set.get("schema_version") == 9
         and evidence_set.get("candidate_head") == index["candidate_head"],
         "result lineage evidence-set identity changed")
+    import collection_runs
+    collection_runs.verify(root / 'source', evidence_set)
     evaluation_path = operations.safe_path(root, index["evaluation"]["path"])
     evaluation = evaluation_runs.load(evaluation_path)
     evidence_purpose.require_same(index, evidence_set, evaluation)

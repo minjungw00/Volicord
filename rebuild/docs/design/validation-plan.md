@@ -1432,6 +1432,53 @@ repository-state evidence are inventory-bound. Publication is immutable and
 atomic. A failed collection cannot be converted to qualified evidence by
 qualitative prose or retrying inside the same campaign.
 
+#### Immutable retained-observation collection
+
+`reprocess-collection` is a validation-code correction path for one retained,
+pending source campaign. It does not execute new measured sessions, change the
+observed Product candidate, repair source metadata, or reuse sessions for another
+Product. The source campaign JSON hash is an explicit input. Inventory, frozen
+tasks/descriptors, eight raw inputs, activation and Project/Work identity are
+verified before materialization. Source observations, including unindexed retained
+operator/steward artifacts and explicit rejected-attempt inputs, are copied with
+exact byte/hash identities. Source files and collector dependencies are rechecked
+before publication; drift rejects publication.
+
+Evidence-set schema 9 requires `collection_run` for both live collection and
+reprocessing. `collection/run.json` owns source campaign/root/hash, observed
+candidate and all three executable identities, exact input and producer hashes,
+collector Git revision, bounded policy identity, nonce, run ID and rejected-attempt
+references. Reprocessing verifies producer bytes against that exact Git revision.
+Live collection still requires the current clean candidate; its collector and
+observed candidate are identical. A historical collection keeps these identities
+separate. Retained producer files and source metadata permit independent copied
+verification without the original staging Runtime. Current consumers reject
+missing/inconsistent identities; there is no old/new production decoder.
+
+Raw identity/execution normalization is separate from candidate-dependent export,
+explanation readback, document and Viewer materialization. The latter require the
+original hash-verified executables, original repository/integration binding and
+canonical state. Every Runtime file is hash-bound and copied to a private disposable
+Runtime before Product reads; the original repository binding is preserved. The
+collector does not recreate explanations or use a current Product binary. Runtime
+and repository input states are rechecked, and exports must retain the measured
+Project/Work/Checkpoint graph. New processes, streams, outcomes and timestamps are
+post-session collection evidence, never content observed during the measured chats.
+No resource observer is launched. Existing resource/explanation bytes retain their
+actual scope, including late `not_observed` and `post_session_steward` states.
+
+Publication uses a new disjoint, create-only root with retained source provenance
+and a separate publication identity/output hash. Source `collection_state=pending`
+and prior rejection remain unchanged. Missing authoritative material can publish
+an `incomplete` diagnostic with retained normalized inputs and one exact blocker;
+it cannot publish an evidence set. Evaluation, CLI observation, review,
+qualification and result-lineage stages remain `not_run`, invocation count zero,
+with the causal collection run/reason. Consumers check this prerequisite before
+execution. The blocker names the affected post-session operation, not a demand
+for eight new chats. A successful evidence set enables the existing append-only
+evaluation and review owners independently of machine pass. Human-only evidence
+remains unresolved. Copied result lineage also retains collection provenance.
+
 Support evaluation consumes the producer's Work-specific activation summary:
 `journey_id`, `work_slot_id`, repository class and start activation must agree;
 resume activation is true for the three Work A slots and exactly `not_applicable`
@@ -1492,7 +1539,7 @@ lifecycle channel and a foreground external observer. Preparation is honestly
 unsupported and environment-blocked states. The
 [maintained interface](../../validation/dogfood/resource-observation.md) owns bounds,
 identity/privacy/completeness, overhead and teardown proof. Current campaign/evidence
-schemas are 9/8. A real candidate outside the observer's process tree supplies the
+schemas are 9/9. A real candidate outside the observer's process tree supplies the
 positive fixture; simulated failures supply only negative controls. Harness-tree RSS
 cannot be relabeled as Codex's MCP memory. The exact technical gate retains its separate
 resource measurements. Synthetic campaign, resume, document, repository-state,
