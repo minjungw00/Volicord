@@ -4,8 +4,8 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 14 / policy revision 13, machine evaluation
-policy `evidence-evaluation-9`, human observation/receipt schema 4, qualification policy
+Current identities are qualitative review schema 14 / policy revision 14, machine evaluation
+policy `evidence-evaluation-11`, human observation/receipt schema 4, qualification policy
 `replacement-qualification-10`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
@@ -245,8 +245,8 @@ transmission is performed.
 
 ### Naturalistic review-capture projection
 
-`review_captures.py` owns the one current `naturalistic_review_capture` schema 3 /
-`naturalistic-review-capture-3` policy. Preparation verifies source bytes/SHA-256 against
+`review_captures.py` owns the one current `naturalistic_review_capture` schema 4 /
+`naturalistic-review-capture-4` policy. Preparation verifies source bytes/SHA-256 against
 both the immutable evidence-set member and session binding before parsing those exact
 bytes through the shared Codex normalizer. It rechecks immutable Campaign bindings before
 publication. Unsupported/malformed conversation transports, conflicting message copies,
@@ -294,6 +294,27 @@ Host-owned daemon recovery context is excluded only with its exact
 `codex_internal_context` / `daemon_recovery` wrapper. It is not an actual user turn;
 unbound user prose or ambiguous recovery transports still fail closed.
 
+Typed Codex Page state is supported only in `response_item` / `message` / `user`
+with exactly one `input_text` item, a bounded message ID, and exactly
+`content_item_kinds = ["additional_content.codex_apps_open_page"]`. Metadata must
+bind the active known task turn at that raw sequence. The entire text must be the
+`external_codex_apps_open_page` envelope with strict JSON containing only `page_id`;
+duplicate members, extra fields, malformed payloads, mixed kinds and foreign/inactive
+turns fail closed. `page_id` is null or a nonempty trimmed string of at most 256
+characters without control characters. This is host state, never user authority.
+
+Null means no Page was selected. `host_metadata` preserves raw sequence, event/message
+type, exact content kind, message ID, turn ID and `selection = none`; the matching
+`excluded_records` entry retains these fields and `reason = host_page_no_selection`.
+A non-null identity is retained as a bounded `host_context` record with selected
+`page_id`, not Page contents, under the same privacy/body limits. Its manifest entry
+has `selection = selected`; a privacy omission leaves semantic incompleteness.
+The manifest/record/exclusion partition is validated independently of body counts.
+Host metadata and unsupported execution coverage remain distinct evidence classes.
+Untyped markup and actual user prose containing the tag never acquire host classification.
+A conflicting normalized user copy fails rather than discarding actual user evidence.
+No new Product Page access or authorization contract is inferred from this metadata.
+
 Text proposed for retention passes the unchanged review-plane sensitive-payload policy.
 An unsafe body is wholly omitted with `body.state = omitted`, reason `sensitive_payload`,
 source body bytes/SHA-256 and immutable coordinates, without retaining its value. A body
@@ -304,7 +325,8 @@ The source limit is 64 MiB / 200,000 events and the projected artifact limit is 
 
 `retained_record_count` counts normalized records with their selected bodies/facts retained;
 `omitted_record_count` counts omitted selected bodies plus excluded raw records.
-`excluded_records` lists unused raw event sequences with `non_semantic_by_design`.
+`excluded_records` lists unused raw event sequences with `non_semantic_by_design`,
+except the explicit `host_page_no_selection` exclusion described below.
 Selected operation/execution records also exclude all unallowlisted payload fields by design.
 `semantic_omission_count` counts omitted required user, agent, async Question or selected
 Volicord operation bodies or partially omitted required typed returned meaning;

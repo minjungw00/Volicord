@@ -11,12 +11,13 @@ import answer_projection
 import answer_observations
 import explanation_evidence
 
-SCHEMA_VERSION = 3
-POLICY = "naturalistic-review-capture-3"
+SCHEMA_VERSION = 4
+POLICY = "naturalistic-review-capture-4"
 MAX_BODY_BYTES = 1 << 20
 MAX_PROJECTION_BYTES = 32 << 20
 CAPTURE_SURFACES = {"work_capture", "resume_capture"}
-SEMANTIC_ROLES = {"user_turn", "agent_message", "question_request", "volicord_operation"}
+SEMANTIC_ROLES = {"user_turn", "agent_message", "question_request", "volicord_operation", "host_context"}
+PAGE_CONTENT_KIND = "additional_content.codex_apps_open_page"
 LIMITS = {"source_bytes": codex.MAX_CAPTURE_BYTES, "source_events": codex.MAX_CAPTURE_EVENTS,
           "body_bytes": MAX_BODY_BYTES, "projection_bytes": MAX_PROJECTION_BYTES}
 # Scalar request/outcome fields accompany typed returned meaning; never generic payloads.
@@ -55,6 +56,46 @@ def daemon_recovery_context(payload, segments, capture):
         and plane().re.fullmatch(
             r'<codex_internal_context source="daemon_recovery">\n.+\n</codex_internal_context>',
             segments[0], plane().re.DOTALL) is not None)
+
+
+def page_metadata(event, sequence, current_turn, capture):
+    """Recognize a typed host page-state message, never markup in user prose.
+
+    Only the current response-item user transport is supported. A selected Page
+    is bounded context identity, not resource contents or user authority.
+    """
+    payload = event["payload"]
+    metadata = payload.get("internal_chat_message_metadata_passthrough")
+    kinds = metadata.get("content_item_kinds") if isinstance(metadata, dict) else None
+    if not isinstance(kinds, list) or PAGE_CONTENT_KIND not in kinds:
+        return None
+    ops = plane()
+    segments = codex.message_text_segments(payload)
+    if (event["type"] != "response_item" or payload.get("type") != "message"
+            or payload.get("role") != "user" or kinds != [PAGE_CONTENT_KIND]
+            or metadata.get("turn_id") != current_turn
+            or current_turn not in {turn.turn_id for turn in capture.turn_lifecycle.turns}
+            or not codex.nonempty(payload.get("id")) or len(payload["id"]) > 256
+            or segments is None or len(segments) != 1
+            or payload["content"] != [{"type": "input_text", "text": segments[0]}]):
+        raise ValueError("malformed or mismatched typed host page metadata")
+    match = ops.re.fullmatch(r'<external_codex_apps_open_page>(.*)</external_codex_apps_open_page>',
+                             segments[0], ops.re.DOTALL)
+    try:
+        value = codex.strict_json(match.group(1)) if match else None
+    except (ValueError, TypeError) as error:
+        raise ValueError("malformed typed host page payload") from error
+    if (not isinstance(value, dict) or set(value) != {"page_id"}
+            or not supported_page_id(value["page_id"])):
+        raise ValueError("malformed typed host page payload")
+    return {"sequence": sequence, "event_type": "response_item", "message_type": "message",
+            "content_item_kind": PAGE_CONTENT_KIND, "turn_id": current_turn,
+            "message_id": payload["id"], "page_id": value["page_id"]}
+
+
+def supported_page_id(value):
+    return value is None or (isinstance(value, str) and 0 < len(value) <= 256
+                            and value == value.strip() and all(ord(c) >= 32 for c in value))
 
 
 def agent_records(events, capture):
@@ -152,8 +193,24 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
             "semantic_role": "user_turn", "body_value": turn.text})
     # Unnormalized actual user prose must never be silently excluded as setup.
     user_texts = {turn.text for turn in capture.user_turns}
-    for event in events:
+    host_metadata = []
+    current_turn = None
+    for sequence, event in enumerate(events):
         p = event["payload"]
+        if event["type"] == "event_msg" and p.get("type") == "task_started":
+            current_turn = p.get("turn_id")
+        page = page_metadata(event, sequence, current_turn, capture)
+        if page is not None:
+            # A normalized user copy is conflicting transport, not host context.
+            if "".join(codex.message_text_segments(p)) in user_texts:
+                raise ValueError("typed host page metadata conflicts with actual user evidence")
+            host_metadata.append({k: v for k, v in page.items() if k != "page_id"})
+            host_metadata[-1]["selection"] = "none" if page["page_id"] is None else "selected"
+            if page["page_id"] is not None:
+                records.append({"sequence": sequence, "source_sequences": [sequence],
+                    "turn_id": current_turn, "semantic_role": "host_context",
+                    "body_value": {"page_id": page["page_id"]}})
+            continue
         if event["type"] == "response_item" and p.get("type") == "message" and p.get("role") == "user":
             segments = codex.message_text_segments(p)
             if segments is None or ("".join(segments) not in user_texts
@@ -163,6 +220,8 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
         if event["type"] == "event_msg" and p.get("type") == "user_message" and not any(
             t.text == p.get("message") and t.user_turn_id == p.get("client_id") for t in capture.user_turns):
             raise ValueError("unsupported review user interaction")
+        if event["type"] == "event_msg" and p.get("type") in {"task_completed", "turn_aborted"}:
+            current_turn = None
     records.extend(agent_records(events, capture))
     request_sequences = {r.sequence for r in capture.async_question_requests}
     for sequence, event in enumerate(events):
@@ -237,7 +296,9 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
             record["body"] = body_projection(record.pop("body_value"))
     used = {sequence for record in records for sequence in record["source_sequences"]}
     records.sort(key=lambda r: (r["sequence"], r["semantic_role"]))
-    excluded = [{"sequence": sequence, "reason": "non_semantic_by_design"}
+    pages = {p["sequence"]: p for p in host_metadata if p["selection"] == "none"}
+    excluded = [({**pages[sequence], "reason": "host_page_no_selection"} if sequence in pages
+                 else {"sequence": sequence, "reason": "non_semantic_by_design"})
                 for sequence in range(len(events)) if sequence not in used]
     value = {"kind": "naturalistic_review_capture", "schema_version": SCHEMA_VERSION,
         "evidence_purpose": evidence_purpose.capture_purpose(capture),
@@ -245,6 +306,7 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
         "candidate_head": candidate_head, "evidence_set_sha256": evidence_set_sha256,
         "fresh_user_thread": capture.fresh_user_thread, "limits": LIMITS,
         "source_record_count": len(events), "records": records, "excluded_records": excluded,
+        "host_metadata": host_metadata,
         'execution_coverage': {k: v for k, v in capture.execution_evidence().items() if k != 'wrappers'}}
     value.update(counts(value))
     projected = ops.encoded(value)
@@ -285,7 +347,7 @@ def validate(data):
     required = {"evidence_purpose", "kind", "schema_version", "policy", "origin", "session_id", "role", "candidate_head",
         "evidence_set_sha256", "fresh_user_thread", "limits", "source_record_count", "records", "excluded_records",
         "retained_record_count", "omitted_record_count", "non_semantic_omission_count", "semantic_omission_count", "semantic_complete"}
-    required.add('execution_coverage')
+    required.update({'execution_coverage', 'host_metadata'})
     ops.review.require(isinstance(value, dict) and set(value) == required
         and value["kind"] == "naturalistic_review_capture" and value["schema_version"] == SCHEMA_VERSION
         and value["policy"] == POLICY and value["limits"] == LIMITS and len(data) <= MAX_PROJECTION_BYTES,
@@ -310,6 +372,7 @@ def validate(data):
         "unsafe review capture origin member path")
     fields = {
         "user_turn": {"turn_id", "user_turn_id", "body"},
+        "host_context": {"turn_id", "body"},
         "agent_message": {"turn_id", "message_id", "phase", "body"},
         "question_request": {"turn_id", "call_id", "body"},
         "volicord_operation": {"completion_sequence", "turn_id", "call_id", "operation", "outcome", "body", "transport", "requested_language"},
@@ -365,6 +428,10 @@ def validate(data):
                 role, retained = record["semantic_role"], body["value"]
                 if role == "user_turn":
                     ops.review.require(isinstance(retained, str), "invalid projected user body")
+                elif role == "host_context":
+                    ops.review.require(isinstance(retained, dict) and set(retained) == {"page_id"}
+                        and retained['page_id'] is not None and supported_page_id(retained['page_id']),
+                        "invalid projected selected Page context")
                 elif role == "agent_message":
                     ops.review.require(isinstance(retained, dict) and set(retained) == {"text", "questions"}
                         and isinstance(retained["text"], str), "invalid projected agent body")
@@ -391,7 +458,26 @@ def validate(data):
                 ops.review.require(body["state"] == "omitted" and body["reason"] in {"sensitive_payload", "body_limit"}
                     and body["value"] is None, "invalid review capture omission")
     used = {s for r in value["records"] for s in r["source_sequences"]}
-    ops.review.require(value["excluded_records"] == [{"sequence": s, "reason": "non_semantic_by_design"}
+    pages = value['host_metadata']
+    turns = {r['turn_id'] for r in value['records'] if r['semantic_role'] == 'turn_boundary'}
+    ops.review.require(isinstance(pages, list) and all(isinstance(p, dict) and set(p) == {
+        'sequence', 'event_type', 'message_type', 'content_item_kind', 'turn_id', 'message_id', 'selection'}
+        and type(p['sequence']) is int and 0 <= p['sequence'] < value['source_record_count']
+        and p['event_type'] == 'response_item' and p['message_type'] == 'message'
+        and p['content_item_kind'] == PAGE_CONTENT_KIND and p['turn_id'] in turns
+        and codex.nonempty(p['message_id']) and len(p['message_id']) <= 256
+        and p['selection'] in {'none', 'selected'} for p in pages)
+        and [p['sequence'] for p in pages] == sorted({p['sequence'] for p in pages}),
+        'invalid host page metadata coordinates/type')
+    selected = {p['sequence']: p for p in pages if p['selection'] == 'selected'}
+    contexts = [r for r in value['records'] if r['semantic_role'] == 'host_context']
+    ops.review.require(len(contexts) == len(selected) and all(r['sequence'] in selected
+        and r['source_sequences'] == [r['sequence']] and r['turn_id'] == selected[r['sequence']]['turn_id']
+        for r in contexts), 'selected Page context classification changed')
+    null_pages = {p['sequence']: p for p in pages if p['selection'] == 'none'}
+    ops.review.require(not set(null_pages) & used, 'host metadata falsely classified as semantic evidence')
+    ops.review.require(value["excluded_records"] == [({**null_pages[s], 'reason': 'host_page_no_selection'}
+        if s in null_pages else {"sequence": s, "reason": "non_semantic_by_design"})
         for s in range(value["source_record_count"]) if s not in used]
         and all(type(value[key]) is type(expected) and value[key] == expected for key, expected in counts(value).items()),
         "review capture projection omission/count inconsistency")

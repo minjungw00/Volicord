@@ -261,7 +261,7 @@ verification preserve the exact evidence and decision chain.
 
 `prepare-qualitative-review --include-raw-rollouts` selects immutable raw Work/resume
 inputs for bounded reviewer-safe conversation projections under the current
-`naturalistic_review_capture` schema 3 / `naturalistic-review-capture-3` policy.
+`naturalistic_review_capture` schema 4 / `naturalistic-review-capture-4` policy.
 It copies no complete raw rollout. Each index entry distinguishes origin member/raw
 bytes/SHA-256 from projected review bytes/SHA-256 and exposes limits, omission counts
 and semantic completeness. Irrelevant tool/source/process bodies are excluded by

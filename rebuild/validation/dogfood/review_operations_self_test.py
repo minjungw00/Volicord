@@ -189,6 +189,12 @@ def rollout_bytes(events):
 
 
 class ProjectionTests(unittest.TestCase):
+    def page_event(self, page_id=None):
+        event = json.loads((Path(__file__).parent / 'fixtures/typed-host-page.json').read_text())
+        event['payload']['content'][0]['text'] = ('<external_codex_apps_open_page>'
+            + json.dumps({'page_id': page_id}) + '</external_codex_apps_open_page>')
+        return event
+
     def project(self, events=None, *, role="start", data=None, origin=None):
         data = data if data is not None else rollout_bytes(events or synthetic_rollout())
         origin = origin or {"kind": "evidence_set_member", "path": "slots/fixture/evidence/" + role + ".rollout.jsonl",
@@ -246,6 +252,120 @@ class ProjectionTests(unittest.TestCase):
         invalid = copy.deepcopy(events)
         invalid[3]["payload"]["content"][0]["text"] = "Actual unbound user response."
         with self.assertRaisesRegex(ValueError, "unnormalized review user interaction"):
+            self.project(invalid)
+
+    def test_typed_null_page_is_bounded_host_exclusion(self):
+        events = synthetic_rollout()
+        events.insert(3, self.page_event())
+        data, metadata = self.project(events)
+        value = captures.validate(data)
+        page = value['host_metadata'][0]
+        self.assertEqual(page, {'sequence': 3, 'event_type': 'response_item', 'message_type': 'message',
+            'message_id': 'fixture-page-message', 'turn_id': 'fixture-turn', 'selection': 'none',
+            'content_item_kind': 'additional_content.codex_apps_open_page'})
+        self.assertIn({**page, 'reason': 'host_page_no_selection'}, value['excluded_records'])
+        self.assertTrue(metadata['semantic_complete'])
+        self.assertEqual(len([r for r in value['records'] if r['semantic_role'] == 'user_turn']), 1)
+        # Rehashed inner metadata must retain its closed type and partition.
+        for change in ('delete', 'reclassify', 'foreign_turn'):
+            bad = copy.deepcopy(value)
+            entry = next(p for p in bad['excluded_records'] if p['sequence'] == 3)
+            if change == 'delete':
+                bad['excluded_records'].remove(entry)
+            elif change == 'reclassify':
+                entry.clear(); entry.update(sequence=3, reason='non_semantic_by_design')
+            else:
+                entry['turn_id'] = 'foreign-turn'
+            with self.assertRaises(ValueError):
+                captures.validate(ops.encoded(bad))
+
+    def test_selected_page_preserves_only_bounded_identity(self):
+        events = synthetic_rollout()
+        events.insert(3, self.page_event('fixture-selected-page'))
+        data, metadata = self.project(events)
+        value = captures.validate(data)
+        context = next(r for r in value['records'] if r['semantic_role'] == 'host_context')
+        self.assertEqual(context['body']['value'], {'page_id': 'fixture-selected-page'})
+        self.assertEqual(context['source_sequences'], [3])
+        self.assertEqual(value['host_metadata'][0]['selection'], 'selected')
+        self.assertTrue(metadata['semantic_complete'])
+        events[3] = self.page_event('access_token=synthetic-sensitive-page-529163')
+        _, metadata = self.project(events)
+        self.assertFalse(metadata['semantic_complete'])
+
+    def test_page_markup_without_host_typing_never_excludes_user_text(self):
+        tag = self.page_event()['payload']['content'][0]['text']
+        for text in (tag, 'Please explain this literal tag: ' + tag):
+            events = synthetic_rollout(user=text)
+            response = self.page_event()
+            del response['payload']['internal_chat_message_metadata_passthrough']['content_item_kinds']
+            response['payload']['content'][0]['text'] = text
+            events.insert(3, response)
+            data, _ = self.project(events)
+            value = captures.validate(data)
+            self.assertEqual(value['host_metadata'], [])
+            self.assertIn(text, [r['body']['value'] for r in value['records']
+                                if r['semantic_role'] == 'user_turn'])
+        events = synthetic_rollout()
+        response = self.page_event()
+        del response['payload']['internal_chat_message_metadata_passthrough']['content_item_kinds']
+        events.insert(3, response)
+        with self.assertRaisesRegex(ValueError, 'unnormalized review user interaction'):
+            self.project(events)
+        events = synthetic_rollout(user=tag)
+        events.insert(3, self.page_event())
+        with self.assertRaisesRegex(ValueError, 'conflicts with actual user evidence'):
+            self.project(events)
+
+    def test_malformed_foreign_and_unsupported_page_metadata_fail_closed(self):
+        base = self.page_event()
+        variants = []
+        for key, value in (('turn_id', 'foreign-turn'),
+                           ('content_item_kinds', ['additional_content.unsupported']),
+                           ('content_item_kinds', [captures.PAGE_CONTENT_KIND, 'user'])):
+            event = copy.deepcopy(base)
+            event['payload']['internal_chat_message_metadata_passthrough'][key] = value
+            variants.append(event)
+        for text in ('<external_codex_apps_open_page>{broken}</external_codex_apps_open_page>',
+                     '<external_codex_apps_open_page>{"page_id":null,"extra":1}</external_codex_apps_open_page>',
+                     '<external_codex_apps_open_page>{"page_id":null,"page_id":"duplicate"}</external_codex_apps_open_page>',
+                     '<external_codex_apps_open_page>{"page_id":42}</external_codex_apps_open_page>',
+                     '<external_codex_apps_open_page>{"page_id":""}</external_codex_apps_open_page>',
+                     'Actual user prose ' + base['payload']['content'][0]['text']):
+            event = copy.deepcopy(base)
+            event['payload']['content'][0]['text'] = text
+            variants.append(event)
+        for key, value in (('role', 'assistant'), ('type', 'other')):
+            event = copy.deepcopy(base); event['payload'][key] = value; variants.append(event)
+        event = copy.deepcopy(base); event['type'] = 'event_msg'; variants.append(event)
+        # Known but inactive turn cannot authorize metadata in the current turn.
+        for event in variants:
+            with self.subTest(event=event):
+                events = synthetic_rollout(); events.insert(3, event)
+                with self.assertRaises(ValueError):
+                    self.project(events)
+        events = synthetic_rollout()
+        events.insert(3, {'type': 'event_msg', 'payload': {'type': 'task_started', 'turn_id': 'other-turn'}})
+        events.insert(4, base)
+        with self.assertRaises(ValueError):
+            self.project(events)
+
+    def test_page_metadata_adjacent_to_setup_and_daemon_recovery(self):
+        events = synthetic_rollout()
+        setup = {'type': 'response_item', 'payload': {'type': 'message', 'role': 'user',
+            'content': [{'type': 'input_text', 'text': '<environment_context>synthetic setup</environment_context>'}]}}
+        recovery = {'type': 'response_item', 'payload': {'type': 'message', 'role': 'user',
+            'content': [{'type': 'input_text', 'text': '<codex_internal_context source="daemon_recovery">\nSynthetic recovery.\n</codex_internal_context>'}],
+            'internal_chat_message_metadata_passthrough': {'turn_id': 'fixture-turn',
+                'content_item_kinds': ['daemon_recovery.internal_context']}}}
+        events[3:3] = [setup, self.page_event(), recovery]
+        data, metadata = self.project(events)
+        value = captures.validate(data)
+        self.assertEqual(value['host_metadata'][0]['sequence'], 4)
+        self.assertTrue(metadata['semantic_complete'])
+        invalid = copy.deepcopy(events)
+        invalid[5]['payload']['internal_chat_message_metadata_passthrough']['turn_id'] = 'foreign-turn'
+        with self.assertRaises(ValueError):
             self.project(invalid)
 
     def test_nonsemantic_payloads_are_excluded_without_literal_allowlisting(self):

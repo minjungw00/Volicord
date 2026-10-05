@@ -1878,7 +1878,7 @@ automatically parsed. Available confirmed numeric failures remain independently 
 Checkpoint reconciliation distinguishes missing raw execution from unresolved raw
 normalization without inventing an execution/outcome match.
 
-Reviewer capture schema 3 retains bounded `execution_coverage` records and aggregate
+Reviewer capture schema 4 retains bounded `execution_coverage` records and aggregate
 coverage separately from semantic completeness, plus execution launch/continuation
 coordinates, numeric exit/signal/termination and output-retention state. No command,
 JS or shell output body is copied. Current unsupported forms include mixed MCP/state
@@ -2043,8 +2043,8 @@ Work identity를 보존한 세 projection에 적용된다. CLI group만 `volicor
 `polyglot-medium` repository class별 일곱 criterion으로 생성된다. Dedicated observation이 없는
 class는 일곱 bounded unresolved gap을 남기며 `not_applicable`로 숨기지 않는다.
 
-Naturalistic review-capture support는 `review_captures.py`의 current schema 3 /
-`naturalistic-review-capture-3` policy를 사용한다. Immutable source member bytes/hash를 projection
+Naturalistic review-capture support는 `review_captures.py`의 current schema 4 /
+`naturalistic-review-capture-4` policy를 사용한다. Immutable source member bytes/hash를 projection
 전에 검증하며 origin raw identity와 projected artifact identity를 분리한다. User/agent/Question
 semantic omission은 typed reason과 count를 남기고 required direct capture에 대한 `satisfied` 및
 `violated`를 거부한다. `insufficient_evidence`는 observation gap이며 Product failure가 아니다.

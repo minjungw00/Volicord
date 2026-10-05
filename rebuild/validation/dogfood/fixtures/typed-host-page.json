@@ -1,0 +1,14 @@
+{
+  "type": "response_item",
+  "payload": {
+    "type": "message",
+    "id": "fixture-page-message",
+    "role": "user",
+    "content": [{"type": "input_text", "text": "<external_codex_apps_open_page>{\"page_id\":null}</external_codex_apps_open_page>"}],
+    "internal_chat_message_metadata_passthrough": {
+      "turn_id": "fixture-turn",
+      "create_time": 1791151990.5,
+      "content_item_kinds": ["additional_content.codex_apps_open_page"]
+    }
+  }
+}
