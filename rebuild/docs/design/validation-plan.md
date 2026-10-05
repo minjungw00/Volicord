@@ -1668,8 +1668,12 @@ overlapping operations, cross-session order and explicit CLI Project binding. Th
 `naturalistic_consumer_checks_product_recalls_across_correction` in Host `answer_consumers` supplies
 actual MCP/CLI Recall returns, actual MCP correction/authorization receipt and fresh Product bundle to
 `answer_product_support.py`, which runs `harness.real_session_evidence()`. Its seed-authoring envelopes
-and capture topology are explicitly synthetic support. Pre-correction Recall remains valid against a
-later revision-2 export; new-revision Recall passes and old-revision-as-current is hard blocking.
+and capture topology are explicitly synthetic support. Its support oracle independently distinguishes a retained Goal basis from
+an exact Goal-section omission with unavailable selected-Goal basis: the latter requires
+indeterminate, never fabricated pass. Both still assert pre/post witnessed Goal revisions and
+stale-current hard failure across MCP/CLI. The test does not require every bounded Product read
+to contain an unbounded global Goal list. Pre-correction Recall remains valid against a
+later revision-2 export; retained new-revision Recall passes and old-revision-as-current is hard blocking.
 Additional current-consumer controls insert initial Recall before Goal creation (with and
 without an independent initialization witness, with and without later creation), new Goal
 without Checkpoint, valid resume and missing/wrong Work, Project, Goal or Checkpoint revision.

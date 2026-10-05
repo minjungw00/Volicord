@@ -51,12 +51,53 @@ def correction(f, config, *, after=False):
 
 
 def run(config):
+    def retained_goal_status(answer):
+        # Product bounds the global Goal section separately from selected Work.
+        # The support oracle uses the actual DTO's availability, not observer
+        # output. A valid but unretained Goal basis is explicit uncertainty.
+        expected_omission = {'identity': config['work'], 'kind': 'context_goal',
+            'reason': 'bound', 'expandable_basis': 'expand context_goal by identity'}
+        goals = answer.get('goal_basis', [])
+        if (not any(g.get('identity') == config['work'] for g in goals if isinstance(g, dict))
+                and expected_omission in answer.get('omissions', [])):
+            selected = answer.get('selected_work') or {}
+            evidence = selected.get('evidence') or {}
+            reading = evidence.get('goal') or {}
+            basis = reading.get('basis') or {}
+            if not {'record_kind', 'identity', 'field', 'revision', 'source_ids'} <= set(basis):
+                return 'indeterminate'
+        return 'confirmed_pass'
+
+    def bounded_goal_counterfactual(answer):
+        # Authored availability mutation of real DTOs, not another Product read.
+        value = copy.deepcopy(answer)
+        value['goal_basis'] = [g for g in value['goal_basis'] if g.get('identity') != config['work']]
+        report = {'identity': config['work'], 'kind': 'context_goal',
+            'reason': 'bound', 'expandable_basis': 'expand context_goal by identity'}
+        if report not in value.setdefault('omissions', []):
+            value['omissions'].append(report)
+        original_goal = value['selected_work'].get('evidence', {}).get('goal')
+        value['selected_work']['evidence'] = {'goal': {'transport_omission': {
+            'reason': 'serialized_byte_budget', 'exact_json_bytes': len(json.dumps(original_goal).encode()),
+            'basis': 'inspect the complete field on the authoritative parent record'}}}
+        assert retained_goal_status(value) == 'indeterminate'
+        return value
+
     for after, answer, expected in [(True, config['before'], 'confirmed_pass'),
-            (False, config['after'], 'confirmed_pass'), (False, config['before'], 'confirmed_violation')]:
+            (False, config['after'], 'confirmed_pass'), (False, config['before'], 'confirmed_violation'),
+            (True, bounded_goal_counterfactual(config['before']), 'indeterminate'),
+            (False, bounded_goal_counterfactual(config['after']), 'indeterminate')]:
         f = fixture(config)
         try:
             correction(f, config, after=after)
             _, fact = f.evaluate(answer)
+            if expected != 'confirmed_violation':
+                expected = retained_goal_status(answer)
+                observation = fact['basis']['observations'][0]
+                assert observation['goal_basis']['revision'] == (1 if after else 2), observation
+                if expected == 'indeterminate':
+                    assert observation['errors'] == [], observation
+                    assert 'selected Goal basis unavailable after exact Goal-list bound omission' in observation['limits'], observation
             assert fact['status'] == expected, fact
             assert h.load_codex_capture(f.path).calls('canonical_mutate')[0].outcome == 'succeeded'
             if expected == 'confirmed_violation':
@@ -67,11 +108,13 @@ def run(config):
     try:
         correction(f, config)
         _, fact = f.evaluate(config['after'], cli=config['before_cli'], cli_before=True)
-        assert fact['status'] == 'confirmed_pass', fact
+        expected = ('indeterminate' if 'indeterminate' in (
+            retained_goal_status(config['before_cli']), retained_goal_status(config['after'])) else 'confirmed_pass')
+        assert fact['status'] == expected, fact
         assert [o['goal_basis']['revision'] for o in fact['basis']['observations']] == [1, 2]
     finally:
         f.doCleanups()
-    print('actual MCP/CLI Recall and correction receipt: pre/post revision pass, stale-current hard violation, later correction isolation passed; synthetic capture support only')
+    print('actual MCP/CLI Recall and correction receipt: pre/post revisions verified with bounded Goal uncertainty retained, stale-current hard violation, later correction isolation passed; synthetic capture support only')
 
 
 if __name__ == '__main__':
