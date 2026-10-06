@@ -50,6 +50,14 @@
         "interaction_coverage_adequacy": "insufficient_evidence"
       },
       "evidence_summary": "All workload intents executed, but raw interactions and diagnostics do not support a reliable replacement Question/Learning judgment. Qualification is unresolved, with no Product failure inferred from selection weakness."
+    },
+    {
+      "id": "live-grouping-difficulty-is-not-color-only-dependence",
+      "assessments": {
+        "multiple_work_comprehension": "violated",
+        "not_color_only": "satisfied"
+      },
+      "evidence_summary": "Synthetic direct live observation: text and shape carry meaning, but Work cards are difficult to distinguish. This supports live grouping failure without asserting incorrect historical snapshots or color-only meaning."
     }
   ]
 }

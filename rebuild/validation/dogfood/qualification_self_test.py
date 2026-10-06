@@ -366,7 +366,7 @@ class PolicyTests(unittest.TestCase):
     def test_agent_covers_semantics_human_only_targeted_observations(self):
         value = self.result([self.agent])
         self.assertTrue(value["qualitative_review"]["resolved_criteria"])
-        self.assertTrue(all('/live_viewer/' in c or c == 'journey-volicord/viewer_snapshot/multiple_work_organization'
+        self.assertTrue(all('/live_viewer/' in c
             or c.endswith('/decision_comprehension_when_applicable')
             for c in value["qualitative_review"]["human_escalations"]))
         self.assertEqual(value["naturalistic_evidence"]["multi_work_structural_continuity"]["state"],
@@ -443,7 +443,7 @@ class PolicyTests(unittest.TestCase):
         cid = policy.MULTI_WORK_CRITERION
         other = "journey-small-python/viewer_snapshot/multiple_work_organization"
         spec = copy.deepcopy(next(s for s in self.specs if s["criterion_id"] == cid))
-        spec.update(criterion_id=other, sample_id="journey-small-python")
+        spec.update(criterion_id=other, sample_id="journey-small-python", group="viewer_snapshot", name="multiple_work_organization", locale=None)
         self.specs.append(spec)
         assessment = copy.deepcopy(next(a for a in self.agent["assessments"] if a["criterion_id"] == cid))
         assessment.update(criterion_id=other, assessment="satisfied")
@@ -1513,7 +1513,7 @@ class FileBoundaryTests(unittest.TestCase):
                     changed['qualitative_review']['human_escalations'].remove(cid)
                     changed['qualitative_review']['resolved_criteria'].append(cid)
                     changed['qualitative_review']['resolved_criteria'].sort()
-                    changed['naturalistic_evidence']['multi_work_viewer_comprehension']['state'] = 'satisfied'
+                    changed['naturalistic_evidence']['multi_work_viewer_comprehension']['state'] = policy._criterion_state(changed, policy.multi_work_criteria())
                 rehash_lineage_qualification(tampered, changed)
                 with self.assertRaisesRegex(ValueError, 'contradicts evaluation and recorded reviews'):
                     result_lineage.verify(tampered)

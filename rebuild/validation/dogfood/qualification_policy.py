@@ -11,12 +11,18 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-10"
+REVISION = "replacement-qualification-11"
 COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
-MULTI_WORK_CRITERION = "journey-volicord/viewer_snapshot/multiple_work_organization"
+MULTI_WORK_CRITERION = "journey-volicord/live_viewer/en/multiple_work_comprehension"
+
+def multi_work_criteria():
+    import harness
+    locales = harness.load_definition()["qualitative_review_contract"]["live_viewer_locales"]
+    return [f"journey-volicord/live_viewer/{locale}/multiple_work_comprehension"
+        for locale in locales]
+
 # Direct human/user observations cannot be inferred from an agent's artifact review.
-HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable",
-    "journey-volicord/viewer_snapshot/multiple_work_organization"}
+HUMAN_CRITERIA = {"live_viewer/*", "interaction/decision_comprehension_when_applicable"}
 TOPOLOGY = {
     "repository_journeys": 3,
     "work_items": 5,
@@ -146,9 +152,9 @@ def naturalistic_summary(result, evaluation, memory=None):
         },
         "multi_work_viewer_comprehension": {
             "state": _criterion_state(result,
-                [MULTI_WORK_CRITERION]),
+                multi_work_criteria()),
             "evidence_class": "direct_human_live_viewer_observation",
-            "criterion_id": MULTI_WORK_CRITERION,
+            "criterion_ids": multi_work_criteria(),
         },
         "live_browser_input_and_paint": {
             "state": _criterion_state(result, browser_criteria()),
@@ -375,10 +381,10 @@ def validate_result(value):
         and structural.get("deterministic_fixture") == "supporting_regression_only"
         and isinstance(comprehension, dict)
         and comprehension.get("state")
-            == _criterion_state(value, [MULTI_WORK_CRITERION])
+            == _criterion_state(value, multi_work_criteria())
         and comprehension.get("evidence_class") == "direct_human_live_viewer_observation"
-        and comprehension.get("criterion_id")
-            == MULTI_WORK_CRITERION
+        and comprehension.get("criterion_ids")
+            == multi_work_criteria()
         and naturalistic["live_browser_input_and_paint"]["state"]
             == _criterion_state(value, browser_criteria())
         and naturalistic["live_browser_input_and_paint"]["snapshot_export_proxy_may_substitute"] is False

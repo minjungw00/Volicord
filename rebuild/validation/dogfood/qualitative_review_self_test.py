@@ -206,13 +206,48 @@ class ContractTests(unittest.TestCase):
         self.assertIn("browser_input_and_paint_responsiveness",
             p["rubric"]["criteria"]["live_viewer"])
         self.assertNotIn("long_lived_project", p["rubric"]["criteria"])
-        self.assertTrue(q.human_only({"sample_id": "journey-volicord",
+        self.assertFalse(q.human_only({"sample_id": "journey-volicord",
             "group": "viewer_snapshot", "name": "multiple_work_organization"}))
         self.assertNotEqual(
             p["rubric"]["criterion_observations"]["diagram_usefulness"],
             p["rubric"]["criterion_observations"]["diagram_structural_readability"])
         self.assertEqual(len(p["rubric"]["criterion_observations"][
             "information_hierarchy_and_cognitive_burden"]), 4)
+
+    def test_live_complaint_and_historical_fidelity_have_separate_authority(self):
+        p = preparation("human")
+        value = q.template(p, "d" * 64)
+        specs = q.criterion_specs(p["index"], p["rubric"])
+        for name in ("multiple_work_comprehension", "displayed_decision_comprehension"):
+            n = next(i for i, spec in enumerate(specs)
+                if spec["name"] == name and spec["locale"] == "en")
+            finding = fill(value["assessments"][n], p, "violated")
+            finding["evidence"] = [r for r in finding["evidence"]
+                if r["evidence_id"] == "live_viewer_observation-en"]
+            finding["inspected_evidence"] = ["live_viewer_observation-en"]
+            finding["reasoning"] = "I cannot distinguish the displayed items; user rationale was not recorded."
+            finding["human_answer_trace"] = [{"prompt": "What did you experience?", "answer": finding["reasoning"]}]
+        value["observation_scope"]["inspected_evidence"] = ["live_viewer_observation-en"]
+        self.assertEqual(q.validate_value(p, "d" * 64, value)["assessment_state"], "violated")
+        for name in ("multiple_work_organization", "decision_comprehension_when_applicable"):
+            n = next(i for i, spec in enumerate(specs) if spec["name"] == name)
+            finding = fill(value["assessments"][n], p)
+            finding["evidence"] = [r for r in finding["evidence"]
+                if r["evidence_id"] == "live_viewer_observation-en"]
+            finding["inspected_evidence"] = ["live_viewer_observation-en"]
+            with self.assertRaises(ValueError):
+                q.validate_value(p, "d" * 64, value)
+            value["assessments"][n] = q.observation(specs[n]["criterion_id"])
+        # A formal live answer never writes or resolves a historical assertion.
+        self.assertTrue(all(a["assessment"] == "not_reviewed" for a, spec in zip(value["assessments"], specs)
+            if spec["name"] in {"multiple_work_organization", "decision_comprehension_when_applicable"}))
+
+    def test_historical_decision_fidelity_requires_complete_original_conversation(self):
+        p = preparation()
+        value = completed(p)
+        p["index"]["evidence"]["work_capture"]["projection"]["semantic_complete"] = False
+        with self.assertRaisesRegex(ValueError, "semantically incomplete"):
+            q.validate_value(p, "d" * 64, value)
 
     def test_campaign_derived_criteria_remain_independent(self):
         fixture = json.loads((Path(__file__).with_name("fixtures") /

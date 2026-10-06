@@ -2548,3 +2548,14 @@ canonical Runtime blockers and related Source/analysis uncertainty remain ordina
 These checks change no historical Human/Agent review and establish neither human
 comprehension nor gate qualification. The Viewer README owns the changed surfaces
 and explicit CLI-only analysis refresh guidance.
+
+### Live review evidence separation
+
+Qualitative-review schema 15 / policy revision 15 separates current displayed multi-Work
+and Decision comprehension from retained snapshot and measured-conversation fidelity.
+The rubric, qualification policy and copied-lineage reconstruction consume one current
+inventory. Direct screen complaints do not establish historical inconsistency; historical
+fidelity requires its retained snapshot/canonical or conversation/canonical evidence.
+Historical b57 Agent/Human results and direct answers stay diagnostic for that candidate,
+not qualification evidence for this changed Product. Existing hard integrity, complete
+capture and independent technical rules remain unchanged.

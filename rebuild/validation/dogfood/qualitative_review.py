@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 # Shared by completion/handoff reporting and replacement qualification.
 HIGH_IMPACT_INSUFFICIENCY_GROUPS = ("authority", "context_recovery", "campaign_interaction")
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
@@ -45,6 +45,17 @@ SURFACES = {
     "authority": ["work_capture"],
     "campaign_interaction": ["task_selection", "interaction_diagnostics", "work_capture", "canonical_bundle"],
 }
+# Specialized evidence claims override the group default; neither class substitutes.
+CRITERION_SURFACES = {
+    "multiple_work_organization": ["viewer_snapshot", "canonical_bundle"],
+    "decision_comprehension_when_applicable": ["work_capture", "canonical_bundle"],
+}
+
+
+def required_surfaces(spec):
+    return CRITERION_SURFACES.get(spec["name"], SURFACES[spec["group"]])
+
+
 GROUP_PROMPTS = {
     "campaign_interaction": "Assess whether planned workload intents and actual interactions provide reliable evidence for replacement Question/Learning behavior. Inspect bounded projected conversation turns and explicit omissions, diagnostic facts, source/authority evidence and independent agent semantic review. Correct no-question behavior counts as evidence. Weak selection or sparse evidence means insufficient_evidence; violated requires substantive observed Product behavior failure. No operation-count threshold applies.",
     "interaction": "Judge necessary and omitted Questions against actual material outcomes, user-owned authority and source evidence. Do not require evaluator wording, answers, counts or a manufactured Question. Assess comprehension, repetition and interruption cost; distinguish user judgment from agent recommendation.",
@@ -69,7 +80,11 @@ CRITERION_PROMPTS = {
     "code_behavior": "Inspect concrete affected code behavior and its code/source basis. Missing or weak architecture topology does not by itself make code behavior absent.",
     "diagram_usefulness": "Inspect the rendered diagram itself, its grounded nodes/edges and whether it materially explains this work. Artifact existence or adjacent prose is not diagram usefulness.",
     "project_purpose_vs_current_work_clarity": "Inspect whether enduring Project purpose and the current Work Item goal are both understandable and visibly distinct.",
-    "multiple_work_organization": "Inspect whether separate Work Items retain stable identity, boundaries and per-item state instead of collapsing into one latest-work narrative.",
+    "multiple_work_organization": "Compare retained Viewer snapshots with canonical Work identity, boundaries and per-item history/state. This historical projection-fidelity claim does not assess live comprehension.",
+    "multiple_work_comprehension": "Describe whether the displayed current Viewer makes separate Works and their state/selection understandable. A live complaint does not prove historical snapshots were incorrect.",
+    "displayed_decision_comprehension": "Describe your understanding of the displayed current Decision: choice, recommendation, recorded or explicitly unavailable user rationale, consequences and applicability. Do not reconstruct the original conversation or invent a reason the user never recorded.",
+    "decision_comprehension_when_applicable": "Compare the original measured user conversation with retained Decision choice and recorded rationale. This historical user-comprehension/fidelity claim needs the actual conversation and canonical Decision; current screen comprehension cannot substitute. Missing user rationale stays unavailable.",
+    "not_color_only": "Does any meaning depend only on color, without text, shape or another cue? Separately describe grouping or distinction difficulties even when non-color cues exist; those belong to information hierarchy/multiple-Work organization, not color dependence.",
     "evidence_explanation_comprehensibility": "Inspect whether evidence, freshness, coverage and uncertainty are explained in terms a reader can connect to the visible claim, rather than exposed only as opaque provenance metadata.",
     "ordinary_reading_audit_detail_exposure": "Inspect the primary reading path for hashes, opaque IDs, raw diagnostics and integrity bookkeeping that should be progressively disclosed rather than competing with product meaning.",
     "diagram_structural_readability": "Inspect diagram node labels, edge direction, grouping, crossings and topology at the rendered size. This is separate from whether a diagram exists or is grounded.",
@@ -89,6 +104,9 @@ CRITERION_OBSERVATIONS = {
     "diagram_usefulness": ["actual_diagram", "grounded_nodes_edges", "material_explanatory_value"],
     "project_purpose_vs_current_work_clarity": ["project_purpose", "current_work_goal", "visible_conceptual_distinction"],
     "multiple_work_organization": ["stable_work_identities", "work_boundaries", "per_work_state", "current_work_selection"],
+    "multiple_work_comprehension": ["displayed_work_distinction", "displayed_per_work_state", "selection_understanding", "observation_limits"],
+    "displayed_decision_comprehension": ["displayed_choice", "recommendation_distinction", "recorded_or_missing_user_rationale", "consequences_and_scope", "observation_limits"],
+    "decision_comprehension_when_applicable": ["original_user_conversation", "canonical_decision_choice", "recorded_or_missing_user_rationale", "historical_fidelity_limit"],
     "evidence_explanation_comprehensibility": ["visible_claim", "source_freshness_coverage", "reader_connection", "uncertainty"],
     "ordinary_reading_audit_detail_exposure": ["primary_reading_path", "opaque_identity_and_hash_detail", "raw_diagnostics", "progressive_disclosure"],
     "diagram_structural_readability": ["node_labels", "edge_direction", "grouping_and_topology", "rendered_legibility"],
@@ -129,6 +147,7 @@ def rubric(definition):
         "criterion_prompts": CRITERION_PROMPTS, "workload_prompts": WORKLOAD_PROMPTS,
         "criterion_observations": CRITERION_OBSERVATIONS,
         "required_surfaces": SURFACES,
+        "criterion_required_surfaces": CRITERION_SURFACES,
         "behavior_criteria": contract["interaction_behavior_criterion_contracts"],
         "authority_obligation_contract": authority.assessment_contract(),
         "assessment_states": STATES, "machine_relationships": RELATIONSHIPS,
@@ -218,9 +237,7 @@ def human_only(spec):
     return spec["group"] == "live_viewer" or (
         spec["group"] == "interaction"
         and spec["name"] == "decision_comprehension_when_applicable"
-    ) or (spec["group"] == "viewer_snapshot"
-        and spec["name"] == "multiple_work_organization"
-        and spec["sample_id"] == "journey-volicord")
+    )
 
 
 def completion_obligations(index, policy):
@@ -463,14 +480,9 @@ def validate_assessment(value, spec, preparation, inspected):
     if state in {"satisfied", "violated"}:
         surfaces = {index["evidence"][r["evidence_id"]]["surface"] for r in value["evidence"]
             if spec["locale"] is None or index["evidence"][r["evidence_id"]].get("locale") == spec["locale"]}
-        required_surfaces = set(SURFACES[spec["group"]])
-        if (spec["sample_id"] == "journey-volicord"
-                and spec["group"] == "viewer_snapshot"
-                and spec["name"] == "multiple_work_organization"
-                and preparation["reviewer"]["kind"] == "human"):
-            required_surfaces.add("live_viewer_observation")
-        require(required_surfaces <= surfaces, "criterion lacks its required observation surface; use insufficient_evidence")
-        capture_surfaces = required_surfaces & {"work_capture", "resume_capture"}
+        needed_surfaces = set(required_surfaces(spec))
+        require(needed_surfaces <= surfaces, "criterion lacks its required observation surface; use insufficient_evidence")
+        capture_surfaces = needed_surfaces & {"work_capture", "resume_capture"}
         if capture_surfaces:
             # No current alternative surface supplies missing actual conversation.
             # Check every applicable required capture, not only favorable citations.

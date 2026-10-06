@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 14 / policy revision 14, machine evaluation
+Current identities are qualitative review schema 15 / policy revision 15, machine evaluation
 policy `evidence-evaluation-11`, human observation/receipt schema 4, qualification policy
-`replacement-qualification-10`, and result-lineage schema 2. Historical runs retain their old
+`replacement-qualification-11`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -49,9 +49,10 @@ not establish actual live keyboard/focus/zoom behavior; missing observation yiel
 insufficient evidence. Missing CLI captures similarly cannot establish usability.
 No language or repository class is excluded because the implementation uses Rust.
 The Volicord journey's one-Project/three-Work continuity is a structural machine
-finding. Human comprehension of that organization is the Volicord journey-final
-Viewer `multiple_work_organization` criterion; there is no parallel long-lived
-observation group.
+finding. Historical projection consistency is `viewer_snapshot/multiple_work_organization`:
+retained snapshots and canonical Work identity/history are required, and agent review is
+permitted. Direct current comprehension is `live_viewer/{en,ko}/multiple_work_comprehension`.
+Neither claim proves the other; structural continuity remains separately measured.
 
 ## Assessment and evidence discipline
 
@@ -402,7 +403,7 @@ identities include the changed producer/consumer hashes.
 
 Typed artifacts have nested JSON pointers into claim text, action, plan content and lifecycle
 stages (up to 8,192 per artifact); exact line locators always remain available. Package and record
-receipt schema 2 bind preparation schema 14. Copied result-lineage schema 2 rechecks typed shape,
+receipt schema 2 bind preparation schema 15. Copied result-lineage schema 2 rechecks typed shape,
 omissions, stage/receipt/readback consistency and observation-index meaning/stage/locator bindings without original
 Runtime Homes, response files or staging paths. New modules participate in preparer, evaluator
 and qualification dependency hashing. Fresh outer hashes cannot excuse inconsistent inner claims.
@@ -578,7 +579,7 @@ errors roll back staged files; preflight never repairs or rewrites evidence.
 `qualification_policy.py` consumes recorded runs using this rubric, including all 21 required
 repository-class CLI assessments. All criteria except
 live accessibility, browser input/paint responsiveness, Volicord journey-final Viewer
-multi-Work comprehension and actual user Decision comprehension
+current displayed multi-Work/Decision comprehension and original user Decision comprehension
 permit agent review with the
 required evidence. Missing surfaces remain insufficient, and a static HTML proxy never
 establishes human-observed usability. Human review may resolve only the remaining criteria.
@@ -588,7 +589,7 @@ review run IDs addressed. Agent reviews must leave that map empty. This is evide
 judgment, not voting or statistical independence.
 
 Naturalistic summaries use exact criterion identities. Multi-Work Viewer comprehension
-uses only `journey-volicord/viewer_snapshot/multiple_work_organization`; browser input/paint
+requires both `journey-volicord/live_viewer/{en,ko}/multiple_work_comprehension`; browser input/paint
 requires every locale listed in the maintained definition's `live_viewer_locales`.
 A required violation makes the summary violated, all required criteria resolved makes it
 satisfied, and any remaining required gap keeps it unresolved. Result validation uses
@@ -626,8 +627,8 @@ before/after contexts rather than relabeling the earlier screen. Browser support
 hash integrity cannot establish human comprehension. Copied review/lineage checks
 bind the context to the packaged candidate and retain the declaration; original local
 capture images remain separately retained. Long-lived
-one-Project/multiple-Work continuity is read from the Volicord journey evidence rather than a
-separate user-authored observation. Each live observation has `sample_id`, typed `surface`, optional `locale`,
+one-Project/multiple-Work structural continuity is read from Volicord journey evidence;
+current multi-Work comprehension uses the separate live criterion. Each live observation has `sample_id`, typed `surface`, optional `locale`,
 a typed `control`, and either a grouped `{observation, limits}` response or a Korean-to-English
 locale reference with no duplicated semantic prose. Preparation copies and hashes
 these declared observations into immutable review evidence. Agent authorship is rejected.
@@ -851,3 +852,32 @@ match the new evaluation's comparison reference; it is never upgraded or overwri
 Reviewer-only package verification continues to establish selected shape/hash/internal
 consistency, not authenticated host provenance or semantic truth. Independent source
 comparison belongs to the private copied lineage that actually retains raw inputs.
+
+### Separate live comprehension and historical fidelity
+
+Current live `multiple_work_comprehension` and `displayed_decision_comprehension` use
+candidate-bound direct human `live_viewer_observation` in each locale. An honest negative
+screen experience can be recorded without a historical snapshot or original conversation.
+Displayed Decision understanding includes the distinction between choice/recommendation,
+recorded or missing user rationale, consequences and applicability. Missing rationale is
+unavailable, never reconstructed by the operator or by a current screen judgment.
+
+`viewer_snapshot/multiple_work_organization` now states only historical projection
+consistency and requires retained `viewer_snapshot` plus `canonical_bundle`.
+`interaction/decision_comprehension_when_applicable` retains original measured user
+comprehension/conversation fidelity and requires complete `work_capture` plus
+`canonical_bundle`. The historical assertion still needs the recorded user experience;
+current comprehension cannot supply it. The existing no-user-Decision applicability rule
+and qualification's conflict-free agent `not_applicable` resolution remain effective.
+The live criterion is additional because its evidence authority and temporal claim differ.
+
+These are append-only current-policy review preparations, not migrations or corrections
+of recorded schema-14 reviews. Historical b57b47a5 Agent/Human artifacts, including the
+recorded `not_color_only` violation and all direct answers, remain immutable diagnostic
+and regression input. Their old snapshot/Decision `not_reviewed` states are not back-edited.
+Qualification and copied-lineage consumers require the current policy's complete inventory;
+old reviews or old measured sessions cannot be rebound to a changed Product candidate.
+
+Future color questions ask whether meaning actually depends only on color. Difficult
+visual grouping despite text/shape cues belongs to hierarchy/organization. Neither
+observation is inferred from the other or used to reinterpret an earlier verdict.

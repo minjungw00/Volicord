@@ -203,7 +203,7 @@ def load_viewer_observations(path):
 
 
 def _eligible_evidence(preparation, spec):
-    required = preparation["rubric"]["required_surfaces"].get(spec["group"], [])
+    required = review.required_surfaces(spec)
     entries = []
     for identity, entry in preparation["index"]["evidence"].items():
         if not review.evidence_applies(entry, spec["sample_id"]) or (spec["sample_id"] is None and entry["surface"] == "cli_observation"):

@@ -381,7 +381,7 @@
       "purpose": "Review independently material outcomes observed in actual Work and coupled artifacts."
     },
     "qualification_authority": false,
-    "policy_revision": 14,
+    "policy_revision": 15,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -440,7 +440,9 @@
         "visible_focus",
         "not_color_only",
         "narrow_and_zoomed_presentation",
-        "browser_input_and_paint_responsiveness"
+        "browser_input_and_paint_responsiveness",
+        "multiple_work_comprehension",
+        "displayed_decision_comprehension"
       ],
       "context_recovery": [
         "goal_decision_rationale_state_and_open_questions"
@@ -482,7 +484,7 @@
       "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
       "qualification_authority": false
     },
-    "schema_version": 14
+    "schema_version": 15
   },
   "fixture_regression_command": [
     "python3",
@@ -952,10 +954,9 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-10",
+    "revision": "replacement-qualification-11",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
-      "journey-volicord/viewer_snapshot/multiple_work_organization",
       "live_viewer/*"
     ],
     "human_rationale": "Live accessibility, browser input/paint responsiveness, Volicord Viewer multi-Work comprehension and the user's Decision comprehension require direct human observation.",

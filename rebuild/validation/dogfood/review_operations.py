@@ -550,7 +550,7 @@ def inspect_agent_criterion(root, criterion_number):
     spec = specs[criterion_number - 1]
     draft = json.loads(draft_bytes(root.resolve(), root.resolve() / "draft.json", package))
     evidence = []
-    required = preparation["rubric"]["required_surfaces"].get(spec["group"], [])
+    required = review.required_surfaces(spec)
     for identity, entry in sorted(preparation["index"]["evidence"].items()):
         if not review.evidence_applies(entry, spec["sample_id"]):
             continue
