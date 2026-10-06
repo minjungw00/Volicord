@@ -948,3 +948,8 @@ If Product/task/campaign authority required a Decision, absence remains unresolv
 violation under the relevant authority/interaction claim, never no-Decision inapplicability.
 Qualification retains those independent obligations and all hard findings. Live mapping
 cannot manufacture applicability, Decision meaning, original rationale or a Human answer.
+
+Grouped color/hierarchy experience does not waive the two-Work requirement of the
+individual `multiple_work_comprehension` claim. Prepared-claim reconstruction checks
+that requirement even when another ready block lists the same claim; unrelated color
+or hierarchy claims remain available from their own prepared contexts.

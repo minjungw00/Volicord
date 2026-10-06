@@ -132,11 +132,21 @@ def validate_scope(scope, contexts, candidate, viewer_sha256):
     return blocks
 
 
+def prepared_claims(scope, locale, contexts):
+    displays = [c["context"] for c in contexts]
+    claims = {claim for b in scope["readiness"][locale] if b["state"] == "ready" for claim in b["claims"]}
+    if len({c["selected_work"] for c in displays
+            if c["view"].get("view") == "work" and c["selected_work"] is not None}) < 2:
+        claims.discard("multiple_work_comprehension")
+    return sorted(claims)
+
+
 def require_claim_context(scope, contexts, locale, claim, state):
-    """A missing block cannot supply a positive or negative observed claim."""
+    """Shared/grouped questions cannot waive an individual claim's subject context."""
     if state in {"satisfied", "violated"}:
-        review.require(any(claim in b["claims"] and b["state"] == "ready"
-            for b in scope["readiness"][locale]), "mapped claim lacks its prepared block context")
+        local = contexts[locale] if isinstance(contexts, dict) else contexts
+        review.require(claim in prepared_claims(scope, locale, local),
+            "mapped claim lacks its prepared block context")
 
 
 def main():

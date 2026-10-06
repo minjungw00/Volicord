@@ -697,8 +697,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
             index["evidence"][identity_key] = {"path": name, "bytes": len(body), "sha256": digest(body),
                 "sample_id": item["sample_id"], "surface": item["surface"], "locale": item["locale"],
                 "sample_ids": [item["sample_id"]],
-                "prepared_claims": sorted({claim for b in observed["scope"]["readiness"][item["locale"]]
-                    if b["state"] == "ready" for claim in b["claims"]}),
+                "prepared_claims": human_observation_plan.prepared_claims(observed["scope"], item["locale"], item["contexts"]),
                 "origin": {"kind": "declared_direct_human_observation", "sha256": digest(data)}, "locators": pointers, "line_count": count}
         unavailable = [u for u in unavailable if not (u["sample_id"] == c.journey_id("volicord")
             and u["surface"] == "live_viewer_observation")]
@@ -812,9 +811,9 @@ def _load_package(root):
                 and observed["binding"]["evidence_set_sha256"] == binding["evidence_set"]["sha256"]
                 and set(observed["binding"]["display"]) == {"viewer_sha256", "runtime_binding", "project_id"},
                 "copied human observation lacks bound display context")
-            review.require(entry.get("prepared_claims") == sorted({claim
-                for b in observed["scope"]["readiness"][entry["locale"]]
-                if b["state"] == "ready" for claim in b["claims"]}), "copied prepared claim scope mismatch")
+            import human_observation_plan
+            review.require(entry.get("prepared_claims") == human_observation_plan.prepared_claims(
+                observed["scope"], entry["locale"], observed["contexts"]), "copied prepared claim scope mismatch")
             review.validate_reviewer(observed["binding"]["observer"], preparation["evaluated_sessions"])
             review.require(observed["binding"]["observer"]["kind"] == "human", "copied observer must be Human")
             answer = observed["answer_trace"][-1]["answer"]

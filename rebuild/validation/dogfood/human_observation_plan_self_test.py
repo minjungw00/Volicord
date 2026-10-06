@@ -68,6 +68,14 @@ class ChangedSurfaceTests(unittest.TestCase):
             self.assertEqual(states["work"], "ready")
             self.assertEqual(states["code-analysis"], "insufficient_evidence")
             self.assertEqual(states["multi-work"], "insufficient_evidence")
+        for locale in contexts:
+            decisions = copy.deepcopy(contexts[locale][0])
+            decisions["context"].update(view={"view": "decisions"})
+            contexts[locale].append(decisions)
+        ready = p.block_readiness(inventory["observation_blocks"], contexts)
+        self.assertEqual(next(b["state"] for b in ready["en"] if b["id"] == "color-grouping"), "ready")
+        self.assertIn("not_color_only", p.prepared_claims({"readiness": ready}, "en", contexts["en"]))
+        self.assertNotIn("multiple_work_comprehension", p.prepared_claims({"readiness": ready}, "en", contexts["en"]))
         with self.assertRaisesRegex(ValueError, "prepared block"):
             p.require_claim_context({"readiness": ready}, contexts, "en", "code_behavior_comprehension", "violated")
 
