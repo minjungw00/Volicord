@@ -11,7 +11,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-11"
+REVISION = "replacement-qualification-12"
 COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
 MULTI_WORK_CRITERION = "journey-volicord/live_viewer/en/multiple_work_comprehension"
 
@@ -51,7 +51,7 @@ STRUCTURAL_RULES = {
 
 def contract():
     return {"revision": REVISION, "human_required": sorted(HUMAN_CRITERIA),
-        "human_rationale": "Live accessibility, browser input/paint responsiveness, Volicord Viewer multi-Work comprehension and the user's Decision comprehension require direct human observation.",
+        "human_rationale": "Current Viewer comprehension, accessibility and input/paint experience, plus original user Decision comprehension, require direct human observation. Historical artifact fidelity remains separate.",
         "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
         "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
         "insufficient": "Unresolved; high-impact authority/context recovery and interaction-coverage insufficiency escalates to human.",

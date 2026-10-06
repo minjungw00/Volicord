@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 # Shared by completion/handoff reporting and replacement qualification.
 HIGH_IMPACT_INSUFFICIENCY_GROUPS = ("authority", "context_recovery", "campaign_interaction")
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
@@ -60,11 +60,11 @@ GROUP_PROMPTS = {
     "campaign_interaction": "Assess whether planned workload intents and actual interactions provide reliable evidence for replacement Question/Learning behavior. Inspect bounded projected conversation turns and explicit omissions, diagnostic facts, source/authority evidence and independent agent semantic review. Correct no-question behavior counts as evidence. Weak selection or sparse evidence means insufficient_evidence; violated requires substantive observed Product behavior failure. No operation-count threshold applies.",
     "interaction": "Judge necessary and omitted Questions against actual material outcomes, user-owned authority and source evidence. Do not require evaluator wording, answers, counts or a manufactured Question. Assess comprehension, repetition and interruption cost; distinguish user judgment from agent recommendation.",
     "documents": "Inspect all four documents: architecture guide, Decision report, implementation plan and handoff/resume. Compare each with current Sources and Decisions; assess practical understanding/handoff value, accurate remaining work and gaps, and actual requested-language prose rather than metadata-only language claims.",
-    "viewer_snapshot": "Assess whether Project Understanding explains completed/current/remaining work, next steps, Decision rationale, affected code and component/request/data flow. Distinguish source facts from generated interpretation; inspect evidence-grounded diagram topology and useful readability rather than raw record listings.",
+    "viewer_snapshot": "Assess retained artifact fidelity and structure against its own evidence, independently of personal current comprehension: whether Project Understanding explains completed/current/remaining work, next steps, Decision rationale, affected code and component/request/data flow. Distinguish source facts from generated interpretation; inspect evidence-grounded diagram topology and useful readability rather than raw record listings.",
     "viewer_navigation": "Assess candidate-bound Viewer request responsiveness from retained monotonic machine evidence and its declared scope. Snapshot export duration is a bounded request proxy, not browser interaction latency; do not substitute human stopwatch prose or claim unmeasured live navigation timing.",
     "repository_intelligence": "Assess useful navigation and analysis for actual work, honest source snapshot/coverage/freshness/uncertainty, semantic value beyond structure, and language/component boundaries and flows in polyglot work. Unsupported or unavailable capabilities must remain visible.",
     "cli": "Inspect observed help discovery and representative repository-relative tasks without opaque Project IDs. Assess readable outcomes and next actions. Captured invocation is evidence of a surface, not proof that every CLI task was usable.",
-    "live_viewer": "Assess actual observed keyboard reachability, visible focus, non-color-only meaning, narrow/zoom presentation and browser input/paint responsiveness in both en and ko. Static markup and snapshot-export timing cannot establish live interaction; use insufficient_evidence if the needed observation is absent.",
+    "live_viewer": "Assess direct current comprehension of Work meaning/state/next action, Project purpose, code behavior, architecture, diagrams, Analysis/evidence and information hierarchy, plus actual observed keyboard reachability, visible focus, non-color-only meaning, narrow/zoom presentation and browser input/paint responsiveness in both en and ko. Static markup and snapshot-export timing cannot establish live interaction; use insufficient_evidence if the needed observation is absent.",
     "context_recovery": "Compare work with fresh resume: recover goal, applicable Decisions and rationale, current/completed/remaining state and open questions accurately without repeating answered judgments. A later repair does not make an earlier false completion claim truthful.",
 }
 WORKLOAD_PROMPTS = {
@@ -75,6 +75,16 @@ WORKLOAD_PROMPTS = {
     "cross_stack_integration": "Review source grounding and understanding across relevant language/component boundaries, without a fixed semantic answer.",
 }
 CRITERION_PROMPTS = {
+    'work_state_and_next_action_comprehension': 'Describe your understanding of completed, current and remaining Work, verification state and next action in the current display. Historical state fidelity requires separate snapshot evidence.',
+    'work_meaning_comprehension': 'Describe whether Work detail explains the actual problem, reported change or investigation, supported effect and verification limits. Missing explanation and missing evidence must remain distinguishable.',
+    'code_behavior_comprehension': 'Explain the concrete code behavior you understood from Code Understanding and its visible Source basis; assess this independently of architecture topology.',
+    'architecture_flow_comprehension': 'Describe whether relevant components, relationships and their direction or static flow are understandable. Disconnected structure must not be interpreted as a call flow.',
+    'information_hierarchy_comprehension': 'Describe the effort of following one bounded reading path: scanning, grouping, priority and disclosure, including current versus historical Work detail.',
+    'project_purpose_vs_current_work_comprehension': 'Describe whether you can distinguish the Project purpose from the selected Work goal. An explicitly absent Purpose is not an invented purpose.',
+    'evidence_and_analysis_comprehension': 'Describe whether visible evidence, fact versus interpretation, Analysis freshness/coverage, limitations, usable remainder and refresh guidance are understandable.',
+    'diagram_usefulness_comprehension': 'Describe what the inspected diagram helped you understand and which visible nodes and relationships supported that understanding. This does not certify stored diagram grounding.',
+    'diagram_readability_comprehension': 'Describe whether labels, direction and grouping in the inspected diagram were readable at its actual size, separately from explanatory usefulness.',
+
     "interaction_coverage_adequacy": "satisfied requires executed required intents and enough evidence to assess important interaction behavior, including correct non-question behavior. insufficient_evidence leaves replacement unresolved when evidence is too sparse or unreliable. violated is reserved for substantive Product behavior violations, never weak task selection alone. This required campaign criterion cannot be not_observed or not_applicable.",
     "architecture_components_flow": "Inspect the actual component identities, relationships, direction and request/data flow. Judge topology independently from nearby prose about code behavior.",
     "code_behavior": "Inspect concrete affected code behavior and its code/source basis. Missing or weak architecture topology does not by itself make code behavior absent.",
@@ -95,6 +105,16 @@ CRITERION_PROMPTS = {
     "fidelity": "Compare the Decision Report and other affected documents with canonical Decision meaning. Explicitly distinguish user choice, recommended alternative, user rationale, recommendation rationale and alternative-specific consequences.",
 }
 CRITERION_OBSERVATIONS = {
+    'work_state_and_next_action_comprehension': ['completed_current_remaining_work', 'verification_state', 'next_action', 'observation_limits'],
+    'work_meaning_comprehension': ['actual_problem', 'reported_change_or_investigation', 'supported_effect', 'verification_limits', 'observation_limits'],
+    'code_behavior_comprehension': ['concrete_behavior', 'visible_source_basis', 'separate_from_topology', 'observation_limits'],
+    'architecture_flow_comprehension': ['components', 'relationships', 'direction_and_static_flow', 'separate_from_code_behavior', 'observation_limits'],
+    'information_hierarchy_comprehension': ['scan_path', 'grouping_and_priority', 'progressive_disclosure', 'bounded_cognitive_burden', 'observation_limits'],
+    'project_purpose_vs_current_work_comprehension': ['project_purpose_or_absence', 'current_work_goal', 'conceptual_distinction', 'observation_limits'],
+    'evidence_and_analysis_comprehension': ['visible_evidence_connection', 'fact_vs_interpretation', 'analysis_state_freshness_coverage', 'limits_usable_remainder_refresh', 'observation_limits'],
+    'diagram_usefulness_comprehension': ['inspected_diagram', 'visible_nodes_relationships', 'explanatory_value', 'observation_limits'],
+    'diagram_readability_comprehension': ['labels', 'direction_and_grouping', 'rendered_legibility', 'observation_limits'],
+
     "learning_fork_value": ["explicit_participation_scope", "runtime_recognition", "source_grounded_meaningful_fork_or_absence", "routine_noninterruption", "evidence_gap_vs_product_failure"],
     "correct_no_question_behavior": ["repository_and_source_authority", "actual_implementation_commitments", "unresolved_user_owned_outcomes"],
     "unnecessary_interruption": ["question_necessity", "repository_and_source_authority", "proportional_interruption_cost"],

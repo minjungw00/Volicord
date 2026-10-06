@@ -4,59 +4,174 @@
   "observation_blocks": [
     {
       "id": "overview",
-      "affected_paths": ["rebuild/crates/volicord-viewer/src/reading.rs", "rebuild/crates/volicord-viewer/src/render.rs"],
-      "required_views": [{"view": "overview"}],
+      "affected_paths": [
+        "rebuild/crates/volicord-viewer/src/reading.rs",
+        "rebuild/crates/volicord-viewer/src/render.rs"
+      ],
+      "required_views": [
+        {
+          "view": "overview"
+        }
+      ],
       "prompt": "From Overview, explain the Project purpose, current work, state and next step in your own words. Describe what is easy or hard to scan.",
-      "claims": ["project_purpose_vs_current_work_clarity", "information_hierarchy_and_cognitive_burden"]
+      "claims": [
+        "project_purpose_vs_current_work_comprehension",
+        "information_hierarchy_comprehension"
+      ]
     },
     {
       "id": "multi-work",
-      "affected_paths": ["rebuild/crates/volicord-viewer/src/reading.rs"],
-      "required_views": [{"view": "work"}],
+      "affected_paths": [
+        "rebuild/crates/volicord-viewer/src/reading.rs"
+      ],
+      "required_views": [
+        {
+          "view": "work"
+        }
+      ],
       "prompt": "Select and compare at least two actual Works in the list, including pagination when present. Describe how you distinguish their goals, boundaries and state and find the selected Work.",
-      "claims": ["multiple_work_comprehension", "information_hierarchy_and_cognitive_burden"]
+      "claims": [
+        "multiple_work_comprehension",
+        "information_hierarchy_comprehension"
+      ]
     },
     {
       "id": "work",
-      "affected_paths": ["rebuild/crates/volicord-viewer/src/reading.rs", "rebuild/crates/volicord-projections/src/explanation.rs", "rebuild/crates/volicord-projections/src/answers.rs"],
-      "required_views": [{"view": "work"}],
-      "prompt": "Describe the actual problem, reported change/investigation, supported effect, verification limits and next step of the selected Work. Say where the explanation fails to explain that work or where information is unavailable.",
-      "claims": ["completed_current_remaining_work", "next_step", "evidence_explanation_comprehensibility"]
+      "affected_paths": [
+        "rebuild/crates/volicord-viewer/src/reading.rs",
+        "rebuild/crates/volicord-projections/src/explanation.rs",
+        "rebuild/crates/volicord-projections/src/answers.rs"
+      ],
+      "required_views": [
+        {
+          "view": "work"
+        }
+      ],
+      "prompt": "Describe the actual problem, reported change/investigation, supported effect, verification limits and next step of the selected Work. Say where the explanation fails to explain that work or where information is unavailable. Distinguish current verification and action from retained historical failures; inspect history disclosure when needed and describe whether it burdens ordinary reading.",
+      "claims": [
+        "work_state_and_next_action_comprehension",
+        "evidence_and_analysis_comprehension",
+        "work_meaning_comprehension",
+        "information_hierarchy_comprehension"
+      ]
     },
     {
       "id": "decision",
-      "affected_paths": ["rebuild/crates/volicord-viewer/src/reading.rs", "rebuild/crates/volicord-projections/src/explanation.rs"],
-      "required_views": [{"view": "decisions"}],
+      "affected_paths": [
+        "rebuild/crates/volicord-viewer/src/reading.rs",
+        "rebuild/crates/volicord-projections/src/explanation.rs"
+      ],
+      "required_views": [
+        {
+          "view": "decisions"
+        }
+      ],
       "prompt": "Describe the displayed choice, recommendation, consequences and scope. Distinguish the user's recorded reason from an absent reason and from the agent's rationale. Describe any difficulty understanding this Decision; you need not reconstruct the original conversation.",
-      "claims": ["displayed_decision_comprehension"]
+      "claims": [
+        "displayed_decision_comprehension"
+      ]
     },
     {
       "id": "code-analysis",
-      "affected_paths": ["rebuild/crates/volicord-viewer/src/reading.rs", "rebuild/crates/volicord-projections/src/understanding.rs", "rebuild/crates/volicord-operations/src/lib.rs"],
-      "required_views": [{"view": "code"}, {"view": "tools", "tool": "status"}],
+      "affected_paths": [
+        "rebuild/crates/volicord-viewer/src/reading.rs",
+        "rebuild/crates/volicord-projections/src/understanding.rs",
+        "rebuild/crates/volicord-operations/src/lib.rs"
+      ],
+      "required_views": [
+        {
+          "view": "code"
+        },
+        {
+          "view": "tools",
+          "tool": "status"
+        }
+      ],
       "prompt": "Follow related code, relationships and Source details. Explain what they teach you about the actual Project and which static relationships support that explanation. Describe Analysis state/freshness, related limitations, usable remainder and refresh guidance; report where the presentation obscures these.",
-      "claims": ["architecture_components_flow", "code_behavior", "diagram_usefulness", "diagram_structural_readability", "fact_versus_interpretation", "evidence_explanation_comprehensibility"]
+      "claims": [
+        "architecture_flow_comprehension",
+        "code_behavior_comprehension",
+        "diagram_usefulness_comprehension",
+        "diagram_readability_comprehension",
+        "evidence_and_analysis_comprehension"
+      ]
     },
     {
       "id": "color-grouping",
-      "affected_paths": ["rebuild/crates/volicord-viewer/src/reading.rs", "rebuild/crates/volicord-viewer/src/render.rs"],
-      "required_views": [{"view": "overview"}, {"view": "work"}, {"view": "decisions"}],
+      "affected_paths": [
+        "rebuild/crates/volicord-viewer/src/reading.rs",
+        "rebuild/crates/volicord-viewer/src/render.rs"
+      ],
+      "required_views": [
+        {
+          "view": "overview"
+        },
+        {
+          "view": "work"
+        },
+        {
+          "view": "decisions"
+        }
+      ],
       "prompt": "First, does any meaning depend only on color with no text/shape cue? Separately, are Works, Decisions or information groups hard to distinguish despite other cues? Describe concrete examples of either.",
-      "claims": ["not_color_only", "multiple_work_comprehension", "information_hierarchy_and_cognitive_burden"]
+      "claims": [
+        "not_color_only",
+        "multiple_work_comprehension",
+        "information_hierarchy_comprehension"
+      ]
     },
     {
       "id": "keyboard-presentation",
-      "affected_paths": ["rebuild/crates/volicord-viewer/src/reading.rs", "rebuild/crates/volicord-viewer/src/render.rs"],
-      "required_views": [{"view": "overview"}, {"view": "work"}, {"view": "decisions"}, {"view": "code"}],
+      "affected_paths": [
+        "rebuild/crates/volicord-viewer/src/reading.rs",
+        "rebuild/crates/volicord-viewer/src/render.rs"
+      ],
+      "required_views": [
+        {
+          "view": "overview"
+        },
+        {
+          "view": "work"
+        },
+        {
+          "view": "decisions"
+        },
+        {
+          "view": "code"
+        }
+      ],
       "prompt": "Navigate this same path by keyboard and describe reachability and visible focus. Inspect 390/768/1440 base widths and actual native browser 200% zoom; describe wrapping, readability, grouping and ordinary overflow, separately from diagram scrolling. State interactions you did not inspect.",
-      "claims": ["keyboard_reachability", "visible_focus", "narrow_and_zoomed_presentation"]
+      "claims": [
+        "keyboard_reachability",
+        "visible_focus",
+        "narrow_and_zoomed_presentation"
+      ]
     },
     {
       "id": "input-paint",
-      "affected_paths": ["rebuild/crates/volicord-viewer/src/reading.rs", "rebuild/crates/volicord-viewer/src/render.rs", "rebuild/crates/volicord-viewer/src/http.rs"],
-      "required_views": [{"view": "overview"}, {"view": "work"}, {"view": "decisions"}, {"view": "code"}],
+      "affected_paths": [
+        "rebuild/crates/volicord-viewer/src/reading.rs",
+        "rebuild/crates/volicord-viewer/src/render.rs",
+        "rebuild/crates/volicord-viewer/src/http.rs"
+      ],
+      "required_views": [
+        {
+          "view": "overview"
+        },
+        {
+          "view": "work"
+        },
+        {
+          "view": "decisions"
+        },
+        {
+          "view": "code"
+        }
+      ],
       "prompt": "While selecting Works, following Decisions/code and opening evidence, describe the response to your input and resulting paint. Report delay or disruption you actually experienced and any uninspected interaction; server/export timings are separate evidence.",
-      "claims": ["browser_input_and_paint_responsiveness"]
+      "claims": [
+        "browser_input_and_paint_responsiveness"
+      ]
     }
   ],
   "separate_evidence": [

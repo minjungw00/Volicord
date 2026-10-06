@@ -1020,6 +1020,54 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "historical fidelity"):
             human_review.apply_observation_assessments(target, path)
 
+    def test_all_plan_live_claims_record_and_reach_qualification_without_historical_fidelity(self):
+        import human_observation_plan as plan
+        import qualification_policy as policy
+        from qualification_self_test import evaluation
+        manifest = c.load_evidence_set(self.root)
+        contexts = [context_directory(self.parent, self._testMethodName + locale, manifest, locale)
+            for locale in ("en", "ko")]
+        observed = self.parent / (self._testMethodName + "-observations")
+        answer = ("Synthetic support answer: I cannot distinguish Works, understand their state or next action, "
+            "the Work problem/effect, Project purpose, code behavior, architecture flow, diagrams, evidence "
+            "or Analysis freshness. Grouping, color, keyboard, focus, zoom and input response cause difficulty. "
+            "The displayed Decision choice and rationale are also unclear. No historical conversation inspected.")
+        human_review.capture_viewer_observations(self.root, observed, context_paths=contexts,
+            input_fn=iter(["1", answer, "1", "SAME AS ENGLISH"]).__next__, output_fn=lambda _: None)
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="human", human_observations=observed)
+        prep, sha, _ = ops.load_package(target)
+        specs = q.criterion_specs(prep["index"], prep["rubric"])
+        inventory = json.loads(plan.FIXTURE.read_bytes())
+        claims = {claim for block in inventory["observation_blocks"] for claim in block["claims"]}
+        self.assertEqual(claims, set(prep["rubric"]["criteria"]["live_viewer"]))
+        mappings = [{"criterion_number": i + 1, "observation_evidence_id": "journey-volicord-live-" + spec["locale"],
+            "assessment": "violated", "reasoning": "The authored answer reports a direct comprehension/interaction problem.",
+            "uncertainty": "not_reported", "criterion_observations": prep["rubric"]["criterion_observations"].get(spec["name"], []),
+            "counterevidence": {"state": "not_reported", "reasoning": "The answer reports no counterevidence.", "evidence": []}}
+            for i, spec in enumerate(specs) if spec["group"] == "live_viewer"]
+        mapping = self.parent / (self._testMethodName + "-mapping.json")
+        mapping.write_bytes(ops.encoded(mappings))
+        human_review.apply_observation_assessments(target, mapping)
+        ops.record(target, target / "draft.json")
+        files = ops.recorded_files(target, prep, sha)
+        recorded = json.loads(files["recorded/review.json"])
+        archive = self.parent / (self._testMethodName + ".tar.gz")
+        ops.package_review(target, archive)
+        with tarfile.open(archive) as packed:
+            self.assertEqual(packed.extractfile("recorded/review.json").read(), files["recorded/review.json"])
+            self.assertEqual(packed.extractfile("recorded/receipt.json").read(), files["recorded/receipt.json"])
+        result = policy.combine(evaluation(), specs, [recorded], {"state": "not_provided"})
+        for spec in specs:
+            cid = spec["criterion_id"]
+            if spec["group"] == "live_viewer":
+                self.assertIn(cid, result["qualitative_review"]["violated_criteria"])
+            if spec["group"] == "viewer_snapshot" or spec["name"] == "decision_comprehension_when_applicable":
+                self.assertIn(cid, result["qualitative_review"]["unresolved_criteria"])
+        self.assertFalse(result["replacement_pass_candidate"])
+        with self.assertRaisesRegex(ValueError, "exists"):
+            ops.record(target, target / "draft.json")
+
     def test_default_conversation_targets_human_scope_and_skips_resolved_inapplicability(self):
         target = self.target()
         ops.prepare(self.root, target, reviewer_kind="human", include_raw=True)

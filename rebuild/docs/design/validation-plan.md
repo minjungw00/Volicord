@@ -2565,7 +2565,7 @@ Overview/Work cards, Work facts/history disclosure and shared CLI/document summa
 require current-candidate observation; historical b57 Human/Agent evidence remains
 diagnostic for its own candidate. No Human-review policy or campaign is changed here.
 
-Qualitative-review schema 15 / policy revision 15 separates current displayed multi-Work
+Qualitative-review schema 16 / policy revision 16 separates current displayed multi-Work
 and Decision comprehension from retained snapshot and measured-conversation fidelity.
 The rubric, qualification policy and copied-lineage reconstruction consume one current
 inventory. Direct screen complaints do not establish historical inconsistency; historical

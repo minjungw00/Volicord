@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 15 / policy revision 15, machine evaluation
+Current identities are qualitative review schema 16 / policy revision 16, machine evaluation
 policy `evidence-evaluation-11`, human observation/receipt schema 5, qualification policy
-`replacement-qualification-11`, and result-lineage schema 2. Historical runs retain their old
+`replacement-qualification-12`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -403,7 +403,7 @@ identities include the changed producer/consumer hashes.
 
 Typed artifacts have nested JSON pointers into claim text, action, plan content and lifecycle
 stages (up to 8,192 per artifact); exact line locators always remain available. Package and record
-receipt schema 2 bind preparation schema 15. Copied result-lineage schema 2 rechecks typed shape,
+receipt schema 2 bind preparation schema 16. Copied result-lineage schema 2 rechecks typed shape,
 omissions, stage/receipt/readback consistency and observation-index meaning/stage/locator bindings without original
 Runtime Homes, response files or staging paths. New modules participate in preparer, evaluator
 and qualification dependency hashing. Fresh outer hashes cannot excuse inconsistent inner claims.
@@ -558,8 +558,8 @@ errors roll back staged files; preflight never repairs or rewrites evidence.
 
 `qualification_policy.py` consumes recorded runs using this rubric, including all 21 required
 repository-class CLI assessments. All criteria except
-live accessibility, browser input/paint responsiveness, Volicord journey-final Viewer
-current displayed multi-Work/Decision comprehension and original user Decision comprehension
+direct current Viewer comprehension, live accessibility, browser input/paint responsiveness
+and original user Decision comprehension
 permit agent review with the
 required evidence. Missing surfaces remain insufficient, and a static HTML proxy never
 establishes human-observed usability. Human review may resolve only the remaining criteria.
@@ -901,3 +901,26 @@ alone invalidates nothing; actual relevant candidate/display/contract changes do
 This preparation is independent of Naturalistic campaign creation and supplies no measured
 session, Human verdict, technical gate or replacement qualification. A fresh exact-candidate
 Naturalistic campaign, independent Agent review and direct Human evidence remain required.
+
+## Direct experience inventory
+
+The changed-surface plan routes every direct question to `live_viewer/{en,ko}`.
+Overview uses purpose/current-Work and hierarchy comprehension; comparing Works uses
+multiple-Work and hierarchy comprehension; Work detail uses Work meaning, state/next
+action, evidence/Analysis and hierarchy comprehension (including current versus retained
+historical verification and history disclosure). Code/Analysis uses independently assessed
+code behavior, architecture flow, diagram usefulness, diagram readability and
+evidence/Analysis comprehension. Decision reading uses displayed Decision comprehension.
+Color/grouping uses color independence, multiple-Work and hierarchy comprehension;
+keyboard/presentation uses keyboard, focus and narrow/zoom; input/paint uses responsiveness.
+One inspected interaction and preserved answer may support several bounded claims.
+
+The nine additional live criteria retain their own semantic dimensions and require direct
+Human answer traces. Existing `viewer_snapshot` criterion identities and their required
+artifact surfaces remain unchanged, including Work state/next step, code behavior,
+architecture, evidence explanation and hierarchy. Snapshot judgments concern retained
+fidelity/structure; they never establish personal understanding of the current UI.
+Historical measured conversation/Decision fidelity still requires original conversation
+and canonical Decision evidence. Live complaints and historical fidelity may disagree
+and qualification retains both. Schema 16 replaces the current rubric; non-current reviews
+remain immutable diagnostic artifacts with their original identities, without a second engine.

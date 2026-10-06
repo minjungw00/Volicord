@@ -35,6 +35,21 @@ class ChangedSurfaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             p.plan(inventory["diagnostic_candidate"], {}, paths, inventory)
 
+    def test_every_direct_claim_has_a_live_formal_destination(self):
+        import harness
+        import qualitative_review
+        rubric = qualitative_review.rubric(harness.load_definition())
+        claims = {c for b in self.inventory()["observation_blocks"] for c in b["claims"]}
+        self.assertEqual(claims, set(rubric["criteria"]["live_viewer"]))
+        for claim in claims:
+            self.assertEqual(qualitative_review.required_surfaces({"name": claim, "group": "live_viewer"}),
+                ["live_viewer_observation"])
+        for name in ("completed_current_remaining_work", "next_step", "code_behavior",
+                     "architecture_components_flow", "information_hierarchy_and_cognitive_burden"):
+            self.assertIn(name, rubric["criteria"]["viewer_snapshot"])
+            self.assertEqual(qualitative_review.required_surfaces({"name": name, "group": "viewer_snapshot"}),
+                ["viewer_snapshot"])
+
     def test_changed_candidate_requires_new_context_and_no_screen_fixes_missing_execution(self):
         manifest = {"candidate_head": "f" * 40,
             "candidate_artifacts": {"volicord-viewer": {"sha256": "a" * 64}},

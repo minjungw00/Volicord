@@ -381,7 +381,7 @@
       "purpose": "Review independently material outcomes observed in actual Work and coupled artifacts."
     },
     "qualification_authority": false,
-    "policy_revision": 15,
+    "policy_revision": 16,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -442,7 +442,16 @@
         "narrow_and_zoomed_presentation",
         "browser_input_and_paint_responsiveness",
         "multiple_work_comprehension",
-        "displayed_decision_comprehension"
+        "displayed_decision_comprehension",
+        "work_state_and_next_action_comprehension",
+        "work_meaning_comprehension",
+        "code_behavior_comprehension",
+        "architecture_flow_comprehension",
+        "information_hierarchy_comprehension",
+        "project_purpose_vs_current_work_comprehension",
+        "evidence_and_analysis_comprehension",
+        "diagram_usefulness_comprehension",
+        "diagram_readability_comprehension"
       ],
       "context_recovery": [
         "goal_decision_rationale_state_and_open_questions"
@@ -485,7 +494,7 @@
       "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
       "qualification_authority": false
     },
-    "schema_version": 15
+    "schema_version": 16
   },
   "fixture_regression_command": [
     "python3",
@@ -955,12 +964,12 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-11",
+    "revision": "replacement-qualification-12",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "live_viewer/*"
     ],
-    "human_rationale": "Live accessibility, browser input/paint responsiveness, Volicord Viewer multi-Work comprehension and the user's Decision comprehension require direct human observation.",
+    "human_rationale": "Current Viewer comprehension, accessibility and input/paint experience, plus original user Decision comprehension, require direct human observation. Historical artifact fidelity remains separate.",
     "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
     "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
     "insufficient": "Unresolved; high-impact authority/context recovery and interaction-coverage insufficiency escalates to human.",
