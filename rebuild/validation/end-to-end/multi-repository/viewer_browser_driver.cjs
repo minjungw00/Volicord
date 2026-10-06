@@ -378,7 +378,7 @@ async function live() {
       await activate(page.locator('nav a[href*="page=1"]'));
       await activate(page.locator(`a[href*="work=${F.goals.older}"]`).first());
       await workFacts('older',locale);
-      await activate(page.locator(`a[href*="scope=work"][href*="work=${F.goals.older}"]`));
+      await activate(page.locator(`nav[aria-label="Viewer"] a[href*="scope=work"][href*="work=${F.goals.older}"]`));
       requireFact((await page.locator('#code').innerText()).includes('python/worker.py'), 'work_source_scope_missing');
     });
     await check(`distinct-work-${locale}`, async()=>{await go(url('work',locale,{work:F.goals.same_title}));return workFacts('same_title',locale);});
