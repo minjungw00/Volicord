@@ -838,3 +838,50 @@ fn ordinary_hierarchy_separates_catalog_detail_and_audit_in_both_locales(
     }
     Ok(())
 }
+
+#[test]
+fn scoped_code_keeps_work_meaning_direction_and_missing_flow_honest(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let code = exchange(
+        &server,
+        &format!("/?view=code&scope=work&work={}", f.goals["older"]),
+    );
+    assert!(
+        code.find("class=\"code-work-meaning\"")
+            .ok_or("work meaning")?
+            < code.find("data-diagram=").ok_or("diagram")?
+    );
+    assert!(code.contains("data-relationship-role=\"syntactic-call\""));
+    assert!(code.contains("CallsSyntactically:"));
+    assert!(code.contains("→"));
+    assert!(code.contains("does not prove runtime or data flow"));
+    let empty = exchange(
+        &server,
+        &format!("/?view=code&scope=work&work={}", f.goals["goal_only"]),
+    );
+    assert!(empty.contains("data-flow-state=\"NoResolvedCalls\""));
+    assert!(!empty.contains("class=\"diagram-edge\""));
+    assert!(!empty.contains("data-diagram=\"architecture-topology\""));
+    assert!(empty.contains("volicord analyze"));
+    let analysis = exchange(&server, "/?view=tools&tool=status");
+    assert!(analysis.contains("data-analysis-state="));
+    assert!(
+        analysis
+            .find("class=\"analysis-summary\"")
+            .ok_or("status")?
+            < analysis
+                .find("class=\"runtime-diagnostics\"")
+                .ok_or("audit")?
+    );
+    assert!(!analysis.contains("action=\"/analyze"));
+    Ok(())
+}

@@ -280,3 +280,100 @@ fn parallel_relations_have_distinct_ports_and_self_loop_stays_outside_node() {
     assert_eq!(x2, x1);
     assert!(y1 < y2);
 }
+
+#[test]
+fn analysis_states_keep_freshness_failures_and_refresh_separate_from_audit() {
+    use super::{ViewerLocale, ViewerRequest};
+    use volicord_context::ProjectId;
+    use volicord_projections::{
+        AnalysisAttemptReading, AnalysisCoverageReading, RepositoryAnalysisReading,
+        RepositoryAnalysisState as State,
+    };
+    use volicord_repository_intelligence::{Capability, CapabilityState};
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let request = ViewerRequest {
+            project_id: ProjectId::from_bytes([1; 16]),
+            locale,
+            view: crate::ViewerView::Tools {
+                tool: crate::ViewerTool::Status,
+            },
+            requested_language: if locale == ViewerLocale::English {
+                "en"
+            } else {
+                "ko"
+            }
+            .into(),
+            guarded_request: None,
+        };
+        for (state, key) in [
+            (State::Absent, "absent"),
+            (State::Current, "current"),
+            (State::Partial, "partial"),
+            (State::Stale, "stale"),
+            (State::Failed, "failed"),
+            (State::FreshnessUnknown, "unknown"),
+            (State::Unavailable, "unavailable"),
+        ] {
+            let analysis = RepositoryAnalysisReading {
+                state,
+                analysis_snapshot: Some(map_entity("basis".into()).analysis_snapshot),
+                repository_snapshot: Some(map_entity("basis".into()).repository_snapshot),
+                generated_at_unix_micros: Some(123),
+                freshness: Some(map_entity("basis".into()).freshness),
+                coverage: vec![AnalysisCoverageReading {
+                    capability: Capability::Structural,
+                    language: Some(Language::Rust),
+                    area: "src/failed.rs".into(),
+                    state: CapabilityState::Failed,
+                    files: 0,
+                    entities: 0,
+                    relations: 0,
+                    reason: Some("parser <failed>".into()),
+                    usable_remainder: Some("Canonical Work".into()),
+                    consequence: Some("Cannot establish this file's structure".into()),
+                }],
+                omitted_coverage_count: 7,
+                latest_attempt: Some(AnalysisAttemptReading {
+                    operation_id: "opaque-operation".into(),
+                    completed_at_unix_micros: 456,
+                    failed: true,
+                    diagnostic: Some("Local attempt failed".into()),
+                }),
+                latest_attempt_error: Some("Receipt history is incomplete".into()),
+                retained_prior_result: true,
+                diagnostic: Some("Retained analysis is not a successful retry".into()),
+                refresh_command: "volicord analyze".into(),
+            };
+            let mut html = String::new();
+            super::reading::analysis_summary(&mut html, &request, &analysis, true);
+            assert!(html.contains(&format!("data-analysis-state=\"{key}\"")));
+            assert!(
+                html.contains("data-analysis-freshness=\"current\""),
+                "failed availability must not rewrite freshness"
+            );
+            let ordinary = html
+                .split("class=\"analysis-basis\"")
+                .next()
+                .expect("ordinary");
+            for claim in [
+                "Local attempt failed",
+                "Receipt history is incomplete",
+                "parser &lt;failed&gt;",
+                "Cannot establish this file",
+                "Canonical Work",
+                "volicord analyze",
+            ] {
+                assert!(ordinary.contains(claim), "hidden {claim}");
+            }
+            assert!(!ordinary.contains("opaque-operation"));
+            assert!(html.contains("omitted_coverage=7"));
+            assert!(!html.contains("<form"));
+            assert!(!html.contains("action="));
+            assert!(html.contains(if locale == ViewerLocale::English {
+                "Explicit local refresh"
+            } else {
+                "명시적 로컬 갱신"
+            }));
+        }
+    }
+}

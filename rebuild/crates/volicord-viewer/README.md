@@ -53,6 +53,17 @@ its explanation sections before closed evidence/history disclosures. Decisions h
 separate choice, alternatives, explanation, applicability and original-evidence areas.
 Missing user rationale is an explicit absence, never a rendering error.
 
+Code starts with selected Work meaning, then supported structure and directed
+relationships. Containment/dependency/reference/type relations are labeled separately
+from static syntactic calls; neither proves runtime or data flow. A scope with no
+relations shows components and an analysis action without an invented diagram.
+Analysis shows the shared stored-analysis availability and independent freshness,
+observed scope coverage, failed attempts and retained prior results. Snapshot identities,
+exact counts, analyzers and Runtime diagnostics are closed disclosures. Refresh remains
+explicit CLI guidance (`volicord analyze`, or the supplied repair command) in this
+Project's bound repository and Runtime. The Viewer has no analyzer POST action and
+never analyzes on navigation; refreshed analysis does not regenerate interpretations.
+
 All links carry `locale=en|ko` and unrestricted requested `language`. Work and
 Decision navigation supplies validated identities; no opaque-ID entry is needed.
 The Work and Decisions root views list recorded choices in pages of 64;

@@ -738,6 +738,149 @@ fn decision_detail(
     section_end(html);
     html.push_str("</article>");
 }
+pub(super) fn analysis_summary(
+    html: &mut String,
+    r: &ViewerRequest,
+    analysis: &volicord_projections::RepositoryAnalysisReading,
+    coverage: bool,
+) {
+    use volicord_projections::RepositoryAnalysisState as State;
+    let (key, label, meaning) = match analysis.state {
+        State::Absent => ("absent", text(r.locale, "Not analyzed", "분석 없음"), text(r.locale, "No stored repository analysis. Code explanations cannot establish current structure yet.", "저장된 저장소 분석이 없습니다. 코드 설명으로 현재 구조를 확인할 수 없습니다.")),
+        State::Current => ("current", text(r.locale, "Current", "최신"), text(r.locale, "Stored analysis matches the compared repository basis within reported coverage.", "저장된 분석은 보고된 범위에서 비교한 저장소 근거와 일치합니다.")),
+        State::Partial => ("partial", text(r.locale, "Partial coverage", "일부 범위"), text(r.locale, "Analysis is current but some observed scopes have limited support.", "분석은 최신이지만 관찰한 일부 범위의 지원이 제한됩니다.")),
+        State::Stale => ("stale", text(r.locale, "Stale", "오래됨"), text(r.locale, "The repository has changed. Stored code evidence cannot establish current behavior.", "저장소가 변경되었습니다. 저장된 코드 근거로 현재 동작을 확인할 수 없습니다.")),
+        State::Failed => ("failed", text(r.locale, "Failed", "실패"), text(r.locale, "An analysis scope or a later explicit analysis attempt failed. Inspect the affected scope and usable remainder.", "분석 범위 또는 이후 명시적 분석 시도가 실패했습니다. 영향 범위와 사용 가능한 나머지를 확인하세요.")),
+        State::FreshnessUnknown => ("unknown", text(r.locale, "Freshness unknown", "최신성 알 수 없음"), text(r.locale, "The current repository basis could not be compared. Stored evidence is not confirmed current.", "현재 저장소 근거를 비교할 수 없습니다. 저장된 근거의 최신성이 확인되지 않았습니다.")),
+        State::Unavailable => ("unavailable", text(r.locale, "Unavailable", "이용 불가"), text(r.locale, "Stored analysis could not be read. Canonical memory remains available; inspect recovery details.", "저장된 분석을 읽을 수 없습니다. 정식 기억은 계속 이용할 수 있습니다. 복구 상세를 확인하세요.")),
+    };
+    html.push_str(&format!("<div class=\"analysis-summary\" data-analysis-state=\"{key}\"><p class=\"state\"><strong>{}: {}</strong></p><p>{}</p>", text(r.locale, "Repository analysis", "저장소 분석"), label, meaning));
+    html.push_str(&format!(
+        "<p data-analysis-freshness=\"{}\">{}: {}</p>",
+        analysis
+            .freshness
+            .as_ref()
+            .map(|f| match f.state {
+                FreshnessState::Current => "current",
+                FreshnessState::Stale => "stale",
+                FreshnessState::Unknown => "unknown",
+            })
+            .unwrap_or("unknown"),
+        text(r.locale, "Source freshness", "소스 최신성"),
+        analysis
+            .freshness
+            .as_ref()
+            .map(|f| freshness_state_label(f.state, r.locale))
+            .unwrap_or(text(r.locale, "unknown", "알 수 없음"))
+    ));
+    if coverage {
+        if analysis.retained_prior_result {
+            empty_state(html, text(r.locale, "A prior result is retained; the failed attempt did not replace it or establish current success.", "이전 결과가 유지됩니다. 실패한 시도는 이를 대체하거나 현재 성공을 입증하지 않습니다."));
+        }
+        if let Some(diagnostic) = &analysis.diagnostic {
+            empty_state(html, diagnostic);
+        }
+        if let Some(error) = &analysis.latest_attempt_error {
+            empty_state(
+                html,
+                &format!(
+                    "{}: {error}",
+                    text(
+                        r.locale,
+                        "Latest attempt could not be verified",
+                        "최근 시도를 검증할 수 없음"
+                    )
+                ),
+            );
+        }
+        if let Some(attempt) = &analysis.latest_attempt {
+            html.push_str(&format!(
+                "<p>{}: {}</p>",
+                text(r.locale, "Latest explicit attempt", "최근 명시적 시도"),
+                if attempt.failed {
+                    text(r.locale, "failed", "실패")
+                } else {
+                    text(r.locale, "completed", "완료")
+                }
+            ));
+            if let Some(diagnostic) = &attempt.diagnostic {
+                empty_state(html, diagnostic);
+            }
+        } else {
+            empty_state(html, text(r.locale, "No verified latest-attempt receipt is available. A stored snapshot alone does not prove an attempt succeeded.", "검증된 최근 시도 기록이 없습니다. 저장된 스냅샷만으로 시도의 성공을 입증할 수 없습니다."));
+        }
+    }
+    html.push_str(&format!("<p class=\"next-action\">{} <code>{}</code>. {}</p>",
+        text(r.locale, "Explicit local refresh:", "명시적 로컬 갱신:"), escape(&analysis.refresh_command),
+        text(r.locale, "Run in this Project's bound repository with the same Runtime. Then reload this view. Analysis does not regenerate Work explanations.", "같은 런타임으로 이 프로젝트에 연결된 저장소에서 실행한 뒤 화면을 새로 고치세요. 분석은 작업 설명을 재생성하지 않습니다.")));
+    if coverage {
+        heading(
+            html,
+            3,
+            text(
+                r.locale,
+                "Observed scopes and coverage",
+                "관찰한 범위 및 분석 지원",
+            ),
+        );
+        if analysis.coverage.is_empty() {
+            empty_state(
+                html,
+                text(
+                    r.locale,
+                    "No observed coverage is available; this is not complete coverage.",
+                    "관찰된 분석 범위가 없습니다. 완전한 분석을 뜻하지 않습니다.",
+                ),
+            );
+        }
+        html.push_str("<div class=\"coverage-list\">");
+        for scope in &analysis.coverage {
+            html.push_str(&format!("<article class=\"coverage-scope\" data-state=\"{}\"><h4>{} · {} · {}</h4><p><strong>{}</strong></p>",
+                capability_state_key(scope.state), escape(&scope.area),
+                scope.language.as_ref().map(|l| escape(&language_label(l,r.locale))).unwrap_or_else(||text(r.locale,"All languages","모든 언어").into()),
+                capability_label(scope.capability,r.locale), capability_state_label(scope.state,r.locale)));
+            for (label, value) in [
+                (text(r.locale, "Why / limit", "이유 / 한계"), &scope.reason),
+                (
+                    text(r.locale, "What cannot be concluded", "확인할 수 없는 내용"),
+                    &scope.consequence,
+                ),
+                (
+                    text(r.locale, "Usable remainder", "사용 가능한 나머지"),
+                    &scope.usable_remainder,
+                ),
+            ] {
+                if let Some(value) = value {
+                    html.push_str(&format!(
+                        "<p><strong>{}:</strong> {}</p>",
+                        label,
+                        escape(value)
+                    ));
+                }
+            }
+            html.push_str(&format!(
+                "<details><summary>{}</summary><p>{}: {} · {}: {} · {}: {}</p></details></article>",
+                text(r.locale, "Coverage counts", "분석 범위 수"),
+                text(r.locale, "Files", "파일"),
+                scope.files,
+                text(r.locale, "Entities", "엔터티"),
+                scope.entities,
+                text(r.locale, "Relations", "관계"),
+                scope.relations
+            ));
+        }
+        html.push_str("</div><details class=\"analysis-basis\"><summary>");
+        html.push_str(text(
+            r.locale,
+            "Snapshot identity, freshness basis and exact omissions",
+            "스냅샷 식별자, 최신성 근거 및 정확한 생략",
+        ));
+        html.push_str("</summary><pre>");
+        html.push_str(&escape(&format!("analysis={:?}\nrepository={:?}\ngenerated_at={:?}\nfreshness={:?}\nomitted_coverage={}\nlatest_attempt={:?}",analysis.analysis_snapshot,analysis.repository_snapshot,analysis.generated_at_unix_micros,analysis.freshness,analysis.omitted_coverage_count,analysis.latest_attempt)));
+        html.push_str("</pre></details>");
+    }
+    html.push_str("</div>");
+}
 fn code(
     html: &mut String,
     r: &ViewerRequest,
@@ -760,6 +903,41 @@ fn code(
             _ => text(r.locale, "Repository context", "저장소 범위"),
         },
     );
+    if let Some(work) = &p.selected_work {
+        html.push_str("<div class=\"code-work-meaning\">");
+        heading(html, 3, work_reading_display(&work.reading.goal, r.locale));
+        let answers =
+            volicord_projections::work_answers(work, &r.requested_language, r.locale.fixed());
+        for answer in answers.prose.iter().filter(|a| {
+            matches!(
+                a.question.as_str(),
+                "Purpose"
+                    | "ReportedChange"
+                    | "ExpectedEffect"
+                    | "ExplanationAvailability"
+                    | "Limits"
+            )
+        }) {
+            heading(html, 4, answer_title(&answer.question, r.locale));
+            html.push_str(&format!(
+                "<p data-question=\"{}\">{}</p>",
+                escape(&answer.question),
+                escape(&answer.text)
+            ));
+        }
+        html.push_str("</div>");
+    }
+    // Repository-wide status belongs to Analysis; only Work-relevant gaps accompany code.
+    if matches!(
+        r.view,
+        ViewerView::Code {
+            scope: CodeScope::Repository,
+            ..
+        }
+    ) || snapshot
+    {
+        analysis_summary(html, r, &p.repository_analysis, false);
+    }
     if r.view.detail().entity.is_some()
         && p.selected_entity.is_none()
         && p.sections.code == volicord_projections::ReadSectionState::Unavailable
@@ -793,28 +971,44 @@ fn code(
     for interpretation in &u.generated_interpretations {
         html.push_str(&format!("<details data-statement-role=\"generated-interpretation\"><summary>{}</summary><p>{}</p><p>{}</p></details>",escape(text(r.locale,"Generated interpretation","생성 해석")),escape(&interpretation.text),escape(&interpretation.known_gaps.join("; "))));
     }
-    render_grounded_diagram(
-        html,
-        r,
-        u,
-        "architecture-topology",
-        text(
-            r.locale,
-            "Components and dependencies",
-            "컴포넌트 및 의존성",
-        ),
-        |_| true,
-        true,
-    );
+    if !u.architecture.relationships.is_empty() {
+        render_grounded_diagram(
+            html,
+            r,
+            u,
+            "architecture-topology",
+            text(
+                r.locale,
+                "Components and dependencies",
+                "컴포넌트 및 의존성",
+            ),
+            |_| true,
+            true,
+        );
+    } else {
+        empty_state(html, text(r.locale, "No supported connection is available in this scope. Components below establish structure only; use explicit local analysis to inspect relationships.", "이 범위에 근거 있는 연결이 없습니다. 아래 컴포넌트는 구조만 보여 줍니다. 명시적 로컬 분석으로 관계를 확인하세요."));
+    }
+    html.push_str(&format!("<p class=\"relationship-guide\">{}</p>", text(r.locale, "Arrows follow the recorded source → target direction. Containment and dependency describe structure; references describe symbol use. Only syntactic calls support the static call figure, which does not prove runtime or data flow.", "화살표는 기록된 출발 → 대상 방향을 따릅니다. 포함과 의존은 구조, 참조는 심볼 사용을 설명합니다. 구문 호출만 정적 호출 그림의 근거이며 런타임 또는 데이터 흐름을 입증하지 않습니다.")));
+    html.push_str(&format!(
+        "<div class=\"flow-support\" data-flow-state=\"{:?}\">",
+        u.architecture.flow_evidence.state
+    ));
+    for limit in &u.architecture.flow_evidence.missing_evidence {
+        empty_state(html, limit);
+    }
+    html.push_str("</div>");
     render_grounded_diagram(
         html,
         r,
         u,
         "flow-topology",
-        text(r.locale, "Grounded flow evidence", "근거 있는 흐름 증거"),
+        text(r.locale, "Static call relationships", "정적 호출 관계"),
         is_flow_relation,
         false,
     );
+    if u.architecture.flow_evidence.relation_ids.is_empty() {
+        html.push_str(&format!("<p class=\"next-action\">{} <code>{}</code>. {}</p>", text(r.locale,"Inspect available call support with","호출 분석 지원 확인:"),escape(&p.repository_analysis.refresh_command),text(r.locale,"Missing resolved calls cannot establish execution or data flow; analysis may still lack this capability.","해결된 호출이 없으면 실행 또는 데이터 흐름을 확인할 수 없습니다. 분석 후에도 이 기능의 지원이 없을 수 있습니다.")));
+    }
     heading(
         html,
         3,
@@ -1096,6 +1290,29 @@ fn relation_detail(
     snapshot: bool,
 ) {
     let endpoint = |id: &str| entities.iter().copied().find(|e| e.identity == id);
+    use volicord_projections::CodeRelationshipRole as Role;
+    let (role_key, role_label) = match relation.role() {
+        Role::Containment => (
+            "containment",
+            text(r.locale, "Structure / containment", "구조 / 포함"),
+        ),
+        Role::Dependency => (
+            "dependency",
+            text(r.locale, "Structure / dependency", "구조 / 의존"),
+        ),
+        Role::SyntacticCall => (
+            "syntactic-call",
+            text(r.locale, "Static syntactic call", "정적 구문 호출"),
+        ),
+        Role::SymbolReference => ("reference", text(r.locale, "Symbol reference", "심볼 참조")),
+        Role::TypeRelationship => ("type", text(r.locale, "Type relationship", "타입 관계")),
+        Role::Other => (
+            "other",
+            text(r.locale, "Other stored relationship", "기타 저장된 관계"),
+        ),
+    };
+    html.push_str(&format!("<div class=\"relationship-item\" data-relationship-role=\"{role_key}\"><p><strong>{role_label}</strong></p>"));
+
     html.push_str(&format!("<details class=\"relationship\" data-relation-id=\"{}\" data-relation-class=\"{}\"><summary>{}: {} → {}</summary>",escape(&relation.identity),map_relation_class_key(relation.class),escape(&relation.kind),escape(&endpoint(&relation.source_entity).map(|e|format!("{} — {}",e.display_name,e.locator)).unwrap_or_else(||text(r.locale,"Source endpoint unavailable","출발 엔터티 없음").into())),escape(&relation.target_entity.as_deref().and_then(endpoint).map(|e|format!("{} — {}",e.display_name,e.locator)).unwrap_or_else(||format!("{}: {}",text(r.locale,"Unresolved / unavailable target","미해결 / 이용 불가 대상"),relation.unresolved_target.as_deref().unwrap_or("entity omitted"))))));
     for id in [&relation.source_entity]
         .into_iter()
@@ -1155,7 +1372,7 @@ fn relation_detail(
     ));
     html.push_str("</summary><p>");
     html.push_str(&escape(&format!("{relation:?}")));
-    html.push_str("</p></details></details>");
+    html.push_str("</p></details></details></div>");
 }
 
 fn range_label(
