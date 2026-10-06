@@ -678,6 +678,9 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
                 ("live_viewer_observation", "ko"),
             }, "both live Viewer locales require observations")
         import human_observation_plan
+        import viewer_observation
+        review.require(observed["scope"]["subjects"] == viewer_observation.load_subjects(root, manifest),
+            "human observation campaign subject inventory mismatch")
         human_observation_plan.validate_scope(observed["scope"],
             {item["locale"]: item["contexts"] for item in observed["observations"]},
             manifest["candidate_head"], manifest["candidate_artifacts"]["volicord-viewer"]["sha256"])
@@ -692,7 +695,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
             review.require(item["personally_observed"] is True and isinstance(item["contexts"], list)
                 and 0 < len(item["contexts"]) <= 64, "human observation lacks displayed context")
             for context in item["contexts"]:
-                viewer_observation.for_manifest(manifest, context, item["locale"])
+                viewer_observation.for_manifest(manifest, context, item["locale"], observed["scope"]["subjects"])
             control = item["control"]
             review.require(isinstance(control, dict) and set(control) == {"action", "reference_locale"}
                 and control["action"] in {"direct", "same_as_locale"}, "invalid human observation control")
@@ -816,6 +819,7 @@ def _load_package(root):
         "review silently omitted a repository journey")
     review.require(index["cli_samples"] == [{"sample_id": kind, "repository_class": kind}
         for kind in campaign_api().CLASSES], "review CLI repository-class scope changed")
+    canonical_bundles = {}
     for entry in index["evidence"].values():
         review.require(entry["path"] in contents, "indexed evidence is unavailable")
         content = contents[entry["path"]]
@@ -852,9 +856,12 @@ def _load_package(root):
                 viewer_observation.validate_capture(display, candidate_head=binding["candidate_head"],
                     viewer_sha256=observed["binding"]["display"]["viewer_sha256"],
                     runtime_binding=observed["binding"]["display"]["runtime_binding"],
-                    project=observed["binding"]["display"]["project_id"],locale=entry["locale"])
+                    project=observed["binding"]["display"]["project_id"],locale=entry["locale"],
+                    subjects=observed["scope"]["subjects"])
         if entry["surface"] == "canonical_bundle":
             canonical = campaign_api().harness.load_canonical_bundle(safe_path(root, entry["path"]))
+            review.require(entry["sample_id"] not in canonical_bundles, "duplicate canonical journey scope")
+            canonical_bundles[entry["sample_id"]] = canonical
             review.require(entry.get("decision_ids") == sorted(row["id"] for row in canonical.rows("decisions")),
                 "canonical Decision inventory differs from bound artifact")
             review.require(entry.get("decision_scopes") == canonical_decision_scopes(canonical),
@@ -895,7 +902,17 @@ def _load_package(root):
         if e["surface"] == "live_viewer_observation"]
     if live:
         import human_observation_plan
+        import viewer_observation
         review.require(len(live) == 2 and live[0]["scope"] == live[1]["scope"], "locale scope mismatch")
+        journey_id = index["live_viewer_sample"]
+        bundle = canonical_bundles[journey_id]
+        samples = [s for s in index["samples"] if s["journey_id"] == journey_id]
+        review.require(all(s["project_id"] == bundle.project_id for s in samples),
+            "copied campaign subject Project mismatch")
+        expected_subjects = viewer_observation.subjects_from_bundle(bundle.project_id,
+            [s["work_item_id"] for s in samples], bundle)
+        review.require(all(v["sample_id"] == journey_id and v["scope"]["subjects"] == expected_subjects for v in live),
+            "copied campaign subject inventory differs from retained canonical/Work evidence")
         human_observation_plan.validate_scope(live[0]["scope"], {v["locale"]: v["contexts"] for v in live},
             binding["candidate_head"], live[0]["binding"]["display"]["viewer_sha256"])
     return preparation, package["preparation_sha256"], package

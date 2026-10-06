@@ -52,6 +52,16 @@ Runtime, Project, locale, subject, snapshot mode and non-current content claimin
 current realization. Receipt/screenshot hashes detect changed retained artifacts;
 they do not authenticate a manually authored observation or prove comprehension.
 
+Campaign captures and human observation readiness use exact measured Work identities
+and Decisions from the retained canonical bundle with explicit campaign Work/Project
+scope. Selected subjects outside that inventory are rejected even when their IDs,
+URLs and display metadata are well formed. The human observation retains the inventory
+and canonical bundle hash; copied reviews recompute it from retained canonical bytes
+and Work samples, and lineage checks those sources against the copied evidence set.
+Two fresh displays of the same Work are still one Work for comparison. A fresh current,
+stale or changed rendering of the same campaign subject remains observable without
+matching its historical state fingerprint.
+
 ```text
 rebuild/scripts/dogfood-campaign capture-human-viewer-observations --campaign-root ROOT --viewer-context NEW_EN_CAPTURE --viewer-context NEW_KO_CAPTURE --output NEW_HUMAN_CAPTURE
 ```

@@ -1160,7 +1160,7 @@ class FileBoundaryTests(unittest.TestCase):
         manifest = campaign.load_evidence_set(self.root)
         prefix = self.parent / self._testMethodName
         prefix.mkdir()
-        contexts = prepared_context_directories(prefix, "context-", manifest)
+        contexts = prepared_context_directories(prefix, "context-", manifest, campaign_root=self.root)
         inventory = json.loads(plan.FIXTURE.read_bytes())
         changed = plan.git("diff", "--name-only", inventory["diagnostic_candidate"], manifest["candidate_head"]).splitlines()
         value = plan.plan(manifest["candidate_head"],
@@ -1213,6 +1213,46 @@ class FileBoundaryTests(unittest.TestCase):
             verified = result_lineage.verify(copied)
         self.assertFalse(verified["external_staging_paths_used"])
 
+        # Refresh every wrapper hash after replacing the declared inventory as well
+        # as both locale displays. Retained canonical/Work facts must still reject it.
+        for subject, inventory_key, foreign in (("work", "work_ids", "a" * 32),
+                ("decision", "decision_ids", "d" * 32)):
+            tampered = prefix / ("foreign-" + subject); shutil.copytree(copied, tampered)
+            lineage_index = json.loads((tampered / "index.json").read_bytes())
+            review_root = tampered / lineage_index["qualitative_reviews"][0]["root"]
+            preparation = json.loads((review_root / "preparation.json").read_bytes())
+            for entry in preparation["index"]["evidence"].values():
+                if entry["surface"] != "live_viewer_observation": continue
+                path = review_root / entry["path"]
+                observed = json.loads(path.read_bytes())
+                ids = observed["scope"]["subjects"][inventory_key]
+                old = ids[0]; self.assertNotIn(foreign, ids)
+                observed["scope"]["subjects"][inventory_key] = sorted([foreign, *ids[1:]])
+                for capture in observed["contexts"]:
+                    context = capture["context"]
+                    if context["selected_" + subject] == old:
+                        context["selected_" + subject] = foreign
+                        context["view"][subject] = foreign
+                        capture["url"] = capture["url"].replace(old, foreign)
+                body = ops.encoded(observed); path.chmod(0o600); path.write_bytes(body)
+                entry.update(bytes=len(body), sha256=ops.digest(body))
+                entry["locators"], entry["line_count"] = ops.locators(body)
+            preparation["package_id"] = m.digest({"binding": preparation["binding"],
+                "index": preparation["index"], "unavailable_surfaces": preparation["unavailable_surfaces"]})
+            body = ops.encoded(preparation)
+            path = review_root / "preparation.json"; path.chmod(0o600); path.write_bytes(body)
+            package = json.loads((review_root / "package.json").read_bytes())
+            package.update(package_id=preparation["package_id"], preparation_sha256=ops.digest(body))
+            package["artifacts"] = {name: result_lineage._binding((review_root / name).read_bytes()) for name in package["artifacts"]}
+            path = review_root / "package.json"; path.chmod(0o600); path.write_bytes(ops.encoded(package))
+            receipt = json.loads((tampered / "receipt.json").read_bytes())
+            receipt["artifacts"] = {name: result_lineage._binding((tampered / name).read_bytes()) for name in receipt["artifacts"]}
+            path = tampered / "receipt.json"; path.chmod(0o600); path.write_bytes(ops.encoded(receipt))
+            with self.subTest(subject=subject), patch.object(campaign, "load_evidence_set",
+                    side_effect=AssertionError("original Campaign access")), self.assertRaisesRegex(
+                        ValueError, "campaign subject inventory differs from retained canonical/Work evidence"):
+                result_lineage.verify(tampered)
+
     def test_project_without_decisions_records_unrelated_experience_and_evidence_backed_inapplicability(self):
         import campaign as c
         import campaign_self_test as support
@@ -1233,7 +1273,7 @@ class FileBoundaryTests(unittest.TestCase):
         final = next(j for j in manifest["journey_final_evidence"] if j["journey_id"] == "journey-volicord")
         bundle = harness.load_canonical_bundle(root / final["artifact_inventory"]["canonical_bundle"]["file"])
         self.assertFalse(bundle.rows("decisions"))
-        contexts = prepared_context_directories(prefix, "context-", manifest, decision=False)
+        contexts = prepared_context_directories(prefix, "context-", manifest, campaign_root=root, decision=False)
         observations = prefix / "observations"
         human_review.capture_viewer_observations(root, observations, context_paths=contexts,
             input_fn=iter(["1", "Authored fixture: Work grouping is confusing. No Decision experience.",

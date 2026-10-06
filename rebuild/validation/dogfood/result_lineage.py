@@ -249,7 +249,7 @@ def verify(root):
                 import viewer_observation
                 observed = json.loads(content)
                 for display in observed['contexts']:
-                    viewer_observation.for_manifest(evidence_set, display, entry['locale'])
+                    viewer_observation.for_manifest(evidence_set, display, entry['locale'], observed['scope']['subjects'])
             if entry['surface'] == review_explanations.SURFACE:
                 lifecycle = review_explanations.validate(content)
                 review_explanations.verify_manifest(lifecycle, evidence_set)

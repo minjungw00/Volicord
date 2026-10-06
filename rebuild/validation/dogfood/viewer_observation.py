@@ -28,7 +28,56 @@ def local_url(value):
     return parsed
 
 
-def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=None, project=None, locale=None):
+def validate_subjects(subjects):
+    require(isinstance(subjects, dict) and set(subjects) == {
+        'project_id', 'work_ids', 'decision_ids', 'canonical_bundle_sha256'}
+        and hex_value(subjects['project_id'], 32) and hex_value(subjects['canonical_bundle_sha256']),
+        'invalid campaign subject inventory')
+    for key in ('work_ids', 'decision_ids'):
+        ids = subjects[key]
+        require(isinstance(ids, list) and all(hex_value(v, 32) for v in ids)
+            and ids == sorted(set(ids)), 'invalid campaign subject identities')
+    require(subjects['work_ids'], 'campaign subject Work inventory is empty')
+    return subjects
+
+
+def subjects_from_bundle(project, work_ids, bundle):
+    """Identity membership only: fresh render state/fingerprints remain observable."""
+    work_ids = sorted(work_ids)
+    require(bundle.project_id == project and len(set(work_ids)) == len(work_ids)
+        and all(bundle.one('context_items', id=work, project_id=project, role='goal') is not None
+            and any(row.get('work_item_id') == work and row.get('project_id') == project
+                for row in bundle.rows('checkpoints')) for work in work_ids),
+        'campaign subject Work lacks canonical identity/history')
+    decision_ids = sorted({row['id'] for row in bundle.rows('decisions')
+        if row.get('project_id') == project and (row.get('work_scope') == 'project'
+            or row.get('work_scope') == 'work_item' and row.get('work_item_id') in work_ids)})
+    return validate_subjects({'project_id': project, 'work_ids': work_ids,
+        'decision_ids': decision_ids, 'canonical_bundle_sha256': bundle.source_sha256})
+
+
+def load_subjects(root, manifest):
+    import review_operations as operations
+    final = next(f for f in manifest['journey_final_evidence'] if f['journey_id'] == 'journey-volicord')
+    name = final['artifact_inventory']['canonical_bundle']['file']
+    bundle = operations.campaign_api().harness.load_canonical_bundle(operations.safe_path(root, name))
+    require(manifest['artifacts'][name]['sha256'] == bundle.source_sha256,
+        'campaign subject canonical bytes changed')
+    works = [w for w in manifest['work_evidence'] if w['journey_id'] == 'journey-volicord']
+    project = manifest['journeys']['journey-volicord']['project_id']
+    require(works and all(w['project_id'] == project for w in works), 'campaign subject Project mismatch')
+    return subjects_from_bundle(project, [w['work_item_id'] for w in works], bundle)
+
+
+def require_subject_context(context, subjects):
+    validate_subjects(subjects)
+    require(context['project_id'] == subjects['project_id'], 'campaign subject Project mismatch')
+    for key, inventory in (('selected_work', 'work_ids'), ('selected_decision', 'decision_ids')):
+        require(context[key] is None or context[key] in subjects[inventory],
+            'displayed ' + key + ' is outside campaign subjects')
+
+
+def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=None, project=None, locale=None, subjects=None):
     require(isinstance(value,dict) and set(value)==CAPTURE_KEYS
         and value['kind']=='dogfood_viewer_display_capture' and value['schema_version']==1
         and value['evidence_class']=='browser_display_capture' and value['candidate_head']==candidate_head
@@ -63,6 +112,8 @@ def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=No
         require(c[name] is None or hex_value(c[name],32),'invalid displayed subject')
     if 'work' in view: require(view['work']==c['selected_work'],'displayed Work mismatch')
     if 'decision' in view: require(view['decision']==c['selected_decision'],'displayed Decision mismatch')
+    if subjects is not None:
+        require_subject_context(c, subjects)
     require(isinstance(c['analysis'],list) and len(c['analysis'])<=64,'invalid Analysis basis')
     for a in c['analysis']:
         require(isinstance(a,dict) and set(a)=={'analysis_snapshot','repository_snapshot','freshness'}
@@ -113,19 +164,25 @@ def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=No
     return value
 
 
-def for_manifest(manifest, value, locale):
+def for_manifest(manifest, value, locale, subjects):
     journey=manifest['journeys']['journey-volicord']
+    validate_subjects(subjects)
+    final = next(f for f in manifest['journey_final_evidence'] if f['journey_id'] == 'journey-volicord')
+    require(subjects['project_id'] == journey['project_id'] and subjects['work_ids'] == sorted(
+        w['work_item_id'] for w in manifest['work_evidence'] if w['journey_id'] == 'journey-volicord')
+        and subjects['canonical_bundle_sha256'] == final['artifact_inventory']['canonical_bundle']['sha256'],
+        'campaign subject inventory differs from immutable evidence')
     return validate_capture(value,candidate_head=manifest['candidate_head'],
         viewer_sha256=manifest['candidate_artifacts']['volicord-viewer']['sha256'],
         runtime_binding=resource_observer.path_binding(Path(journey['runtime_home'])),
-        project=journey['project_id'],locale=locale)
+        project=journey['project_id'],locale=locale,subjects=subjects)
 
 
-def load_contexts(paths, manifest):
+def load_contexts(paths, manifest, subjects):
     contexts={locale:[] for locale in ('en','ko')};seen=set()
     for path in paths:
         value=json.loads((path/'display-context.json').read_bytes())
-        locale=value['context']['locale'];for_manifest(manifest,value,locale)
+        locale=value['context']['locale'];for_manifest(manifest,value,locale,subjects)
         screenshot=path/value['screenshot']['path']
         data=screenshot.read_bytes()
         require(len(data)==value['screenshot']['bytes'] and hashlib.sha256(data).hexdigest()==value['screenshot']['sha256'],

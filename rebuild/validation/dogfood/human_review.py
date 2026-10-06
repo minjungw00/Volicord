@@ -124,13 +124,14 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
     import evidence_purpose
     evidence_purpose.require_measured(manifest)
     evidence_hash = ops.digest(ops.bounded_read(root / "evidence-set.json"))
-    contexts = viewer_observation.load_contexts(context_paths, manifest)
+    subjects = viewer_observation.load_subjects(root, manifest)
+    contexts = viewer_observation.load_contexts(context_paths, manifest, subjects)
     import human_observation_plan
     plan = json.loads(ops.bounded_read(observation_plan)) if observation_plan is not None else None
     readiness = (human_observation_plan.require_contexts(plan, contexts, manifest["candidate_head"],
-        manifest["candidate_artifacts"]["volicord-viewer"]["sha256"]) if plan is not None else
-        human_observation_plan.block_readiness(json.loads(human_observation_plan.FIXTURE.read_bytes())["observation_blocks"], contexts))
-    scope = {"plan": plan, "readiness": readiness}
+        manifest["candidate_artifacts"]["volicord-viewer"]["sha256"], subjects) if plan is not None else
+        human_observation_plan.block_readiness(json.loads(human_observation_plan.FIXTURE.read_bytes())["observation_blocks"], contexts, subjects))
+    scope = {"plan": plan, "readiness": readiness, "subjects": subjects}
     observer = review.reviewer("human", run_id or secrets.token_hex(16))
     observations, answer_trace = [], []
     for request in _live_observation_requests(contexts, scope):
@@ -154,7 +155,8 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
                 "response": {"observation": observation, "limits": limits}})
         answer_trace.append({"surface": surface, "locale": locale, "turns": trace})
     # Recheck the original browser receipt/screenshot after the human interaction.
-    review.require(viewer_observation.load_contexts(context_paths, manifest) == contexts,
+    review.require(viewer_observation.load_subjects(root, manifest) == subjects
+        and viewer_observation.load_contexts(context_paths, manifest, subjects) == contexts,
         "display evidence changed during human capture")
     value = {"kind": "dogfood_human_observations",
         "schema_version": 6,

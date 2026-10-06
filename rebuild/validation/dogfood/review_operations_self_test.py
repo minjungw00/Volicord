@@ -986,9 +986,11 @@ class WorkflowTests(unittest.TestCase):
         }
         source = self.parent / (self._testMethodName + "-benign.json")
         import human_observation_plan
-        observation["scope"] = {"plan": None, "readiness": human_observation_plan.block_readiness(
+        import viewer_observation
+        subjects = viewer_observation.load_subjects(self.root, c.load_evidence_set(self.root))
+        observation["scope"] = {"plan": None, "subjects": subjects, "readiness": human_observation_plan.block_readiness(
             json.loads(human_observation_plan.FIXTURE.read_bytes())["observation_blocks"],
-            {item["locale"]: item["contexts"] for item in observation["observations"]})}
+            {item["locale"]: item["contexts"] for item in observation["observations"]}, subjects)}
         source.write_bytes(ops.encoded(observation))
         result = ops.prepare(self.root, self.target(), reviewer_kind="human", human_observations=source)
         self.assertEqual(result["state"], "prepared")
@@ -1004,7 +1006,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_operator_maps_one_exact_answer_without_schema_questions_or_historical_claims(self):
         manifest = c.load_evidence_set(self.root)
-        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest)
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, campaign_root=self.root)
         observation_root = self.parent / (self._testMethodName + "-observations")
         answer = "  Works and Decisions are hard to distinguish.\nI did not inspect the old conversation.  "
         prompts = []
@@ -1063,7 +1065,7 @@ class WorkflowTests(unittest.TestCase):
         import qualification_policy as policy
         from qualification_self_test import evaluation
         manifest = c.load_evidence_set(self.root)
-        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest)
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, campaign_root=self.root)
         observed = self.parent / (self._testMethodName + "-observations")
         answer = ("Synthetic support answer: I cannot distinguish Works, understand their state or next action, "
             "the Work problem/effect, Project purpose, code behavior, architecture flow, diagrams, evidence "
@@ -1109,7 +1111,7 @@ class WorkflowTests(unittest.TestCase):
         import qualification_policy as policy
         from qualification_self_test import evaluation
         manifest = c.load_evidence_set(self.root)
-        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, decision=False)
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, campaign_root=self.root, decision=False)
         observed = self.parent / (self._testMethodName + "-observations")
         prompts = []
         answer = "Synthetic fixture: comparing actual Works is difficult; the grouping is confusing. No Decision experience."
@@ -1194,7 +1196,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_human_display_context_rejects_missing_locale_personal_denial_and_foreign_candidate(self):
         manifest = c.load_evidence_set(self.root)
-        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest)
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, campaign_root=self.root)
         target = self.parent / (self._testMethodName + "-observations")
         with self.assertRaisesRegex(ValueError, "both locales"):
             human_review.capture_viewer_observations(self.root, target, context_paths=contexts[:1],
@@ -1203,6 +1205,7 @@ class WorkflowTests(unittest.TestCase):
             human_review.capture_viewer_observations(self.root, target, context_paths=contexts,
                 input_fn=iter(["2"]).__next__, output_fn=lambda _: None)
         self.assertFalse(target.exists())
+
         value = json.loads((contexts[1] / "display-context.json").read_bytes())
         value["candidate_head"] = "0" * 40
         (contexts[1] / "display-context.json").write_text(json.dumps(value))
@@ -1210,6 +1213,27 @@ class WorkflowTests(unittest.TestCase):
             human_review.capture_viewer_observations(self.root, target, context_paths=contexts,
                 input_fn=lambda: self.fail("foreign candidate must fail before conversation"), output_fn=lambda _: None)
         self.assertFalse(target.exists())
+
+    def test_foreign_campaign_subjects_fail_before_any_human_prompt(self):
+        manifest = c.load_evidence_set(self.root)
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, campaign_root=self.root)
+        target = self.parent / (self._testMethodName + "-observations")
+        for subject, foreign in (("work", "a" * 32), ("work", "b" * 32), ("decision", "d" * 32)):
+            path = next(p / "display-context.json" for p in contexts
+                if json.loads((p / "display-context.json").read_bytes())["context"]["selected_" + subject] is not None)
+            original = path.read_bytes(); value = json.loads(original)
+            old = value["context"]["selected_" + subject]
+            value["context"]["selected_" + subject] = foreign
+            value["context"]["view"][subject] = foreign
+            value["url"] = value["url"].replace(old, foreign)
+            path.write_bytes(ops.encoded(value))
+            prompts = []
+            with self.subTest(subject=subject, foreign=foreign), self.assertRaisesRegex(ValueError, "outside campaign subjects"):
+                human_review.capture_viewer_observations(self.root, target, context_paths=contexts,
+                    input_fn=lambda: self.fail("foreign subjects must fail before a human answer"), output_fn=prompts.append)
+            self.assertEqual(prompts, [])
+            self.assertFalse(target.exists())
+            path.write_bytes(original)
 
     def test_conversational_human_judgment_generates_reviewable_draft(self):
         target = self.target()
@@ -1312,7 +1336,7 @@ class WorkflowTests(unittest.TestCase):
     def test_same_as_english_requires_the_identical_criterion_and_rebinds_locale_evidence(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
         manifest = c.load_evidence_set(self.root)
-        contexts = prepared_context_directories(self.parent, self._testMethodName + "-", manifest)
+        contexts = prepared_context_directories(self.parent, self._testMethodName + "-", manifest, campaign_root=self.root)
         observation_answers = iter([
             "1", "OBSERVATION:\nEnglish keyboard use was directly observed.\nLIMITS:\nOnly the bounded journey was inspected.",
             "1", "SAME AS ENGLISH",

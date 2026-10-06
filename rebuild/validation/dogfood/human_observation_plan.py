@@ -6,6 +6,7 @@ import subprocess
 
 import qualitative_review as review
 import review_operations as operations
+import viewer_observation
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = Path(__file__).with_name("fixtures") / "human-observation-surfaces.json"
@@ -62,7 +63,7 @@ def prepare(bin_dir, output):
     return value
 
 
-def require_contexts(value, contexts, candidate, viewer_sha256):
+def require_contexts(value, contexts, candidate, viewer_sha256, subjects):
     """Required changed views must exist before the person is questioned."""
     review.require(value["candidate_head"] == candidate
         and value["executables"]["volicord-viewer"] == viewer_sha256,
@@ -73,14 +74,16 @@ def require_contexts(value, contexts, candidate, viewer_sha256):
     expected["inputs"] = {str(p.relative_to(ROOT)): digest(p)
         for p in (Path(__file__), FIXTURE, ROOT / "rebuild/docs/design/qualitative-review.md")}
     review.require(value == expected, "changed-surface plan was altered or belongs to another contract")
-    return block_readiness(value["observation_blocks"], contexts)
+    return block_readiness(value["observation_blocks"], contexts, subjects)
 
 
-def block_readiness(blocks, contexts):
+def block_readiness(blocks, contexts, subjects):
     """Absence is a local evidence gap, never proof of inapplicability."""
     result = {}
     for locale in ("en", "ko"):
         displays = [c["context"] for c in contexts[locale]]
+        for display in displays:
+            viewer_observation.require_subject_context(display, subjects)
         result[locale] = []
         for block in blocks:
             missing = [surface for surface in block["required_views"]
@@ -103,7 +106,7 @@ def block_readiness(blocks, contexts):
 
 def validate_scope(scope, contexts, candidate, viewer_sha256):
     """Copied packages recompute readiness without the original Campaign or Git."""
-    review.require(isinstance(scope, dict) and set(scope) == {"plan", "readiness"},
+    review.require(isinstance(scope, dict) and set(scope) == {"plan", "readiness", "subjects"},
         "invalid block applicability scope")
     inventory = json.loads(FIXTURE.read_bytes())
     value = scope["plan"]
@@ -128,12 +131,14 @@ def validate_scope(scope, contexts, candidate, viewer_sha256):
         expected = plan(candidate, value["executables"], changed, inventory)
         expected["inputs"] = value["inputs"]
         review.require(value == expected, "copied changed-surface plan differs from authored routing")
-    review.require(scope["readiness"] == block_readiness(blocks, contexts), "block applicability/context mismatch")
+    review.require(scope["readiness"] == block_readiness(blocks, contexts, scope["subjects"]), "block applicability/context mismatch")
     return blocks
 
 
 def prepared_claims(scope, locale, contexts):
     displays = [c["context"] for c in contexts]
+    for display in displays:
+        viewer_observation.require_subject_context(display, scope["subjects"])
     claims = {claim for b in scope["readiness"][locale] if b["state"] == "ready" for claim in b["claims"]}
     if len({c["selected_work"] for c in displays
             if c["view"].get("view") == "work" and c["selected_work"] is not None}) < 2:

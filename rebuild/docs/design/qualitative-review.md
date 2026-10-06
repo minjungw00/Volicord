@@ -623,6 +623,17 @@ these declared observations into immutable review evidence. Agent authorship is 
 These are additional direct human observations, not reconstructed historical rollout bytes.
 Identity remains self-reported; do not use agent-generated claims of a human experience.
 
+The observation scope carries a campaign subject inventory: exact measured Work IDs,
+canonical Decision IDs explicitly scoped to those Works or their Project, and the retained
+canonical bundle hash. Every selected Work/Decision must belong to that inventory before
+readiness or claims are prepared. Multi-Work comprehension requires two distinct campaign
+Work identities; two renderings of one Work do not suffice. Copied packages recompute the
+inventory from retained sample identities and canonical bundle bytes; qualification and
+copied lineage also compare those inputs with the immutable evidence-set facts. Rehashing
+a substituted display and inventory cannot authorize foreign subjects. Canonical read,
+Source/Analysis, explanation and rendered-state fingerprints are observation facts, never
+locks to the historical rendering of an otherwise valid subject.
+
 `qualify` combines evidence validity, verified exact-candidate technical gate, hard machine
 facts, resolved semantic findings, common review completion and targeted human escalations.
 The [validation responsibility/reuse matrix](validation-plan.md#32-validation-responsibility-and-evidence-reuse)

@@ -60,7 +60,8 @@ def main():
     observation.require(result['status']=='passed' and len(result['display_captures'])==1,'missing actual displayed capture')
     value=result['display_captures'][0]
     if manifest is not None:
-        observation.for_manifest(manifest,value,value['context']['locale'])
+        subjects = observation.load_subjects(args.campaign_root.resolve(), manifest)
+        observation.for_manifest(manifest,value,value['context']['locale'],subjects)
         campaign.require_current_candidate(candidate)
         campaign.verify_candidate_artifacts(campaign.load_campaign(args.campaign_root.resolve()))
     else:
