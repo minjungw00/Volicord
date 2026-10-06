@@ -714,7 +714,7 @@
       "id": "v12-current-codex-mcp-completion",
       "validation_id": "V12",
       "path": "rebuild/validation/dogfood/fixtures",
-      "purpose": "Exercise bounded Codex Extension command, patch, turn interruption/recovery, direct and content-wrapped MCP completion evidence without evaluating JavaScript. Include sanitized independent multi-item durability authority counterfactuals, deterministic multi-Work support explicitly separated from naturalistic evidence, and criterion-specific Viewer/document qualitative-review cases without Question, answer, or keyword-verdict oracles. Include product-backed correction/regeneration support with retained historical/final explanation selection and observation-time Recall revision controls. Include ordinary frozen workload-intent task examples and interaction-coverage insufficiency regressions; metadata contains no semantic expected answers or operation-count quotas. Mandatory rehearsal also executes authored immutable old-candidate/new-collector collection, repeated Recall, direct shell and explicit execution coverage controls with process-bound receipts. Typed Codex Page metadata and actual user markup remain separate under the bounded review projection contract; lifecycle-aware Recall and scoped generated-answer omission controls execute through current consumers.",
+      "purpose": "Exercise bounded Codex Extension command, patch, turn interruption/recovery, direct and content-wrapped MCP completion evidence without evaluating JavaScript. Include sanitized independent multi-item durability authority counterfactuals, deterministic multi-Work support explicitly separated from naturalistic evidence, and criterion-specific Viewer/document qualitative-review cases without Question, answer, or keyword-verdict oracles. Include product-backed correction/regeneration support with retained historical/final explanation selection and observation-time Recall revision controls. Include ordinary frozen workload-intent task examples and interaction-coverage insufficiency regressions; metadata contains no semantic expected answers or operation-count quotas. Mandatory rehearsal also executes authored immutable old-candidate/new-collector collection, repeated Recall, direct shell and explicit execution coverage controls with process-bound receipts. Typed Codex Page metadata and actual user markup remain separate under the bounded review projection contract; lifecycle-aware Recall and scoped generated-answer omission controls execute through current consumers. Direct live comprehension and historical snapshot/conversation fidelity retain separate evidence requirements. The blank changed-display inventory binds fresh Human preparation to actual affected paths without supplying answers or verdicts.",
       "expected_entities": [
         "codex-session",
         "command-observation",
@@ -741,7 +741,7 @@
         "Codex-version dispatch or unsupported completion shapes",
         "JavaScript execution or wrapper-output success inference"
       ],
-      "content_sha256": "5636ad59b86fcad5d27647c5005428a737e90fd6eafdd18204b226fdbe105c6e",
+      "content_sha256": "9f95cad6968a2d48d203f1c3dbf986901f7d474e9fce332aa750fc732daf1418",
       "origin": "Sanitized self-authored representatives derived from observed current Phase 8 Codex Extension execution and completion envelopes.",
       "license": "CC0-1.0"
     },
