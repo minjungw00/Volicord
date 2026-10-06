@@ -46,7 +46,7 @@ EVIDENCE = {'key': S, 'record_kind': S, 'identity': S, 'revision': I,
 CONFLICT = {'from': ('union', S, SUBJECT, [I]), 'relation': S, 'to': ('union', S, SUBJECT, [I])}
 PROVENANCE = {'project_id': S, 'subject': SUBJECT, 'question': S, 'language': S,
     'fingerprint': S, 'generated_at_unix_micros': I, 'generator': GENERATOR,
-    'generator_identity_status': S, 'evidence': [EVIDENCE],
+    'generator_identity_status': S, 'evidence': [EVIDENCE], 'uncited_evidence_count': optional(I),
     'source_status': [STATUS], 'conflicts': [CONFLICT]}
 ACTION = {'work_item_id': S, 'checkpoint_id': S, 'revision': I, 'field': S,
     'recorded_text': S, 'source_ids': [S], 'source_status': [STATUS]}
@@ -98,7 +98,7 @@ PLAN = {'project_id': S, 'subject': SUBJECT, 'question': S, 'requested_language'
 RESPONSE = {'format_kind': S, 'format_version': I, 'plan_fingerprint': S,
     'language': S, 'generator': GENERATOR,
     'paragraphs': [{'question': S, 'text': S, 'evidence_keys': [S]}]}
-RECORD = {k: t for k, t in PROVENANCE.items() if k not in ('language', 'fingerprint', 'generator')}
+RECORD = {k: t for k, t in PROVENANCE.items() if k not in ('language', 'fingerprint', 'generator', 'uncited_evidence_count')}
 RECORD['realization'] = RESPONSE
 SCHEMAS = {
     'recall': {'project_id': S, 'selected_work': nullable(WORK), 'next_step': nullable(S), 'checkpoint': nullable(CHECKPOINT),

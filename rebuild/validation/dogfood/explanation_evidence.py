@@ -205,12 +205,20 @@ def validate_lifecycle(preparation, response, receipt, after):
     if observation['state'] != 'current' or not isinstance(answers, dict):
         raise api().CampaignError('recorded explanation readback is unavailable or non-current')
     provenance = answers.get('provenance')
-    if not isinstance(provenance, dict) or any(provenance.get(k) != value for k, value in (
+    # Ordinary readback shows paragraph-cited references; the immutable receipt
+    # still must retain the complete offered preparation basis checked above.
+    cited_keys = {key for paragraph in response['paragraphs'] for key in paragraph['evidence_keys']}
+    cited = [item for item in stripped if item['key'] in cited_keys]
+    uncited_count = len(stripped) - len(cited)
+    if (not isinstance(provenance, dict)
+            or type(provenance.get('uncited_evidence_count')) is not int
+            or provenance['uncited_evidence_count'] != uncited_count
+            or any(provenance.get(k) != value for k, value in (
         ('project_id', plan['project_id']), ('subject', plan['subject']), ('question', plan['question']), ('language', response['language']),
-        ('fingerprint', plan['fingerprint']), ('evidence', stripped), ('source_status', statuses),
+        ('fingerprint', plan['fingerprint']), ('evidence', cited), ('source_status', statuses),
         ('conflicts', plan['conflicts']), ('generator', response['generator']),
         ('generator_identity_status', retained['generator_identity_status']),
-        ('generated_at_unix_micros', retained['generated_at_unix_micros']))):
+        ('generated_at_unix_micros', retained['generated_at_unix_micros'])))):
         raise api().CampaignError('explanation readback provenance differs from exact receipt')
     prose = answers.get('prose')
     if not isinstance(prose, list) or len(prose) != len(response['paragraphs']):

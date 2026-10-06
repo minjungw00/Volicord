@@ -81,7 +81,8 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
         'prose': [{'question': ''.join(word.title() for word in p['question'].split('_')),
             'text': p['text'], 'role': 'generated_interpretation', 'evidence_keys': p['evidence_keys']} for p in response['paragraphs']],
         'provenance': {k: v for k, v in retained.items() if k != 'realization'} | {
-            'language': language, 'fingerprint': plan['fingerprint'], 'generator': response['generator']}}
+            'language': language, 'fingerprint': plan['fingerprint'], 'generator': response['generator'],
+            'uncited_evidence_count': 0}}
     readback = {'project_id': project, 'selected_work': {'work_item_id': identity, 'checkpoint_ids': [], 'answers': answers},
         'decisions': [{'identity': identity, 'answers': answers}]}
     preparation = {'kind': 'dogfood_explanation_preparation', 'schema_version': e.SCHEMA_VERSION,
@@ -316,6 +317,48 @@ class LifecycleTests(unittest.TestCase):
                     self.assertEqual(e.validate_lifecycle(prepared, response, record, after)['state'], 'current')
                     self.assertEqual(prepared['before_observation']['state'], state)
                     self.assertNotIn('verified', response['generator'])
+
+    def test_sparse_citations_keep_complete_receipt_and_exact_readback_accounting(self):
+        for kind in ('work', 'decision'):
+            for language in ('en', 'ko'):
+                prepared, response, record, after = lifecycle(kind, language)
+                offered = copy.deepcopy(prepared['plan']['evidence'][0])
+                offered.update(key='unused-history', field='historical-observation')
+                prepared['plan']['evidence'].append(offered)
+                prepared['plan']['retention_budget']['metadata_byte_reserve'] = e.retention_metadata_bytes(prepared['plan'])
+                retained = copy.deepcopy(offered); retained['content'] = None
+                record['explanation']['evidence'].append(retained)
+                answers = after['decisions'][0]['answers'] if kind == 'decision' else after['selected_work']['answers']
+                answers['provenance']['evidence'] = [copy.deepcopy(record['explanation']['evidence'][0])]
+                answers['provenance']['uncited_evidence_count'] = 1
+                import answer_projection
+                import review_explanations
+                subject_read, _, operation = review_explanations.subject_read(after, prepared['subject'])
+                projected = answer_projection.project(subject_read, operation)
+                answer_projection.validate(projected)
+                self.assertTrue(projected['semantic_complete'])
+                projected_answers = (projected['value']['selected_work']['answers'] if kind == 'work'
+                    else projected['value']['decisions'][0]['answers'])
+                self.assertEqual(projected_answers['provenance']['uncited_evidence_count'], 1)
+                self.assertEqual(projected_answers['provenance']['evidence'], answers['provenance']['evidence'])
+                self.assertTrue(answer_projection.project(record, 'explanation_record')['semantic_complete'])
+                self.assertEqual(e.validate_lifecycle(prepared, response, record, after)['state'], 'current')
+                self.assertEqual(len(record['explanation']['evidence']), 2)
+                self.assertEqual(len(answers['provenance']['evidence']), 1)
+                for mutation in (
+                        lambda c,p: p['evidence'].clear(),
+                        lambda c,p: p['evidence'].append(retained),
+                        lambda c,p: p['evidence'][0].update(revision=2),
+                        lambda c,p: p['evidence'][0].update(sources=['ff' * 16]),
+                        lambda c,p: p.pop('uncited_evidence_count'),
+                        lambda c,p: p.update(uncited_evidence_count=0),
+                        lambda c,p: p.update(uncited_evidence_count=True),
+                        lambda c,p: c['explanation']['evidence'].pop()):
+                    bad_record, bad_after = copy.deepcopy((record, after))
+                    bad_answers = bad_after['decisions'][0]['answers'] if kind == 'decision' else bad_after['selected_work']['answers']
+                    mutation(bad_record, bad_answers['provenance'])
+                    with self.assertRaises(c.CampaignError):
+                        e.validate_lifecycle(prepared, response, bad_record, bad_after)
 
     def test_wrong_subject_language_plan_revision_source_and_provenance(self):
         for mutation in [lambda p,r,c,a: r.update(language='de'),

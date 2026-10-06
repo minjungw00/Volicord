@@ -74,7 +74,8 @@ def recall_identity_errors(result, project=None, work_id=None, *, work_state='re
 
 def bounded_field(value, field, contract):
     return field_omission(value, field, fields=contract,
-        optional={'recorded_action'} if contract is CLAIM else ())
+        optional={name for name, schema in contract.items()
+            if isinstance(schema, tuple) and schema[0] == 'optional'})
 
 
 def suffix_omission(values):

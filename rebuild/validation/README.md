@@ -328,6 +328,12 @@ still limited to 16,384 bytes. Current plans expose a mandatory evidence-bound
 `retention_budget` reserving the full response within a 147,456-byte retained body.
 Collector preparation/response/receipt validation and private typed plan projection
 use this same current contract; formatting is not counted as semantic response bytes.
+Ordinary readback provenance contains exactly the paragraph-cited evidence, with
+an exact integer `uncited_evidence_count`. The record receipt must still preserve
+all offered evidence. Lifecycle verification checks both sets independently;
+missing or altered cited grounding, uncited references presented as cited, and
+incorrect omission accounting are rejected. Copied review validation applies the
+same Source-independent contract without requiring the original Runtime.
 Metadata-heavy and near-read-limit authored inputs live in
 `end-to-end/multi-repository/fixtures/viewer-reading/explanation-size-cases.json`.
 Set `VOLICORD_EXPLANATION_SIZE_PROOF_DIR` to a fresh absolute ignored directory
