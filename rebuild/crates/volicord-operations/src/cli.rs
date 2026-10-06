@@ -1,5 +1,5 @@
 use crate::{
-    bounded_repository_analysis_json,
+    bounded_repository_analysis_json, complete_repository_analysis_json,
     operations::{parse_identity, select_document},
     ConfirmationDecision, ConfirmationRequestId, Error, GuardedEffectCategory, GuardedEffectDraft,
     GuardedRisk, LocalOperations, RequestingProvenance, RuntimeLayout,
@@ -1226,11 +1226,15 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
         .unwrap_or("result");
     writeln!(stdout, "{}", operation_title(operation, mode.locale))
         .map_err(|error| Error::with_source("cannot write CLI result", error))?;
+    if matches!(operation, "analyze" | "analysis_rebuild") {
+        return render_analysis_summary(value, mode.locale, stdout);
+    }
     // Explicit ordinary-reading fields; exact binding/audit stays in --json.
     // Question/result/state selection is owned by the shared answer projection.
     let reading_fields: Option<&[&str]> = match operation {
         "project_status" => Some(&[
             "project_name",
+            "repository_analysis",
             "health",
             "project_purpose",
             "work_category_counts",
@@ -1316,6 +1320,171 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
         }
     }
     Ok(())
+}
+
+fn render_analysis_summary(
+    value: &Value,
+    locale: CliLocale,
+    stdout: &mut dyn Write,
+) -> Result<(), Error> {
+    let label = |en, ko| match locale {
+        CliLocale::English => en,
+        CliLocale::Korean => ko,
+    };
+    let summary = &value["human_summary"];
+    let word = |value: &Value| value.as_str().unwrap_or("unknown").to_owned();
+    let language = |value: &Value| {
+        if let Some(name) = value["name"].as_str() {
+            return name.to_owned();
+        }
+        match value["kind"].as_str().unwrap_or("repository") {
+            "rust" => "Rust",
+            "python" => "Python",
+            "java" => "Java",
+            "java_script" => "JavaScript",
+            "type_script" => "TypeScript",
+            "c" => "C",
+            "cpp" => "C++",
+            "go" => "Go",
+            other => other,
+        }
+        .to_owned()
+    };
+    write_line(
+        stdout,
+        format!(
+            "{}: {}",
+            label("Scope", "분석 범위"),
+            value["repository_scope"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    )?;
+    write_line(
+        stdout,
+        format!(
+            "{}: {}",
+            label("Operation", "실행 상태"),
+            word(&value["state"])
+        ),
+    )?;
+    write_line(
+        stdout,
+        format!(
+            "{}: {} {}; {} {}; {} {}; {} {}",
+            label("Results", "분석 결과"),
+            summary["files"],
+            label("included files", "포함 파일"),
+            summary["entities"],
+            label("structural entities", "구조 엔터티"),
+            summary["relations"],
+            label("stored relations", "저장 관계"),
+            summary["excluded_areas"],
+            label("excluded inventory areas", "제외 inventory 영역")
+        ),
+    )?;
+    write_line(
+        stdout,
+        label("Coverage (static evidence)", "분석 범위 (정적 근거)"),
+    )?;
+    for row in summary["coverage"].as_array().into_iter().flatten() {
+        write_line(
+            stdout,
+            format!(
+                "  {}: {} {}; structural {}; semantic {}; {} {}; {} {}",
+                language(&row["language"]),
+                row["files"],
+                label("files", "파일"),
+                word(&row["structural"]),
+                word(&row["semantic"]),
+                row["entities"].as_u64().unwrap_or(0),
+                label("entities", "엔터티"),
+                row["relations"].as_u64().unwrap_or(0),
+                label("semantic relations", "의미 관계")
+            ),
+        )?;
+    }
+    if summary["omitted_coverage_count"].as_u64().unwrap_or(0) > 0 {
+        write_line(
+            stdout,
+            format!(
+                "  {}: {}; --json",
+                label("Additional language coverage", "추가 언어 분석 범위"),
+                summary["omitted_coverage_count"]
+            ),
+        )?;
+    }
+    let counts = summary["limitation_counts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| format!("{} {}", r["count"], word(&r["state"])))
+        .collect::<Vec<_>>()
+        .join(", ");
+    write_line(
+        stdout,
+        format!(
+            "{}: {}",
+            label("Affected capability scopes", "영향받는 분석 영역"),
+            if counts.is_empty() {
+                label("none", "없음")
+            } else {
+                &counts
+            }
+        ),
+    )?;
+    for limit in summary["limitations"].as_array().into_iter().flatten() {
+        let affected = limit["affected_areas"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join(", ");
+        write_line(
+            stdout,
+            format!(
+                "  {} / {} / {} / {}: {}. {} {}",
+                language(&limit["language"]),
+                word(&limit["area"]),
+                word(&limit["capability"]),
+                word(&limit["state"]),
+                limit["reason"]
+                    .as_str()
+                    .unwrap_or(label("coverage limited", "분석 범위 제한")),
+                limit["consequence"].as_str().unwrap_or(""),
+                limit["usable_remainder"].as_str().unwrap_or("")
+            ),
+        )?;
+        if !affected.is_empty() {
+            write_line(
+                stdout,
+                format!(
+                    "    {}: {} (+{}; --json)",
+                    label("Affected areas", "영향 영역"),
+                    affected,
+                    limit["omitted_affected_area_count"]
+                ),
+            )?;
+        }
+    }
+    if summary["omitted_limitation_count"].as_u64().unwrap_or(0) > 0 {
+        write_line(
+            stdout,
+            format!(
+                "  {}: {}; --json",
+                label("Additional affected scopes", "추가 영향 영역"),
+                summary["omitted_limitation_count"]
+            ),
+        )?;
+    }
+    write_line(stdout, label(
+        "Next: use the covered results; inspect --json for complete diagnostics. Restore failed prerequisites and rerun volicord analyze after source changes. Unsupported capabilities require analyzer support.",
+        "다음: 사용 가능한 결과를 활용하고 전체 진단은 --json으로 확인하세요. 실패 원인을 해결하거나 소스를 변경한 뒤 volicord analyze를 실행하세요. 지원하지 않는 기능은 analyzer 지원이 필요합니다."))
 }
 
 fn render_field(
@@ -1613,7 +1782,7 @@ fn analyze(
         .value
         .as_ref()
         .ok_or_else(|| Error::new("analysis ended without an inspectable result"))?;
-    let summary = bounded_repository_analysis_json(&analysis.analysis);
+    let summary = complete_repository_analysis_json(&analysis.analysis);
     Ok(json!({
         "operation":if rebuild {"analysis_rebuild"} else {"analyze"}, "operation_id":result.operation_id.to_string(), "state":debug_name(result.state),
         "duration_micros":result.duration_micros, "repository_snapshot":analysis.repository.identity.to_string(), "analysis_snapshot":analysis.analysis.identity.to_string(),
@@ -1621,6 +1790,8 @@ fn analyze(
         "failed_scopes":result.partial.failed_scopes, "omitted_scopes":result.partial.omitted_scopes,
         "capability_reports":summary["capability_reports"], "diagnostics":summary["diagnostics"],
         "diagnostics_omitted_count":summary["diagnostics_omitted_count"], "diagnostic":result.diagnostic
+        ,"repository_scope":result.requested_scope,
+        "human_summary":crate::model::human_repository_analysis_summary(&analysis.analysis)
     }))
 }
 

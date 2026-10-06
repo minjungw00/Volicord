@@ -37,12 +37,13 @@ pub use guarded::{
 };
 pub use layout::RuntimeLayout;
 pub use model::{
-    bounded_repository_analysis_json, AnalysisOutcome, BindingOutcome,
-    CandidateRepositoryResearchDraft, CanonicalMutationOutcome, CheckpointScopeViolation,
-    ChildProcessOutcome, CommandVerificationDraft, EngineeringChoiceAuthoringBasis,
-    EngineeringChoiceDiscoveryDraft, EngineeringChoiceDiscoveryOutcome, ForgettingOutcome,
-    GroundedCheckpointDraft, GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport,
-    HealthState, LearningDeliberationDraft, LearningDeliberationOutcome, LearningFeedbackDraft,
+    bounded_repository_analysis_json, complete_repository_analysis_json, AnalysisOutcome,
+    BindingOutcome, CandidateRepositoryResearchDraft, CanonicalMutationOutcome,
+    CheckpointScopeViolation, ChildProcessOutcome, CommandVerificationDraft,
+    EngineeringChoiceAuthoringBasis, EngineeringChoiceDiscoveryDraft,
+    EngineeringChoiceDiscoveryOutcome, ForgettingOutcome, GroundedCheckpointDraft,
+    GroundedCheckpointOutcome, HealthIssue, HealthIssueKind, HealthReport, HealthState,
+    LearningDeliberationDraft, LearningDeliberationOutcome, LearningFeedbackDraft,
     LearningReconsiderationDraft, LearningResponseDraft, LongOperationResult,
     MaterialityReviewDraft, MaterialityReviewOutcome, MaterialityReviewRevisionDraft,
     OperationState, PartialOutcome, ProgressState, ProjectInitialization, ProjectResolution,

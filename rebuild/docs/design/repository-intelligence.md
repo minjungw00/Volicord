@@ -634,3 +634,12 @@ an unrecorded attempt. `refresh_command` exposes existing `volicord analyze` (or
 `volicord doctor repair` for unreadable storage); it grants no Viewer mutation or
 background transmission authority. Read paths compare repository observations and
 read receipts but never run analyzers, record Sources or mutate canonical state.
+
+CLI analysis receipts distinguish the analyzer's unchanged operation state from the
+human summary's relevant observed source-language coverage. Human limits retain
+representative affected areas, reason, consequence, usable remainder and exact
+additional-scope counts; analyzer/audit detail remains in the full `--json` result.
+`complete_repository_analysis_json` preserves existing machine fields and adds exact
+coverage scopes while returning all diagnostics (`diagnostics_omitted_count = 0`).
+The existing bounded host projection stays separate; this is output formatting, not
+analysis recomputation, a new capability or a background transmission path.

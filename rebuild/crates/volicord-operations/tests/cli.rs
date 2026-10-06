@@ -119,7 +119,10 @@ fn bound_repository_journey_needs_no_project_id_and_defaults_to_human_output(
     );
     let analyzed = String::from_utf8(analyzed.stdout)?;
     assert!(analyzed.starts_with("Repository analysis\n"));
-    assert!(analyzed.contains("analysis snapshot:"));
+    assert!(analyzed.contains("Scope:"));
+    assert!(analyzed.contains("Coverage (static evidence)"));
+    assert!(!analyzed.contains("analysis snapshot:"));
+    assert!(!analyzed.contains("diagnostic ids:"));
 
     for command in ["recall", "questions", "decisions"] {
         let result = binary(&runtime, &repository, [command])?;
@@ -485,4 +488,151 @@ where
 
 fn text(path: &Path) -> Result<&str, Box<dyn std::error::Error>> {
     path.to_str().ok_or_else(|| "path is not UTF-8".into())
+}
+
+#[test]
+fn analyze_human_summary_and_complete_json_keep_operation_and_failure_semantics(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (language, files) in [
+        (
+            "rust",
+            vec![("src/lib.rs", "pub fn answer() -> i32 { 42 }")],
+        ),
+        (
+            "python",
+            vec![("main.py", "def answer():\n    return 42\n")],
+        ),
+        (
+            "type_script",
+            vec![
+                ("src/client.ts", "export function answer() { return 42; }"),
+                ("worker.py", "def worker():\n    return 42\n"),
+                ("native/query.c", "int query(void) { return 42; }"),
+            ],
+        ),
+    ] {
+        let temporary = tempfile::tempdir()?;
+        let root = temporary.path().join("repository");
+        let runtime = temporary.path().join("runtime");
+        for (path, contents) in files {
+            let file = root.join(path);
+            fs::create_dir_all(file.parent().ok_or("file parent")?)?;
+            fs::write(file, contents)?;
+        }
+        initialize(&runtime, &root)?;
+        let human = binary(&runtime, &root, ["analyze"])?;
+        assert_eq!(human.status.code(), Some(0));
+        assert!(human.stderr.is_empty());
+        let text = String::from_utf8(human.stdout)?;
+        for expected in [
+            "Scope:",
+            "Operation: partial",
+            "Results:",
+            "Coverage (static evidence)",
+            "Affected capability scopes:",
+            "Next:",
+            "--json",
+        ] {
+            assert!(text.contains(expected), "missing {expected}: {text}");
+        }
+        let display_language = match language {
+            "rust" => "Rust",
+            "python" => "Python",
+            _ => "TypeScript",
+        };
+        assert!(text.contains(display_language));
+        for audit in [
+            "operation id:",
+            "analysis snapshot:",
+            "diagnostic ids:",
+            "adapter:",
+            "agent_assisted",
+        ] {
+            assert!(!text.contains(audit), "ordinary audit clutter {audit}");
+        }
+        let machine = binary(&runtime, &root, ["--json", "analyze"])?;
+        assert_eq!(machine.status.code(), Some(0));
+        let value: Value = serde_json::from_slice(&machine.stdout)?;
+        assert_eq!(value["state"], "partial");
+        assert_eq!(value["diagnostics_omitted_count"], 0);
+        assert!(value["analysis_snapshot"].is_string());
+        assert!(value["operation_id"].is_string());
+        assert!(value["capability_reports"]
+            .as_array()
+            .ok_or("reports")?
+            .iter()
+            .all(|r| r["coverage_scopes"].is_object()
+                && r["diagnostic_ids"].as_array().is_some_and(
+                    |ids| ids.len() == r["diagnostic_count"].as_u64().unwrap_or(0) as usize
+                )));
+        assert!(value["human_summary"]["coverage"]
+            .as_array()
+            .ok_or("coverage")?
+            .iter()
+            .any(|r| r["language"]["kind"] == language));
+        let failed = binary(
+            &runtime,
+            &root,
+            ["--json", "analyze", "--exclude", "../outside"],
+        )?;
+        assert_eq!(failed.status.code(), Some(1));
+        assert!(!failed.stderr.is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn analyze_json_keeps_all_parse_diagnostics_above_host_bounds(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path().join("repository");
+    let runtime = temporary.path().join("runtime");
+    fs::create_dir_all(root.join("src"))?;
+    for i in 0..80 {
+        fs::write(
+            root.join(format!("src/broken_{i:02}.rs")),
+            "pub fn broken( {\n",
+        )?;
+    }
+    initialize(&runtime, &root)?;
+    let machine = binary(&runtime, &root, ["--json", "analyze"])?;
+    assert_eq!(machine.status.code(), Some(0)); // Existing partial-result exit.
+    let value: Value = serde_json::from_slice(&machine.stdout)?;
+    let diagnostics = value["diagnostics"].as_array().ok_or("diagnostics")?;
+    assert!(
+        diagnostics.len() > 64,
+        "insufficient adversarial diagnostics: {}",
+        diagnostics.len()
+    );
+    assert_eq!(value["diagnostics_omitted_count"], 0);
+    let identities = diagnostics
+        .iter()
+        .map(|d| d["identity"].as_str().ok_or("diagnostic identity"))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    for report in value["capability_reports"].as_array().ok_or("reports")? {
+        let ids = report["diagnostic_ids"].as_array().ok_or("ids")?;
+        assert_eq!(
+            ids.len() as u64,
+            report["diagnostic_count"].as_u64().ok_or("count")?
+        );
+        assert!(ids
+            .iter()
+            .all(|id| id.as_str().is_some_and(|id| identities.contains(id))));
+    }
+    for i in 0..80 {
+        let path = format!("src/broken_{i:02}.rs");
+        assert!(
+            diagnostics
+                .iter()
+                .any(|d| d["affected_area"]["path"] == path),
+            "lost diagnostic for {path}"
+        );
+    }
+    let human = binary(&runtime, &root, ["analyze"])?;
+    assert_eq!(human.status.code(), Some(0));
+    let text = String::from_utf8(human.stdout)?;
+    assert!(text.contains("structural partial"));
+    assert!(text.contains("Affected areas:"));
+    assert!(text.contains("src/broken_"));
+    Ok(())
 }

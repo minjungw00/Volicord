@@ -134,6 +134,106 @@ pub fn bounded_repository_analysis_json(analysis: &AnalysisSnapshot) -> Value {
     })
 }
 
+/// Local CLI automation is not a bounded host payload. Keep the existing
+/// fields while retaining every diagnostic and the exact capability scopes.
+pub fn complete_repository_analysis_json(analysis: &AnalysisSnapshot) -> Value {
+    let mut value = bounded_repository_analysis_json(analysis);
+    value["diagnostics"] = json!(analysis.diagnostics);
+    value["diagnostics_omitted_count"] = json!(0);
+    if let Some(reports) = value["capability_reports"].as_array_mut() {
+        for (report, basis) in reports.iter_mut().zip(&analysis.capabilities) {
+            report["diagnostic_ids"] = json!(basis.diagnostics);
+            report["coverage_scopes"] = json!(basis.coverage);
+            report["observed_at_unix_micros"] = json!(basis.observed_at_unix_micros);
+        }
+    }
+    value
+}
+
+pub(crate) fn human_repository_analysis_summary(analysis: &AnalysisSnapshot) -> Value {
+    use volicord_repository_intelligence::{Capability, EntryKind, InventoryClassification};
+    let mut languages = BTreeMap::new();
+    for entry in analysis.inventory.entries.iter().filter(|e| {
+        e.entry_kind == EntryKind::File
+            && e.classifications
+                .contains(&InventoryClassification::Included)
+            && e.classifications.contains(&InventoryClassification::Source)
+    }) {
+        if let Some(language) = &entry.language {
+            *languages.entry(language.clone()).or_insert(0usize) += 1;
+        }
+    }
+    let relevant = analysis
+        .capabilities
+        .iter()
+        .filter(|r| {
+            r.capability != Capability::AgentAssisted
+                && r.language
+                    .as_ref()
+                    .is_none_or(|l| languages.contains_key(l))
+        })
+        .collect::<Vec<_>>();
+    let mut coverage = Vec::new();
+    for (language, files) in &languages {
+        let structural = relevant.iter().find(|r| {
+            r.language.as_ref() == Some(language) && r.capability == Capability::Structural
+        });
+        let semantic = relevant.iter().find(|r| {
+            r.language.as_ref() == Some(language) && r.capability == Capability::Semantic
+        });
+        coverage.push(json!({"language":language,"files":files,
+            "structural":structural.map(|r| r.state),"semantic":semantic.map(|r| r.state),
+            "entities":structural.map(|r| r.coverage.covered_entity_count),
+            "relations":semantic.map(|r| r.coverage.covered_relation_count)}));
+    }
+    let omitted_coverage_count = coverage.len().saturating_sub(8);
+    coverage.truncate(8);
+    let mut important = relevant
+        .iter()
+        .copied()
+        .filter(|r| r.state != CapabilityState::Available)
+        .collect::<Vec<_>>();
+    important.sort_by_key(|r| {
+        (
+            match r.state {
+                CapabilityState::Failed => 0,
+                CapabilityState::Stale => 1,
+                CapabilityState::Partial => 2,
+                CapabilityState::Unavailable => 3,
+                CapabilityState::Unsupported => 4,
+                CapabilityState::Available => 5,
+            },
+            r.language.clone(),
+            r.area.clone(),
+            r.capability,
+        )
+    });
+    let mut state_counts = BTreeMap::new();
+    for report in &important {
+        *state_counts.entry(report.state).or_insert(0usize) += 1;
+    }
+    let limitations = important
+        .iter()
+        .take(3)
+        .map(|r| {
+            let affected = r.coverage.failed.iter().chain(&r.coverage.stale).chain(&r.coverage.unavailable)
+                .chain(&r.coverage.unsupported).chain(&r.coverage.excluded).collect::<Vec<_>>();
+            json!({"capability":r.capability,"language":r.language,
+        "area":r.area.path,"state":r.state,"reason":r.reason,"usable_remainder":r.usable_remainder,
+        "consequence":r.user_visible_consequence,"affected_areas":affected.iter().take(3).map(|a|a.path.as_str()).collect::<Vec<_>>(),
+        "omitted_affected_area_count":affected.len().saturating_sub(3)})
+        })
+        .collect::<Vec<_>>();
+    json!({"coverage":coverage,"omitted_coverage_count":omitted_coverage_count,
+        "limitation_counts":state_counts.iter().map(|(state,count)|json!({"state":state,"count":count})).collect::<Vec<_>>(),
+        "limitations":limitations,"omitted_limitation_count":important.len().saturating_sub(limitations.len()),
+        "files":analysis.inventory.entries.iter().filter(|e| e.entry_kind == EntryKind::File && e.classifications.contains(&InventoryClassification::Included)).count(),
+        "entities":analysis.structural_facts.len(),
+        "relations":analysis.structural_facts.iter().map(|f| f.relations.len()).sum::<usize>() + analysis.semantic_results.len(),
+        "excluded_areas":analysis.inventory.entries.iter().filter(|e| !e.classifications.contains(&InventoryClassification::Included)).count(),
+        "next_action":"Use covered inventory and code results. Inspect --json for all scope details; run volicord analyze again after correcting failed prerequisites or changing source. Unsupported capabilities require analyzer support."})
+}
+
 fn capability_recovery(state: CapabilityState) -> (Option<&'static str>, Option<&'static str>) {
     match state {
         CapabilityState::Available => (None, None),

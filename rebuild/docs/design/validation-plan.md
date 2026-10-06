@@ -2527,3 +2527,12 @@ Focused runs preserve full streams, numeric exit/termination and before/after an
 samples under ignored `.local/`. These controls do not rerun historical Dogfood sessions
 or supply Final/gate/V11 or current-candidate human qualification. Historical b57b47a5
 Agent/Human reviews remain immutable diagnostic evidence for their own Product candidate.
+
+Direct CLI controls additionally require meaning-first human scope/state/coverage/
+result/next-action output for Rust, small Python and polyglot sources, exact partial
+success/error exits and complete structured capability/diagnostic references. An
+80-file malformed Rust fixture independently requires each affected Source path to
+survive `--json` beyond the host's 64-diagnostic bound, while human output keeps a
+useful affected-scope summary. Real maintained three-class before/after samples retain
+unchanged capability/outcome fields and every prior representative diagnostic under
+ignored local evidence, independently of historical campaign qualification.

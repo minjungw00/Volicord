@@ -758,3 +758,11 @@ operation과 source-grounded explanation 같은 accepted product contract를 구
 편의 때문에 좁히지 않는다. Evidence gap은 해당 active owner와 validation이
 해결하며, accepted Decision 변경이 필요하면 제품 결정 revisit 절차를
 따른다.
+
+Default human `volicord analyze` reports repository/scope, the existing operation
+outcome, observed source-language coverage, useful inventory/entity/relation counts,
+affected scope counts with bounded representative failures and explicit next action.
+Full scope/diagnostic inspection uses the already supported `--json`; no new verbose
+option or analyzer path is introduced. Automation receives every stored diagnostic
+and complete capability diagnostic IDs/coverage scopes without a host payload bound.
+Partial-result and operational error exit semantics remain unchanged.
