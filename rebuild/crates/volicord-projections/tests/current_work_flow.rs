@@ -79,6 +79,52 @@ fn build_projection_scenario<F>(
 where
     F: FnOnce(&mut AnalysisSnapshot) -> Result<(), Box<dyn std::error::Error>>,
 {
+    let (canonical, analysis, candidates) =
+        projection_scenario_basis(files, goal_paths, checkpoint_paths, enrich_analysis)?;
+    let project_id = canonical.project.id;
+    let projection = build_project_projection(ProjectProjectionInputs {
+        requirements: volicord_projections::ProjectionReadRequirements::default(),
+        metadata: &[],
+        detail: volicord_projections::ProjectionDetail::default(),
+        selection: volicord_projections::WorkSelector::LatestWork,
+        analysis_issues: &[],
+        canonical: &canonical,
+        analyses: &[&analysis],
+        applicability: volicord_inquiry::ApplicabilityQuery {
+            project_id,
+            paths: goal_paths.iter().map(|path| (*path).into()).collect(),
+            components: Vec::new(),
+            work_contexts: vec!["viewer-current-work".into()],
+            current_assumptions: Vec::new(),
+            met_revisit_triggers: Vec::new(),
+        },
+        candidates: CandidateProjectionInput::Available(&candidates),
+        candidate_content_access: CandidateContentAccess::PolicyWithheld,
+        observed_at: canonical.project.updated_at,
+        bound: ProjectionBound {
+            max_items_per_section: limit,
+        },
+    })
+    .expect("valid default selection");
+    Ok((projection, analysis))
+}
+
+fn projection_scenario_basis<F>(
+    files: &[(&str, &str)],
+    goal_paths: &[&str],
+    checkpoint_paths: &[Vec<&str>],
+    enrich_analysis: F,
+) -> Result<
+    (
+        volicord_context::CanonicalReadBasis,
+        AnalysisSnapshot,
+        volicord_inquiry::CandidateReadBasis,
+    ),
+    Box<dyn std::error::Error>,
+>
+where
+    F: FnOnce(&mut AnalysisSnapshot) -> Result<(), Box<dyn std::error::Error>>,
+{
     let temporary = tempdir()?;
     let repository = temporary.path().join("repository");
     fs::create_dir_all(&repository)?;
@@ -208,31 +254,7 @@ where
     enrich_analysis(&mut analysis)?;
     let candidates = CandidateStore::open(temporary.path().join("candidates.sqlite3"))?
         .read_basis(project.id)?;
-    let projection = build_project_projection(ProjectProjectionInputs {
-        requirements: volicord_projections::ProjectionReadRequirements::default(),
-        metadata: &[],
-        detail: volicord_projections::ProjectionDetail::default(),
-        selection: volicord_projections::WorkSelector::LatestWork,
-        analysis_issues: &[],
-        canonical: &canonical,
-        analyses: &[&analysis],
-        applicability: volicord_inquiry::ApplicabilityQuery {
-            project_id: project.id,
-            paths: goal_paths.iter().map(|path| (*path).into()).collect(),
-            components: Vec::new(),
-            work_contexts: vec!["viewer-current-work".into()],
-            current_assumptions: Vec::new(),
-            met_revisit_triggers: Vec::new(),
-        },
-        candidates: CandidateProjectionInput::Available(&candidates),
-        candidate_content_access: CandidateContentAccess::PolicyWithheld,
-        observed_at: canonical.project.updated_at,
-        bound: ProjectionBound {
-            max_items_per_section: limit,
-        },
-    })
-    .expect("valid default selection");
-    Ok((projection, analysis))
+    Ok((canonical, analysis, candidates))
 }
 
 fn add_fixture_flow_relation(
@@ -946,5 +968,159 @@ fn relevant_unavailable_capability_retains_unknown_freshness_separately(
     assert_eq!(gap.state, CapabilityState::Unavailable);
     assert_eq!(gap.freshness.state, FreshnessState::Unknown);
     assert_eq!(gap.reason, "current repository comparison unavailable");
+    Ok(())
+}
+
+#[test]
+fn exact_decision_limits_survive_unrelated_checkpoint_and_supersession(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::{
+        AgentRecommendation, Decision, DecisionChoice, DecisionId, DecisionLifecycle,
+        DecisionWorkScope, QuestionId,
+    };
+    use volicord_projections::{ProjectionDetail, ProjectionReadRequirements, WorkSelector};
+    use volicord_repository_intelligence::{Capability, CapabilityState};
+
+    let (mut canonical, analysis, candidates) = projection_scenario_basis(
+        &[
+            ("selected/limit.rs", "pub fn selected() {}"),
+            ("unrelated/broken.cpp", "void unrelated() {}"),
+        ],
+        &["unrelated/broken.cpp"],
+        &[vec!["unrelated/broken.cpp"]],
+        |analysis| {
+            let report = analysis
+                .capabilities
+                .iter_mut()
+                .find(|r| {
+                    r.language == Some(Language::Rust) && r.capability == Capability::Structural
+                })
+                .ok_or("Rust structural capability")?;
+            report.state = CapabilityState::Failed;
+            report.reason = Some("Decision's applicable Rust analysis failed".into());
+            Ok(())
+        },
+    )?;
+    let mut later = canonical.latest_checkpoint.take().ok_or("Checkpoint")?;
+    canonical.checkpoint_history.clear();
+    canonical.context_items.clear();
+    let source_id = canonical
+        .sources
+        .iter()
+        .find(|s| matches!(s.source.payload, SourcePayload::CurrentHostUserTurn { .. }))
+        .ok_or("user Source")?
+        .source
+        .id;
+    let decision_id = DecisionId::from_bytes([100; 16]);
+    let mut lifecycle = DecisionLifecycle {
+        decision: Decision {
+            id: decision_id,
+            project_id: canonical.project.id,
+            revision: 1,
+            question_id: QuestionId::from_bytes([101; 16]),
+            question_revision: 1,
+            user_turn_source_id: source_id,
+            choice: DecisionChoice::Alternative {
+                alternative_key: "local".into(),
+            },
+            user_rationale: Some("Keep the selected boundary local".into()),
+            displayed_alternatives: Vec::new(),
+            displayed_recommendation: AgentRecommendation {
+                alternative_key: None,
+                rationale: "No recommendation".into(),
+                source_basis: Vec::new(),
+            },
+            work_scope: DecisionWorkScope::ProjectWide,
+            applicability: ApplicabilityScope::default(),
+            assumptions: Vec::new(),
+            revisit_triggers: Vec::new(),
+            recorded_at: canonical.project.updated_at,
+        },
+        superseded_by: None,
+        contradictions: Vec::new(),
+        review_due: None,
+    };
+    // Exercise both declared paths and components resolved against actual entities.
+    for component_scope in [false, true] {
+        lifecycle.decision.applicability = if component_scope {
+            ApplicabilityScope {
+                components: vec!["selected/limit.rs".into()],
+                ..Default::default()
+            }
+        } else {
+            ApplicabilityScope {
+                paths: vec!["selected/limit.rs".into()],
+                ..Default::default()
+            }
+        };
+        for superseded in [false, true] {
+            canonical.active_decisions.clear();
+            canonical.superseded_decisions.clear();
+            lifecycle.superseded_by = superseded.then_some(DecisionId::from_bytes([102; 16]));
+            if superseded {
+                canonical.superseded_decisions.push(lifecycle.clone());
+            } else {
+                canonical.active_decisions.push(lifecycle.clone());
+            }
+            let project = |basis: &volicord_context::CanonicalReadBasis, exact: bool| {
+                build_project_projection(ProjectProjectionInputs {
+                    requirements: ProjectionReadRequirements::default(),
+                    metadata: &[],
+                    detail: ProjectionDetail {
+                        decision: exact.then_some(decision_id),
+                        ..Default::default()
+                    },
+                    selection: WorkSelector::LatestWork,
+                    analysis_issues: &[],
+                    canonical: basis,
+                    analyses: &[&analysis],
+                    applicability: volicord_inquiry::ApplicabilityQuery {
+                        project_id: basis.project.id,
+                        paths: Vec::new(),
+                        components: Vec::new(),
+                        work_contexts: Vec::new(),
+                        current_assumptions: Vec::new(),
+                        met_revisit_triggers: Vec::new(),
+                    },
+                    candidates: CandidateProjectionInput::Available(&candidates),
+                    candidate_content_access: CandidateContentAccess::PolicyWithheld,
+                    observed_at: basis.project.updated_at,
+                    bound: ProjectionBound::default(),
+                })
+            };
+            canonical.latest_checkpoint = None;
+            canonical.checkpoint_history.clear();
+            let before = project(&canonical, true)?;
+            later.work_item_id = None;
+            assert!(!later.applied_decisions.contains(&decision_id));
+            canonical.latest_checkpoint = Some(later.clone());
+            canonical.checkpoint_history.push(later.clone());
+            let after = project(&canonical, true)?;
+            assert_eq!(
+                after
+                    .selected_decision
+                    .as_ref()
+                    .map(|d| d.decision.decision_id),
+                Some(decision_id)
+            );
+            assert_eq!(before.answer_capability_gaps, after.answer_capability_gaps);
+            assert!(after
+                .answer_capability_gaps
+                .iter()
+                .any(|g| g.reason == "Decision's applicable Rust analysis failed"));
+            assert!(after
+                .answer_capability_gaps
+                .iter()
+                .all(|g| g.language != Some(Language::Cpp)));
+            // Reading the Decision must not widen the general current-Work topology.
+            let current = project(&canonical, false)?;
+            assert_eq!(after.current_work_topology, current.current_work_topology);
+            assert!(current
+                .current_work_topology
+                .entities
+                .iter()
+                .all(|e| e.locator != "selected/limit.rs"));
+        }
+    }
     Ok(())
 }

@@ -2418,10 +2418,13 @@ fn contextual_capability_gaps(
                 .map(|e| e.area.path.clone()),
         );
     } else if let Some(id) = inputs.detail.decision {
-        for d in canonical
+        // Exact Decision reading uses its recorded applicability, independently
+        // of the latest Work/Checkpoint topology seeds, including superseded history.
+        for d in inputs
+            .canonical
             .active_decisions
             .iter()
-            .chain(&canonical.superseded_decisions)
+            .chain(&inputs.canonical.superseded_decisions)
             .filter(|d| d.decision.id == id)
         {
             paths.extend(d.decision.applicability.paths.clone());
