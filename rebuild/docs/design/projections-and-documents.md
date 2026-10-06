@@ -212,6 +212,30 @@ Work, verification, review and acceptance are independently sourced dimensions.
 Each history observation retains its Checkpoint revision and Source basis; latest
 state does not erase failed/rejected/unverified historical states. Earlier passed
 verification is historical evidence and never silently covers later changes.
+Ordinary shared Work answers distinguish independently selected current facts
+(`VerificationState`, `UserReview`, `UserAcceptance`) from one optional
+`HistoricalAdversity` fact. The latter summarizes counts of prior failed-verification
+and rejected-acceptance observations, with exact per-dimension Checkpoint/revision
+evidence keys. Exclude the selected observation for each dimension independently;
+a later empty verification array does not turn the still-selected failure into
+history. Counts refer to observations, not unique defects, test executions or
+proof of recovery. No adverse prior observation means no historical summary.
+Prior history does not assert a current blocker or independently prove resolution.
+Current failures, rejections, unverified states, Source gaps and verification
+coverage limitations remain ordinary, including compact Work cards.
+
+Exact state arrays, event chronology, Unix-microsecond observation times,
+Checkpoint identities/revisions and Source/outcome provenance remain unchanged in
+`WorkReading.states` and CLI/MCP `selected_work.evidence.states`. Viewer live and
+offline Work details expose every full observation in a closed native
+`details.work-state-history[data-reading-role="audit-history"]` disclosure.
+English/Korean labels carry equivalent ordinary meaning; audit preserves original
+values. Shared ordinary answer text, including document and CLI consumers, contains
+the concise history summary rather than repeated `AdverseObservation` event logs.
+Classification uses exact structured state and independently selected observation
+identity, never display-language prefixes. No new primary timestamp or time-format
+contract is needed. Canonical selection, state transitions and evidence retention
+are unchanged.
 Availability, freshness, supersession, review-due and exact omissions remain
 visible independently of prose shortening. All reads are mutation-free and may
 use canonical-only remainder when analysis is unavailable. No GET analysis or

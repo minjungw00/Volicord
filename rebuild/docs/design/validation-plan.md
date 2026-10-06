@@ -2551,6 +2551,20 @@ and explicit CLI-only analysis refresh guidance.
 
 ### Live review evidence separation
 
+Focused Work-history support is `volicord-viewer/work_history` and
+`volicord-host/answer_consumers::historical_adversity_is_primary_summary_with_lossless_machine_audit`.
+Authored retained, recovered, current-failed/rejected, current-only and later-empty
+verification cases cover en/ko, actual HTTP GET, offline snapshots, shared answers,
+ordinary CLI and CLI/MCP exact audit. Negative controls hide a current failure,
+promote old failure to current, duplicate current state, leak raw micros and remove
+full history or one event. Canonical field equality and unchanged database bytes
+check read-only evidence retention. `VOLICORD_WORK_HISTORY_CAPTURE` optionally retains
+actual HTML in an ignored local directory for before/after DOM inspection.
+These controls supply deterministic presentation support only. Changed compact
+Overview/Work cards, Work facts/history disclosure and shared CLI/document summaries
+require current-candidate observation; historical b57 Human/Agent evidence remains
+diagnostic for its own candidate. No Human-review policy or campaign is changed here.
+
 Qualitative-review schema 15 / policy revision 15 separates current displayed multi-Work
 and Decision comprehension from retained snapshot and measured-conversation fidelity.
 The rubric, qualification policy and copied-lineage reconstruction consume one current

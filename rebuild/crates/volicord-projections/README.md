@@ -74,6 +74,14 @@ Operations owns explicit prepare/record/delete and managed privacy storage. Read
 have no generation or publication authority. See the Viewer README for generation
 entry points, evidence budgets, lifecycle and fresh active-host proof instructions.
 
+Ordinary Work facts retain independently selected verification, review and acceptance.
+One optional `HistoricalAdversity` fact summarizes prior failure/rejection observations
+and their exact per-dimension evidence keys, excluding each selected current observation.
+It replaces repeated `AdverseObservation` timestamped logs for every shared consumer.
+Full `WorkReading.states` remains unchanged and inspectable; counts do not assert
+current blockers, distinct defects or recovery. Empty later verification does not
+hide a still-selected failure. Coverage and Source insufficiency remain ordinary.
+
 Contextual capability selection reuses one borrowed inventory subset for the
 selected answer scope across language/capability reports. Repeated path seeds
 are compared once; each Work observation, Source basis, coverage state and

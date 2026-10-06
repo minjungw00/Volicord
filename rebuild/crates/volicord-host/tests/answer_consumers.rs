@@ -607,3 +607,141 @@ fn metadata_heavy_explanations_remain_bounded_without_replacing_recorded_action(
     assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
     Ok(())
 }
+
+#[test]
+fn historical_adversity_is_primary_summary_with_lossless_machine_audit(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input: Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    input["prior_checkpoint_count"] = json!(0);
+    input["later_checkpoint_count"] = json!(0);
+    input["unassociated_checkpoint"] = json!(false);
+    input["works"][1]["checkpoints"] = json!([]);
+    input["works"][0]["checkpoints"][0]["state_change"] = json!("Reported relay change");
+    let f = reading_fixture::fixture_scenario(input)?;
+    let before = f.operations.canonical_basis(f.project)?;
+    for locale in ["en", "ko"] {
+        let base = vec![
+            "--runtime".into(),
+            f.operations.layout().root().to_string_lossy().into_owned(),
+            "--project".into(),
+            f.project.to_string(),
+            "--locale".into(),
+            locale.into(),
+        ];
+        let mut args = base.clone();
+        args.extend(["--json".into(), "recall".into()]);
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        assert_eq!(
+            volicord_operations::run_cli(args, &mut out, &mut err),
+            volicord_operations::CliExit::SUCCESS
+        );
+        assert!(err.is_empty());
+        let cli: Value = serde_json::from_slice(&out)?;
+        let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+        for tool in ["recall", "repository_understanding"] {
+            let response = host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+                "params":{"name":tool,"arguments":{"project_id":f.project.to_string(),"fixed_locale":locale}}})).ok_or("MCP response")?;
+            assert_eq!(response["result"]["isError"], false);
+            let selected = &response["result"]["structuredContent"]["selected_work"];
+            assert_eq!(selected["work_item_id"], f.goals["older"].to_string());
+            assert_eq!(selected["answers"], cli["selected_work"]["answers"]);
+            let facts = selected["answers"]["facts"].as_array().ok_or("facts")?;
+            assert_eq!(
+                facts
+                    .iter()
+                    .filter(|a| a["question"] == "HistoricalAdversity")
+                    .count(),
+                1
+            );
+            assert!(!facts.iter().any(|a| a["question"] == "AdverseObservation"));
+            let states = selected["evidence"]["states"]
+                .as_array()
+                .ok_or("complete audit")?;
+            assert_eq!(states.len(), 3);
+            assert_eq!(
+                *states,
+                *cli["selected_work"]["evidence"]["states"]
+                    .as_array()
+                    .ok_or("CLI audit")?
+            );
+            // Preserve every event, exact timestamp, status array, outcome, revision and provenance.
+            for (state, cp) in states.iter().zip(&before.checkpoint_history) {
+                assert_eq!(state["checkpoint_id"], cp.id.to_string());
+                assert_eq!(state["checkpoint_revision"], cp.revision);
+                assert_eq!(
+                    state["observed_at_unix_micros"],
+                    cp.recorded_at.as_unix_micros()
+                );
+                assert_eq!(
+                    state["work_source_basis"],
+                    json!(cp
+                        .source_basis
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>())
+                );
+                assert_eq!(
+                    state["verification"]
+                        .as_array()
+                        .ok_or("verification array")?
+                        .len(),
+                    cp.verification.len()
+                );
+                for (v, fact) in state["verification"]
+                    .as_array()
+                    .ok_or("verification")?
+                    .iter()
+                    .zip(&cp.verification)
+                {
+                    assert_eq!(
+                        v["source_id"],
+                        json!(fact.source_id.map(|id| id.to_string()))
+                    );
+                    assert_eq!(v["outcome"], json!(fact.outcome));
+                }
+                assert_eq!(
+                    state["user_review"]["source_id"],
+                    json!(cp.user_review.source_id.map(|id| id.to_string()))
+                );
+                assert_eq!(
+                    state["user_acceptance"]["source_id"],
+                    json!(cp.user_acceptance.source_id.map(|id| id.to_string()))
+                );
+            }
+            for (index, verification, review, acceptance) in [
+                (0, "passed", "pending", "rejected"),
+                (1, "failed", "reviewed", "pending"),
+                (2, "not_run", "not_requested", "rejected"),
+            ] {
+                assert_eq!(states[index]["verification"][0]["state"], verification);
+                assert_eq!(states[index]["user_review"]["state"], review);
+                assert_eq!(states[index]["user_acceptance"]["state"], acceptance);
+            }
+        }
+        for command in ["status", "recall"] {
+            let mut args = base.clone();
+            args.push(command.into());
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            assert_eq!(
+                volicord_operations::run_cli(args, &mut out, &mut err),
+                volicord_operations::CliExit::SUCCESS
+            );
+            let text = String::from_utf8(out)?;
+            assert!(text.contains(if locale == "en" {
+                "User acceptance: rejected"
+            } else {
+                "사용자 수락: 거부됨"
+            }));
+            assert!(text.contains(if locale == "en" {
+                "Prior adverse history"
+            } else {
+                "과거 문제 이력"
+            }));
+            for cp in &before.checkpoint_history {
+                assert!(!text.contains(&cp.recorded_at.as_unix_micros().to_string()));
+            }
+        }
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}

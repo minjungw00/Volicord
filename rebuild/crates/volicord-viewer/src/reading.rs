@@ -442,7 +442,13 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
     for fact in answers.facts.iter().filter(|a| {
         matches!(
             a.question.as_str(),
-            "VerificationState" | "VerificationCoverage" | "SourceEvidenceGap" | "ReportedResult"
+            "VerificationState"
+                | "UserReview"
+                | "UserAcceptance"
+                | "HistoricalAdversity"
+                | "VerificationCoverage"
+                | "SourceEvidenceGap"
+                | "ReportedResult"
         )
     }) {
         html.push_str(&format!(
@@ -629,7 +635,9 @@ fn work_detail(
         contextual_limits(html, r, p, snapshot);
     }
 
-    html.push_str("<details><summary>");
+    html.push_str(
+        "<details class=\"work-state-history\" data-reading-role=\"audit-history\"><summary>",
+    );
     html.push_str(text(
         r.locale,
         "Verification and original state observations",

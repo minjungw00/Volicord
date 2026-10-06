@@ -334,6 +334,18 @@ ordinary output preserves grouping gaps and omission counts. Checksum subject
 matter is unchanged. Administration/mutation command receipts retain their existing
 identity output.
 
+Work detail and compact Overview/Work cards show current verification, user review
+and acceptance plus one concise prior-adversity summary when applicable. A current
+failure/rejection remains visible; prior failures do not masquerade as current blockers.
+The shared `HistoricalAdversity` answer excludes the independently selected current
+observation per dimension. Repeated state arrays, exact times, revisions and Source
+provenance remain in the closed native `details.work-state-history` disclosure with
+`data-reading-role="audit-history"`, identically for live and offline Work detail.
+Its English/Korean summary is “Verification and original state observations” /
+“검증 및 원래 상태 관찰”. Exact audit values are retained in their original form.
+CLI/MCP JSON retains complete `selected_work.evidence.states`; ordinary CLI/document
+Work summaries consume the same concise facts. No canonical state machine changes.
+
 The independent answer verifier extends the existing browser driver. Required claims
 are read from rendered text nodes outside all evidence disclosures and hidden/CSS
 suppressed content; exact provenance is checked separately after an explicit disclosure.

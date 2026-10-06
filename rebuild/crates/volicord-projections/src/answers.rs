@@ -454,32 +454,67 @@ pub fn work_answers(
             Vec::new(),
         ));
     }
-    for s in &work.reading.states {
-        if s.verification
-            .iter()
-            .any(|v| v.state == volicord_context::VerificationState::Failed)
-            || s.user_acceptance.state == volicord_context::UserAcceptanceState::Rejected
-        {
-            result.facts.push(fact(
-                "AdverseObservation",
-                format!(
-                    "{}: {} / {} ({})",
-                    fixed(
-                        locale,
-                        "Recorded failure / acceptance history",
-                        "기록된 실패 / 수락 이력"
-                    ),
-                    s.verification
-                        .iter()
-                        .map(|v| verification_state_label(v.state, locale))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    user_acceptance_label(s.user_acceptance.state, locale),
-                    s.observed_at.as_unix_micros()
-                ),
-                key(s, "verification,user_acceptance"),
-            ));
-        }
+    // Classify by exact independently selected observation, never display prose
+    // or the last history position. A later empty verification does not make the
+    // still-selected failure historical. Full observations remain in reading.states.
+    let is_selected = |s: &WorkStateObservation, selected: &Option<WorkStateObservation>| {
+        selected.as_ref().is_some_and(|current| {
+            (s.checkpoint_id, s.checkpoint_revision)
+                == (current.checkpoint_id, current.checkpoint_revision)
+        })
+    };
+    let prior_failures = work
+        .reading
+        .states
+        .iter()
+        .filter(|s| {
+            !is_selected(s, &answers.verification)
+                && s.verification
+                    .iter()
+                    .any(|v| v.state == volicord_context::VerificationState::Failed)
+        })
+        .collect::<Vec<_>>();
+    let prior_rejections = work
+        .reading
+        .states
+        .iter()
+        .filter(|s| {
+            !is_selected(s, &answers.acceptance)
+                && s.user_acceptance.state == volicord_context::UserAcceptanceState::Rejected
+        })
+        .collect::<Vec<_>>();
+    let mut history = Vec::new();
+    if !prior_failures.is_empty() {
+        history.push(match locale {
+            FixedLocale::English => format!(
+                "verification failure observations: {}",
+                prior_failures.len()
+            ),
+            FixedLocale::Korean => format!("검증 실패 관찰 {}건", prior_failures.len()),
+        });
+    }
+    if !prior_rejections.is_empty() {
+        history.push(match locale {
+            FixedLocale::English => format!(
+                "acceptance rejection observations: {}",
+                prior_rejections.len()
+            ),
+            FixedLocale::Korean => format!("수락 거부 관찰 {}건", prior_rejections.len()),
+        });
+    }
+    if !history.is_empty() {
+        result.facts.push(fact(
+            "HistoricalAdversity",
+            format!("{}: {}. {}",
+                fixed(locale, "Prior adverse history", "과거 문제 이력"),
+                history.join("; "),
+                fixed(locale,
+                    "Current states are shown separately; inspect audit details for exact observations.",
+                    "현재 상태와 구분되며 정확한 관찰은 감사 상세에서 확인하세요.")),
+            prior_failures.into_iter().flat_map(|s| key(s, "verification"))
+                .chain(prior_rejections.into_iter().flat_map(|s| key(s, "user_acceptance")))
+                .collect(),
+        ));
     }
     result
 }
