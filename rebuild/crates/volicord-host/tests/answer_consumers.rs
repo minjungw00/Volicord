@@ -49,8 +49,31 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
         })
         .collect(),
     };
-    f.operations
+    let retained = f
+        .operations
         .record_explanation(f.project, subject, "ko", response)?;
+    assert_eq!(retained.evidence.len(), plan.evidence.len());
+    let provenance = ExplanationProvenance::from(&retained);
+    let keys: std::collections::BTreeSet<_> =
+        provenance.evidence.iter().map(|e| e.key.as_str()).collect();
+    assert_eq!(
+        keys,
+        ["goal", "result", "verification", "next_step"]
+            .into_iter()
+            .collect()
+    );
+    assert_eq!(
+        provenance.uncited_evidence_count,
+        plan.evidence.len() - keys.len()
+    );
+    for reference in &provenance.evidence {
+        let original = retained
+            .evidence
+            .iter()
+            .find(|e| e.key == reference.key)
+            .ok_or("retained reference")?;
+        assert_eq!(reference, original);
+    }
     let before = f.operations.canonical_basis(f.project)?;
     let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
     for tool in ["recall", "repository_understanding"] {

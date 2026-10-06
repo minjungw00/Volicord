@@ -23,6 +23,36 @@ fn operation(value: u8) -> OperationId {
     OperationId::from_bytes([value; 16])
 }
 
+fn preserve_limitation_control(
+    name: &str,
+    projection: &ProjectProjection,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(root) = std::env::var_os("VOLICORD_LIMITATION_CONTROL_DIR") {
+        let root = std::path::PathBuf::from(root);
+        if !root.is_absolute() {
+            return Err("limitation control directory must be absolute and ignored".into());
+        }
+        fs::create_dir_all(&root)?;
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(root.join(format!("{name}.json")))?;
+        serde_json::to_writer_pretty(
+            file,
+            &serde_json::json!({
+                "before_basis":"same authored fixture through baseline whole-repository limitation aggregation; not a baseline executable capture",
+                "before_issues":format!("{:?}",projection.issues),
+                "before_known_limits":projection.resume.known_limits,
+                "after_answer_issues":format!("{:?}",projection.answer_issues),
+                "after_answer_gaps":format!("{:?}",projection.answer_capability_gaps),
+                "retained_repository_gaps":format!("{:?}",projection.repository_map.gaps),
+                "qualification":"independent focused relevance control; no human-quality qualification"
+            }),
+        )?;
+    }
+    Ok(())
+}
+
 fn build_projection(
     files: &[(&str, &str)],
     changed_path: &str,
@@ -667,6 +697,7 @@ fn work_limitations_require_actual_affected_inventory_scope(
         .answer_capability_gaps
         .iter()
         .all(|g| g.language != Some(Language::Cpp)));
+    preserve_limitation_control("relevant-rust-unrelated-cpp", &projection)?;
     let failed = projection
         .answer_capability_gaps
         .iter()
@@ -728,6 +759,7 @@ fn same_language_failure_outside_work_does_not_limit_selected_answer(
         .answer_capability_gaps
         .iter()
         .any(|g| g.reason == "unrelated file failed"));
+    preserve_limitation_control("unrelated-same-language-failure", &projection)?;
     Ok(())
 }
 
@@ -879,5 +911,40 @@ fn reference_and_containment_evidence_never_claims_execution_flow(
         .iter()
         .any(|e| e.kind == UnderstandingExplanationKind::Flow
             && e.relation_basis.iter().any(|id| id == "fixture-reference")));
+    Ok(())
+}
+
+#[test]
+fn relevant_unavailable_capability_retains_unknown_freshness_separately(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_repository_intelligence::{Capability, CapabilityState, FreshnessState};
+    let (projection, _) = build_projection_scenario(
+        &[("src/lib.rs", "pub fn work() {}")],
+        &["src/lib.rs"],
+        &[vec!["src/lib.rs"]],
+        64,
+        |a| {
+            a.freshness.state = FreshnessState::Unknown;
+            let r = a
+                .capabilities
+                .iter_mut()
+                .find(|r| {
+                    r.language == Some(Language::Rust) && r.capability == Capability::Structural
+                })
+                .ok_or("Rust structural")?;
+            r.state = CapabilityState::Unavailable;
+            r.freshness.state = FreshnessState::Unknown;
+            r.reason = Some("current repository comparison unavailable".into());
+            Ok(())
+        },
+    )?;
+    let gap = projection
+        .answer_capability_gaps
+        .iter()
+        .find(|g| g.capability == Capability::Structural)
+        .ok_or("related unknown freshness hidden")?;
+    assert_eq!(gap.state, CapabilityState::Unavailable);
+    assert_eq!(gap.freshness.state, FreshnessState::Unknown);
+    assert_eq!(gap.reason, "current repository comparison unavailable");
     Ok(())
 }

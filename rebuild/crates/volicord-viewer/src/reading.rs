@@ -137,10 +137,11 @@ pub(super) fn warnings(
         list_item(
             html,
             &format!(
-                "{} / {:?} / {:?}: {}. {} {}",
+                "{} / {:?} / {} / {}: {}. {} {}",
                 gap.area,
                 gap.capability,
-                gap.state,
+                capability_state_label(gap.state, request.locale),
+                freshness_state_label(gap.freshness.state, request.locale),
                 gap.reason,
                 gap.user_visible_consequence
                     .as_deref()

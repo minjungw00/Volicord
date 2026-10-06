@@ -61,7 +61,20 @@ pub fn bounded_read_section(value: Value, budget: usize) -> Value {
                     omitted += 1;
                     continue;
                 }
-                result.insert(key, bounded_read_section(value, available.min(8 * 1024)));
+                // Ordinary answers need enough space for paragraph-to-record
+                // grounding when a Work spans several Checkpoints. Keep the
+                // outer byte budget exact while giving this purpose precedence
+                // over repeated original evidence and repository audit detail.
+                let section_budget = match key.as_str() {
+                    "selected_work" => 24 * 1024,
+                    "answers" => 20 * 1024,
+                    "provenance" => 12 * 1024,
+                    _ => 8 * 1024,
+                };
+                result.insert(
+                    key,
+                    bounded_read_section(value, available.min(section_budget)),
+                );
             }
             if omitted > 0 {
                 result.insert(
@@ -93,6 +106,9 @@ fn field_priority(key: &str) -> u8 {
             | "decisions"
             | "open_questions"
             | "next_step"
+            | "subject"
+            | "fingerprint"
+            | "generator_identity_status"
     ) {
         return 0;
     }
@@ -118,6 +134,9 @@ fn field_priority(key: &str) -> u8 {
                 | "freshness"
                 | "language"
                 | "capability"
+                | "key"
+                | "field"
+                | "sources"
         )
     {
         0

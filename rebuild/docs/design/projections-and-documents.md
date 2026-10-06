@@ -1276,6 +1276,8 @@ alone proves no relevance. A failed scope outside the selected paths does not li
 that answer even when the language is the same. Repository-scoped reading considers
 actual observed files rather than capabilities for absent languages. Scoped failures
 retain state, affected areas, reason, usable remainder and user-visible consequence.
+Each contextual gap preserves `freshness` independently of capability `state`; an
+unavailable capability with unknown comparison evidence cannot imply currentness.
 `answer_issues` separates selected Source and requested graph failures from exhaustive
 `issues`/`repository_map.gaps`. Ordinary reads with code `NotRequested` have no missing
 code-body warning; this is materialization intent, not an analyzer failure. Canonical
@@ -1327,3 +1329,13 @@ Agent-assisted availability belongs to analysis status/audit rather than context
 analyzer limits: retained Work/Decision explanations use the canonical active-host
 plan and do not consume a repository agent-assisted adapter. Underlying capability
 reports remain inspectable and retain their actual state.
+
+Ordinary `ExplanationProvenance.evidence` carries the exact identity, revision,
+field and Sources of paragraph-cited preparation evidence. `uncited_evidence_count`
+accounts for offered preparation references not used by that realization; the
+retained explanation still preserves every offered reference and its fingerprint.
+Original prose remains canonical evidence rather than duplicated provenance content.
+The bounded MCP read prioritizes subject, fingerprint, self-reported generator status
+and record grounding. Selected Work answers receive a larger section allowance within
+the unchanged total response byte budget; excessive grounding still uses exact counted
+transport omissions. These changes do not attest generated prose entailment.

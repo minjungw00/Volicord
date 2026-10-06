@@ -245,6 +245,7 @@ pub struct CapabilityGap {
     pub capability: Capability,
     pub language: Option<Language>,
     pub state: CapabilityState,
+    pub freshness: FreshnessBasis,
     pub area: String,
     pub reason: String,
     pub affected_areas: Vec<String>,
@@ -2570,6 +2571,7 @@ fn capability_gap(
         capability: report.capability,
         language: report.language.clone(),
         state: report.state,
+        freshness: report.freshness.clone(),
         area: report.area.path.clone(),
         reason: report
             .reason

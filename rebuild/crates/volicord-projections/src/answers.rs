@@ -14,11 +14,27 @@ pub struct ExplanationProvenance {
     pub generator: ExplanationGenerator,
     pub generator_identity_status: String,
     pub evidence: Vec<ExplanationEvidence>,
+    /// Offered preparation evidence that the realization did not cite. The
+    /// retained explanation preserves it; ordinary provenance prioritizes use.
+    pub uncited_evidence_count: usize,
     pub source_status: Vec<serde_json::Value>,
     pub conflicts: Vec<serde_json::Value>,
 }
 impl From<&RetainedExplanation> for ExplanationProvenance {
     fn from(e: &RetainedExplanation) -> Self {
+        let cited: std::collections::BTreeSet<_> = e
+            .realization
+            .paragraphs
+            .iter()
+            .flat_map(|p| p.evidence_keys.iter())
+            .collect();
+        let evidence: Vec<_> = e
+            .evidence
+            .iter()
+            .filter(|item| cited.contains(&item.key))
+            .cloned()
+            .collect();
+        let uncited_evidence_count = e.evidence.len() - evidence.len();
         Self {
             project_id: e.project_id.clone(),
             subject: e.subject,
@@ -28,7 +44,8 @@ impl From<&RetainedExplanation> for ExplanationProvenance {
             generated_at_unix_micros: e.generated_at_unix_micros,
             generator: e.realization.generator.clone(),
             generator_identity_status: e.generator_identity_status.clone(),
-            evidence: e.evidence.clone(),
+            evidence,
+            uncited_evidence_count,
             source_status: e.source_status.clone(),
             conflicts: e.conflicts.clone(),
         }
