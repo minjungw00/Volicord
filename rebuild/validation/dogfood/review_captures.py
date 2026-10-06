@@ -6,6 +6,7 @@ digests, never a redacted reconstruction of repository or process content.
 from __future__ import annotations
 
 import evidence_purpose
+import re
 import codex_events as codex
 import answer_projection
 import answer_observations
@@ -25,7 +26,7 @@ OPERATION_FIELDS = {"action", "project_id", "work_item_id", "source_id", "candid
     "question_id", "decision_id", "checkpoint_id", "deliberation_candidate_id",
     "user_response_source_id", "state", "status", "resolution", "outcome", "requested_language",
     "record_id", "record_kind", "identity", "revision", "expected_revision", "replayed",
-    "context_item_id", "role", "canonical_mutation", "work_transition"}
+    "context_item_id", "goal_context_id", "role", "canonical_mutation", "work_transition"}
 
 
 def plane():
@@ -333,7 +334,21 @@ def metadata(data):
     value = codex.strict_json(data.decode("utf-8"))
     return {"schema_version": SCHEMA_VERSION, "policy": POLICY,
         "review_bytes": len(data), "review_sha256": ops.digest(data),
-        "limits": value["limits"], **counts(value)}
+        "limits": value["limits"], "work_bindings": work_bindings(value), **counts(value)}
+
+
+def work_bindings(value):
+    """Durable successful Checkpoint calls establish actual start-Work scope."""
+    bindings = set()
+    for record in value["records"]:
+        if (record["semantic_role"] == "volicord_operation"
+                and record["operation"] == "checkpoint_record" and record["outcome"] == "succeeded"
+                and record["body"]["state"] == "retained"):
+            request = record["body"]["value"]["request"]
+            project, work = request.get("project_id"), request.get("goal_context_id")
+            if all(isinstance(v, str) and re.fullmatch(r"[0-9a-f]{32}", v) for v in (project, work)):
+                bindings.add((project, work))
+    return [{"project_id": project, "work_item_id": work} for project, work in sorted(bindings)]
 
 
 def validate(data):

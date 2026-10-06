@@ -66,6 +66,14 @@ requires a criterion-permitted reason: no user Decision in scope for Decision
 comprehension, or single-language scope for polyglot comprehension. Missing data
 is never such a reason; polyglot campaign scope cannot be declared single-language.
 
+Historical Decision inapplicability requires the target sample's exact Project/Work
+identity, a complete actual Work capture with successful Checkpoint scope, and the
+canonical Decision scope inventory recomputed from retained bundle bytes. Availability
+or reviewer assertions alone cannot establish absence. Only explicit scope to another
+Work excludes a retained Decision; Project-wide or uncertain scope leaves applicability
+unresolved. A different Work's Decision does not invalidate legitimate target-Work
+absence. Required-but-missing authority remains an independent review obligation.
+
 Each reviewed assessment retains bounded reasoning, uncertainty, evidence
 references, and cited counterevidence or an explicit account of its absence.
 References resolve an indexed evidence identity and typed locator in the same

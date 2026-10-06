@@ -240,6 +240,7 @@ def verify(root):
     for item in index["qualitative_reviews"]:
         review_root = operations.safe_path(root, item["root"] + "/package.json").parent
         preparation, sha, package = operations.load_package(review_root)
+        operations.verify_campaign_work_scope(preparation["index"], evidence_set)
         import review_explanations
         import review_captures
         for entry in preparation['index']['evidence'].values():

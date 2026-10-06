@@ -494,14 +494,40 @@ def validate_assessment(value, spec, preparation, inspected):
         require(rule is not None and isinstance(reason, dict) and set(reason) == {"code", "reasoning"}
             and reason["code"] == rule and authority.bounded_text(reason["reasoning"]),
             "not_applicable requires a criterion-permitted applicability reason")
-        if spec["name"] == "displayed_decision_comprehension":
+        if rule == "no_user_decision_in_scope":
             surfaces = {index["evidence"][r["evidence_id"]]["surface"] for r in value["evidence"]}
             require({"canonical_bundle", "work_capture"} <= surfaces,
-                "displayed Decision inapplicability requires canonical and actual-work scope evidence")
+                "Decision inapplicability requires canonical and actual-work scope evidence")
             canonical = [index["evidence"][r["evidence_id"]] for r in value["evidence"]
                 if index["evidence"][r["evidence_id"]]["surface"] == "canonical_bundle"]
-            require(all(e.get("decision_ids") == [] for e in canonical),
-                "displayed Decision inapplicability cannot hide a retained Decision")
+            if spec["name"] == "displayed_decision_comprehension":
+                require(all(e.get("decision_ids") == [] for e in canonical),
+                    "displayed Decision inapplicability cannot hide a retained Decision")
+            else:
+                sample = next(s for s in index["samples"] if s["sample_id"] == spec["sample_id"])
+                project, work = sample.get("project_id"), sample.get("work_item_id")
+                require(all(isinstance(v, str) and re.fullmatch(r"[0-9a-f]{32}", v) for v in (project, work)),
+                    "Decision inapplicability requires exact target Work identity")
+                captures = [index["evidence"][r["evidence_id"]] for r in value["evidence"]
+                    if index["evidence"][r["evidence_id"]]["surface"] == "work_capture"]
+                require(all(e.get("projection", {}).get("semantic_complete") is True
+                    and e["projection"].get("work_bindings") == [{"project_id": project, "work_item_id": work}]
+                    for e in captures), "Decision inapplicability requires complete exact actual-work scope")
+                require(all(e.get("projection", {}).get("semantic_complete") is True
+                    for e in index["evidence"].values() if e["surface"] == "work_capture"
+                    and evidence_applies(e, spec["sample_id"])),
+                    "Decision inapplicability requires complete exact actual-work scope")
+                for entry in canonical:
+                    scopes = entry.get("decision_scopes")
+                    require(entry.get("project_id") == project, "canonical evidence belongs to another Project")
+                    require(isinstance(scopes, list) and [d["id"] for d in scopes] == entry.get("decision_ids"),
+                        "Decision inapplicability requires canonical Decision Work scope")
+                    # Only an explicit foreign Work scope proves exclusion. Project-wide,
+                    # uncertain or retained target-Work Decisions remain reviewable.
+                    require(all(d["project_id"] == project and d["work_scope"] == "work_item"
+                        and isinstance(d["work_item_id"], str) and re.fullmatch(r"[0-9a-f]{32}", d["work_item_id"])
+                        and d["work_item_id"] != work
+                        for d in scopes), "Decision inapplicability cannot hide a target Work or uncertain Decision")
         if rule == "single_language_scope":
             sample = next(s for s in [*index["samples"], *index["journey_samples"]]
                 if s["sample_id"] == spec["sample_id"])

@@ -1107,6 +1107,40 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
 
 class FileBoundaryTests(unittest.TestCase):
+    def test_work_scoped_historical_absence_resolves_only_proven_targets_in_copied_lineage(self):
+        import campaign
+        import review_operations as ops
+        import result_lineage
+        from review_operations_self_test import insufficient_draft
+        prefix = self.parent / self._testMethodName; prefix.mkdir()
+        target = prefix / "agent"
+        ops.prepare(self.root, target, reviewer_kind="agent", session_id="historical-no-decision-review", include_raw=True)
+        prep, sha, _ = ops.load_package(target)
+        draft = insufficient_draft(target)
+        resolved = []
+        for work in ("a", "c"):
+            cid = f"journey-volicord-work-{work}/interaction/decision_comprehension_when_applicable"
+            resolved.append(cid)
+            a = next(a for a in draft["assessments"] if a["criterion_id"] == cid)
+            identities = [f"journey-volicord-work-{work}-start", "journey-volicord-bundle"]
+            a.update(assessment="not_applicable", inspected_evidence=identities,
+                applicability_reason={"code": "no_user_decision_in_scope", "reasoning": "Canonical Decision belongs explicitly to Work B; actual target Work scope required none."},
+                evidence=[{"evidence_id": identity, "locator": prep["index"]["evidence"][identity]["locators"][0],
+                    "criterion_id": cid, "relevance": "Actual Work identity and canonical Decision scope were inspected."} for identity in identities])
+        draft["observation_scope"]["inspected_evidence"] = sorted({e for a in draft["assessments"] for e in a["inspected_evidence"]})
+        (target / "draft.json").write_bytes(ops.encoded(draft)); ops.record(target, target / "draft.json")
+        candidate = campaign.load_evidence_set(self.root)["candidate_head"]
+        qualified = prefix / "qualification"
+        result = policy.qualify(self.root, self.evaluation, qualified, candidate=candidate, review_roots=[target])
+        self.assertTrue(set(resolved) <= set(result["qualitative_review"]["resolved_criteria"]))
+        self.assertIn("journey-volicord-work-b/interaction/decision_comprehension_when_applicable",
+            result["qualitative_review"]["unresolved_criteria"])
+        published = result_lineage.publish(self.root, self.evaluation, [target], qualified / "qualification.json", output=prefix / "lineage")
+        copied = prefix / "copied"; shutil.copytree(published["lineage_root"], copied)
+        with patch.object(campaign, "load_evidence_set", side_effect=AssertionError("original Campaign access")):
+            verified = result_lineage.verify(copied)
+        self.assertFalse(verified["external_staging_paths_used"])
+
     @classmethod
     def setUpClass(cls):
         from review_operations_self_test import WorkflowTests

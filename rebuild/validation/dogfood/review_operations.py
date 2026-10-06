@@ -276,6 +276,31 @@ def publish_directory(destination, files):
         lock.rmdir()
 
 
+def canonical_decision_scopes(bundle):
+    """Retain explicit Work scope, without inferring applicability from counts."""
+    return [{key: row.get(key) for key in ("id", "project_id", "work_scope", "work_item_id")}
+        for row in sorted(bundle.rows("decisions"), key=lambda row: row["id"])]
+
+
+def verify_campaign_work_scope(index, manifest):
+    """Recheck retained review subjects against immutable collection facts."""
+    works = {work["work_slot_id"]: work for work in manifest["work_evidence"]}
+    finals = {item["journey_id"]: item for item in manifest["journey_final_evidence"]}
+    for sample in index["samples"]:
+        actual = works[sample["sample_id"]]
+        review.require(sample["work_item_id"] == actual["work_item_id"]
+            and sample["project_id"] == actual["project_id"],
+            "review target Work differs from campaign evidence")
+    for entry in index["evidence"].values():
+        if entry["surface"] == "canonical_bundle":
+            origin = entry["origin"]
+            expected = {"bytes": entry["bytes"], "sha256": entry["sha256"]}
+            review.require(origin == {"kind": "evidence_set_member", "path": origin["path"], **expected}
+                and manifest["artifacts"].get(origin["path"]) == expected
+                and finals[entry["sample_id"]]["artifact_inventory"]["canonical_bundle"]["file"] == origin["path"],
+                "review canonical scope differs from campaign evidence")
+
+
 def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_set=None):
     """Positive allowlist, never a recursive archive of campaign inventory."""
     c = campaign_api()
@@ -334,6 +359,8 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
         if bundle_id is not None:
             index_bundle = c.harness.load_canonical_bundle(safe_path(root, bundle_name))
             evidence[bundle_id]["decision_ids"] = sorted(row["id"] for row in index_bundle.rows("decisions"))
+            evidence[bundle_id]["decision_scopes"] = canonical_decision_scopes(index_bundle)
+            evidence[bundle_id]["project_id"] = index_bundle.project_id
         journey_samples.append({"sample_id": journey_sample_id, "journey_id": journey_sample_id,
             "repository_class": kind, "represented_work_sample_ids": work_sample_ids})
         for lifecycle in manifest['explanation_evidence']['steward_lifecycles']:
@@ -409,6 +436,7 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                 "resume_pair": "resume" in entry["sessions"],
                 "workload_intent": descriptor["workload_intent"],
                 "project_id": state.get("project_id"),
+                "work_item_id": entry["work_item_id"],
                 "authority_obligations": [], "authority_evidence": aliases}
             samples.append(sample)
             surfaces = {e["surface"] for e in evidence.values()
@@ -829,6 +857,10 @@ def _load_package(root):
             canonical = campaign_api().harness.load_canonical_bundle(safe_path(root, entry["path"]))
             review.require(entry.get("decision_ids") == sorted(row["id"] for row in canonical.rows("decisions")),
                 "canonical Decision inventory differs from bound artifact")
+            review.require(entry.get("decision_scopes") == canonical_decision_scopes(canonical),
+                "canonical Decision Work scope differs from bound artifact")
+            review.require(entry.get("project_id") == canonical.project_id,
+                "canonical Project identity differs from bound artifact")
         if entry["surface"] == "resource_observation":
             import resource_observer
             resource_observer.validate(json.loads(content))

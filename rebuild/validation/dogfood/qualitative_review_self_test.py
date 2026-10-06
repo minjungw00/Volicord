@@ -17,6 +17,7 @@ def preparation(kind="agent"):
     sample = {"sample_id": "journey-volicord-work-a", "journey_id": "journey-volicord",
         "repository_class": "volicord", "work": "A", "resume_pair": True,
         "workload_intent": "decision_rich",
+        "project_id": "1" * 32, "work_item_id": "2" * 32,
         "materiality_obligations": ["explicit_user_owned_decision"],
         "authority_obligations": ["all-material-outcomes"],
         "authority_evidence": {"work_capture": "work_capture", "canonical_bundle": "canonical_bundle"}}
@@ -38,11 +39,13 @@ def preparation(kind="agent"):
                 "surface": surface,
                 "locale": locale, "sha256": "a" * 64, "path": name,
                 **({"prepared_claims": policy["criteria"]["live_viewer"]} if surface == "live_viewer_observation" else {}),
-                **({"decision_ids": []} if surface == "canonical_bundle" else {}),
+                **({"decision_ids": [], "decision_scopes": [], "project_id": sample["project_id"]}
+                    if surface == "canonical_bundle" else {}),
                 "locators": [{"kind": "json_pointer", "value": "/fact"}]}
     for entry in index["evidence"].values():
         if entry["surface"] in {"work_capture", "resume_capture"}:
-            entry["projection"] = {"semantic_complete": True, "semantic_omission_count": 0}
+            entry["projection"] = {"semantic_complete": True, "semantic_omission_count": 0,
+                "work_bindings": [{"project_id": sample["project_id"], "work_item_id": sample["work_item_id"]}]}
     index["evidence"].pop("cli_observation")
     for repository_class in ("volicord", "small-python", "polyglot-medium"):
         index["evidence"][repository_class + "-cli"] = {"sample_id": repository_class,
@@ -103,6 +106,46 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_historical_inapplicability_is_exact_work_scoped_and_requires_complete_capture(self):
+        p = preparation()
+        value = completed(p)
+        a = next(a for a in value["assessments"] if a["criterion_id"].endswith("/decision_comprehension_when_applicable"))
+        fill(a, p, "not_applicable")
+        a["applicability_reason"] = {"code": "no_user_decision_in_scope", "reasoning": "Actual target Work required no user-owned Decision."}
+        q.validate_value(p, "d" * 64, value)
+        canonical = p["index"]["evidence"]["canonical_bundle"]
+        canonical.update(decision_ids=["d" * 32], decision_scopes=[{
+            "id": "d" * 32, "project_id": "1" * 32, "work_scope": "work_item", "work_item_id": "3" * 32}])
+        # Another Work's Decision cannot invalidate the target's legitimate absence.
+        q.validate_value(p, "d" * 64, value)
+        for scope, work in (("work_item", "2" * 32), ("project", None), (None, None)):
+            changed = copy.deepcopy(p)
+            changed["index"]["evidence"]["canonical_bundle"]["decision_scopes"][0].update(work_scope=scope, work_item_id=work)
+            with self.assertRaisesRegex(ValueError, "target Work or uncertain Decision"):
+                q.validate_value(changed, "d" * 64, value)
+        for field, replacement in (("semantic_complete", False), ("work_bindings", []),
+                ("work_bindings", [{"project_id": "1" * 32, "work_item_id": "3" * 32}])):
+            changed = copy.deepcopy(p)
+            changed["index"]["evidence"]["work_capture"]["projection"][field] = replacement
+            with self.assertRaisesRegex(ValueError, "complete exact actual-work"):
+                spec = next(s for s in q.criterion_specs(p["index"], p["rubric"]) if s["criterion_id"] == a["criterion_id"])
+                q.validate_assessment(a, spec, changed, set(value["observation_scope"]["inspected_evidence"]))
+
+    def test_historical_decision_inapplicability_rejects_availability_only(self):
+        p = preparation()
+        p["index"]["evidence"]["canonical_bundle"].update(decision_ids=["d" * 32], decision_scopes=[{
+            "id": "d" * 32, "project_id": "1" * 32, "work_scope": "work_item", "work_item_id": "2" * 32}])
+        p["index"]["evidence"]["availability"] = {
+            **p["index"]["evidence"]["work_capture"], "surface": "availability"}
+        value = completed(p)
+        a = next(a for a in value["assessments"] if a["criterion_id"].endswith("/decision_comprehension_when_applicable"))
+        fill(a, p, "not_applicable")
+        a["applicability_reason"] = {"code": "no_user_decision_in_scope", "reasoning": "Reviewer asserts no Decision existed."}
+        a["evidence"] = [r for r in a["evidence"] if r["evidence_id"] == "availability"]
+        a["inspected_evidence"] = ["availability"]
+        with self.assertRaisesRegex(ValueError, "canonical and actual-work"):
+            q.validate_value(p, "d" * 64, value)
+
     def test_displayed_decision_inapplicability_requires_actual_work_and_empty_canonical_inventory(self):
         p = preparation()
         value = completed(p)

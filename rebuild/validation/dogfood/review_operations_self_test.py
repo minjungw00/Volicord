@@ -550,6 +550,41 @@ class ProjectionTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_historical_no_decision_scope_survives_copied_package_with_other_work_decision(self):
+        target = self.parent / self._testMethodName
+        ops.prepare(self.root, target, reviewer_kind="agent", session_id="work-scoped-decision-review", include_raw=True)
+        prep, sha, _ = ops.load_package(target)
+        manifest = c.load_evidence_set(self.root)
+        actual = {w["work_slot_id"]: w for w in manifest["work_evidence"]}
+        bundle = prep["index"]["evidence"]["journey-volicord-bundle"]
+        self.assertTrue(bundle["decision_ids"])
+        self.assertEqual({d["work_item_id"] for d in bundle["decision_scopes"]},
+            {actual["journey-volicord-work-b"]["work_item_id"]})
+        draft = insufficient_draft(target)
+        for work, accepted in (("a", True), ("b", False), ("c", True)):
+            cid = f"journey-volicord-work-{work}/interaction/decision_comprehension_when_applicable"
+            spec = next(s for s in q.criterion_specs(prep["index"], prep["rubric"]) if s["criterion_id"] == cid)
+            a = next(a for a in draft["assessments"] if a["criterion_id"] == cid)
+            identities = [f"journey-volicord-work-{work}-start", "journey-volicord-bundle"]
+            capture = prep["index"]["evidence"][identities[0]]
+            self.assertEqual(capture["projection"]["work_bindings"], [{
+                "project_id": actual[spec["sample_id"]]["project_id"],
+                "work_item_id": actual[spec["sample_id"]]["work_item_id"]}])
+            a.update(assessment="not_applicable", inspected_evidence=identities,
+                applicability_reason={"code": "no_user_decision_in_scope", "reasoning": "Authored actual Work scope and canonical explicit Decision scope were inspected."},
+                evidence=[{"evidence_id": identity, "locator": prep["index"]["evidence"][identity]["locators"][0],
+                    "criterion_id": cid, "relevance": "Actual target Work identity and canonical Decision scope."} for identity in identities])
+            if accepted:
+                q.validate_assessment(a, spec, prep, set(identities))
+            else:
+                with self.assertRaisesRegex(ValueError, "target Work or uncertain Decision"):
+                    q.validate_assessment(a, spec, prep, set(identities))
+        copied = self.parent / (self._testMethodName + "-copy")
+        import shutil
+        shutil.copytree(target, copied)
+        with patch.object(c, "load_evidence_set", side_effect=AssertionError("original Campaign access")):
+            self.assertEqual(ops.load_package(copied)[0]["index"], prep["index"])
+
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()

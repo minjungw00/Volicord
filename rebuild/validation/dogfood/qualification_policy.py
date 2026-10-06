@@ -313,6 +313,7 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
     reviews, references = [], []
     for path in review_roots:
         prep, sha, _ = operations.load_package(path)
+        operations.verify_campaign_work_scope(prep["index"], manifest)
         files = operations.recorded_files(path, prep, sha)
         review.require(files, "qualification consumes only immutable recorded reviews")
         value = json.loads(files["recorded/review.json"])
