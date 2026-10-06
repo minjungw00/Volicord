@@ -19,6 +19,7 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use volicord_context::SourceId;
+use volicord_local_platform::GitWorktreeLayout;
 
 const INVENTORY_ADAPTER_NAME: &str = "volicord-filesystem-inventory";
 const INVENTORY_ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -1273,49 +1274,66 @@ fn analysis_snapshot_identity(
 }
 
 fn observe_git(root: &Path) -> Option<GitObservation> {
-    let marker = root.join(".git");
-    let git_directory = if marker.is_dir() {
-        marker
-    } else {
-        let marker_text = fs::read_to_string(marker).ok()?;
-        let relative = marker_text.trim().strip_prefix("gitdir:")?.trim();
-        let path = Path::new(relative);
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            root.join(path)
-        }
-    };
-    let head_text = fs::read_to_string(git_directory.join("HEAD")).ok()?;
+    let layout = GitWorktreeLayout::resolve(root).ok()??;
+    let head_text = fs::read_to_string(layout.git_dir().join("HEAD")).ok()?;
     let head = head_text.trim();
     if let Some(reference) = head.strip_prefix("ref: ") {
-        let value = fs::read_to_string(git_directory.join(reference))
-            .ok()
-            .map(|value| value.trim().to_owned())
-            .or_else(|| read_packed_reference(&git_directory, reference))?;
+        if !reference.starts_with("refs/")
+            || reference.chars().any(char::is_whitespace)
+            || Path::new(reference)
+                .components()
+                .any(|component| !matches!(component, Component::Normal(_)))
+        {
+            return None;
+        }
+        // Git keeps these ref namespaces per worktree; ordinary branch refs
+        // and their packed representation belong to the shared common directory.
+        let ref_directory = if ["refs/bisect/", "refs/worktree/", "refs/rewritten/"]
+            .iter()
+            .any(|prefix| reference.starts_with(prefix))
+        {
+            layout.git_dir()
+        } else {
+            layout.common_dir()
+        };
+        let value = match fs::read_to_string(ref_directory.join(reference)) {
+            Ok(value) => git_object_id(value.trim()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                read_packed_reference(ref_directory, reference)
+            }
+            // A present but unreadable/incomplete loose ref is unknown, rather
+            // than evidence that an older packed ref is current.
+            Err(_) => None,
+        }?;
         Some(GitObservation {
             head: value,
             reference: Some(reference.to_owned()),
         })
-    } else if !head.is_empty() {
+    } else {
         Some(GitObservation {
-            head: head.to_owned(),
+            head: git_object_id(head)?,
             reference: None,
         })
-    } else {
-        None
     }
 }
 
+fn git_object_id(value: &str) -> Option<String> {
+    matches!(value.len(), 40 | 64)
+        .then_some(value)
+        .filter(|value| value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .map(str::to_owned)
+}
+
 fn read_packed_reference(git_directory: &Path, reference: &str) -> Option<String> {
-    fs::read_to_string(git_directory.join("packed-refs"))
-        .ok()?
+    let packed = fs::read_to_string(git_directory.join("packed-refs")).ok()?;
+    let value = packed
         .lines()
         .filter(|line| !line.starts_with('#') && !line.starts_with('^'))
         .find_map(|line| {
             let (value, name) = line.split_once(' ')?;
-            (name == reference).then(|| value.to_owned())
-        })
+            (name == reference).then_some(value)
+        })?;
+    git_object_id(value)
 }
 
 fn load_directory_ignores(absolute: &Path, relative: &Path, state: &mut ScanState) {

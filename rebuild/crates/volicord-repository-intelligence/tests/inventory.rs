@@ -30,6 +30,201 @@ fn request(root: &Path) -> Result<InventoryRequest<'_>, Box<dyn Error>> {
     )?)
 }
 
+fn git(root: &Path, arguments: &[&str]) -> Result<String, Box<dyn Error>> {
+    let output = std::process::Command::new("git")
+        .current_dir(root)
+        .args([
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(arguments)
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "Git fixture failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(String::from_utf8(output.stdout)?.trim().to_owned())
+}
+
+fn git_request(root: &Path) -> Result<InventoryRequest<'_>, Box<dyn Error>> {
+    use sha2::{Digest, Sha256};
+    let status = git(root, &["status", "--porcelain=v1"])?;
+    assert!(status.is_empty(), "fixture worktree must be clean");
+    Ok(request(root)?.with_repository_worktree(
+        volicord_repository_intelligence::RepositoryWorktreeObservation::Git {
+            status_fingerprint: format!("sha256:{:x}", Sha256::digest(status.as_bytes())),
+            dirty_paths: Vec::new(),
+        },
+    ))
+}
+
+#[test]
+fn linked_worktree_observes_common_loose_and_packed_refs_and_detached_head(
+) -> Result<(), Box<dyn Error>> {
+    let temporary = tempfile::tempdir()?;
+    let primary = temporary.path().join("primary");
+    let linked = temporary.path().join("linked");
+    fs::create_dir(&primary)?;
+    git(&primary, &["init", "-q", "-b", "main"])?;
+    fs::write(primary.join("main.py"), "VALUE = 1\n")?;
+    git(&primary, &["add", "main.py"])?;
+    git(&primary, &["commit", "-qm", "initial"])?;
+    let initial_head = git(&primary, &["rev-parse", "HEAD"])?;
+    let (normal, _) = inventory_repository(git_request(&primary)?)?;
+    let normal_git = normal
+        .observation_basis
+        .git
+        .as_ref()
+        .ok_or("normal Git observation missing")?;
+    assert_eq!(normal_git.head, initial_head);
+    assert_eq!(normal_git.reference.as_deref(), Some("refs/heads/main"));
+
+    git(
+        &primary,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "linked",
+            linked.to_str().ok_or("non-UTF8 fixture path")?,
+        ],
+    )?;
+    assert!(linked.join(".git").is_file());
+    assert!(primary.join(".git/refs/heads/linked").is_file());
+    let (first, analysis) = inventory_repository(git_request(&linked)?)?;
+    let observed = first
+        .observation_basis
+        .git
+        .as_ref()
+        .ok_or("linked Git observation missing")?;
+    assert_eq!(observed.head, initial_head);
+    assert_eq!(observed.reference.as_deref(), Some("refs/heads/linked"));
+    let basis = first
+        .observation_equivalence_basis(&analysis)
+        .ok_or("linked equivalence missing")?;
+    let (repeated, repeated_analysis) = inventory_repository(git_request(&linked)?)?;
+    assert_eq!(
+        Some(basis.clone()),
+        repeated.observation_equivalence_basis(&repeated_analysis)
+    );
+
+    // An empty commit changes Git provenance while included source content is unchanged.
+    git(
+        &linked,
+        &["commit", "--allow-empty", "-qm", "linked change"],
+    )?;
+    let changed_head = git(&linked, &["rev-parse", "HEAD"])?;
+    assert_ne!(initial_head, changed_head);
+    let (changed, changed_analysis) = inventory_repository(git_request(&linked)?)?;
+    let changed_git = changed
+        .observation_basis
+        .git
+        .as_ref()
+        .ok_or("changed linked Git observation missing")?;
+    assert_eq!(changed_git.head, changed_head);
+    assert_eq!(changed_git.reference.as_deref(), Some("refs/heads/linked"));
+    assert_ne!(first.identity, changed.identity);
+    let changed_basis = changed
+        .observation_equivalence_basis(&changed_analysis)
+        .ok_or("changed linked equivalence missing")?;
+    assert_ne!(basis, changed_basis);
+
+    git(&primary, &["pack-refs", "--all", "--prune"])?;
+    assert!(!primary.join(".git/refs/heads/linked").exists());
+    assert!(primary.join(".git/packed-refs").is_file());
+    let (packed, packed_analysis) = inventory_repository(git_request(&linked)?)?;
+    assert_eq!(packed.observation_basis.git, changed.observation_basis.git);
+    assert_eq!(
+        Some(changed_basis),
+        packed.observation_equivalence_basis(&packed_analysis)
+    );
+    let (normal_packed, _) = inventory_repository(git_request(&primary)?)?;
+    assert_eq!(
+        normal.observation_basis.git,
+        normal_packed.observation_basis.git
+    );
+
+    git(&linked, &["checkout", "-q", "--detach"])?;
+    let (detached, detached_analysis) = inventory_repository(git_request(&linked)?)?;
+    let detached_git = detached
+        .observation_basis
+        .git
+        .as_ref()
+        .ok_or("detached Git observation missing")?;
+    assert_eq!(detached_git.head, changed_head);
+    assert_eq!(detached_git.reference, None);
+    assert!(detached
+        .observation_equivalence_basis(&detached_analysis)
+        .is_some());
+
+    // The same per-worktree ref name can hold a different value in each worktree.
+    git(
+        &primary,
+        &["update-ref", "refs/worktree/current", &initial_head],
+    )?;
+    git(
+        &linked,
+        &["update-ref", "refs/worktree/current", &changed_head],
+    )?;
+    git(&linked, &["symbolic-ref", "HEAD", "refs/worktree/current"])?;
+    let (local_ref, _) = inventory_repository(git_request(&linked)?)?;
+    let local_git = local_ref
+        .observation_basis
+        .git
+        .as_ref()
+        .ok_or("per-worktree ref missing")?;
+    assert_eq!(local_git.head, changed_head);
+    assert_eq!(
+        local_git.reference.as_deref(),
+        Some("refs/worktree/current")
+    );
+    Ok(())
+}
+
+#[test]
+fn incomplete_git_state_has_no_observation_or_equivalence() -> Result<(), Box<dyn Error>> {
+    let temporary = tempfile::tempdir()?;
+    let root = temporary.path();
+    git(root, &["init", "-q", "-b", "main"])?;
+    let (unborn, analysis) = inventory_repository(git_request(root)?)?;
+    assert!(unborn.observation_basis.git.is_none());
+    assert!(unborn.observation_equivalence_basis(&analysis).is_none());
+    // Present unreadable or malformed loose state cannot fall back to a stale packed value.
+    fs::create_dir_all(root.join(".git/refs/heads"))?;
+    fs::write(
+        root.join(".git/packed-refs"),
+        format!("{} refs/heads/main\n", "a".repeat(40)),
+    )?;
+    for bytes in [Vec::new(), vec![0xff], b"incomplete".to_vec()] {
+        fs::write(root.join(".git/refs/heads/main"), bytes)?;
+        let (snapshot, analysis) = inventory_repository(request(root)?.with_repository_worktree(
+            volicord_repository_intelligence::RepositoryWorktreeObservation::Git {
+                status_fingerprint: format!("sha256:{}", "0".repeat(64)),
+                dirty_paths: Vec::new(),
+            },
+        ))?;
+        assert!(snapshot.observation_basis.git.is_none());
+        assert!(snapshot.observation_equivalence_basis(&analysis).is_none());
+    }
+    fs::remove_file(root.join(".git/refs/heads/main"))?;
+    fs::write(root.join(".git/HEAD"), "not-an-object-id\n")?;
+    let (snapshot, _) = inventory_repository(request(root)?)?;
+    assert!(snapshot.observation_basis.git.is_none());
+    fs::write(root.join(".git/HEAD"), "ref: refs/heads/main\n")?;
+    fs::write(root.join(".git/commondir"), "missing-common-directory\n")?;
+    let (snapshot, _) = inventory_repository(request(root)?)?;
+    assert!(snapshot.observation_basis.git.is_none());
+    Ok(())
+}
+
 #[test]
 fn nested_ignore_rules_match_git_and_do_not_leak_into_sibling_directories(
 ) -> Result<(), Box<dyn Error>> {

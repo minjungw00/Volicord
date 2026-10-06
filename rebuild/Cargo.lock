@@ -974,6 +974,7 @@ dependencies = [
  "tree-sitter-rust",
  "tree-sitter-typescript",
  "volicord-context",
+ "volicord-local-platform",
 ]
 
 [[package]]
