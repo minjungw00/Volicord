@@ -173,6 +173,7 @@ def rubric(definition):
         "assessment_states": STATES, "machine_relationships": RELATIONSHIPS,
         "not_applicable_rules": {
             "decision_comprehension_when_applicable": "no_user_decision_in_scope",
+            "displayed_decision_comprehension": "no_user_decision_in_scope",
             "polyglot_comprehension_when_applicable": "single_language_scope"},
         "missing_surface_state": "insufficient_evidence",
         "counterevidence": "Cite counterevidence, state none found after inspection, or preserve not_reported/not_observable; missing reports cannot satisfy a positive judgment.",
@@ -493,6 +494,10 @@ def validate_assessment(value, spec, preparation, inspected):
         require(rule is not None and isinstance(reason, dict) and set(reason) == {"code", "reasoning"}
             and reason["code"] == rule and authority.bounded_text(reason["reasoning"]),
             "not_applicable requires a criterion-permitted applicability reason")
+        if spec["name"] == "displayed_decision_comprehension":
+            surfaces = {index["evidence"][r["evidence_id"]]["surface"] for r in value["evidence"]}
+            require({"canonical_bundle", "work_capture"} <= surfaces,
+                "displayed Decision inapplicability requires canonical and actual-work scope evidence")
         if rule == "single_language_scope":
             sample = next(s for s in [*index["samples"], *index["journey_samples"]]
                 if s["sample_id"] == spec["sample_id"])
@@ -502,6 +507,12 @@ def validate_assessment(value, spec, preparation, inspected):
     if state in {"satisfied", "violated"}:
         surfaces = {index["evidence"][r["evidence_id"]]["surface"] for r in value["evidence"]
             if spec["locale"] is None or index["evidence"][r["evidence_id"]].get("locale") == spec["locale"]}
+        if spec["group"] == "live_viewer":
+            applicable = [index["evidence"][r["evidence_id"]] for r in value["evidence"]
+                if index["evidence"][r["evidence_id"]]["surface"] == "live_viewer_observation"
+                and index["evidence"][r["evidence_id"]].get("locale") == spec["locale"]]
+            require(any(spec["name"] in e.get("prepared_claims", []) for e in applicable),
+                "live claim lacks prepared question context")
         needed_surfaces = set(required_surfaces(spec))
         require(needed_surfaces <= surfaces, "criterion lacks its required observation surface; use insufficient_evidence")
         capture_surfaces = needed_surfaces & {"work_capture", "resume_capture"}

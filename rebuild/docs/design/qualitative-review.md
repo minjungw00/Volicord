@@ -5,7 +5,7 @@ This contract owns review artifacts and operations, not Product behavior or fina
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 16 / policy revision 16, machine evaluation
-policy `evidence-evaluation-11`, human observation/receipt schema 5, qualification policy
+policy `evidence-evaluation-11`, human observation/receipt schema 6, qualification policy
 `replacement-qualification-12`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
@@ -924,3 +924,25 @@ Historical measured conversation/Decision fidelity still requires original conve
 and canonical Decision evidence. Live complaints and historical fidelity may disagree
 and qualification retains both. Schema 16 replaces the current rubric; non-current reviews
 remain immutable diagnostic artifacts with their original identities, without a second engine.
+
+## Block-local observation readiness
+
+Human observation schema/receipt 6 binds the changed-surface plan (preparation schema 2)
+and each locale's recomputed block readiness. The capture groups only ready block prompts
+into one direct experience answer per locale. Every context required by an asked block
+must exist first; Work detail needs a selected Work, comparing Works needs two distinct
+Works, and Decision comprehension needs an actually selected Decision in its Decision view.
+Other missing optional contexts similarly leave only their dependent blocks insufficient.
+No context is synthesized, and a block gap never discards another prepared experience.
+The mapper and recorded-review validator admit observed verdicts only for prepared claims;
+copied packages recompute the same scope, including locale and display identity.
+
+An absent selected Decision leaves its block `insufficient_evidence`, with applicability
+unresolved. A separate evidence-backed review may establish `not_applicable` under
+`no_user_decision_in_scope`: inspect canonical and actual-work evidence and explain why
+no Decision was legitimately required/applicable. That finding may be agent-owned; no
+Human needs to experience a nonexistent Decision. Missing records alone are not such proof.
+If Product/task/campaign authority required a Decision, absence remains unresolved or a
+violation under the relevant authority/interaction claim, never no-Decision inapplicability.
+Qualification retains those independent obligations and all hard findings. Live mapping
+cannot manufacture applicability, Decision meaning, original rationale or a Human answer.

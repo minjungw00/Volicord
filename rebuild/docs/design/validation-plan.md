@@ -2583,3 +2583,10 @@ foreign candidate rejection and context readiness before questions. Required Bro
 content and cost evidence stays deterministic supporting proof; current human experience
 remains unobserved until direct observation. Do not launch a replacement eight-session
 campaign or approve Phase 9 as part of this engineering validation.
+
+Block-local Human support recomputes prepared claims from candidate-bound locale/subject
+contexts, retains missing Decision scope as unresolved, and allows unrelated ready blocks
+to proceed. Current observation/receipt schema 6 and changed-surface preparation schema 2
+replace their earlier contracts; historical artifacts remain immutable diagnostic evidence.
+Evidence-backed no-user-Decision inapplicability requires canonical and actual-work scope
+inspection. Required-but-missing Decision authority remains independently unresolved/blocking.

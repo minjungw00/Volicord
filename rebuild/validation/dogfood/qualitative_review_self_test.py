@@ -37,6 +37,7 @@ def preparation(kind="agent"):
             index["evidence"][name] = {"sample_id": sample_id, "sample_ids": sample_ids,
                 "surface": surface,
                 "locale": locale, "sha256": "a" * 64, "path": name,
+                **({"prepared_claims": policy["criteria"]["live_viewer"]} if surface == "live_viewer_observation" else {}),
                 "locators": [{"kind": "json_pointer", "value": "/fact"}]}
     for entry in index["evidence"].values():
         if entry["surface"] in {"work_capture", "resume_capture"}:

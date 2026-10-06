@@ -34,6 +34,25 @@ def context_directory(parent,name,manifest,locale):
     return path
 
 
+def prepared_context_directories(parent, name, manifest, *, decision=True):
+    """Authored contexts for every asked block, never an actual browser capture."""
+    paths = []
+    for locale in ("en", "ko"):
+        for number, view in enumerate([{"view": "overview"},
+                {"view": "work", "work": "a" * 32}, {"view": "work", "work": "b" * 32},
+                {"view": "decisions", **({"decision": "d" * 32} if decision else {})},
+                {"view": "code"}, {"view": "tools", "tool": "status"}]):
+            path = context_directory(parent, name + locale + str(number), manifest, locale)
+            value = json.loads((path / "display-context.json").read_bytes())
+            value["context"].update(view=view, selected_work=view.get("work"),
+                selected_decision=view.get("decision"), render_id=f"{number + (1 if locale == 'en' else 10):032x}")
+            value["url"] = "http://127.0.0.1:3219/?" + "&".join(f"{k}={v}" for k,v in
+                {**view, "locale": locale, "language": locale}.items())
+            (path / "display-context.json").write_text(json.dumps(value))
+            paths.append(path)
+    return paths
+
+
 class ContextTests(unittest.TestCase):
     def setUp(self):
         self.manifest={'candidate_head':'a'*40,'candidate_artifacts':{'volicord-viewer':{'sha256':'a'*64}},

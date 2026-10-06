@@ -30,7 +30,7 @@ def plan(candidate, executables, changed_paths, inventory):
             blocks.append({**item, "actually_changed_paths": changed,
                 "locales": ["en", "ko"], "human_evidence": "unobserved"})
     review.require(blocks, "no affected Viewer experience found")
-    return {"kind": "dogfood_human_observation_preparation", "schema_version": 1,
+    return {"kind": "dogfood_human_observation_preparation", "schema_version": 2,
         "candidate_head": candidate, "executables": executables,
         "diagnostic_candidate": inventory["diagnostic_candidate"],
         "historical_evidence_use": "diagnostic_and_regression_input_only",
@@ -73,19 +73,65 @@ def require_contexts(value, contexts, candidate, viewer_sha256):
     expected["inputs"] = {str(p.relative_to(ROOT)): digest(p)
         for p in (Path(__file__), FIXTURE, ROOT / "rebuild/docs/design/qualitative-review.md")}
     review.require(value == expected, "changed-surface plan was altered or belongs to another contract")
+    return block_readiness(value["observation_blocks"], contexts)
+
+
+def block_readiness(blocks, contexts):
+    """Absence is a local evidence gap, never proof of inapplicability."""
+    result = {}
     for locale in ("en", "ko"):
         displays = [c["context"] for c in contexts[locale]]
-        for block in value["observation_blocks"]:
-            for surface in block["required_views"]:
-                review.require(any(all(c["view"].get(k) == v for k, v in surface.items())
-                    for c in displays), f"prepare {locale} {surface} before asking for {block['id']}")
-            if block["id"] == "multi-work":
-                review.require(len({c["selected_work"] for c in displays
-                    if c["view"].get("view") == "work" and c["selected_work"] is not None}) >= 2,
-                    "prepare two distinct actual Works before asking about multi-Work comprehension")
-            if block["id"] == "decision":
-                review.require(any(c["selected_decision"] is not None for c in displays),
-                    "prepare an applicable displayed Decision; absence stays a missing experience")
+        result[locale] = []
+        for block in blocks:
+            missing = [surface for surface in block["required_views"]
+                if not any(all(c["view"].get(k) == v for k, v in surface.items()) for c in displays)]
+            reasons = ["required_view_missing"] if missing else []
+            if block["id"] == "multi-work" and len({c["selected_work"] for c in displays
+                    if c["view"].get("view") == "work" and c["selected_work"] is not None}) < 2:
+                reasons.append("two_distinct_works_missing")
+            if block["id"] == "work" and not any(c["view"].get("view") == "work"
+                    and c["selected_work"] is not None for c in displays):
+                reasons.append("selected_work_missing")
+            if block["id"] == "decision" and not any(c["view"].get("view") == "decisions"
+                    and c["selected_decision"] is not None for c in displays):
+                reasons.append("selected_decision_missing_applicability_unresolved")
+            result[locale].append({"id": block["id"], "claims": block["claims"],
+                "state": "insufficient_evidence" if reasons else "ready", "reasons": reasons,
+                "missing_views": missing})
+    return result
+
+
+def validate_scope(scope, contexts, candidate, viewer_sha256):
+    """Copied packages recompute readiness without the original Campaign or Git."""
+    review.require(isinstance(scope, dict) and set(scope) == {"plan", "readiness"},
+        "invalid block applicability scope")
+    inventory = json.loads(FIXTURE.read_bytes())
+    value = scope["plan"]
+    if value is None:
+        blocks = inventory["observation_blocks"]
+    else:
+        review.require(value.get("schema_version") == 2 and value.get("candidate_head") == candidate
+            and value.get("executables", {}).get("volicord-viewer") == viewer_sha256,
+            "observation scope candidate/executable mismatch")
+        blocks = value["observation_blocks"]
+        authored = {b["id"]: b for b in inventory["observation_blocks"]}
+        review.require(blocks and len({b["id"] for b in blocks}) == len(blocks), "invalid observation block inventory")
+        for block in blocks:
+            review.require(block["id"] in authored and
+                {k: block[k] for k in authored[block["id"]]} == authored[block["id"]],
+                "observation block differs from authored contract")
+        review.require(value["inputs"] == {str(p.relative_to(ROOT)): digest(p)
+            for p in (Path(__file__), FIXTURE, ROOT / "rebuild/docs/design/qualitative-review.md")},
+            "observation scope contract identity mismatch")
+    review.require(scope["readiness"] == block_readiness(blocks, contexts), "block applicability/context mismatch")
+    return blocks
+
+
+def require_claim_context(scope, contexts, locale, claim, state):
+    """A missing block cannot supply a positive or negative observed claim."""
+    if state in {"satisfied", "violated"}:
+        review.require(any(claim in b["claims"] and b["state"] == "ready"
+            for b in scope["readiness"][locale]), "mapped claim lacks its prepared block context")
 
 
 def main():

@@ -509,6 +509,35 @@ class PolicyTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 policy.combine(changed, self.specs, [self.agent, self.human], self.technical)
 
+    def test_legitimate_decision_absence_is_separate_from_required_missing_authority(self):
+        agent = copy.deepcopy(self.agent)
+        human = copy.deepcopy(self.human)
+        for a in agent["assessments"]:
+            if a["criterion_id"].endswith("/displayed_decision_comprehension"):
+                fixtures.fill(a, self.prep, "not_applicable")
+                a["applicability_reason"] = {"code": "no_user_decision_in_scope",
+                    "reasoning": "Authored fixture: actual Work scope legitimately required no user Decision."}
+        for i,a in enumerate(human["assessments"]):
+            if a["criterion_id"].endswith("/displayed_decision_comprehension"):
+                human["assessments"][i] = review.observation(a["criterion_id"])
+        review.validate_value(self.prep, "d" * 64, agent)
+        result = self.result([agent, human])
+        ids = [s["criterion_id"] for s in self.specs if s["name"] == "displayed_decision_comprehension"]
+        self.assertTrue(set(ids) <= set(result["qualitative_review"]["resolved_criteria"]))
+        missing = copy.deepcopy(agent)
+        for a in missing["assessments"]:
+            if a["criterion_id"] in ids:
+                fixtures.fill(a, self.prep, "insufficient_evidence")
+                a["applicability_reason"] = None
+        result = self.result([missing, human])
+        self.assertTrue(set(ids) <= set(result["qualitative_review"]["unresolved_criteria"]))
+        # Even an independently legitimate display absence cannot waive required authority.
+        authority = next(a for a in agent["assessments"] if "/authority/" in a["criterion_id"])
+        authority["assessment"] = "violated"
+        result = self.result([agent])
+        self.assertIn(authority["criterion_id"], result["qualitative_review"]["violated_criteria"])
+        self.assertEqual(result["replacement_qualification"], "blocked")
+
     def test_insufficient_and_missing_technical_gate_cannot_pass(self):
         for a in self.agent["assessments"]:
             a["assessment"] = "insufficient_evidence"

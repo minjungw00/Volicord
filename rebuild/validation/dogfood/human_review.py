@@ -98,23 +98,21 @@ def observation_confirmation(locale, contexts):
     return f"Did you personally inspect the live {locale} displays identified by render IDs {identities}, including their actual view/subject/basis? Browser captures alone cannot answer yes."
 
 
-def _live_observation_requests():
-    return [
-        {
-            "surface": "live_viewer_observation",
-            "locale": locale,
-            "prompt": (
-                f"For locale {locale}, describe your experience of the prepared Overview, Work list/detail, "
-                "Decision and related Code/Analysis displays. Could you distinguish Works, understand the actual work, "
-                "Decision choice versus recommendation and recorded or missing rationale, and the Project's code/flow? "
-                "Describe contextual limitations. Separately: did meaning depend only on color, or were items hard to group "
-                "despite text/shape cues? Describe keyboard/focus, narrow widths, actual native browser 200% zoom and "
-                "input/paint experience. Mention only inspected interactions and any gaps; optional LIMITS: section. "
-                "You need not supply verdict, evidence IDs or review fields. Type SAME AS ENGLISH only after inspecting Korean."
-            ),
-        }
-        for locale in ("en", "ko")
-    ]
+def _live_observation_requests(contexts, scope):
+    import human_observation_plan as plan
+    blocks = plan.validate_scope(scope, contexts,
+        contexts["en"][0]["candidate_head"],
+        contexts["en"][0]["context"]["process"]["executable_sha256"])
+    requests = []
+    for locale in ("en", "ko"):
+        ready = {b["id"] for b in scope["readiness"][locale] if b["state"] == "ready"}
+        review.require(ready, "no prepared observation block in " + locale)
+        prompt = "For locale " + locale + ", describe only these prepared experiences:\n" + "\n".join(
+            b["prompt"] for b in blocks if b["id"] in ready)
+        prompt += ("\nMention only personally inspected interactions and any gaps; optional LIMITS: section. "
+            "You need not supply verdict, evidence IDs or review fields. Type SAME AS ENGLISH only after inspecting Korean.")
+        requests.append({"surface": "live_viewer_observation", "locale": locale, "prompt": prompt})
+    return requests
 
 
 def capture_viewer_observations(campaign_root, output, *, input_fn=input, output_fn=print,
@@ -127,13 +125,15 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
     evidence_purpose.require_measured(manifest)
     evidence_hash = ops.digest(ops.bounded_read(root / "evidence-set.json"))
     contexts = viewer_observation.load_contexts(context_paths, manifest)
-    if observation_plan is not None:
-        import human_observation_plan
-        human_observation_plan.require_contexts(json.loads(ops.bounded_read(observation_plan)), contexts,
-            manifest["candidate_head"], manifest["candidate_artifacts"]["volicord-viewer"]["sha256"])
+    import human_observation_plan
+    plan = json.loads(ops.bounded_read(observation_plan)) if observation_plan is not None else None
+    readiness = (human_observation_plan.require_contexts(plan, contexts, manifest["candidate_head"],
+        manifest["candidate_artifacts"]["volicord-viewer"]["sha256"]) if plan is not None else
+        human_observation_plan.block_readiness(json.loads(human_observation_plan.FIXTURE.read_bytes())["observation_blocks"], contexts))
+    scope = {"plan": plan, "readiness": readiness}
     observer = review.reviewer("human", run_id or secrets.token_hex(16))
     observations, answer_trace = [], []
-    for request in _live_observation_requests():
+    for request in _live_observation_requests(contexts, scope):
         surface, locale = request["surface"], request["locale"]
         trace = []
         confirmation = observation_confirmation(locale, contexts[locale])
@@ -157,12 +157,12 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
     review.require(viewer_observation.load_contexts(context_paths, manifest) == contexts,
         "display evidence changed during human capture")
     value = {"kind": "dogfood_human_observations",
-        "schema_version": 5,
+        "schema_version": 6,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
-        "observer": observer, "observations": observations}
+        "observer": observer, "observations": observations, "scope": scope}
     data = ops.encoded(value)
     ops.require_review_artifact_safe(data, "human observations contain sensitive payload")
-    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 5,
+    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 6,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer_run_id": observer["run_id"], "observations_sha256": ops.digest(data),
         "answer_trace": answer_trace}
@@ -185,7 +185,9 @@ def load_viewer_observations(path):
     data = ops.bounded_read(path / "observations.json")
     receipt = json.loads(ops.bounded_read(path / "receipt.json"))
     value = json.loads(data)
-    requests = {(item["surface"], item["locale"]): item for item in _live_observation_requests()}
+    contexts = {item["locale"]: item["contexts"] for item in value["observations"]}
+    requests = {(item["surface"], item["locale"]): item
+        for item in _live_observation_requests(contexts, value["scope"])}
     review.require(len(receipt.get("answer_trace", [])) == len(value.get("observations", [])),
         "human observation requires every original answer trace")
     expected_trace = []
@@ -205,7 +207,7 @@ def load_viewer_observations(path):
             {"prompt": observation_confirmation(locale, item.get("contexts", [])) + " (1=yes, 2=no)", "answer": "1"},
             {"prompt": request["prompt"], "answer": answer},
         ]})
-    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 5,
+    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 6,
         "candidate_head": value.get("candidate_head"),
         "evidence_set_sha256": value.get("evidence_set_sha256"),
         "observer_run_id": value.get("observer", {}).get("run_id"),
@@ -462,6 +464,9 @@ def apply_observation_assessments(review_root, mapping_path):
             review.require(mapping["uncertainty"] == "not_reported",
                 "unreported human limits must remain not_reported")
         state = mapping["assessment"]
+        import human_observation_plan
+        human_observation_plan.require_claim_context(observed["scope"], observed["contexts"],
+            spec["locale"], spec["name"], state)
         review.require(state in {"satisfied", "violated", "insufficient_evidence"},
             "operator mapping does not infer applicability or missing opportunities")
         trace = copy.deepcopy(observed["answer_trace"])

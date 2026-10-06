@@ -634,8 +634,8 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
             if human_observations.name == "observations.json" and capture_receipt.is_file() else None)
         if receipt is not None:
             human_review.load_viewer_observations(human_observations.parent)
-        review.require(isinstance(observed, dict) and set(observed) == {"kind", "schema_version", "candidate_head", "evidence_set_sha256", "observer", "observations"}
-            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 5
+        review.require(isinstance(observed, dict) and set(observed) == {"kind", "schema_version", "candidate_head", "evidence_set_sha256", "observer", "observations", "scope"}
+            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 6
             and observed["candidate_head"] == manifest["candidate_head"]
             and observed["evidence_set_sha256"] == evidence_hash, "human observation candidate/evidence binding mismatch")
         review.validate_reviewer(observed["observer"], sessions)
@@ -646,6 +646,10 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
                 ("live_viewer_observation", "en"),
                 ("live_viewer_observation", "ko"),
             }, "both live Viewer locales require observations")
+        import human_observation_plan
+        human_observation_plan.validate_scope(observed["scope"],
+            {item["locale"]: item["contexts"] for item in observed["observations"]},
+            manifest["candidate_head"], manifest["candidate_artifacts"]["volicord-viewer"]["sha256"])
         for item in observed["observations"]:
             review.require(isinstance(item, dict)
                 and set(item) == {"sample_id", "surface", "locale", "control", "response", "contexts", "personally_observed"}
@@ -683,13 +687,15 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
                 "project_id": journey["project_id"]}
             body = encoded({"binding": {**{k: observed[k] for k in ("candidate_head", "evidence_set_sha256", "observer")},
                 "display": display_binding}, **item,
-                "answer_trace": human_review.observation_trace(item, receipt)})
+                "answer_trace": human_review.observation_trace(item, receipt), "scope": observed["scope"]})
             name = "evidence/" + identity_key + ".json"
             files[name] = body
             pointers, count = locators(body)
             index["evidence"][identity_key] = {"path": name, "bytes": len(body), "sha256": digest(body),
                 "sample_id": item["sample_id"], "surface": item["surface"], "locale": item["locale"],
                 "sample_ids": [item["sample_id"]],
+                "prepared_claims": sorted({claim for b in observed["scope"]["readiness"][item["locale"]]
+                    if b["state"] == "ready" for claim in b["claims"]}),
                 "origin": {"kind": "declared_direct_human_observation", "sha256": digest(data)}, "locators": pointers, "line_count": count}
         unavailable = [u for u in unavailable if not (u["sample_id"] == c.journey_id("volicord")
             and u["surface"] == "live_viewer_observation")]
@@ -789,7 +795,7 @@ def _load_package(root):
         if entry["surface"] == "live_viewer_observation":
             import viewer_observation
             observed = json.loads(content)
-            review.require(set(observed) == {"binding", "sample_id", "surface", "locale", "control", "response", "contexts", "personally_observed", "answer_trace"}
+            review.require(set(observed) == {"binding", "sample_id", "surface", "locale", "control", "response", "contexts", "personally_observed", "answer_trace", "scope"}
                 and isinstance(observed.get("answer_trace"), list) and observed["answer_trace"]
                 and all(isinstance(turn, dict) and set(turn) == {"prompt", "answer"}
                     and authority.bounded_text(turn["prompt"]) and authority.bounded_text(turn["answer"])
@@ -803,6 +809,9 @@ def _load_package(root):
                 and observed["binding"]["evidence_set_sha256"] == binding["evidence_set"]["sha256"]
                 and set(observed["binding"]["display"]) == {"viewer_sha256", "runtime_binding", "project_id"},
                 "copied human observation lacks bound display context")
+            review.require(entry.get("prepared_claims") == sorted({claim
+                for b in observed["scope"]["readiness"][entry["locale"]]
+                if b["state"] == "ready" for claim in b["claims"]}), "copied prepared claim scope mismatch")
             answer = observed["answer_trace"][-1]["answer"]
             review.require((observed["response"] is not None and answer == observed["response"]["observation"])
                 or (observed["response"] is None and answer.casefold() == "same as english"),
@@ -842,6 +851,13 @@ def _load_package(root):
         "review package contains unindexed or private extra artifacts")
     for value in index["machine_findings"].values():
         machine.validate_finding(value["finding"])
+    live = [json.loads(contents[e["path"]]) for e in index["evidence"].values()
+        if e["surface"] == "live_viewer_observation"]
+    if live:
+        import human_observation_plan
+        review.require(len(live) == 2 and live[0]["scope"] == live[1]["scope"], "locale scope mismatch")
+        human_observation_plan.validate_scope(live[0]["scope"], {v["locale"]: v["contexts"] for v in live},
+            binding["candidate_head"], live[0]["binding"]["display"]["viewer_sha256"])
     return preparation, package["preparation_sha256"], package
 
 

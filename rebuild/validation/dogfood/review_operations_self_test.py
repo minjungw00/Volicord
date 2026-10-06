@@ -18,7 +18,7 @@ import qualitative_review as q
 import review_operations as ops
 import review_captures as captures
 import codex_events
-from viewer_observation_self_test import display_fixture, context_directory
+from viewer_observation_self_test import display_fixture, context_directory, prepared_context_directories
 
 
 def snapshot(root):
@@ -932,7 +932,7 @@ class WorkflowTests(unittest.TestCase):
         evidence_hash = ops.digest((self.root / "evidence-set.json").read_bytes())
         observation = {
             "kind": "dogfood_human_observations",
-            "schema_version": 5,
+            "schema_version": 6,
             "candidate_head": c.load_evidence_set(self.root)["candidate_head"],
             "evidence_set_sha256": evidence_hash,
             "observer": q.reviewer("human", "b" * 32),
@@ -950,6 +950,10 @@ class WorkflowTests(unittest.TestCase):
             ],
         }
         source = self.parent / (self._testMethodName + "-benign.json")
+        import human_observation_plan
+        observation["scope"] = {"plan": None, "readiness": human_observation_plan.block_readiness(
+            json.loads(human_observation_plan.FIXTURE.read_bytes())["observation_blocks"],
+            {item["locale"]: item["contexts"] for item in observation["observations"]})}
         source.write_bytes(ops.encoded(observation))
         result = ops.prepare(self.root, self.target(), reviewer_kind="human", human_observations=source)
         self.assertEqual(result["state"], "prepared")
@@ -965,8 +969,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_operator_maps_one_exact_answer_without_schema_questions_or_historical_claims(self):
         manifest = c.load_evidence_set(self.root)
-        contexts = [context_directory(self.parent, self._testMethodName + locale, manifest, locale)
-            for locale in ("en", "ko")]
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest)
         observation_root = self.parent / (self._testMethodName + "-observations")
         answer = "  Works and Decisions are hard to distinguish.\nI did not inspect the old conversation.  "
         prompts = []
@@ -1025,8 +1028,7 @@ class WorkflowTests(unittest.TestCase):
         import qualification_policy as policy
         from qualification_self_test import evaluation
         manifest = c.load_evidence_set(self.root)
-        contexts = [context_directory(self.parent, self._testMethodName + locale, manifest, locale)
-            for locale in ("en", "ko")]
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest)
         observed = self.parent / (self._testMethodName + "-observations")
         answer = ("Synthetic support answer: I cannot distinguish Works, understand their state or next action, "
             "the Work problem/effect, Project purpose, code behavior, architecture flow, diagrams, evidence "
@@ -1067,6 +1069,51 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(result["replacement_pass_candidate"])
         with self.assertRaisesRegex(ValueError, "exists"):
             ops.record(target, target / "draft.json")
+
+    def test_absent_decision_skips_only_its_block_and_cannot_map_missing_experience(self):
+        import qualification_policy as policy
+        from qualification_self_test import evaluation
+        manifest = c.load_evidence_set(self.root)
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, decision=False)
+        observed = self.parent / (self._testMethodName + "-observations")
+        prompts = []
+        answer = "Synthetic fixture: comparing actual Works is difficult; the grouping is confusing. No Decision experience."
+        human_review.capture_viewer_observations(self.root, observed, context_paths=contexts,
+            input_fn=iter(["1", answer, "1", "SAME AS ENGLISH"]).__next__, output_fn=prompts.append)
+        self.assertFalse(any("Describe the displayed choice" in prompt for prompt in prompts))
+        self.assertTrue(any("Select and compare" in prompt for prompt in prompts))
+        captured = json.loads((observed / "observations.json").read_bytes())
+        for locale in ("en", "ko"):
+            block = next(b for b in captured["scope"]["readiness"][locale] if b["id"] == "decision")
+            self.assertEqual(block["state"], "insufficient_evidence")
+            self.assertIn("selected_decision_missing_applicability_unresolved", block["reasons"])
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="human", human_observations=observed)
+        prep, sha, _ = ops.load_package(target)
+        specs = q.criterion_specs(prep["index"], prep["rubric"])
+        def mapping(name):
+            return {"criterion_number": next(i + 1 for i,spec in enumerate(specs)
+                if spec["name"] == name and spec["locale"] == "en"),
+                "observation_evidence_id": "journey-volicord-live-en", "assessment": "violated",
+                "reasoning": "The preserved answer reports difficulty comparing Works.", "uncertainty": "not_reported",
+                "criterion_observations": prep["rubric"]["criterion_observations"][name],
+                "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence reported.", "evidence": []}}
+        path = self.parent / (self._testMethodName + "-mapping.json")
+        path.write_bytes(ops.encoded([mapping("displayed_decision_comprehension")]))
+        before = (target / "draft.json").read_bytes()
+        with self.assertRaisesRegex(ValueError, "prepared block"):
+            human_review.apply_observation_assessments(target, path)
+        self.assertEqual((target / "draft.json").read_bytes(), before)
+        path.write_bytes(ops.encoded([mapping("multiple_work_comprehension")]))
+        human_review.apply_observation_assessments(target, path)
+        ops.record(target, target / "draft.json")
+        recorded = json.loads(ops.recorded_files(target, prep, sha)["recorded/review.json"])
+        result = policy.combine(evaluation(), specs, [recorded], {"state": "not_provided"})
+        self.assertIn("journey-volicord/live_viewer/en/multiple_work_comprehension",
+            result["qualitative_review"]["violated_criteria"])
+        for locale in ("en", "ko"):
+            self.assertIn(f"journey-volicord/live_viewer/{locale}/displayed_decision_comprehension",
+                result["qualitative_review"]["unresolved_criteria"])
 
     def test_default_conversation_targets_human_scope_and_skips_resolved_inapplicability(self):
         target = self.target()
@@ -1112,8 +1159,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_human_display_context_rejects_missing_locale_personal_denial_and_foreign_candidate(self):
         manifest = c.load_evidence_set(self.root)
-        contexts = [context_directory(self.parent, self._testMethodName + locale, manifest, locale)
-            for locale in ("en", "ko")]
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest)
         target = self.parent / (self._testMethodName + "-observations")
         with self.assertRaisesRegex(ValueError, "both locales"):
             human_review.capture_viewer_observations(self.root, target, context_paths=contexts[:1],

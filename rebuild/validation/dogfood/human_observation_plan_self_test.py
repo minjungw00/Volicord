@@ -73,8 +73,9 @@ class ChangedSurfaceTests(unittest.TestCase):
         manifest = {"candidate_head": candidate, "candidate_artifacts": {"volicord-viewer": {"sha256": "a" * 64}},
             "journeys": {"journey-volicord": {"runtime_home": "/synthetic/runtime", "project_id": "a" * 32}}}
         contexts = {locale: [display_fixture(manifest, locale)] for locale in ("en", "ko")}
-        with self.assertRaisesRegex(ValueError, "before asking"):
-            p.require_contexts(value, contexts, candidate, "a" * 64)
+        readiness = p.require_contexts(value, contexts, candidate, "a" * 64)
+        self.assertEqual(next(b["state"] for b in readiness["en"] if b["id"] == "overview"), "ready")
+        self.assertEqual(next(b["state"] for b in readiness["en"] if b["id"] == "decision"), "insufficient_evidence")
         for locale in contexts:
             for view in ({"view": "work", "work": "a" * 32}, {"view": "work", "work": "b" * 32},
                          {"view": "decisions"}, {"view": "code"}, {"view": "tools", "tool": "status"}):
