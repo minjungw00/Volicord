@@ -1246,7 +1246,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
 }
 
 #[test]
-fn degraded_working_view_keeps_material_gap_visible_before_audit_detail() {
+fn degraded_overview_keeps_project_meaning_before_contextual_limits() {
     let (temporary, viewer, project) = setup();
     fs::write(
         temporary.path().join("main.go"),
@@ -1272,8 +1272,8 @@ fn degraded_working_view_keeps_material_gap_visible_before_audit_detail() {
         .expect("render degraded working Viewer")
         .html;
     assert!(
-        page.find("id=\"limitations\"").expect("warnings")
-            < page.find("id=\"overview\"").expect("overview")
+        page.find("id=\"overview\"").expect("overview")
+            < page.find("id=\"limitations\"").expect("warnings")
     );
     assert!(
         page.contains("unavailable") || page.contains("partial") || page.contains("unsupported")

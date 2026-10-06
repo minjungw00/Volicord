@@ -301,7 +301,13 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
     assert!(working.contains("data-view=\"tools\""));
     assert!(working.contains("문서 미리보기"));
     assert!(deep.contains("data-view=\"tools\""));
-    assert!(working.contains("main.py") || overview.contains("Material limitations"));
+    assert!(overview.contains("No source-grounded Project purpose is recorded."));
+    assert!(overview.contains("Current Work"));
+    assert!(
+        working.contains("main.py"),
+        "document preview must retain actual repository content"
+    );
+    assert!(overview.find("id=\"overview\"") < overview.find("id=\"limitations\""));
     assert_ne!(overview, working);
     assert_ne!(working, deep);
     let request_authenticity = request_authenticity(&deep);

@@ -585,9 +585,10 @@ fn thin_reads_do_not_claim_graph_integrity_and_full_reads_keep_canonical_remaind
     )?;
     assert_eq!(profile.projection.analysis_snapshot_decodes, 0);
     assert_eq!(profile.projection.analysis_metadata_decodes, 1);
-    assert!(page
+    assert!(!page
         .html
         .contains("Stored graph integrity diagnostics not requested"));
+    assert!(page.html.contains("data-question=\"VerificationState\""));
     assert!(page.html.contains("Failed")); // independent canonical verification, still readable
     let (projection, profile) = viewer.operations().project_projection_read_profiled(
         fixture.project,
@@ -748,5 +749,92 @@ fn requested_sections_on_large_repository() -> Result<(), Box<dyn std::error::Er
         }
     }
     assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
+    Ok(())
+}
+
+#[test]
+fn ordinary_hierarchy_separates_catalog_detail_and_audit_in_both_locales(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    for locale in ["en", "ko"] {
+        let overview = exchange(
+            &server,
+            &format!("/?view=overview&locale={locale}&language={locale}"),
+        );
+        assert!(
+            overview.find("id=\"overview\"").ok_or("Overview")?
+                < overview.find("id=\"limitations\"").ok_or("limits")?
+        );
+        assert_eq!(overview.matches("aria-current=\"page\"").count(), 1);
+        assert!(!overview.contains("integrity diagnostics not requested"));
+        let list = exchange(
+            &server,
+            &format!("/?view=work&locale={locale}&language={locale}"),
+        );
+        let works = list
+            .split("id=\"works\"")
+            .nth(1)
+            .ok_or("catalog")?
+            .split("</section>")
+            .next()
+            .ok_or("catalog end")?;
+        assert!(
+            works.matches("work-summary").count() >= 3,
+            "distinct Works must have separate cards"
+        );
+        assert!(works.contains("data-work-state=\"completed\""));
+        assert!(works.contains("data-work-state=\"open\""));
+        assert!(works.contains("data-question=\"RecordedNextStep\""));
+        assert!(!works.contains("work-audit"));
+        assert!(!works.contains("result-evidence"));
+        let detail = exchange(
+            &server,
+            &format!(
+                "/?view=work&work={}&locale={locale}&language={locale}",
+                f.goals["older"]
+            ),
+        );
+        assert!(
+            detail.find("answer-unavailable").ok_or("answer")?
+                < detail.find("class=\"work-audit\"").ok_or("audit")?
+        );
+        assert!(detail.contains(if locale == "en" {
+            "Selected Work"
+        } else {
+            "선택한 작업"
+        }));
+        let decision = exchange(
+            &server,
+            &format!(
+                "/?view=decisions&decision={}&locale={locale}&language={locale}",
+                f.decisions["explicit"]
+            ),
+        );
+        for label in if locale == "en" {
+            [
+                "Choice",
+                "Alternatives and expected trade-offs",
+                "Declared applicability",
+                "User rationale is not recorded",
+            ]
+        } else {
+            [
+                "선택",
+                "대안과 예상 절충",
+                "선언된 적용 범위",
+                "사용자 근거가 기록되지",
+            ]
+        } {
+            assert!(decision.contains(label), "missing {label}");
+        }
+    }
     Ok(())
 }

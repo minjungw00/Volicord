@@ -44,6 +44,15 @@ Live reads use purpose-oriented views (default `overview`):
 /?view=tools&tool=documents|memory|status|evidence
 ```
 
+Top-level navigation is Overview, Work, Code Understanding, Decisions, Analysis,
+and Tools. Analysis reuses `/?view=tools&tool=status`; Tools opens Documents and
+retains Memory and Evidence. The active navigation item has `aria-current="page"`.
+Overview begins with Project Purpose and distinct Work cards. Cards show lifecycle,
+result availability, verification and the recorded next action; selecting one opens
+its explanation sections before closed evidence/history disclosures. Decisions have
+separate choice, alternatives, explanation, applicability and original-evidence areas.
+Missing user rationale is an explicit absence, never a rendering error.
+
 All links carry `locale=en|ko` and unrestricted requested `language`. Work and
 Decision navigation supplies validated identities; no opaque-ID entry is needed.
 The Work and Decisions root views list recorded choices in pages of 64;
