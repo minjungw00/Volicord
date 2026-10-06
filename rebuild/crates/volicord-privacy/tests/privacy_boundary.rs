@@ -264,6 +264,78 @@ impl BackgroundSemanticProvider for TestProvider {
 }
 
 #[test]
+fn shared_source_locators_keep_exact_transmission_audit_after_reopen() -> Result<(), Box<dyn Error>>
+{
+    let fixture = canonical_fixture()?;
+    let privacy_root = tempdir()?;
+    let mut privacy = privacy_store(&privacy_root)?;
+    let canonical = fixture
+        .store
+        .read_canonical_basis(fixture.project.id, CanonicalReadOptions::default())?;
+    privacy.enable(
+        &canonical,
+        policy(fixture.project.id),
+        intent(fixture.user_source, "explicit opt-in"),
+    )?;
+    let mut draft = request(
+        &fixture,
+        [
+            "fn first() {}\nTOKEN=filtered\n",
+            "excluded body",
+            "fn second_is_longer() {}\n",
+        ],
+    )?;
+    draft.sources[2].locator = "src/other.rs".into();
+    for source in &mut draft.sources {
+        source.source = fixture.source_refs[0].clone();
+    }
+    let prepared = match privacy.prepare_background_request(draft)? {
+        PreparationOutcome::Ready(prepared) => prepared,
+        PreparationOutcome::Rejected(_) => return Err("request unexpectedly rejected".into()),
+    };
+    let mut provider = TestProvider::new([ProviderExecution::Completed {
+        annotations: Vec::new(),
+        diagnostic: None,
+    }]);
+    let completed = privacy.dispatch_background(prepared, &mut provider)?;
+    assert_eq!(completed.outcome, ProviderRequestOutcome::Completed);
+    assert_eq!(provider.invocations.len(), 1);
+    let sent = &provider.invocations[0].sources;
+    assert_eq!(sent.len(), 2);
+    assert_ne!(sent[0].filtered_body.len(), sent[1].filtered_body.len());
+    assert!(!sent[0].filtered_body.contains("TOKEN="));
+    assert!(sent
+        .iter()
+        .all(|source| source.source == fixture.source_refs[0]));
+    assert_eq!(sent[0].locator, "src/lib.rs");
+    assert_eq!(sent[1].locator, "src/other.rs");
+    for entry in &completed.manifest {
+        match sent.iter().find(|source| source.locator == entry.locator) {
+            Some(source) => {
+                assert_eq!(entry.transmission_outcome, TransmissionOutcome::Transmitted);
+                assert_eq!(entry.transmitted_bytes, source.filtered_body.len() as u64);
+            }
+            None => {
+                assert_eq!(entry.locator, "src/vendor/generated.rs");
+                assert_eq!(entry.scope_outcome, ScopeOutcome::Excluded);
+                assert_eq!(
+                    entry.transmission_outcome,
+                    TransmissionOutcome::NotTransmitted
+                );
+                assert_eq!(entry.transmitted_bytes, 0);
+            }
+        }
+    }
+    drop(privacy);
+    let reopened = privacy_store(&privacy_root)?;
+    assert_eq!(
+        reopened.provider_request(fixture.project.id, completed.id)?,
+        completed
+    );
+    Ok(())
+}
+
+#[test]
 fn interactive_and_local_authority_never_authorize_background_invocation(
 ) -> Result<(), Box<dyn Error>> {
     let fixture = canonical_fixture()?;

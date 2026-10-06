@@ -346,7 +346,12 @@ impl PrivacyStore {
         let transmitted_lengths = prepared
             .sources
             .iter()
-            .map(|source| (source.source.identity(), source.filtered_body.len() as u64))
+            .map(|source| {
+                (
+                    (source.source.identity(), source.locator.as_str()),
+                    source.filtered_body.len() as u64,
+                )
+            })
             .collect::<BTreeMap<_, _>>();
         let invocation = ProviderInvocation {
             request_id: record.id,
@@ -371,7 +376,9 @@ impl PrivacyStore {
         let source_was_transmitted = !matches!(result, ProviderExecution::Unavailable { .. });
         if source_was_transmitted {
             for entry in &mut record.manifest {
-                if let Some(length) = transmitted_lengths.get(&entry.source.identity()) {
+                if let Some(length) =
+                    transmitted_lengths.get(&(entry.source.identity(), entry.locator.as_str()))
+                {
                     entry.transmission_outcome = TransmissionOutcome::Transmitted;
                     entry.transmitted_bytes = *length;
                 }

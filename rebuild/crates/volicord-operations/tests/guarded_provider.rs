@@ -10,7 +10,7 @@ use volicord_privacy::{
     BackgroundSemanticProvider, ProviderAvailability, ProviderDeletionOutcome,
     ProviderDeletionRequest, ProviderExecution, ProviderIdentity, ProviderIntentProvenance,
     ProviderInvocation, ProviderOptInPolicy, ProviderRequestOutcome, ProviderRetentionPolicy,
-    SecretFilteringPolicy, SourceExclusionPolicy, TransmissionOutcome,
+    ScopeOutcome, SecretFilteringPolicy, SourceExclusionPolicy, TransmissionOutcome,
 };
 
 struct Fixture {
@@ -29,6 +29,14 @@ impl Fixture {
     }
 
     fn new_with_provider(provider: &str, model: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::new_with_sources(provider, model, false)
+    }
+
+    fn new_with_sources(
+        provider: &str,
+        model: &str,
+        multiple: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let temporary = tempfile::tempdir()?;
         let repository = temporary.path().join("repository");
         fs::create_dir_all(repository.join("src"))?;
@@ -36,6 +44,13 @@ impl Fixture {
             repository.join("src/lib.rs"),
             "// SECRET=fixture\npub fn answer() -> u32 { 42 }\n",
         )?;
+        if multiple {
+            fs::write(
+                repository.join("src/other.rs"),
+                "pub fn longer_answer() -> u32 { 100 }\n",
+            )?;
+            fs::write(repository.join("src/excluded.rs"), "// SECRET=excluded\n")?;
+        }
         let operations =
             LocalOperations::new(RuntimeLayout::new(temporary.path().join("runtime"))?);
         let project = operations
@@ -56,9 +71,17 @@ impl Fixture {
                 model: model.into(),
                 purpose: "background semantic analysis".into(),
                 requested_capability: "semantic".into(),
-                allowed_source_scopes: vec!["src/lib.rs".into()],
+                allowed_source_scopes: if multiple {
+                    vec!["src".into()]
+                } else {
+                    vec!["src/lib.rs".into()]
+                },
                 exclusions: SourceExclusionPolicy {
-                    path_prefixes: Vec::new(),
+                    path_prefixes: if multiple {
+                        vec!["src/excluded.rs".into()]
+                    } else {
+                        Vec::new()
+                    },
                     file_classes: Vec::new(),
                     basis: "fixture exclusion policy".into(),
                 },
@@ -96,6 +119,13 @@ impl Fixture {
     }
 
     fn prepare(&self) -> Result<GuardedProviderPreparation, Box<dyn std::error::Error>> {
+        self.prepare_paths(vec!["src/lib.rs".into()])
+    }
+
+    fn prepare_paths(
+        &self,
+        source_paths: Vec<String>,
+    ) -> Result<GuardedProviderPreparation, Box<dyn std::error::Error>> {
         match self.operations.prepare_guarded_provider_operation(
             BackgroundProviderOperationDraft {
                 project_id: self.project,
@@ -103,7 +133,7 @@ impl Fixture {
                 model: self.model.clone(),
                 purpose: "background semantic analysis".into(),
                 requested_capability: "semantic".into(),
-                source_paths: vec!["src/lib.rs".into()],
+                source_paths,
                 expires_at: TimestampMicros::from_unix_micros(9_000_000_000_000_000),
                 requesting_provenance: RequestingProvenance {
                     actor: Principal {
@@ -252,6 +282,93 @@ fn local_operations_preserve_no_dispatch_exact_confirmation_and_single_use(
         }
     ));
     assert_eq!(provider.calls, 1);
+    Ok(())
+}
+
+#[test]
+fn guarded_repository_sources_preserve_transmission_per_locator(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::new_with_sources("fixture-provider", "fixture-model", true)?;
+    let mut preparation = fixture.prepare_paths(vec![
+        "src/lib.rs".into(),
+        "src/other.rs".into(),
+        "src/excluded.rs".into(),
+    ])?;
+    let manifest = &preparation.provider_request.manifest;
+    assert_eq!(manifest.len(), 3);
+    assert!(manifest
+        .iter()
+        .all(|entry| entry.source == manifest[0].source));
+    assert!(manifest
+        .iter()
+        .all(|entry| entry.transmission_outcome == TransmissionOutcome::NotTransmitted));
+    let mut provider = FixtureProvider {
+        execution: ProviderExecution::Completed {
+            annotations: Vec::new(),
+            diagnostic: None,
+        },
+        calls: 0,
+        invocations: Vec::new(),
+    };
+    let revision = preparation.candidate.request_revision;
+    let fingerprint = preparation.candidate.effect_fingerprint.clone();
+    let missing = fixture.operations.dispatch_guarded_provider(
+        &mut preparation,
+        revision,
+        &fingerprint,
+        &mut provider,
+    )?;
+    assert!(matches!(
+        missing.outcome,
+        GuardedOperationOutcome::NotDispatched { .. }
+    ));
+    assert_eq!(provider.calls, 0);
+    fixture.confirm(&preparation)?;
+    let completed = fixture.operations.dispatch_guarded_provider(
+        &mut preparation,
+        revision,
+        &fingerprint,
+        &mut provider,
+    )?;
+    assert!(matches!(
+        completed.outcome,
+        GuardedOperationOutcome::DispatchedAndCompleted { .. }
+    ));
+    assert_eq!(provider.calls, 1);
+    let sent = &provider.invocations[0].sources;
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[0].locator, "src/lib.rs");
+    assert_eq!(sent[1].locator, "src/other.rs");
+    assert_eq!(sent[0].source, sent[1].source);
+    assert_ne!(sent[0].filtered_body.len(), sent[1].filtered_body.len());
+    assert!(!sent[0].filtered_body.contains("SECRET"));
+    // Local Operations opens the durable stores again for inspection.
+    let inspected = fixture.operations.inspect_guarded_provider_operation(
+        fixture.project,
+        completed.operation_identity,
+        preparation.provider_request.id,
+    )?;
+    assert_eq!(
+        inspected.provider_request.outcome,
+        ProviderRequestOutcome::Completed
+    );
+    for entry in &inspected.provider_request.manifest {
+        match sent.iter().find(|source| source.locator == entry.locator) {
+            Some(source) => {
+                assert_eq!(entry.transmission_outcome, TransmissionOutcome::Transmitted);
+                assert_eq!(entry.transmitted_bytes, source.filtered_body.len() as u64);
+            }
+            None => {
+                assert_eq!(entry.locator, "src/excluded.rs");
+                assert_eq!(entry.scope_outcome, ScopeOutcome::Excluded);
+                assert_eq!(
+                    entry.transmission_outcome,
+                    TransmissionOutcome::NotTransmitted
+                );
+                assert_eq!(entry.transmitted_bytes, 0);
+            }
+        }
+    }
     Ok(())
 }
 
