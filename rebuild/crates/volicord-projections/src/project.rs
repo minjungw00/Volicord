@@ -850,9 +850,20 @@ pub struct WorkReadCost {
     pub evidence_input_bytes: usize,
 }
 
+/// Scope-sensitive Repository reading metadata selected from the complete immutable
+/// inputs before display bounds. Topology payload remains in `repository_map`.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RepositoryScopeMetadata {
+    pub capability_gaps: Vec<CapabilityGap>,
+    pub answer_issues: Vec<ProjectionIssue>,
+    pub omitted_entity_count: usize,
+    pub omitted_relation_count: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
     pub repository_analysis: crate::RepositoryAnalysisReading,
+    pub repository_scope_metadata: RepositoryScopeMetadata,
     /// Contextual answer limits, selected before capability/list bounds. Raw
     /// repository diagnostics remain in repository_map and issues.
     pub answer_capability_gaps: Vec<CapabilityGap>,
@@ -894,6 +905,36 @@ pub struct ProjectProjection {
     pub source_catalog: Vec<volicord_context::SourceReadBasis>,
     pub issues: Vec<ProjectionIssue>,
     pub health: ProjectionHealth,
+}
+
+impl ProjectProjection {
+    /// Constructs Repository code reading from already materialized data. This owns no
+    /// loading or mutation capability and discards prior Work/entity/detail scope.
+    pub fn for_repository_reading(&self) -> Self {
+        let mut projection = self.clone();
+        projection.selection = crate::WorkSelection {
+            selector: crate::WorkSelector::Repository,
+            work_item_id: None,
+            basis: crate::WorkSelectionBasis::Repository,
+        };
+        projection.selected_work = None;
+        projection.selected_work_decisions.clear();
+        projection.selected_decision = None;
+        projection.selected_entity = None;
+        projection.selected_entity_relations.clear();
+        projection.selected_entity_neighbors.clear();
+        projection.omitted_selected_relation_count = 0;
+        projection.current_work_code.clear();
+        projection.current_work_topology = CurrentWorkTopology {
+            entities: self.repository_map.entities.clone(),
+            relations: self.repository_map.relations.clone(),
+            omitted_entity_count: self.repository_scope_metadata.omitted_entity_count,
+            omitted_relation_count: self.repository_scope_metadata.omitted_relation_count,
+        };
+        projection.answer_capability_gaps = self.repository_scope_metadata.capability_gaps.clone();
+        projection.answer_issues = self.repository_scope_metadata.answer_issues.clone();
+        projection
+    }
 }
 
 /// Canonical and Candidate inspection sections share the same selection and
@@ -1079,7 +1120,27 @@ pub fn build_project_projection(
                     .any(|i| i.affected_scope == "derived_analysis"),
             )
         });
-    let answer_capability_gaps = contextual_capability_gaps(&inputs, topology_canonical, &graph);
+    let gap_scope = if let Some(entity) = &inputs.detail.entity {
+        CapabilityGapScope::Entity(entity)
+    } else if let Some(decision) = inputs.detail.decision {
+        CapabilityGapScope::Decision(decision)
+    } else if inputs.selection == crate::WorkSelector::Repository {
+        CapabilityGapScope::Repository
+    } else {
+        CapabilityGapScope::Work
+    };
+    let answer_capability_gaps =
+        contextual_capability_gaps(&inputs, topology_canonical, &graph, gap_scope);
+    let repository_capability_gaps = if matches!(gap_scope, CapabilityGapScope::Repository) {
+        answer_capability_gaps.clone()
+    } else {
+        contextual_capability_gaps(
+            &inputs,
+            inputs.canonical,
+            &graph,
+            CapabilityGapScope::Repository,
+        )
+    };
     let selected_entity = inputs.detail.entity.as_deref().and_then(|id| {
         graph
             .entities
@@ -1137,18 +1198,35 @@ pub fn build_project_projection(
         limit,
         &mut issues,
     );
+    let mut repository_answer_issues = source_issues(inputs.canonical);
+    repository_answer_issues.extend(
+        issues
+            .iter()
+            .filter(|issue| {
+                issue.kind == ProjectionIssueKind::WrongProject
+                    || (issue.affected_scope == "derived_analysis" && inputs.requirements.code)
+            })
+            .cloned(),
+    );
+    sort_projection_issues(&mut repository_answer_issues);
+    let repository_scope_metadata = RepositoryScopeMetadata {
+        capability_gaps: repository_capability_gaps,
+        answer_issues: repository_answer_issues,
+        omitted_entity_count: graph
+            .entities
+            .len()
+            .saturating_sub(repository_map.entities.len()),
+        omitted_relation_count: graph
+            .relations
+            .len()
+            .saturating_sub(repository_map.relations.len()),
+    };
     if inputs.selection == crate::WorkSelector::Repository {
         current_work_topology = CurrentWorkTopology {
             entities: repository_map.entities.clone(),
             relations: repository_map.relations.clone(),
-            omitted_entity_count: graph
-                .entities
-                .len()
-                .saturating_sub(repository_map.entities.len()),
-            omitted_relation_count: graph
-                .relations
-                .len()
-                .saturating_sub(repository_map.relations.len()),
+            omitted_entity_count: repository_scope_metadata.omitted_entity_count,
+            omitted_relation_count: repository_scope_metadata.omitted_relation_count,
         };
     }
     let current_work_code = build_current_work_code_links(
@@ -1459,18 +1537,22 @@ pub fn build_project_projection(
             .map(|s| s.source.id)
             .collect()
     };
-    let answer_issues = issues
-        .iter()
-        .filter(|issue| {
-            issue.kind == ProjectionIssueKind::WrongProject
-                || (issue.affected_scope == "derived_analysis" && inputs.requirements.code)
-                || (issue.affected_scope == "canonical_source"
-                    && answer_sources
-                        .iter()
-                        .any(|id| id.to_string() == issue.identity))
-        })
-        .cloned()
-        .collect();
+    let answer_issues = if matches!(gap_scope, CapabilityGapScope::Repository) {
+        repository_scope_metadata.answer_issues.clone()
+    } else {
+        issues
+            .iter()
+            .filter(|issue| {
+                issue.kind == ProjectionIssueKind::WrongProject
+                    || (issue.affected_scope == "derived_analysis" && inputs.requirements.code)
+                    || (issue.affected_scope == "canonical_source"
+                        && answer_sources
+                            .iter()
+                            .any(|id| id.to_string() == issue.identity))
+            })
+            .cloned()
+            .collect()
+    };
     let overview = ProjectOverview {
         project_id: reading_canonical.project.id,
         project_name: reading_canonical.project.display_name.clone(),
@@ -1496,6 +1578,7 @@ pub fn build_project_projection(
     };
     Ok(ProjectProjection {
         repository_analysis,
+        repository_scope_metadata,
         answer_capability_gaps,
         answer_issues,
         canonical_read_fingerprint: crate::canonical_read_fingerprint(inputs.canonical),
@@ -2397,27 +2480,34 @@ fn source_issues(canonical: &CanonicalReadBasis) -> Vec<ProjectionIssue> {
         .collect()
 }
 
+#[derive(Clone, Copy)]
+enum CapabilityGapScope<'a> {
+    Repository,
+    Work,
+    Decision(DecisionId),
+    Entity(&'a str),
+}
+
 /// Relevance requires an actual inventory/Source/entity intersection in the
 /// selected answer scope. A language label alone is never an intersection.
 fn contextual_capability_gaps(
     inputs: &ProjectProjectionInputs<'_>,
     canonical: &CanonicalReadBasis,
     graph: &ProjectionGraph<'_>,
+    scope: CapabilityGapScope<'_>,
 ) -> Vec<CapabilityGap> {
-    let repository_scope = inputs.selection == crate::WorkSelector::Repository
-        && inputs.detail.entity.is_none()
-        && inputs.detail.decision.is_none();
+    let repository_scope = matches!(scope, CapabilityGapScope::Repository);
     let checkpoints = current_work_checkpoints(canonical);
     let mut paths = Vec::new();
-    if let Some(id) = &inputs.detail.entity {
+    if let CapabilityGapScope::Entity(id) = scope {
         paths.extend(
             graph
                 .entities
                 .iter()
-                .filter(|e| e.identity == *id)
+                .filter(|e| e.identity == id)
                 .map(|e| e.area.path.clone()),
         );
-    } else if let Some(id) = inputs.detail.decision {
+    } else if let CapabilityGapScope::Decision(id) = scope {
         // Exact Decision reading uses its recorded applicability, independently
         // of the latest Work/Checkpoint topology seeds, including superseded history.
         for d in inputs

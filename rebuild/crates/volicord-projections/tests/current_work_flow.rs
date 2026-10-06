@@ -1124,3 +1124,207 @@ fn exact_decision_limits_survive_unrelated_checkpoint_and_supersession(
     }
     Ok(())
 }
+
+#[test]
+fn materialized_repository_reading_matches_live_scope_before_and_after_bounds(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::{SourceFreshness, SourceId};
+    use volicord_projections::{ProjectionDetail, ProjectionReadRequirements, WorkSelector};
+    use volicord_repository_intelligence::{AreaId, AreaKind, Capability, CapabilityState};
+
+    let (mut canonical, analysis, candidates) = projection_scenario_basis(
+        &[
+            ("work/lib.rs", "pub fn work() { helper(); } fn helper() {}"),
+            ("other/large.rs", "pub fn other() { a(); b(); c(); d(); e(); f(); } fn a() {} fn b() {} fn c() {} fn d() {} fn e() {} fn f() {}"),
+            ("other/query.cpp", "void query() {}"),
+        ],
+        &["work/lib.rs"],
+        &[vec!["work/lib.rs"]],
+        |analysis| {
+            // Keep this cardinality fixture fully resolved; unresolved evidence has
+            // separate downstream accounting and is covered by existing tests.
+            for fact in &mut analysis.structural_facts {
+                fact.relations.retain(|r| matches!(r.target, RelationTarget::ResolvedEntity(_)));
+            }
+            analysis.semantic_results.retain(|r| matches!(r.relation.target, RelationTarget::ResolvedEntity(_)));
+            let mut failure = analysis.capabilities.iter()
+                .find(|r| r.language == Some(Language::Rust) && r.capability == Capability::Structural)
+                .ok_or("Rust capability")?.clone();
+            failure.state = CapabilityState::Failed;
+            failure.area = AreaId { kind: AreaKind::File, path: "other/large.rs".into() };
+            failure.coverage.failed = vec![failure.area.clone()];
+            failure.reason = Some("Repository-only Rust failure".into());
+            analysis.capabilities.push(failure);
+            Ok(())
+        },
+    )?;
+    // An unrelated unavailable Source belongs to Repository reading, not this Work.
+    let mut unavailable = canonical.sources[0].clone();
+    let unavailable_id = SourceId::from_bytes([150; 16]);
+    unavailable.source.id = unavailable_id;
+    unavailable.freshness = SourceFreshness::Unavailable;
+    unavailable.availability = Availability::Unavailable;
+    unavailable.source.payload = SourcePayload::File {
+        locator: "other/unavailable.rs".into(),
+        snapshot: "fixture".into(),
+    };
+    canonical.sources.push(unavailable);
+    let work_id = canonical
+        .latest_checkpoint
+        .as_ref()
+        .ok_or("Checkpoint")?
+        .work_item_id
+        .ok_or("Work")?;
+    let original = canonical.clone();
+    let project = |selection, detail, limit| {
+        build_project_projection(ProjectProjectionInputs {
+            selection,
+            detail,
+            requirements: ProjectionReadRequirements::default(),
+            metadata: &[],
+            analysis_issues: &[],
+            canonical: &canonical,
+            analyses: &[&analysis],
+            applicability: volicord_inquiry::ApplicabilityQuery {
+                project_id: canonical.project.id,
+                paths: Vec::new(),
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+                current_assumptions: Vec::new(),
+                met_revisit_triggers: Vec::new(),
+            },
+            candidates: CandidateProjectionInput::Available(&candidates),
+            candidate_content_access: CandidateContentAccess::PolicyWithheld,
+            observed_at: canonical.project.updated_at,
+            bound: ProjectionBound {
+                max_items_per_section: limit,
+            },
+        })
+    };
+    // Include upstream map truncation and a smaller downstream architecture bound.
+    for projection_limit in [1, 4, 64] {
+        let work = project(
+            WorkSelector::LatestWork,
+            ProjectionDetail::default(),
+            projection_limit,
+        )?;
+        let live = project(
+            WorkSelector::Repository,
+            ProjectionDetail::default(),
+            projection_limit,
+        )?;
+        assert!(work.answer_capability_gaps.iter().all(
+            |g| g.language != Some(Language::Cpp) && g.reason != "Repository-only Rust failure"
+        ));
+        if projection_limit == 1 {
+            assert!(
+                live.answer_capability_gaps.len() > live.repository_map.gaps.len(),
+                "Repository answer relevance must be selected before the map gap bound"
+            );
+        }
+        assert!(live
+            .answer_capability_gaps
+            .iter()
+            .any(|g| g.language == Some(Language::Cpp)));
+        assert!(live
+            .answer_capability_gaps
+            .iter()
+            .any(|g| g.reason == "Repository-only Rust failure"));
+        assert!(!work
+            .answer_issues
+            .iter()
+            .any(|i| i.identity == unavailable_id.to_string()));
+        assert!(live
+            .answer_issues
+            .iter()
+            .any(|i| i.identity == unavailable_id.to_string()));
+        if projection_limit == 4 {
+            assert_ne!(
+                work.current_work_topology.omitted_entity_count,
+                live.current_work_topology.omitted_entity_count
+            );
+            assert_ne!(
+                work.current_work_topology.omitted_relation_count,
+                live.current_work_topology.omitted_relation_count
+            );
+        }
+        let entity = work
+            .current_work_topology
+            .entities
+            .first()
+            .ok_or("Work code")?
+            .identity
+            .clone();
+        for (selector, detail) in [
+            (WorkSelector::LatestWork, ProjectionDetail::default()),
+            (
+                WorkSelector::ExactWork(work_id),
+                ProjectionDetail::default(),
+            ),
+            (
+                WorkSelector::ExactWork(work_id),
+                ProjectionDetail {
+                    entity: Some(entity.clone()),
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let selected = project(selector, detail, projection_limit)?;
+            let selected_before = selected.clone();
+            let offline = selected.for_repository_reading();
+            assert_eq!(selected, selected_before);
+            assert_eq!(offline.answer_capability_gaps, live.answer_capability_gaps);
+            assert_eq!(offline.answer_issues, live.answer_issues);
+            assert_eq!(offline.current_work_topology, live.current_work_topology);
+            assert!(offline.selected_work.is_none() && offline.selected_entity.is_none());
+            assert!(offline.selected_entity_relations.is_empty());
+            for understanding_limit in [2, 32] {
+                let bound = UnderstandingBound {
+                    max_items_per_section: understanding_limit,
+                };
+                let actual = build_project_understanding(&offline, bound);
+                let expected = build_project_understanding(&live, bound);
+                assert_eq!(actual.architecture, expected.architecture);
+                let omitted = |u: &volicord_projections::ProjectUnderstanding, section: &str| {
+                    u.omissions
+                        .iter()
+                        .filter(|o| o.section == section)
+                        .map(|o| o.omitted_count)
+                        .sum::<usize>()
+                };
+                for section in [
+                    "architecture.components",
+                    "architecture.relationships",
+                    "architecture.gaps",
+                ] {
+                    assert_eq!(omitted(&actual, section), omitted(&expected, section));
+                }
+                // Independent cardinality oracle: all fixture entities/relations are
+                // resolved; repeated relation identities count once. Neither display
+                // bound can erase their omissions.
+                assert_eq!(
+                    omitted(&actual, "architecture.components"),
+                    analysis.structural_facts.len() - actual.architecture.components.len()
+                );
+                let relation_count = analysis
+                    .structural_facts
+                    .iter()
+                    .flat_map(|f| f.relations.iter().map(|r| r.identity.as_str()))
+                    .chain(
+                        analysis
+                            .semantic_results
+                            .iter()
+                            .map(|r| r.relation.identity.as_str()),
+                    )
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len();
+                assert_eq!(
+                    omitted(&actual, "architecture.relationships"),
+                    relation_count - actual.architecture.relationships.len()
+                );
+            }
+        }
+    }
+    assert_eq!(canonical, original);
+    Ok(())
+}

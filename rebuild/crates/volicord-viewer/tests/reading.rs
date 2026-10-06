@@ -1048,3 +1048,133 @@ fn unrelated_analyzer_failure_stays_in_analysis_while_related_limits_remain_ordi
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }
+
+#[test]
+fn offline_repository_code_uses_live_repository_limits_without_another_analysis_read(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::{build_project_understanding, UnderstandingBound, WorkSelector};
+    use volicord_repository_intelligence::{CapabilityState, Language};
+    use volicord_viewer::CodeScope;
+
+    let f = fixture()?;
+    std::fs::create_dir_all(f.repository.join("outside_work"))?;
+    std::fs::write(
+        f.repository.join("outside_work/query.cpp"),
+        "void broken( {\n",
+    )?;
+    // Force Repository topology truncation while the latest Work has no code seeds.
+    for index in 0..80 {
+        std::fs::write(
+            f.repository
+                .join(format!("outside_work/module_{index:03}.py")),
+            "def entry():\n    return helper()\ndef helper():\n    return 1\n",
+        )?;
+    }
+    f.operations.analyze(f.project, Vec::new())?;
+    let canonical_before = f.operations.canonical_basis(f.project)?;
+    let work = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::LatestWork)?;
+    let repository = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::Repository)?;
+    assert!(work
+        .answer_capability_gaps
+        .iter()
+        .all(|g| g.language != Some(Language::Cpp)));
+    let cpp = repository
+        .answer_capability_gaps
+        .iter()
+        .find(|g| {
+            g.language == Some(Language::Cpp)
+                && matches!(g.state, CapabilityState::Partial | CapabilityState::Failed)
+        })
+        .ok_or("Repository C++ gap")?;
+    assert!(
+        repository.current_work_topology.omitted_entity_count
+            > work.current_work_topology.omitted_entity_count
+    );
+    assert!(
+        repository.current_work_topology.omitted_relation_count
+            > work.current_work_topology.omitted_relation_count
+    );
+    let bound = UnderstandingBound {
+        max_items_per_section: 32,
+    };
+    let live_understanding = build_project_understanding(&repository, bound);
+    let offline_understanding = build_project_understanding(&work.for_repository_reading(), bound);
+    assert_eq!(
+        offline_understanding.architecture,
+        live_understanding.architecture
+    );
+    for section in ["architecture.components", "architecture.relationships"] {
+        let expected = live_understanding
+            .omissions
+            .iter()
+            .find(|o| o.section == section)
+            .ok_or("Repository omission")?;
+        assert!(expected.omitted_count > 0);
+        assert!(offline_understanding.omissions.contains(expected));
+    }
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let code_section = |html: &str| -> Result<String, Box<dyn std::error::Error>> {
+        Ok(html
+            .split("id=\"code\"")
+            .nth(1)
+            .ok_or("Code section")?
+            .split("</section>")
+            .next()
+            .ok_or("Code section end")?
+            .to_owned())
+    };
+    let contextual_limits = |html: &str| -> Result<String, Box<dyn std::error::Error>> {
+        Ok(html
+            .split("<aside class=\"contextual-limits\">")
+            .nth(1)
+            .ok_or("Contextual limits")?
+            .split("</aside>")
+            .next()
+            .ok_or("Limits end")?
+            .to_owned())
+    };
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let mut request = reading_request(
+            f.project,
+            ViewerView::Code {
+                scope: CodeScope::Repository,
+                entity: None,
+            },
+        );
+        request.locale = locale;
+        let live = viewer.render(&request, "test-token")?;
+        request.view = ViewerView::Tools {
+            tool: ViewerTool::Documents,
+        };
+        let (snapshot, profile) = viewer.render_snapshot_profiled(
+            &request,
+            volicord_context::TimestampMicros::from_unix_micros(123),
+        )?;
+        assert_eq!(profile.projection.analysis_snapshot_decodes, 1);
+        assert_eq!(profile.document_generations, 4);
+        let live_code = code_section(&live.html)?;
+        let offline_code = code_section(&snapshot.html)?;
+        assert!(offline_code.contains(&cpp.reason));
+        // Only the navigation target differs between live and offline limit disclosures.
+        assert_eq!(
+            contextual_limits(&offline_code)?
+                .split("<p class=\"next-action\">")
+                .next(),
+            contextual_limits(&live_code)?
+                .split("<p class=\"next-action\">")
+                .next(),
+        );
+        assert!(offline_code.contains("diagram-bounds"));
+    }
+    assert_eq!(canonical_before, f.operations.canonical_basis(f.project)?);
+    let after = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::Repository)?;
+    assert_eq!(repository.repository_analysis, after.repository_analysis);
+    assert_eq!(repository.repository_map, after.repository_map);
+    Ok(())
+}

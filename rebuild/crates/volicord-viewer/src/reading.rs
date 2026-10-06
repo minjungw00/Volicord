@@ -1356,18 +1356,7 @@ pub(super) fn snapshot(
         decision_detail(html, r, d, p, true);
     }
     section_end(html);
-    // Reuse immutable materialized data; never load a separate per-Work basis.
-    let mut repository_projection = p.clone();
-    repository_projection.selection = volicord_projections::WorkSelection {
-        selector: volicord_projections::WorkSelector::Repository,
-        work_item_id: None,
-        basis: volicord_projections::WorkSelectionBasis::Repository,
-    };
-    repository_projection.selected_work = None;
-    repository_projection.selected_work_decisions.clear();
-    repository_projection.current_work_code.clear();
-    repository_projection.current_work_topology.entities = p.repository_map.entities.clone();
-    repository_projection.current_work_topology.relations = p.repository_map.relations.clone();
+    let repository_projection = p.for_repository_reading();
     let repository = build_project_understanding(
         &repository_projection,
         UnderstandingBound {
