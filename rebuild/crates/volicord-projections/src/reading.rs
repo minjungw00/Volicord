@@ -223,12 +223,13 @@ pub(crate) fn quoted_reading(
             gaps,
         };
     };
-    let prefix = text
-        .chars()
-        .take(READING_TEXT_CHARACTER_LIMIT)
-        .collect::<String>();
-    let omitted_characters = text.chars().count() - prefix.chars().count();
-    let excerpt = omitted_characters > 0;
+    // Find the UTF-8 boundary and omission count in one traversal, borrowing
+    // the prefix until a displayed excerpt actually needs allocation.
+    let mut characters = text.char_indices();
+    let boundary = characters.nth(READING_TEXT_CHARACTER_LIMIT);
+    let omitted_characters = boundary.map_or(0, |_| 1 + characters.count());
+    let prefix = &text[..boundary.map_or(text.len(), |(offset, _)| offset)];
+    let excerpt = boundary.is_some();
     let (display_english, display_korean) = if excerpt {
         (
             format!("Excerpt (original language): {prefix}"),
@@ -742,4 +743,49 @@ pub(crate) fn derive_unresolved_grouping(
     });
     unresolved.dedup();
     unresolved
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quotation_boundary_preserves_multibyte_original_and_exact_omission() {
+        let basis = ReadingBasis {
+            record: ReadingRecord::ContextItem(ContextItemId::from_bytes([1; 16])),
+            revision: 1,
+            available_revisions: vec![1],
+            field: "statement".into(),
+            source_basis: Vec::new(),
+            source_status: Vec::new(),
+            analysis_snapshot_basis: Vec::new(),
+            repository_snapshot_basis: Vec::new(),
+        };
+        let exact = "한".repeat(READING_TEXT_CHARACTER_LIMIT);
+        let complete = quoted_reading(Some(&exact), basis.clone(), None);
+        assert_eq!(complete.display_english, exact);
+        assert_eq!(complete.display_korean, exact);
+        assert_eq!(
+            complete.representation,
+            ReadingRepresentation::OriginalQuotation
+        );
+        assert_eq!(
+            (complete.omitted_characters, complete.omitted_utf8_bytes),
+            (0, 0)
+        );
+
+        let longer = format!("{exact}🙂끝");
+        let excerpt = quoted_reading(Some(&longer), basis, None);
+        assert_eq!(excerpt.original_text.as_deref(), Some(longer.as_str()));
+        assert_eq!(
+            excerpt.display_english,
+            format!("Excerpt (original language): {exact}")
+        );
+        assert_eq!(excerpt.display_korean, format!("발췌 (원문 언어): {exact}"));
+        assert_eq!(excerpt.representation, ReadingRepresentation::Excerpt);
+        assert_eq!(
+            (excerpt.omitted_characters, excerpt.omitted_utf8_bytes),
+            (2, 7)
+        );
+    }
 }

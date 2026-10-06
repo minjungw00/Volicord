@@ -2407,6 +2407,7 @@ fn contextual_capability_gaps(
     let repository_scope = inputs.selection == crate::WorkSelector::Repository
         && inputs.detail.entity.is_none()
         && inputs.detail.decision.is_none();
+    let checkpoints = current_work_checkpoints(canonical);
     let mut paths = Vec::new();
     if let Some(id) = &inputs.detail.entity {
         paths.extend(
@@ -2439,7 +2440,7 @@ fn contextual_capability_gaps(
             );
         }
     } else if !repository_scope {
-        for cp in current_work_checkpoints(canonical) {
+        for cp in &checkpoints {
             paths.extend(cp.changed_paths.clone());
         }
         for goal in canonical
@@ -2454,7 +2455,7 @@ fn contextual_capability_gaps(
                 .context_items
                 .iter()
                 .any(|c| c.source_basis.contains(&source.source.id))
-                || current_work_checkpoints(canonical)
+                || checkpoints
                     .iter()
                     .any(|c| c.changed_source_basis.contains(&source.source.id))
             {
@@ -2476,9 +2477,9 @@ fn contextual_capability_gaps(
                         CanonicalReference::ContextItem(r) => {
                             canonical.context_items.iter().any(|c| c.id == r.identity())
                         }
-                        CanonicalReference::Checkpoint(r) => current_work_checkpoints(canonical)
-                            .iter()
-                            .any(|c| c.id == r.identity()),
+                        CanonicalReference::Checkpoint(r) => {
+                            checkpoints.iter().any(|c| c.id == r.identity())
+                        }
                         _ => false,
                     }) || canonical.context_items.iter().any(|c| {
                         c.applicability.components.iter().any(|component| {
@@ -2489,6 +2490,10 @@ fn contextual_capability_gaps(
                 .map(|e| e.area.path.clone()),
         );
     }
+    // Scope is a set: repeated same-Work observations preserve chronology,
+    // but must not multiply inventory relevance comparisons for the same path.
+    paths.sort();
+    paths.dedup();
     let overlaps = |a: &str, b: &str| {
         a.is_empty()
             || a == "."
@@ -2511,6 +2516,23 @@ fn contextual_capability_gaps(
                 .map(|a| (a.identity, &a.capabilities, &a.inventory.entries)),
         );
     for (identity, capabilities, entries) in bases {
+        // Inventory inclusion and answer scope are independent of the report.
+        // Select borrowed entries once rather than repeat full inventory/path
+        // comparisons for every language/capability diagnostic.
+        let relevant_entries = entries
+            .iter()
+            .filter(|entry| {
+                entry.entry_kind == volicord_repository_intelligence::EntryKind::File
+                    && !entry.classifications.iter().any(|c| {
+                        matches!(c,
+                        volicord_repository_intelligence::InventoryClassification::Ignored
+                        | volicord_repository_intelligence::InventoryClassification::Generated
+                        | volicord_repository_intelligence::InventoryClassification::Vendor
+                        | volicord_repository_intelligence::InventoryClassification::Binary)
+                    })
+                    && (repository_scope || paths.iter().any(|p| overlaps(p, &entry.area.path)))
+            })
+            .collect::<Vec<_>>();
         for report in capabilities.iter().filter(|r| {
             r.state != CapabilityState::Available && r.capability != Capability::AgentAssisted
         }) {
@@ -2526,21 +2548,12 @@ fn contextual_capability_gaps(
                 overlaps(&report.area.path, path)
                     && (affected.is_empty() || affected.iter().any(|a| overlaps(&a.path, path)))
             };
-            let relevant = entries.iter().any(|entry| {
-                entry.entry_kind == volicord_repository_intelligence::EntryKind::File
-                    && !entry.classifications.iter().any(|c| {
-                        matches!(c,
-                        volicord_repository_intelligence::InventoryClassification::Ignored
-                        | volicord_repository_intelligence::InventoryClassification::Generated
-                        | volicord_repository_intelligence::InventoryClassification::Vendor
-                        | volicord_repository_intelligence::InventoryClassification::Binary)
-                    })
-                    && report
-                        .language
-                        .as_ref()
-                        .is_none_or(|l| entry.language.as_ref() == Some(l))
+            let relevant = relevant_entries.iter().any(|entry| {
+                report
+                    .language
+                    .as_ref()
+                    .is_none_or(|l| entry.language.as_ref() == Some(l))
                     && area_affected(&entry.area.path)
-                    && (repository_scope || paths.iter().any(|p| overlaps(p, &entry.area.path)))
             }) || (report.language.is_none()
                 && report.capability == Capability::Inventory
                 && (repository_scope || paths.iter().any(|p| area_affected(p))));

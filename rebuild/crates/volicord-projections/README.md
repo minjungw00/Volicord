@@ -73,3 +73,10 @@ readers. `ExplanationSubject`, `ExplanationPlan`, `ExplanationRealization` and
 Operations owns explicit prepare/record/delete and managed privacy storage. Reads
 have no generation or publication authority. See the Viewer README for generation
 entry points, evidence budgets, lifecycle and fresh active-host proof instructions.
+
+Contextual capability selection reuses one borrowed inventory subset for the
+selected answer scope across language/capability reports. Repeated path seeds
+are compared once; each Work observation, Source basis, coverage state and
+chronology remains retained. Quotation excerpt boundaries and exact Unicode
+omissions are computed in one text traversal without allocating an intermediate
+prefix for complete text.
