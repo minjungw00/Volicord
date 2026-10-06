@@ -50,6 +50,27 @@ class ChangedSurfaceTests(unittest.TestCase):
             self.assertEqual(qualitative_review.required_surfaces({"name": name, "group": "viewer_snapshot"}),
                 ["viewer_snapshot"])
 
+    def test_missing_optional_code_context_leaves_overview_and_work_ready(self):
+        inventory = self.inventory()
+        manifest = {"candidate_head": "f" * 40,
+            "candidate_artifacts": {"volicord-viewer": {"sha256": "a" * 64}},
+            "journeys": {"journey-volicord": {"runtime_home": "/synthetic/runtime", "project_id": "a" * 32}}}
+        contexts = {}
+        for locale in ("en", "ko"):
+            overview = display_fixture(manifest, locale)
+            work = copy.deepcopy(overview)
+            work["context"].update(view={"view": "work"}, selected_work="a"*32)
+            contexts[locale] = [overview, work]
+        ready = p.block_readiness(inventory["observation_blocks"], contexts)
+        for locale in contexts:
+            states = {b["id"]: b["state"] for b in ready[locale]}
+            self.assertEqual(states["overview"], "ready")
+            self.assertEqual(states["work"], "ready")
+            self.assertEqual(states["code-analysis"], "insufficient_evidence")
+            self.assertEqual(states["multi-work"], "insufficient_evidence")
+        with self.assertRaisesRegex(ValueError, "prepared block"):
+            p.require_claim_context({"readiness": ready}, contexts, "en", "code_behavior_comprehension", "violated")
+
     def test_changed_candidate_requires_new_context_and_no_screen_fixes_missing_execution(self):
         manifest = {"candidate_head": "f" * 40,
             "candidate_artifacts": {"volicord-viewer": {"sha256": "a" * 64}},

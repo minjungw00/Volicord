@@ -498,6 +498,10 @@ def validate_assessment(value, spec, preparation, inspected):
             surfaces = {index["evidence"][r["evidence_id"]]["surface"] for r in value["evidence"]}
             require({"canonical_bundle", "work_capture"} <= surfaces,
                 "displayed Decision inapplicability requires canonical and actual-work scope evidence")
+            canonical = [index["evidence"][r["evidence_id"]] for r in value["evidence"]
+                if index["evidence"][r["evidence_id"]]["surface"] == "canonical_bundle"]
+            require(all(e.get("decision_ids") == [] for e in canonical),
+                "displayed Decision inapplicability cannot hide a retained Decision")
         if rule == "single_language_scope":
             sample = next(s for s in [*index["samples"], *index["journey_samples"]]
                 if s["sample_id"] == spec["sample_id"])

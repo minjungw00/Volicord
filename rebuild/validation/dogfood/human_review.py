@@ -459,6 +459,11 @@ def apply_observation_assessments(review_root, mapping_path):
         else:
             response = observed["response"]
             answer = response["observation"]
+        if observed["control"]["action"] == "same_as_locale":
+            import human_observation_plan
+            english_observed = json.loads(ops.bounded_read(ops.safe_path(root, english[0]["path"])))
+            human_observation_plan.require_claim_context(english_observed["scope"], english_observed["contexts"],
+                "en", spec["name"], mapping["assessment"])
         # Unreported experience may not become a claim of no uncertainty/counterevidence.
         if response["limits"] == "not_reported":
             review.require(mapping["uncertainty"] == "not_reported",

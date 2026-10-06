@@ -331,6 +331,9 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
         bundle_name = final["artifact_inventory"]["canonical_bundle"]["file"]
         bundle_id = source(journey_sample_id + "-bundle", bundle_name, "canonical_bundle", journey_sample_id,
             sample_ids=journey_scope)
+        if bundle_id is not None:
+            index_bundle = c.harness.load_canonical_bundle(safe_path(root, bundle_name))
+            evidence[bundle_id]["decision_ids"] = sorted(row["id"] for row in index_bundle.rows("decisions"))
         journey_samples.append({"sample_id": journey_sample_id, "journey_id": journey_sample_id,
             "repository_class": kind, "represented_work_sample_ids": work_sample_ids})
         for lifecycle in manifest['explanation_evidence']['steward_lifecycles']:
@@ -812,6 +815,8 @@ def _load_package(root):
             review.require(entry.get("prepared_claims") == sorted({claim
                 for b in observed["scope"]["readiness"][entry["locale"]]
                 if b["state"] == "ready" for claim in b["claims"]}), "copied prepared claim scope mismatch")
+            review.validate_reviewer(observed["binding"]["observer"], preparation["evaluated_sessions"])
+            review.require(observed["binding"]["observer"]["kind"] == "human", "copied observer must be Human")
             answer = observed["answer_trace"][-1]["answer"]
             review.require((observed["response"] is not None and answer == observed["response"]["observation"])
                 or (observed["response"] is None and answer.casefold() == "same as english"),
@@ -821,6 +826,10 @@ def _load_package(root):
                     viewer_sha256=observed["binding"]["display"]["viewer_sha256"],
                     runtime_binding=observed["binding"]["display"]["runtime_binding"],
                     project=observed["binding"]["display"]["project_id"],locale=entry["locale"])
+        if entry["surface"] == "canonical_bundle":
+            canonical = campaign_api().harness.load_canonical_bundle(safe_path(root, entry["path"]))
+            review.require(entry.get("decision_ids") == sorted(row["id"] for row in canonical.rows("decisions")),
+                "canonical Decision inventory differs from bound artifact")
         if entry["surface"] == "resource_observation":
             import resource_observer
             resource_observer.validate(json.loads(content))

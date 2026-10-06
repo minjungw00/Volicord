@@ -989,3 +989,19 @@ escalations retain their own evidence paths. Unreviewed rubric counts are not re
 human questions. Procedure and current identities are owned by
 [qualitative review](../docs/design/qualitative-review.md) and
 [display observation](dogfood/viewer-observation.md).
+
+Human changed-surface preparation uses `dogfood/human_observation_plan.py --bin-dir
+EXACT_CANDIDATE_BIN --output PRIVATE_OUTPUT` on the clean final HEAD after its successful
+gate. It creates no answers or verdicts. `capture-human-viewer-observations
+--observation-plan PRIVATE_OUTPUT/preparation.json` recomputes block readiness before
+asking grouped experience prompts. Missing Decision context leaves only that block
+insufficient; explicit no-user-Decision inapplicability requires separate canonical
+and actual-work review. Captured schema/receipt 6 preserves scope and exact answers.
+The mapper and recorded/copied consumers enforce prepared live claim context.
+
+Support regression `qualification_self_test.FileBoundaryTests.
+test_changed_surface_answers_survive_recorded_package_qualification_and_copied_lineage`
+uses authored answers and contexts through actual immutable review/package publication,
+qualification and copied replay. It preserves unresolved historical snapshot/conversation
+claims alongside live violations and rejects absent traces and altered reviewer/candidate
+bindings. These fixtures supply no current-candidate Human or Naturalistic qualification.

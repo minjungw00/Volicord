@@ -57,7 +57,7 @@ rebuild/scripts/dogfood-campaign capture-human-viewer-observations --campaign-ro
 ```
 
 Repeat `--viewer-context` for multiple views/phases. Human observation/receipt
-schema 5 retains those closed contexts and an explicit `personally_observed`
+schema 6 retains those closed contexts and an explicit `personally_observed`
 declaration for each locale before accepting narrative or `SAME AS ENGLISH`.
 Both locales require their own actual contexts and personal inspection; a locale
 reference reuses declared prose only. Capture rechecks the receipt and screenshot
@@ -102,8 +102,13 @@ append-only recording. Counts of unreviewed rubric fields are not question count
 
 For a changed Product candidate, generate `human_observation_plan.py --bin-dir BIN
 --output NEW_PLAN` after technical validation, then pass `--observation-plan
-NEW_PLAN/preparation.json` to capture. Required en/ko views and two actual Works plus
-an applicable displayed Decision are checked before questioning. The exact-candidate
+NEW_PLAN/preparation.json` to capture. Required en/ko contexts are checked independently for each block before questioning.
+Comparing Works needs two actual Works; Decision comprehension needs an applicable
+displayed Decision. Missing contexts leave dependent blocks insufficient and omit
+those prompts, while unrelated prepared experiences proceed. Legitimate no-Decision
+inapplicability requires separate canonical/actual-work review; a required but missing
+Decision remains unresolved or blocking. Copied packages recompute the prepared
+claims, and the mapper/validator reject verdicts for unprepared questions. The exact-candidate
 preparation contains only scope and blank observation obligations. Substantial changes
 require new keyboard/focus/narrow/native-zoom/input-paint experience too; old successes
 remain diagnostic historical observations, not evidence of the new display.

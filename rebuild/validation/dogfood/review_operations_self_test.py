@@ -1277,8 +1277,7 @@ class WorkflowTests(unittest.TestCase):
     def test_same_as_english_requires_the_identical_criterion_and_rebinds_locale_evidence(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
         manifest = c.load_evidence_set(self.root)
-        contexts = [context_directory(self.parent, self._testMethodName + "-" + locale, manifest, locale)
-            for locale in ("en", "ko")]
+        contexts = prepared_context_directories(self.parent, self._testMethodName + "-", manifest)
         observation_answers = iter([
             "1", "OBSERVATION:\nEnglish keyboard use was directly observed.\nLIMITS:\nOnly the bounded journey was inspected.",
             "1", "SAME AS ENGLISH",

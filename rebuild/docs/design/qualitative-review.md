@@ -940,7 +940,9 @@ copied packages recompute the same scope, including locale and display identity.
 An absent selected Decision leaves its block `insufficient_evidence`, with applicability
 unresolved. A separate evidence-backed review may establish `not_applicable` under
 `no_user_decision_in_scope`: inspect canonical and actual-work evidence and explain why
-no Decision was legitimately required/applicable. That finding may be agent-owned; no
+no Decision was legitimately required/applicable. The bound canonical inventory
+must contain no Decision; copied packages recompute that inventory from retained bytes.
+That finding may be agent-owned; no
 Human needs to experience a nonexistent Decision. Missing records alone are not such proof.
 If Product/task/campaign authority required a Decision, absence remains unresolved or a
 violation under the relevant authority/interaction claim, never no-Decision inapplicability.

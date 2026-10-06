@@ -123,6 +123,11 @@ def validate_scope(scope, contexts, candidate, viewer_sha256):
         review.require(value["inputs"] == {str(p.relative_to(ROOT)): digest(p)
             for p in (Path(__file__), FIXTURE, ROOT / "rebuild/docs/design/qualitative-review.md")},
             "observation scope contract identity mismatch")
+    if value is not None:
+        changed = {path for block in blocks for path in block["actually_changed_paths"]}
+        expected = plan(candidate, value["executables"], changed, inventory)
+        expected["inputs"] = value["inputs"]
+        review.require(value == expected, "copied changed-surface plan differs from authored routing")
     review.require(scope["readiness"] == block_readiness(blocks, contexts), "block applicability/context mismatch")
     return blocks
 

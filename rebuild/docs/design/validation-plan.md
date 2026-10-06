@@ -2590,3 +2590,12 @@ to proceed. Current observation/receipt schema 6 and changed-surface preparation
 replace their earlier contracts; historical artifacts remain immutable diagnostic evidence.
 Evidence-backed no-user-Decision inapplicability requires canonical and actual-work scope
 inspection. Required-but-missing Decision authority remains independently unresolved/blocking.
+
+The final changed-surface support chain is covered by
+`qualification_self_test.FileBoundaryTests.test_changed_surface_answers_survive_recorded_package_qualification_and_copied_lineage`:
+authored plan/context/answer, current mapping, immutable record/package, actual qualification
+file consumer and source-independent copied lineage. Every maintained live claim is tested
+in both locales; historical snapshot/conversation claims stay independently unresolved.
+Missing answer trace and reviewer/candidate tampering are rejected, with display/subject/locale
+controls in `viewer_observation_self_test` and receipt controls in `review_operations_self_test`.
+No authored support answer is a Human result or a new Naturalistic campaign.

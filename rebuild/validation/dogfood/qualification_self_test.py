@@ -1116,6 +1116,131 @@ class FileBoundaryTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
+    def test_changed_surface_answers_survive_recorded_package_qualification_and_copied_lineage(self):
+        import campaign
+        import human_review
+        import human_observation_plan as plan
+        import review_operations as ops
+        import result_lineage
+        from viewer_observation_self_test import prepared_context_directories
+        manifest = campaign.load_evidence_set(self.root)
+        prefix = self.parent / self._testMethodName
+        prefix.mkdir()
+        contexts = prepared_context_directories(prefix, "context-", manifest)
+        inventory = json.loads(plan.FIXTURE.read_bytes())
+        changed = plan.git("diff", "--name-only", inventory["diagnostic_candidate"], manifest["candidate_head"]).splitlines()
+        value = plan.plan(manifest["candidate_head"],
+            {name: v["sha256"] for name,v in manifest["candidate_artifacts"].items()}, changed, inventory)
+        value["inputs"] = {str(p.relative_to(plan.ROOT)): plan.digest(p)
+            for p in (Path(plan.__file__), plan.FIXTURE, plan.ROOT / "rebuild/docs/design/qualitative-review.md")}
+        plan_file = prefix / "plan.json"; plan_file.write_bytes(ops.encoded(value))
+        observations = prefix / "observations"
+        answer = ("Authored support fixture only: Work state/next action and problem/effect, Project purpose, "
+            "multiple Works, code behavior, architecture flow, diagram usefulness/readability, evidence/Analysis "
+            "and hierarchy are difficult to understand. The displayed Decision is unclear. Color, keyboard, "
+            "focus, narrow/zoom and input/paint also cause difficulty. No historical fidelity experience.")
+        human_review.capture_viewer_observations(self.root, observations, context_paths=contexts,
+            observation_plan=plan_file, input_fn=iter(["1", answer, "1", "SAME AS ENGLISH"]).__next__,
+            output_fn=lambda _: None)
+        target = prefix / "review"
+        ops.prepare(self.root, target, reviewer_kind="human", human_observations=observations,
+            evaluation_path=self.evaluation)
+        prep, sha, _ = ops.load_package(target)
+        specs = review.criterion_specs(prep["index"], prep["rubric"])
+        mappings = [{"criterion_number": i + 1, "observation_evidence_id": "journey-volicord-live-" + spec["locale"],
+            "assessment": "violated", "reasoning": "The exact authored answer reports difficulty with this experience.",
+            "uncertainty": "not_reported", "criterion_observations": prep["rubric"]["criterion_observations"].get(spec["name"], []),
+            "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence was reported.", "evidence": []}}
+            for i,spec in enumerate(specs) if spec["group"] == "live_viewer"]
+        mapping = prefix / "mapping.json"; mapping.write_bytes(ops.encoded(mappings))
+        human_review.apply_observation_assessments(target, mapping)
+        original = json.loads((target / "draft.json").read_bytes())
+        for mutate in (lambda v:v["assessments"][mappings[0]["criterion_number"]-1].update(human_answer_trace=[]),
+                       lambda v:v["reviewer"].update(run_id="0"*32),
+                       lambda v:v["binding"].update(candidate_head="0"*40)):
+            changed = copy.deepcopy(original); mutate(changed)
+            with self.assertRaises(ValueError): review.validate_value(prep, sha, changed)
+        ops.record(target, target / "draft.json")
+        ops.recorded_files(target, prep, sha)
+        archive = prefix / "review.tar.gz"; ops.package_review(target, archive)
+        qualified = prefix / "qualification"
+        result = policy.qualify(self.root, self.evaluation, qualified,
+            candidate=manifest["candidate_head"], review_roots=[target])
+        for spec in specs:
+            if spec["group"] == "live_viewer":
+                self.assertIn(spec["criterion_id"], result["qualitative_review"]["violated_criteria"])
+            if spec["group"] == "viewer_snapshot" or spec["name"] == "decision_comprehension_when_applicable":
+                self.assertIn(spec["criterion_id"], result["qualitative_review"]["unresolved_criteria"])
+        self.assertEqual(result["replacement_qualification"], "blocked")
+        published = result_lineage.publish(self.root, self.evaluation, [target],
+            qualified / "qualification.json", output=prefix / "lineage")
+        copied = prefix / "copied"; shutil.copytree(published["lineage_root"], copied)
+        with patch.object(campaign, "load_evidence_set", side_effect=AssertionError("original Campaign access")):
+            verified = result_lineage.verify(copied)
+        self.assertFalse(verified["external_staging_paths_used"])
+
+    def test_project_without_decisions_records_unrelated_experience_and_evidence_backed_inapplicability(self):
+        import campaign as c
+        import campaign_self_test as support
+        import review_operations as ops
+        import human_review
+        from review_operations_self_test import insufficient_draft
+        from viewer_observation_self_test import prepared_context_directories
+        prefix = self.parent / self._testMethodName; prefix.mkdir()
+        cases = [(kind, label, ("research_or_no_question",) if (kind,label) == ("volicord","B") else values)
+            for kind,label,values in support.FIXTURE_BEHAVIOR_CASES]
+        binary = Path(c.load_campaign(self.root)["candidate_binary"])
+        with patch.object(harness, "git_clean", return_value=True), patch.object(support, "FIXTURE_BEHAVIOR_CASES", cases):
+            root, raw, bundles = support.prepared_batch(prefix, "no-decisions", binary)
+            c.collect_batch(root, raw, exporter=support.batch_exporter(bundles),
+                documenter=support.documenter, snapshotter=support.snapshotter)
+            evaluated = c.evaluate_campaign(root)
+        manifest = c.load_evidence_set(root)
+        final = next(j for j in manifest["journey_final_evidence"] if j["journey_id"] == "journey-volicord")
+        bundle = harness.load_canonical_bundle(root / final["artifact_inventory"]["canonical_bundle"]["file"])
+        self.assertFalse(bundle.rows("decisions"))
+        contexts = prepared_context_directories(prefix, "context-", manifest, decision=False)
+        observations = prefix / "observations"
+        human_review.capture_viewer_observations(root, observations, context_paths=contexts,
+            input_fn=iter(["1", "Authored fixture: Work grouping is confusing. No Decision experience.",
+                "1", "SAME AS ENGLISH"]).__next__, output_fn=lambda _: None)
+        target = prefix / "human"
+        ops.prepare(root, target, reviewer_kind="human", human_observations=observations)
+        prep, sha, _ = ops.load_package(target)
+        specs = review.criterion_specs(prep["index"], prep["rubric"])
+        mappings = [{"criterion_number": i+1, "observation_evidence_id": "journey-volicord-live-"+spec["locale"],
+            "assessment": "violated", "reasoning": "The authored answer reports confusing Work grouping.",
+            "uncertainty": "not_reported", "criterion_observations": prep["rubric"]["criterion_observations"][spec["name"]],
+            "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence reported.", "evidence": []}}
+            for i,spec in enumerate(specs) if spec["name"] == "multiple_work_comprehension"]
+        mapping = prefix/"mapping.json"; mapping.write_bytes(ops.encoded(mappings))
+        human_review.apply_observation_assessments(target, mapping); ops.record(target, target/"draft.json")
+        agent = prefix / "agent"
+        ops.prepare(root, agent, reviewer_kind="agent", session_id="no-decision-scope-review", include_raw=True)
+        draft = insufficient_draft(agent)
+        aprep, asha, _ = ops.load_package(agent)
+        for a in draft["assessments"]:
+            if not a["criterion_id"].endswith("/displayed_decision_comprehension"): continue
+            a.update(assessment="not_applicable", reasoning="Authored delegated-work scope required no user Decision; canonical inventory has none.",
+                applicability_reason={"code": "no_user_decision_in_scope", "reasoning": "No user-owned Decision was required by these authored Works."},
+                evidence=[{"evidence_id": identity, "locator": entry["locators"][0],
+                    "criterion_id": a["criterion_id"], "relevance": "Inspect actual Work scope and canonical absence."}
+                    for identity,entry in aprep["index"]["evidence"].items()
+                    if entry["surface"] in {"canonical_bundle", "work_capture"}
+                    and review.evidence_applies(entry, "journey-volicord")])
+            a["inspected_evidence"] = [e["evidence_id"] for e in a["evidence"]]
+            draft["observation_scope"]["inspected_evidence"] = sorted(set(
+                draft["observation_scope"]["inspected_evidence"] + a["inspected_evidence"]))
+        (agent/"draft.json").write_bytes(ops.encoded(draft)); ops.record(agent, agent/"draft.json")
+        result = policy.qualify(root, root/evaluated["evaluation"], prefix/"qualification",
+            candidate=manifest["candidate_head"], review_roots=[target,agent])
+        for locale in ("en","ko"):
+            self.assertIn(f"journey-volicord/live_viewer/{locale}/multiple_work_comprehension",
+                result["qualitative_review"]["violated_criteria"])
+            self.assertIn(f"journey-volicord/live_viewer/{locale}/displayed_decision_comprehension",
+                result["qualitative_review"]["resolved_criteria"])
+        self.assertFalse(result["replacement_pass_candidate"])
+
     def test_host_metadata_user_prose_and_history_replay_from_copied_inputs(self):
         import campaign as c
         import campaign_self_test as support

@@ -38,6 +38,7 @@ def preparation(kind="agent"):
                 "surface": surface,
                 "locale": locale, "sha256": "a" * 64, "path": name,
                 **({"prepared_claims": policy["criteria"]["live_viewer"]} if surface == "live_viewer_observation" else {}),
+                **({"decision_ids": []} if surface == "canonical_bundle" else {}),
                 "locators": [{"kind": "json_pointer", "value": "/fact"}]}
     for entry in index["evidence"].values():
         if entry["surface"] in {"work_capture", "resume_capture"}:
@@ -102,6 +103,21 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_displayed_decision_inapplicability_requires_actual_work_and_empty_canonical_inventory(self):
+        p = preparation()
+        value = completed(p)
+        a = next(a for a in value["assessments"] if a["criterion_id"].endswith("/en/displayed_decision_comprehension"))
+        fill(a, p, "not_applicable")
+        a["applicability_reason"] = {"code": "no_user_decision_in_scope", "reasoning": "Authored no-user-Decision scope."}
+        q.validate_value(p, "d" * 64, value)
+        changed = copy.deepcopy(p)
+        changed["index"]["evidence"]["canonical_bundle"]["decision_ids"] = ["d" * 32]
+        with self.assertRaisesRegex(ValueError, "hide a retained Decision"):
+            q.validate_value(changed, "d" * 64, value)
+        a["evidence"] = [r for r in a["evidence"] if r["evidence_id"] != "work_capture"]
+        with self.assertRaisesRegex(ValueError, "actual-work scope"):
+            q.validate_value(p, "d" * 64, value)
+
     def test_high_impact_handoff_uses_groups_and_includes_additional_authority(self):
         p = preparation()
         value = completed(p)
