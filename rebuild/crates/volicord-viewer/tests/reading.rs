@@ -481,7 +481,8 @@ fn requested_sections_preserve_metadata_and_refuse_incomplete_documents(
         assert_eq!(profile.document_generations, 0);
         assert_eq!(profile.document_preview, std::time::Duration::ZERO);
         assert!(!page.html.contains("Code bodies not requested"));
-        assert!(page.html.contains("Repository and runtime diagnostics"));
+        assert!(!page.html.contains("id=\"diagnostics\""));
+        assert!(!page.html.contains("Material limitations"));
         let (projection, _) = viewer.operations().project_projection_read_profiled(
             fixture.project,
             WorkSelector::ExactWork(fixture.goals["older"]),
@@ -769,10 +770,9 @@ fn ordinary_hierarchy_separates_catalog_detail_and_audit_in_both_locales(
             &server,
             &format!("/?view=overview&locale={locale}&language={locale}"),
         );
-        assert!(
-            overview.find("id=\"overview\"").ok_or("Overview")?
-                < overview.find("id=\"limitations\"").ok_or("limits")?
-        );
+        assert!(overview.contains("id=\"overview\""));
+        assert!(!overview.contains("Material limitations"));
+        assert!(!overview.contains("id=\"diagnostics\""));
         assert_eq!(overview.matches("aria-current=\"page\"").count(), 1);
         assert!(!overview.contains("integrity diagnostics not requested"));
         let list = exchange(
@@ -793,6 +793,10 @@ fn ordinary_hierarchy_separates_catalog_detail_and_audit_in_both_locales(
         assert!(works.contains("data-work-state=\"completed\""));
         assert!(works.contains("data-work-state=\"open\""));
         assert!(works.contains("data-question=\"RecordedNextStep\""));
+        assert!(
+            works.contains("data-question=\"VerificationCoverage\""),
+            "historical verification must remain ordinary"
+        );
         assert!(!works.contains("work-audit"));
         assert!(!works.contains("result-evidence"));
         let detail = exchange(
@@ -883,5 +887,57 @@ fn scoped_code_keeps_work_meaning_direction_and_missing_flow_honest(
                 .ok_or("audit")?
     );
     assert!(!analysis.contains("action=\"/analyze"));
+    Ok(())
+}
+
+#[test]
+fn unrelated_analyzer_failure_stays_in_analysis_while_related_limits_remain_ordinary(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    std::fs::write(f.repository.join("unrelated.rs"), "fn broken( {\n")?;
+    f.operations.analyze(f.project, Vec::new())?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let work = exchange(&server, &format!("/?view=work&work={}", f.goals["older"]));
+    assert!(!work.contains("unrelated.rs"));
+    assert!(!work.contains("id=\"diagnostics\""));
+    assert!(work.contains("data-question=\"VerificationCoverage\""));
+    let code = exchange(
+        &server,
+        &format!("/?view=code&scope=work&work={}", f.goals["older"]),
+    );
+    assert!(!code.contains("unrelated.rs"));
+    assert!(!code.contains("Material limitations"));
+    let analysis = exchange(&server, "/?view=tools&tool=status");
+    assert!(analysis.contains("unrelated.rs"));
+    assert!(analysis.contains("class=\"global-diagnostics\""));
+    // Actual source change invalidates related code; the answer limitation must
+    // be adjacent to its explanation, outside any diagnostic disclosure.
+    std::fs::write(
+        f.repository.join("python/worker.py"),
+        "def changed():\n    return 2\n",
+    )?;
+    let changed = exchange(
+        &server,
+        &format!("/?view=code&scope=work&work={}", f.goals["older"]),
+    );
+    let limits = changed
+        .split("class=\"contextual-limits\"")
+        .nth(1)
+        .ok_or("related limitation")?
+        .split("</aside>")
+        .next()
+        .ok_or("end")?;
+    assert!(limits.contains("stale") || limits.contains("repository has changed"));
+    assert!(limits.contains("Open Analysis"));
+    assert!(!limits.contains("<details"));
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }

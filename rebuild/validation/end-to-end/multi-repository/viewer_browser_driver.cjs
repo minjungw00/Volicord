@@ -179,6 +179,31 @@ async function ordinaryText(locator) {
 function claimGroups(body, groups, reason) {
   for(const terms of groups)requireFact(terms.some(t=>body.toLowerCase().includes(t.toLowerCase())),`${reason}:${terms}`);
 }
+async function readingHierarchy(state, locale) {
+  requireFact(await page.locator('nav[aria-label="Viewer"] a[aria-current="page"]').count()===1,'current_navigation_ambiguous');
+  requireFact(await page.locator('#limitations').count()===0,'global_limitations_dominate_reading');
+  const ordinary=await ordinaryText(page.locator('main'));
+  requireFact(!ordinary.includes('integrity diagnostics not requested'),'materialization_detail_as_warning');
+  if(state==='default') {
+    const heading=await page.locator('main > section').first().getAttribute('id');
+    requireFact(heading==='overview','project_purpose_not_first');
+    for(const card of await page.locator('#overview .work-summary').all()) {
+      requireFact(await card.locator('h4 a').count()===1,'work_title_not_distinct');
+      requireFact(await card.locator('.work-state .badge').count()===1,'work_status_missing');
+      requireFact(await card.locator('.next-action[data-question]').count()===1,'work_next_action_missing');
+      requireFact(await card.locator('details').count()===0,'list_expands_audit_or_full_explanation');
+    }
+  }
+  if(state==='analysis') {
+    const status=page.locator('#health .analysis-summary');
+    requireFact(await status.count()===1,'analysis_reading_missing');
+    requireFact(['absent','current','partial','stale','failed','unknown','unavailable'].includes(await status.getAttribute('data-analysis-state')),'analysis_state_unknown');
+    requireFact(await status.locator('[data-analysis-freshness]').count()===1,'freshness_conflated_with_coverage');
+    requireFact((await ordinaryText(status)).includes('volicord analyze'),'refresh_guidance_missing');
+    requireFact(await page.locator('.runtime-diagnostics[open],.global-diagnostics[open]').count()===0,'global_diagnostics_not_disclosed');
+  }
+  return {hierarchy:state,locale,diagnostics:'explicit_disclosure'};
+}
 async function overviewFacts(locale) {
   const overview=page.locator('#overview');
   const body=await ordinaryText(overview);
@@ -276,7 +301,7 @@ async function copyMutation(name, mutate, verify, positiveUrl) {
   try { await verify(); } catch (error) { failure = String(error); }
   requireFact(failure, `negative_control_not_detected:${name}`);
   // Assert the intended failure, not merely a navigation/shape failure.
-  const expected = {wrapping:'ordinary_page_overflow',prefix:'common_prefix_truncation',fragment:'fragment_target',substitution:'cross_work_next_step_substitution',live_link:'snapshot_live_link'}[name];
+  const expected = {wrapping:'ordinary_page_overflow',prefix:'common_prefix_truncation',fragment:'fragment_target',substitution:'cross_work_next_step_substitution',live_link:'snapshot_live_link',historical:'overview_promotes_historical_pass',flow:'graph_relation_basis_mismatch'}[name];
   requireFact(failure.includes(expected), `wrong_negative_control_reason:${failure}`);
   await page.screenshot({path:path.join(config.output, `${mode}-negative-${name}.png`)});
   await go(positiveUrl);
@@ -296,13 +321,13 @@ async function live() {
   const url = (view, locale, fields={}) => config.url+'?'+new URLSearchParams({view,locale,language:locale,...fields});
   const entity = F.entities.find(e=>e.path==='unsafe<&>.py' && e.name==='unsafe<&>');
   requireFact(entity, 'source_fixture_alpha_not_analyzed');
-  const routes = locale => ({default:config.url+'?locale='+locale,work:url('work',locale,{work:F.goals.older}),decision:url('decisions',locale,{decision:F.decisions.explicit}),detail:url('code',locale,{scope:'repository',entity:entity.id})});
+  const routes = locale => ({default:config.url+'?locale='+locale,work:url('work',locale,{work:F.goals.older}),decision:url('decisions',locale,{decision:F.decisions.explicit}),detail:url('code',locale,{scope:'repository',entity:entity.id}),analysis:url('tools',locale,{tool:'status'}),catalog:url('work',locale)});
   for (const locale of ['en','ko']) {
     for (const width of [390,768,1440]) {
       await page.setViewportSize({width,height:900});
       for (const factor of [1,2]) {
         for (const [state,address] of Object.entries(routes(locale))) {
-          const reading=page.locator(state==='default'?'#overview':state==='work'?workSelector('older'):state==='decision'?idSelector(`decision-${F.decisions.explicit}`):'#code');
+          const reading=page.locator(state==='default'?'#overview':state==='work'?workSelector('older'):state==='decision'?idSelector(`decision-${F.decisions.explicit}`):state==='analysis'?'#health':state==='catalog'?'#works':'#code');
           await check(`${locale}-${width}-${factor}-${state}`, async()=>{
             await go(address);
             await zoom(1);
@@ -310,6 +335,7 @@ async function live() {
             requireFact(await page.locator('html').getAttribute('lang') === locale, 'bundled_locale_mismatch');
             await fragments();
             requireFact(await page.locator('script,[onclick],[onerror]').count()===0,'escaping_security_boundary');
+            await readingHierarchy(state,locale);
             if (state==='default') await overviewFacts(locale);
             if (state==='work') await workFacts('older',locale);
             if (state==='decision') {
@@ -343,6 +369,7 @@ async function live() {
       await go(routes(locale).default);await zoom(1);
       const evidence=[];
       for (const view of ['work','code','decisions','overview']) evidence.push(await activate(page.locator(`nav[aria-label="Viewer"] a[href*="view=${view}"]`)));
+      for(const tool of ['status','documents']) evidence.push(await activate(page.locator(`nav[aria-label="Viewer"] a[href*="tool=${tool}"]`)));
       return evidence;
     });
     await check(`keyboard-paged-old-work-${locale}`, async()=>{
@@ -419,6 +446,8 @@ async function live() {
     });
   }
   await page.setViewportSize({width:390,height:900});
+  await check('negative-historical-summary',()=>copyMutation('historical',()=>document.querySelectorAll('#overview .work-summary [data-question="VerificationCoverage"]').forEach(e=>e.remove()),()=>overviewFacts('en'),routes('en').default));
+  await check('negative-fake-flow',()=>copyMutation('flow',()=>{const edge=document.querySelector('g.diagram-edge').cloneNode(true);edge.dataset.relationId='invented-flow-edge';document.querySelector('svg').appendChild(edge);},graphIdentity,routes('en').detail));
   await check('negative-wrapping',()=>copyMutation('wrapping',()=>{document.querySelectorAll('style').forEach(e=>e.textContent=e.textContent.replaceAll('overflow-wrap:anywhere','overflow-wrap:normal').replaceAll('white-space:pre-wrap','white-space:pre'));document.querySelectorAll('details').forEach(e=>e.open=true);},overflow,routes('en').work));
   await check('negative-prefix',()=>copyMutation('prefix',()=>{document.querySelectorAll('g.diagram-node text').forEach(e=>e.textContent=e.textContent.slice(0,12)+'…');},labels,routes('en').detail));
   // Obtain another actual product Work body, retaining older identity for a semantic substitution.
@@ -549,8 +578,14 @@ async function workExplanations() {
       await grounding.locator('summary').click();
       await capture(`work-explanation-${key}-${locale}.png`,surface);
       await go(`${config.url}?view=overview&locale=${locale}&language=${locale}`);
-      const card=page.locator(`[data-work-id="${F.goals[key]}"] .work-explanation`).first();
-      if(await card.count()) {for (const q of ['ReportedChange','Verification','NextStep']) requireFact(await ordinaryText(card.locator(`p[data-question="${q}"]`))===observed[q],`overview_answer_diverged:${q}`);} else requireFact((await page.locator('.category-count').allTextContents()).some(t=>{const n=t.match(/\d+/g)?.map(Number);return n?.[2]>0;}),'overview_missing_without_omission');
+      const card=page.locator(`.work-summary[data-work-id="${F.goals[key]}"]`).first();
+      if(await card.count()) {
+        for (const q of ['ReportedChange','Verification']) requireFact((await ordinaryText(card.locator(`p[data-question="${q}"]`))).includes(observed[q]),`overview_answer_diverged:${q}`);
+        const expectedAction=config.expected_actions[key];
+        const direction=await ordinaryText(card.locator('p[data-question="RecordedNextStep"]'));
+        requireFact(direction.includes(expectedAction),`overview_recorded_action_diverged:${key}`);
+        requireFact(await card.locator('details').count()===0,'overview_audit_expanded');
+      } else requireFact((await page.locator('.category-count').allTextContents()).some(t=>{const n=t.match(/\d+/g)?.map(Number);return n?.[2]>0;}),'overview_missing_without_omission');
       await go(pathToFileURL(config.snapshots[locale]).href);
       const offline=page.locator(workSelector(key)).locator(':scope > article.work-item > .work-explanation');
       for (const [q,body] of Object.entries(observed)) requireFact(await ordinaryText(offline.locator(`p[data-question="${q}"]`))===body,`snapshot_answer_diverged:${q}`);

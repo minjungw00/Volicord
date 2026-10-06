@@ -51,7 +51,11 @@ Overview begins with Project Purpose and distinct Work cards. Cards show lifecyc
 result availability, verification and the recorded next action; selecting one opens
 its explanation sections before closed evidence/history disclosures. Decisions have
 separate choice, alternatives, explanation, applicability and original-evidence areas.
-Missing user rationale is an explicit absence, never a rendering error.
+Missing user rationale is an explicit absence, never a rendering error. Work cards
+retain historical verification coverage alongside the actual recorded direction.
+Overview also keeps current open questions, canonical risks and unresolved Work
+association visible before next actions. There is no universal Material limitations
+section; unrelated capability failures do not precede ordinary Work meaning.
 
 Code starts with selected Work meaning, then supported structure and directed
 relationships. Containment/dependency/reference/type relations are labeled separately
@@ -119,9 +123,11 @@ Decisions request neither section, using the existing AnalysisMetadata reader fo
 snapshot identity, coverage and freshness. Code requests stored graph bodies but
 not Candidate inspection; Memory requests inspection but not code. Documents and
 whole snapshots request both. Evidence and Status request code; only Status runs
-full stored-graph integrity diagnostics. Other pages expose that these diagnostics
-were not requested, while store/recovery health and material metadata gaps remain
-visible. Missing requested analysis is `Unavailable`; omitted materialization is
+full stored-graph integrity diagnostics. Unrequested graph materialization is an
+internal read intention and supplies no user warning. Canonical/Runtime blockers
+remain visible above ordinary reading; selected Source/analysis limitations sit next
+to the affected answer. Repository-wide diagnostics, analyzer identities and exact
+omissions are available in closed Analysis/Evidence and offline disclosures. Missing requested analysis is `Unavailable`; omitted materialization is
 `NotRequested`. Document generation and narrative planning reject incomplete
 requested-section input. Default Operations Recall/documents keep their full
 contracts. Work interpretations use the existing Privacy managed CachedSummary

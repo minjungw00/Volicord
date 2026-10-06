@@ -122,7 +122,8 @@ fn routes_each_request_with_its_own_depth_and_fresh_state() {
     assert!(overview.contains("fr-CA"));
     assert!(deep.contains("data-view=\"tools\""));
     assert!(deep.contains("기억"));
-    assert!(deep.contains("요청 언어"));
+    assert!(deep.contains("<html lang=\"ko\""));
+    assert!(deep.contains("id=\"canonical-context\""));
     assert!(deep.contains("없습니다"));
     assert!(!deep.contains("절대 대상 경로"));
     assert_ne!(overview, deep);

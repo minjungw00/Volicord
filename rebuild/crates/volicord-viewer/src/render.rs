@@ -417,6 +417,7 @@ impl ViewerAdapter {
         heading(&mut html, 1, &projection.overview.project_name);
         let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
         reading::navigation(&mut html, request, snapshot);
+        reading::runtime_blockers(&mut html, request, &health);
         if snapshot {
             empty_state(
                 &mut html,
@@ -427,18 +428,17 @@ impl ViewerAdapter {
                 ),
             );
             reading::snapshot(&mut html, request, &projection, &understanding);
-            reading::warnings(&mut html, request, &projection, &health);
             if let Some(documents) = &documents {
                 render_documents(&mut html, request, documents, None);
             }
             render_status(&mut html, request, &projection, &health);
+            reading::diagnostics(&mut html, request, &projection, &health);
             render_privacy(&mut html, request, privacy.as_ref());
             if let ViewerRenderMode::Snapshot { generated_at } = mode {
                 render_snapshot_basis(&mut html, request, &projection, generated_at);
             }
         } else {
             reading::surface(&mut html, request, &projection, &understanding);
-            reading::warnings(&mut html, request, &projection, &health);
             if let crate::ViewerView::Tools { tool } = request.view {
                 match tool {
                     crate::ViewerTool::Documents => {
@@ -474,9 +474,11 @@ impl ViewerAdapter {
                     }
                     crate::ViewerTool::Status => {
                         render_status(&mut html, request, &projection, &health);
+                        reading::diagnostics(&mut html, request, &projection, &health);
                         render_privacy(&mut html, request, privacy.as_ref());
                     }
                     crate::ViewerTool::Evidence => {
+                        reading::diagnostics(&mut html, request, &projection, &health);
                         render_understanding_evidence(&mut html, request, &understanding);
                         render_checkpoints(&mut html, request, &projection);
                         render_repository(&mut html, request, &projection);
@@ -753,11 +755,7 @@ fn render_work_card(
                 "<li data-decision-id=\"{}\" data-decision-scope=\"work-item\">",
                 decision.decision.decision_id
             ));
-            let answers = volicord_projections::decision_answers(
-                &decision.decision,
-                &request.requested_language,
-                request.locale.fixed(),
-            );
+            let answers = reading::decision_answers(request, &decision.decision);
             reading::render_answers(html, request, &answers, false);
             html.push_str("</li>");
         }
@@ -1873,7 +1871,7 @@ fn render_status(
             );
         } else {
             html.push_str("<ul class=\"audit-list\">");
-            for issue in health.issues.iter().take(20) {
+            for issue in health.issues.iter() {
                 list_item(
                     html,
                     &format!(
@@ -1884,7 +1882,7 @@ fn render_status(
                     ),
                 );
             }
-            for issue in projection.issues.iter().take(20) {
+            for issue in projection.issues.iter() {
                 list_item(
                     html,
                     &format!(
@@ -1901,7 +1899,7 @@ fn render_status(
             rendered_bound(
                 html,
                 health.issues.len() + projection.issues.len(),
-                (health.issues.len() + projection.issues.len()).min(40),
+                health.issues.len() + projection.issues.len(),
                 0,
                 request.locale,
                 "raw diagnostics",
@@ -3901,7 +3899,7 @@ fn escape(value: &str) -> String {
 
 const STYLE: &str = r#"<style>
 :root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.55}*{box-sizing:border-box;min-width:0}p,li,dt,dd,pre{overflow-wrap:anywhere}pre{white-space:pre-wrap}body{margin:0;background:#111827;color:#e5e7eb}main{max-width:72rem;margin:auto;padding:clamp(1rem,4vw,2.5rem)}h1,h2,h3,h4,h5{color:#f9fafb;overflow-wrap:anywhere}h2{border-top:1px solid #374151;padding-top:1.25rem}a{color:#93c5fd;text-underline-offset:.2em}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:.22rem solid #fbbf24;outline-offset:.18rem}.view-nav{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0}.view-nav a{display:block;padding:.45rem .7rem;border:1px solid #4b5563;border-radius:.4rem}.view-nav a[aria-current=page]{background:#dbeafe;color:#111827;font-weight:700}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.7rem .85rem;margin:.5rem 0;background:#1f2937;border-radius:.45rem;border:1px solid #374151}.state[data-state=degraded],.item[data-state=partial],.item[data-state=unsupported],.item[data-state=stale]{border-left:.35rem solid #f59e0b}.state[data-state=failed],.item[data-state=failed],.item[data-state=unavailable],.state[data-state=unavailable]{border-left:.35rem solid #ef4444}.state[data-state=healthy],.state[data-state=complete],.item[data-state=available]{border-left:.35rem solid #22c55e}.badge{display:inline-block;padding:.05rem .4rem;border:1px solid #6b7280;border-radius:999px;font-size:.9em}.guarded{border:2px solid #f59e0b}.muted,.record-meta,.bound{color:#cbd5e1;font-size:.92rem}.empty-state{padding:.65rem .8rem;border:1px dashed #6b7280;border-radius:.45rem;color:#d1d5db}.next-action{padding:.75rem;border-left:.35rem solid #60a5fa;background:#172554}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.35rem}.metrics,.fact-states,.preview-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr));gap:.5rem}.metrics div,.fact-states div,.preview-meta div,.aggregate-card dl div{padding:.4rem}.metrics dt,.fact-states dt,.preview-meta dt,.aggregate-card dt{font-weight:700}.metrics dd,.fact-states dd,.preview-meta dd,.aggregate-card dd{margin:0}.aggregate-grid,.understanding-grid,.work-group{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(18rem,100%),1fr));gap:.75rem}.work-item{border-left:.35rem solid #60a5fa}.work-item[data-work-state=completed]{border-left-color:#22c55e}.work-item[data-work-state=open],.work-item[data-work-state=paused]{border-left-color:#f59e0b}.work-item h5{font-size:1.05rem;margin:.1rem 0}.work-item p{margin:.45rem 0}.work-audit{background:#111827}.document-previews{display:grid;gap:.65rem}.preview-section{padding-left:.65rem;border-left:1px solid #4b5563}.fact-legend{display:flex;flex-wrap:wrap;gap:.6rem;margin:.75rem 0}.fact-legend span{padding:.25rem .55rem;border-radius:999px}.verified-fact,.verified-facts{border-color:#22c55e}.deterministic-derived{border:1px solid #38bdf8;background:#082f49;padding:.65rem;border-radius:.4rem}.generated-interpretation{border:1px dashed #c084fc;background:#2e1065;padding:.65rem;border-radius:.4rem}.fact-legend .verified-fact{border:1px solid #22c55e;background:#052e16}.fact-legend .deterministic-derived{padding:.25rem .55rem}.grounded-explanations{display:grid;gap:.65rem;margin:.8rem 0}.explanation-item p{margin-top:0}.explanation-evidence{background:#0f2940}.explanation-basis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(14rem,100%),1fr));gap:.45rem}.explanation-basis div{min-width:0}.explanation-basis dt{font-weight:700}.explanation-basis dd{margin:0;overflow-wrap:anywhere}.grounded-diagram{max-width:100%;margin:1rem 0;padding:.75rem;background:#0f172a;border:1px solid #475569;border-radius:.5rem;overflow:auto}.grounded-diagram figcaption{font-weight:700;margin-bottom:.5rem}.grounded-diagram svg{display:block;min-width:42rem;width:100%;height:auto}.diagram-node[data-selected=true] rect{stroke:#fbbf24;stroke-width:4}.diagram-node rect{fill:#1e3a5f;stroke:#93c5fd;stroke-width:2}.diagram-node text{fill:#f8fafc;font-family:ui-monospace,monospace;font-size:14px;font-weight:700}.diagram-node .diagram-node-kind{fill:#cbd5e1;font-size:12px;font-weight:400}.diagram-edge line,.diagram-edge path{fill:none;stroke:#94a3b8;stroke-width:2}.diagram-edge[data-relation-class=semantic-result] line,.diagram-edge[data-relation-class=semantic-result] path{stroke:#c084fc;stroke-dasharray:6 4}.diagram-gap{color:#fbbf24}.understanding-evidence{margin-top:1rem}code{white-space:pre-wrap;overflow-wrap:anywhere}.action-form{display:grid;gap:.65rem;margin:.75rem 0}.action-form fieldset{display:grid;gap:.6rem;min-width:0;border:1px solid #4b5563;border-radius:.45rem}.action-form legend{font-weight:700}.action-form label{display:grid;gap:.25rem;min-width:0}textarea,input,select,button{font:inherit;padding:.5rem;max-width:100%}textarea{min-height:5rem;resize:vertical}button{width:max-content;min-height:2.75rem}.button-row{display:flex;flex-wrap:wrap;gap:.5rem}.destructive{border-color:#ef4444}summary{cursor:pointer;overflow-wrap:anywhere}
-.coverage-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(23rem,100%),1fr));gap:1rem}.coverage-scope{padding:1rem;border:1px solid #64748b;border-radius:.5rem}.coverage-scope h4{margin:.2rem 0}.relationship-item{margin:1rem 0}.code-work-meaning{padding:1rem;border:1px solid #94a3b8;border-radius:.5rem}.work-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(25rem,100%),1fr));gap:1rem;margin:1rem 0}.work-summary{height:100%;padding:1.2rem}.work-summary h4{margin:0 0 .8rem;font-size:1.15rem}.selection-label{font-weight:700;letter-spacing:.02em}.current-work{border:2px solid #cbd5e1;padding:.6rem;border-radius:.5rem}.answer-section{border-left:2px solid #64748b;padding:.4rem 1rem;margin:1rem 0}.answer-section h4{font-size:1rem;margin:.25rem 0}.decision-summary{border:1px solid #64748b;padding:1rem;margin:1rem 0;border-radius:.5rem}.decision-summary h3{margin:.2rem 0}.category-details{background:transparent}.fact-states{border-top:1px solid #64748b;padding-top:.6rem}.work-explanation>.empty-state{font-size:.9rem}.view-nav a[aria-current=page]{border:3px solid currentColor;text-decoration:underline}.work-item[data-work-state=completed]{border-left-style:double}.work-item[data-work-state=paused]{border-left-style:dashed}
+.contextual-limits,.runtime-blocker{border:2px solid #fbbf24;border-radius:.5rem;padding:1rem;margin:1rem 0}.contextual-limits h3,.runtime-blocker h2{margin:.1rem 0}.coverage-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(23rem,100%),1fr));gap:1rem}.coverage-scope{padding:1rem;border:1px solid #64748b;border-radius:.5rem}.coverage-scope h4{margin:.2rem 0}.relationship-item{margin:1rem 0}.code-work-meaning{padding:1rem;border:1px solid #94a3b8;border-radius:.5rem}.work-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(25rem,100%),1fr));gap:1rem;margin:1rem 0}.work-summary{height:100%;padding:1.2rem}.work-summary h4{margin:0 0 .8rem;font-size:1.15rem}.selection-label{font-weight:700;letter-spacing:.02em}.current-work{border:2px solid #cbd5e1;padding:.6rem;border-radius:.5rem}.answer-section{border-left:2px solid #64748b;padding:.4rem 1rem;margin:1rem 0}.answer-section h4{font-size:1rem;margin:.25rem 0}.decision-summary{border:1px solid #64748b;padding:1rem;margin:1rem 0;border-radius:.5rem}.decision-summary h3{margin:.2rem 0}.category-details{background:transparent}.fact-states{border-top:1px solid #64748b;padding-top:.6rem}.work-explanation>.empty-state{font-size:.9rem}.view-nav a[aria-current=page]{border:3px solid currentColor;text-decoration:underline}.work-item[data-work-state=completed]{border-left-style:double}.work-item[data-work-state=paused]{border-left-style:dashed}
 @media (max-width:44rem){main{padding:1rem}.view-nav{display:grid;grid-template-columns:1fr}.view-nav a{width:100%}.metrics,.fact-states,.preview-meta,.aggregate-grid,.understanding-grid{grid-template-columns:1fr}.item,details,.state,.guarded,.aggregate-card,.understanding-card{padding:.65rem}.cards,.timeline,.canonical-list,.preview-claims,.verification-list,.audit-list,.status-summary,.goals,.gap-list,.understanding-list{padding-left:1.05rem}.button-row button,button{width:100%}}
 </style>"#;
 

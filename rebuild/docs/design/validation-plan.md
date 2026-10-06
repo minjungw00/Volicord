@@ -2536,3 +2536,15 @@ survive `--json` beyond the host's 64-diagnostic bound, while human output keeps
 useful affected-scope summary. Real maintained three-class before/after samples retain
 unchanged capability/outcome fields and every prior representative diagnostic under
 ignored local evidence, independently of historical campaign qualification.
+
+Focused Viewer organization support retains semantic order and independent source
+claims: Project Purpose precedes ordinary Work reading; compact Work cards keep
+lifecycle, recorded action and historical verification coverage. The browser driver
+also covers the reused Analysis and Work catalog surfaces at both locales, all three
+widths and native tab zoom. Disposable removal of historical coverage and insertion
+of a fake flow edge must fail for their intended semantic/evidence reason. Closed
+Analysis/Evidence diagnostics and offline fragments preserve inspectability, while
+canonical Runtime blockers and related Source/analysis uncertainty remain ordinary.
+These checks change no historical Human/Agent review and establish neither human
+comprehension nor gate qualification. The Viewer README owns the changed surfaces
+and explicit CLI-only analysis refresh guidance.

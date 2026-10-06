@@ -377,3 +377,51 @@ fn analysis_states_keep_freshness_failures_and_refresh_separate_from_audit() {
         }
     }
 }
+
+#[test]
+fn canonical_runtime_blocker_is_visible_but_auxiliary_health_is_not_a_global_warning() {
+    use super::{ViewerLocale, ViewerRequest};
+    use volicord_operations::{HealthIssue, HealthIssueKind, HealthReport, HealthState};
+    let request = ViewerRequest {
+        project_id: volicord_context::ProjectId::from_bytes([1; 16]),
+        locale: ViewerLocale::English,
+        view: crate::ViewerView::Overview,
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let mut health = HealthReport {
+        state: HealthState::Degraded,
+        runtime_root: "/unused".into(),
+        canonical_available: true,
+        candidate_available: false,
+        privacy_available: true,
+        guarded_available: true,
+        forgetting_available: true,
+        repository_available: None,
+        issues: vec![HealthIssue {
+            kind: HealthIssueKind::Unavailable,
+            scope: "candidate".into(),
+            detail: "Auxiliary failure".into(),
+        }],
+    };
+    let mut html = String::new();
+    super::reading::runtime_blockers(&mut html, &request, &health);
+    assert!(
+        html.is_empty(),
+        "unrelated auxiliary diagnostics must not precede Project purpose"
+    );
+    health.canonical_available = false;
+    health.issues.push(HealthIssue {
+        kind: HealthIssueKind::Corrupt,
+        scope: "canonical".into(),
+        detail: "Canonical read blocked".into(),
+    });
+    super::reading::runtime_blockers(&mut html, &request, &health);
+    assert!(html.contains("Canonical read blocked"));
+    assert!(html.contains("volicord doctor"));
+    assert!(!html.contains("Auxiliary failure"));
+    assert!(
+        !html.contains("<details"),
+        "blocking runtime state must not be hidden"
+    );
+}

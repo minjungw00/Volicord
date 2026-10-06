@@ -53,7 +53,7 @@ def main():
         if args.require_clean and not result['initial_clean']:
             raise RuntimeError('Final content/browser evidence requires a clean committed candidate')
         result['executables']={name:{'path':str(binaries/name),'sha256':harness.sha256(binaries/name)} for name in ['volicord','volicord-viewer']}
-        result['inputs']={str(p.relative_to(root)):harness.sha256(p) for p in [Path(__file__).resolve(),Path(__file__).parent/'viewer_browser_driver.cjs',Path(__file__).parent/'fixtures/viewer-reading/answer-cases.json',root/'rebuild/Cargo.lock']}
+        result['inputs']={str(p.relative_to(root)):harness.sha256(p) for p in [Path(__file__).resolve(),Path(__file__).parent/'viewer_browser_driver.cjs',Path(__file__).parent/'fixtures/viewer-reading/answer-cases.json',Path(__file__).parent/'fixtures/viewer-reading/scenario.json',root/'rebuild/Cargo.lock']}
         result['browser']={'sha256':harness.sha256(args.chromium),'version':run('browser-version',[args.chromium,'--version']).strip(), 'driver_version':json.loads((args.playwright_module/'package.json').read_text())['version']}
         fonts=run('korean-fonts', ['fc-list', '--format', '%{file}\n', ':lang=ko']).splitlines()
         if not fonts:
@@ -84,6 +84,9 @@ def main():
         else:
             raise RuntimeError('Viewer startup timeout')
         cases = json.loads((Path(__file__).parent / 'fixtures/viewer-reading/answer-cases.json').read_text())
+        scenario=json.loads((Path(__file__).parent / 'fixtures/viewer-reading/scenario.json').read_text())
+        expected_actions={w['key']:w['checkpoints'][-1]['next_step'] for w in scenario['works'] if w['checkpoints']}
+        expected_actions.update({case['key']:case['next_step'] for case in cases['cases']})
         basis={}
         for key in cases['browser_claim_terms']:
             basis[key]={}
@@ -149,7 +152,8 @@ def main():
         else:
             result['lifecycle']={'status':'not_run','reason':'No active-host response supplied'}
         config = {'candidate_head':result['candidate_head'],'viewer_sha256':result['executables']['volicord-viewer']['sha256'],'url': url, 'fixture': fixture, 'output': str(output), 'chromium': str(args.chromium.resolve()),
-                  'playwright': str(args.playwright_module.resolve()), 'claim_terms': cases['browser_claim_terms'], 'decision_terms': cases['decision_browser_claim_terms'], 'forbidden_patterns':cases['browser_forbidden_patterns'], 'basis':basis, 'snapshots': snapshots, 'lifecycle_snapshots':lifecycle}
+                  'playwright': str(args.playwright_module.resolve()), 'claim_terms': cases['browser_claim_terms'],
+                  'expected_actions': expected_actions, 'decision_terms': cases['decision_browser_claim_terms'], 'forbidden_patterns':cases['browser_forbidden_patterns'], 'basis':basis, 'snapshots': snapshots, 'lifecycle_snapshots':lifecycle}
         harness.write_json(output / 'config.json', config)
         run('browser', ['node', Path(__file__).parent / 'viewer_browser_driver.cjs', output / 'config.json', 'work-explanation'])
         after = json.loads(run('privacy-after', cli + ['privacy', 'status']))

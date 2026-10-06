@@ -1271,10 +1271,9 @@ fn degraded_overview_keeps_project_meaning_before_contextual_limits() {
         )
         .expect("render degraded working Viewer")
         .html;
-    assert!(
-        page.find("id=\"overview\"").expect("overview")
-            < page.find("id=\"limitations\"").expect("warnings")
-    );
+    assert!(page.contains("id=\"overview\""));
+    assert!(!page.contains("Material limitations"));
+    assert!(!page.contains("id=\"diagnostics\""));
     assert!(
         page.contains("unavailable") || page.contains("partial") || page.contains("unsupported")
     );
@@ -1418,9 +1417,16 @@ fn representative_large_repository_page_is_deterministically_bounded() {
         .html
         .contains("data-bound-scope=\"repository entities\""));
     assert!(first.html.contains("omitted by deterministic bounds"));
-    assert!(first.html.contains("Material limitations"));
+    assert!(!first.html.contains("Material limitations"));
     assert_eq!(first.html.matches("class=\"document-preview\"").count(), 0);
-    assert!(!first.html.contains("<pre>"));
+    assert!(
+        first.html.find("<pre>").expect("raw report")
+            > first
+                .html
+                .find("class=\"global-diagnostics\"")
+                .expect("closed diagnostics")
+    );
+    assert!(!first.html.contains("<details open"));
     // This fixture-specific regression detects accidental unbounded rendering;
     // it is not a universal product or hardware ceiling.
     assert!(

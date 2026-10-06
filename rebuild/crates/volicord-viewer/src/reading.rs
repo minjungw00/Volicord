@@ -46,7 +46,10 @@ pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: b
         ),
         (
             ViewerView::Code {
-                scope: CodeScope::Repository,
+                scope: match request.view.selection() {
+                    volicord_projections::WorkSelector::ExactWork(id) => CodeScope::Work(Some(id)),
+                    _ => CodeScope::Repository,
+                },
                 entity: None,
             },
             text(request.locale, "Code Understanding", "코드 이해"),
@@ -112,116 +115,151 @@ pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: b
         html.push_str("</ul></nav>");
     }
 }
-pub(super) fn warnings(
+pub(super) fn runtime_blockers(
     html: &mut String,
-    request: &ViewerRequest,
-    projection: &ProjectProjection,
+    r: &ViewerRequest,
     health: &volicord_operations::HealthReport,
 ) {
-    section_start(
-        html,
-        "limitations",
-        text(request.locale, "Material limitations", "중요한 한계"),
-    );
-    if health
-        .issues
-        .iter()
-        .any(|i| i.scope == "canonical" || i.scope == "runtime")
-    {
-        html.push_str(&format!(
-            "<p class=\"state\" data-state=\"{}\">{}: {}</p>",
-            health_state_key(health.state),
-            escape(text(request.locale, "Runtime health", "런타임 상태")),
-            escape(health_state_label(health.state, request.locale))
-        ));
-    }
-    html.push_str("<ul class=\"gap-list\">");
-    for issue in health
+    let issues = health
         .issues
         .iter()
         .filter(|i| i.scope == "canonical" || i.scope == "runtime")
-    {
+        .collect::<Vec<_>>();
+    if issues.is_empty() {
+        return;
+    }
+    html.push_str("<aside class=\"runtime-blocker\" aria-label=\"");
+    html.push_str(text(r.locale, "Runtime blocker", "런타임 차단 문제"));
+    html.push_str("\"><h2>");
+    html.push_str(text(
+        r.locale,
+        "Runtime needs attention",
+        "런타임 확인 필요",
+    ));
+    html.push_str("</h2><ul>");
+    for issue in issues {
         list_item(html, &format!("{}: {}", issue.scope, issue.detail));
     }
-    for issue in projection
+    html.push_str("</ul><p class=\"next-action\">");
+    html.push_str(text(
+        r.locale,
+        "Inspect local health with volicord doctor; use its supported repair guidance.",
+        "volicord doctor로 로컬 상태를 확인하고 제공되는 복구 안내를 따르세요.",
+    ));
+    html.push_str("</p></aside>");
+}
+pub(super) fn contextual_limits(
+    html: &mut String,
+    r: &ViewerRequest,
+    p: &ProjectProjection,
+    snapshot: bool,
+) {
+    let issues = p
         .answer_issues
         .iter()
         .filter(|i| i.kind != ProjectionIssueKind::Bound)
-        .take(32)
-    {
+        .collect::<Vec<_>>();
+    if issues.is_empty() && p.answer_capability_gaps.is_empty() {
+        return;
+    }
+    html.push_str("<aside class=\"contextual-limits\"><h3>");
+    html.push_str(text(r.locale, "Limits of this answer", "이 설명의 한계"));
+    html.push_str("</h3><ul class=\"gap-list\">");
+    for issue in issues {
         list_item(html, &format!("{}: {}", issue.affected_scope, issue.reason));
     }
-    for gap in &projection.answer_capability_gaps {
+    for gap in &p.answer_capability_gaps {
         list_item(
             html,
             &format!(
-                "{} / {:?} / {} / {}: {}. {} {}",
+                "{} · {} · {} · {}: {}. {} {}",
                 gap.area,
-                gap.capability,
-                capability_state_label(gap.state, request.locale),
-                freshness_state_label(gap.freshness.state, request.locale),
+                capability_label(gap.capability, r.locale),
+                capability_state_label(gap.state, r.locale),
+                freshness_state_label(gap.freshness.state, r.locale),
                 gap.reason,
-                gap.user_visible_consequence
-                    .as_deref()
-                    .unwrap_or("This scope cannot support a complete current code answer."),
-                gap.usable_remainder
-                    .as_deref()
-                    .unwrap_or("Canonical memory remains readable.")
+                gap.user_visible_consequence.as_deref().unwrap_or(text(
+                    r.locale,
+                    "This scope cannot support a complete current code answer.",
+                    "이 범위로 완전한 현재 코드 설명을 뒷받침할 수 없습니다."
+                )),
+                gap.usable_remainder.as_deref().unwrap_or(text(
+                    r.locale,
+                    "Canonical memory remains readable.",
+                    "정식 기억은 계속 읽을 수 있습니다."
+                ))
             ),
         );
     }
-    for item in &projection.resume.risks_assumptions_and_limits {
-        list_item(html, &item.statement);
-    }
-    for limit in projection.resume.known_limits.iter().filter(|limit| {
-        !projection
-            .issues
-            .iter()
-            .any(|i| i.affected_scope == "derived_analysis" && i.reason == **limit)
-    }) {
-        list_item(html, limit);
-    }
-    html.push_str("</ul>");
-    html.push_str("<details><summary>");
+    html.push_str("</ul><p class=\"next-action\">");
     html.push_str(text(
-        request.locale,
-        "Repository and runtime diagnostics",
-        "저장소 및 런타임 진단",
+        r.locale,
+        "Inspect Analysis for affected coverage and local refresh or recovery guidance.",
+        "분석에서 영향받은 범위와 로컬 갱신 또는 복구 안내를 확인하세요.",
+    ));
+    link(
+        html,
+        r,
+        ViewerView::Tools {
+            tool: ViewerTool::Status,
+        },
+        text(r.locale, "Open Analysis", "분석 열기"),
+        snapshot.then_some("health"),
+    );
+    html.push_str("</p></aside>");
+}
+pub(super) fn diagnostics(
+    html: &mut String,
+    r: &ViewerRequest,
+    p: &ProjectProjection,
+    health: &volicord_operations::HealthReport,
+) {
+    html.push_str("<details id=\"diagnostics\" class=\"global-diagnostics\"><summary>");
+    html.push_str(text(
+        r.locale,
+        "Repository and runtime diagnostics / exact omissions",
+        "저장소 및 런타임 진단 / 정확한 생략",
     ));
     html.push_str("</summary><ul>");
     for issue in &health.issues {
         list_item(html, &format!("{}: {}", issue.scope, issue.detail));
     }
-    for issue in projection
-        .issues
-        .iter()
-        .filter(|i| i.kind != ProjectionIssueKind::Bound)
-    {
-        list_item(html, &format!("{}: {}", issue.affected_scope, issue.reason));
-    }
-    html.push_str("</ul></details>");
-    if request.requested_language != locale_key(request.locale) {
-        empty_state(html,text(request.locale,"Recorded Work interpretations appear only for their exact requested language. Original quotations preserve their source language; fixed labels use the selected locale.","기록된 작업 해석은 정확히 일치하는 요청 언어로만 표시합니다. 원문 인용은 원래 언어를 유지하며 고정 설명은 선택한 UI 언어를 사용합니다."));
-    }
-    html.push_str("<details><summary>");
-    html.push_str(text(request.locale, "Exact omissions", "정확한 생략"));
-    html.push_str("</summary><ul>");
-    for issue in projection.issues.iter().filter(|i| i.omitted_count > 0) {
+    for issue in &p.issues {
         list_item(
             html,
             &format!(
-                "{}: {} ({})",
-                issue.affected_scope, issue.omitted_count, issue.reason
+                "{}: {} · {}: {}",
+                issue.affected_scope,
+                issue.reason,
+                text(r.locale, "Omitted", "생략"),
+                issue.omitted_count
             ),
         );
     }
-    html.push_str("</ul></details>");
-    section_end(html);
+    for limit in &p.resume.known_limits {
+        list_item(html, limit);
+    }
+    html.push_str("</ul>");
+    for report in &p.repository_map.capabilities {
+        html.push_str("<details><summary>");
+        html.push_str(&escape(&format!(
+            "{} · {}",
+            capability_label(report.capability, r.locale),
+            report.area.path
+        )));
+        html.push_str("</summary><pre>");
+        html.push_str(&escape(&format!("{report:?}")));
+        html.push_str("</pre></details>");
+    }
+    if r.requested_language != locale_key(r.locale) {
+        empty_state(html,text(r.locale,"Interpretations require the exact requested language. Original quotations preserve their source language; fixed labels use the selected locale.","해석은 정확히 일치하는 요청 언어가 필요합니다. 원문 인용은 원래 언어, 고정 설명은 선택한 UI 언어를 사용합니다."));
+    }
+    html.push_str("</details>");
 }
 fn overview(
     html: &mut String,
     request: &ViewerRequest,
-    _p: &ProjectProjection,
+    p: &ProjectProjection,
     u: &ProjectUnderstanding,
     snapshot: bool,
 ) {
@@ -315,6 +353,30 @@ fn overview(
             );
         }
     }
+    if !u.open_questions.is_empty()
+        || !u.risks_assumptions_and_limits.is_empty()
+        || !u.unresolved_work_grouping.is_empty()
+    {
+        heading(
+            html,
+            3,
+            text(
+                request.locale,
+                "Blockers and uncertainty",
+                "차단 문제 및 불확실성",
+            ),
+        );
+        for question in &u.open_questions {
+            empty_state(html, &question.prompt);
+        }
+        for risk in &u.risks_assumptions_and_limits {
+            empty_state(html, &risk.statement);
+        }
+        for unresolved in &u.unresolved_work_grouping {
+            empty_state(html, &unresolved.reason);
+        }
+    }
+    contextual_limits(html, request, p, snapshot);
     heading(
         html,
         3,
@@ -342,9 +404,6 @@ fn overview(
                 "다음 단계 없음: 기록한 체크포인트가 없습니다.",
             ),
         );
-    }
-    for unresolved in &u.unresolved_work_grouping {
-        empty_state(html, &unresolved.reason);
     }
     section_end(html);
 }
@@ -384,11 +443,12 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
     }
     // Verification failure/historical coverage and actual direction are ordinary facts,
     // even when an interpretation is absent or offers a different next step.
-    for fact in answers
-        .facts
-        .iter()
-        .filter(|a| matches!(a.question.as_str(), "VerificationState" | "SourceGrounding"))
-    {
+    for fact in answers.facts.iter().filter(|a| {
+        matches!(
+            a.question.as_str(),
+            "VerificationState" | "VerificationCoverage" | "SourceEvidenceGap" | "ReportedResult"
+        )
+    }) {
         html.push_str(&format!(
             "<p data-question=\"{}\">{}</p>",
             escape(&fact.question),
@@ -486,11 +546,37 @@ pub(super) fn render_answers(
         "</div><div class=\"fact-states\" data-statement-role=\"deterministic-derived\">",
     );
     for fact in &answers.facts {
+        if matches!(
+            fact.question.as_str(),
+            "UserRationale" | "RecommendedChoice" | "DeclaredScope" | "ReviewBasis"
+        ) {
+            html.push_str("<div class=\"decision-fact\">");
+            heading(
+                html,
+                4,
+                match fact.question.as_str() {
+                    "UserRationale" => text(r.locale, "User rationale", "사용자 이유"),
+                    "RecommendedChoice" => text(r.locale, "Recorded recommendation", "기록된 권고"),
+                    "ReviewBasis" => text(
+                        r.locale,
+                        "Applicability needs review",
+                        "적용 가능성 검토 필요",
+                    ),
+                    _ => text(r.locale, "Declared scope", "선언된 범위"),
+                },
+            );
+        }
         html.push_str(&format!(
             "<p data-question=\"{}\">{}</p>",
             escape(&fact.question),
             escape(&fact.text)
         ));
+        if matches!(
+            fact.question.as_str(),
+            "UserRationale" | "RecommendedChoice" | "DeclaredScope" | "ReviewBasis"
+        ) {
+            html.push_str("</div>");
+        }
     }
     html.push_str("</div>");
 }
@@ -543,6 +629,9 @@ fn work_detail(
         p.selected_work_decisions.clone()
     };
     render_work_card(html, r, w, &decisions);
+    if !snapshot || p.selection.work_item_id == Some(w.work_item_id) {
+        contextual_limits(html, r, p, snapshot);
+    }
 
     html.push_str("<details><summary>");
     html.push_str(text(
@@ -626,10 +715,34 @@ fn decision_link(
     )));
     html.push_str("</p></article>");
 }
+pub(super) fn decision_answers(
+    r: &ViewerRequest,
+    decision: &BriefDecision,
+) -> volicord_projections::QuestionAnswers {
+    let mut answers =
+        volicord_projections::decision_answers(decision, &r.requested_language, r.locale.fixed());
+    if matches!(decision.work_scope, DecisionWorkScope::WorkItem(_)) {
+        if let Some(scope) = answers
+            .facts
+            .iter_mut()
+            .find(|a| a.question == "DeclaredScope")
+        {
+            scope.text = text(
+                r.locale,
+                "Declared Work scope: the linked Work; inspect evidence for its identity.",
+                "선언된 작업 범위: 연결된 작업. 식별자는 근거에서 확인하세요.",
+            )
+            .into();
+        }
+    }
+    answers
+}
 fn decision_detail(
     html: &mut String,
     r: &ViewerRequest,
     d: &volicord_projections::UnderstandingDecision,
+    p: &ProjectProjection,
+    snapshot: bool,
 ) {
     html.push_str(&format!(
         "<article data-decision-scope=\"{}\">",
@@ -645,11 +758,7 @@ fn decision_detail(
         escape(&decision_choice_attribution(&d.decision, r.locale)),
         escape(brief_decision_state_label(d.decision.state, r.locale))
     ));
-    let answers = volicord_projections::decision_answers(
-        &d.decision,
-        &r.requested_language,
-        r.locale.fixed(),
-    );
+    let answers = decision_answers(r, &d.decision);
     heading(html, 3, text(r.locale, "Choice", "선택"));
     empty_state(html, &decision_choice_attribution(&d.decision, r.locale));
     heading(
@@ -665,11 +774,14 @@ fn decision_detail(
     for alternative in &d.decision.displayed_alternatives {
         list_item(
             html,
-            &format!("{}: {}", alternative.key, alternative.consequence),
+            &format!("{}: {}", alternative.label, alternative.consequence),
         );
     }
     html.push_str("</ul>");
     render_answers(html, r, &answers, false);
+    if !snapshot {
+        contextual_limits(html, r, p, false);
+    }
     heading(
         html,
         3,
@@ -927,6 +1039,7 @@ fn code(
         }
         html.push_str("</div>");
     }
+    contextual_limits(html, r, p, snapshot);
     // Repository-wide status belongs to Analysis; only Work-relevant gaps accompany code.
     if matches!(
         r.view,
@@ -993,8 +1106,18 @@ fn code(
         "<div class=\"flow-support\" data-flow-state=\"{:?}\">",
         u.architecture.flow_evidence.state
     ));
-    for limit in &u.architecture.flow_evidence.missing_evidence {
-        empty_state(html, limit);
+    if !u.architecture.flow_evidence.missing_evidence.is_empty() {
+        html.push_str("<details><summary>");
+        html.push_str(text(
+            r.locale,
+            "Exact missing relationship evidence",
+            "정확한 관계 근거 부족",
+        ));
+        html.push_str("</summary><ul>");
+        for limit in &u.architecture.flow_evidence.missing_evidence {
+            list_item(html, limit);
+        }
+        html.push_str("</ul></details>");
     }
     html.push_str("</div>");
     render_grounded_diagram(
@@ -1178,7 +1301,7 @@ pub(super) fn surface(
         }
         ViewerView::Decisions { decision: Some(_) } => {
             if let Some(d) = &p.selected_decision {
-                decision_detail(html, r, d);
+                decision_detail(html, r, d, p, false);
             }
         }
         ViewerView::Decisions { decision: None } | ViewerView::DecisionsPage { .. } => {
@@ -1232,7 +1355,7 @@ pub(super) fn snapshot(
         text(r.locale, "Decisions", "결정"),
     );
     for d in &p.decision_catalog {
-        decision_detail(html, r, d);
+        decision_detail(html, r, d, p, true);
     }
     section_end(html);
     // Reuse immutable materialized data; never load a separate per-Work basis.

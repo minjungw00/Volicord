@@ -307,7 +307,8 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         working.contains("main.py"),
         "document preview must retain actual repository content"
     );
-    assert!(overview.find("id=\"overview\"") < overview.find("id=\"limitations\""));
+    assert!(!overview.contains("Material limitations"));
+    assert!(!overview.contains("id=\"diagnostics\""));
     assert_ne!(overview, working);
     assert_ne!(working, deep);
     let request_authenticity = request_authenticity(&deep);
