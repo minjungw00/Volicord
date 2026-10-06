@@ -5,7 +5,7 @@ This contract owns review artifacts and operations, not Product behavior or fina
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 15 / policy revision 15, machine evaluation
-policy `evidence-evaluation-11`, human observation/receipt schema 4, qualification policy
+policy `evidence-evaluation-11`, human observation/receipt schema 5, qualification policy
 `replacement-qualification-11`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
@@ -417,71 +417,51 @@ agent/model/session. Preparation returns the fixed reviewer run ID and exact
 preparation hash; retain that hash with the handoff. Identity verification remains
 unsupported, even if a model name or session ID looks plausible.
 
-The maintained conversational path removes schema authoring from the human task while
-preserving the same preparation and immutable-record contract. A direct live Viewer
-observation is captured first when applicable:
+The primary Human workflow prepares the required local display contexts before asking
+for experience. The operator opens the actual views, binds candidate/executable/Runtime/
+Project/subject and each locale through the maintained capture, and explains the bounded
+interaction path. Captures alone never assert personal inspection.
 
-```sh
-rebuild/scripts/dogfood-campaign capture-human-viewer-observations \
-  --campaign-root /absolute/private/campaign \
-  --output /absolute/private/human-observations
+`capture-human-viewer-observations` receives `--viewer-context` for every inspected view.
+It asks for personal inspection and one direct experience block per locale, without
+verdict, evidence selection, relevance, dimension names or counterevidence bookkeeping.
+The answer text is retained exactly. Optional explicit `LIMITS:` is accepted; unreported
+limits are `not_reported`, never inferred as none. Korean `SAME AS ENGLISH` requires its
+own personally inspected captured context and reuses only the declared experience.
 
-rebuild/scripts/dogfood-campaign prepare-qualitative-review \
-  --campaign-root /absolute/private/campaign \
-  --output /absolute/private/review-run \
-  --reviewer-kind human \
-  --human-observations /absolute/private/human-observations
-```
+Prepare a new human review with `--human-observations`, then the operator derives the
+formal fields from that preserved experience. `apply-human-observation-assessments
+--review-root ROOT --mapping OPERATOR_JSON` takes a bounded array of operator mappings:
+criterion_number, observation_evidence_id, assessment, reasoning, uncertainty,
+criterion_observations and counterevidence. The tooling binds the original answer trace
+and locale evidence; one answer can support several live criteria. It generates no
+verdict or semantic interpretation and accepts no mapping to historical fidelity,
+authority, context recovery or interaction coverage. Those retain their separate evidence.
 
-The capture presents one locale at a time and accepts a bounded multi-line/multi-paragraph
-answer with explicit `OBSERVATION:` and `LIMITS:` sections, so one natural response covers both.
-For Korean, `SAME AS ENGLISH` records a typed `same_as_locale` reference to the English
-observation; that phrase is retained only in immutable answer provenance, not as semantic
-observation prose. Tooling derives the
-candidate/evidence hashes, human observer shape, run identity, schema and receipt. The human
-supplies the observation text; the tool cannot infer an accessibility outcome from static
-markup or fill an omitted observation.
+Only map a claim clearly supported by the answer and the personally inspected context.
+The operator derives reasoning/relevance/dimensions and reported limits/counterevidence;
+clarify only ambiguity, contradiction or genuinely missing experience. Never infer an
+unreported rationale, successful interaction, absence of counterevidence or absence of
+uncertainty. `not_reported` counterevidence remains unresolved for a positive judgment;
+an honest negative judgment can preserve that limitation. Missing observations stay
+insufficient. Mapping requires a new unrecorded preparation and preserves every original
+answer. Correction after immutable recording needs a supplemental new run.
 
-After preparation, `converse-qualitative-review` presents one criterion at a time and accepts
-multi-line observation/reasoning without exposing the internal review schema. Evidence
-is selected by displayed ordinal, and an exact quoted phrase (or explicit first-location
-selection) lets the tool derive evidence identity and locator. The human supplies the
-assessment, reasoning, relevance, uncertainty, counterevidence state and any authority
-meaning. Required semantic dimensions are explicitly confirmed one by one. The generated
-`draft.json` retains the exact prompt/answer trace for each reviewed human criterion and is
-not recorded automatically:
+Inspect the generated draft, validate and explicitly record it with the existing operations.
+The explicit `converse-qualitative-review --criterion-number N` manual path remains
+available for bounded clarification and historical/escalated claims. Without N it selects
+only human-owned criteria, skipping conflict-free agent no-user-Decision inapplicability
+from the supplied `--resolve-review-root` records. Do not reconfirm four nonexistent
+Decision experiences already resolved by qualification policy. A high-impact authority,
+context-recovery or interaction insufficiency needs execution/context evidence and explicit
+resolution; another Viewer inspection cannot fix it.
 
-```sh
-rebuild/scripts/dogfood-campaign converse-qualitative-review \
-  --review-root /absolute/private/review-run
-
-rebuild/scripts/dogfood-campaign validate-qualitative-review \
-  --review-root /absolute/private/review-run \
-  --draft /absolute/private/review-run/draft.json
-```
-
-Repeat the conversational command to advance to the next unreviewed criterion, inspect the
-draft, then use the existing explicit record operation. `--criterion-number` selects a
-displayed prepared criterion without requiring its opaque identity. When a human judgment
-resolves a prior recorded review, pass its path with `--resolve-review-root`; the tool derives
-the run ID and asks for criterion-specific confirmation instead of requiring the person to
-copy `resolves_review_runs` identifiers. Corrections after recording still require a new run.
-
-Exact conversational controls are typed semantics: `SKIP` keeps the criterion `not_reviewed`;
-`NOT SURE` or `CANNOT ASSESS` records `insufficient_evidence`; `NOT APPLICABLE` is accepted only
-where the rubric permits it; and `ALREADY COVERED`, `SAME AS PREVIOUS`, or `SAME AS ENGLISH`
-records a compatible prior-criterion reference. The literal control remains in the immutable
-answer trace, while `human_controls` stores its action/reference and the assessment does not use
-the phrase as observation prose. `ALREADY COVERED` and `SAME AS PREVIOUS` reuse only the prior
-criterion's inspected observation/evidence context; the reviewer must still supply the current
-criterion's verdict, reasoning, relevance, uncertainty, criterion-specific dimensions,
-applicability and counterevidence conclusion. They never clone a semantic judgment. A reference
-may only stay within the same sample/group. `SAME AS ENGLISH` is the sole stronger reuse rule: it
-must bind the matching English criterion name and records `exact_semantic_judgment` provenance
-while rebinding the citation to the corresponding locale observation. `insufficient_evidence` may have no
-citation: it preserves the per-criterion inspected-evidence set (possibly empty) and a bounded
-account of what is missing. Only satisfied/violated judgments receive follow-up for still-required
-semantic dimensions, grouped in one confirmation rather than repetitive per-dimension prompts.
+`SKIP`, `NOT SURE`/`CANNOT ASSESS`, `NOT APPLICABLE` and compatible prior/locale references
+retain their typed meanings. Cross-criterion reuse carries observation context only; the
+current claim needs its own supported assessment. `SAME AS ENGLISH` additionally requires
+real Korean inspection under the maintained capture rule. Preflight counts describe rubric
+fields, never remaining user questions. Preparation and qualification lists are operator
+scope, not a questionnaire; use the bounded changed-surface observation plan for the person.
 
 Give the reviewer `REVIEW.md`, `preparation.json` and the indexed evidence files.
 Preparation contains the maintained rubric and its revision/hash, bounded initial

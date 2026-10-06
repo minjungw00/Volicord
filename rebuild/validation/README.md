@@ -970,3 +970,12 @@ The retention size fixture adds 32 distinct bounded supporting Sources to both G
 recommendation bases; Work and Decision retain 35 and 34 Source statuses respectively.
 The current boundary receipt requires at least 32, rather than substituting long actor
 metadata for a many-Source case. Prose and fixture Source observations remain authored support.
+
+Human review captures direct experience once per locale after local contexts are prepared.
+The operator can use `apply-human-observation-assessments --review-root ROOT --mapping FILE`
+to bind several supported live assessments to that exact answer without asking the person
+for schema fields. Original conversation/snapshot fidelity and high-impact execution
+escalations retain their own evidence paths. Unreviewed rubric counts are not remaining
+human questions. Procedure and current identities are owned by
+[qualitative review](../docs/design/qualitative-review.md) and
+[display observation](dogfood/viewer-observation.md).

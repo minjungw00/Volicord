@@ -41,28 +41,26 @@ def _ask_multiline(prompt, input_fn, output_fn, trace):
     output_fn(prompt + " (multiple paragraphs are allowed; finish with END on its own line)")
     first = input_fn()
     if input_fn is not input:
-        answer = first.strip()
+        answer = first
     else:
         lines = []
         current = first
         while current != "END":
             lines.append(current)
             current = input_fn()
-        answer = "\n".join(lines).strip()
+        answer = "\n".join(lines)
     review.require(authority.bounded_text(answer), "human answer must be non-empty and bounded")
     trace.append({"prompt": prompt, "answer": answer})
     return answer
 
 
 def _split_observation_and_limits(answer):
-    """Split explicit human-authored sections without interpreting their meaning."""
+    """Keep exact direct experience; accept explicit limits without requiring schema prose."""
     marker = "\nLIMITS:\n"
-    review.require(answer.startswith("OBSERVATION:\n") and marker in answer,
-        "grouped observation must contain OBSERVATION: and LIMITS: sections")
-    observation, limits = answer[len("OBSERVATION:\n"):].split(marker, 1)
-    review.require(authority.bounded_text(observation.strip()) and authority.bounded_text(limits.strip()),
-        "grouped observation and limits must both be non-empty and bounded")
-    return observation.strip(), limits.strip()
+    limits = answer.split(marker, 1)[1] if marker in answer else "not_reported"
+    review.require(authority.bounded_text(answer) and authority.bounded_text(limits),
+        "human observation and explicit limits must be bounded")
+    return answer, limits
 
 
 def _choice(prompt, choices, input_fn, output_fn, trace):
@@ -106,10 +104,13 @@ def _live_observation_requests():
             "surface": "live_viewer_observation",
             "locale": locale,
             "prompt": (
-                f"For locale {locale}, describe what you personally observed for keyboard/focus/color/zoom "
-                "(including narrow screens, non-color cues and actual browser 200% zoom), and live browser input/paint responsiveness. "
-                "Use Overview, Work selection, Decisions, related Code and Source disclosures; record observed gaps and limits using OBSERVATION: and "
-                "LIMITS: sections. Type SAME AS ENGLISH for an exact locale reference."
+                f"For locale {locale}, describe your experience of the prepared Overview, Work list/detail, "
+                "Decision and related Code/Analysis displays. Could you distinguish Works, understand the actual work, "
+                "Decision choice versus recommendation and recorded or missing rationale, and the Project's code/flow? "
+                "Describe contextual limitations. Separately: did meaning depend only on color, or were items hard to group "
+                "despite text/shape cues? Describe keyboard/focus, narrow widths, actual native browser 200% zoom and "
+                "input/paint experience. Mention only inspected interactions and any gaps; optional LIMITS: section. "
+                "You need not supply verdict, evidence IDs or review fields. Type SAME AS ENGLISH only after inspecting Korean."
             ),
         }
         for locale in ("en", "ko")
@@ -152,12 +153,12 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
     review.require(viewer_observation.load_contexts(context_paths, manifest) == contexts,
         "display evidence changed during human capture")
     value = {"kind": "dogfood_human_observations",
-        "schema_version": 4,
+        "schema_version": 5,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer": observer, "observations": observations}
     data = ops.encoded(value)
     ops.require_review_artifact_safe(data, "human observations contain sensitive payload")
-    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 4,
+    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 5,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer_run_id": observer["run_id"], "observations_sha256": ops.digest(data),
         "answer_trace": answer_trace}
@@ -189,10 +190,9 @@ def load_viewer_observations(path):
             {"prompt": observation_confirmation(locale, item.get("contexts", [])) + " (1=yes, 2=no)", "answer": "1"},
             {"prompt": request["prompt"],
              "answer": ("SAME AS ENGLISH" if item.get("control", {}).get("action") == "same_as_locale"
-                else "OBSERVATION:\n" + item.get("response", {}).get("observation", "")
-                + "\nLIMITS:\n" + item.get("response", {}).get("limits", ""))},
+                else item.get("response", {}).get("observation", ""))},
         ]})
-    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 4,
+    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 5,
         "candidate_head": value.get("candidate_head"),
         "evidence_set_sha256": value.get("evidence_set_sha256"),
         "observer_run_id": value.get("observer", {}).get("run_id"),
@@ -393,6 +393,78 @@ def _store_draft(root, draft_path, draft):
     return data
 
 
+def apply_observation_assessments(review_root, mapping_path):
+    """Operator maps already captured experience; no verdict or user prose is generated.
+
+    One exact answer may support several live claims. Historical/authority assertions
+    stay on their own evidence path. Ambiguity requires clarification before mapping.
+    """
+    ops = _ops()
+    root = review_root.resolve()
+    preparation, sha, package = ops.load_package(root)
+    review.require(preparation["reviewer"]["kind"] == "human" and not (root / "recorded").exists(),
+        "operator mapping requires a new unrecorded human preparation")
+    mappings = json.loads(ops.bounded_read(mapping_path))
+    review.require(isinstance(mappings, list) and 0 < len(mappings) <= 64,
+        "bounded operator observation mappings required")
+    draft = json.loads(ops.draft_bytes(root, root / "draft.json", package))
+    specs = review.criterion_specs(preparation["index"], preparation["rubric"])
+    updated = []
+    for mapping in mappings:
+        review.require(isinstance(mapping, dict) and set(mapping) == {
+            "criterion_number", "observation_evidence_id", "assessment", "reasoning",
+            "uncertainty", "criterion_observations", "counterevidence"},
+            "operator supplies formal fields; human supplies experience only")
+        n = mapping["criterion_number"]
+        review.require(type(n) is int and 1 <= n <= len(specs), "unknown mapped criterion")
+        spec = specs[n - 1]
+        review.require(spec["group"] == "live_viewer", "live experience cannot invent historical fidelity or authority")
+        review.require(draft["assessments"][n - 1]["assessment"] == "not_reviewed",
+            "a reviewed answer cannot be back-edited; prepare a supplemental run")
+        identity = mapping["observation_evidence_id"]
+        entry = preparation["index"]["evidence"].get(identity)
+        review.require(entry is not None and entry["surface"] == "live_viewer_observation"
+            and entry["locale"] == spec["locale"], "mapping requires the actual named locale experience")
+        observed = json.loads(ops.bounded_read(ops.safe_path(root, entry["path"])))
+        review.require(observed["personally_observed"] is True, "missing direct human trace")
+        if observed["control"]["action"] == "same_as_locale":
+            english = [e for e in preparation["index"]["evidence"].values()
+                if e["surface"] == "live_viewer_observation" and e["locale"] == "en"]
+            review.require(len(english) == 1, "locale reference requires the captured English answer")
+            response = json.loads(ops.bounded_read(ops.safe_path(root, english[0]["path"])))["response"]
+            answer = "SAME AS ENGLISH"
+        else:
+            response = observed["response"]
+            answer = response["observation"]
+        # Unreported experience may not become a claim of no uncertainty/counterevidence.
+        if response["limits"] == "not_reported":
+            review.require(mapping["uncertainty"] == "not_reported",
+                "unreported human limits must remain not_reported")
+        state = mapping["assessment"]
+        review.require(state in {"satisfied", "violated", "insufficient_evidence"},
+            "operator mapping does not infer applicability or missing opportunities")
+        trace = [{"prompt": observation_confirmation(spec["locale"], observed["contexts"]), "answer": "1"},
+            {"prompt": next(r["prompt"] for r in _live_observation_requests() if r["locale"] == spec["locale"]),
+             "answer": answer}]
+        finding = {**review.observation(spec["criterion_id"]),
+            **{k: copy.deepcopy(mapping[k]) for k in ("assessment", "reasoning", "uncertainty", "criterion_observations", "counterevidence")},
+            "inspected_evidence": [identity], "human_answer_trace": trace,
+            "evidence": ([] if state == "insufficient_evidence" else [{"evidence_id": identity,
+                "locator": {"kind": "json_pointer", "value": "/response"} if observed["response"] is not None
+                    else {"kind": "json_pointer", "value": "/control"},
+                "criterion_id": spec["criterion_id"], "relevance": mapping["reasoning"]}])}
+        draft["assessments"][n - 1] = finding
+        draft["human_controls"][spec["criterion_id"]] = _human_control("direct", None, None, trace)
+        draft["observation_scope"]["inspected_evidence"] = sorted({
+            *draft["observation_scope"]["inspected_evidence"], identity})
+        updated.append(spec["criterion_id"])
+    result = review.validate_value(preparation, sha, draft)
+    data = _store_draft(root, root / "draft.json", draft)
+    return {"state": "draft_updated", "mapped_criteria": updated,
+        "draft_sha256": ops.digest(data), "review_result": result,
+        "question_count_available": False}
+
+
 def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
                  input_fn=input, output_fn=print):
     """Capture exactly one human criterion and update only the mutable draft."""
@@ -406,8 +478,13 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
     specs = review.criterion_specs(preparation["index"], preparation["rubric"])
     if criterion_number is None:
         positions = [number for number, item in enumerate(draft["assessments"])
-                     if item["assessment"] == "not_reviewed"]
+                     if item["assessment"] == "not_reviewed" and review.human_only(specs[number])]
         review.require(positions, "all prepared criteria already have a judgment")
+        positions = [n for n in positions if not (
+            specs[n]["name"] == "decision_comprehension_when_applicable"
+            and (states := _resolution_runs(resolve_review_roots, specs[n]["criterion_id"]))
+            and all(state == "not_applicable" for _, state in states))]
+        review.require(positions, "no targeted human question remains; other rubric gaps are not a question queue")
         position = positions[0]
     else:
         review.require(1 <= criterion_number <= len(specs), "criterion number is unavailable")
@@ -416,7 +493,7 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
             "criterion already has a judgment; prepare a new run to correct recorded meaning")
     spec = specs[position]
     trace = []
-    output_fn(f"Criterion {position + 1}/{len(specs)}: {spec['criterion_id']}")
+    output_fn(f"Selected criterion: {spec['criterion_id']} (rubric position {position + 1}; not a question count)")
     output_fn(preparation["rubric"]["group_prompts"].get(spec["group"], "Inspect this bounded criterion."))
     if spec.get("workload_intent") in preparation["rubric"]["workload_prompts"]:
         output_fn(preparation["rubric"]["workload_prompts"][spec["workload_intent"]])

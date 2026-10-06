@@ -456,6 +456,7 @@
         "capture-human-viewer-observations",
         "prepare-qualitative-review",
         "inspect-agent-review",
+        "apply-human-observation-assessments",
         "converse-qualitative-review",
         "validate-qualitative-review",
         "record-qualitative-review",

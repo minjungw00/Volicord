@@ -71,7 +71,7 @@ PLACEHOLDER_VALUES = {
 }
 def workflow_contract():
     return {"operations": ["capture-human-viewer-observations", "prepare-qualitative-review",
-        "inspect-agent-review", "converse-qualitative-review", "validate-qualitative-review",
+        "inspect-agent-review", "apply-human-observation-assessments", "converse-qualitative-review", "validate-qualitative-review",
         "record-qualitative-review", "package-review"],
         "input": "immutable_evidence_set_and_optional_machine_run", "campaign_mutation": False,
         "review_root": "separate_from_campaign", "draft": "draft.json", "recorded": "recorded/review.json",
@@ -625,7 +625,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         require_review_artifact_safe(data, "human observations contain sensitive payload")
         observed = json.loads(data)
         review.require(isinstance(observed, dict) and set(observed) == {"kind", "schema_version", "candidate_head", "evidence_set_sha256", "observer", "observations"}
-            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 4
+            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 5
             and observed["candidate_head"] == manifest["candidate_head"]
             and observed["evidence_set_sha256"] == evidence_hash, "human observation candidate/evidence binding mismatch")
         review.validate_reviewer(observed["observer"], sessions)
@@ -694,7 +694,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         "completion_obligations": review.completion_obligations(index, policy),
         "preparer_revision": c.harness.git_head(c.ROOT),
         "preparer_files": {name: c.harness.sha256(Path(__file__).with_name(name)) for name in
-            ("review_operations.py", "review_captures.py", "review_explanations.py", "answer_projection.py", "explanation_evidence.py", "answer_observations.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
+            ("review_operations.py", "human_review.py", "viewer_observation.py", "review_captures.py", "review_explanations.py", "answer_projection.py", "explanation_evidence.py", "answer_observations.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
              "authority_obligations.py", "interaction_diagnostics.py", "workload_intents.py", "evaluation.json")}}
     preparation_bytes = encoded(preparation)
     review.require(len(preparation_bytes) <= MAX_FILE_BYTES, "review index exceeds bound")

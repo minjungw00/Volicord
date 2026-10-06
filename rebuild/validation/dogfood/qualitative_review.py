@@ -155,7 +155,7 @@ def rubric(definition):
             "decision_comprehension_when_applicable": "no_user_decision_in_scope",
             "polyglot_comprehension_when_applicable": "single_language_scope"},
         "missing_surface_state": "insufficient_evidence",
-        "counterevidence": "Cite counterevidence, or explicitly state none found after inspection.",
+        "counterevidence": "Cite counterevidence, state none found after inspection, or preserve not_reported/not_observable; missing reports cannot satisfy a positive judgment.",
         "semantic_judgment_owner": "identified_reviewer", "qualification_authority": False}
 
 
@@ -335,6 +335,8 @@ def completion_progress(preparation, value, specs):
             in HIGH_IMPACT_INSUFFICIENCY_GROUPS)
     return {
         "semantic_correctness_assessed": False,
+        "count_semantics": "rubric_fields_not_user_questions",
+        "question_count_available": False,
         "required_criterion_count": len(specs),
         "reviewed_criterion_count": len(specs) - len(missing),
         "missing_criterion_ids": missing,
@@ -432,7 +434,7 @@ def validate_assessment(value, spec, preparation, inspected):
         allow_empty=state in {"insufficient_evidence", "not_observed"})
     counter = value["counterevidence"]
     require(isinstance(counter, dict) and set(counter) == {"state", "reasoning", "evidence"}
-        and counter["state"] in {"cited", "none_found", "not_observable"}
+        and counter["state"] in {"cited", "none_found", "not_observable", "not_reported"}
         and authority.bounded_text(counter["reasoning"]), "explicit counterevidence or its absence is required")
     validate_references(counter["evidence"], index, criterion_inspected, spec, allow_empty=counter["state"] != "cited")
     require(counter["state"] == "cited" or not counter["evidence"], "absence cannot contain counterevidence")
@@ -455,7 +457,7 @@ def validate_assessment(value, spec, preparation, inspected):
                 "active or uncertain Learning participation cannot be marked not_observed")
 
     require(state != "not_observed" or spec["group"] not in {"live_viewer", "cli"}, "required direct observations cannot be not_observed")
-    require(state != "satisfied" or counter["state"] != "not_observable", "unobservable counterevidence cannot satisfy a criterion")
+    require(state != "satisfied" or counter["state"] not in {"not_observable", "not_reported"}, "unobservable counterevidence cannot satisfy a criterion")
     observations = value["criterion_observations"]
     required_observations = preparation["rubric"]["criterion_observations"].get(spec["name"], [])
     require(isinstance(observations, list) and len(observations) == len(set(observations))

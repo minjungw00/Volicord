@@ -57,7 +57,7 @@ rebuild/scripts/dogfood-campaign capture-human-viewer-observations --campaign-ro
 ```
 
 Repeat `--viewer-context` for multiple views/phases. Human observation/receipt
-schema 4 retains those closed contexts and an explicit `personally_observed`
+schema 5 retains those closed contexts and an explicit `personally_observed`
 declaration for each locale before accepting narrative or `SAME AS ENGLISH`.
 Both locales require their own actual contexts and personal inspection; a locale
 reference reuses declared prose only. Capture rechecks the receipt and screenshot
@@ -89,3 +89,13 @@ Decision absence/current state, real 200% zoom, attach/detach and foreign-execut
 rejection retain full local evidence. The test cleans up only its owned Viewer
 and browser. It is neither an external authenticated probe nor a naturalistic
 campaign, human judgment or authoritative gate.
+
+The person supplies a direct experience block, with optional explicit `LIMITS:`.
+No schema fields are requested; raw answer text stays exact and unreported limits
+stay `not_reported`. The operator maps supported live criteria in the new review
+through `apply-human-observation-assessments`, preserving that answer rather than
+asking for evidence/reasoning/dimension/counterevidence fields again. Clarify only
+missing, ambiguous or contradictory experience. Separate color-only meaning from
+general grouping difficulty. Neither experience proves historical snapshot or
+conversation fidelity. See the qualitative-review owner for mapping fields and
+append-only recording. Counts of unreviewed rubric fields are not question counts.

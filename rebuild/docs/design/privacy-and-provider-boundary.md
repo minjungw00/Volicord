@@ -468,7 +468,9 @@ incomplete state를 남기며 required Work/resume을 사용하는 decisive 판�
 Detailed schema/limits와 decisive restrictions는 `qualitative-review.md`가 소유한다.
 Unavailable captures, CLI 또는 live accessibility observation을 감추거나 satisfied로 대체하지 않는다.
 Conversational human-review capture도 이 local reviewer plane 안에서만 동작한다. Human이 제공한
-observation, reasoning, relevance, uncertainty와 conflict-resolution confirmation만 보존하며
+direct experience와 original answer trace를 보존하며 operator가 그 답변이 분명히 뒷받침하는
+assessment/reasoning/relevance/dimensions/limits/counterevidence를 작성한다. 누락된 경험,
+user rationale나 `not_reported`를 none/success로 바꾸지 않는다. 이 local path는
 provider를 호출하거나 누락된 human semantics를 생성하지 않는다. 도구가 생성하는 candidate,
 evidence, criterion, locator, reviewer-run과 receipt binding은 human judgment가 아니라 검증 가능한
 구조 metadata다. Sensitive-payload 검사는 observation capture와 generated draft publication 전에

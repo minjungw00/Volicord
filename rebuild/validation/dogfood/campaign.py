@@ -3292,6 +3292,10 @@ def parser() -> argparse.ArgumentParser:
     resources.add_argument("--input", required=True)
     capture_human = sub.add_parser("capture-human-viewer-observations",
         help="Conversationally capture candidate-bound live Viewer observations")
+    apply_human = sub.add_parser("apply-human-observation-assessments",
+        help="Apply operator-authored mappings from already captured direct experience")
+    apply_human.add_argument("--review-root", required=True)
+    apply_human.add_argument("--mapping", type=Path, required=True)
     converse_human = sub.add_parser("converse-qualitative-review",
         help="Capture one human-owned criterion without hand-authoring review JSON")
     collect_cli = sub.add_parser("collect-cli-observations", help="Collect isolated repository-class CLI usability evidence")
@@ -3452,6 +3456,8 @@ def main() -> int:
         value = record_resources(root, Path(args.input))
     elif args.command == "capture-human-viewer-observations":
         value = human_review.capture_viewer_observations(root, Path(args.output), context_paths=args.viewer_context)
+    elif args.command == "apply-human-observation-assessments":
+        value = human_review.apply_observation_assessments(root, args.mapping)
     elif args.command == "converse-qualitative-review":
         value = human_review.converse_one(root, criterion_number=args.criterion_number,
             resolve_review_roots=[Path(path).resolve() for path in args.resolve_review_root])

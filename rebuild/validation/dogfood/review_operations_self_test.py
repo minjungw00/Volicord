@@ -25,6 +25,14 @@ def snapshot(root):
     return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*") if p.is_file()}
 
 
+def converse_explicit(root, **kwargs):
+    if kwargs.get("criterion_number") is None:
+        value = json.loads((root / "draft.json").read_bytes())
+        kwargs["criterion_number"] = next(i + 1 for i, a in enumerate(value["assessments"])
+            if a["assessment"] == "not_reviewed")
+    return human_review.converse_one(root, **kwargs)
+
+
 def collect_cli_fixture(campaign_root, output, *, emitted_private_paths=None,
                         raw_stream_identities=None):
     def cloner(source, destination, _revision):
@@ -924,7 +932,7 @@ class WorkflowTests(unittest.TestCase):
         evidence_hash = ops.digest((self.root / "evidence-set.json").read_bytes())
         observation = {
             "kind": "dogfood_human_observations",
-            "schema_version": 4,
+            "schema_version": 5,
             "candidate_head": c.load_evidence_set(self.root)["candidate_head"],
             "evidence_set_sha256": evidence_hash,
             "observer": q.reviewer("human", "b" * 32),
@@ -954,6 +962,67 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "human observations contain sensitive payload"):
             ops.prepare(self.root, rejected, reviewer_kind="human", human_observations=sensitive)
         self.assertFalse(rejected.exists())
+
+    def test_operator_maps_one_exact_answer_without_schema_questions_or_historical_claims(self):
+        manifest = c.load_evidence_set(self.root)
+        contexts = [context_directory(self.parent, self._testMethodName + locale, manifest, locale)
+            for locale in ("en", "ko")]
+        observation_root = self.parent / (self._testMethodName + "-observations")
+        answer = "  Works and Decisions are hard to distinguish.\nI did not inspect the old conversation.  "
+        prompts = []
+        human_review.capture_viewer_observations(self.root, observation_root, context_paths=contexts,
+            input_fn=iter(["1", answer, "1", "SAME AS ENGLISH"]).__next__, output_fn=prompts.append)
+        self.assertEqual(len(prompts), 4)  # Personal inspection plus one experience per locale.
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="human", human_observations=observation_root)
+        p, sha, _ = ops.load_package(target)
+        specs = q.criterion_specs(p["index"], p["rubric"])
+        identity = "journey-volicord-live-en"
+        mappings = []
+        for name in ("multiple_work_comprehension", "displayed_decision_comprehension"):
+            number = next(i + 1 for i, spec in enumerate(specs) if spec["name"] == name and spec["locale"] == "en")
+            mappings.append({"criterion_number": number, "observation_evidence_id": identity,
+                "assessment": "violated", "reasoning": "The direct answer reports difficulty distinguishing displayed items.",
+                "uncertainty": "not_reported", "criterion_observations": p["rubric"]["criterion_observations"][name],
+                "counterevidence": {"state": "not_reported", "reasoning": "The person did not report counterevidence.", "evidence": []}})
+        path = self.parent / (self._testMethodName + "-mapping.json")
+        path.write_bytes(ops.encoded(mappings))
+        result = human_review.apply_observation_assessments(target, path)
+        value = json.loads((target / "draft.json").read_bytes())
+        self.assertFalse(result["question_count_available"])
+        self.assertFalse(result["review_result"]["completion_preflight"]["question_count_available"])
+        for mapping in mappings:
+            finding = value["assessments"][mapping["criterion_number"] - 1]
+            self.assertEqual(finding["human_answer_trace"][-1]["answer"], answer)
+            self.assertEqual(finding["uncertainty"], "not_reported")
+            self.assertEqual(finding["counterevidence"]["state"], "not_reported")
+            missing = copy.deepcopy(value)
+            missing["assessments"][mapping["criterion_number"] - 1]["human_answer_trace"] = []
+            with self.assertRaisesRegex(ValueError, "answer trace"):
+                q.validate_value(p, sha, missing)
+        self.assertTrue(all(a["assessment"] == "not_reviewed" for a, spec in zip(value["assessments"], specs)
+            if spec["group"] in {"interaction", "viewer_snapshot"}))
+        with self.assertRaisesRegex(ValueError, "back-edited"):
+            human_review.apply_observation_assessments(target, path)
+        # Changing the target to original conversation fidelity cannot invent user rationale.
+        mappings[0]["criterion_number"] = next(i + 1 for i, spec in enumerate(specs)
+            if spec["name"] == "decision_comprehension_when_applicable")
+        path.write_bytes(ops.encoded(mappings[:1]))
+        with self.assertRaisesRegex(ValueError, "historical fidelity"):
+            human_review.apply_observation_assessments(target, path)
+
+    def test_default_conversation_targets_human_scope_and_skips_resolved_inapplicability(self):
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="human", include_raw=True)
+        p, _, _ = ops.load_package(target)
+        specs = q.criterion_specs(p["index"], p["rubric"])
+        prompts = []
+        with patch.object(human_review, "_resolution_runs", return_value=[("a" * 32, "not_applicable")]):
+            result = human_review.converse_one(target, resolve_review_roots=[Path("unused-authored-test-input")],
+                input_fn=iter(["SKIP"]).__next__, output_fn=prompts.append)
+        spec = next(s for s in specs if s["criterion_id"] == result["criterion_id"])
+        self.assertEqual(spec["group"], "live_viewer")
+        self.assertFalse(any("remaining questions" in prompt or "Criterion 1/" in prompt for prompt in prompts))
 
     def test_conversational_human_observations_bind_candidate_and_receipt(self):
         observation_root = self.parent / (self._testMethodName + "-observations")
@@ -1017,7 +1086,7 @@ class WorkflowTests(unittest.TestCase):
             "2",
             "No contrary interaction was found in the inspected capture.",
         ])
-        result = human_review.converse_one(
+        result = converse_explicit(
             target, input_fn=answers.__next__, output_fn=lambda _text: None)
         self.assertEqual(result["state"], "draft_updated")
         self.assertEqual(result["assessment"], "satisfied")
@@ -1038,8 +1107,8 @@ class WorkflowTests(unittest.TestCase):
             "No further uncertainty in this bounded observation.", "2",
             "No contrary evidence was found in the inspected capture.",
         ])
-        human_review.converse_one(target, input_fn=direct.__next__, output_fn=lambda _text: None)
-        referenced = human_review.converse_one(target,
+        converse_explicit(target, input_fn=direct.__next__, output_fn=lambda _text: None)
+        referenced = converse_explicit(target,
             input_fn=iter([
                 "SAME AS PREVIOUS",
                 "The same observation shows that ownership was violated for this distinct criterion.",
@@ -1070,7 +1139,7 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "separately authored"):
             ops.validate(target, cloned_path)
 
-        covered = human_review.converse_one(target,
+        covered = converse_explicit(target,
             input_fn=iter([
                 "ALREADY COVERED",
                 "The reused observation separately establishes source grounding for this criterion.",
@@ -1087,10 +1156,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(value["human_controls"][covered_finding["criterion_id"]]["reuse_scope"],
             "observation_evidence_context")
 
-        skipped = human_review.converse_one(target,
+        skipped = converse_explicit(target,
             input_fn=iter(["SKIP"]).__next__, output_fn=lambda _text: None)
         self.assertEqual(skipped["assessment"], "not_reviewed")
-        insufficient = human_review.converse_one(target,
+        insufficient = converse_explicit(target,
             input_fn=iter(["CANNOT ASSESS", "I inspected the listed inventory, but the required live observation is missing."]).__next__,
             output_fn=lambda _text: None)
         self.assertEqual(insufficient["assessment"], "insufficient_evidence")
@@ -1125,7 +1194,7 @@ class WorkflowTests(unittest.TestCase):
         eligible = human_review._eligible_evidence(preparation, english_spec)
         evidence_number = next(index for index, (_identity, entry) in enumerate(eligible, 1)
             if entry["surface"] == "live_viewer_observation" and entry["locale"] == "en")
-        human_review.converse_one(target, criterion_number=english_position + 1,
+        converse_explicit(target, criterion_number=english_position + 1,
             input_fn=iter([
                 "Keyboard reachability was satisfied in the direct English observation.",
                 "1", str(evidence_number), "START",
@@ -1138,13 +1207,13 @@ class WorkflowTests(unittest.TestCase):
             and spec["name"] == "visible_focus")
         before = (target / "draft.json").read_bytes()
         with self.assertRaisesRegex(ValueError, "no compatible prior reviewed criterion"):
-            human_review.converse_one(target, criterion_number=incompatible_position + 1,
+            converse_explicit(target, criterion_number=incompatible_position + 1,
                 input_fn=iter(["SAME AS ENGLISH"]).__next__, output_fn=lambda _text: None)
         self.assertEqual((target / "draft.json").read_bytes(), before)
         korean_position = next(index for index, spec in enumerate(specs)
             if spec["group"] == "live_viewer" and spec["locale"] == "ko"
             and spec["name"] == "keyboard_reachability")
-        mirrored = human_review.converse_one(target, criterion_number=korean_position + 1,
+        mirrored = converse_explicit(target, criterion_number=korean_position + 1,
             input_fn=iter(["SAME AS ENGLISH"]).__next__, output_fn=lambda _text: None)
         self.assertEqual(mirrored["reuse_scope"], "exact_semantic_judgment")
         value = json.loads((target / "draft.json").read_bytes())
