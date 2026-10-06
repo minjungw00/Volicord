@@ -97,8 +97,14 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
     return preparation, response, {'operation': 'explanation_record', 'explanation': retained}, readback
 
 
-def publish_fixture(root, *, kind='work', language='en', before_state='unavailable', mapped=None, candidate=None, subject_id=None, project_id=None, identity=None, paragraph_text=None, revision=1):
+def publish_fixture(root, *, kind='work', language='en', before_state='unavailable', mapped=None, candidate=None, subject_id=None, project_id=None, identity=None, paragraph_text=None, revision=1, extra_evidence=()):
     preparation, response, record, after = lifecycle(kind, language, before_state)
+    for offered in extra_evidence:
+        preparation['plan']['evidence'].append(copy.deepcopy(offered))
+        retained = copy.deepcopy(offered); retained['content'] = None
+        record['explanation']['evidence'].append(retained)
+    after['selected_work']['answers']['provenance']['evidence'] = [copy.deepcopy(record['explanation']['evidence'][0])]
+    after['selected_work']['answers']['provenance']['uncited_evidence_count'] = len(extra_evidence)
     if revision != 1:
         fingerprint = 'sha256:' + str(revision) * 64
         preparation['plan']['fingerprint'] = fingerprint

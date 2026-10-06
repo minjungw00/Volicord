@@ -334,6 +334,10 @@ all offered evidence. Lifecycle verification checks both sets independently;
 missing or altered cited grounding, uncited references presented as cited, and
 incorrect omission accounting are rejected. Copied review validation applies the
 same Source-independent contract without requiring the original Runtime.
+Typed private plan projection retains historical `reported_change` and changed
+`source_ids` alongside their paths and observation time. Unknown fields still
+produce explicit semantic omissions; a copied lifecycle cannot claim complete
+meaning when a supported historical basis was dropped.
 Metadata-heavy and near-read-limit authored inputs live in
 `end-to-end/multi-repository/fixtures/viewer-reading/explanation-size-cases.json`.
 Set `VOLICORD_EXPLANATION_SIZE_PROOF_DIR` to a fresh absolute ignored directory

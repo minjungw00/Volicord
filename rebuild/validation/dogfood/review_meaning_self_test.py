@@ -248,6 +248,32 @@ class MeaningTests(unittest.TestCase):
                     copied = ops.encoded(value)
                 self.assertEqual(r.validate(copied)['before_state'], 'stale')
 
+    def test_historical_change_and_source_basis_survive_copied_lifecycle(self):
+        evidence = [
+            {'key': 'original-change', 'record_kind': 'checkpoint', 'identity': '09' * 16,
+                'revision': 2, 'field': 'state_change', 'sources': ['03' * 16],
+                'content': {'reported_change': 'Original change precedes a later verification.', 'observed_at': 100}},
+            {'key': 'changed-basis', 'record_kind': 'checkpoint', 'identity': '09' * 16,
+                'revision': 2, 'field': 'changed_paths,changed_source_basis', 'sources': ['03' * 16],
+                'content': {'paths': ['src/relay.ts'], 'source_ids': ['03' * 16]}}]
+        for language in ('en', 'ko'):
+            with tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary); c.write_json(c.inventory_path(root), c.load_inventory(root))
+                directory = publish_fixture(root, language=language, before_state='stale', extra_evidence=evidence)
+                data, metadata = r.project(root, directory / 'preparation.json', evidence_set_sha256='b' * 64)
+                self.assertTrue(metadata['semantic_complete'])
+                value = r.validate(data)
+                plan = value['stages']['plan']['value']['value']['plan']
+                self.assertEqual(plan['evidence'][1:], evidence)
+                answers = value['stages']['after']['value']['value']['selected_work']['answers']
+                self.assertEqual(answers['provenance']['uncited_evidence_count'], 2)
+                self.assertEqual(len(answers['provenance']['evidence']), 1)
+                self.assertEqual(len(value['stages']['record']['value']['value']['explanation']['evidence']), 3)
+                # Unsupported future fields must remain an explicit omission.
+                bad = copy.deepcopy(plan); bad['evidence'][1]['content']['future_unregistered_field'] = 'unknown'
+                self.assertFalse(a.project({'operation': 'explanation_prepare', 'plan': bad}, 'explanation_prepare')['semantic_complete'])
+            self.assertTrue(r.validate(data)['semantic_complete'])
+
     def test_private_lifecycle_prose_is_omitted_before_package_selection(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); c.write_json(c.inventory_path(root), c.load_inventory(root))

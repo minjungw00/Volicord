@@ -39,7 +39,8 @@ CONTENT = {k: optional(t) for k, t in {
     'work_state': S, 'known_limits': [S], 'non_goals': [S], 'choice': S,
     'chosen_alternative_key': S, 'state': S, 'alternative_key': S, 'rationale': S,
     'consequence': S, 'key': S, 'label': S, 'assumptions': [S], 'components': [S],
-    'paths': [S], 'review_basis': [S], 'revisit_triggers': [S], 'scope': S,
+    'paths': [S], 'source_ids': [S], 'reported_change': S,
+    'review_basis': [S], 'revisit_triggers': [S], 'scope': S,
     'work_contexts': [S]}.items()}
 EVIDENCE = {'key': S, 'record_kind': S, 'identity': S, 'revision': I,
     'field': S, 'sources': [S], 'content': nullable(('union', S, CONTENT, [CONTENT]))}
