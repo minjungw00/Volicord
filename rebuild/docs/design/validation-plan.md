@@ -2599,3 +2599,11 @@ in both locales; historical snapshot/conversation claims stay independently unre
 Missing answer trace and reviewer/candidate tampering are rejected, with display/subject/locale
 controls in `viewer_observation_self_test` and receipt controls in `review_operations_self_test`.
 No authored support answer is a Human result or a new Naturalistic campaign.
+
+The maintained general browser driver checks current Work facts and the compact visible
+historical-adversity notice separately, then opens/closes the full history by keyboard and
+checks retained adverse states and each checkpoint identity. It no longer requires exact
+historical rows in the primary reading path after their disclosure change. Its disposable
+`negative-work-history` control removes the disclosure and must fail for the intended
+missing-history reason before the restored Product view passes. Prior failed browser
+attempts remain failed evidence; supporting browser checks do not establish Human experience.

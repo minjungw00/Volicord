@@ -244,7 +244,18 @@ async function workFacts(key, locale) {
     for (const fact of [latest.work, latest.verification, latest.review, latest.acceptance]) requireFact(state.includes(labels[fact]), `work_state_source_mismatch:${fact}`);
     for (const keyName of config.expected.exact_older.excluded_decision_keys) if (key === 'older') requireFact(!await section.locator(`a[href*="decision=${F.decisions[keyName]}"]`).count(), 'cross_work_decision_substitution');
     if (key === 'older') {
-      requireFact(text.includes(labels.Failed) && text.includes(labels.Rejected) && text.includes(labels.Pending), 'historical_failure_or_pending_state_hidden');
+      requireFact(text.includes(locale === 'en' ? 'Prior adverse history' : '과거 문제 이력'), 'historical_adversity_notice_hidden');
+      const history = section.locator('details.work-state-history[data-reading-role="audit-history"]');
+      requireFact(await history.count() === 1, 'work_history_disclosure_missing');
+      requireFact(await history.getAttribute('open') === null, 'work_history_dominates_primary_reading');
+      await activate(history.locator('summary'), false);
+      const visibleHistory = await history.innerText();
+      requireFact(visibleHistory.includes('Failed') && visibleHistory.includes('Rejected')
+        && visibleHistory.includes('Pending'), 'historical_failure_or_pending_state_hidden');
+      for (const cp of config.expected.exact_older.checkpoint_keys)
+        requireFact(visibleHistory.includes(F.checkpoints[cp]), 'history_checkpoint_basis_missing');
+      await activate(history.locator('summary'), false);
+      requireFact(await history.getAttribute('open') === null, 'work_history_disclosure_did_not_close');
       requireFact(text.includes(locale === 'en' ? 'Interpretation has not been generated' : '해석이 아직 생성되지'), 'summary_limit_hidden');
       const source = await section.textContent();
       for (const cp of config.expected.exact_older.checkpoint_keys) requireFact(source.includes(F.checkpoints[cp]), 'checkpoint_basis_missing');
@@ -301,7 +312,7 @@ async function copyMutation(name, mutate, verify, positiveUrl) {
   try { await verify(); } catch (error) { failure = String(error); }
   requireFact(failure, `negative_control_not_detected:${name}`);
   // Assert the intended failure, not merely a navigation/shape failure.
-  const expected = {wrapping:'ordinary_page_overflow',prefix:'common_prefix_truncation',fragment:'fragment_target',substitution:'cross_work_next_step_substitution',live_link:'snapshot_live_link',historical:'overview_promotes_historical_pass',flow:'graph_relation_basis_mismatch'}[name];
+  const expected = {wrapping:'ordinary_page_overflow',prefix:'common_prefix_truncation',fragment:'fragment_target',substitution:'cross_work_next_step_substitution',live_link:'snapshot_live_link',historical:'overview_promotes_historical_pass',flow:'graph_relation_basis_mismatch',work_history:'work_history_disclosure_missing'}[name];
   requireFact(failure.includes(expected), `wrong_negative_control_reason:${failure}`);
   await page.screenshot({path:path.join(config.output, `${mode}-negative-${name}.png`)});
   await go(positiveUrl);
@@ -447,6 +458,7 @@ async function live() {
   }
   await page.setViewportSize({width:390,height:900});
   await check('negative-historical-summary',()=>copyMutation('historical',()=>document.querySelectorAll('#overview .work-summary [data-question="VerificationCoverage"]').forEach(e=>e.remove()),()=>overviewFacts('en'),routes('en').default));
+  await check('negative-work-history',()=>copyMutation('work_history',()=>document.querySelector('details.work-state-history').remove(),()=>workFacts('older','en'),routes('en').work));
   await check('negative-fake-flow',()=>copyMutation('flow',()=>{const edge=document.querySelector('g.diagram-edge').cloneNode(true);edge.dataset.relationId='invented-flow-edge';document.querySelector('svg').appendChild(edge);},graphIdentity,routes('en').detail));
   await check('negative-wrapping',()=>copyMutation('wrapping',()=>{document.querySelectorAll('style').forEach(e=>e.textContent=e.textContent.replaceAll('overflow-wrap:anywhere','overflow-wrap:normal').replaceAll('white-space:pre-wrap','white-space:pre'));document.querySelectorAll('details').forEach(e=>e.open=true);},overflow,routes('en').work));
   await check('negative-prefix',()=>copyMutation('prefix',()=>{document.querySelectorAll('g.diagram-node text').forEach(e=>e.textContent=e.textContent.slice(0,12)+'…');},labels,routes('en').detail));
