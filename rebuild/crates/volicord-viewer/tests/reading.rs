@@ -775,6 +775,18 @@ fn ordinary_hierarchy_separates_catalog_detail_and_audit_in_both_locales(
         assert!(!overview.contains("id=\"diagnostics\""));
         assert_eq!(overview.matches("aria-current=\"page\"").count(), 1);
         assert!(!overview.contains("integrity diagnostics not requested"));
+        for disclosure in overview
+            .split("<details class=\"category-details\">")
+            .skip(1)
+        {
+            let closed = disclosure
+                .split("</details>")
+                .next()
+                .ok_or("count disclosure")?;
+            assert!(!closed.contains(" open"));
+            assert!(closed.contains("class=\"category-count\""));
+        }
+        assert!(!overview.contains("additional Works; open Work navigation"));
         let list = exchange(
             &server,
             &format!("/?view=work&locale={locale}&language={locale}"),

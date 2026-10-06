@@ -1,6 +1,8 @@
 use super::{
-    layout_diagram_topology, select_diagram_topology, MapEntity, MapRelation, MapRelationClass,
+    layout_diagram_topology, rendered_bound, select_diagram_topology, MapEntity, MapRelation,
+    MapRelationClass,
 };
+use crate::ViewerLocale;
 use volicord_context::SourceId;
 use volicord_repository_intelligence::{
     AnalysisSnapshotId, CodeEntityKind, FreshnessBasis, FreshnessState, Language,
@@ -424,4 +426,24 @@ fn canonical_runtime_blocker_is_visible_but_auxiliary_health_is_not_a_global_war
         !html.contains("<details"),
         "blocking runtime state must not be hidden"
     );
+}
+
+#[test]
+fn exact_display_omissions_are_disclosed_without_hiding_incompleteness() {
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let mut html = String::new();
+        rendered_bound(&mut html, 9, 3, 2, locale, "entities");
+        let (ordinary, details) = html.split_once("<details").expect("count disclosure");
+        assert!(ordinary.contains(if locale == ViewerLocale::English {
+            "additional material is omitted"
+        } else {
+            "추가 자료가 생략"
+        }));
+        assert!(!details.contains(" open"));
+        assert!(details.contains(if locale == ViewerLocale::English {
+            "8 omitted"
+        } else {
+            "8 결정적"
+        }));
+    }
 }

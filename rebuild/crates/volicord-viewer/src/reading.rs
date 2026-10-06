@@ -339,16 +339,12 @@ fn overview(
         }
         html.push_str("</div>");
         if works.omitted > 0 {
-            list_item(
+            empty_state(
                 html,
-                &format!(
-                    "{} {}",
-                    works.omitted,
-                    text(
-                        request.locale,
-                        "additional Works; open Work navigation",
-                        "추가 작업; 작업 탐색을 여세요"
-                    )
+                text(
+                    request.locale,
+                    "Additional Works are available; open Work navigation.",
+                    "추가 작업이 있습니다. 작업 탐색을 여세요.",
                 ),
             );
         }
@@ -1249,14 +1245,8 @@ fn code(
             }
         }
         if p.omitted_selected_relation_count > 0 {
-            empty_state(
-                html,
-                &format!(
-                    "{} {}",
-                    p.omitted_selected_relation_count,
-                    text(r.locale, "relationships omitted", "관계 생략")
-                ),
-            );
+            empty_state(html, text(r.locale, "Some relationships are outside this displayed neighborhood. Inspect the exact bound below.", "일부 관계가 표시된 이웃 범위 밖에 있습니다. 아래에서 정확한 제한을 확인하세요."));
+            html.push_str(&format!("<details class=\"relationship-bounds\"><summary>{}</summary><p>{} {}</p></details>", text(r.locale, "Relationship display bounds", "관계 표시 범위"), p.omitted_selected_relation_count, text(r.locale, "relationships omitted", "관계 생략")));
         }
     }
     render_understanding_evidence(html, r, u);

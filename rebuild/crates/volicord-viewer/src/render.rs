@@ -1149,7 +1149,8 @@ fn render_grounded_diagram(
         ));
     }
     html.push_str(&format!(
-        "<p class=\"bound\">{} {} · {} {}. {} {} · {} {}. {}</p></figure>",
+        "<details class=\"diagram-bounds\"><summary>{}</summary><p class=\"bound\">{} {} · {} {}. {} {} · {} {}. {}</p></details></figure>",
+        text(request.locale, "Diagram coverage and exact omissions", "도식 범위 및 정확한 생략"),
         nodes.len(),
         escape(text(request.locale, "grounded nodes", "근거 있는 노드")),
         relations.len(),
@@ -3182,8 +3183,12 @@ fn rendered_bound(
     let omitted = bounded_count
         .saturating_sub(displayed_count)
         .saturating_add(projection_omitted);
+    if omitted > 0 {
+        empty_state(html, text(locale, "This is a bounded selection; additional material is omitted. Inspect display counts below.", "범위가 제한된 선택이며 추가 자료가 생략됩니다. 아래에서 표시 수를 확인하세요."));
+    }
     html.push_str(&format!(
-        "<p class=\"bound\" data-bound-scope=\"{}\">{} {} · {} {}.</p>",
+        "<details class=\"display-bounds\"><summary>{}</summary><p class=\"bound\" data-bound-scope=\"{}\">{} {} · {} {}.</p></details>",
+        text(locale, "Display counts and exact omissions", "표시 수 및 정확한 생략"),
         escape(scope),
         displayed_count,
         escape(text(locale, "shown", "표시")),
