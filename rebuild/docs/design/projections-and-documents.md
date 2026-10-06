@@ -1287,7 +1287,7 @@ runtime failure remains ordinary; unrelated auxiliary health is audit evidence.
 
 `ProjectProjection.repository_analysis` and `ProjectUnderstanding.repository_analysis`
 expose the bounded shared status to Viewer consumers; `volicord status --json`
-exposes the same model. Session 2 should render `state`, independently preserved
+exposes the same model. Viewer consumers render `state`, independently preserved
 `freshness`, `coverage` plus `omitted_coverage_count`, `latest_attempt`,
 `latest_attempt_error`, `retained_prior_result`, `diagnostic` and `refresh_command`.
 Snapshot identities/generation time belong to evidence details. The command is text

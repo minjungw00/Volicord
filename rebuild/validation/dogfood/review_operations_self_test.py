@@ -971,7 +971,7 @@ class WorkflowTests(unittest.TestCase):
         answer = "  Works and Decisions are hard to distinguish.\nI did not inspect the old conversation.  "
         prompts = []
         human_review.capture_viewer_observations(self.root, observation_root, context_paths=contexts,
-            input_fn=iter(["1", answer, "1", "SAME AS ENGLISH"]).__next__, output_fn=prompts.append)
+            input_fn=iter(["1", answer, "1", "same as english"]).__next__, output_fn=prompts.append)
         self.assertEqual(len(prompts), 4)  # Personal inspection plus one experience per locale.
         target = self.target()
         ops.prepare(self.root, target, reviewer_kind="human", human_observations=observation_root)
@@ -1004,6 +1004,15 @@ class WorkflowTests(unittest.TestCase):
             if spec["group"] in {"interaction", "viewer_snapshot"}))
         with self.assertRaisesRegex(ValueError, "back-edited"):
             human_review.apply_observation_assessments(target, path)
+        missing_limits = copy.deepcopy(mappings[0])
+        missing_limits["criterion_number"] = next(i + 1 for i, spec in enumerate(specs)
+            if spec["name"] == "keyboard_reachability" and spec["locale"] == "en")
+        missing_limits["uncertainty"] = "none"
+        path.write_bytes(ops.encoded([missing_limits]))
+        before = (target / "draft.json").read_bytes()
+        with self.assertRaisesRegex(ValueError, "not_reported"):
+            human_review.apply_observation_assessments(target, path)
+        self.assertEqual((target / "draft.json").read_bytes(), before)
         # Changing the target to original conversation fidelity cannot invent user rationale.
         mappings[0]["criterion_number"] = next(i + 1 for i, spec in enumerate(specs)
             if spec["name"] == "decision_comprehension_when_applicable")

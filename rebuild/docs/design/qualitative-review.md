@@ -861,3 +861,43 @@ old reviews or old measured sessions cannot be rebound to a changed Product cand
 Future color questions ask whether meaning actually depends only on color. Difficult
 visual grouping despite text/shape cues belongs to hierarchy/organization. Neither
 observation is inferred from the other or used to reinterpret an earlier verdict.
+
+### Changed Viewer experience preparation
+
+After committed-candidate technical validation, generate the exact candidate's blank,
+bounded preparation (outside immutable Campaign evidence):
+
+```sh
+python3 -B rebuild/validation/dogfood/human_observation_plan.py \
+  --bin-dir /absolute/final-install/bin --output /absolute/new-observation-plan
+```
+
+`fixtures/human-observation-surfaces.json` owns the authored surface-to-path inventory;
+the preparer intersects it with actual Git changes from diagnostic b57b47a5 to final HEAD.
+It binds the clean candidate, three executable hashes and owner/inventory bytes, and
+publishes create-only. The eight consolidated blocks cover Overview, multi-Work list,
+Work detail, current Decision, Code/Analysis limitations, color-versus-grouping,
+keyboard/focus/narrow/native-zoom, and input/paint in both locales. No answer or verdict is
+prefilled. One directly observed path/narrative may support multiple technical fields;
+these blocks are scope, not a one-question-per-field script or a remaining-question count.
+
+For the new candidate, pass `--observation-plan PLAN/preparation.json` to
+`capture-human-viewer-observations`. Prepare en/ko Overview, two distinct actual Works,
+a displayed applicable Decision, Code and Analysis (`?view=tools&tool=status`) contexts
+before questioning. The plan rejects altered/foreign candidate, executable or contract
+and missing required views/subjects before any human prompt. Personally inspect keyboard,
+focus, grouping, 390/768/1440 widths, native 200% zoom and input/paint on that same path;
+retain extra width/zoom/state captures. Capture/hash checks do not prove personal experience.
+
+Substantial layout/navigation/read/explanation changes require fresh direct observation
+of these affected presentation/usability surfaces, including formerly successful keyboard,
+focus, narrow, native zoom and input/paint experiences. The old successes remain truthful
+historical descriptions. Old setup, task, resource, raw integrity and actual execution/
+authority observations are not retroactively invalidated; their candidate/time scope is
+unchanged. All 26 old answers remain diagnostic for b57 and none qualify this new candidate.
+Historical fidelity and high-impact execution gaps remain separate. An unchanged-plan label
+alone invalidates nothing; actual relevant candidate/display/contract changes do.
+
+This preparation is independent of Naturalistic campaign creation and supplies no measured
+session, Human verdict, technical gate or replacement qualification. A fresh exact-candidate
+Naturalistic campaign, independent Agent review and direct Human evidence remain required.

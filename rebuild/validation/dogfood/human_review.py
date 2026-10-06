@@ -118,7 +118,7 @@ def _live_observation_requests():
 
 
 def capture_viewer_observations(campaign_root, output, *, input_fn=input, output_fn=print,
-                                run_id=None, context_paths=()):
+                                run_id=None, context_paths=(), observation_plan=None):
     """Capture required direct live Viewer observations."""
     ops, campaign = _ops(), _campaign()
     root, output = campaign_root.resolve(), output.absolute()
@@ -127,6 +127,10 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
     evidence_purpose.require_measured(manifest)
     evidence_hash = ops.digest(ops.bounded_read(root / "evidence-set.json"))
     contexts = viewer_observation.load_contexts(context_paths, manifest)
+    if observation_plan is not None:
+        import human_observation_plan
+        human_observation_plan.require_contexts(json.loads(ops.bounded_read(observation_plan)), contexts,
+            manifest["candidate_head"], manifest["candidate_artifacts"]["volicord-viewer"]["sha256"])
     observer = review.reviewer("human", run_id or secrets.token_hex(16))
     observations, answer_trace = [], []
     for request in _live_observation_requests():
@@ -182,15 +186,24 @@ def load_viewer_observations(path):
     receipt = json.loads(ops.bounded_read(path / "receipt.json"))
     value = json.loads(data)
     requests = {(item["surface"], item["locale"]): item for item in _live_observation_requests()}
+    review.require(len(receipt.get("answer_trace", [])) == len(value.get("observations", [])),
+        "human observation requires every original answer trace")
     expected_trace = []
-    for item in value.get("observations", []):
+    for item, retained in zip(value.get("observations", []), receipt.get("answer_trace", [])):
         surface, locale = item.get("surface"), item.get("locale")
         request = requests.get((surface, locale), {"prompt": ""})
+        turns = retained.get("turns", [])
+        review.require(len(turns) == 2, "human observation requires its original answer trace")
+        answer = turns[-1].get("answer")
+        if item.get("control", {}).get("action") == "same_as_locale":
+            review.require(isinstance(answer, str) and answer.casefold() == "same as english",
+                "locale reference answer trace changed")
+        else:
+            review.require(answer == item.get("response", {}).get("observation"),
+                "direct human answer text changed")
         expected_trace.append({"surface": surface, "locale": locale, "turns": [
             {"prompt": observation_confirmation(locale, item.get("contexts", [])) + " (1=yes, 2=no)", "answer": "1"},
-            {"prompt": request["prompt"],
-             "answer": ("SAME AS ENGLISH" if item.get("control", {}).get("action") == "same_as_locale"
-                else item.get("response", {}).get("observation", ""))},
+            {"prompt": request["prompt"], "answer": answer},
         ]})
     expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 5,
         "candidate_head": value.get("candidate_head"),
@@ -200,6 +213,14 @@ def load_viewer_observations(path):
     review.require(receipt == expected,
         "human observation receipt or answer trace mismatch")
     return path / "observations.json"
+
+
+def observation_trace(item, receipt=None):
+    if receipt is not None:
+        return next(t["turns"] for t in receipt["answer_trace"]
+            if t["surface"] == item["surface"] and t["locale"] == item["locale"])
+    return [{"prompt": "Declared direct human observation (lower-level JSON input)",
+        "answer": (item["response"]["observation"] if item["response"] is not None else "SAME AS ENGLISH")}]
 
 
 def _eligible_evidence(preparation, spec):
@@ -432,7 +453,7 @@ def apply_observation_assessments(review_root, mapping_path):
                 if e["surface"] == "live_viewer_observation" and e["locale"] == "en"]
             review.require(len(english) == 1, "locale reference requires the captured English answer")
             response = json.loads(ops.bounded_read(ops.safe_path(root, english[0]["path"])))["response"]
-            answer = "SAME AS ENGLISH"
+            answer = observed["answer_trace"][-1]["answer"]
         else:
             response = observed["response"]
             answer = response["observation"]
@@ -443,9 +464,9 @@ def apply_observation_assessments(review_root, mapping_path):
         state = mapping["assessment"]
         review.require(state in {"satisfied", "violated", "insufficient_evidence"},
             "operator mapping does not infer applicability or missing opportunities")
-        trace = [{"prompt": observation_confirmation(spec["locale"], observed["contexts"]), "answer": "1"},
-            {"prompt": next(r["prompt"] for r in _live_observation_requests() if r["locale"] == spec["locale"]),
-             "answer": answer}]
+        trace = copy.deepcopy(observed["answer_trace"])
+        review.require(trace and trace[-1]["answer"] == answer,
+            "mapped assessment requires the exact original human answer trace")
         finding = {**review.observation(spec["criterion_id"]),
             **{k: copy.deepcopy(mapping[k]) for k in ("assessment", "reasoning", "uncertainty", "criterion_observations", "counterevidence")},
             "inspected_evidence": [identity], "human_answer_trace": trace,

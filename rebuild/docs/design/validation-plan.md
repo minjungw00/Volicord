@@ -2559,3 +2559,13 @@ fidelity requires its retained snapshot/canonical or conversation/canonical evid
 Historical b57 Agent/Human results and direct answers stay diagnostic for that candidate,
 not qualification evidence for this changed Product. Existing hard integrity, complete
 capture and independent technical rules remain unchanged.
+
+Changed-display preparation is owned by the qualitative-review contract and the authored
+`dogfood/fixtures/human-observation-surfaces.json` inventory. Actual changed paths select
+a bounded en/ko scope; current candidate/executable bindings prevent reusing b57 displays.
+`human_observation_plan_self_test` runs in the existing Dogfood deterministic self-test,
+covering scope completeness, no prefilled verdict, preserved unrelated historical claims,
+foreign candidate rejection and context readiness before questions. Required Browser,
+content and cost evidence stays deterministic supporting proof; current human experience
+remains unobserved until direct observation. Do not launch a replacement eight-session
+campaign or approve Phase 9 as part of this engineering validation.

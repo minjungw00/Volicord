@@ -99,3 +99,11 @@ missing, ambiguous or contradictory experience. Separate color-only meaning from
 general grouping difficulty. Neither experience proves historical snapshot or
 conversation fidelity. See the qualitative-review owner for mapping fields and
 append-only recording. Counts of unreviewed rubric fields are not question counts.
+
+For a changed Product candidate, generate `human_observation_plan.py --bin-dir BIN
+--output NEW_PLAN` after technical validation, then pass `--observation-plan
+NEW_PLAN/preparation.json` to capture. Required en/ko views and two actual Works plus
+an applicable displayed Decision are checked before questioning. The exact-candidate
+preparation contains only scope and blank observation obligations. Substantial changes
+require new keyboard/focus/narrow/native-zoom/input-paint experience too; old successes
+remain diagnostic historical observations, not evidence of the new display.

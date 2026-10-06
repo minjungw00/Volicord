@@ -3315,6 +3315,8 @@ def parser() -> argparse.ArgumentParser:
     inspect_agent.add_argument("--criterion-number", type=int, required=True)
     capture_human.add_argument("--campaign-root", required=True)
     capture_human.add_argument("--output", required=True)
+    capture_human.add_argument("--observation-plan", type=Path,
+        help="Final changed-surface preparation; validates required contexts before questions")
     capture_human.add_argument("--viewer-context", type=Path, action="append", required=True,
         help="Browser display-context directory; supply actually inspected en and ko captures")
     converse_human.add_argument("--review-root", required=True)
@@ -3455,7 +3457,7 @@ def main() -> int:
     elif args.command == "record-resources":
         value = record_resources(root, Path(args.input))
     elif args.command == "capture-human-viewer-observations":
-        value = human_review.capture_viewer_observations(root, Path(args.output), context_paths=args.viewer_context)
+        value = human_review.capture_viewer_observations(root, Path(args.output), context_paths=args.viewer_context, observation_plan=args.observation_plan)
     elif args.command == "apply-human-observation-assessments":
         value = human_review.apply_observation_assessments(root, args.mapping)
     elif args.command == "converse-qualitative-review":
