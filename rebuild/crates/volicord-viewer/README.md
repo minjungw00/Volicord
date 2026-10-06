@@ -100,6 +100,9 @@ evidence disclosures. Goal/rationale quotations do not claim translation. Missin
 rationale remains unavailable. Completed work, verification, user review and
 acceptance are independently shown; failed/rejected history remains visible.
 Code diagrams show static grounded evidence, not confirmed runtime ordering.
+Grounded components without resolved relationships remain inspectable as
+disconnected architecture nodes with an explicit no-edge gap. They do not populate
+the static call figure; only exact syntactic-call relations support that figure.
 The same entities/relations have a keyboard/touch-readable list and disclosure
 path. Only diagrams scroll horizontally; ordinary prose/evidence wraps.
 

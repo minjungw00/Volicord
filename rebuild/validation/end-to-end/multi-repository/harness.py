@@ -597,10 +597,11 @@ def viewer_project_understanding_evidence(
     architecture_edges = [e for e in edges if e["diagram"] == "architecture-topology"]
     edge_ids = {e["attrs"].get("data-relation-id") for e in architecture_edges}
     flow_edges = [e for e in edges if e["diagram"] == "flow-topology"]
-    flow_kinds = {"CallsSyntactically", "Imports", "Includes", "References",
-                  "ResolvesTo", "InstantiatedBy"}
-    expected_flow = any(any(kind in text(relations[identity]) for kind in flow_kinds)
-                        for identity in resolved)
+    # Dependency, symbol use and resolution never establish a static call.
+    call_relations = {identity for identity in resolved
+        if "".join(relations[identity]["summary"]).strip().startswith("CallsSyntactically: ")}
+    expected_flow = bool(call_relations)
+    call_edges_only = all(e["attrs"].get("data-relation-id") in call_relations for e in flow_edges)
     preserved_relations = all(identity in edge_ids for identity, endpoints in
                               resolved.items() if all(e in diagram_node_ids.get("architecture-topology", set())
                                                      for e in endpoints))
@@ -642,7 +643,7 @@ def viewer_project_understanding_evidence(
             and (bool(architecture_edges) or no_edges) or reduced
         ),
         "grounded_flow_diagram": "flow-topology" in diagrams and (
-            bool(flow_edges) and grounded_edges or reduced or
+            bool(flow_edges) and grounded_edges and call_edges_only or reduced or
             not expected_flow and not flow_edges and
             "No inspectable relationship of this kind connects the displayed entities; "
             "no edge or unrelated node was inferred." in text(diagrams["flow-topology"])
@@ -4318,6 +4319,20 @@ def self_check() -> int:
         no_edges_message = 'No inspectable relationship of this kind is available; no edge was inferred.'
         no_flow_message = ('No inspectable relationship of this kind connects the displayed entities; '
                            'no edge or unrelated node was inferred.')
+        for kind in ("References", "Imports", "Includes", "ResolvesTo", "InstantiatedBy", "Declares"):
+            foreign_flow = positive.replace('CallsSyntactically:', kind + ':')
+            viewer_contract.write_text(foreign_flow, encoding="utf-8")
+            if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "failed":
+                raise AssertionError("non-call relation qualified as static call flow: " + kind)
+            structural_only = (heading + explanation + architecture + nodes + edge + '</figure>'
+                + flow + '<p class="empty-state">' + no_flow_message + '</p></figure>'
+                + entities + relation.replace('CallsSyntactically:', kind + ':') + '</body></html>')
+            viewer_contract.write_text(structural_only, encoding="utf-8")
+            if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "passed":
+                raise AssertionError("grounded non-call structure demanded invented call flow: " + kind)
+            viewer_contract.write_text(structural_only.replace(no_flow_message, ''), encoding="utf-8")
+            if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "failed":
+                raise AssertionError("unexplained absent call flow qualified: " + kind)
         node_only = (heading + explanation + architecture + nodes + '<p class="diagram-gap">'
                      + no_edges_message + '</p></figure>' + flow + '<p class="empty-state">'
                      + no_flow_message + '</p></figure>' + entities + '</body></html>')

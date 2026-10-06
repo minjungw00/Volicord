@@ -1080,7 +1080,7 @@ fn code(
     for interpretation in &u.generated_interpretations {
         html.push_str(&format!("<details data-statement-role=\"generated-interpretation\"><summary>{}</summary><p>{}</p><p>{}</p></details>",escape(text(r.locale,"Generated interpretation","생성 해석")),escape(&interpretation.text),escape(&interpretation.known_gaps.join("; "))));
     }
-    if !u.architecture.relationships.is_empty() {
+    if !u.architecture.components.is_empty() || !u.architecture.relationships.is_empty() {
         render_grounded_diagram(
             html,
             r,

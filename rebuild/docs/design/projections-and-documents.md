@@ -1323,6 +1323,10 @@ NotRequested, AnalysisUnavailable, NoResolvedCalls or SyntacticCalls, exact reta
 relation identities and missing evidence. Static calls still cannot prove runtime
 execution, dynamic dispatch, data/control flow or cross-process behavior. Missing
 resolved calls produce an explicit scoped gap, not a disconnected flow node list.
+Separately, grounded repository components without resolved relationships may
+appear as disconnected architecture nodes, with exact identity/list grounding and
+an explicit no-relationship gap. This depicts available structure and never
+supplies call, execution or data-flow evidence.
 An unrequested code section has no material missing-flow warning.
 
 Agent-assisted availability belongs to analysis status/audit rather than contextual

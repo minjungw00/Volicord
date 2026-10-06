@@ -903,6 +903,101 @@ fn scoped_code_keeps_work_meaning_direction_and_missing_flow_honest(
 }
 
 #[test]
+fn disconnected_structure_is_grounded_without_inventing_call_flow(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temporary = tempfile::tempdir()?;
+    let repository = temporary.path().join("repository");
+    std::fs::create_dir(&repository)?;
+    // Enough independent modules to exercise the bounded repository selection
+    // without relying on a small source's file-to-module containment edge.
+    for number in 0..80 {
+        std::fs::write(
+            repository.join(format!("isolated_{number:03}.py")),
+            "# A module with no declarations or dependencies.\npass\n",
+        )?;
+    }
+    let operations = LocalOperations::new(volicord_operations::RuntimeLayout::new(
+        temporary.path().join("runtime"),
+    )?);
+    let project = operations
+        .initialize_project("Disconnected structure", Some(&repository))?
+        .project
+        .id;
+    operations.analyze(project, Vec::new())?;
+    let projection = operations
+        .project_projection_selected(project, volicord_projections::WorkSelector::Repository)?;
+    assert!(!projection.repository_map.entities.is_empty());
+    assert!(
+        projection
+            .repository_map
+            .relations
+            .iter()
+            .all(|r| r.target_entity.is_none()),
+        "selected entities={:?}; resolved={:?}",
+        projection
+            .repository_map
+            .entities
+            .iter()
+            .map(|e| (&e.kind, &e.display_name))
+            .collect::<Vec<_>>(),
+        projection
+            .repository_map
+            .relations
+            .iter()
+            .map(|r| (&r.kind, &r.source_entity, &r.target_entity))
+            .collect::<Vec<_>>()
+    );
+    let before = operations.canonical_basis(project)?;
+    let viewer = ViewerAdapter::new(operations);
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let snapshot = viewer
+            .render_snapshot(
+                &ViewerRequest {
+                    project_id: project,
+                    locale,
+                    view: ViewerView::Overview,
+                    requested_language: if locale == ViewerLocale::English {
+                        "en"
+                    } else {
+                        "ko"
+                    }
+                    .into(),
+                    guarded_request: None,
+                },
+                volicord_context::TimestampMicros::from_unix_micros(1),
+            )?
+            .html;
+        assert!(snapshot.contains("data-diagram=\"architecture-topology\""));
+        assert!(snapshot.contains("class=\"diagram-node\""));
+        assert!(!snapshot.contains("class=\"diagram-edge\""));
+        assert!(snapshot.contains("data-flow-state=\"NoResolvedCalls\""));
+        let flow = snapshot
+            .split("data-diagram=\"flow-topology\"")
+            .nth(1)
+            .ok_or("flow figure")?
+            .split("</figure>")
+            .next()
+            .ok_or("flow end")?;
+        assert!(!flow.contains("diagram-node"));
+        for attribute in snapshot.split("data-entity-id=\"").skip(1) {
+            let identity = attribute.split('"').next().ok_or("entity identity")?;
+            assert!(projection
+                .repository_map
+                .entities
+                .iter()
+                .any(|entity| entity.identity == identity));
+            let fragment = identity
+                .bytes()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            assert!(snapshot.contains(&format!("id=\"entity-{fragment}\"")));
+        }
+    }
+    assert_eq!(before, viewer.operations().canonical_basis(project)?);
+    Ok(())
+}
+
+#[test]
 fn unrelated_analyzer_failure_stays_in_analysis_while_related_limits_remain_ordinary(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let f = fixture()?;
