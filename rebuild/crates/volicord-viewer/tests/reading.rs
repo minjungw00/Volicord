@@ -1178,3 +1178,105 @@ fn offline_repository_code_uses_live_repository_limits_without_another_analysis_
     assert_eq!(repository.repository_map, after.repository_map);
     Ok(())
 }
+
+#[test]
+fn decision_only_work_code_limits_reach_latest_and_exact_viewer_reads(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::WorkSelector;
+    use volicord_repository_intelligence::{CapabilityState, Language};
+
+    let mut scenario: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    scenario["prior_checkpoint_count"] = serde_json::json!(0);
+    scenario["later_checkpoint_count"] = serde_json::json!(0);
+    scenario["unassociated_checkpoint"] = serde_json::json!(false);
+    for work in scenario["works"].as_array_mut().ok_or("Works")? {
+        work["checkpoints"] = serde_json::json!([]);
+        work["paths"] = serde_json::json!([]);
+    }
+    scenario["decisions"][0]["scope"] = serde_json::json!("goal_only");
+    let f = reading_fixture::fixture_scenario(scenario)?;
+    std::fs::write(f.repository.join("native/query.c"), "void broken( {\n")?;
+    std::fs::write(f.repository.join("unrelated.rs"), "fn broken( {\n")?;
+    f.operations.analyze(f.project, Vec::new())?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let work = f.goals["goal_only"];
+    assert!(before.checkpoint_history.is_empty());
+    assert!(before
+        .context_items
+        .iter()
+        .find(|c| c.id == work)
+        .ok_or("Goal")?
+        .applicability
+        .paths
+        .is_empty());
+    let latest = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::LatestWork)?;
+    assert_eq!(
+        latest.selected_work.as_ref().map(|w| w.work_item_id),
+        Some(work)
+    );
+    assert!(latest
+        .current_work_topology
+        .entities
+        .iter()
+        .any(|e| e.locator == "native/query.c"));
+    let gap = latest
+        .answer_capability_gaps
+        .iter()
+        .find(|g| {
+            g.language == Some(Language::C)
+                && matches!(g.state, CapabilityState::Partial | CapabilityState::Failed)
+        })
+        .ok_or("Decision-only Work C limitation")?;
+    assert!(!latest
+        .answer_capability_gaps
+        .iter()
+        .any(|g| g.language == Some(Language::Rust)));
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    // The adapter's unbound Work scope reads LatestWork; HTTP Work-code links
+    // deliberately require an exact identity and are exercised separately below.
+    for scope in [
+        volicord_viewer::CodeScope::Work(None),
+        volicord_viewer::CodeScope::Work(Some(work)),
+    ] {
+        let request = reading_request(
+            f.project,
+            ViewerView::Code {
+                scope,
+                entity: None,
+            },
+        );
+        let page = viewer.render(&request, "test-token")?;
+        let limits = page
+            .html
+            .split("class=\"contextual-limits\"")
+            .nth(1)
+            .ok_or("ordinary Work code limitations")?
+            .split("</aside>")
+            .next()
+            .ok_or("limits end")?;
+        assert!(limits.contains(&gap.reason));
+        assert!(limits.contains("Open Analysis"));
+        assert!(!limits.contains("<details"));
+        assert!(!limits.contains("unrelated.rs"));
+    }
+    let server = ViewerServer::new(
+        viewer,
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let page = exchange(&server, &format!("/?view=code&scope=work&work={work}"));
+    assert!(page.starts_with("HTTP/1.1 200"));
+    assert!(page.contains(&gap.reason));
+    let after = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::LatestWork)?;
+    assert_eq!(latest.repository_analysis, after.repository_analysis);
+    assert_eq!(latest.repository_map, after.repository_map);
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}

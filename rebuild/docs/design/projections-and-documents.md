@@ -1295,8 +1295,14 @@ and human responsiveness are distinct costs and claims.
 
 `ProjectProjection.answer_capability_gaps` is selected before display bounds from
 actual Analysis Snapshot inventory, selected Work paths/Source locators/code links,
-selected Decision applicability or selected code entity. A capability language name
-alone proves no relevance. A failed scope outside the selected paths does not limit
+selected Decision applicability or selected code entity. Work limitation selection
+uses the same code-seed relevance as Work topology: active Decisions associated
+with the selected Work contribute applicability paths, component matches and
+explicit Decision-to-CodeEntity references before display bounds. Declared paths
+remain relevant when failed analysis produces no entity. A Decision associated
+only with another Work contributes neither code seeds nor contextual limitations.
+A capability language name alone proves no relevance. A failed scope outside the
+selected paths does not limit
 that answer even when the language is the same. Repository-scoped reading considers
 actual observed files rather than capabilities for absent languages. Scoped failures
 retain state, affected areas, reason, usable remainder and user-visible consequence.

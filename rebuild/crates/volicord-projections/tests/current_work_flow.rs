@@ -1328,3 +1328,232 @@ fn materialized_repository_reading_matches_live_scope_before_and_after_bounds(
     assert_eq!(canonical, original);
     Ok(())
 }
+
+#[test]
+fn work_decision_code_relevance_selects_limits_without_other_work_leakage(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::{
+        AgentRecommendation, CanonicalRecordKind, CanonicalRevisionBasis, ContextItemId, Decision,
+        DecisionChoice, DecisionId, DecisionLifecycle, DecisionWorkScope, QuestionId,
+    };
+    use volicord_projections::{ProjectionDetail, ProjectionReadRequirements, WorkSelector};
+    use volicord_repository_intelligence::{
+        AreaId, AreaKind, CanonicalReference, Capability, CapabilityState,
+    };
+
+    let (basis, snapshot, candidates) = projection_scenario_basis(
+        &[
+            ("selected/limit.rs", "pub fn SelectedBoundary_handle() {}"),
+            ("foreign/limit.rs", "pub fn ForeignBoundary_handle() {}"),
+            ("unrelated/broken.cpp", "void unrelated() {}"),
+        ],
+        &[],
+        &[vec![]],
+        |analysis| {
+            let template = analysis
+                .capabilities
+                .iter()
+                .find(|r| {
+                    r.language == Some(Language::Rust) && r.capability == Capability::Structural
+                })
+                .ok_or("Rust structural capability")?
+                .clone();
+            analysis.capabilities.retain(|r| {
+                !(r.language == Some(Language::Rust) && r.capability == Capability::Structural)
+            });
+            for (path, state, reason) in [
+                (
+                    "selected/limit.rs",
+                    CapabilityState::Partial,
+                    "selected Decision code is partially analyzed",
+                ),
+                (
+                    "foreign/limit.rs",
+                    CapabilityState::Failed,
+                    "foreign Decision code analysis failed",
+                ),
+            ] {
+                let mut report = template.clone();
+                report.area = AreaId {
+                    kind: AreaKind::File,
+                    path: path.into(),
+                };
+                report.state = state;
+                report.reason = Some(reason.into());
+                report.coverage.failed = vec![report.area.clone()];
+                analysis.capabilities.push(report);
+            }
+            Ok(())
+        },
+    )?;
+    let goal = basis
+        .context_items
+        .iter()
+        .find(|c| c.role == ContextItemRole::Goal)
+        .ok_or("Goal")?;
+    let work = goal.id;
+    assert!(goal.applicability.paths.is_empty());
+    assert!(goal.applicability.components.is_empty());
+    assert!(basis
+        .checkpoint_history
+        .iter()
+        .all(|cp| cp.changed_paths.is_empty()));
+    assert!(basis.sources.iter().all(|s| !matches!(
+        s.source.payload,
+        SourcePayload::File { .. } | SourcePayload::Symbol { .. }
+    )));
+
+    // Each form is independently sufficient; none borrows a Goal/Source/Checkpoint path.
+    for form in ["path", "component", "link"] {
+        let mut canonical = basis.clone();
+        let mut analysis = snapshot.clone();
+        let mut foreign_goal = goal.clone();
+        foreign_goal.id = ContextItemId::from_bytes([110; 16]);
+        let foreign_work = foreign_goal.id;
+        canonical.context_items.push(foreign_goal);
+        for (id, owner, path, component) in [
+            (
+                DecisionId::from_bytes([111; 16]),
+                work,
+                "selected/limit.rs",
+                "SelectedBoundary",
+            ),
+            (
+                DecisionId::from_bytes([112; 16]),
+                foreign_work,
+                "foreign/limit.rs",
+                "ForeignBoundary",
+            ),
+        ] {
+            canonical.active_decisions.push(DecisionLifecycle {
+                decision: Decision {
+                    id,
+                    project_id: canonical.project.id,
+                    revision: 1,
+                    question_id: QuestionId::from_bytes([113; 16]),
+                    question_revision: 1,
+                    user_turn_source_id: goal.source_basis[0],
+                    choice: DecisionChoice::Alternative {
+                        alternative_key: "local".into(),
+                    },
+                    user_rationale: None,
+                    displayed_alternatives: Vec::new(),
+                    displayed_recommendation: AgentRecommendation {
+                        alternative_key: None,
+                        rationale: "Fixture recommendation".into(),
+                        source_basis: Vec::new(),
+                    },
+                    work_scope: DecisionWorkScope::WorkItem(owner),
+                    applicability: ApplicabilityScope {
+                        paths: if form == "path" {
+                            vec![path.into()]
+                        } else {
+                            Vec::new()
+                        },
+                        components: if form == "component" {
+                            vec![component.into()]
+                        } else {
+                            Vec::new()
+                        },
+                        work_contexts: Vec::new(),
+                    },
+                    assumptions: Vec::new(),
+                    revisit_triggers: Vec::new(),
+                    recorded_at: canonical.project.updated_at,
+                },
+                superseded_by: None,
+                contradictions: Vec::new(),
+                review_due: None,
+            });
+            canonical.revisions.push(CanonicalRevisionBasis {
+                record_kind: CanonicalRecordKind::Decision,
+                record_identity: id.to_string(),
+                revisions: vec![1],
+            });
+            if form == "link" {
+                let grounding = CanonicalGrounding::from_read_basis(&canonical)?;
+                let reference = grounding.decision_reference(id, 1)?;
+                let entity = analysis
+                    .structural_facts
+                    .iter_mut()
+                    .find(|f| f.entity.area.path == path && f.entity.kind == CodeEntityKind::File)
+                    .ok_or("linked File entity")?;
+                entity
+                    .entity
+                    .canonical_links
+                    .push(CanonicalReference::Decision(reference));
+            }
+        }
+        let canonical_before = canonical.clone();
+        let analysis_before = analysis.clone();
+        for selection in [WorkSelector::LatestWork, WorkSelector::ExactWork(work)] {
+            let projection = build_project_projection(ProjectProjectionInputs {
+                requirements: ProjectionReadRequirements::default(),
+                metadata: &[],
+                detail: ProjectionDetail::default(),
+                selection,
+                analysis_issues: &[],
+                canonical: &canonical,
+                analyses: &[&analysis],
+                applicability: volicord_inquiry::ApplicabilityQuery {
+                    project_id: canonical.project.id,
+                    paths: Vec::new(),
+                    components: Vec::new(),
+                    work_contexts: Vec::new(),
+                    current_assumptions: Vec::new(),
+                    met_revisit_triggers: Vec::new(),
+                },
+                candidates: CandidateProjectionInput::Available(&candidates),
+                candidate_content_access: CandidateContentAccess::PolicyWithheld,
+                observed_at: canonical.project.updated_at,
+                bound: ProjectionBound::default(),
+            })?;
+            assert_eq!(
+                projection.selected_work.as_ref().map(|w| w.work_item_id),
+                Some(work)
+            );
+            assert!(
+                projection
+                    .current_work_topology
+                    .entities
+                    .iter()
+                    .any(|e| e.locator == "selected/limit.rs"),
+                "{form}: code relevance missing"
+            );
+            assert!(
+                projection
+                    .current_work_topology
+                    .entities
+                    .iter()
+                    .all(|e| e.locator != "foreign/limit.rs"),
+                "{form}: foreign code leaked"
+            );
+            let gap = projection
+                .answer_capability_gaps
+                .iter()
+                .find(|g| g.reason == "selected Decision code is partially analyzed")
+                .ok_or_else(|| {
+                    format!("{form}: relevant Decision limitation omitted for {selection:?}")
+                })?;
+            assert_eq!(gap.state, CapabilityState::Partial);
+            assert!(
+                projection.answer_capability_gaps.iter().all(|g| {
+                    g.reason != "foreign Decision code analysis failed"
+                        && g.language != Some(Language::Cpp)
+                }),
+                "{form}: unrelated limitation leaked"
+            );
+            assert!(projection
+                .repository_map
+                .gaps
+                .iter()
+                .any(|g| g.reason == "foreign Decision code analysis failed"));
+            let understanding =
+                build_project_understanding(&projection, UnderstandingBound::default());
+            assert!(understanding.architecture.gaps.contains(gap));
+        }
+        assert_eq!(canonical_before, canonical);
+        assert_eq!(analysis_before, analysis);
+    }
+    Ok(())
+}

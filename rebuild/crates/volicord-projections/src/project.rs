@@ -2559,28 +2559,25 @@ fn contextual_capability_gaps(
                 }
             }
         }
-        // Coarse RepositorySnapshot Source equality cannot make every file
-        // a code seed. Explicit canonical links and component identities can.
+        // Retain declared Decision paths even when failed analysis produced no
+        // entity. This basis is already scoped to the selected Work, just like
+        // the canonical basis used for topology seeds.
+        for lifecycle in &canonical.active_decisions {
+            paths.extend(lifecycle.decision.applicability.paths.clone());
+        }
+        // Reuse topology's authoritative seed matcher for component scopes and
+        // explicit canonical links, including this Work's Decisions. Coarse
+        // RepositorySnapshot Source equality cannot make every file relevant.
         paths.extend(
             graph
                 .entities
                 .iter()
-                .filter(|e| {
-                    e.canonical_links.iter().any(|link| match link {
-                        CanonicalReference::ContextItem(r) => {
-                            canonical.context_items.iter().any(|c| c.id == r.identity())
-                        }
-                        CanonicalReference::Checkpoint(r) => {
-                            checkpoints.iter().any(|c| c.id == r.identity())
-                        }
-                        _ => false,
-                    }) || canonical.context_items.iter().any(|c| {
-                        c.applicability.components.iter().any(|component| {
-                            component == &e.area.path || e.display_name.as_ref() == Some(component)
-                        })
-                    })
-                })
-                .map(|e| e.area.path.clone()),
+                .filter(|e| entity_matches_current_work(e, canonical))
+                .map(|e| {
+                    e.source_range
+                        .as_ref()
+                        .map_or_else(|| e.area.path.clone(), |range| range.locator.clone())
+                }),
         );
     }
     // Scope is a set: repeated same-Work observations preserve chronology,
