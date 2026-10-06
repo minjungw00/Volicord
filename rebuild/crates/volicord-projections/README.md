@@ -80,3 +80,9 @@ are compared once; each Work observation, Source basis, coverage state and
 chronology remains retained. Quotation excerpt boundaries and exact Unicode
 omissions are computed in one text traversal without allocating an intermediate
 prefix for complete text.
+
+The internal canonical equality token still hashes every `Hash`/`Eq` field of
+the complete read basis. Its 8 KiB fixed buffer avoids repeated growable-buffer
+checks; buffering preserves the SHA-256 byte stream, including large writes and
+UTF-8 text. The token remains current-build read/publication equality evidence,
+not portable identity or authenticity.

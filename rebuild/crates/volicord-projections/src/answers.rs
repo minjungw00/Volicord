@@ -618,35 +618,85 @@ pub fn canonical_read_fingerprint(canonical: &volicord_context::CanonicalReadBas
     // This token is deliberately current-build only, not a portable digest.
     struct DigestWriter {
         digest: Sha256,
-        buffer: Vec<u8>,
+        buffer: [u8; 8192],
+        buffered: usize,
     }
     impl Hasher for DigestWriter {
         fn finish(&self) -> u64 {
             // Hash::hash only writes; the caller finalizes the full SHA-256.
             let mut digest = self.digest.clone();
-            digest.update(&self.buffer);
+            digest.update(&self.buffer[..self.buffered]);
             let bytes = digest.finalize();
             let mut prefix = [0_u8; 8];
             prefix.copy_from_slice(&bytes[..8]);
             u64::from_le_bytes(prefix)
         }
         fn write(&mut self, value: &[u8]) {
-            if self.buffer.len() + value.len() > 8192 {
-                self.digest.update(&self.buffer);
-                self.buffer.clear();
+            if self.buffered + value.len() > self.buffer.len() {
+                self.digest.update(&self.buffer[..self.buffered]);
+                self.buffered = 0;
             }
             if value.len() >= 8192 {
                 self.digest.update(value);
             } else {
-                self.buffer.extend_from_slice(value);
+                let end = self.buffered + value.len();
+                self.buffer[self.buffered..end].copy_from_slice(value);
+                self.buffered = end;
             }
         }
     }
     let mut writer = DigestWriter {
         digest: Sha256::new(),
-        buffer: Vec::with_capacity(8192),
+        buffer: [0; 8192],
+        buffered: 0,
     };
     canonical.hash(&mut writer);
-    writer.digest.update(&writer.buffer);
+    writer.digest.update(&writer.buffer[..writer.buffered]);
     format!("{:x}", writer.digest.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_read_fingerprint;
+    use sha2::{Digest, Sha256};
+    use std::hash::{Hash, Hasher};
+    use volicord_context::{CanonicalReadOptions, OperationId, Store};
+
+    #[test]
+    fn canonical_equality_digest_preserves_complete_hash_stream_at_buffer_boundaries(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Independently collect the Hash byte stream, without production buffering.
+        #[derive(Default)]
+        struct Stream(Vec<u8>);
+        impl Hasher for Stream {
+            fn write(&mut self, bytes: &[u8]) {
+                self.0.extend_from_slice(bytes);
+            }
+            fn finish(&self) -> u64 {
+                let bytes = Sha256::digest(&self.0);
+                let mut prefix = [0; 8];
+                prefix.copy_from_slice(&bytes[..8]);
+                u64::from_le_bytes(prefix)
+            }
+        }
+        let temp = tempfile::tempdir()?;
+        let mut store = Store::open(temp.path().join("canonical.sqlite3"))?;
+        let project = store
+            .create_project(OperationId::from_bytes([1; 16]), "Digest boundary")?
+            .value;
+        let mut canonical =
+            store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
+        for length in [0, 1, 8191, 8192, 8193, 16383, 16384, 65536] {
+            canonical.project.display_name = format!("{}한🙂", "x".repeat(length));
+            let mut stream = Stream::default();
+            canonical.hash(&mut stream);
+            let original = canonical_read_fingerprint(&canonical);
+            assert_eq!(original, format!("{:x}", Sha256::digest(&stream.0)));
+            // An equal-size change at the end cannot be lost at a flush boundary.
+            canonical.project.display_name.pop();
+            canonical.project.display_name.push('🙃');
+            assert_ne!(original, canonical_read_fingerprint(&canonical));
+        }
+        Ok(())
+    }
 }
