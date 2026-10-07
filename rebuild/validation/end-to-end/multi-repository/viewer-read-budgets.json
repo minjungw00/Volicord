@@ -15,7 +15,7 @@
       "projection_passes": 1,
       "graph_decodes": 0,
       "metadata_decodes": 1,
-      "candidate_reads": 0,
+      "candidate_reads": 1,
       "documents": 0,
       "health_graph_decodes": 0
     },
@@ -23,7 +23,7 @@
       "projection_passes": 1,
       "graph_decodes": 0,
       "metadata_decodes": 1,
-      "candidate_reads": 0,
+      "candidate_reads": 1,
       "documents": 0,
       "health_graph_decodes": 0
     },
@@ -113,5 +113,6 @@
       "privacy": 10000,
       "understanding": 4000
     }
-  }
+  },
+  "count_basis": "Candidate reads for Overview/Work follow the maintained Learning inspection read contract introduced by db929dd1 and the independent Rust workload assertions: one read, as for snapshots. Timing ceilings remain unchanged; the earlier zero candidate-time ceilings do not qualify these pre-existing inspection reads."
 }

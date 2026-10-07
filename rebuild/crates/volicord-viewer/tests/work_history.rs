@@ -60,7 +60,7 @@ fn check_primary(
 fn audit_body(html: &str) -> Result<&str, &'static str> {
     html.split("<details class=\"work-state-history\" data-reading-role=\"audit-history\">")
         .nth(1)
-        .and_then(|tail| tail.split("</details>").next())
+        .and_then(|tail| tail.split("</ol></details>").next())
         .ok_or("closed audit history missing")
 }
 

@@ -412,7 +412,7 @@ impl ViewerAdapter {
         }
         html.push_str(STYLE);
         html.push_str(&format!(
-            "</head><body data-view=\"{}\" data-viewer-mode=\"{}\"><main>",
+            "</head><body data-view=\"{}\" data-viewer-mode=\"{}\">",
             request.view.key(),
             if matches!(mode, ViewerRenderMode::Live { .. }) {
                 "live"
@@ -420,9 +420,12 @@ impl ViewerAdapter {
                 "snapshot"
             }
         ));
+        html.push_str(&format!("<a class=\"skip-link\" href=\"#viewer-content\">{}</a><header class=\"viewer-header\"><p class=\"brand\">VOLICORD</p>", text(request.locale, "Skip to content", "본문으로 건너뛰기")));
         heading(&mut html, 1, &projection.overview.project_name);
+        html.push_str("</header><div class=\"viewer-shell\"><aside class=\"viewer-navigation\">");
         let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
         reading::navigation(&mut html, request, snapshot);
+        html.push_str("</aside><main id=\"viewer-content\" tabindex=\"-1\">");
         reading::runtime_blockers(&mut html, request, &health);
         if snapshot {
             empty_state(
@@ -506,7 +509,7 @@ impl ViewerAdapter {
                 );
             }
         }
-        html.push_str("</main></body></html>");
+        html.push_str("</main></div></body></html>");
         let html_render = render_started.elapsed();
         Ok((
             ViewerPage {

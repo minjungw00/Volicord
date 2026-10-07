@@ -787,8 +787,14 @@ must fail for their intended geometry, identity, fragment or snapshot boundary.
 Runtime-unavailable offline reads, canonical bundle equality and restored
 analysis/source copies remain separate supporting facts.
 
-Existing requested-section counts/stage ceilings are unchanged and fixed before
-final execution. Actual HTTP response completion, Rust server-render stage profiles
+Requested-section counts follow the current maintained Rust workload: Overview,
+Work and snapshot each read Candidate Inspection once; Decision and Code do not.
+The browser count manifest now matches the pre-existing Learning association read
+contract (`db929dd1`); no production read requirement changed here. Named stage
+ceilings remain unchanged. Their earlier zero Candidate-time ceiling for Overview
+and Work does not qualify the added inspection read, so supporting browser runs
+without timing enforcement report counts and observations, not named timing success.
+Actual HTTP response completion, Rust server-render stage profiles
 and browser input/two-animation-frame scheduling are separate measurement classes.
 Native first-paint/first-contentful-paint marks and keyboard-navigation input-to-FCP
 use browser time origins across document navigation. Disclosure frame observations

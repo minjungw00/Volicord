@@ -248,13 +248,16 @@ async function workFacts(key, locale) {
       const history = section.locator('details.work-state-history[data-reading-role="audit-history"]');
       requireFact(await history.count() === 1, 'work_history_disclosure_missing');
       requireFact(await history.getAttribute('open') === null, 'work_history_dominates_primary_reading');
-      await activate(history.locator('summary'), false);
+      await activate(history.locator(':scope > summary'), false);
       const visibleHistory = await history.innerText();
-      requireFact(visibleHistory.includes('Failed') && visibleHistory.includes('Rejected')
-        && visibleHistory.includes('Pending'), 'historical_failure_or_pending_state_hidden');
+      requireFact(visibleHistory.includes(labels.Failed) && visibleHistory.includes(labels.Rejected)
+        && visibleHistory.includes(labels.Pending), 'historical_failure_or_pending_state_hidden');
+      // Exact retained records stay behind a second native disclosure.
+      for (const source of await history.locator('li > details > summary').all()) await activate(source, false);
+      const exactHistory = await history.innerText();
       for (const cp of config.expected.exact_older.checkpoint_keys)
-        requireFact(visibleHistory.includes(F.checkpoints[cp]), 'history_checkpoint_basis_missing');
-      await activate(history.locator('summary'), false);
+        requireFact(exactHistory.includes(F.checkpoints[cp]), 'history_checkpoint_basis_missing');
+      await activate(history.locator(':scope > summary'), false);
       requireFact(await history.getAttribute('open') === null, 'work_history_disclosure_did_not_close');
       requireFact(text.includes(locale === 'en' ? 'Interpretation has not been generated' : '해석이 아직 생성되지'), 'summary_limit_hidden');
       const source = await section.textContent();
@@ -460,7 +463,7 @@ async function live() {
   await check('negative-historical-summary',()=>copyMutation('historical',()=>document.querySelectorAll('#overview .work-summary [data-question="VerificationCoverage"]').forEach(e=>e.remove()),()=>overviewFacts('en'),routes('en').default));
   await check('negative-work-history',()=>copyMutation('work_history',()=>document.querySelector('details.work-state-history').remove(),()=>workFacts('older','en'),routes('en').work));
   await check('negative-fake-flow',()=>copyMutation('flow',()=>{const edge=document.querySelector('g.diagram-edge').cloneNode(true);edge.dataset.relationId='invented-flow-edge';document.querySelector('svg').appendChild(edge);},graphIdentity,routes('en').detail));
-  await check('negative-wrapping',()=>copyMutation('wrapping',()=>{document.querySelectorAll('style').forEach(e=>e.textContent=e.textContent.replaceAll('overflow-wrap:anywhere','overflow-wrap:normal').replaceAll('white-space:pre-wrap','white-space:pre'));document.querySelectorAll('details').forEach(e=>e.open=true);},overflow,routes('en').work));
+  await check('negative-wrapping',()=>copyMutation('wrapping',()=>{document.querySelectorAll('style').forEach(e=>e.textContent=e.textContent.replace(/overflow-wrap\s*:\s*anywhere/g,'overflow-wrap:normal').replace(/white-space\s*:\s*pre-wrap/g,'white-space:pre'));document.querySelectorAll('details').forEach(e=>e.open=true);},overflow,routes('en').work));
   await check('negative-prefix',()=>copyMutation('prefix',()=>{document.querySelectorAll('g.diagram-node text').forEach(e=>e.textContent=e.textContent.slice(0,12)+'…');},labels,routes('en').detail));
   // Obtain another actual product Work body, retaining older identity for a semantic substitution.
   await go(url('work','en',{work:F.goals.same_title}));

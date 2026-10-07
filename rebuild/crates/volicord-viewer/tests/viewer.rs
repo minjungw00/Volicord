@@ -490,7 +490,8 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
         let page = render_view(&viewer, project, view);
         assert!(page.contains(&format!("id=\"{section}\"")));
         assert!(page.contains(":focus-visible"));
-        assert!(page.contains("@media (max-width:44rem)"));
+        assert!(page.contains("@media (max-width: 64rem)"));
+        assert!(page.contains("href=\"#viewer-content\""));
         assert!(!page.contains("<script"));
         assert_eq!(
             before,

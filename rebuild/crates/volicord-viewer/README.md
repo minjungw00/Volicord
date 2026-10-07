@@ -121,9 +121,9 @@ links; unresolved endpoints never become nodes. Source inspection discloses exis
 snapshot-bound Source/range data and performs no filesystem-path HTTP read.
 
 Read requirements are explicit: `ProjectionReadRequirements { code, inspection }`
-feeds `LocalOperations::project_projection_read_profiled`. Overview, Work and
-Decisions request neither section, using the existing AnalysisMetadata reader for
-snapshot identity, coverage and freshness. Code requests stored graph bodies but
+feeds `LocalOperations::project_projection_read_profiled`. Overview and Work request Candidate Inspection for permitted Learning associations;
+Decisions request neither section. These views use the existing AnalysisMetadata
+reader for snapshot identity, coverage and freshness. Code requests stored graph bodies but
 not Candidate inspection; Memory requests inspection but not code. Documents and
 whole snapshots request both. Evidence and Status request code; only Status runs
 full stored-graph integrity diagnostics. Unrequested graph materialization is an
@@ -200,6 +200,39 @@ They exercise the actual CLI/server/export path, both locales, narrow viewports,
 keyboard navigation, closed offline snapshots and real 200% tab zoom. Browser
 tools are validation dependencies only. Automated observations do not establish
 human comprehension or replace the authoritative technical gate.
+
+## Presentation and accessibility
+
+`render.rs` coordinates projection reads and authority. `reading.rs` composes
+purpose views from those projections; `presentation.rs` owns escaped HTML
+primitives and embeds `presentation.css` into both live and offline output.
+There is one server-rendered frontend, with no client runtime or remote assets.
+Stable `data-work-id`, `data-decision-id`, `data-entity-id`, `data-question`,
+statement roles and exact fragment targets remain the inspection selectors.
+
+The Project header leads into a reading navigation rail on wide screens and
+wrapping navigation above content on smaller screens. A keyboard skip link targets
+the main landmark. Current navigation uses text emphasis and `aria-current`.
+Project Purpose has its own panel; distinct Work cards keep problem, outcome,
+verification limits and recorded next action together. Exact Work navigation retains
+that Work when opening Code; All Work returns to the paged catalog. Documents,
+Memory, Analysis/Runtime and Evidence remain reachable through secondary navigation.
+
+Work explanation sections precede closed source quotations, grounding and history.
+The history disclosure offers localized observation/state/verification rows before
+exact Source and revision detail. Decision choice and applicability use a distinct
+presentation from permitted Learning Candidate Inspection, whose authority notice
+remains explicit. Selected code identity, behavior reliability and retained source
+come before the topology. Diagrams keep an equivalent native disclosure/list path.
+No source navigation grants arbitrary filesystem access.
+
+Styles use system fonts, wrapping text, visible keyboard outlines and textual state
+labels. Color supplements labels and line patterns. Ordinary text reflows; diagrams
+have their own horizontal scroll region. All included snapshot navigation stays within
+existing fragment targets, and forms/authentication/live context remain live-only.
+Visual reference patterns came from Understand-Anything's ProjectOverview, NodeInfo,
+CodeViewer and responsive navigation, and agentmemory's compact status/history;
+no external frontend source or runtime dependency was copied.
 
 ## Explicit Work and Decision explanations
 

@@ -40,7 +40,12 @@ pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: b
             "overview",
         ),
         (
-            ViewerView::Work { work: None },
+            ViewerView::Work {
+                work: match request.view.selection() {
+                    volicord_projections::WorkSelector::ExactWork(id) => Some(id),
+                    _ => None,
+                },
+            },
             text(request.locale, "Work", "작업"),
             "works",
         ),
@@ -91,7 +96,7 @@ pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: b
         html.push_str("</li>");
     }
     html.push_str("</ul></nav>");
-    if !snapshot && matches!(request.view, ViewerView::Tools { .. }) {
+    if !snapshot {
         html.push_str("<nav aria-label=\"Tools\"><ul class=\"view-nav\">");
         for (tool, label) in [
             (
@@ -109,7 +114,11 @@ pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: b
             ),
         ] {
             html.push_str("<li>");
+            let start = html.len();
             link(html, request, ViewerView::Tools { tool }, label, None);
+            if request.view == (ViewerView::Tools { tool }) {
+                html.insert_str(start + 2, " aria-current=\"page\"");
+            }
             html.push_str("</li>");
         }
         html.push_str("</ul></nav>");
@@ -268,6 +277,7 @@ fn overview(
         "overview",
         text(request.locale, "Project Understanding", "프로젝트 이해"),
     );
+    html.push_str("<div class=\"project-purpose\">");
     heading(html, 3, text(request.locale, "Purpose", "목적"));
     if u.project_purpose.is_empty() {
         empty_state(
@@ -284,6 +294,7 @@ fn overview(
         html.push_str(&escape(&purpose.statement));
         html.push_str("</p>");
     }
+    html.push_str("</div>");
     for (label, works) in [
         (
             text(request.locale, "Current Work", "현재 작업"),
@@ -650,7 +661,15 @@ fn work_detail(
         &format!("work-{}", w.work_item_id),
         text(r.locale, "Work detail", "작업 상세"),
     );
-    html.push_str("<p class=\"selection-label\">");
+    html.push_str("<p class=\"subject-navigation\">");
+    link(
+        html,
+        r,
+        ViewerView::Work { work: None },
+        text(r.locale, "All Work", "전체 작업"),
+        snapshot.then_some("works"),
+    );
+    html.push_str("</p><p class=\"selection-label\">");
     html.push_str(text(r.locale, "Selected Work", "선택한 작업"));
     html.push_str("</p>");
     let decisions = if snapshot {
@@ -676,9 +695,51 @@ fn work_detail(
         "검증 및 원래 상태 관찰",
     ));
     html.push_str("</summary>");
+    html.push_str("<ol class=\"verification-timeline\">");
     for state in &w.reading.states {
-        html.push_str(&format!("<p>{}</p>", escape(&format!("{state:?}"))));
+        html.push_str("<li>");
+        heading(
+            html,
+            4,
+            &format!(
+                "{} · {}",
+                timestamp_label(state.observed_at, r.locale),
+                work_state_label(state.work_state, r.locale)
+            ),
+        );
+        for fact in &state.verification {
+            html.push_str(&format!(
+                "<p>{}: {} · {}</p>",
+                text(r.locale, "Verification", "검증"),
+                escape(verification_state_label(fact.state, r.locale)),
+                escape(fact.outcome.as_deref().unwrap_or(text(
+                    r.locale,
+                    "No outcome recorded",
+                    "결과 기록 없음"
+                )))
+            ));
+        }
+        html.push_str(&format!(
+            "<p>{}: {} · {}: {}</p>",
+            text(r.locale, "Review", "검토"),
+            user_review_label(state.user_review.state, r.locale),
+            text(r.locale, "Acceptance", "수용"),
+            user_acceptance_label(state.user_acceptance.state, r.locale)
+        ));
+        if !state.later_changed_checkpoint_ids.is_empty() {
+            empty_state(html, text(r.locale, "Later changes are recorded; this observation does not establish their verification coverage.", "이후 변경이 기록되었습니다. 이 관찰은 이후 변경의 검증 범위를 입증하지 않습니다."));
+        }
+        html.push_str(&format!(
+            "<details><summary>{}</summary><pre>{}</pre></details></li>",
+            text(
+                r.locale,
+                "Exact observation and Sources",
+                "정확한 관찰 및 Source"
+            ),
+            escape(&format!("{state:?}"))
+        ));
     }
+    html.push_str("</ol>");
     html.push_str("</details>");
     heading(
         html,
@@ -689,10 +750,17 @@ fn work_detail(
         if !snapshot {
             decision_link(html, r, decision, false);
         } else {
-            empty_state(
+            html.push_str("<p>");
+            link(
                 html,
+                r,
+                ViewerView::Decisions {
+                    decision: Some(decision.decision.decision_id),
+                },
                 &decision_choice_attribution(&decision.decision, r.locale),
+                Some("decision-reading"),
             );
+            html.push_str("</p>");
         }
     }
     heading(
@@ -831,7 +899,7 @@ fn decision_detail(
     snapshot: bool,
 ) {
     html.push_str(&format!(
-        "<article data-decision-scope=\"{}\">",
+        "<article class=\"decision-reading\" data-decision-scope=\"{}\">",
         decision_scope_key(d.decision.work_scope)
     ));
     section_start(
@@ -1125,6 +1193,89 @@ fn code(
         }
         html.push_str("</div>");
     }
+    let entities = u
+        .architecture
+        .components
+        .iter()
+        .chain(&p.selected_entity_neighbors)
+        .collect::<Vec<_>>();
+    if let Some(entity) = &p.selected_entity {
+        html.push_str("<div class=\"selected-code\">");
+        heading(html, 3, &entity.display_name);
+        render_code_behavior(html, r, entity, &p.selected_entity_relations);
+        html.push_str(&format!(
+            "<p>{} · {} · {}</p>",
+            escape(&entity.locator),
+            escape(&code_entity_kind_label(&entity.kind, r.locale)),
+            escape(&range_label(entity.source_range.as_ref(), r.locale))
+        ));
+        html.push_str("<details><summary>");
+        html.push_str(text(
+            r.locale,
+            "Source locator and retained range",
+            "Source 위치 및 보존된 범위",
+        ));
+        html.push_str("</summary><dl>");
+        definition(html, "Source", &entity.source_id.to_string());
+        definition(
+            html,
+            "Analysis Snapshot",
+            &entity.analysis_snapshot.to_string(),
+        );
+        definition(
+            html,
+            "Repository Snapshot",
+            &entity.repository_snapshot.to_string(),
+        );
+        definition(
+            html,
+            text(r.locale, "Freshness", "최신성"),
+            &format!("{:?}", entity.freshness),
+        );
+        definition(
+            html,
+            text(r.locale, "Range", "범위"),
+            &format!("{:?}", entity.source_range),
+        );
+        if let Some(source) = p
+            .source_catalog
+            .iter()
+            .find(|s| s.source.id == entity.source_id)
+        {
+            definition(
+                html,
+                text(r.locale, "Retained Source", "보존된 Source"),
+                &format!("{source:?}"),
+            );
+        }
+        html.push_str("</dl></details>");
+        for (label, incoming) in [
+            (
+                text(r.locale, "Incoming relationships", "들어오는 관계"),
+                true,
+            ),
+            (
+                text(r.locale, "Outgoing relationships", "나가는 관계"),
+                false,
+            ),
+        ] {
+            heading(html, 4, label);
+            for relation in p.selected_entity_relations.iter().filter(|rel| {
+                if incoming {
+                    rel.target_entity.as_deref() == Some(entity.identity.as_str())
+                } else {
+                    rel.source_entity == entity.identity
+                }
+            }) {
+                relation_detail(html, r, relation, &entities, snapshot);
+            }
+        }
+        if p.omitted_selected_relation_count > 0 {
+            empty_state(html, text(r.locale, "Some relationships are outside this displayed neighborhood. Inspect the exact bound below.", "일부 관계가 표시된 이웃 범위 밖에 있습니다. 아래에서 정확한 제한을 확인하세요."));
+            html.push_str(&format!("<details class=\"relationship-bounds\"><summary>{}</summary><p>{} {}</p></details>", text(r.locale, "Relationship display bounds", "관계 표시 범위"), p.omitted_selected_relation_count, text(r.locale, "relationships omitted", "관계 생략")));
+        }
+        html.push_str("</div>");
+    }
     contextual_limits(html, r, p, snapshot);
     // Repository-wide status belongs to Analysis; only Work-relevant gaps accompany code.
     if matches!(
@@ -1168,7 +1319,12 @@ fn code(
         render_deterministic_explanation(html, r, explanation);
     }
     for entity in &u.architecture.components {
-        render_code_behavior(html, r, entity, &u.architecture.relationships);
+        if p.selected_entity
+            .as_ref()
+            .is_none_or(|selected| selected.identity != entity.identity)
+        {
+            render_code_behavior(html, r, entity, &u.architecture.relationships);
+        }
     }
     for interpretation in &u.generated_interpretations {
         let prose = if matches!(
@@ -1267,12 +1423,6 @@ fn code(
         }
         html.push_str("</details>");
     }
-    let entities = u
-        .architecture
-        .components
-        .iter()
-        .chain(&p.selected_entity_neighbors)
-        .collect::<Vec<_>>();
     for relation in u
         .architecture
         .relationships
@@ -1280,80 +1430,6 @@ fn code(
         .chain(&u.evidence.unresolved_relationships)
     {
         relation_detail(html, r, relation, &entities, snapshot);
-    }
-    if let Some(entity) = &p.selected_entity {
-        heading(html, 3, &entity.display_name);
-        html.push_str(&format!(
-            "<p>{} · {} · {}</p>",
-            escape(&entity.locator),
-            escape(&code_entity_kind_label(&entity.kind, r.locale)),
-            escape(&range_label(entity.source_range.as_ref(), r.locale))
-        ));
-        html.push_str("<details><summary>");
-        html.push_str(text(
-            r.locale,
-            "Source locator and retained range",
-            "Source 위치 및 보존된 범위",
-        ));
-        html.push_str("</summary><dl>");
-        definition(html, "Source", &entity.source_id.to_string());
-        definition(
-            html,
-            "Analysis Snapshot",
-            &entity.analysis_snapshot.to_string(),
-        );
-        definition(
-            html,
-            "Repository Snapshot",
-            &entity.repository_snapshot.to_string(),
-        );
-        definition(
-            html,
-            text(r.locale, "Freshness", "최신성"),
-            &format!("{:?}", entity.freshness),
-        );
-        definition(
-            html,
-            text(r.locale, "Range", "범위"),
-            &format!("{:?}", entity.source_range),
-        );
-        if let Some(source) = p
-            .source_catalog
-            .iter()
-            .find(|s| s.source.id == entity.source_id)
-        {
-            definition(
-                html,
-                text(r.locale, "Retained Source", "보존된 Source"),
-                &format!("{source:?}"),
-            );
-        }
-        html.push_str("</dl></details>");
-        for (label, incoming) in [
-            (
-                text(r.locale, "Incoming relationships", "들어오는 관계"),
-                true,
-            ),
-            (
-                text(r.locale, "Outgoing relationships", "나가는 관계"),
-                false,
-            ),
-        ] {
-            heading(html, 4, label);
-            for relation in p.selected_entity_relations.iter().filter(|rel| {
-                if incoming {
-                    rel.target_entity.as_deref() == Some(entity.identity.as_str())
-                } else {
-                    rel.source_entity == entity.identity
-                }
-            }) {
-                relation_detail(html, r, relation, &entities, snapshot);
-            }
-        }
-        if p.omitted_selected_relation_count > 0 {
-            empty_state(html, text(r.locale, "Some relationships are outside this displayed neighborhood. Inspect the exact bound below.", "일부 관계가 표시된 이웃 범위 밖에 있습니다. 아래에서 정확한 제한을 확인하세요."));
-            html.push_str(&format!("<details class=\"relationship-bounds\"><summary>{}</summary><p>{} {}</p></details>", text(r.locale, "Relationship display bounds", "관계 표시 범위"), p.omitted_selected_relation_count, text(r.locale, "relationships omitted", "관계 생략")));
-        }
     }
     render_understanding_evidence(html, r, u);
     section_end(html);

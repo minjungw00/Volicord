@@ -1454,3 +1454,62 @@ fn changed_removed_and_unavailable_sources_never_render_current_behavior(
     }
     Ok(())
 }
+
+#[test]
+fn presentation_keeps_subject_navigation_and_readable_history_before_raw_evidence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    for locale in ["en", "ko"] {
+        let detail = exchange(
+            &server,
+            &format!(
+                "/?view=work&work={}&locale={locale}&language=fr-CA",
+                f.goals["older"]
+            ),
+        );
+        assert!(detail.contains("<main id=\"viewer-content\" tabindex=\"-1\">"));
+        assert!(detail.contains("class=\"subject-navigation\""));
+        let nav = detail
+            .split("<nav aria-label=\"Viewer\">")
+            .nth(1)
+            .ok_or("nav")?
+            .split("</nav>")
+            .next()
+            .ok_or("nav end")?;
+        assert!(nav.contains(&format!(
+            "view=work&amp;work={}&amp;locale={locale}&amp;language=fr-CA",
+            f.goals["older"]
+        )));
+        assert!(nav.contains(&format!("scope=work&amp;work={}", f.goals["older"])));
+        let history = detail
+            .split("class=\"verification-timeline\"")
+            .nth(1)
+            .ok_or("timeline")?;
+        assert!(history.contains(if locale == "en" {
+            "Verification"
+        } else {
+            "검증"
+        }));
+        assert!(
+            history.find("<li>").ok_or("history item")?
+                < history.find("<pre>").ok_or("exact history")?
+        );
+        assert!(detail.contains("data-reading-role=\"audit-history\""));
+        let overview = exchange(&server, &format!("/?view=overview&locale={locale}"));
+        assert!(
+            overview
+                .find("class=\"project-purpose\"")
+                .ok_or("purpose")?
+                < overview.find("class=\"work-list\"").ok_or("works")?
+        );
+    }
+    Ok(())
+}
