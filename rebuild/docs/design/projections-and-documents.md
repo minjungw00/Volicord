@@ -1407,3 +1407,13 @@ summary's presentation. Source `observation` exposes bounded retained execution
 and availability metadata; `body` cannot dereference a locator or recover an
 unretained historical output. Structured 80 KiB and overall 256 KiB MCP budgets
 remain unchanged and apply to both inspection tools.
+
+Detail `metadata.retained_state` and per-Source availability/freshness remain
+independent of chunk `state`. Forgotten Checkpoint Source witnesses mark surviving
+facts as partially retained; they do not erase an authored outcome or reconstruct
+a Source body. `source_status` is itself an allowlisted detail field when metadata
+is bounded. Candidate content omission names match the existing inspection's
+lowercase states, with read-time retention expiry and cleanup preserved. Original
+excerpt `representation`, omitted characters/bytes, semantic omitted record counts
+and transport suffix counts keep their own meanings across bounded serialization
+and repeated reads; completing a detail field never resets any earlier omission.

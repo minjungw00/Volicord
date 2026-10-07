@@ -466,3 +466,21 @@ canonical work failed. Missing/corrupt/non-current receipts cannot prove a lates
 attempt. The safe action remains explicit `volicord analyze` after restoring the
 reported repository/analyzer prerequisite, or `volicord doctor repair` for unreadable
 stored analysis. Ordinary reading performs neither action.
+
+### Exact retained evidence read failure
+
+Evidence-detail `state: partial|complete` measures transport progress through a
+retained serialized field. `metadata.retained_state` independently reports
+retained, partially retained, withheld, unavailable, not retained or policy
+withheld material; Source availability/freshness is never upgraded by completing
+transport. Deleted Source witnesses preserve their unavailable use/position/count
+alongside surviving canonical facts. An absent optional field differs from a
+non-retained historical body, an unavailable revision and a policy-withheld body.
+
+Changed field/source/privacy fingerprints reject continuation. Invalid offsets,
+selectors or Work associations and failed/corrupt/incompatible store reads fail
+explicitly; no path retries generation, mutates source state, falls back to current
+content for an old revision, or returns empty success. Safe retry is a new exact
+inspection using currently retained identities and explicit state. Original Recall,
+projection excerpt and source omissions remain separate from detail transport byte
+counts, including after persistence and Host readback.

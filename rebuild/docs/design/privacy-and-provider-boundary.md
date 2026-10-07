@@ -525,3 +525,23 @@ local processing. Analysis-attempt receipts contain bounded operation metadata a
 failure labels, never transmitted Source bodies. They grant no provider opt-in and
 create no Work, Decision, Purpose, correction or Checkpoint. A status refresh command
 is guidance to the existing local operation, not Viewer-side authority to mutate.
+
+### Retained evidence inspection boundary
+
+Exact-field continuation on `canonical_inspect` and `candidate_inspect` is a
+local read of retained Project-scoped records under the existing inspection lock.
+It does not open filesystem/URL locators, read full user turns or historical
+stdout/stderr, trigger analysis, collect new Candidate data or invoke a background
+provider. Candidate expiry is checked at read time even when cleanup has not run;
+expired, cleaned and canonical-forgetting-withheld content remains unavailable.
+Collection opt-out alone does not retrospectively erase a retained Candidate.
+
+Source `body` distinguishes policy-withheld current-host turn material from
+`historical_body_not_retained`; neither state synthesizes missing content.
+Availability/freshness and surviving command exit/termination observations remain
+independent from body access. `original_source_truncation: unobservable` means no
+historical raw-body/truncation measurement was retained, not zero omitted bytes.
+Forgotten Checkpoint Source witnesses disclose identity/use/count only, while
+surviving recorded facts remain `partially_retained`. Continuation fingerprints
+include source/privacy state, so changed or forgotten support rejects an old
+continuation without transferring it to a newer observation.

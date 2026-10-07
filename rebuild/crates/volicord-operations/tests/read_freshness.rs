@@ -288,7 +288,7 @@ fn exact_evidence_reads_reject_changed_foreign_and_forgotten_bases(
     request.work_item_id = None;
     assert_eq!(
         operations.canonical_evidence_detail(project, &request)?["reason"],
-        "historical_body_not_retained"
+        "source_body_policy_withheld"
     );
     request.record_id = SourceId::from_bytes([255; 16]).to_string();
     assert_eq!(

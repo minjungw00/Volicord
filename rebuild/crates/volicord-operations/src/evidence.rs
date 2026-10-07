@@ -107,6 +107,18 @@ impl LocalOperations {
                         .chain(cp.user_review.source_id)
                         .chain(cp.user_acceptance.source_id)
                         .collect();
+                    match request.field.as_str() {
+                        "verification" => {
+                            sources = cp.verification.iter().filter_map(|v| v.source_id).collect()
+                        }
+                        "user_review" => sources = cp.user_review.source_id.into_iter().collect(),
+                        "user_acceptance" => {
+                            sources = cp.user_acceptance.source_id.into_iter().collect()
+                        }
+                        "source_basis" => sources = cp.source_basis.clone(),
+                        "changed_source_basis" => sources = cp.changed_source_basis.clone(),
+                        _ => {}
+                    }
                     fields = json!({"goal":cp.goal,"state_change":cp.state_change,"next_step":cp.next_step,
                     "changed_paths":cp.changed_paths,"source_basis":ids(&cp.source_basis),"changed_source_basis":ids(&cp.changed_source_basis),
                     "applied_decisions":cp.applied_decisions.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -135,6 +147,12 @@ impl LocalOperations {
                     fields = json!({"user_rationale":d.user_rationale,"displayed_recommendation.rationale":d.displayed_recommendation.rationale,
                     "assumptions":d.assumptions,"revisit_triggers":d.revisit_triggers,"source_basis":ids(&sources),"applicability":d.applicability,
                     "displayed_alternatives":d.displayed_alternatives.iter().map(|a|json!({"alternative_key":a.key,"label":a.label,"expected_consequence":a.consequence})).collect::<Vec<_>>()});
+                    if request.field == "user_rationale" {
+                        sources = vec![d.user_turn_source_id];
+                    }
+                    if request.field == "displayed_recommendation.rationale" {
+                        sources = d.displayed_recommendation.source_basis.clone();
+                    }
                 }
             }
             "question" => {
@@ -175,7 +193,26 @@ impl LocalOperations {
         if !canonical_fields(&request.record_kind).contains(&request.field.as_str()) {
             return Err(Error::new("unsupported canonical evidence field"));
         }
-        let metadata = json!({"work_item_id":work.map(|id|id.to_string()),"source_status":source_status(&basis,&sources),
+        sources.sort_unstable();
+        sources.dedup();
+        let forgotten = basis.forgotten_checkpoint_sources.iter().filter(|w|
+            request.record_kind == "checkpoint" && w.checkpoint_identity == *identity &&
+            match request.field.as_str() {
+                "verification" => w.semantic_use == "verification",
+                "user_review" => w.semantic_use == "user_review",
+                "user_acceptance" => w.semantic_use == "user_acceptance",
+                "source_basis" => w.semantic_use == "supporting_basis",
+                "changed_source_basis" => w.semantic_use == "changed_basis",
+                _ => true,
+            }).map(|w|json!({"source_id":w.source_identity,"state":"forgotten","availability":"unavailable","semantic_use":w.semantic_use,"position":w.position})).collect::<Vec<_>>();
+        let mut status = source_status(&basis, &sources);
+        if let Some(items) = status.as_array_mut() {
+            items.extend(forgotten.iter().cloned());
+        }
+        fields["source_status"] = status.clone();
+        let metadata = json!({"work_item_id":work.map(|id|id.to_string()),"source_status":status,
+            "retained_state":if forgotten.is_empty(){"retained"}else{"partially_retained"},
+            "forgotten_source_count":forgotten.len(),"original_source_truncation":"unobservable",
             "privacy":"retained_canonical_fields_only_no_source_body_access"});
         if revision != Some(request.revision) {
             return Ok(unavailable(
@@ -200,7 +237,11 @@ impl LocalOperations {
                 project,
                 request,
                 if request.record_kind == "source" && request.field == "body" {
-                    "historical_body_not_retained"
+                    if fields["observation"]["payload"]["body_access"] == "policy_withheld" {
+                        "source_body_policy_withheld"
+                    } else {
+                        "historical_body_not_retained"
+                    }
                 } else {
                     "field_not_recorded"
                 },
@@ -221,7 +262,7 @@ impl LocalOperations {
             return Err(Error::new("Candidate evidence identity mismatch"));
         }
         let _inspection = self.layout().acquire_health_lock()?;
-        let _canonical = self.canonical_basis(project)?;
+        let canonical = self.canonical_basis(project)?;
         let basis = self.candidate_basis(project)?;
         let inspection = inspect_candidate(
             &basis,
@@ -230,8 +271,15 @@ impl LocalOperations {
             volicord_context::Clock::now(&mut volicord_context::SystemClock)
                 .map_err(|e| Error::with_source("inspection clock unavailable", e))?,
         );
-        let metadata = json!({"content_omission":inspection.content_omission.as_ref().map(|o|format!("{o:?}")),
-            "privacy":"candidate_inspection_retention_and_forgetting_policy"});
+        let sources = inspection
+            .observation_basis
+            .as_ref()
+            .map_or_else(Vec::new, |b| b.source_basis.clone());
+        let metadata = json!({"content_omission":inspection.content_omission.as_ref().map(|o|format!("{o:?}").to_lowercase()),
+            "retained_state":if inspection.content_omission.is_some(){"withheld"}else{"retained"},
+            "source_status":source_status(&canonical,&sources),
+            "retained_until_unix_micros":basis.candidates.iter().find(|c|c.id==candidate).and_then(|c|c.retention.retained_until).map(|t|t.as_unix_micros()),
+            "original_source_truncation":"unobservable","privacy":"candidate_inspection_retention_and_forgetting_policy"});
         if inspection.revision != Some(request.revision) {
             return Ok(unavailable(
                 project,
@@ -244,7 +292,7 @@ impl LocalOperations {
                 metadata,
             ));
         }
-        let fields = json!({"summary":inspection.bounded_summary,"engineering_choice_discovery":inspection.engineering_choice_discovery,
+        let fields = json!({"source_status":source_status(&canonical,&sources),"summary":inspection.bounded_summary,"engineering_choice_discovery":inspection.engineering_choice_discovery,
             "materiality_review":inspection.materiality_review,"learning_deliberation":inspection.learning_deliberation,
             "repository_research_basis":inspection.repository_research_basis});
         if ![
@@ -253,6 +301,7 @@ impl LocalOperations {
             "materiality_review",
             "learning_deliberation",
             "repository_research_basis",
+            "source_status",
         ]
         .contains(&request.field.as_str())
         {
@@ -281,8 +330,14 @@ impl LocalOperations {
 
 fn canonical_fields(kind: &str) -> &'static [&'static str] {
     match kind {
-        "context_item" => &["statement", "source_basis", "applicability"],
+        "context_item" => &[
+            "statement",
+            "source_basis",
+            "applicability",
+            "source_status",
+        ],
         "checkpoint" => &[
+            "source_status",
             "goal",
             "state_change",
             "next_step",
@@ -299,6 +354,7 @@ fn canonical_fields(kind: &str) -> &'static [&'static str] {
             "handoff_to",
         ],
         "decision" => &[
+            "source_status",
             "user_rationale",
             "displayed_recommendation.rationale",
             "displayed_alternatives",
@@ -308,6 +364,7 @@ fn canonical_fields(kind: &str) -> &'static [&'static str] {
             "applicability",
         ],
         "question" => &[
+            "source_status",
             "prompt_basis",
             "source_basis",
             "assumptions",
@@ -317,7 +374,7 @@ fn canonical_fields(kind: &str) -> &'static [&'static str] {
             "why_it_matters_now",
             "what_the_answer_unlocks",
         ],
-        "source" => &["observation", "body"],
+        "source" => &["observation", "body", "source_status"],
         _ => &[],
     }
 }
@@ -327,7 +384,7 @@ fn ids(sources: &[SourceId]) -> Vec<String> {
 fn source_status(basis: &CanonicalReadBasis, sources: &[SourceId]) -> Value {
     json!(sources.iter().map(|id|{
         let source=basis.sources.iter().find(|s|s.source.id==*id);
-        json!({"source_id":id.to_string(),"availability":source.map(|s|format!("{:?}",s.availability).to_lowercase()),
+        json!({"source_id":id.to_string(),"state":if source.is_some(){"retained"}else{"missing"},"availability":source.map(|s|format!("{:?}",s.availability).to_lowercase()),
             "freshness":source.map(|s|format!("{:?}",s.freshness).to_lowercase()),"snapshot_basis":source.and_then(|s|s.snapshot_basis.as_ref())})
     }).collect::<Vec<_>>())
 }
@@ -383,8 +440,14 @@ fn unavailable(
     project: ProjectId,
     r: &EvidenceDetailRequest,
     reason: &str,
-    metadata: Value,
+    mut metadata: Value,
 ) -> Value {
+    metadata["retained_state"] = json!(match reason {
+        "historical_body_not_retained" => "not_retained",
+        "source_body_policy_withheld" => "policy_withheld",
+        "content_withheld" => "withheld",
+        _ => "unavailable",
+    });
     json!({"project_id":project.to_string(),"record_kind":r.record_kind,"record_id":r.record_id,"revision":r.revision,"field":r.field,
         "state":"unavailable","reason":reason,"metadata":bounded_read_section(metadata,4096),"read_only":true,"next_offset":null})
 }

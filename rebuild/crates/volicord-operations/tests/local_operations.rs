@@ -1327,7 +1327,7 @@ fn exact_candidate_detail_reads_recover_retained_summary_and_refuse_deleted_revi
             learning_deliberation: None,
         },
     };
-    let SubmissionOutcome::Stored(candidate) = operations.submit_candidate(draft)? else {
+    let SubmissionOutcome::Stored(candidate) = operations.submit_candidate(draft.clone())? else {
         return Err("candidate disabled".into());
     };
     let mut request = EvidenceDetailRequest {
@@ -1354,5 +1354,163 @@ fn exact_candidate_detail_reads_recover_retained_summary_and_refuse_deleted_revi
     let page = operations.candidate_evidence_detail(project, candidate.id, &request)?;
     assert_eq!(page["state"], "unavailable");
     assert!(page.get("chunk").is_none());
+    let cleaned = operations.inspect_workflow_candidate(project, candidate.id)?;
+    request.revision = cleaned.revision;
+    request.offset = 0;
+    request.expected_fingerprint = None;
+    let deleted = operations.candidate_evidence_detail(project, candidate.id, &request)?;
+    assert_eq!(deleted["metadata"]["content_omission"], "retentioncleaned");
+    let mut expired_draft = draft;
+    expired_draft.observed_at = volicord_context::TimestampMicros::from_unix_micros(1);
+    expired_draft.retention.retained_until =
+        Some(volicord_context::TimestampMicros::from_unix_micros(2));
+    let SubmissionOutcome::Stored(expired) = operations.submit_candidate(expired_draft)? else {
+        return Err("expired Candidate disabled".into());
+    };
+    let before_expiry_read = operations.candidate_basis(project)?;
+    request.record_id = expired.id.to_string();
+    request.revision = expired.revision;
+    let unavailable = operations.candidate_evidence_detail(project, expired.id, &request)?;
+    assert_eq!(unavailable["state"], "unavailable");
+    assert_eq!(
+        unavailable["metadata"]["content_omission"],
+        "retentionexpired"
+    );
+    assert!(unavailable.get("chunk").is_none());
+    assert_eq!(before_expiry_read, operations.candidate_basis(project)?);
+    Ok(())
+}
+
+#[test]
+fn evidence_detail_preserves_source_failure_forgetting_and_unretained_body_states(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use serde_json::{json, Value};
+    use volicord_context::CanonicalRecordId;
+    use volicord_operations::EvidenceDetailRequest;
+    let f = evidence_fixture::fixture()?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let cp = before
+        .checkpoint_history
+        .iter()
+        .find(|cp| cp.verification.iter().any(|v| v.source_id.is_some()))
+        .ok_or("verification checkpoint")?;
+    let source = cp.verification[0].source_id.ok_or("command Source")?;
+    let mut request = EvidenceDetailRequest {
+        record_kind: "checkpoint".into(),
+        record_id: cp.id.to_string(),
+        revision: cp.revision,
+        field: "verification".into(),
+        offset: 0,
+        expected_fingerprint: None,
+        work_item_id: cp.work_item_id,
+    };
+    let original = f
+        .operations
+        .canonical_evidence_detail(f.project, &request)?;
+    assert_eq!(original["metadata"]["retained_state"], "retained");
+    let expected_chunk = original["chunk"].clone();
+    for state in ["unavailable", "stale", "unknown", "available"] {
+        Connection::open(f.operations.layout().canonical_store())?.execute(
+            "UPDATE sources SET availability=?1 WHERE id=?2",
+            rusqlite::params![state, source.as_bytes().as_slice()],
+        )?;
+        let reopened = LocalOperations::new(f.operations.layout().clone());
+        let page = reopened.canonical_evidence_detail(f.project, &request)?;
+        assert_eq!(page["metadata"]["source_status"][0]["availability"], state);
+        assert_eq!(page["chunk"], expected_chunk);
+        assert_eq!(
+            page["metadata"]["original_source_truncation"],
+            "unobservable"
+        );
+        assert_eq!(page["state"], "complete");
+        if state != "available" {
+            request.expected_fingerprint = original["fingerprint"].as_str().map(str::to_owned);
+            assert!(reopened
+                .canonical_evidence_detail(f.project, &request)
+                .is_err());
+            request.expected_fingerprint = None;
+        }
+    }
+    let body = EvidenceDetailRequest {
+        record_kind: "source".into(),
+        record_id: source.to_string(),
+        revision: 1,
+        field: "body".into(),
+        offset: 0,
+        expected_fingerprint: None,
+        work_item_id: None,
+    };
+    let page = f.operations.canonical_evidence_detail(f.project, &body)?;
+    assert_eq!(page["reason"], "historical_body_not_retained");
+    assert_eq!(page["metadata"]["retained_state"], "not_retained");
+    assert!(page.get("chunk").is_none());
+    let mut observation = body.clone();
+    observation.field = "observation".into();
+    let page = f
+        .operations
+        .canonical_evidence_detail(f.project, &observation)?;
+    let value: Value = serde_json::from_str(page["chunk"].as_str().ok_or("observation chunk")?)?;
+    assert_eq!(value["payload"]["body_retention"], "not_retained");
+    assert!(value["payload"]["exit_code"].is_number());
+    let authorization = before
+        .sources
+        .iter()
+        .find(|s| {
+            matches!(
+                s.source.payload,
+                volicord_context::SourcePayload::CurrentHostUserTurn { .. }
+            )
+        })
+        .ok_or("authorization")?
+        .source
+        .id;
+    f.operations
+        .forget_record(f.project, CanonicalRecordId::Source(source), authorization)?;
+    request.expected_fingerprint = original["fingerprint"].as_str().map(str::to_owned);
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &request)
+        .is_err());
+    request.expected_fingerprint = None;
+    let surviving = f
+        .operations
+        .canonical_evidence_detail(f.project, &request)?;
+    assert_eq!(surviving["state"], "complete");
+    assert_eq!(
+        surviving["metadata"]["retained_state"],
+        "partially_retained"
+    );
+    assert_eq!(surviving["metadata"]["forgotten_source_count"], 1);
+    assert_eq!(
+        surviving["metadata"]["source_status"][0]["state"],
+        "forgotten"
+    );
+    let value: Value = serde_json::from_str(surviving["chunk"].as_str().ok_or("surviving chunk")?)?;
+    assert!(value[0]["source_id"].is_null());
+    assert_eq!(value[0]["outcome"], json!(cp.verification[0].outcome));
+    request.field = "source_status".into();
+    let status = f
+        .operations
+        .canonical_evidence_detail(f.project, &request)?;
+    assert!(
+        serde_json::from_str::<Value>(status["chunk"].as_str().ok_or("source status")?)?
+            .as_array()
+            .ok_or("statuses")?
+            .iter()
+            .any(|s| s["state"] == "forgotten" && s["source_id"] == source.to_string())
+    );
+    assert_eq!(
+        f.operations.canonical_evidence_detail(f.project, &body)?["state"],
+        "unavailable"
+    );
+    // A corrupt read dependency fails; it is never a successful empty detail page.
+    fs::write(
+        f.operations.layout().canonical_store(),
+        b"unreadable canonical store",
+    )?;
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &request)
+        .is_err());
     Ok(())
 }

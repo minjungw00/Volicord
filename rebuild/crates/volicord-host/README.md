@@ -273,3 +273,14 @@ the retained field, not Source completeness or original omission counts.
 Older unavailable revisions, missing/foreign/forgotten records and unrecorded
 fields stay explicit unavailable states. Inspection opens no source paths, reads
 no full turns or historical stdout/stderr, and requests no provider work.
+
+A detail's `state` reports transport progress only. `metadata.retained_state`,
+`source_status`, `content_omission` and `forgotten_source_count` preserve the
+independent evidence state. A fully delivered verification field can therefore
+remain partially retained or have unavailable Source support. Request
+`field: "source_status"` to expand a bounded source-status list. Inspection does
+not reset the original Recall/excerpt omission counts. The current record-only
+reader cannot expose an old corrected revision merely because its revision number
+is known; it reports `revision_unavailable`. A missing command body is
+`historical_body_not_retained`; a full current-host turn body is
+`source_body_policy_withheld`. Original raw-source truncation is `unobservable`.

@@ -5190,7 +5190,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         .map(learning_explanation_basis_json);
     json!({
         "identity":candidate_id.to_string(),
-        "detail_fields":["summary","engineering_choice_discovery","materiality_review","learning_deliberation","repository_research_basis"],
+        "detail_fields":["summary","engineering_choice_discovery","materiality_review","learning_deliberation","repository_research_basis","source_status"],
         "exists":candidate.exists,
         "health":format!("{:?}",candidate.health).to_lowercase(),
         "revision":candidate.revision,

@@ -8205,6 +8205,36 @@ fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learni
         volicord_inquiry::CandidateId::from_bytes([80; 16]).to_string()
     );
     assert!(structured(&targeted)["candidates"][0]["learning_deliberation"]["rounds"].is_array());
+    let exact_candidate = volicord_inquiry::CandidateId::from_bytes([80; 16]);
+    let mut args = json!({"project_id":project,"candidate_id":exact_candidate.to_string(),"revision":structured(&targeted)["candidates"][0]["revision"],"field":"learning_deliberation"});
+    let mut retained = String::new();
+    loop {
+        let response = call(adapter, "candidate_inspect", args.clone());
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        assert!(
+            response["result"].to_string().len()
+                <= volicord_operations::HOST_READ_RESULT_BYTE_BUDGET
+        );
+        let page = structured(&response);
+        assert_eq!(page["metadata"]["retained_state"], "retained");
+        retained.push_str(page["chunk"].as_str().unwrap());
+        let Some(next) = page["next_offset"].as_u64() else {
+            break;
+        };
+        args["offset"] = json!(next);
+        args["expected_fingerprint"] = page["fingerprint"].clone();
+    }
+    let retained: Value = serde_json::from_str(&retained).unwrap();
+    assert_eq!(retained["rounds"].as_array().unwrap().len(), 16);
+    assert!(retained["rounds"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|r| r["agent_feedback"]
+            .as_str()
+            .unwrap()
+            .ends_with("centralizes mutation checks. ")));
+
     let old_bytes = serde_json::to_vec(&old_learning).unwrap().len();
     assert!(
         old_bytes <= volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET,

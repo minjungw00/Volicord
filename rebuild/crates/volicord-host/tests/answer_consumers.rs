@@ -833,3 +833,87 @@ fn mcp_work_consumers_recover_omitted_verification_through_operations_detail_rea
     );
     Ok(())
 }
+
+#[test]
+fn mcp_detail_readback_preserves_availability_privacy_and_original_omissions(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::CanonicalRecordId;
+    let f = reading_fixture::fixture()?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let cp = before
+        .checkpoint_history
+        .iter()
+        .find(|cp| cp.verification.iter().any(|v| v.source_id.is_some()))
+        .ok_or("checkpoint")?;
+    let source = cp.verification[0].source_id.ok_or("Source")?;
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let invoke = |host: &mut HostAdapter,
+                  tool: &str,
+                  args: Value|
+     -> Result<Value, Box<dyn std::error::Error>> {
+        let response=host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":args}})).ok_or("response")?;
+        assert!(
+            response["result"].to_string().len()
+                <= volicord_operations::HOST_READ_RESULT_BYTE_BUDGET
+        );
+        Ok(response["result"].clone())
+    };
+    let recall_args = json!({"project_id":f.project.to_string()});
+    let original = invoke(&mut host, "recall", recall_args.clone())?["structuredContent"].clone();
+    let args = json!({"project_id":f.project.to_string(),"record_kind":"checkpoint","record_id":cp.id.to_string(),"revision":cp.revision,"field":"verification"});
+    let exact = invoke(&mut host, "canonical_inspect", args.clone())?;
+    assert_eq!(exact["isError"], false);
+    assert_eq!(
+        exact["structuredContent"]["metadata"]["retained_state"],
+        "retained"
+    );
+    let reread = invoke(&mut host, "recall", recall_args)?["structuredContent"].clone();
+    assert_eq!(original["omitted_count"], reread["omitted_count"]);
+    assert_eq!(original["omissions"], reread["omissions"]);
+    assert_eq!(original, reread);
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    let user = before
+        .sources
+        .iter()
+        .find(|s| {
+            matches!(
+                s.source.payload,
+                volicord_context::SourcePayload::CurrentHostUserTurn { .. }
+            )
+        })
+        .ok_or("user Source")?
+        .source
+        .id;
+    let denied = invoke(
+        &mut host,
+        "canonical_inspect",
+        json!({"project_id":f.project.to_string(),"record_kind":"source","record_id":user.to_string(),"revision":1,"field":"body"}),
+    )?;
+    assert_eq!(
+        denied["structuredContent"]["reason"],
+        "source_body_policy_withheld"
+    );
+    assert!(denied["structuredContent"].get("chunk").is_none());
+    f.operations
+        .forget_record(f.project, CanonicalRecordId::Source(source), user)?;
+    let mut continuation = args.clone();
+    continuation["expected_fingerprint"] = exact["structuredContent"]["fingerprint"].clone();
+    let stale = invoke(&mut host, "canonical_inspect", continuation)?;
+    assert_eq!(stale["isError"], true);
+    assert!(stale["structuredContent"].get("chunk").is_none());
+    let partial = invoke(&mut host, "canonical_inspect", args)?;
+    assert_eq!(partial["isError"], false);
+    assert_eq!(
+        partial["structuredContent"]["metadata"]["retained_state"],
+        "partially_retained"
+    );
+    assert_eq!(
+        partial["structuredContent"]["metadata"]["forgotten_source_count"],
+        1
+    );
+    assert_eq!(
+        partial["structuredContent"]["metadata"]["source_status"][0]["state"],
+        "forgotten"
+    );
+    Ok(())
+}

@@ -137,6 +137,27 @@ fn field_priority(key: &str) -> u8 {
                 | "key"
                 | "field"
                 | "sources"
+                | "basis"
+                | "detail_inspection"
+                | "detail_fields"
+                | "content_omission"
+                | "privacy"
+                | "retained_state"
+                | "source_status"
+                | "original_source_truncation"
+                | "transport_omission"
+                | "omitted_count"
+                | "omitted_utf8_bytes"
+                | "omitted_characters"
+                | "forgotten_source_count"
+                | "total_count"
+                | "offset"
+                | "next_offset"
+                | "total_utf8_bytes"
+                | "remaining_utf8_bytes"
+                | "encoding"
+                | "representation"
+                | "original_language_preserved"
         )
     {
         0
@@ -161,6 +182,36 @@ fn field_priority(key: &str) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounding_keeps_original_source_and_excerpt_omissions_distinct() {
+        let input = json!({"identity":"checkpoint", "revision":7, "field":"verification",
+            "availability":"degraded", "representation":"excerpt",
+            "omitted_count":12, "omitted_utf8_bytes":9000, "omitted_characters":3000,
+            "content_omission":"policywithheld", "source_status":[{"source_id":"command","availability":"unavailable","freshness":"unavailable"}],
+            "original_text":"한글🙂\"\\\n".repeat(5000)});
+        let bounded = bounded_read_section(input.clone(), 4096);
+        for field in [
+            "identity",
+            "revision",
+            "field",
+            "availability",
+            "representation",
+            "omitted_count",
+            "omitted_utf8_bytes",
+            "omitted_characters",
+            "content_omission",
+            "source_status",
+        ] {
+            assert_eq!(bounded[field], input[field], "lost original {field}");
+        }
+        assert_eq!(
+            bounded["original_text"]["transport_omission"]["reason"],
+            "serialized_byte_budget"
+        );
+        assert_eq!(bounded, bounded_read_section(bounded.clone(), 4096));
+        assert!(bounded.to_string().len() <= 4096);
+    }
 
     #[test]
     fn large_history_preserves_current_resume_and_has_an_exact_wire_bound() {
