@@ -596,7 +596,8 @@ whole current feedback만 노출한다. 더 큰 feedback은 전체 omission으�
 Pending learning, newest observation, stable identity 순으로 최대 64개를 선택하고
 count/byte omission과 withheld count를 구분한다. Full discovery graph, dimensions,
 interaction review, alternative accounting, rounds와 executable artifacts는 기존
-`candidate_inspect`/`learning_deliberation` detail에만 남는다. 이 projection은
+`candidate_inspect`/`learning_deliberation` detail 및 explicit Work Candidate Inspection
+detail에만 남는다. 이 projection은
 canonical Decision, permanent lesson 또는 새 learning authority를 만들지 않는다.
 
 `candidate_inspect`와 `learning_deliberation` detail은 compact resume state와 별도로
@@ -1422,7 +1423,7 @@ and repeated reads; completing a detail field never resets any earlier omission.
 
 Work explanation preparation reads the complete exact-Goal Checkpoint history
 before presentation bounds. `course:*` carries each recorded goal, boundary kind,
-next action, limits, non-goals and open Question references; `change:*` preserves
+next action and open Question references; `limits:*` retains limits and non-goals; `change:*` preserves
 full reported investigation/change prose independently of the latest result. A
 later verification-only or resume report cannot erase earlier same-Work changes.
 Reported-change/effect paragraphs may cite an earlier exact `change:*` rather than
@@ -1433,3 +1434,37 @@ Ordinary summaries show generated problem and outcome in the requested language;
 recorded verification outcomes, including earlier passed/failed observations, stay
 separate from current work state and user acceptance. These are recorded reports
 and structural grounding checks, not deterministic prose entailment validation.
+
+### Work-linked Learning inspection and Decision context
+
+Decision readings retain the originating Question identity/revision separately
+from user choice, user rationale, displayed recommendation, alternative consequences
+and applicability. Explanation preparation includes the retained exact Question's
+problem, established facts, trade-offs and uncertainty. A missing or different
+Question revision is explicitly unavailable; a newer prompt cannot supply missing
+historical context or user rationale. Relevant Work explanation evidence includes
+only its explicitly scoped or Checkpoint-applied Decisions and their actual contexts.
+Shared Work/Decision answers preserve these identities in Overview, detail, Recall
+and document consumers without introducing a second retained explanation decoder.
+
+Overview and Work detail request the existing Candidate Inspection dependency.
+The ordinary Work link carries only an identity reference to that Work's permitted
+Learning Deliberation; its explicit **Candidate Inspection** subsection shows the
+retained problem, facts, alternatives/consequences, response, feedback, recommendation
+and uncertainty with Session Candidate authority. Exact Work association is the
+permitted Deliberation's `goal_context_id`, selected before general Candidate bounds;
+equal title, path and chronology supply no association. CLI status and MCP Project
+Understanding expose the same identity-only references inside `candidate_inspection`,
+including revision and the existing `candidate_inspect` detail reference. Candidate
+prose is not Work explanation evidence, a document claim or a canonical Decision.
+
+Policy-withheld, expired, cleaned and forgetting-withheld bodies supply no Work
+association. Their existing inspection omissions/dependency state remain explicit;
+absence of a permitted association is not proof that no learning interaction occurred.
+Read-time expiry also applies to the existing bounded Learning continuation section.
+Pending/terminal ordering, opt-out semantics and retention are unchanged; no read
+generates explanations, collects Candidates or changes canonical authority.
+
+Learning association ranking borrows permitted Goal identity through the same content-admission rule as Candidate Inspection; full rounds/choices materialize only after selection bounds. Identity reference byte omissions retain their exact transport count independently of Candidate list omissions.
+
+Shared Work answers also carry the latest Checkpoint's recorded limits and non-goals with exact Checkpoint/revision keys, independently of optional generated limits prose. Earlier limit observations remain history evidence; omission of a new statement does not assert resolution.

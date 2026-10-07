@@ -1067,3 +1067,10 @@ database, serialized field, transaction mechanism, API, MCP method, host UI와 w
 representation을 선택하지 않는다. Portable conflict/merge, generated-document
 rendering과 legacy workflow도 정의하지 않는다. General failure/recovery matrix는
 [Failure와 Recovery 계약](failure-and-recovery.md)이 소유한다.
+
+
+Work reading은 permitted Learning Deliberation의 exact Goal association에서 기존
+Candidate Inspection으로 연결할 수 있다. Problem/alternatives/response/feedback와
+terminal selection은 Session Candidate 의미로 표시하며 같은 Work의 user-owned
+Decision/Question context와 분리한다. Inspection availability나 generated prose가
+selection을 canonical Decision으로 바꾸거나 없는 user rationale를 복원하지 않는다.

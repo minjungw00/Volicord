@@ -110,9 +110,11 @@ fn read_requirements(
         inspection: snapshot
             || matches!(
                 view,
-                ViewerView::Tools {
-                    tool: ViewerTool::Documents | ViewerTool::Memory
-                }
+                ViewerView::Overview
+                    | ViewerView::Work { .. }
+                    | ViewerView::Tools {
+                        tool: ViewerTool::Documents | ViewerTool::Memory
+                    }
             ),
     }
 }
@@ -2431,7 +2433,8 @@ fn render_candidates(html: &mut String, request: &ViewerRequest, projection: &Pr
         let limit = 32;
         for candidate in projection.candidate_inspection.iter().take(limit) {
             html.push_str(&format!(
-                "<li class=\"item\"><strong>{}</strong> <span class=\"badge\">{}</span><p>{}</p><p class=\"muted\">{}: {} · {}: {} · ID <code>{}</code></p></li>",
+                "<li id=\"candidate-{}\" class=\"item\"><strong>{}</strong> <span class=\"badge\">{}</span><p>{}</p><p class=\"muted\">{}: {} · {}: {} · ID <code>{}</code></p>",
+                candidate.candidate_id,
                 escape(candidate_kind_label(candidate.kind, request.locale)),
                 escape(inspection_health_label(candidate.health, request.locale)),
                 escape(candidate.bounded_summary.as_deref().unwrap_or_else(|| text(request.locale, "Candidate content unavailable", "후보 내용을 사용할 수 없음"))),
@@ -2441,6 +2444,8 @@ fn render_candidates(html: &mut String, request: &ViewerRequest, projection: &Pr
                 escape(if candidate.current_applicable_opt_out.iter().any(|value| value.opted_out) { text(request.locale, "active", "활성") } else { text(request.locale, "not active", "비활성") }),
                 candidate.candidate_id
             ));
+            reading::learning_inspection(html, request, candidate);
+            html.push_str("</li>");
         }
         html.push_str("</ul>");
         rendered_bound(

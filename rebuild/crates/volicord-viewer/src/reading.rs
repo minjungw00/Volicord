@@ -335,7 +335,7 @@ fn overview(
         ));
         html.push_str("</details><div class=\"work-list\">");
         for work in &works.items {
-            work_summary(html, request, work, snapshot);
+            work_summary(html, request, p, work, snapshot);
         }
         html.push_str("</div>");
         if works.omitted > 0 {
@@ -403,7 +403,13 @@ fn overview(
     }
     section_end(html);
 }
-fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, snapshot: bool) {
+fn work_summary(
+    html: &mut String,
+    r: &ViewerRequest,
+    p: &ProjectProjection,
+    w: &UnderstandingWork,
+    snapshot: bool,
+) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
     html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4>", w.work_item_id, understanding_work_state_key(w.state)));
     link(
@@ -450,6 +456,7 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
                 | "VerificationCoverage"
                 | "SourceEvidenceGap"
                 | "ReportedResult"
+                | "RecordedLimits"
         )
     }) {
         html.push_str(&format!(
@@ -464,6 +471,25 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
             escape(&action.question),
             escape(&action.text)
         ));
+    }
+    for candidate in related_learning(p, w.work_item_id) {
+        html.push_str("<p class=\"learning-inspection-reference\">");
+        link(
+            html,
+            r,
+            ViewerView::Work {
+                work: Some(w.work_item_id),
+            },
+            text(
+                r.locale,
+                "Inspect related Learning (Session Candidate)",
+                "관련 학습 확인 (Session Candidate)",
+            ),
+            snapshot
+                .then(|| format!("learning-{}", candidate.candidate_id))
+                .as_deref(),
+        );
+        html.push_str("</p>");
     }
     html.push_str("</article>");
 }
@@ -668,6 +694,56 @@ fn work_detail(
                 &decision_choice_attribution(&decision.decision, r.locale),
             );
         }
+    }
+    heading(
+        html,
+        3,
+        text(
+            r.locale,
+            "Related Learning — Candidate Inspection",
+            "관련 학습 — Candidate Inspection",
+        ),
+    );
+    if p.candidate_dependency != volicord_projections::CandidateDependencyState::Available {
+        empty_state(
+            html,
+            &format!(
+                "{}: {:?}",
+                text(
+                    r.locale,
+                    "Candidate Inspection dependency",
+                    "Candidate Inspection 의존성"
+                ),
+                p.candidate_dependency
+            ),
+        );
+    }
+    for issue in p
+        .issues
+        .iter()
+        .filter(|issue| issue.affected_scope == "candidate_inspection")
+    {
+        empty_state(
+            html,
+            &format!(
+                "{} ({}: {})",
+                issue.reason,
+                text(r.locale, "omitted", "생략"),
+                issue.omitted_count
+            ),
+        );
+    }
+    let learning = related_learning(p, w.work_item_id);
+    if learning.is_empty() {
+        empty_state(html, text(r.locale,
+            "No permitted retained Learning association is visible for this Work. Withheld, expired or deleted content is not inferred.",
+            "이 작업에 공개 가능한 보존 학습 연결이 없습니다. 비공개·만료·삭제 내용을 추론하지 않습니다."));
+    }
+    for candidate in learning {
+        html.push_str(&format!("<article id=\"learning-{}\" data-candidate-id=\"{}\" data-work-id=\"{}\" data-statement-role=\"session-candidate\">",
+            candidate.candidate_id, candidate.candidate_id, w.work_item_id));
+        learning_inspection(html, r, candidate);
+        html.push_str("</article>");
     }
     for q in p
         .resume
@@ -1293,10 +1369,10 @@ pub(super) fn surface(
                     html.push_str("<div class=\"current-work\"><p class=\"selection-label\">");
                     html.push_str(text(r.locale, "Latest recorded Work", "최근 기록된 작업"));
                     html.push_str("</p>");
-                    work_summary(html, r, w, false);
+                    work_summary(html, r, p, w, false);
                     html.push_str("</div>");
                 } else {
-                    work_summary(html, r, w, false);
+                    work_summary(html, r, p, w, false);
                 }
             }
             html.push_str("</div>");
@@ -1514,3 +1590,206 @@ fn range_label(
         })
         .unwrap_or_else(|| text(locale, "Source range unavailable", "Source 범위 없음").into())
 }
+
+fn related_learning(
+    p: &ProjectProjection,
+    work: ContextItemId,
+) -> Vec<&volicord_projections::CandidateInspection> {
+    p.candidate_inspection
+        .iter()
+        .filter(|candidate| {
+            candidate
+                .learning_deliberation
+                .as_ref()
+                .is_some_and(|learning| learning.goal_context_id == work)
+        })
+        .collect()
+}
+
+pub(super) fn learning_inspection(
+    html: &mut String,
+    r: &ViewerRequest,
+    candidate: &volicord_projections::CandidateInspection,
+) {
+    let Some(basis) = &candidate.learning_explanation_basis else {
+        return;
+    };
+    html.push_str(
+        "<div class=\"learning-candidate-inspection\" data-statement-role=\"session-candidate\">",
+    );
+    empty_state(html, text(r.locale,
+        "Learning participation and implementation selection remain Session Candidate context; they do not grant canonical Decision authority.",
+        "학습 참여와 구현 선택은 Session Candidate 맥락이며 canonical Decision 권한을 부여하지 않습니다."));
+    html.push_str("<dl>");
+    definition(
+        html,
+        text(r.locale, "Content representation", "내용 표현"),
+        text(
+            r.locale,
+            "Retained quotations in their original language",
+            "원래 언어로 보존된 인용",
+        ),
+    );
+    definition(
+        html,
+        text(r.locale, "Availability", "이용 가능성"),
+        match basis.availability {
+            volicord_projections::LearningExplanationAvailability::Available => {
+                text(r.locale, "Available", "이용 가능")
+            }
+            volicord_projections::LearningExplanationAvailability::Degraded => text(
+                r.locale,
+                "Degraded; inspect the gaps below",
+                "부분 이용 가능; 아래 빈틈 확인",
+            ),
+            volicord_projections::LearningExplanationAvailability::Unavailable => {
+                text(r.locale, "Unavailable", "이용 불가")
+            }
+        },
+    );
+    html.push_str("</dl>");
+    if let Some(problem) = &basis.problem {
+        heading(
+            html,
+            4,
+            text(r.locale, "Recorded learning problem", "기록된 학습 문제"),
+        );
+        html.push_str(&format!("<p>{}</p>", escape(problem)));
+    }
+    html.push_str("<ul>");
+    for fact in &basis.established_facts {
+        list_item(html, fact);
+    }
+    html.push_str("</ul>");
+    for alternative in &basis.alternatives {
+        html.push_str("<details><summary>");
+        html.push_str(&escape(&format!(
+            "{}: {}",
+            alternative.choice_summary, alternative.alternative_summary
+        )));
+        html.push_str("</summary><ul>");
+        for consequence in &alternative.technical_consequences {
+            list_item(html, consequence);
+        }
+        html.push_str("</ul></details>");
+    }
+    html.push_str("<dl>");
+    use volicord_projections::LearningSelectionOutcome;
+    let outcome = match &basis.selection_outcome {
+        LearningSelectionOutcome::Selected {
+            selections,
+            completed,
+        } => {
+            let labels = selections
+                .iter()
+                .map(|s| {
+                    basis
+                        .alternatives
+                        .iter()
+                        .find(|a| {
+                            a.choice_id == s.choice_id && a.alternative_id == s.alternative_id
+                        })
+                        .map_or_else(
+                            || {
+                                text(
+                                    r.locale,
+                                    "Selected alternative content unavailable",
+                                    "선택한 대안 내용 이용 불가",
+                                )
+                                .to_owned()
+                            },
+                            |a| a.alternative_summary.clone(),
+                        )
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            format!(
+                "{}: {labels}",
+                if *completed {
+                    text(r.locale, "Completed learning selection", "완료된 학습 선택")
+                } else {
+                    text(
+                        r.locale,
+                        "Selected; awaiting completion",
+                        "선택됨; 완료 대기",
+                    )
+                }
+            )
+        }
+        LearningSelectionOutcome::NotRecorded => {
+            text(r.locale, "Response not recorded", "응답 기록 없음").into()
+        }
+        LearningSelectionOutcome::Delegated => text(
+            r.locale,
+            "Delegated implementation selection",
+            "구현 선택 위임",
+        )
+        .into(),
+        LearningSelectionOutcome::Skipped => {
+            text(r.locale, "Skipped learning interaction", "학습 대화 건너뜀").into()
+        }
+        LearningSelectionOutcome::ResearchOrPrototypeRequired { .. } => text(
+            r.locale,
+            "Research or prototype evidence required",
+            "조사 또는 프로토타입 근거 필요",
+        )
+        .into(),
+        LearningSelectionOutcome::ReconsiderationRequested => {
+            text(r.locale, "Reconsideration requested", "재검토 요청됨").into()
+        }
+    };
+    definition(
+        html,
+        text(r.locale, "Response / selection", "응답 / 선택"),
+        &outcome,
+    );
+    definition(
+        html,
+        text(r.locale, "User rationale", "사용자 이유"),
+        basis.latest_user_rationale.as_deref().unwrap_or(text(
+            r.locale,
+            "Not recorded",
+            "기록되지 않음",
+        )),
+    );
+    definition(
+        html,
+        text(r.locale, "Agent feedback", "에이전트 피드백"),
+        basis.latest_agent_feedback.as_deref().unwrap_or(text(
+            r.locale,
+            "Not recorded",
+            "기록되지 않음",
+        )),
+    );
+    if let Some(recommendation) = &basis.latest_agent_recommendation {
+        definition(
+            html,
+            text(r.locale, "Agent recommendation", "에이전트 권고"),
+            &recommendation.rationale,
+        );
+    }
+    html.push_str("</dl><ul>");
+    for reason in basis
+        .availability_reasons
+        .iter()
+        .chain(&basis.remaining_uncertainty)
+    {
+        list_item(html, reason);
+    }
+    html.push_str("</ul><details><summary>");
+    html.push_str(text(
+        r.locale,
+        "Inspect retained rounds and grounding",
+        "보존된 라운드와 근거 확인",
+    ));
+    html.push_str("</summary><pre>");
+    html.push_str(&escape(&format!(
+        "Candidate {} revision {:?}\n{basis:?}\n{:?}",
+        candidate.candidate_id, candidate.revision, candidate.learning_deliberation
+    )));
+    html.push_str("</pre></details></div>");
+}
+
+#[cfg(test)]
+#[path = "reading_tests.rs"]
+mod reading_tests;

@@ -176,6 +176,57 @@ pub fn inspect_candidate(
     inspect_existing(basis, candidate, content_access, observed_at)
 }
 
+/// Single content-admission rule for inspection, association and continuation.
+/// Ranking can borrow identity without cloning full Learning rounds/choices.
+fn inspection_content_omission(
+    basis: &CandidateReadBasis,
+    candidate: &CandidateRecord,
+    content_access: CandidateContentAccess,
+    observed_at: TimestampMicros,
+) -> Option<CandidateContentOmission> {
+    if basis.project_id != candidate.project_id {
+        Some(CandidateContentOmission::ContentUnavailable)
+    } else if basis
+        .withheld_for_canonical_forgetting
+        .contains(&candidate.id)
+    {
+        Some(CandidateContentOmission::CanonicalForgettingPending)
+    } else if candidate.cleanup.is_some() {
+        Some(CandidateContentOmission::RetentionCleaned)
+    } else if candidate
+        .retention
+        .retained_until
+        .is_some_and(|until| until <= observed_at)
+    {
+        Some(CandidateContentOmission::RetentionExpired)
+    } else if content_access == CandidateContentAccess::PolicyWithheld {
+        Some(CandidateContentOmission::PolicyWithheld)
+    } else if candidate.content.is_none() {
+        Some(CandidateContentOmission::ContentUnavailable)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn permitted_learning_work(
+    basis: &CandidateReadBasis,
+    candidate: &CandidateRecord,
+    content_access: CandidateContentAccess,
+    observed_at: TimestampMicros,
+) -> Option<volicord_context::ContextItemId> {
+    if candidate.kind != volicord_inquiry::CandidateKind::LearningDeliberation
+        || inspection_content_omission(basis, candidate, content_access, observed_at).is_some()
+    {
+        return None;
+    }
+    candidate
+        .content
+        .as_ref()?
+        .learning_deliberation
+        .as_ref()
+        .map(|l| l.goal_context_id)
+}
+
 fn inspect_existing(
     basis: &CandidateReadBasis,
     candidate: &CandidateRecord,
@@ -189,13 +240,6 @@ fn inspect_existing(
         .cloned()
         .collect();
     let cleaned = candidate.cleanup.is_some();
-    let expired = candidate
-        .retention
-        .retained_until
-        .is_some_and(|until| until <= observed_at);
-    let forgetting_pending = basis
-        .withheld_for_canonical_forgetting
-        .contains(&candidate.id);
     let retention = if let Some(retained_until) = candidate.retention.retained_until {
         RetentionInspection::RetainedUntil {
             retained_until,
@@ -207,49 +251,23 @@ fn inspect_existing(
             basis: candidate.retention.basis.clone(),
         }
     };
-    let (health, bounded_summary, content_omission) = if forgetting_pending {
-        (
-            InspectionHealth::Degraded,
-            None,
-            Some(CandidateContentOmission::CanonicalForgettingPending),
-        )
-    } else if cleaned {
-        (
-            InspectionHealth::Partial,
-            None,
-            Some(CandidateContentOmission::RetentionCleaned),
-        )
-    } else if expired {
-        (
-            InspectionHealth::Partial,
-            None,
-            Some(CandidateContentOmission::RetentionExpired),
-        )
+    let content_omission =
+        inspection_content_omission(basis, candidate, content_access, observed_at);
+    let health = match &content_omission {
+        None => InspectionHealth::Complete,
+        Some(
+            CandidateContentOmission::CanonicalForgettingPending
+            | CandidateContentOmission::ContentUnavailable,
+        ) => InspectionHealth::Degraded,
+        Some(_) => InspectionHealth::Partial,
+    };
+    let bounded_summary = if content_omission.is_none() {
+        candidate
+            .content
+            .as_ref()
+            .map(|c| c.bounded_summary.clone())
     } else {
-        match content_access {
-            CandidateContentAccess::PolicyWithheld => (
-                InspectionHealth::Partial,
-                None,
-                Some(CandidateContentOmission::PolicyWithheld),
-            ),
-            CandidateContentAccess::AllowBoundedSummary => match candidate.content.as_ref() {
-                Some(content) => (
-                    InspectionHealth::Complete,
-                    Some(content.bounded_summary.clone()),
-                    None,
-                ),
-                None if cleaned => (
-                    InspectionHealth::Partial,
-                    None,
-                    Some(CandidateContentOmission::RetentionCleaned),
-                ),
-                None => (
-                    InspectionHealth::Degraded,
-                    None,
-                    Some(CandidateContentOmission::ContentUnavailable),
-                ),
-            },
-        }
+        None
     };
     let content_withheld = content_omission.is_some();
     let (question_research_state, repository_research_basis) = if content_withheld {
@@ -579,7 +597,10 @@ pub struct LearningResumeProjection {
 /// Shares Candidate Inspection's content/forgetting boundary without materializing
 /// full inspections or repository graphs. Pending learning precedes terminal history;
 /// newest observation, then stable identity breaks ties. No durable lesson is inferred.
-pub fn learning_resume_projection(basis: &CandidateReadBasis) -> LearningResumeProjection {
+pub fn learning_resume_projection(
+    basis: &CandidateReadBasis,
+    observed_at: TimestampMicros,
+) -> LearningResumeProjection {
     use volicord_inquiry::{CandidateKind, LearningDeliberationState};
     let mut candidates = basis
         .candidates
@@ -609,10 +630,13 @@ pub fn learning_resume_projection(basis: &CandidateReadBasis) -> LearningResumeP
     let mut withheld_count = 0;
     let mut omitted_count = 0;
     for candidate in candidates {
-        if candidate.cleanup.is_some()
-            || basis
-                .withheld_for_canonical_forgetting
-                .contains(&candidate.id)
+        if inspection_content_omission(
+            basis,
+            candidate,
+            CandidateContentAccess::AllowBoundedSummary,
+            observed_at,
+        )
+        .is_some()
         {
             withheld_count += 1;
             continue;

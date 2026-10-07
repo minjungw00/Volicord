@@ -40,11 +40,18 @@ def run(config):
             for item in prepared['explanations']:
                 p = json.loads(e.bound(root, e.entry_path(root, item['identity']) / 'preparation.json'))
                 plan = p['plan']
+                offered = {v['key'] for v in plan['evidence']}
+                # Cite the actual question role; uncited preparation remains retained.
+                # Repeating the entire history in every paragraph can exceed the
+                # response budget without testing any additional lifecycle property.
+                work_keys = {'purpose': 'goal', 'reported_change': 'result' if 'result' in offered else 'goal',
+                    'expected_effect': 'result' if 'result' in offered else 'goal',
+                    'verification': 'verification' if 'verification' in offered else 'goal', 'next_step': 'next_step'}
                 response = {'format_kind': 'volicord_explanation', 'format_version': 1,
                     'plan_fingerprint': plan['fingerprint'], 'language': p['language'],
                     'generator': {'host': 'structural-support', 'session': 'self-authored', 'agent': None, 'model': None},
                     'paragraphs': [{'question': q, 'text': '구조 검증 예제.' if p['language'] == 'ko' else 'Structural support example.',
-                        'evidence_keys': [v['key'] for v in plan['evidence']]} for q in sorted(
+                        'evidence_keys': [work_keys[q] if p['subject']['kind'] == 'work' else q]} for q in sorted(
                             e.WORK_QUESTIONS if p['subject']['kind'] == 'work' else e.DECISION_QUESTIONS)]}
                 response_path = root / 'host-response.json'; response_path.write_bytes(c.json_bytes(response))
                 e.record(root, p['identity'], response_path)

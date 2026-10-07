@@ -146,7 +146,7 @@ def validate_plan(plan, project, subject, language):
     if (len({e.get('key') for e in evidence if isinstance(e, dict)}) != len(evidence)
             or any(not isinstance(e, dict) or not isinstance(e.get('sources'), list)
                 or type(e.get('revision')) is not int or e['revision'] < 1
-                or e.get('record_kind') not in {'context_item', 'checkpoint', 'decision'}
+                or e.get('record_kind') not in {'context_item', 'checkpoint', 'decision', 'question'}
                 or not isinstance(e.get('field'), str) for e in evidence)):
         raise require('Product explanation evidence keys/revisions are malformed')
 

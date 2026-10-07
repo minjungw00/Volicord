@@ -2056,6 +2056,12 @@ mod tests {
             .collect();
         let decisions = decision
             .map(|(decision_id, _)| BriefDecision {
+                question_reference: volicord_context::QuestionReference {
+                    question_id: volicord_context::QuestionId::from_bytes([0; 16]),
+                    revision: 1,
+                },
+                question_context: None,
+                question_source_status: Vec::new(),
                 explanations: Vec::new(),
                 user_source_basis: Vec::new(),
                 user_source_status: Vec::new(),

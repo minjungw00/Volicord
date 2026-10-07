@@ -545,3 +545,12 @@ Forgotten Checkpoint Source witnesses disclose identity/use/count only, while
 surviving recorded facts remain `partially_retained`. Continuation fingerprints
 include source/privacy state, so changed or forgotten support rejects an old
 continuation without transferring it to a newer observation.
+
+
+Work-linked Learning navigation remains inside the existing named Candidate
+Inspection authority. Only a permitted retained Deliberation body supplies its Goal
+association; withheld, expired, cleaned or forgetting-pending content cannot disclose
+a Work link, problem, selection or feedback through an alternative reading surface.
+Identity-only references do not enlarge Source/body access or transmission authority.
+Read-time retention expiry applies to bounded Learning continuation as well as detail
+inspection, independently of whether cleanup has already executed.

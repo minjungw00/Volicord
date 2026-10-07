@@ -162,6 +162,28 @@ def publish_fixture(root, *, kind='work', language='en', before_state='unavailab
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_existing_consumer_accepts_question_context_and_scoped_history(self):
+        for kind in ('work', 'decision'):
+            p, response, _, _ = lifecycle(kind)
+            plan = p['plan']
+            plan['evidence'].append({'key': 'question_context' if kind == 'decision' else 'decision:09:question_context',
+                'record_kind': 'question', 'identity': '09' * 16, 'revision': 1,
+                'field': 'prompt_basis', 'sources': [], 'content': {'problem': 'Recorded boundary question'}})
+            plan['evidence'].append({'key': 'change:10', 'record_kind': 'checkpoint',
+                'identity': '10' * 16, 'revision': 1, 'field': 'state_change', 'sources': [],
+                'content': {'reported_change': 'Earlier same-Work change'}})
+            reserve = e.retention_metadata_bytes(plan)
+            plan['retention_budget']['metadata_byte_reserve'] = reserve
+            e.validate_plan(plan, p['project_id'], p['subject'], 'en')
+            response['paragraphs'][0]['evidence_keys'].append(plan['evidence'][-2]['key'])
+            e.validate_response(plan, response)
+            bad = copy.deepcopy(plan)
+            bad['evidence'][-2]['record_kind'] = 'learning_selection_as_decision'
+            bad['retention_budget']['metadata_byte_reserve'] = e.retention_metadata_bytes(bad)
+            with self.assertRaisesRegex(c.CampaignError, 'keys/revisions are malformed'):
+                e.validate_plan(bad, p['project_id'], p['subject'], 'en')
+
+
     def test_compact_response_budget_counts_unicode_escaping_and_generator_metadata(self):
         for kind in ('work', 'decision'):
             for language in ('en', 'ko'):

@@ -559,7 +559,12 @@ impl HostAdapter {
             .candidate_basis(project_id)
         {
             Ok(basis) => {
-                let projection = volicord_projections::learning_resume_projection(&basis);
+                let projection = volicord_projections::learning_resume_projection(
+                    &basis,
+                    SystemClock
+                        .now()
+                        .map_err(|error| HostError::new(error.to_string()))?,
+                );
                 let items = projection.items.into_iter().map(|item| json!({
                     "candidate_id":item.candidate_id.to_string(), "revision":item.revision,
                     "goal_context_id":item.goal_context_id.to_string(),
@@ -614,11 +619,10 @@ impl HostAdapter {
             .operations
             .project_projection(project(args)?)
             .map_err(operation_error)?;
-        let candidate_dependency = projection.candidate_dependency;
         let understanding = build_project_understanding(&projection, UnderstandingBound::default());
         Ok(project_understanding_json(
             &understanding,
-            candidate_dependency,
+            &projection,
             args.get("requested_language")
                 .and_then(Value::as_str)
                 .unwrap_or("en"),
@@ -2167,7 +2171,7 @@ impl HostAdapter {
 
 fn project_understanding_json(
     understanding: &ProjectUnderstanding,
-    candidate_dependency: CandidateDependencyState,
+    projection: &volicord_projections::ProjectProjection,
     language: &str,
     locale: FixedLocale,
 ) -> Value {
@@ -2186,7 +2190,8 @@ fn project_understanding_json(
         "project_name":understanding.project_name,
         "canonical_revision":understanding.canonical_revision,
         "health":format!("{:?}",understanding.health).to_lowercase(),
-        "candidate_dependency":candidate_dependency_key(candidate_dependency),
+        "candidate_dependency":candidate_dependency_key(projection.candidate_dependency),
+        "candidate_inspection":volicord_operations::work_learning_inspection_json(projection),
         "project_purpose":understanding.project_purpose.iter().map(context_json).collect::<Vec<_>>(),
         "selected_work":understanding.selected_work.as_ref().map(work_json),
         "current_work":understanding.current_work.iter().map(work_json).collect::<Vec<_>>(),

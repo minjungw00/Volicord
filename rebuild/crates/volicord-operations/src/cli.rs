@@ -1087,6 +1087,7 @@ fn status(
     };
     Ok(json!({
         "operation":"project_status",
+        "candidate_inspection":crate::work_learning_inspection_json(&projection),
         "repository_analysis":understanding.repository_analysis,
         "project_id":understanding.project_id.to_string(),
         "project_name":understanding.project_name,
@@ -1247,6 +1248,7 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
             "next_steps",
             "active_decisions",
             "selected_work_decisions",
+            "candidate_inspection",
             "open_questions",
             "risks_assumptions_and_limits",
             "architecture",

@@ -8132,6 +8132,46 @@ fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learni
         .iter()
         .find(|c| c.id.to_string() == learning_id)
         .unwrap();
+    let understanding = structured(&call(
+        adapter,
+        "repository_understanding",
+        json!({"project_id":project}),
+    ))
+    .clone();
+    let reference = understanding["candidate_inspection"]["learning_references"]
+        .as_array()
+        .expect("Work inspection references")
+        .iter()
+        .find(|r| r["candidate_id"] == learning_id)
+        .expect("Learning reference");
+    let learning_work = original
+        .content
+        .as_ref()
+        .unwrap()
+        .learning_deliberation
+        .as_ref()
+        .unwrap()
+        .goal_context_id;
+    assert_eq!(reference["work_item_id"], learning_work.to_string());
+    assert_eq!(reference["canonical_decision"], false);
+    assert_eq!(reference["revision"], original.revision);
+    assert_eq!(reference["inspect"]["tool"], "candidate_inspect");
+    assert_eq!(reference["inspect"]["field"], "learning_deliberation");
+    assert!(!reference.to_string().contains("agent_feedback"));
+    let mut expired = basis.clone();
+    expired
+        .candidates
+        .iter_mut()
+        .find(|c| c.id == original.id)
+        .unwrap()
+        .retention
+        .retained_until = Some(volicord_context::TimestampMicros::from_unix_micros(1));
+    let resumed = volicord_projections::learning_resume_projection(
+        &expired,
+        volicord_context::TimestampMicros::from_unix_micros(2),
+    );
+    assert!(!resumed.items.iter().any(|c| c.candidate_id == original.id));
+    assert!(resumed.withheld_count > 0);
     let connection = Connection::open(adapter.operations().layout().candidate_store()).unwrap();
     for index in 1..=80u8 {
         let mut candidate = original.clone();

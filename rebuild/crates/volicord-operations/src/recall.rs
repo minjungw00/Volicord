@@ -252,5 +252,32 @@ pub fn decision_reading_json(
         "evidence":{"user_rationale":d.user_rationale,"recommendation_rationale":d.recommendation_rationale,
             "user_source_basis":d.user_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),"recommendation_source_basis":d.recommendation_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
             "available_revisions":d.available_revisions,"assumptions":d.assumptions,"revisit_triggers":d.revisit_triggers,
+            "question_reference":{"identity":d.question_reference.question_id.to_string(),"revision":d.question_reference.revision},
+            "question_context":d.question_context.as_ref().map(|q|json!({"identity":q.question_id.to_string(),"revision":q.revision,"prompt":q.prompt,"source_ids":q.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>()})),
+            "question_source_status":d.question_source_status.iter().map(|s|json!({"identity":s.source_id.to_string(),"availability":s.availability.map(|a|format!("{a:?}").to_lowercase()),"freshness":format!("{:?}",s.freshness).to_lowercase()})).collect::<Vec<_>>(),
             "question_uncertainty":d.question_uncertainty,"known_limits":d.known_limits,"review_basis":d.review_basis(locale)}})
+}
+
+/// Identity-only navigation under the named Candidate Inspection authority.
+/// Never attach Candidate prose to canonical Work answers or document claims.
+pub fn work_learning_inspection_json(
+    projection: &volicord_projections::ProjectProjection,
+) -> Value {
+    let references = projection.candidate_inspection.iter().filter_map(|candidate| {
+        let learning = candidate.learning_deliberation.as_ref()?;
+        let work = learning.goal_context_id;
+        let known_work = projection.selected_work.iter().chain(&projection.work_history)
+            .chain(&projection.work_overview.current.items).chain(&projection.work_overview.completed.items)
+            .chain(&projection.work_overview.remaining.items).chain(&projection.work_overview.next_steps.items)
+            .any(|w| w.work_item_id == work);
+        known_work.then(|| json!({"work_item_id":work.to_string(),"candidate_id":candidate.candidate_id.to_string(),
+            "revision":candidate.revision,"canonical_decision":false,
+            "inspect":{"tool":"candidate_inspect","project_id":projection.overview.project_id.to_string(),
+                "candidate_id":candidate.candidate_id.to_string(),"revision":candidate.revision,"field":"learning_deliberation"}}))
+    }).collect::<Vec<_>>();
+    json!({"dependency":format!("{:?}", projection.candidate_dependency).to_lowercase(),
+        "learning_references":crate::bounded_read_section(json!(references), 8 * 1024),
+        "omitted_candidate_count":projection.issues.iter().filter(|i| i.affected_scope == "candidate_inspection")
+            .map(|i| i.omitted_count).sum::<usize>(),
+        "authority":"candidate_inspection_only"})
 }

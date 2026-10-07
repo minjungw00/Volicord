@@ -3,7 +3,7 @@
 use crate::operations::{now_micros, parse_identity};
 use crate::{Error, LocalOperations};
 use volicord_context::{
-    CanonicalReadBasis, CheckpointId, ContextItemId, DecisionId, ProjectId, SourceId,
+    CanonicalReadBasis, CheckpointId, ContextItemId, DecisionId, ProjectId, QuestionId, SourceId,
 };
 use volicord_privacy::{
     ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
@@ -103,6 +103,7 @@ impl LocalOperations {
                 }
                 "checkpoint" => ManagedCanonicalLink::Checkpoint(CheckpointId::from_bytes(bytes)),
                 "decision" => ManagedCanonicalLink::Decision(DecisionId::from_bytes(bytes)),
+                "question" => ManagedCanonicalLink::Question(QuestionId::from_bytes(bytes)),
                 _ => return Err(Error::new("unsupported explanation evidence kind")),
             });
         }

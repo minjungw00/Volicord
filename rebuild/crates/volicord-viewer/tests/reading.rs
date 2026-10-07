@@ -476,7 +476,13 @@ fn requested_sections_preserve_metadata_and_refuse_incomplete_documents(
         let (page, profile) = viewer.render_profiled(&request, "test-token")?;
         assert_eq!(profile.projection.analysis_snapshot_decodes, 0);
         assert_eq!(profile.projection.analysis_metadata_decodes, 1);
-        assert_eq!(profile.projection.candidate_reads, 0);
+        assert_eq!(
+            profile.projection.candidate_reads,
+            usize::from(matches!(
+                view,
+                ViewerView::Overview | ViewerView::Work { .. }
+            ))
+        );
         assert_eq!(profile.health_analysis_snapshot_decodes, 0);
         assert_eq!(profile.document_generations, 0);
         assert_eq!(profile.document_preview, std::time::Duration::ZERO);
@@ -717,7 +723,7 @@ fn requested_sections_on_large_repository() -> Result<(), Box<dyn std::error::Er
             assert_eq!(p.projection.analysis_metadata_decodes, usize::from(!full));
             assert_eq!(
                 p.projection.candidate_reads,
-                usize::from(name == "snapshot")
+                usize::from(matches!(name, "overview" | "work" | "snapshot"))
             );
             assert_eq!(p.health_analysis_snapshot_decodes, 0);
             assert_eq!(

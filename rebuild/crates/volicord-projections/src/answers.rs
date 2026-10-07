@@ -339,6 +339,33 @@ pub fn work_answers(
             s.checkpoint_id, s.checkpoint_revision
         )]
     };
+    for (question, values, en, ko, field) in [
+        (
+            "RecordedLimits",
+            &work.reading.known_limits,
+            "Recorded limitations in the latest Checkpoint",
+            "최신 Checkpoint에 기록된 한계",
+            "known_limits",
+        ),
+        (
+            "RecordedNonGoals",
+            &work.reading.non_goals,
+            "Recorded non-goals in the latest Checkpoint",
+            "최신 Checkpoint에 기록된 비목표",
+            "non_goals",
+        ),
+    ] {
+        if !values.is_empty() {
+            result.facts.push(fact(
+                question,
+                format!("{}: {}", fixed(locale, en, ko), values.join("; ")),
+                answers
+                    .latest_state
+                    .as_ref()
+                    .map_or_else(Vec::new, |s| key(s, field)),
+            ));
+        }
+    }
     result.facts.push(fact(
         "WorkState",
         format!(
@@ -587,11 +614,35 @@ pub fn decision_answers(
         decision
             .user_source_status
             .iter()
-            .chain(&decision.recommendation_source_status),
+            .chain(&decision.recommendation_source_status)
+            .chain(&decision.question_source_status),
         locale,
     ) {
         result.facts.push(gap);
     }
+    result.facts.push(fact(
+        "QuestionContext",
+        match &decision.question_context {
+            Some(q) => format!(
+                "{}: {}",
+                fixed(
+                    locale,
+                    "Recorded question context quotation",
+                    "기록된 질문 맥락 인용"
+                ),
+                q.prompt
+            ),
+            None => fixed(
+                locale,
+                "Exact originating question context is unavailable; no rationale is reconstructed.",
+                "원래 질문의 정확한 revision 맥락을 사용할 수 없습니다. 이유를 복원하지 않습니다.",
+            ),
+        },
+        vec![format!(
+            "question:{}@{}:prompt_basis",
+            decision.question_reference.question_id, decision.question_reference.revision
+        )],
+    ));
     result.facts.push(fact(
         "Choice",
         format!(

@@ -954,6 +954,24 @@ pub fn build_memory_inspection(
     observed_at: TimestampMicros,
     bound: ProjectionBound,
 ) -> MemoryInspectionProjection {
+    build_memory_inspection_selected(
+        canonical,
+        candidates,
+        content_access,
+        observed_at,
+        bound,
+        None,
+    )
+}
+
+fn build_memory_inspection_selected(
+    canonical: &CanonicalReadBasis,
+    candidates: CandidateProjectionInput<'_>,
+    content_access: CandidateContentAccess,
+    observed_at: TimestampMicros,
+    bound: ProjectionBound,
+    selected_work: Option<volicord_context::ContextItemId>,
+) -> MemoryInspectionProjection {
     let limit = bound.max_items_per_section.max(1);
     let mut issues = Vec::new();
     let canonical_inspection = build_canonical_inspection(canonical, limit, &mut issues);
@@ -971,12 +989,37 @@ pub fn build_memory_inspection(
         }
     };
     let candidate_inspection = candidate_basis.map_or_else(Vec::new, |basis| {
+        let related_ids = if let Some(work) = selected_work {
+            basis
+                .candidates
+                .iter()
+                .filter(|c| {
+                    c.project_id == canonical.project.id
+                        && c.kind == volicord_inquiry::CandidateKind::LearningDeliberation
+                })
+                .filter_map(|c| {
+                    (crate::candidate_inspection::permitted_learning_work(
+                        basis,
+                        c,
+                        content_access,
+                        observed_at,
+                    ) == Some(work))
+                    .then_some(c.id)
+                })
+                .collect::<BTreeSet<_>>()
+        } else {
+            BTreeSet::new()
+        };
         let mut identities = basis
             .candidates
             .iter()
+            .filter(|candidate| {
+                basis.project_id == canonical.project.id
+                    && candidate.project_id == canonical.project.id
+            })
             .map(|candidate| candidate.id)
             .collect::<Vec<_>>();
-        identities.sort();
+        identities.sort_by_key(|id| (!related_ids.contains(id), *id));
         if identities.len() > limit {
             issues.push(bound_issue(
                 "candidate_inspection",
@@ -1245,12 +1288,13 @@ pub fn build_project_projection(
     );
     let checkpoint_timeline = build_timeline(reading_canonical, limit, &mut issues);
     let memory = if inputs.requirements.inspection {
-        build_memory_inspection(
+        build_memory_inspection_selected(
             reading_canonical,
             inputs.candidates,
             inputs.candidate_content_access,
             inputs.observed_at,
             inputs.bound,
+            selection.work_item_id,
         )
     } else {
         MemoryInspectionProjection {

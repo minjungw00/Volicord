@@ -1009,6 +1009,57 @@ fn same_work_course_survives_verification_retry_resume_and_missing_sources(
         }) {
             p.evidence_keys = vec![change_key.clone()];
         }
+        response.generator.host = "authored-grounded-control".into();
+        response.paragraphs[0].text =
+            "Users need current-query results when responses arrive out of order.".into();
+        response.paragraphs[1].text = if no_change {
+            "The failed arrival regression was investigated. No code change was reported; later unit reruns passed."
+        } else {
+            "The failed arrival regression was investigated. Requests were tagged with a sequence so stale responses cannot replace newer results; cancellation was not added."
+        }.into();
+        response.paragraphs[1]
+            .evidence_keys
+            .push(format!("change:{}", f.checkpoints["investigate"]));
+        response.paragraphs[2].text = if no_change {
+            "No changed runtime effect is established by this investigation."
+        } else {
+            "Visible results should follow the latest query; no network cancellation is claimed."
+        }
+        .into();
+        response.paragraphs[3].text = "The failed unit regression was retried successfully. Only unit checks are recorded; browser behavior remains untested.".into();
+        response.paragraphs[3].evidence_keys.extend([
+            format!("history:{}", f.checkpoints["investigate"]),
+            format!("history:{}", f.checkpoints["fix"]),
+            format!("limits:{}", f.checkpoints["resume"]),
+        ]);
+        response.paragraphs[4].text = "Check browser loading feedback.".into();
+        let supported_fixture = |realization: &ExplanationRealization| {
+            let wording = realization
+                .paragraphs
+                .iter()
+                .map(|p| p.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            wording.contains("browser behavior remains untested")
+                && wording.contains("failed unit regression")
+                && ![
+                    "browser checks passed",
+                    "requests were cancelled",
+                    "user accepted",
+                ]
+                .iter()
+                .any(|claim| wording.contains(claim))
+        };
+        assert!(supported_fixture(&response));
+        for unsupported in [
+            "browser checks passed",
+            "requests were cancelled",
+            "user accepted",
+        ] {
+            let mut counterexample = response.clone();
+            counterexample.paragraphs[3].text.push_str(unsupported);
+            assert!(!supported_fixture(&counterexample));
+        }
         validate_explanation(&plan, &response)?;
         let mut wrong = response.clone();
         wrong.paragraphs[1].evidence_keys = vec!["next_step".into()];
@@ -1043,6 +1094,11 @@ fn same_work_course_survives_verification_retry_resume_and_missing_sources(
             .facts
             .iter()
             .any(|a| a.question == "UserAcceptance" && !a.text.contains("Accepted")));
+        assert!(answers.facts.iter().any(|a| a.question == "RecordedLimits"
+            && a.text.contains("Browser behavior remains untested")
+            && a.evidence_keys
+                .iter()
+                .any(|k| k.contains(&f.checkpoints["resume"].to_string()))));
         let page = get(&f, &format!("/?view=work&work={work}"));
         assert!(page.contains("Inverted arrival regression failed"));
         let mut canonical = f.operations.canonical_basis(f.project)?;
@@ -1061,5 +1117,141 @@ fn same_work_course_survives_verification_retry_resume_and_missing_sources(
             .any(|s| s["identity"] == source.to_string() && s["availability"] == "Unavailable"));
         assert!(validate_explanation(&incomplete, &fake(&plan)).is_err());
     }
+    Ok(())
+}
+
+#[test]
+fn decision_context_is_exact_scoped_and_shared_with_documents_and_recall(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let id = f.decisions["explicit"];
+    let subject = ExplanationSubject::Decision(id);
+    let d = canonical
+        .active_decisions
+        .iter()
+        .find(|d| d.decision.id == id)
+        .ok_or("Decision")?;
+    let q = canonical
+        .terminal_question_history
+        .iter()
+        .find(|q| q.id == d.decision.question_id)
+        .ok_or("Question")?;
+    let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+    let context = plan
+        .evidence
+        .iter()
+        .find(|e| e.key == "question_context")
+        .ok_or("context")?;
+    assert_eq!(context.record_kind, "question");
+    assert_eq!(context.identity, q.id.to_string());
+    assert_eq!(context.revision, d.decision.question_revision);
+    assert_eq!(context.content["problem"], q.prompt_basis);
+    assert_eq!(
+        plan.evidence
+            .iter()
+            .find(|e| e.key == "user_rationale")
+            .ok_or("rationale")?
+            .content,
+        serde_json::Value::Null
+    );
+    let mut response = fake(&plan);
+    response.paragraphs = [
+        (ExplanationQuestion::UserRationale, vec!["user_rationale", "choice", "question_context"], "The recorded question asks about the boundary. The user chose local; no user rationale is recorded."),
+        (ExplanationQuestion::Recommendation, vec!["recommendation"], "The agent recommended a bounded local boundary."),
+        (ExplanationQuestion::Consequences, vec!["consequences"], "These are expected alternative consequences; selecting local is not proof of implementation."),
+        (ExplanationQuestion::Applicability, vec!["applicability"], "The choice applies to its recorded Work scope and needs review."),
+    ].into_iter().map(|(question, keys, text)| ExplanationParagraph { question,
+        text:text.into(), evidence_keys:keys.into_iter().map(str::to_owned).collect() }).collect();
+    f.operations
+        .record_explanation(f.project, subject, "en", response)?;
+    let p = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::ExactWork(f.goals["older"]))?;
+    let selected = p
+        .selected_work_decisions
+        .iter()
+        .find(|d| d.decision.decision_id == id)
+        .ok_or("scoped")?;
+    assert_eq!(
+        selected
+            .decision
+            .question_context
+            .as_ref()
+            .ok_or("context")?
+            .prompt,
+        q.prompt_basis
+    );
+    let recall = p
+        .resume
+        .decisions
+        .iter()
+        .find(|d| d.decision_id == id)
+        .ok_or("Recall")?;
+    assert_eq!(
+        decision_answers(&selected.decision, "en", FixedLocale::English),
+        decision_answers(recall, "en", FixedLocale::English)
+    );
+    let answers = decision_answers(recall, "en", FixedLocale::English);
+    assert!(answers
+        .facts
+        .iter()
+        .any(|a| a.question == "QuestionContext" && a.text.contains(&q.prompt_basis)));
+    let page = get(&f, &format!("/?view=decisions&decision={id}"));
+    assert!(page.contains("Recorded question context quotation"));
+    assert!(page.contains("no user rationale is recorded"));
+    let work_plan = f.operations.prepare_explanation(
+        f.project,
+        ExplanationSubject::Work(f.goals["older"]),
+        "en",
+    )?;
+    assert!(work_plan
+        .evidence
+        .iter()
+        .any(|e| e.key == format!("decision:{id}:question_context")));
+    assert!(!work_plan
+        .evidence
+        .iter()
+        .any(|e| e.identity == f.decisions["other_work"].to_string()));
+    let request = DocumentRequest {
+        requested_language: "en".into(),
+        fixed_locale: FixedLocale::English,
+        generated_at: TimestampMicros::from_unix_micros(123),
+        generator: GeneratorIdentity {
+            generator: "context-control".into(),
+            agent: None,
+            model: None,
+        },
+        requested_destinations: Vec::new(),
+    };
+    let documents = f.operations.documents_from_projection(&p, &request)?;
+    assert!(documents
+        .decision_report
+        .markdown
+        .content
+        .contains(&q.prompt_basis));
+    let mut changed = canonical.clone();
+    let newer = changed
+        .terminal_question_history
+        .iter_mut()
+        .find(|q| q.id == d.decision.question_id)
+        .ok_or("q")?;
+    newer.revision += 1;
+    newer.prompt_basis =
+        "UNSUPPORTED newer question must not substitute for displayed history".into();
+    let unavailable = prepare_explanation(&changed, subject, "en")?;
+    assert_ne!(plan.fingerprint, unavailable.fingerprint);
+    assert_eq!(
+        unavailable
+            .evidence
+            .iter()
+            .find(|e| e.key == "question_context")
+            .ok_or("missing context")?
+            .content["availability"],
+        "Unavailable"
+    );
+    assert!(!serde_json::to_string(&unavailable)?.contains("UNSUPPORTED newer question"));
+    assert!(validate_explanation(&unavailable, &fake(&plan)).is_err());
+    assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
     Ok(())
 }

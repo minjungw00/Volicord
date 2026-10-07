@@ -407,3 +407,12 @@ attachment. Capture both locales and preserve separate directories before and
 after generation/mutation. Browser artifacts establish displayed state only;
 human inspection, 200% zoom declarations and experience remain separate. Actual
 native zoom support uses the existing tab-zoom extension, never viewport emulation.
+
+
+Work detail places related Learning in an explicit Candidate Inspection section
+beside canonical Decision history. Overview links to that exact Work inspection.
+The retained learning problem, alternatives, response and feedback keep Session
+Candidate meaning; withheld, expired or deleted content is not reconstructed.
+Decision readings show their retained exact originating Question context separately
+from user choice and agent recommendation. Ordinary reading invokes no explanation
+generation or provider.

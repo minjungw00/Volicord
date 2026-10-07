@@ -1474,6 +1474,7 @@ fn provenance_representation_learning_selection_never_becomes_product_authority(
             .as_ref()
             .and_then(|c| c.learning_deliberation.as_ref())
             .is_some_and(|l| matches!(l.state, LearningDeliberationState::Completed { .. }))));
+    assert_work_learning_inspection(&fixture, 0, 1)?;
     Ok(())
 }
 
@@ -4770,6 +4771,7 @@ fn run_user_owned_policy_with_learning(mixed: bool) -> Result<(), Box<dyn std::e
         [failure_decision_id, retry_decision_id]
     );
     assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    assert_work_learning_inspection(&fixture, 2, usize::from(mixed))?;
     Ok(())
 }
 
@@ -7051,5 +7053,202 @@ fn answer_selection_tracks_every_grounded_history_prefix() -> Result<(), Box<dyn
     assert!(!answers
         .text()
         .contains("coverage of later changes is established"));
+    Ok(())
+}
+
+fn assert_work_learning_inspection(
+    f: &Fixture,
+    decision_count: usize,
+    learning_count: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    let canonical = f.operations.canonical_basis(f.project_id)?;
+    let candidates = f.operations.candidate_basis(f.project_id)?;
+    let projection = f
+        .operations
+        .project_projection_selected(f.project_id, WorkSelector::ExactWork(f.goal_id))?;
+    let work = projection.selected_work.as_ref().ok_or("Work")?;
+    assert_eq!(work.decision_ids.len(), decision_count);
+    assert_eq!(projection.selected_work_decisions.len(), decision_count);
+    let learning = projection
+        .candidate_inspection
+        .iter()
+        .filter(|candidate| {
+            candidate
+                .learning_deliberation
+                .as_ref()
+                .is_some_and(|l| l.goal_context_id == f.goal_id)
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(learning.len(), learning_count);
+    for inspection in &learning {
+        let basis = inspection
+            .learning_explanation_basis
+            .as_ref()
+            .ok_or("Learning basis")?;
+        assert!(basis
+            .problem
+            .as_deref()
+            .is_some_and(|p| p.contains("provenance-representation")));
+        assert!(basis
+            .latest_agent_feedback
+            .as_deref()
+            .is_some_and(|p| p.contains("centralizes provenance")));
+        assert!(basis
+            .latest_user_rationale
+            .as_deref()
+            .is_some_and(|p| p.contains("invariant")));
+        assert_eq!(basis.alternatives.len(), 2);
+        assert!(matches!(
+            basis.selection_outcome,
+            LearningSelectionOutcome::Selected {
+                completed: true,
+                ..
+            }
+        ));
+    }
+    let build = |basis: &volicord_inquiry::CandidateReadBasis, access| {
+        build_project_projection(ProjectProjectionInputs {
+            canonical: &canonical,
+            candidates: CandidateProjectionInput::Available(basis),
+            analyses: &[],
+            metadata: &[],
+            analysis_issues: &[],
+            selection: WorkSelector::ExactWork(f.goal_id),
+            detail: ProjectionDetail::default(),
+            requirements: ProjectionReadRequirements {
+                code: false,
+                inspection: true,
+            },
+            candidate_content_access: access,
+            observed_at: canonical.project.updated_at,
+            bound: ProjectionBound {
+                max_items_per_section: 1,
+            },
+            applicability: volicord_inquiry::ApplicabilityQuery {
+                project_id: f.project_id,
+                paths: Vec::new(),
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+                current_assumptions: Vec::new(),
+                met_revisit_triggers: Vec::new(),
+            },
+        })
+    };
+    let references = volicord_operations::work_learning_inspection_json(&projection);
+    assert_eq!(
+        references["learning_references"]
+            .as_array()
+            .ok_or("references")?
+            .len(),
+        learning_count
+    );
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    assert_eq!(
+        volicord_operations::run_cli(
+            vec![
+                "--runtime".to_string(),
+                f.operations.layout().root().to_string_lossy().into_owned(),
+                "--project".into(),
+                f.project_id.to_string(),
+                "--json".into(),
+                "status".into()
+            ],
+            &mut out,
+            &mut err
+        ),
+        volicord_operations::CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&err)
+    );
+    let status: serde_json::Value = serde_json::from_slice(&out)?;
+    assert_eq!(
+        status["candidate_inspection"]["learning_references"],
+        references["learning_references"]
+    );
+    if let Some(learning) = learning.first() {
+        // The exact subject is selected before the general Candidate presentation bound.
+        let bounded = build(&candidates, CandidateContentAccess::AllowBoundedSummary)?;
+        assert_eq!(
+            bounded.candidate_inspection[0].candidate_id,
+            learning.candidate_id
+        );
+        assert!(
+            bounded
+                .issues
+                .iter()
+                .any(|issue| issue.affected_scope == "candidate_inspection"
+                    && issue.omitted_count > 0)
+        );
+        for mode in 0..3 {
+            let mut restricted = candidates.clone();
+            match mode {
+                0 => restricted
+                    .withheld_for_canonical_forgetting
+                    .push(learning.candidate_id),
+                1 => {
+                    restricted
+                        .candidates
+                        .iter_mut()
+                        .find(|c| c.id == learning.candidate_id)
+                        .ok_or("Candidate")?
+                        .retention
+                        .retained_until = Some(canonical.project.updated_at)
+                }
+                _ => {}
+            }
+            let result = build(
+                &restricted,
+                if mode == 2 {
+                    CandidateContentAccess::PolicyWithheld
+                } else {
+                    CandidateContentAccess::AllowBoundedSummary
+                },
+            )?;
+            if mode != 2 {
+                assert!(
+                    !learning_resume_projection(&restricted, canonical.project.updated_at)
+                        .items
+                        .iter()
+                        .any(|item| item.candidate_id == learning.candidate_id)
+                );
+            }
+            assert!(!result
+                .candidate_inspection
+                .iter()
+                .any(|c| c.learning_deliberation.is_some()));
+        }
+        let work_plan = f.operations.prepare_explanation(
+            f.project_id,
+            ExplanationSubject::Work(f.goal_id),
+            "en",
+        )?;
+        assert!(!work_plan
+            .evidence
+            .iter()
+            .any(|e| e.record_kind == "candidate"));
+        f.operations.delete_candidate(
+            f.project_id,
+            learning.candidate_id,
+            "Explicit read-fixture deletion",
+        )?;
+        let after = f
+            .operations
+            .project_projection_selected(f.project_id, WorkSelector::ExactWork(f.goal_id))?;
+        assert!(!after
+            .candidate_inspection
+            .iter()
+            .any(|c| c.learning_deliberation.is_some()));
+        assert_eq!(canonical, f.operations.canonical_basis(f.project_id)?);
+        assert_eq!(
+            work_plan,
+            f.operations.prepare_explanation(
+                f.project_id,
+                ExplanationSubject::Work(f.goal_id),
+                "en"
+            )?
+        );
+    }
     Ok(())
 }

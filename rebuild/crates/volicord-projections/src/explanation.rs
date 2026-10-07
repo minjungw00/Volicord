@@ -317,6 +317,13 @@ pub fn prepare_explanation(
             json!(purpose.statement),
         );
     }
+    for decision_id in &selected.decision_ids {
+        let decision_plan = prepare_decision(canonical, *decision_id, language)?;
+        evidence.extend(decision_plan.evidence.into_iter().map(|mut e| {
+            e.key = format!("decision:{decision_id}:{}", e.key);
+            e
+        }));
+    }
     finish_plan(canonical, subject, "work_outcome", language, evidence)
 }
 
@@ -343,7 +350,7 @@ fn prepare_decision(
             work_contexts: Vec::new(),
         },
     );
-    let evidence = [
+    let mut evidence: Vec<ExplanationEvidence> = [
         ("choice", "choice", decision.user_source_basis.clone(), json!({"choice":format!("{:?}",decision.choice),"chosen_alternative_key":decision.chosen_alternative_key,"state":format!("{:?}",decision.state)})),
         ("user_rationale", "user_rationale", decision.user_source_basis.clone(), json!(decision.user_rationale)),
         ("recommendation", "displayed_recommendation", decision.recommendation_source_basis.clone(), json!({"alternative_key":decision.recommended_alternative_key,"rationale":decision.recommendation_rationale})),
@@ -353,6 +360,32 @@ fn prepare_decision(
         key:key.into(),field:field.into(),sources:sources.into_iter().map(|id|id.to_string()).collect(),content,
         record_kind:"decision".into(),identity:id.to_string(),revision:decision.revision,
     }).collect();
+    let question = canonical
+        .active_questions
+        .iter()
+        .chain(&canonical.terminal_question_history)
+        .find(|q| {
+            q.project_id == canonical.project.id
+                && q.id == lifecycle.decision.question_id
+                && q.revision == lifecycle.decision.question_revision
+        });
+    evidence.push(match question {
+        Some(q) => ExplanationEvidence { key:"question_context".into(), record_kind:"question".into(),
+            identity:q.id.to_string(), revision:q.revision,
+            field:"prompt_basis,why_it_matters_now,established_facts,trade_offs,uncertainty,known_limits,what_the_answer_unlocks".into(),
+            sources:q.source_basis.iter().chain(q.established_facts.iter().flat_map(|f| &f.source_basis))
+                .map(ToString::to_string).collect(),
+            content:json!({"availability":"Available","problem":q.prompt_basis,
+                "why_it_matters_now":q.why_it_matters_now,"established_facts":q.established_facts,
+                "trade_offs":q.trade_offs,"uncertainty":q.uncertainty,"known_limits":q.known_limits,
+                "what_the_answer_unlocks":q.what_the_answer_unlocks}) },
+        None => ExplanationEvidence { key:"question_context".into(), record_kind:"decision".into(),
+            identity:id.to_string(), revision:decision.revision, field:"question_id,question_revision".into(),
+            sources:Vec::new(), content:json!({"availability":"Unavailable",
+                "question_id":lifecycle.decision.question_id.to_string(),
+                "question_revision":lifecycle.decision.question_revision,
+                "reason":"Exact originating Question revision is unavailable; do not reconstruct its problem or history"}) },
+    });
     finish_plan(
         canonical,
         ExplanationSubject::Decision(id),
@@ -404,7 +437,7 @@ fn finish_plan(
         .collect();
     let questions = match subject {
         ExplanationSubject::Work(_) => "Answer purpose, reported_change, expected_effect, verification and next_step (optional limits). Purpose explains the actual problem succinctly instead of copying the user prompt. Reported_change describes the recorded investigation, changes and outcome separately; absent investigation stays unrecorded. Read all course:* and change:* observations in this Work, including resume and verification-only reports. State past limitations as past observations, and use the latest course for remaining work; silence does not prove an earlier limitation resolved. Explain the problem or goal first, then what was changed or investigated and how the reported before/after behavior differs. Use change:* history when a later result only reports verification or resumption; retain observation chronology. Describe behavior only when full report/Source prose supports it. Distinguish the reported result from its verification and state the next meaningful limitation; paths alone prove neither a feature nor runtime effect.",
-        ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). State the actual user choice or delegation distinctly from the agent's recommended alternative. Explain alternative consequences/trade-offs as expectations, the recommendation's evidence basis, and applicable scope/assumptions/revisit conditions. Missing user rationale stays missing; agent rationale never supplies it. Choosing an option does not prove its implementation or performance.",
+        ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). Use question_context for the recorded problem and why the choice arose; unavailable exact context stays unavailable. State the actual user choice or delegation distinctly from the agent's recommended alternative. Explain alternative consequences/trade-offs as expectations, the recommendation's evidence basis, and applicable scope/assumptions/revisit conditions. Missing user rationale stays missing; agent rationale never supplies it. Choosing an option does not prove its implementation or performance.",
     };
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,

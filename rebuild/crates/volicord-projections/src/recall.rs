@@ -55,6 +55,10 @@ pub enum BriefDecisionState {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BriefDecision {
     pub explanations: Vec<crate::ExplanationReading>,
+    pub question_reference: volicord_context::QuestionReference,
+    /// Only the retained exact Question revision; no newer-context substitution.
+    pub question_context: Option<BriefQuestion>,
+    pub question_source_status: Vec<crate::ReadingSourceStatus>,
     pub user_source_basis: Vec<SourceId>,
     pub user_source_status: Vec<crate::ReadingSourceStatus>,
     pub recommendation_source_status: Vec<crate::ReadingSourceStatus>,
@@ -624,22 +628,51 @@ pub(crate) fn brief_decision(
             DecisionApplicabilityState::Superseded => BriefDecisionState::Superseded,
             DecisionApplicabilityState::UnavailableBasis => BriefDecisionState::UnavailableBasis,
         };
-    let question_uncertainty = applicability
-        .displayed_basis
-        .as_ref()
-        .map(|basis| basis.uncertainty.clone())
-        .unwrap_or_default();
-    let known_limits = applicability
-        .displayed_basis
-        .as_ref()
-        .map(|basis| basis.known_limits.clone())
-        .unwrap_or_default();
+    let originating_question = canonical
+        .active_questions
+        .iter()
+        .chain(&canonical.terminal_question_history)
+        .find(|q| {
+            q.project_id == canonical.project.id
+                && q.id == lifecycle.decision.question_id
+                && q.revision == lifecycle.decision.question_revision
+        });
+    let question_sources = originating_question
+        .into_iter()
+        .flat_map(|q| {
+            q.source_basis.iter().chain(
+                q.established_facts
+                    .iter()
+                    .flat_map(|fact| &fact.source_basis),
+            )
+        })
+        .copied()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let question_uncertainty =
+        originating_question.map_or_else(Vec::new, |q| q.uncertainty.clone());
+    let known_limits = originating_question.map_or_else(Vec::new, |q| q.known_limits.clone());
     let displayed_alternatives = lifecycle.decision.displayed_alternatives.clone();
     let chosen_alternative_key = match &lifecycle.decision.choice {
         DecisionChoice::Alternative { alternative_key } => Some(alternative_key.clone()),
         DecisionChoice::Delegation { .. } => None,
     };
     BriefDecision {
+        question_reference: volicord_context::QuestionReference {
+            question_id: lifecycle.decision.question_id,
+            revision: lifecycle.decision.question_revision,
+        },
+        question_source_status: crate::reading::reading_sources(canonical, &question_sources),
+        question_context: originating_question.map(|q| BriefQuestion {
+            question_id: q.id,
+            revision: q.revision,
+            prompt: q.prompt_basis.clone(),
+            on_current_frontier: false,
+            blocked_basis: Vec::new(),
+            what_the_answer_unlocks: q.what_the_answer_unlocks.clone(),
+            source_basis: question_sources,
+        }),
         explanations: Vec::new(),
         user_source_status: crate::reading::reading_sources(
             canonical,
