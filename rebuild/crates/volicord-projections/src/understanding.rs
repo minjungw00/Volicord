@@ -1018,6 +1018,8 @@ fn is_explainable_component(entity: &MapEntity, relationships: &[MapRelation]) -
             | CodeEntityKind::Interface
             | CodeEntityKind::Trait
             | CodeEntityKind::Struct
+            | CodeEntityKind::Function
+            | CodeEntityKind::Method
             | CodeEntityKind::Test
             | CodeEntityKind::Configuration
     ) || relationships

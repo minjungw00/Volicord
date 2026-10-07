@@ -204,3 +204,93 @@ mod learning_tests {
         Ok(())
     }
 }
+
+#[test]
+fn generated_code_reading_discloses_basis_and_withholds_unavailable_claims(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::{CodeExplanationState, MapInterpretation, WorkSelector};
+    let fixture = reading_fixture::fixture()?;
+    let before = fixture.operations.canonical_basis(fixture.project)?;
+    let mut projection = fixture.operations.project_projection_selected(
+        fixture.project,
+        WorkSelector::ExactWork(fixture.goals["older"]),
+    )?;
+    let entity = projection
+        .current_work_topology
+        .entities
+        .iter()
+        .find(|e| e.locator == "python/worker.py" && e.kind == CodeEntityKind::Function)
+        .ok_or("function")?
+        .clone();
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        for state in [
+            CodeExplanationState::Current,
+            CodeExplanationState::Partial,
+            CodeExplanationState::Stale,
+            CodeExplanationState::Unsupported,
+            CodeExplanationState::Unavailable,
+        ] {
+            // Authored read-model input exercises the actual Viewer consumer;
+            // Projection tests separately exercise interpretation basis validation.
+            projection.repository_map.agent_interpretations = vec![MapInterpretation {
+                identity: "authored-render-control".into(),
+                text: "AUTHORED_BODY_INTERPRETATION".into(),
+                source_basis: vec![entity.source_id],
+                entity_basis: vec![entity.identity.clone()],
+                relation_basis: Vec::new(),
+                source_ranges: entity.source_range.clone().into_iter().collect(),
+                analysis_snapshot: entity.analysis_snapshot,
+                repository_snapshot: entity.repository_snapshot,
+                freshness: entity.freshness.clone(),
+                state,
+                producer: "test / test-host / test-session".into(),
+                generated_at_unix_micros: 123,
+                known_gaps: vec!["No runtime execution observation".into()],
+                uncertainty: volicord_repository_intelligence::Uncertainty::none(),
+            }];
+            let understanding =
+                build_project_understanding(&projection, UnderstandingBound::default());
+            let request = ViewerRequest {
+                project_id: fixture.project,
+                locale,
+                view: ViewerView::Code {
+                    scope: CodeScope::Work(Some(fixture.goals["older"])),
+                    entity: None,
+                },
+                requested_language: "en".into(),
+                guarded_request: None,
+            };
+            let mut html = String::new();
+            code(&mut html, &request, &projection, &understanding, false);
+            let card = html
+                .split("<details data-statement-role=\"generated-interpretation\"")
+                .nth(1)
+                .ok_or("generated disclosure")?
+                .split("</details>")
+                .next()
+                .ok_or("card")?;
+            assert!(card.contains(&format!("data-explanation-state=\"{state:?}\"")));
+            assert_eq!(
+                card.contains("AUTHORED_BODY_INTERPRETATION"),
+                !matches!(
+                    state,
+                    CodeExplanationState::Unsupported | CodeExplanationState::Unavailable
+                )
+            );
+            for basis in [
+                entity.analysis_snapshot.to_string(),
+                entity.repository_snapshot.to_string(),
+                entity.source_id.to_string(),
+                entity.identity.clone(),
+                "test-host".into(),
+                "ZeroBasedUtf8Byte".into(),
+            ] {
+                assert!(card.contains(&basis));
+            }
+            assert!(card.contains("No runtime execution observation"));
+            assert!(!card.contains("verified-fact"));
+        }
+    }
+    assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
+    Ok(())
+}

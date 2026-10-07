@@ -669,3 +669,11 @@ callee outcome, external effect, observed branch execution or runtime/data flow.
 They add no graph edge. Parser diagnostics, omissions and source freshness remain
 independent constraints on consumer explanations. Source bodies are observed only
 during explicit local analysis, never fetched or transmitted by projection reads.
+
+Structural source reads compare the actual parser input bytes with the inventory
+content hash before publishing any declaration or body observations. A changed or
+missing observation basis fails that file with diagnostics and preserves unaffected
+languages/files. Source-semantic analyzer `4` similarly withholds source text and
+results for changed/unavailable file bytes, recording file failure rather than using
+new text with old structural coordinates. Incremental rebind retains exact local
+body positions only when content and adapter/analyzer bases permit reuse.

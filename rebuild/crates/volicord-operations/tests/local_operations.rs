@@ -673,7 +673,7 @@ fn project_analysis_recall_and_portable_io_use_current_owners(
             CapabilityState::Available | CapabilityState::Partial
         ) && report.coverage.covered_relation_count > 0
             && report.analyzer.as_ref().is_some_and(|analyzer| {
-                analyzer.name == "volicord-source-semantic-index" && analyzer.version == "3"
+                analyzer.name == "volicord-source-semantic-index" && analyzer.version == "4"
             })
     }));
     assert!(!analysis_value.analysis.semantic_results.is_empty());

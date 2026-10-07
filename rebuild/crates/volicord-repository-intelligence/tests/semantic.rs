@@ -144,7 +144,7 @@ fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result
                 CapabilityState::Available | CapabilityState::Partial
             ) && report.coverage.covered_relation_count > 0
                 && report.analyzer.as_ref().is_some_and(|analyzer| {
-                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "3"
+                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "4"
                 })
                 && report.provenance_class == ProvenanceClass::SemanticResult
         }));

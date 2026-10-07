@@ -1171,7 +1171,20 @@ fn code(
         render_code_behavior(html, r, entity, &u.architecture.relationships);
     }
     for interpretation in &u.generated_interpretations {
-        html.push_str(&format!("<details data-statement-role=\"generated-interpretation\" data-explanation-state=\"{:?}\"><summary>{} · {:?}</summary><p>{}</p><p>{}</p><pre>{}</pre></details>", interpretation.freshness.state, escape(text(r.locale,"Generated interpretation","생성 해석")), interpretation.freshness.state, escape(&interpretation.text), escape(&interpretation.known_gaps.join("; ")), escape(&format!("producer: {}\ngenerated: {}\nSource: {:?}\nAnalysis: {}\nRepository: {}\nentities: {:?}\nrelations: {:?}\nranges: {:?}\nuncertainty: {:?}", interpretation.producer, interpretation.generated_at_unix_micros, interpretation.source_basis, interpretation.analysis_snapshot, interpretation.repository_snapshot, interpretation.entity_basis, interpretation.relation_basis, interpretation.source_ranges, interpretation.uncertainty))));
+        let prose = if matches!(
+            interpretation.state,
+            volicord_projections::CodeExplanationState::Unavailable
+                | volicord_projections::CodeExplanationState::Unsupported
+        ) {
+            text(
+                r.locale,
+                "Generated prose is unavailable for this evidence basis.",
+                "이 근거로 생성 해석 본문을 제공할 수 없습니다.",
+            )
+        } else {
+            &interpretation.text
+        };
+        html.push_str(&format!("<details data-statement-role=\"generated-interpretation\" data-explanation-state=\"{:?}\"><summary>{} · {:?}</summary><p>{}</p><p>{}</p><pre>{}</pre></details>", interpretation.state, escape(text(r.locale,"Generated interpretation","생성 해석")), interpretation.state, escape(prose), escape(&interpretation.known_gaps.join("; ")), escape(&format!("producer: {}\ngenerated: {}\nSource: {:?}\nAnalysis: {}\nRepository: {}\nentities: {:?}\nrelations: {:?}\nranges: {:?}\nuncertainty: {:?}", interpretation.producer, interpretation.generated_at_unix_micros, interpretation.source_basis, interpretation.analysis_snapshot, interpretation.repository_snapshot, interpretation.entity_basis, interpretation.relation_basis, interpretation.source_ranges, interpretation.uncertainty))));
     }
     if !u.architecture.components.is_empty() || !u.architecture.relationships.is_empty() {
         render_grounded_diagram(
@@ -1368,7 +1381,7 @@ fn render_code_behavior(
             )
         ));
     }
-    html.push_str(&format!("<p>{}</p><details><summary>{}</summary><pre>{}</pre></details></div>", escape(&behavior.limitations.join("; ")), text(r.locale, "Body expressions and exact source evidence", "본문 표현식과 정확한 소스 근거"), escape(&format!("Source: {}\nAnalysis: {}\nRepository: {}\nfreshness: {:?}\nclaims: {:#?}\nomitted: {}\nsupporting static relations: {:?}", entity.source_id, entity.analysis_snapshot, entity.repository_snapshot, entity.freshness, behavior.claims, behavior.omitted_count, relations.iter().filter(|relation| relation.source_entity == entity.identity || relation.target_entity.as_deref() == Some(entity.identity.as_str())).map(|relation| (&relation.identity, &relation.kind, relation.class)).collect::<Vec<_>>()))));
+    html.push_str(&format!("<p>{}</p><details><summary>{}</summary><pre>{}</pre></details></div>", escape(&behavior.limitations.join("; ")), text(r.locale, "Body expressions and exact source evidence", "본문 표현식과 정확한 소스 근거"), escape(&format!("Source: {}\nAnalysis: {}\nRepository: {}\nfreshness: {:?}\nclaims: {:#?}\nomitted: {}\nsupporting static relations: {:?}", entity.source_id, entity.analysis_snapshot, entity.repository_snapshot, entity.freshness, behavior.claims, behavior.omitted_count, relations.iter().filter(|relation| relation.source_entity == entity.identity || relation.target_entity.as_deref() == Some(entity.identity.as_str())).map(|relation| (&relation.identity, &relation.kind, relation.class, &relation.freshness)).collect::<Vec<_>>()))));
 }
 pub(super) fn fragment_identity(id: &str) -> String {
     id.as_bytes()

@@ -192,7 +192,14 @@ fn analyze_repository_inner(
         } else {
             fs::read(&source_path)
                 .map_err(|error| FileFailure::new(format!("source read failed: {error}")))
-                .and_then(|source| parse_file(&language, &entry.area, &source))
+                .and_then(|source| {
+                    parse_observed_file(
+                        &language,
+                        &entry.area,
+                        entry.content_sha256.as_deref(),
+                        &source,
+                    )
+                })
         };
         match parse_result {
             Ok(mut result) => {
@@ -677,6 +684,18 @@ struct VisitContext {
     parent: usize,
     prefix: String,
     callable: Option<usize>,
+}
+
+fn parse_observed_file(
+    language: &Language,
+    area: &AreaId,
+    expected_hash: Option<&str>,
+    source: &[u8],
+) -> Result<ParsedFile, FileFailure> {
+    if !crate::inventory::matches_observed_content(expected_hash, source) {
+        return Err(FileFailure::new("source changed after inventory observation; no current structural/body evidence was published"));
+    }
+    parse_file(language, area, source)
 }
 
 fn parse_file(
@@ -2432,6 +2451,34 @@ mod tests {
     use std::collections::BTreeSet;
     use std::path::Path;
     use volicord_context::{ProjectId, SourceId};
+
+    #[test]
+    fn changed_source_bytes_cannot_produce_structural_body_evidence(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use sha2::{Digest, Sha256};
+        let observed = b"def normalize(name):\n    return name.strip()\n";
+        let changed = b"def normalize(name):\n    return name.upper()\n";
+        let hash = format!("{:x}", Sha256::digest(observed));
+        let area = crate::AreaId {
+            kind: crate::AreaKind::File,
+            path: "worker.py".into(),
+        };
+        let parsed = super::parse_observed_file(&Language::Python, &area, Some(&hash), observed)
+            .map_err(|failure| failure.message)?;
+        assert!(parsed
+            .entities
+            .iter()
+            .filter_map(|e| e.body_observations.as_ref())
+            .any(|b| b
+                .observations
+                .iter()
+                .any(|o| o.expression == "return name.strip()")));
+        assert!(
+            super::parse_observed_file(&Language::Python, &area, Some(&hash), changed).is_err()
+        );
+        assert!(super::parse_observed_file(&Language::Python, &area, None, changed).is_err());
+        Ok(())
+    }
 
     #[test]
     fn injected_adapter_failure_is_bounded_to_one_language(

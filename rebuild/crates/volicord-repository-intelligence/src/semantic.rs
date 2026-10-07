@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 
 const SEMANTIC_ANALYZER_NAME: &str = "volicord-source-semantic-index";
-const SEMANTIC_ANALYZER_VERSION: &str = "3";
+const SEMANTIC_ANALYZER_VERSION: &str = "4";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CanonicalLinkSelector {
@@ -206,6 +206,10 @@ fn analyze_repository_semantics_inner(
         let mut language_diagnostics = Vec::new();
         let source_text =
             read_sources(&root, &language_bases, &language, &mut language_diagnostics);
+        let language_facts = language_facts
+            .into_iter()
+            .filter(|fact| source_text.contains_key(&fact.entity.area.path))
+            .collect::<Vec<_>>();
         let source_lines = index_source_lines(&source_text);
         add_definition_relations(&language_facts, &mut language_results, &analysis);
         add_structural_semantics(
@@ -280,7 +284,9 @@ fn analyze_repository_semantics_inner(
             // on the language capability and in the shared diagnostic catalog.
             if let Some(local) = diagnostics_by_area.get(&basis.area) {
                 basis.diagnostic_ids.extend(local.iter().cloned());
-                if basis.state == CapabilityState::Available {
+                if !source_text.contains_key(&basis.area.path) {
+                    basis.state = CapabilityState::Failed;
+                } else if basis.state == CapabilityState::Available {
                     basis.state = CapabilityState::Partial;
                 }
             }
@@ -356,9 +362,10 @@ fn read_sources(
     let mut result = BTreeMap::new();
     for basis in bases {
         match fs::read_to_string(root.join(&basis.area.path)) {
-            Ok(text) => {
+            Ok(text) if crate::inventory::matches_observed_content(Some(&basis.content_sha256), text.as_bytes()) => {
                 result.insert(basis.area.path.clone(), text);
             }
+            Ok(_) => diagnostics.push(diagnostic(language, basis.area.clone(), "semantic.source_changed", "source changed after structural observation; no semantic result may use the changed body", DiagnosticSeverity::Error, None)),
             Err(error) => diagnostics.push(diagnostic(
                 language,
                 basis.area.clone(),
@@ -1267,6 +1274,39 @@ mod tests {
     use std::error::Error;
     use std::path::Path;
     use volicord_context::{ProjectId, SourceId};
+
+    #[test]
+    fn semantic_source_change_cannot_supply_current_source_text(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        std::fs::write(root.path().join("lib.rs"), "pub fn changed() {}")?;
+        let basis = crate::FileAnalysisBasis {
+            area: crate::AreaId {
+                kind: crate::AreaKind::File,
+                path: "lib.rs".into(),
+            },
+            language: crate::Language::Rust,
+            content_sha256: "different observed hash".into(),
+            adapter: super::semantic_adapter(&crate::Language::Rust),
+            analyzer: super::semantic_analyzer(),
+            dependency_locators: Vec::new(),
+            build_context_sha256: None,
+            state: crate::CapabilityState::Available,
+            diagnostic_ids: Vec::new(),
+        };
+        let mut diagnostics = Vec::new();
+        let sources = super::read_sources(
+            root.path(),
+            &[basis],
+            &crate::Language::Rust,
+            &mut diagnostics,
+        );
+        assert!(sources.is_empty());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "semantic.source_changed");
+        assert_eq!(diagnostics[0].severity, crate::DiagnosticSeverity::Error);
+        Ok(())
+    }
 
     #[test]
     fn indexed_source_lines_preserve_text_line_boundaries() {

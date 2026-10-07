@@ -1495,6 +1495,10 @@ fn diagnostic_identity(code: &str, path: &str) -> String {
     format!("inventory:{code}:{}", sha256_hex(path.as_bytes()))
 }
 
+pub(crate) fn matches_observed_content(expected: Option<&str>, bytes: &[u8]) -> bool {
+    expected.is_some_and(|hash| hash == sha256_hex(bytes))
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     hex_digest(Sha256::digest(bytes).as_slice())
 }

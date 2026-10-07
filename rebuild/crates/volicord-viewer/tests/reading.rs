@@ -1333,3 +1333,124 @@ fn code_reading_explains_source_operations_with_work_and_exact_entity_evidence(
     );
     Ok(())
 }
+
+#[test]
+fn polyglot_code_reading_keeps_rust_python_and_typescript_behavior_separate(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut scenario: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    let work = scenario["works"]
+        .as_array_mut()
+        .ok_or("works")?
+        .iter_mut()
+        .find(|w| w["key"] == "older")
+        .ok_or("older")?;
+    work["paths"] = serde_json::json!([
+        "src/lib.rs",
+        "python/worker.py",
+        "runtime/query_boundary.ts",
+        "native/query.c"
+    ]);
+    let fixture = reading_fixture::fixture_scenario(scenario)?;
+    std::fs::create_dir_all(fixture.repository.join("src"))?;
+    std::fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn normalize(name: &str) -> String { name.trim().to_lowercase() }",
+    )?;
+    fixture.operations.analyze(fixture.project, Vec::new())?;
+    let before = fixture.operations.canonical_basis(fixture.project)?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone())),
+        fixture.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    for locale in ["en", "ko"] {
+        let page = exchange(
+            &server,
+            &format!(
+                "/?view=code&scope=work&work={}&locale={locale}",
+                fixture.goals["older"]
+            ),
+        );
+        for expression in [
+            "name.trim().to_lowercase()",
+            "return name.strip()",
+            "return value;",
+        ] {
+            assert!(page.contains(expression), "{locale}: {expression}");
+        }
+        assert!(page.contains("data-explanation-state=\"Unsupported\"")); // C body reading, structural support retained.
+        assert!(page.contains("Current"));
+        assert!(
+            page.contains("No observed") || page.contains("runtime/data flow were not observed")
+        );
+        assert!(page.contains("native/query.c"));
+    }
+    assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
+    Ok(())
+}
+
+#[test]
+fn changed_removed_and_unavailable_sources_never_render_current_behavior(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for case in ["changed", "removed", "unavailable"] {
+        let fixture = fixture()?;
+        let server = ViewerServer::new(
+            ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone())),
+            fixture.project,
+            ViewerLocale::English,
+            ViewerView::Overview,
+            "en".into(),
+            "127.0.0.1:3219".parse()?,
+        )?;
+        let path = format!("/?view=code&scope=work&work={}", fixture.goals["older"]);
+        let current = exchange(&server, &path);
+        assert!(
+            current.contains("format_name has a return expression")
+                || current.contains("format_name: has a return expression")
+                || current.contains("declares inputs: `(name)`")
+        );
+        match case {
+            "changed" => std::fs::write(
+                fixture.repository.join("python/worker.py"),
+                "def format_name(name):\n    return name.upper()\n",
+            )?,
+            "removed" => std::fs::remove_file(fixture.repository.join("python/worker.py"))?,
+            "unavailable" => std::fs::remove_dir_all(&fixture.repository)?,
+            _ => unreachable!(),
+        }
+        let before = fixture.operations.canonical_basis(fixture.project)?;
+        for locale in ["en", "ko"] {
+            let historical = exchange(&server, &format!("{path}&locale={locale}"));
+            assert!(historical.starts_with("HTTP/1.1 200"));
+            assert!(
+                !historical.contains("data-explanation-state=\"Current\""),
+                "{case} / {locale}"
+            );
+            assert!(
+                historical.contains(if case == "unavailable" {
+                    "data-explanation-state=\"Unavailable\""
+                } else {
+                    "data-explanation-state=\"Stale\""
+                }),
+                "{case}"
+            );
+            assert!(!historical.contains("has a return expression"));
+            assert!(
+                historical.contains("Current behavior cannot be established")
+                    || historical.contains("현재 동작을 확인할 수 없습니다")
+            );
+        }
+        assert_eq!(before, fixture.operations.canonical_basis(fixture.project)?);
+        if case == "changed" {
+            fixture.operations.analyze(fixture.project, Vec::new())?;
+            let refreshed = exchange(&server, &path);
+            assert!(refreshed.contains("data-explanation-state=\"Current\""));
+            assert!(refreshed.contains("return name.upper()"));
+            assert!(!refreshed.contains("return name.strip()"));
+        }
+    }
+    Ok(())
+}

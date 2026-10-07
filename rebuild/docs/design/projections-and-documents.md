@@ -1493,3 +1493,19 @@ entities/relations and carries source ranges, producer, generated time, freshnes
 uncertainty. Only interpretations grounded in the displayed entity scope are consumed;
 a repository-wide Source alone is insufficient. Generated prose remains a separate
 interpretation role and cannot add graph edges or execution observations.
+
+Explanation validity is checked before presenting bounded entity payloads as current.
+The consumer checks canonical Source availability/basis, unique exact entity identity,
+entity/provenance/range/Analysis/Repository binding, included inventory content and
+file analyzer basis. Missing/removed/foreign/ambiguous evidence is unavailable;
+failed or unsupported coverage cannot be overridden by an older positive fact. File
+partial coverage and bounded omissions remain partial with usable expressions.
+Stale body expressions remain historical evidence and supply no current narrative.
+
+Generated interpretations require all named analysis bases and supporting Sources.
+Structural and semantic relation bases remain distinct; semantic file/capability
+failures constrain semantic interpretation without erasing independent structural
+body reading. Invalid generated prose is withheld while applicable state and reasons
+remain inspectable. Current state means source-bound generated interpretation,
+never independent prose verification. A component with source-grounded return/body
+observations remains readable without resolved calls and acquires no flow edge.

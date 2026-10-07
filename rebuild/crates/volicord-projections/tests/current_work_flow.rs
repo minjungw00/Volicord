@@ -1736,3 +1736,370 @@ fn generated_code_interpretation_is_consumed_only_for_exact_selected_analysis_en
         .all(|e| !e.english.contains("Authored source interpretation")));
     Ok(())
 }
+
+#[test]
+fn invalid_or_negative_body_evidence_never_supports_current_work_behavior(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::CodeExplanationState;
+    use volicord_repository_intelligence::{
+        Capability, CapabilityState, FreshnessState, BODY_OBSERVATIONS_KEY,
+    };
+    for case in [
+        "stale",
+        "unknown",
+        "removed",
+        "missing_basis",
+        "changed_hash",
+        "failed",
+        "unsupported",
+        "partial",
+        "ambiguous",
+        "foreign_range",
+        "foreign_snapshot",
+        "outside_range",
+        "failed_coverage",
+        "missing_payload",
+        "foreign_namespace",
+        "foreign_freshness",
+    ] {
+        let (projection, _) = build_projection_scenario(
+            &[
+                ("worker.py", "def run(name):\n    return name.strip()\n"),
+                ("other.py", "def other(name):\n    return name.upper()\n"),
+            ],
+            &["worker.py"],
+            &[vec!["worker.py"]],
+            24,
+            |a| {
+                let at = a
+                    .structural_facts
+                    .iter()
+                    .position(|f| {
+                        f.entity.area.path == "worker.py"
+                            && f.entity.kind == CodeEntityKind::Function
+                    })
+                    .ok_or("run")?;
+                match case {
+                    "foreign_namespace" => {
+                        a.structural_facts[at].entity.extensions[0].namespace =
+                            "foreign.syntax".into()
+                    }
+                    "foreign_freshness" => {
+                        a.freshness.repository_snapshot =
+                            volicord_repository_intelligence::RepositorySnapshotId::from_hex(
+                                &"f".repeat(64),
+                            )?
+                    }
+                    "stale" => a.freshness.state = FreshnessState::Stale,
+                    "unknown" => a.observe_repository_freshness(None),
+                    "removed" => a.inventory.entries.retain(|e| e.area.path != "worker.py"),
+                    "missing_basis" => a.structural_bases.retain(|b| b.area.path != "worker.py"),
+                    "changed_hash" => {
+                        a.structural_bases
+                            .iter_mut()
+                            .find(|b| b.area.path == "worker.py")
+                            .ok_or("basis")?
+                            .content_sha256 = "wrong".into()
+                    }
+                    "failed" | "unsupported" | "partial" => {
+                        a.structural_bases
+                            .iter_mut()
+                            .find(|b| b.area.path == "worker.py")
+                            .ok_or("basis")?
+                            .state = match case {
+                            "failed" => CapabilityState::Failed,
+                            "unsupported" => CapabilityState::Unsupported,
+                            _ => CapabilityState::Partial,
+                        }
+                    }
+                    "ambiguous" => a.structural_facts.push(a.structural_facts[at].clone()),
+                    "foreign_range" => {
+                        let range = a
+                            .structural_facts
+                            .iter()
+                            .find(|f| {
+                                f.entity.area.path == "other.py"
+                                    && f.entity.kind == CodeEntityKind::Function
+                            })
+                            .ok_or("other")?
+                            .entity
+                            .source_range
+                            .clone();
+                        a.structural_facts[at].entity.extensions[0].source_range = range;
+                    }
+                    "foreign_snapshot" => {
+                        a.structural_facts[at].entity.analysis_snapshot =
+                            volicord_repository_intelligence::AnalysisSnapshotId::from_hex(
+                                &"f".repeat(64),
+                            )?
+                    }
+                    "outside_range" => {
+                        a.structural_facts[at].entity.extensions[0]
+                            .values
+                            .get_mut(BODY_OBSERVATIONS_KEY)
+                            .ok_or("observations")?["observations"][0]["end"]["line"] =
+                            serde_json::json!(100_000)
+                    }
+                    "failed_coverage" => a
+                        .capabilities
+                        .iter_mut()
+                        .find(|r| {
+                            r.capability == Capability::Structural
+                                && r.language == Some(Language::Python)
+                        })
+                        .ok_or("coverage")?
+                        .coverage
+                        .failed
+                        .push(a.structural_facts[at].entity.area.clone()),
+                    "missing_payload" => {
+                        a.structural_facts[at].entity.extensions[0]
+                            .values
+                            .remove(BODY_OBSERVATIONS_KEY);
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(())
+            },
+        )?;
+        let u = build_project_understanding(&projection, UnderstandingBound::default());
+        let entity = u
+            .architecture
+            .components
+            .iter()
+            .find(|e| e.locator == "worker.py" && e.kind == CodeEntityKind::Function)
+            .ok_or("run reading")?;
+        assert_ne!(
+            entity.behavior.state,
+            CodeExplanationState::Current,
+            "{case}"
+        );
+        let explanation = u
+            .deterministic_explanations
+            .iter()
+            .find(|e| e.identity == format!("deterministic:component:{}", entity.identity))
+            .ok_or("explanation")?;
+        if case == "partial" {
+            assert_eq!(entity.behavior.state, CodeExplanationState::Partial);
+            assert!(explanation.english.contains("return name.strip()"));
+        } else {
+            assert!(
+                !explanation.english.contains("has a return expression"),
+                "{case}"
+            );
+        }
+        assert!(!entity.behavior.limitations.is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn body_expression_bounds_and_language_limits_preserve_explicit_negative_coverage(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::CodeExplanationState;
+    let long_return = format!("def run(name):\n    return '{}'\n", "a".repeat(300));
+    let (projection, _) = build_projection_scenario(
+        &[
+            ("worker.py", &long_return),
+            ("native.c", "int calculate(int value) { return value + 1; }"),
+            ("unknown.go", "package main\nfunc Run() {}\n"),
+        ],
+        &["worker.py", "native.c", "unknown.go"],
+        &[vec!["worker.py", "native.c", "unknown.go"]],
+        24,
+        |_| Ok(()),
+    )?;
+    let u = build_project_understanding(&projection, UnderstandingBound::default());
+    let run = u
+        .architecture
+        .components
+        .iter()
+        .find(|e| e.locator == "worker.py" && e.kind == CodeEntityKind::Function)
+        .ok_or("run")?;
+    assert_eq!(run.behavior.state, CodeExplanationState::Partial);
+    assert_eq!(run.behavior.omitted_count, 1);
+    assert!(!run
+        .behavior
+        .claims
+        .iter()
+        .any(|c| c.expression.contains("aaa")));
+    let native = u
+        .architecture
+        .components
+        .iter()
+        .find(|e| e.locator == "native.c" && e.kind == CodeEntityKind::Function)
+        .ok_or("native")?;
+    assert_eq!(native.behavior.state, CodeExplanationState::Unsupported);
+    assert!(native.behavior.claims.is_empty());
+    assert!(projection
+        .repository_map
+        .capabilities
+        .iter()
+        .any(|r| r.language == Some(Language::Go)
+            && r.state == volicord_repository_intelligence::CapabilityState::Unsupported));
+    Ok(())
+}
+
+#[test]
+fn generated_prose_is_withheld_for_unmatched_foreign_ambiguous_and_failed_basis(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::CodeExplanationState;
+    for case in [
+        "snapshot",
+        "unknown_basis",
+        "foreign_source",
+        "foreign_range",
+        "duplicate_entity",
+        "failed_file",
+        "stale",
+        "valid_semantic_relation",
+        "wrong_relation_snapshot",
+        "wrong_relation_range",
+        "failed_semantic_basis",
+    ] {
+        let (projection, _) = build_projection_scenario(
+            &[
+                ("src/lib.rs", "pub fn run() { helper(); } fn helper() {}"),
+                ("other.py", "def other():\n    return 0\n"),
+            ],
+            &["src/lib.rs"],
+            &[vec!["src/lib.rs"]],
+            24,
+            |a| {
+                let at = a
+                    .structural_facts
+                    .iter()
+                    .position(|f| f.entity.display_name.as_deref() == Some("run"))
+                    .ok_or("run")?;
+                let entity = a.structural_facts[at].entity.clone();
+                let mut input = volicord_repository_intelligence::AgentInterpretation {
+                    identity: "authored-interpretation".into(),
+                    analysis_snapshot: a.identity,
+                    agent: "test".into(),
+                    host: "test".into(),
+                    session: "test".into(),
+                    source_basis: vec![entity.source.clone()],
+                    analysis_basis: vec![entity.identity],
+                    text: "Authored interpretation: run has a helper call expression".into(),
+                    generated_at_unix_micros: 1,
+                    known_gaps: Vec::new(),
+                    uncertainty: volicord_repository_intelligence::Uncertainty::none(),
+                    provenance_class: ProvenanceClass::AgentInterpretation,
+                };
+                match case {
+                    "snapshot" => {
+                        input.analysis_snapshot =
+                            volicord_repository_intelligence::AnalysisSnapshotId::from_hex(
+                                &"f".repeat(64),
+                            )?
+                    }
+                    "unknown_basis" => input.analysis_basis.push("not-an-observed-entity".into()),
+                    "foreign_source" => input.source_basis.clear(),
+                    "foreign_range" => {
+                        a.structural_facts[at]
+                            .entity
+                            .source_range
+                            .as_mut()
+                            .ok_or("range")?
+                            .locator = "other.py".into();
+                    }
+                    "duplicate_entity" => a.structural_facts.push(a.structural_facts[at].clone()),
+                    "failed_file" => {
+                        a.structural_bases
+                            .iter_mut()
+                            .find(|b| b.area.path == "src/lib.rs")
+                            .ok_or("basis")?
+                            .state = volicord_repository_intelligence::CapabilityState::Failed
+                    }
+                    "stale" => {
+                        a.freshness.state = volicord_repository_intelligence::FreshnessState::Stale
+                    }
+                    _ => {
+                        let relation = a
+                            .semantic_results
+                            .iter_mut()
+                            .find(|r| r.relation.source_entity == input.analysis_basis[0])
+                            .ok_or("semantic relation")?;
+                        input.analysis_basis = vec![relation.relation.identity.clone()];
+                        if case == "wrong_relation_snapshot" {
+                            relation.relation.analysis_snapshot =
+                                volicord_repository_intelligence::AnalysisSnapshotId::from_hex(
+                                    &"f".repeat(64),
+                                )?;
+                        }
+                        if case == "failed_semantic_basis" {
+                            a.semantic_bases
+                                .iter_mut()
+                                .find(|b| b.area.path == "src/lib.rs")
+                                .ok_or("semantic basis")?
+                                .state = volicord_repository_intelligence::CapabilityState::Failed;
+                        }
+                        if case == "wrong_relation_range" {
+                            relation
+                                .relation
+                                .supporting_range
+                                .as_mut()
+                                .ok_or("range")?
+                                .locator = "other.py".into();
+                        }
+                    }
+                }
+                a.agent_interpretations.push(input);
+                Ok(())
+            },
+        )?;
+        let u = build_project_understanding(&projection, UnderstandingBound::default());
+        let generated = u
+            .generated_interpretations
+            .first()
+            .ok_or("interpretation state should remain inspectable")?;
+        if case == "valid_semantic_relation" {
+            assert_eq!(generated.state, CodeExplanationState::Current);
+            assert!(!generated.text.is_empty());
+        } else if case == "stale" {
+            assert_eq!(generated.state, CodeExplanationState::Stale);
+        } else {
+            assert_eq!(generated.state, CodeExplanationState::Unavailable, "{case}");
+            assert!(generated.text.is_empty(), "{case}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_return_behavior_remains_readable_without_any_call_relation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (path, source, expression) in [
+        (
+            "src/lib.rs",
+            "pub fn offset(value: i32) -> i32 { value + 2 }",
+            "value + 2",
+        ),
+        (
+            "worker.py",
+            "def offset(value):\n    return value + 2\n",
+            "return value + 2",
+        ),
+    ] {
+        let (projection, _) = build_projection(&[(path, source)], path, 24)?;
+        let u = build_project_understanding(&projection, UnderstandingBound::default());
+        let entity = u
+            .architecture
+            .components
+            .iter()
+            .find(|e| e.kind == CodeEntityKind::Function)
+            .ok_or("offset")?;
+        let explanation = u
+            .deterministic_explanations
+            .iter()
+            .find(|e| e.identity == format!("deterministic:component:{}", entity.identity))
+            .ok_or("readable behavior")?;
+        assert!(explanation.english.contains(expression));
+        assert!(explanation.korean.contains(expression));
+        assert_eq!(
+            u.architecture.flow_evidence.state,
+            volicord_projections::ArchitectureFlowState::NoResolvedCalls
+        );
+        assert!(u.architecture.flow_evidence.relation_ids.is_empty());
+    }
+    Ok(())
+}

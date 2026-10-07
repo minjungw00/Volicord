@@ -256,6 +256,7 @@ pub struct CapabilityGap {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MapInterpretation {
+    pub state: crate::CodeExplanationState,
     pub entity_basis: Vec<String>,
     pub relation_basis: Vec<String>,
     pub source_ranges: Vec<SourceRange>,
@@ -1131,6 +1132,7 @@ pub fn build_project_projection(
     let mut issues = source_issues(reading_canonical);
     issues.extend_from_slice(inputs.analysis_issues);
     let graph = projection_graph(reading_canonical, analyses);
+    let evidence = crate::code_behavior::CodeEvidenceIndex::new(inputs.canonical, analyses);
     let repository_analysis = inputs
         .analyses
         .iter()
@@ -1245,6 +1247,7 @@ pub fn build_project_projection(
         analyses,
         inputs.metadata,
         &graph,
+        &evidence,
         limit,
         &mut issues,
     );
@@ -1627,7 +1630,7 @@ pub fn build_project_projection(
         capability_reports: repository_map.capabilities.clone(),
         health,
     };
-    Ok(ProjectProjection {
+    let mut projection = ProjectProjection {
         repository_analysis,
         repository_scope_metadata,
         answer_capability_gaps,
@@ -1677,7 +1680,18 @@ pub fn build_project_projection(
         source_catalog,
         issues,
         health,
-    })
+    };
+    for entity in projection
+        .repository_map
+        .entities
+        .iter_mut()
+        .chain(&mut projection.current_work_topology.entities)
+        .chain(&mut projection.selected_entity_neighbors)
+        .chain(projection.selected_entity.iter_mut())
+    {
+        evidence.apply(entity);
+    }
+    Ok(projection)
 }
 
 fn candidate_dependency_issue(failure: CandidateDependencyFailure) -> ProjectionIssue {
@@ -1851,6 +1865,7 @@ fn build_repository_map(
     analyses: &[&AnalysisSnapshot],
     metadata: &[&AnalysisMetadata],
     graph: &ProjectionGraph<'_>,
+    evidence: &crate::code_behavior::CodeEvidenceIndex<'_>,
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> RepositoryMap {
@@ -1877,53 +1892,12 @@ fn build_repository_map(
                 issues.push(capability_issue(analysis.identity, report));
             }
         }
-        agent_interpretations.extend(analysis.agent_interpretations.iter().map(|interpretation| {
-            let mut entity_basis = Vec::new();
-            let mut relation_basis = Vec::new();
-            let mut source_ranges = Vec::new();
-            for basis in &interpretation.analysis_basis {
-                if let Some(fact) = analysis
-                    .structural_facts
-                    .iter()
-                    .find(|f| &f.entity.identity == basis)
-                {
-                    entity_basis.push(basis.clone());
-                    source_ranges.extend(fact.entity.source_range.iter().cloned());
-                }
-                for relation in analysis
-                    .structural_facts
-                    .iter()
-                    .flat_map(|f| &f.relations)
-                    .filter(|r| &r.identity == basis)
-                {
-                    relation_basis.push(basis.clone());
-                    entity_basis.push(relation.source_entity.clone());
-                    source_ranges.extend(relation.supporting_range.iter().cloned());
-                }
-            }
-            MapInterpretation {
-                entity_basis,
-                relation_basis,
-                source_ranges,
-                freshness: analysis.freshness.clone(),
-                producer: format!(
-                    "{} / {} / {}",
-                    interpretation.agent, interpretation.host, interpretation.session
-                ),
-                generated_at_unix_micros: interpretation.generated_at_unix_micros,
-                identity: interpretation.identity.clone(),
-                text: interpretation.text.clone(),
-                source_basis: interpretation
-                    .source_basis
-                    .iter()
-                    .map(|source| source.identity())
-                    .collect(),
-                analysis_snapshot: interpretation.analysis_snapshot,
-                repository_snapshot: analysis.repository_snapshot,
-                known_gaps: interpretation.known_gaps.clone(),
-                uncertainty: interpretation.uncertainty.clone(),
-            }
-        }));
+        agent_interpretations.extend(
+            analysis
+                .agent_interpretations
+                .iter()
+                .map(|interpretation| evidence.interpretation(analysis, interpretation)),
+        );
     }
     for analysis in metadata
         .iter()
@@ -3081,11 +3055,13 @@ mod tests {
         ))?;
         let mut issues = Vec::new();
         let graph = super::projection_graph(&canonical, &[&analysis]);
+        let evidence = crate::code_behavior::CodeEvidenceIndex::new(&canonical, &[&analysis]);
         let full = super::build_repository_map(
             &canonical,
             &[&analysis],
             &[],
             &graph,
+            &evidence,
             usize::MAX,
             &mut issues,
         );
@@ -3099,8 +3075,15 @@ mod tests {
             select_bounded_topology(&full.entities, &full.relations, &important, 8, 8, true);
         super::MATERIALIZED.with(|count| count.set((0, 0)));
         issues.clear();
-        let actual =
-            super::build_repository_map(&canonical, &[&analysis], &[], &graph, 8, &mut issues);
+        let actual = super::build_repository_map(
+            &canonical,
+            &[&analysis],
+            &[],
+            &graph,
+            &evidence,
+            8,
+            &mut issues,
+        );
         assert_eq!(actual.entities, expected.entities);
         assert_eq!(actual.relations, expected.relations);
         assert!(full.entities.len() > 100 && full.relations.len() > 100);
