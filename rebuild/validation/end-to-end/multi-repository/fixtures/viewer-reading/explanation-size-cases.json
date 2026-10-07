@@ -9,7 +9,7 @@
   },
   "near_read_limit": {
     "source_actor_unit": "a",
-    "source_actor_repetitions": 60000,
+    "source_actor_repetitions": 59000,
     "same_work_checkpoint_count": 1,
     "response_bytes": 16384
   },

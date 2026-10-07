@@ -945,3 +945,121 @@ fn large_retained_envelopes_reach_viewer_documents_and_offline_snapshot(
     }
     Ok(())
 }
+
+#[test]
+fn same_work_course_survives_verification_retry_resume_and_missing_sources(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for no_change in [false, true] {
+        let mut input = reading_fixture::rich_scenario()?;
+        let work_input = input["works"]
+            .as_array_mut()
+            .ok_or("works")?
+            .iter_mut()
+            .find(|w| w["key"] == "relay")
+            .ok_or("relay")?;
+        work_input["checkpoints"] = serde_json::json!([
+            {"key":"investigate","work":"InProgress","verification":"Failed",
+             "review":"NotRequested","acceptance":"NotRequested","paths":[],
+             "state_change":"Investigated inverted response arrival; the regression failed.",
+             "outcome":"Inverted arrival regression failed", "next_step":"Add the sequence guard",
+             "limits":["Browser behavior untested"]},
+            {"key":"fix","work":"Completed","verification":"Passed",
+             "review":"NotRequested","acceptance":"NotRequested",
+             "paths": if no_change { vec![] } else { vec!["runtime/query_boundary.ts"] },
+             "state_change":if no_change {"Investigation only: no code change was made."} else {
+                 "Tagged requests with a sequence; stale responses cannot replace newer results. Cancellation was not added."},
+             "outcome":"Only the inverted arrival unit regression passed",
+             "next_step":"Check browser loading feedback", "limits":["Browser behavior untested"]},
+            {"key":"resume","work":"Paused","verification":"Passed",
+             "review":"NotRequested","acceptance":"NotRequested","paths":[],
+             "state_change":"Resumed and reran only the unit regression.",
+             "outcome":"Unit regression passed again", "next_step":"Check browser loading feedback",
+             "limits":["Browser behavior remains untested"]}
+        ]);
+        let f = reading_fixture::fixture_scenario(input)?;
+        let work = f.goals["relay"];
+        let subject = ExplanationSubject::Work(work);
+        let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+        let cp = f.checkpoints["fix"];
+        let change_key = format!("change:{cp}");
+        assert!(plan.evidence.iter().any(|e| e.key == change_key
+            && e.content["reported_change"]
+                .as_str()
+                .is_some_and(|s| s.contains(if no_change {
+                    "no code change"
+                } else {
+                    "Cancellation was not added"
+                }))));
+        assert_eq!(
+            plan.evidence
+                .iter()
+                .filter(|e| e.key.starts_with("course:"))
+                .count(),
+            3
+        );
+        assert!(plan.evidence.iter().any(
+            |e| e.key == "result" && e.content.as_str().is_some_and(|s| s.contains("Resumed"))
+        ));
+        let mut response = fake(&plan);
+        for p in response.paragraphs.iter_mut().filter(|p| {
+            matches!(
+                p.question,
+                ExplanationQuestion::ReportedChange | ExplanationQuestion::ExpectedEffect
+            )
+        }) {
+            p.evidence_keys = vec![change_key.clone()];
+        }
+        validate_explanation(&plan, &response)?;
+        let mut wrong = response.clone();
+        wrong.paragraphs[1].evidence_keys = vec!["next_step".into()];
+        assert!(validate_explanation(&plan, &wrong).is_err());
+        wrong.paragraphs[1].evidence_keys = vec![format!("change:{}", f.checkpoints["other"])];
+        assert!(validate_explanation(&plan, &wrong).is_err());
+        f.operations
+            .record_explanation(f.project, subject, "en", response)?;
+        let exact = f
+            .operations
+            .project_projection_selected(f.project, WorkSelector::ExactWork(work))?;
+        let selected = exact.selected_work.as_ref().ok_or("Work")?;
+        let overview = exact
+            .work_overview
+            .completed
+            .items
+            .iter()
+            .chain(&exact.work_overview.remaining.items)
+            .find(|w| w.work_item_id == work)
+            .ok_or("overview")?;
+        assert_eq!(selected.reading, overview.reading);
+        let answers = work_answers(selected, "en", FixedLocale::English);
+        assert!(answers.facts.iter().any(
+            |a| a.question == "HistoricalVerification" && a.text.contains("regression failed")
+        ));
+        assert!(answers
+            .facts
+            .iter()
+            .any(|a| a.question == "HistoricalVerification"
+                && a.text.contains("unit regression passed")));
+        assert!(answers
+            .facts
+            .iter()
+            .any(|a| a.question == "UserAcceptance" && !a.text.contains("Accepted")));
+        let page = get(&f, &format!("/?view=work&work={work}"));
+        assert!(page.contains("Inverted arrival regression failed"));
+        let mut canonical = f.operations.canonical_basis(f.project)?;
+        let source = canonical
+            .context_items
+            .iter()
+            .find(|c| c.id == work)
+            .ok_or("goal")?
+            .source_basis[0];
+        canonical.sources.retain(|s| s.source.id != source);
+        let incomplete = prepare_explanation(&canonical, subject, "en")?;
+        assert_ne!(incomplete.fingerprint, plan.fingerprint);
+        assert!(incomplete
+            .source_status
+            .iter()
+            .any(|s| s["identity"] == source.to_string() && s["availability"] == "Unavailable"));
+        assert!(validate_explanation(&incomplete, &fake(&plan)).is_err());
+    }
+    Ok(())
+}

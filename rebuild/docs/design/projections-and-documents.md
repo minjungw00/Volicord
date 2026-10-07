@@ -1417,3 +1417,19 @@ lowercase states, with read-time retention expiry and cleanup preserved. Origina
 excerpt `representation`, omitted characters/bytes, semantic omitted record counts
 and transport suffix counts keep their own meanings across bounded serialization
 and repeated reads; completing a detail field never resets any earlier omission.
+
+### Work course evidence in explanations
+
+Work explanation preparation reads the complete exact-Goal Checkpoint history
+before presentation bounds. `course:*` carries each recorded goal, boundary kind,
+next action, limits, non-goals and open Question references; `change:*` preserves
+full reported investigation/change prose independently of the latest result. A
+later verification-only or resume report cannot erase earlier same-Work changes.
+Reported-change/effect paragraphs may cite an earlier exact `change:*` rather than
+a latest verification-only result. Preparation fingerprints include this selected
+course and explicit missing Source state. Source locators do not recover historical
+bodies. Missing investigation, rationale and unrecorded effects stay explicit.
+Ordinary summaries show generated problem and outcome in the requested language;
+recorded verification outcomes, including earlier passed/failed observations, stay
+separate from current work state and user acceptance. These are recorded reports
+and structural grounding checks, not deterministic prose entailment validation.

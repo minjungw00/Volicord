@@ -234,6 +234,27 @@ pub fn prepare_explanation(
         );
     }
     for cp in &history.checkpoints {
+        let basis = crate::reading::reading_basis(
+            canonical,
+            crate::ReadingRecord::Checkpoint(cp.id),
+            cp.revision,
+            "goal,kind,next_step,open_questions",
+            cp.source_basis.clone(),
+        );
+        add(
+            &format!("course:{}", cp.id),
+            &basis,
+            json!({
+                "observed_at": cp.recorded_at.as_unix_micros(),
+                "kind": format!("{:?}", cp.kind), "goal": cp.goal,
+                "next_step": cp.next_step,
+                "open_questions": cp.open_questions.iter().map(|q| json!({
+                    "identity":q.question_id.to_string(), "revision":q.revision
+                })).collect::<Vec<_>>(),
+                "forgotten_source_count": canonical.forgotten_checkpoint_sources.iter()
+                    .filter(|w| w.checkpoint_identity == cp.id.to_string()).count(),
+            }),
+        );
         if cp
             .state_change
             .as_deref()
@@ -271,7 +292,7 @@ pub fn prepare_explanation(
             canonical,
             crate::ReadingRecord::Checkpoint(cp.id),
             cp.revision,
-            "known_limits",
+            "known_limits,non_goals",
             cp.source_basis.clone(),
         );
         add(
@@ -352,11 +373,21 @@ fn finish_plan(
         .iter()
         .flat_map(|e| e.sources.iter())
         .collect::<std::collections::BTreeSet<_>>();
-    let source_status = canonical.sources.iter().filter(|s|sources.contains(&s.source.id.to_string()))
-        .map(|s|json!({"identity":s.source.id.to_string(),"immutable":true, "recorded_at":s.source.recorded_at.as_unix_micros(),
-            "snapshot":s.snapshot_basis,"availability":format!("{:?}",s.availability),"freshness":format!("{:?}",s.freshness),
-            "actor":format!("{:?}",s.source.actor),"observer":format!("{:?}",s.source.observer),
-            "observation":format!("{:?}",s.source.payload)})).collect();
+    let source_status = sources.into_iter().map(|id| {
+        match canonical.sources.iter().find(|s| s.source.id.to_string() == *id) {
+            None => json!({"identity":id,"availability":"Unavailable","freshness":"Unknown",
+                "body":"historical_body_not_retained"}),
+            Some(s) => json!({"identity":s.source.id.to_string(),"immutable":true,
+                "recorded_at":s.source.recorded_at.as_unix_micros(),
+                "snapshot":s.snapshot_basis,"availability":format!("{:?}",s.availability),
+                "freshness":format!("{:?}",s.freshness),"actor":format!("{:?}",s.source.actor),
+                "observer":format!("{:?}",s.source.observer),
+                "observation":format!("{:?}",s.source.payload),
+                "body": if matches!(s.source.payload, volicord_context::SourcePayload::CurrentHostUserTurn { .. }) {
+                    "policy_withheld"
+                } else { "historical_body_not_retained" }}),
+        }
+    }).collect();
     let identities = evidence
         .iter()
         .map(|e| e.identity.as_str())
@@ -372,7 +403,7 @@ fn finish_plan(
         .map(|r| json!({"from":r.from_identity,"relation":r.relation_kind,"to":r.to_identity}))
         .collect();
     let questions = match subject {
-        ExplanationSubject::Work(_) => "Answer purpose, reported_change, expected_effect, verification and next_step (optional limits). Explain the problem or goal first, then what was changed or investigated and how the reported before/after behavior differs. Use change:* history when a later result only reports verification or resumption; retain observation chronology. Describe behavior only when full report/Source prose supports it. Distinguish the reported result from its verification and state the next meaningful limitation; paths alone prove neither a feature nor runtime effect.",
+        ExplanationSubject::Work(_) => "Answer purpose, reported_change, expected_effect, verification and next_step (optional limits). Purpose explains the actual problem succinctly instead of copying the user prompt. Reported_change describes the recorded investigation, changes and outcome separately; absent investigation stays unrecorded. Read all course:* and change:* observations in this Work, including resume and verification-only reports. State past limitations as past observations, and use the latest course for remaining work; silence does not prove an earlier limitation resolved. Explain the problem or goal first, then what was changed or investigated and how the reported before/after behavior differs. Use change:* history when a later result only reports verification or resumption; retain observation chronology. Describe behavior only when full report/Source prose supports it. Distinguish the reported result from its verification and state the next meaningful limitation; paths alone prove neither a feature nor runtime effect.",
         ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). State the actual user choice or delegation distinctly from the agent's recommended alternative. Explain alternative consequences/trade-offs as expectations, the recommendation's evidence basis, and applicable scope/assumptions/revisit conditions. Missing user rationale stays missing; agent rationale never supplies it. Choosing an option does not prove its implementation or performance.",
     };
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
@@ -482,7 +513,11 @@ pub fn validate_explanation(
             ExplanationQuestion::Applicability => "applicability",
             ExplanationQuestion::Limits => continue,
         };
-        if !p.evidence_keys.iter().any(|key| key == required) {
+        let history_report = matches!(
+            p.question,
+            ExplanationQuestion::ReportedChange | ExplanationQuestion::ExpectedEffect
+        ) && p.evidence_keys.iter().any(|key| key.starts_with("change:"));
+        if !history_report && !p.evidence_keys.iter().any(|key| key == required) {
             return Err(format!("answer {:?} must reference {required}", p.question));
         }
     }

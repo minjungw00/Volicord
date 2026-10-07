@@ -388,6 +388,64 @@ pub fn work_answers(
             .as_ref()
             .map_or_else(Vec::new, |s| key(s, "verification")),
     ));
+    for observation in &work.reading.states {
+        if observation.verification.is_empty() {
+            continue;
+        }
+        let historical = answers
+            .verification
+            .as_ref()
+            .is_none_or(|selected| selected.checkpoint_id != observation.checkpoint_id);
+        let details = observation
+            .verification
+            .iter()
+            .map(|v| {
+                let label = v.source_id.and_then(|id| {
+                    work.reading
+                        .evidence_source_status
+                        .iter()
+                        .find(|source| source.source_id == id)
+                });
+                // Outcome is the retained reported observation, never recovered stdout.
+                format!(
+                    "{}{}{}",
+                    verification_state_label(v.state, locale),
+                    v.outcome
+                        .as_ref()
+                        .map_or(String::new(), |outcome| format!(": {outcome}")),
+                    if label.is_some_and(|source| source.availability
+                        != Some(volicord_context::Availability::Available))
+                    {
+                        fixed(locale, " (Source unavailable)", " (Source 이용 불가)")
+                    } else {
+                        String::new()
+                    }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        result.facts.push(fact(
+            if historical {
+                "HistoricalVerification"
+            } else {
+                "VerificationObservation"
+            },
+            format!(
+                "{}: {details}. {}",
+                if historical {
+                    fixed(locale, "Historical verification", "과거 검증")
+                } else {
+                    fixed(locale, "Recorded verification", "기록된 검증")
+                },
+                fixed(
+                    locale,
+                    "This observation does not establish user acceptance or unrecorded coverage.",
+                    "이 관찰로 사용자 수락이나 기록되지 않은 검증 범위를 확정하지 않습니다."
+                )
+            ),
+            key(observation, "verification"),
+        ));
+    }
     for (field, state) in [
         ("UserReview", answers.review.as_ref()),
         ("UserAcceptance", answers.acceptance.as_ref()),

@@ -423,6 +423,7 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
         escape(understanding_work_state_label(w.state, r.locale))
     ));
     for (label, question) in [
+        (text(r.locale, "Problem / goal", "문제 / 목표"), "Purpose"),
         (text(r.locale, "Outcome", "결과"), "ReportedChange"),
         (text(r.locale, "Verification", "검증"), "Verification"),
     ] {
@@ -508,7 +509,12 @@ pub(super) fn render_answers(
         if compact
             && !matches!(
                 answer.question.as_str(),
-                "ReportedChange" | "Verification" | "NextStep" | "ExplanationAvailability"
+                "Purpose"
+                    | "ReportedChange"
+                    | "Verification"
+                    | "NextStep"
+                    | "Limits"
+                    | "ExplanationAvailability"
             )
         {
             continue;
