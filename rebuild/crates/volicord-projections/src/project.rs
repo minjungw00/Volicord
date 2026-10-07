@@ -2208,7 +2208,7 @@ fn build_timeline(
         .collect()
 }
 
-fn build_canonical_inspection(
+pub fn build_canonical_inspection(
     canonical: &CanonicalReadBasis,
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,

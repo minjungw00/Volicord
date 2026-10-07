@@ -220,6 +220,8 @@ impl HostAdapter {
         match result {
             Ok(value)
                 if name == "recall"
+                    || name == "canonical_inspect"
+                    || name == "candidate_inspect"
                     || ((name == "materiality_review"
                         || name == "engineering_choice_discovery")
                         && arguments["action"] == "draft") =>
@@ -1374,12 +1376,29 @@ impl HostAdapter {
     }
 
     fn canonical_inspect(&self, args: &Value) -> Result<Value, HostError> {
+        if args.get("field").is_some() {
+            return self
+                .operations
+                .canonical_evidence_detail(project(args)?, &evidence_detail_request(args, None)?)
+                .map_err(operation_error);
+        }
+        if args.get("offset").is_some() {
+            return self
+                .operations
+                .canonical_inspection_page(
+                    project(args)?,
+                    usize::try_from(required_u64(args, "offset")?)
+                        .map_err(|_| HostError::new("offset exceeds platform bound"))?,
+                    args.get("expected_fingerprint").and_then(Value::as_str),
+                )
+                .map_err(operation_error);
+        }
         let projection = self
             .operations
             .memory_inspection(project(args)?)
             .map_err(operation_error)?;
         Ok(
-            json!({"records":projection.canonical_inspection.into_iter().map(|record| json!({"kind":format!("{:?}",record.kind).to_lowercase(),"identity":record.identity,"revision":record.revision,"lifecycle_state":record.lifecycle_state,"statement_role":record.statement_role,"summary":record.summary,"source_basis":record.source_basis.into_iter().map(|source| source.to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"read_only":true}),
+            json!({"detail_inspection":{"tool":"canonical_inspect","offset":0,"purpose":"page all retained record identities, revisions and detail_fields"},"records":projection.canonical_inspection.into_iter().map(|record| json!({"kind":format!("{:?}",record.kind).to_lowercase(),"identity":record.identity,"revision":record.revision,"lifecycle_state":record.lifecycle_state,"statement_role":record.statement_role,"summary":record.summary,"source_basis":record.source_basis.into_iter().map(|source| source.to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"read_only":true}),
         )
     }
 
@@ -1467,6 +1486,17 @@ impl HostAdapter {
     }
 
     fn candidate_inspect(&self, args: &Value) -> Result<Value, HostError> {
+        if args.get("field").is_some() {
+            let candidate = parse_candidate(required_str(args, "candidate_id")?)?;
+            return self
+                .operations
+                .candidate_evidence_detail(
+                    project(args)?,
+                    candidate,
+                    &evidence_detail_request(args, Some(candidate))?,
+                )
+                .map_err(operation_error);
+        }
         if let Some(identity) = args.get("candidate_id").and_then(Value::as_str) {
             let basis = self
                 .operations
@@ -2466,8 +2496,8 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "canonical_inspect" => (
-            "Inspect canonical memory without mutation.",
-            project_schema(),
+            "Inspect canonical memory without mutation. Supply offset=0 to page the complete record manifest. Supply record_kind, record_id, revision and field for retained exact-field detail. Join compact_json_utf8 chunks, then decode JSON; continuation requires the returned fingerprint and next_offset. Older unavailable revisions never fall back to current bodies. Source observation is metadata only; source bodies are not read.",
+            json!({"oneOf":[project_schema(),object_schema(vec![("project_id",identity_schema("Project identity")),("offset",json!({"type":"integer","minimum":0,"description":"Returned UTF-8 byte or manifest record offset"})),("expected_fingerprint",text_schema("Returned manifest fingerprint",64,64))], &["project_id","offset"]),evidence_detail_schema(false)]}),
             ToolBehavior::ReadOnlyClosed,
         ),
         "canonical_mutate" => (
@@ -2476,9 +2506,9 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::DestructiveClosed,
         ),
         "candidate_inspect" => (
-            "Inspect bounded Candidate lifecycle state without mutation. Supply candidate_id for exact inspection beyond the Project list bound.",
-            object_schema(vec![("project_id", identity_schema("Project identity")),
-                ("candidate_id", identity_schema("Optional exact Candidate identity"))], &["project_id"]),
+            "Inspect bounded Candidate lifecycle state without mutation. Supply candidate_id for exact inspection beyond the Project list bound. Add revision and field for bounded compact_json_utf8 chunks of retained summary, engineering_choice_discovery, materiality_review, learning_deliberation or repository_research_basis. Join chunks then decode JSON; continuation requires returned fingerprint and next_offset. Retention and forgetting still apply.",
+            json!({"oneOf":[object_schema(vec![("project_id", identity_schema("Project identity")),
+                ("candidate_id", identity_schema("Optional exact Candidate identity"))], &["project_id"]),evidence_detail_schema(true)]}),
             ToolBehavior::ReadOnlyClosed,
         ),
         "candidate_manage" => (
@@ -4346,6 +4376,89 @@ fn guarded_interaction_schemas() -> Vec<Value> {
     ]
 }
 
+fn evidence_detail_schema(candidate: bool) -> Value {
+    let mut properties = vec![
+        ("project_id", identity_schema("Project identity")),
+        (
+            "revision",
+            json!({"type":"integer","minimum":1,"description":"Exact observed record revision"}),
+        ),
+        (
+            "field",
+            text_schema("Exact retained field from inspection detail_fields", 1, 128),
+        ),
+        (
+            "offset",
+            json!({"type":"integer","minimum":0,"description":"Returned UTF-8 byte or manifest record offset"}),
+        ),
+        (
+            "expected_fingerprint",
+            text_schema("Returned exact-field fingerprint", 64, 64),
+        ),
+    ];
+    let mut required = vec!["project_id", "revision", "field"];
+    if candidate {
+        properties.push(("candidate_id", identity_schema("Exact Candidate identity")));
+        required.push("candidate_id");
+    } else {
+        properties.extend([
+            (
+                "record_kind",
+                enum_schema(
+                    "Canonical record kind",
+                    &[
+                        "context_item",
+                        "checkpoint",
+                        "decision",
+                        "question",
+                        "source",
+                    ],
+                ),
+            ),
+            (
+                "record_id",
+                identity_schema("Exact retained record identity"),
+            ),
+            (
+                "work_item_id",
+                identity_schema("Optional required Work association"),
+            ),
+        ]);
+        required.extend(["record_kind", "record_id"]);
+    }
+    object_schema(properties, &required)
+}
+
+fn evidence_detail_request(
+    args: &Value,
+    candidate: Option<CandidateId>,
+) -> Result<volicord_operations::EvidenceDetailRequest, HostError> {
+    Ok(volicord_operations::EvidenceDetailRequest {
+        record_kind: if candidate.is_some() {
+            "candidate".into()
+        } else {
+            required_str(args, "record_kind")?.into()
+        },
+        record_id: candidate.map_or_else(
+            || required_str(args, "record_id").map(str::to_owned),
+            |id| Ok(id.to_string()),
+        )?,
+        revision: required_u64(args, "revision")?,
+        field: required_str(args, "field")?.into(),
+        offset: usize::try_from(args.get("offset").and_then(Value::as_u64).unwrap_or(0))
+            .map_err(|_| HostError::new("offset exceeds platform bound"))?,
+        expected_fingerprint: args
+            .get("expected_fingerprint")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        work_item_id: args
+            .get("work_item_id")
+            .and_then(Value::as_str)
+            .map(parse_context_item)
+            .transpose()?,
+    })
+}
+
 fn project_schema() -> Value {
     object_schema(
         vec![("project_id", identity_schema("Project identity"))],
@@ -5077,6 +5190,7 @@ fn candidate_inspection_json(candidate: volicord_projections::CandidateInspectio
         .map(learning_explanation_basis_json);
     json!({
         "identity":candidate_id.to_string(),
+        "detail_fields":["summary","engineering_choice_discovery","materiality_review","learning_deliberation","repository_research_basis"],
         "exists":candidate.exists,
         "health":format!("{:?}",candidate.health).to_lowercase(),
         "revision":candidate.revision,

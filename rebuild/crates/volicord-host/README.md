@@ -258,3 +258,18 @@ verify raw evidence and persisted Source/Decision provenance together.
 correlation. Independent verification compares it to the persisted answer Source's
 session and compares the returned `async_reply` to the actual request/index; neither
 field replaces separately captured raw host evidence.
+
+Exact retained evidence can be expanded through the existing inspection tools.
+`canonical_inspect` with `offset: 0` pages all retained identities, revisions and
+`detail_fields`; continue with `next_offset` and `expected_fingerprint`.
+For a field, pass `project_id`, `record_kind`, `record_id`, `revision`, `field`
+and optionally its exact `work_item_id`. Candidate detail uses `candidate_inspect`
+with `project_id`, `candidate_id`, `revision`, `field` (the returned
+`detail_fields` name retained typed sections). Each response carries up to 2,048
+UTF-8 bytes of compact JSON in `chunk`; concatenate chunks before decoding JSON.
+Continue with the same selector, `next_offset` as `offset`, and `fingerprint` as
+`expected_fingerprint`. Changed bases reject continuation. Completion applies to
+the retained field, not Source completeness or original omission counts.
+Older unavailable revisions, missing/foreign/forgotten records and unrecorded
+fields stay explicit unavailable states. Inspection opens no source paths, reads
+no full turns or historical stdout/stderr, and requests no provider work.

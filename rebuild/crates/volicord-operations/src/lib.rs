@@ -10,6 +10,7 @@ mod analysis_storage;
 mod cli;
 mod codex;
 mod error;
+mod evidence;
 mod explanation;
 mod forgetting;
 mod guarded;
@@ -26,6 +27,7 @@ pub use analysis_storage::{
 };
 pub use cli::{run_cli, run_cli_with_input, CliExit};
 pub use error::Error;
+pub use evidence::EvidenceDetailRequest;
 pub use forgetting::ForgettingState;
 pub use guarded::{
     BackgroundProviderDispatcher, BackgroundProviderOperationDraft, ConfirmationDecision,

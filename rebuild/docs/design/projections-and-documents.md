@@ -1373,3 +1373,37 @@ The bounded MCP read prioritizes subject, fingerprint, self-reported generator s
 and record grounding. Selected Work answers receive a larger section allowance within
 the unchanged total response byte budget; excessive grounding still uses exact counted
 transport omissions. These changes do not attest generated prose entailment.
+
+### Revision-bound retained evidence detail
+
+Bounded MCP omissions do not grant raw-history or filesystem read authority.
+The existing `canonical_inspect` accepts exact `record_kind`, `record_id`,
+`revision` and an allowlisted `field`; optional `work_item_id` must match the
+record's explicit Work association. `candidate_inspect` accepts `candidate_id`,
+`revision` and a retained Candidate section. Operations performs both reads under
+its inspection coordination lock. No analysis refresh or provider call occurs.
+
+Canonical manifest paging starts with `canonical_inspect { project_id, offset: 0 }`.
+It enumerates all retained canonical identities/revisions and `detail_fields`,
+including records omitted from projection lists. Subsequent manifest pages require
+its returned `fingerprint` as `expected_fingerprint`. Changed manifests reject
+continuation rather than shifting an offset to another record.
+
+Detail output contains at most 2,048 UTF-8 bytes of compact JSON in `chunk`.
+Consumers concatenate chunks and then decode JSON. Each continuation sends the
+same Project/record/revision/field, returned `next_offset` and
+`expected_fingerprint`. The fingerprint binds that identity, exact field value
+and source/privacy metadata; changes reject continuation. `total_utf8_bytes` and
+`remaining_utf8_bytes` describe this retained serialized field only. Neither
+transport completion nor a successful detail read changes the original Recall
+omission count or establishes complete/current Source evidence.
+
+The current reader accepts the retained read model's exact revision and reports
+`revision_unavailable` for older or changed references, without substituting a
+current body. Forgotten/foreign/missing records return `record_unavailable`;
+unrecorded optional fields return `field_not_recorded`. Candidate sections retain
+their typed retained representation, independently of the compact inspection
+summary's presentation. Source `observation` exposes bounded retained execution
+and availability metadata; `body` cannot dereference a locator or recover an
+unretained historical output. Structured 80 KiB and overall 256 KiB MCP budgets
+remain unchanged and apply to both inspection tools.

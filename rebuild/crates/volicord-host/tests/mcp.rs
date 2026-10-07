@@ -7308,9 +7308,33 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 &["project_id"],
             )]
         }
-        "canonical_inspect" | "privacy_status" => {
-            vec![shape(&["project_id"], &["project_id"])]
-        }
+        "privacy_status" => vec![shape(&["project_id"], &["project_id"])],
+        "canonical_inspect" => vec![
+            shape(&["project_id"], &["project_id"]),
+            shape(
+                &["project_id", "offset", "expected_fingerprint"],
+                &["project_id", "offset"],
+            ),
+            shape(
+                &[
+                    "project_id",
+                    "record_kind",
+                    "record_id",
+                    "revision",
+                    "field",
+                    "offset",
+                    "expected_fingerprint",
+                    "work_item_id",
+                ],
+                &[
+                    "project_id",
+                    "record_kind",
+                    "record_id",
+                    "revision",
+                    "field",
+                ],
+            ),
+        ],
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
         "engineering_choice_discovery" => vec![
             shape(
@@ -7742,7 +7766,20 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 ],
             ),
         ],
-        "candidate_inspect" => vec![shape(&["project_id", "candidate_id"], &["project_id"])],
+        "candidate_inspect" => vec![
+            shape(&["project_id", "candidate_id"], &["project_id"]),
+            shape(
+                &[
+                    "project_id",
+                    "candidate_id",
+                    "revision",
+                    "field",
+                    "offset",
+                    "expected_fingerprint",
+                ],
+                &["project_id", "candidate_id", "revision", "field"],
+            ),
+        ],
         "candidate_manage" => vec![
             shape(
                 &[
@@ -8170,9 +8207,11 @@ fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learni
     assert!(structured(&targeted)["candidates"][0]["learning_deliberation"]["rounds"].is_array());
     let old_bytes = serde_json::to_vec(&old_learning).unwrap().len();
     assert!(
-        old_bytes > 1024 * 1024,
-        "pre-change full-inspection path: {old_bytes}"
+        old_bytes <= volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET,
+        "bounded Candidate inspection: {old_bytes}"
     );
+
+    assert!(detailed.to_string().contains("serialized_byte_budget"));
 
     // Large polyglot coverage metadata, with actual snapshot identity and format.
     let directory = adapter

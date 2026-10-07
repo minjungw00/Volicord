@@ -26,6 +26,7 @@ pub enum CandidateContentOmission {
     PolicyWithheld,
     CanonicalForgettingPending,
     RetentionCleaned,
+    RetentionExpired,
     ContentUnavailable,
 }
 
@@ -188,6 +189,10 @@ fn inspect_existing(
         .cloned()
         .collect();
     let cleaned = candidate.cleanup.is_some();
+    let expired = candidate
+        .retention
+        .retained_until
+        .is_some_and(|until| until <= observed_at);
     let forgetting_pending = basis
         .withheld_for_canonical_forgetting
         .contains(&candidate.id);
@@ -207,6 +212,18 @@ fn inspect_existing(
             InspectionHealth::Degraded,
             None,
             Some(CandidateContentOmission::CanonicalForgettingPending),
+        )
+    } else if cleaned {
+        (
+            InspectionHealth::Partial,
+            None,
+            Some(CandidateContentOmission::RetentionCleaned),
+        )
+    } else if expired {
+        (
+            InspectionHealth::Partial,
+            None,
+            Some(CandidateContentOmission::RetentionExpired),
         )
     } else {
         match content_access {
@@ -234,7 +251,8 @@ fn inspect_existing(
             },
         }
     };
-    let (question_research_state, repository_research_basis) = if forgetting_pending {
+    let content_withheld = content_omission.is_some();
+    let (question_research_state, repository_research_basis) = if content_withheld {
         (None, Vec::new())
     } else {
         match content_access {
@@ -254,7 +272,7 @@ fn inspect_existing(
             CandidateContentAccess::PolicyWithheld => (None, Vec::new()),
         }
     };
-    let explicit_delegation_evidence = if forgetting_pending {
+    let explicit_delegation_evidence = if content_withheld {
         Vec::new()
     } else {
         match content_access {
@@ -283,7 +301,7 @@ fn inspect_existing(
         }
     };
     let (engineering_choice_discovery, materiality_review, learning_deliberation) =
-        if forgetting_pending || matches!(content_access, CandidateContentAccess::PolicyWithheld) {
+        if content_withheld {
             (None, None, None)
         } else {
             candidate

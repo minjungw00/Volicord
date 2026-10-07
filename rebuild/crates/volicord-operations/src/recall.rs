@@ -83,7 +83,7 @@ pub fn resume_brief_json(
             "mcp_result_bytes":crate::HOST_READ_RESULT_BYTE_BUDGET,
             "resume_brief_bytes":56 * 1024,
             "omission_rule":"Complete fields or stable suffix items only; transport_omission is not semantic content",
-            "inspection":{"canonical":"canonical_inspect", "analysis":"repository_understanding", "scope":"same project and returned record/snapshot identities"}
+            "inspection":{"canonical":"canonical_inspect", "analysis":"repository_understanding", "scope":"same project and returned record/snapshot identities", "canonical_manifest":{"tool":"canonical_inspect","offset":0}, "detail_fields":"Use record_kind, record_id, revision and field; join compact_json_utf8 chunks and continue with next_offset and expected_fingerprint"}
         },
     });
     crate::bounded_read_section(output, 56 * 1024)
@@ -100,7 +100,7 @@ fn decision_work_scope_json(scope: DecisionWorkScope) -> Value {
 }
 
 fn context_json(item: &BriefContextItem) -> Value {
-    json!({"identity":item.identity.to_string(), "role":context_item_role_name(item.role),
+    json!({"identity":item.identity.to_string(), "revision":item.revision, "role":context_item_role_name(item.role),
         "statement":item.statement,
         "source_ids":item.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>()})
 }
@@ -200,6 +200,7 @@ pub(crate) fn reading_text_json(text: &volicord_projections::ReadingText) -> Val
         "representation":representation,"availability":debug_name(text.availability),
         "original_language_preserved":text.original_language_preserved,
         "omitted_utf8_bytes":text.omitted_utf8_bytes,"omitted_characters":text.omitted_characters,"gaps":text.gaps,
+        "detail_inspection":{"tool":"canonical_inspect","record_kind":kind,"record_id":identity,"revision":text.basis.revision,"field":text.basis.field},
         "basis":{"record_kind":kind,"identity":identity,"revision":text.basis.revision,
             "available_revisions":text.basis.available_revisions,"field":text.basis.field,
             "source_ids":text.basis.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
@@ -210,6 +211,7 @@ pub(crate) fn reading_text_json(text: &volicord_projections::ReadingText) -> Val
 fn state_observation_json(state: &volicord_projections::WorkStateObservation) -> Value {
     json!({
         "checkpoint_id":state.checkpoint_id.to_string(), "checkpoint_revision":state.checkpoint_revision,
+        "detail_inspection":{"tool":"canonical_inspect","record_kind":"checkpoint","record_id":state.checkpoint_id.to_string(),"revision":state.checkpoint_revision,"field":"verification"},
         "observed_at_unix_micros":state.observed_at.as_unix_micros(),
         "work_state":work_state_name(state.work_state), "work_source_basis":state.work_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
         "verification":state.verification.iter().map(|fact| json!({"state":verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),

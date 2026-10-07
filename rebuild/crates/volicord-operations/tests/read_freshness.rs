@@ -199,3 +199,105 @@ fn analysis_status_is_explicit_read_only_and_retains_failed_attempt_basis(
     assert_eq!(canonical, operations.canonical_basis(project)?);
     Ok(())
 }
+
+#[test]
+fn exact_evidence_reads_reject_changed_foreign_and_forgotten_bases(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::{
+        CanonicalRecordId, ContextItemCorrectionDraft, ContextItemRole, CorrectionKind, SourceId,
+    };
+    use volicord_operations::EvidenceDetailRequest;
+    let root = tempfile::tempdir()?;
+    let operations = LocalOperations::new(RuntimeLayout::new(root.path().join("runtime"))?);
+    let project = operations
+        .initialize_project("Exact read", None)?
+        .project
+        .id;
+    let original = "Original retained goal ".repeat(600);
+    let context = operations.record_current_host_user_context(
+        project,
+        "test".into(),
+        "session".into(),
+        original.clone(),
+        ContextItemRole::Goal,
+        original.clone(),
+    )?;
+    let mut request = EvidenceDetailRequest {
+        record_kind: "context_item".into(),
+        record_id: context.context_item_id.to_string(),
+        revision: context.context_item_revision,
+        field: "statement".into(),
+        offset: 0,
+        expected_fingerprint: None,
+        work_item_id: Some(context.context_item_id),
+    };
+    let first = operations.canonical_evidence_detail(project, &request)?;
+    request.offset = first["next_offset"].as_u64().ok_or("next offset")? as usize;
+    assert!(operations
+        .canonical_evidence_detail(project, &request)
+        .is_err());
+    request.expected_fingerprint = Some("0".repeat(64));
+    assert!(operations
+        .canonical_evidence_detail(project, &request)
+        .is_err());
+    request.expected_fingerprint = first["fingerprint"].as_str().map(str::to_owned);
+    operations.correct_context_item(
+        project,
+        context.context_item_id,
+        ContextItemCorrectionDraft {
+            expected_revision: context.context_item_revision,
+            corrected_statement: format!("{original}."),
+            kind: CorrectionKind::Expression,
+            user_authorization_source_id: context.source_id,
+        },
+    )?;
+    let stale = operations.canonical_evidence_detail(project, &request)?;
+    assert_eq!(stale["reason"], "revision_unavailable");
+    assert!(stale.get("chunk").is_none());
+    request.revision += 1;
+    request.offset = 0;
+    request.expected_fingerprint = None;
+    let current = operations.canonical_evidence_detail(project, &request)?;
+    assert_eq!(current["state"], "partial");
+    assert_ne!(current["fingerprint"], first["fingerprint"]);
+    let manifest = operations.canonical_inspection_page(project, 0, None)?;
+    let foreign = operations.initialize_project("Foreign", None)?.project.id;
+    assert_eq!(
+        operations.canonical_evidence_detail(foreign, &request)?["state"],
+        "unavailable"
+    );
+    assert!(operations
+        .canonical_inspection_page(foreign, 1, manifest["fingerprint"].as_str())
+        .is_err());
+    operations.forget_record(
+        project,
+        CanonicalRecordId::ContextItem(context.context_item_id),
+        context.source_id,
+    )?;
+    assert_eq!(
+        operations.canonical_evidence_detail(project, &request)?["state"],
+        "unavailable"
+    );
+    assert!(operations
+        .canonical_inspection_page(project, 1, manifest["fingerprint"].as_str())
+        .is_err());
+    request.record_kind = "source".into();
+    request.record_id = context.source_id.to_string();
+    request.revision = 1;
+    request.field = "body".into();
+    request.work_item_id = None;
+    assert_eq!(
+        operations.canonical_evidence_detail(project, &request)?["reason"],
+        "historical_body_not_retained"
+    );
+    request.record_id = SourceId::from_bytes([255; 16]).to_string();
+    assert_eq!(
+        operations.canonical_evidence_detail(project, &request)?["reason"],
+        "record_unavailable"
+    );
+    request.field = "/tmp/source".into();
+    assert!(operations
+        .canonical_evidence_detail(project, &request)
+        .is_err());
+    Ok(())
+}

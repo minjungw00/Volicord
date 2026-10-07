@@ -90,6 +90,7 @@ pub struct BriefDecision {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BriefContextItem {
     pub identity: ContextItemId,
+    pub revision: u64,
     pub role: ContextItemRole,
     pub statement: String,
     pub source_basis: Vec<SourceId>,
@@ -209,6 +210,7 @@ pub(crate) fn build_resume_brief_metadata_coordinated(
         .filter(|item| item.role == ContextItemRole::Goal)
         .map(|item| BriefContextItem {
             identity: item.id,
+            revision: item.revision,
             role: item.role,
             statement: item.statement.clone(),
             source_basis: item.source_basis.clone(),
@@ -229,6 +231,7 @@ pub(crate) fn build_resume_brief_metadata_coordinated(
         .filter(|item| item.role == ContextItemRole::ProjectPurpose)
         .map(|item| BriefContextItem {
             identity: item.id,
+            revision: item.revision,
             role: item.role,
             statement: item.statement.clone(),
             source_basis: item.source_basis.clone(),
@@ -256,6 +259,7 @@ pub(crate) fn build_resume_brief_metadata_coordinated(
         })
         .map(|item| BriefContextItem {
             identity: item.id,
+            revision: item.revision,
             role: item.role,
             statement: item.statement.clone(),
             source_basis: item.source_basis.clone(),
@@ -345,6 +349,7 @@ pub(crate) fn build_resume_brief_metadata_coordinated(
         })
         .map(|item| BriefContextItem {
             identity: item.id,
+            revision: item.revision,
             role: item.role,
             statement: item.statement.clone(),
             source_basis: item.source_basis.clone(),

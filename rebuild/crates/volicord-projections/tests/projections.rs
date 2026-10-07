@@ -197,6 +197,21 @@ fn candidate_inspection_is_complete_or_explicitly_partial_and_never_mutates(
     assert_eq!(basis, unchanged);
     assert_eq!(store.read_basis(project)?, unchanged);
 
+    let expired = inspect_candidate(
+        &basis,
+        candidate.id,
+        CandidateContentAccess::AllowBoundedSummary,
+        TimestampMicros::from_unix_micros(3_000),
+    );
+    assert_eq!(
+        expired.content_omission,
+        Some(CandidateContentOmission::RetentionExpired)
+    );
+    assert_eq!(expired.health, InspectionHealth::Partial);
+    assert!(expired.bounded_summary.is_none());
+    assert!(expired.repository_research_basis.is_empty());
+    assert_eq!(store.read_basis(project)?, unchanged);
+
     store.dismiss(project, candidate.id, "not material")?;
     store.delete_candidate(project, candidate.id, "explicit cleanup")?;
     let cleaned_basis = store.read_basis(project)?;
@@ -276,7 +291,7 @@ fn candidate_inspection_is_complete_or_explicitly_partial_and_never_mutates(
         &unavailable_basis,
         candidate.id,
         CandidateContentAccess::AllowBoundedSummary,
-        TimestampMicros::from_unix_micros(4_000),
+        TimestampMicros::from_unix_micros(2_000),
     );
     assert_eq!(degraded.health, InspectionHealth::Degraded);
     assert_eq!(
@@ -599,6 +614,18 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
     assert_eq!(first, build());
     assert_eq!(first.project_id, project.id);
     assert!(!first.goals_and_why.is_empty());
+    for item in first
+        .goals_and_why
+        .iter()
+        .chain(&first.behaviorally_relevant_context)
+    {
+        let record = canonical
+            .context_items
+            .iter()
+            .find(|r| r.id == item.identity)
+            .ok_or("Context revision basis")?;
+        assert_eq!(item.revision, record.revision);
+    }
     assert_eq!(first.behaviorally_relevant_context.len(), 3);
     assert!(first
         .behaviorally_relevant_context

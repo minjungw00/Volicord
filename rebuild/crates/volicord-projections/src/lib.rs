@@ -40,15 +40,15 @@ pub use documents::{
     RENDERED_DOCUMENT_FIELD_BYTE_LIMIT, RENDERED_HTML_BYTE_LIMIT, RENDERED_MARKDOWN_BYTE_LIMIT,
 };
 pub use project::{
-    build_memory_inspection, build_project_projection, CandidateDependencyFailure,
-    CandidateDependencyFailureKind, CandidateDependencyState, CandidateProjectionInput,
-    CanonicalInspectionItem, CanonicalInspectionKind, CapabilityGap, CheckpointTimelineEntry,
-    CodeRelationshipRole, CurrentWorkCodeLink, CurrentWorkPathBasis, CurrentWorkTopology,
-    DecisionContextCodeLink, MapEntity, MapInterpretation, MapRelation, MapRelationClass,
-    MemoryInspectionProjection, ProjectOverview, ProjectProjection, ProjectProjectionInputs,
-    ProjectReadSections, ProjectionBound, ProjectionDetail, ProjectionHealth, ProjectionIssue,
-    ProjectionIssueKind, ProjectionReadRequirements, ReadSectionState, RepositoryMap,
-    RepositoryScopeMetadata, SourceStatusSummary, WorkReadCost,
+    build_canonical_inspection, build_memory_inspection, build_project_projection,
+    CandidateDependencyFailure, CandidateDependencyFailureKind, CandidateDependencyState,
+    CandidateProjectionInput, CanonicalInspectionItem, CanonicalInspectionKind, CapabilityGap,
+    CheckpointTimelineEntry, CodeRelationshipRole, CurrentWorkCodeLink, CurrentWorkPathBasis,
+    CurrentWorkTopology, DecisionContextCodeLink, MapEntity, MapInterpretation, MapRelation,
+    MapRelationClass, MemoryInspectionProjection, ProjectOverview, ProjectProjection,
+    ProjectProjectionInputs, ProjectReadSections, ProjectionBound, ProjectionDetail,
+    ProjectionHealth, ProjectionIssue, ProjectionIssueKind, ProjectionReadRequirements,
+    ReadSectionState, RepositoryMap, RepositoryScopeMetadata, SourceStatusSummary, WorkReadCost,
 };
 pub use recall::{
     build_resume_brief, build_resume_brief_from_metadata, BriefContextItem, BriefDecision,

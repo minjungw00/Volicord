@@ -745,3 +745,91 @@ fn historical_adversity_is_primary_summary_with_lossless_machine_audit(
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }
+
+#[test]
+fn mcp_work_consumers_recover_omitted_verification_through_operations_detail_reads(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut scenario: Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    let exact = "한글🙂\"\\\n".repeat(700);
+    scenario["prior_checkpoint_count"] = json!(0);
+    scenario["later_checkpoint_count"] = json!(0);
+    scenario["unassociated_checkpoint"] = json!(false);
+    scenario["works"][0]["checkpoints"] = json!([scenario["works"][0]["checkpoints"][0].clone()]);
+    scenario["works"][0]["checkpoints"][0]["state_change"] = json!(exact);
+    scenario["works"][0]["checkpoints"][0]["outcome"] = json!(exact);
+    let works = scenario["works"].as_array_mut().ok_or("works")?;
+    let large = works.remove(0);
+    works.push(large);
+    let f = reading_fixture::fixture_scenario(scenario)?;
+    let cp = f
+        .operations
+        .canonical_basis(f.project)?
+        .checkpoint_history
+        .into_iter()
+        .find(|cp| cp.state_change.as_deref() == Some(exact.as_str()))
+        .ok_or("checkpoint")?;
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let invoke = |host: &mut HostAdapter,
+                  tool: &str,
+                  args: Value|
+     -> Result<Value, Box<dyn std::error::Error>> {
+        let response=host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":args}})).ok_or("response")?;
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        let result = &response["result"];
+        assert!(result.to_string().len() <= volicord_operations::HOST_READ_RESULT_BYTE_BUDGET);
+        assert!(
+            result["structuredContent"].to_string().len()
+                <= volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(result["content"][0]["text"].as_str().ok_or("text")?)?,
+            result["structuredContent"]
+        );
+        Ok(result["structuredContent"].clone())
+    };
+    let recall = invoke(
+        &mut host,
+        "recall",
+        json!({"project_id":f.project.to_string()}),
+    )?;
+    assert!(recall.to_string().contains("serialized_byte_budget"));
+    let mut offset = 0;
+    let mut fingerprint = None;
+    let mut found = false;
+    loop {
+        let mut args = json!({"project_id":f.project.to_string(),"offset":offset});
+        if let Some(value) = &fingerprint {
+            args["expected_fingerprint"] = json!(value);
+        }
+        let page = invoke(&mut host, "canonical_inspect", args)?;
+        found |= page["records"]
+            .as_array()
+            .ok_or("records")?
+            .iter()
+            .any(|r| r["identity"] == cp.id.to_string());
+        let Some(next) = page["next_offset"].as_u64() else {
+            break;
+        };
+        offset = next;
+        fingerprint = page["fingerprint"].as_str().map(str::to_owned);
+    }
+    assert!(found);
+    let mut args = json!({"project_id":f.project.to_string(),"record_kind":"checkpoint","record_id":cp.id.to_string(),"revision":cp.revision,"field":"verification","work_item_id":cp.work_item_id.map(|id|id.to_string())});
+    let mut recovered = String::new();
+    loop {
+        let page = invoke(&mut host, "canonical_inspect", args.clone())?;
+        recovered.push_str(page["chunk"].as_str().ok_or("chunk")?);
+        let Some(next) = page["next_offset"].as_u64() else {
+            break;
+        };
+        args["offset"] = json!(next);
+        args["expected_fingerprint"] = page["fingerprint"].clone();
+    }
+    let verification: Value = serde_json::from_str(&recovered)?;
+    assert_eq!(verification[0]["outcome"], exact);
+    assert_eq!(
+        verification[0]["source_id"],
+        json!(cp.verification[0].source_id.map(|id| id.to_string()))
+    );
+    Ok(())
+}

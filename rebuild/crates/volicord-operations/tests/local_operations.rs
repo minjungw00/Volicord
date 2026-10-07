@@ -1177,3 +1177,182 @@ fn outside_interactions(
         }],
     }).collect()
 }
+
+#[path = "support/reading_fixture.rs"]
+#[allow(dead_code)]
+mod evidence_fixture;
+
+#[test]
+fn retained_work_evidence_is_recoverable_in_revision_bound_parts(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use serde_json::{json, Value};
+    use volicord_operations::EvidenceDetailRequest;
+    let mut scenario: Value = serde_json::from_str(evidence_fixture::SCENARIO)?;
+    let exact = "한글🙂\"\\\n".repeat(700);
+    scenario["prior_checkpoint_count"] = json!(0);
+    scenario["later_checkpoint_count"] = json!(0);
+    scenario["unassociated_checkpoint"] = json!(false);
+    scenario["works"][0]["checkpoints"] = json!([scenario["works"][0]["checkpoints"][0].clone()]);
+    scenario["works"][0]["checkpoints"][0]["state_change"] = json!(exact);
+    scenario["works"][0]["checkpoints"][0]["outcome"] = json!(exact);
+    let works = scenario["works"].as_array_mut().ok_or("works")?;
+    let large = works.remove(0);
+    works.push(large);
+    let f = evidence_fixture::fixture_scenario(scenario)?;
+    let cp = f
+        .operations
+        .canonical_basis(f.project)?
+        .checkpoint_history
+        .into_iter()
+        .find(|cp| cp.state_change.as_deref() == Some(exact.as_str()))
+        .ok_or("large checkpoint")?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let recall = volicord_operations::resume_brief_json(
+        &f.operations.recall(f.project)?,
+        "en",
+        volicord_projections::FixedLocale::English,
+    );
+    assert!(recall.to_string().contains("serialized_byte_budget"));
+    for (field,expected) in [("state_change",json!(exact)),("verification",json!(cp.verification.iter().map(|v|json!({"state":"passed","source_id":v.source_id.map(|s|s.to_string()),"outcome":v.outcome})).collect::<Vec<_>>()))] {
+        let mut r = EvidenceDetailRequest {record_kind:"checkpoint".into(),record_id:cp.id.to_string(),revision:cp.revision,field:field.into(),offset:0,expected_fingerprint:None,work_item_id:cp.work_item_id};
+        let mut recovered=String::new();
+        let mut reads=0;
+        loop {
+            // Reopen Operations for every request to prove persistence/readback.
+            let page=LocalOperations::new(f.operations.layout().clone()).canonical_evidence_detail(f.project,&r)?;
+            assert_eq!(page,f.operations.canonical_evidence_detail(f.project,&r)?);
+            assert_eq!(page["revision"],cp.revision);
+            assert_eq!(page["metadata"]["work_item_id"],json!(cp.work_item_id.map(|id|id.to_string())));
+            assert!(page.to_string().len()<8*1024);
+            recovered.push_str(page["chunk"].as_str().ok_or("chunk")?);
+            reads+=1;
+            let Some(next)=page["next_offset"].as_u64() else { assert_eq!(page["state"],"complete");break; };
+            assert_eq!(page["remaining_utf8_bytes"].as_u64(),Some(page["total_utf8_bytes"].as_u64().ok_or("total")?-next));
+            r.offset=usize::try_from(next)?;
+            r.expected_fingerprint=page["fingerprint"].as_str().map(str::to_owned);
+        }
+        assert!(reads>2);
+        assert_eq!(serde_json::from_str::<Value>(&recovered)?,expected);
+        let foreign=f.operations.initialize_project("Foreign detail",None)?.project.id;
+        assert_eq!(f.operations.canonical_evidence_detail(foreign,&r)?["state"],"unavailable");
+        r.work_item_id=Some(ContextItemId::from_bytes([255;16]));
+        assert!(f.operations.canonical_evidence_detail(f.project,&r).is_err());
+    }
+    let mut offset = 0;
+    let mut fingerprint = None;
+    let mut identities = std::collections::BTreeSet::new();
+    loop {
+        let page =
+            f.operations
+                .canonical_inspection_page(f.project, offset, fingerprint.as_deref())?;
+        for record in page["records"].as_array().ok_or("records")? {
+            assert!(identities.insert(record["identity"].as_str().ok_or("identity")?.to_owned()));
+        }
+        let Some(next) = page["next_offset"].as_u64() else {
+            assert_eq!(
+                identities.len(),
+                page["total_count"].as_u64().ok_or("count")? as usize
+            );
+            break;
+        };
+        offset = next as usize;
+        fingerprint = page["fingerprint"].as_str().map(str::to_owned);
+    }
+    assert!(identities.contains(&cp.id.to_string()));
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn exact_candidate_detail_reads_recover_retained_summary_and_refuse_deleted_revisions(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use serde_json::Value;
+    use volicord_context::{Clock, Principal, PrincipalKind, SystemClock};
+    use volicord_inquiry::*;
+    use volicord_operations::EvidenceDetailRequest;
+    let (_root, operations, _repo) = fixture()?;
+    let project = operations
+        .initialize_project("Candidate detail", None)?
+        .project
+        .id;
+    let source =
+        operations.record_user_source(project, "test".into(), "session".into(), "source".into())?;
+    let summary = "Retained bounded observation 한글🙂 ".repeat(90);
+    let draft = CandidateDraft {
+        project_id: project,
+        kind: CandidateKind::Observation,
+        collection_mode: CandidateCollectionMode::Automatic,
+        origin: CandidateOrigin {
+            actor: Principal {
+                kind: PrincipalKind::Agent,
+                identity: "test".into(),
+            },
+            subsystem: "test".into(),
+            session: None,
+            provenance_summary: "synthetic readback".into(),
+        },
+        collection_scope: CandidateCollectionScope {
+            project_id: project,
+            session: None,
+            source_operation: None,
+            candidate_kind: CandidateKind::Observation,
+        },
+        observation_basis: CandidateObservationBasis {
+            source_basis: vec![
+                operations
+                    .canonical_basis(project)?
+                    .sources
+                    .iter()
+                    .find(|s| s.source.id.to_string() == source.identity)
+                    .ok_or("source")?
+                    .source
+                    .id,
+            ],
+            repository_snapshot: None,
+            analysis_snapshot: None,
+            execution: None,
+            host_turn: None,
+            other: None,
+        },
+        observed_at: SystemClock.now()?,
+        retention: CandidateRetention {
+            retained_until: None,
+            basis: "test retention".into(),
+        },
+        content: CandidateContent {
+            bounded_summary: summary.clone(),
+            question: None,
+            engineering_choice_discovery: None,
+            materiality_review: None,
+            learning_deliberation: None,
+        },
+    };
+    let SubmissionOutcome::Stored(candidate) = operations.submit_candidate(draft)? else {
+        return Err("candidate disabled".into());
+    };
+    let mut request = EvidenceDetailRequest {
+        record_kind: "candidate".into(),
+        record_id: candidate.id.to_string(),
+        revision: candidate.revision,
+        field: "summary".into(),
+        offset: 0,
+        expected_fingerprint: None,
+        work_item_id: None,
+    };
+    let mut recovered = String::new();
+    loop {
+        let page = operations.candidate_evidence_detail(project, candidate.id, &request)?;
+        recovered.push_str(page["chunk"].as_str().ok_or("chunk")?);
+        let Some(next) = page["next_offset"].as_u64() else {
+            break;
+        };
+        request.offset = next as usize;
+        request.expected_fingerprint = page["fingerprint"].as_str().map(str::to_owned);
+    }
+    assert_eq!(serde_json::from_str::<Value>(&recovered)?, summary);
+    operations.delete_candidate(project, candidate.id, "explicit test deletion")?;
+    let page = operations.candidate_evidence_detail(project, candidate.id, &request)?;
+    assert_eq!(page["state"], "unavailable");
+    assert!(page.get("chunk").is_none());
+    Ok(())
+}
