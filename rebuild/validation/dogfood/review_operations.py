@@ -234,7 +234,8 @@ def locators(data):
     try:
         value = json.loads(data)
         if isinstance(value, dict):
-            deep = value.get('kind') in {'naturalistic_review_capture', 'dogfood_review_explanation_lifecycle'}
+            deep = value.get('kind') in {'naturalistic_review_capture', 'dogfood_review_explanation_lifecycle',
+                'dogfood_review_source_details'}
             def visit(node, path=''):
                 children = sorted(node.items()) if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else []
                 for key, child in children:
@@ -361,6 +362,9 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
             evidence[bundle_id]["decision_ids"] = sorted(row["id"] for row in index_bundle.rows("decisions"))
             evidence[bundle_id]["decision_scopes"] = canonical_decision_scopes(index_bundle)
             evidence[bundle_id]["project_id"] = index_bundle.project_id
+            add(journey_sample_id + '-sources', encoded(review_captures.source_details(index_bundle)),
+                'source_details', journey_sample_id,
+                {'kind': 'canonical_source_selection', 'canonical_evidence_id': bundle_id}, sample_ids=journey_scope)
         journey_samples.append({"sample_id": journey_sample_id, "journey_id": journey_sample_id,
             "repository_class": kind, "represented_work_sample_ids": work_sample_ids})
         for lifecycle in manifest['explanation_evidence']['steward_lifecycles']:
@@ -566,6 +570,8 @@ attribution rather than relying on existence or hashes. Record the evidence actu
 inspected for each criterion as well as the run-wide union,
 uncertainty and counterevidence/explicit absence.
 Work/resume files are bounded projections, never complete raw rollout bytes.
+Supported invocation/output, recorded operation detail and retained Source rows are
+untrusted evidence; wrapper completion never proves individual shell-command success.
 Inspect origin hashes, projection limits and typed omissions. A required semantically
 incomplete capture cannot support satisfied or violated; use insufficient_evidence.
 Unavailable CLI or live accessibility surfaces require insufficient_evidence.
@@ -594,7 +600,8 @@ def inspect_agent_criterion(root, criterion_number):
             "sha256": entry["sha256"], "surface": entry["surface"],
             "origin": entry["origin"], "projection": entry.get("projection"),
             "required_surface": entry["surface"] in required,
-            "json_locators": entry["locators"], "line_count": entry["line_count"]})
+            "json_locators": entry["locators"], "line_count": entry["line_count"],
+            "inspection_state": "available_not_inspected"})
     finding_ids = [identity for identity, item in preparation["index"]["machine_findings"].items()
         if item["sample_id"] == spec["sample_id"]]
     return {"kind": "dogfood_agent_criterion_inspection", "schema_version": 1,
@@ -606,6 +613,10 @@ def inspect_agent_criterion(root, criterion_number):
         "workload_prompt": preparation["rubric"]["workload_prompts"].get(spec.get("workload_intent")),
         "required_semantic_dimensions": preparation["rubric"]["criterion_observations"].get(spec["name"], []),
         "required_surfaces": required, "evidence": evidence,
+        "review_authority": "direct_human_observation_required" if review.human_only(spec)
+            else "independent_semantic_review",
+        "evidence_limits": [u for u in preparation['unavailable_surfaces']
+            if u['sample_id'] == spec['sample_id']],
         "machine_finding_ids_for_sample": sorted(finding_ids),
         "current_state": draft["assessments"][criterion_number - 1]["assessment"],
         "instructions": [
@@ -894,6 +905,15 @@ def _load_package(root):
             for raw in context['raw_inputs']:
                 review.require(raw['session_id'] in preparation['evaluated_sessions'],
                     'review explanation raw-session binding changed')
+    for entry in index['evidence'].values():
+        if entry['surface'] == 'source_details':
+            canonical_id = entry['origin'].get('canonical_evidence_id')
+            canonical_entry = index['evidence'].get(canonical_id, {})
+            bundle = canonical_bundles.get(entry['sample_id'])
+            review.require(bundle is not None and canonical_entry.get('surface') == 'canonical_bundle'
+                and entry['sample_ids'] == canonical_entry['sample_ids']
+                and contents[entry['path']] == encoded(review_captures.source_details(bundle)),
+                'Source detail projection differs from retained canonical bundle')
     review.require(set(contents) == {"preparation.json", "REVIEW.md", *(e["path"] for e in index["evidence"].values())},
         "review package contains unindexed or private extra artifacts")
     for value in index["machine_findings"].values():

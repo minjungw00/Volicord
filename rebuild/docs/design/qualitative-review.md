@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 16 / policy revision 16, machine evaluation
-policy `evidence-evaluation-11`, human observation/receipt schema 6, qualification policy
-`replacement-qualification-12`, and result-lineage schema 2. Historical runs retain their old
+Current identities are qualitative review schema 17 / policy revision 17, machine evaluation
+policy `evidence-evaluation-13`, human observation/receipt schema 6, qualification policy
+`replacement-qualification-13`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -254,8 +254,27 @@ transmission is performed.
 
 ### Naturalistic review-capture projection
 
-`review_captures.py` owns the one current `naturalistic_review_capture` schema 4 /
-`naturalistic-review-capture-4` policy. Preparation verifies source bytes/SHA-256 against
+Schema 5 additionally retains privacy-checked normalized operation `detail` (actual request
+and result), exact supported command arguments and available output, plus raw wrapper
+source/completion bodies with their original coordinates and digests. Missing command output
+is null with its explicit `missing`/`unknown` state, never invented empty stdout. Malformed numeric status retains available text with indeterminate completion. Truncated
+output remains partial even when numeric process completion is known. Whole-process completion
+cannot certify each compound shell statement. Failed and covering retry facts remain ordered.
+Unknown typed fields do not erase a complete recorded result when the actual detail
+is retained; missing required fields and actual transport omission, privacy withholding and size omission remain incomplete. This availability
+contract supplies no verdict and no authenticated reviewer or Source actor identity.
+
+`source_details` artifacts expose exact retained canonical Source rows with per-body privacy
+limits and the canonical bundle hash. Preparation and copied-package loading recompute them
+from the retained bundle, never from the current checkout. Missing file contents stay missing;
+a Source locator is not reconstructed source code. `inspect-agent-review` reports scoped actual
+artifact paths/locators, availability limits and human-only authority. It records
+`available_not_inspected`; only reviewer-authored criterion citations establish inspection.
+Copied lineage reproduces every capture from copied raw bytes before replaying qualification.
+
+
+`review_captures.py` owns the one current `naturalistic_review_capture` schema 5 /
+`naturalistic-review-capture-5` policy. Preparation verifies source bytes/SHA-256 against
 both the immutable evidence-set member and session binding before parsing those exact
 bytes through the shared Codex normalizer. It rechecks immutable Campaign bindings before
 publication. Unsupported/malformed conversation transports, conflicting message copies,
@@ -275,8 +294,10 @@ hashes are integrity evidence, not authenticated capture authorship.
 The positive allowlist retains normalized actual user turns, user-visible agent messages,
 async Question titles/options, Volicord operation identity/sequence/outcome with scalar
 request/action/state fields and typed returned meaning, turn start/terminal/interruption and compaction boundaries,
-normalized execution command-role/digest/exit/termination facts with explicit
-`output_retention = non_semantic_by_design`, and typed transport issues. Duplicate agent
+normalized execution command-role/digest/exit/termination facts with bounded exact
+`invocation` and `output` bodies, explicit combined-stream and whole-process scope,
+and typed transport issues. Wrapper source/completion bodies remain untrusted evidence,
+including unsupported wrappers; their availability never establishes inner execution. Duplicate agent
 item/response transports must agree and retain their original source coordinates. Operation
 meaning comes from the exact normalized MCP/JSON CLI completion, with its original turn and
 sequence. It is never reconstructed from agent prose or a later bundle.
@@ -290,9 +311,10 @@ The capture aggregate distinguishes true absence, observed execution and limited
 normalization. Unsupported references establish a review limitation, never tool
 execution or success. `semantic_complete` does not certify execution coverage;
 decisive execution judgments must use the separately retained facts and limits.
-No arbitrary wrapper, command or shell output body enters this projection.
-System/developer/skill/plugin instructions, reasoning, environment bodies, arbitrary
-repository source, generic command stdout/stderr and generic tool/MCP payloads are excluded.
+Bounded recorded wrapper and supported command/output bodies enter this local projection
+as untrusted evidence. System/developer/skill/plugin messages, reasoning, full environment
+bodies and unrelated generic tool/MCP payloads remain excluded. Output is the actual combined
+tool stream; separate stdout/stderr are unavailable unless independently recorded.
 No repository name, credential spelling or test-token convention is allowlisted.
 
 Current `item_completed.AgentMessage` content uses `Text` parts with string `text`
@@ -411,7 +433,7 @@ identities include the changed producer/consumer hashes.
 
 Typed artifacts have nested JSON pointers into claim text, action, plan content and lifecycle
 stages (up to 8,192 per artifact); exact line locators always remain available. Package and record
-receipt schema 2 bind preparation schema 16. Copied result-lineage schema 2 rechecks typed shape,
+receipt schema 2 bind preparation schema 17. Copied result-lineage schema 2 rechecks typed shape,
 omissions, stage/receipt/readback consistency and observation-index meaning/stage/locator bindings without original
 Runtime Homes, response files or staging paths. New modules participate in preparer, evaluator
 and qualification dependency hashing. Fresh outer hashes cannot excuse inconsistent inner claims.
@@ -461,8 +483,8 @@ available for bounded clarification and historical/escalated claims. Without N i
 only human-owned criteria, skipping conflict-free agent no-user-Decision inapplicability
 from the supplied `--resolve-review-root` records. Do not reconfirm four nonexistent
 Decision experiences already resolved by qualification policy. A high-impact authority,
-context-recovery or interaction insufficiency needs execution/context evidence and explicit
-resolution; another Viewer inspection cannot fix it.
+context-recovery or interaction insufficiency needs stronger execution/context evidence and
+independent review; another Viewer inspection cannot fix it.
 
 `SKIP`, `NOT SURE`/`CANNOT ASSESS`, `NOT APPLICABLE` and compatible prior/locale references
 retain their typed meanings. Cross-criterion reuse carries observation context only; the
@@ -530,7 +552,7 @@ criterion and actual-outcome declaration duty, all 21 CLI criteria by repository
 class, human-only criteria, and targeted escalation rules. Non-mutating preflight
 reports the exact unreviewed criterion IDs, unaddressed review-required findings,
 missing authority and per-class CLI coverage, human-only work still requiring a
-human run, high-impact insufficiency escalations, and declared conflict resolutions.
+human run, unresolved evidence gaps, and declared conflict resolutions.
 These are structural progress facts only: neither preparation nor preflight chooses
 an assessment, decides whether evidence is persuasive, or verifies semantic truth.
 
@@ -571,8 +593,9 @@ and original user Decision comprehension
 permit agent review with the
 required evidence. Missing surfaces remain insufficient, and a static HTML proxy never
 establishes human-observed usability. Human review may resolve only the remaining criteria.
-A high-impact authority/context-recovery insufficiency or conflicting review requires an
-explicit human assessment whose `resolves_review_runs` maps the criterion ID to the other
+Evidence insufficiency stays unresolved and requests stronger actual evidence for independent
+review; it does not itself require a person to reconstruct execution or context. A conflicting
+review requires an explicit human assessment whose `resolves_review_runs` maps the criterion ID to the other
 review run IDs addressed. Agent reviews must leave that map empty. This is evidence-bound
 judgment, not voting or statistical independence.
 
@@ -707,8 +730,8 @@ reasoning. Learning-specific criteria may be `not_observed` only outside the req
 learning/collaborative Work when runtime participation was not active. Active or uncertain participation requires review
 or an explicit insufficiency. Reviewers add independently observed material
 outcomes and assess actual authority/commitment chronology without relying on
-a frozen evaluator concern. Agent disagreement is preserved; a high-impact
-conflict or insufficiency requires targeted human resolution. Direct live
+a frozen evaluator concern. Agent disagreement is preserved; conflict requires
+targeted human resolution, while insufficiency remains an unresolved evidence gap. Direct live
 Viewer/browser and applicable Decision comprehension remain human-owned.
 
 Journey-final `repository_state` is an additional immutable, bounded reviewer surface shared by
@@ -768,8 +791,9 @@ validation checks inspection/citation discipline rather than semantic answers.
   Current high-impact qualitative blocking/conflict-resolution policy applies.
 
 Required campaign coverage cannot be `not_observed` or `not_applicable`. Missing review
-also remains unresolved. Conflicting judgments or high-impact coverage insufficiency
-need targeted human resolution naming the other reviewed runs; direct human observations
+also remains unresolved. Conflicting judgments
+need targeted human resolution naming the other reviewed runs; evidence insufficiency
+remains unresolved until stronger actual evidence supports independent review; direct human observations
 remain required under their existing policy. A human review cannot replace the independent
 agent semantic inspection. No count threshold supplies a verdict or qualification.
 

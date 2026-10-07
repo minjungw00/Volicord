@@ -321,27 +321,25 @@ class PolicyTests(unittest.TestCase):
             next(a for a in value["assessments"] if a["criterion_id"] == cid)["assessment"] = "violated"
         self.assertEqual(self.result()["replacement_qualification"], "blocked")
 
-    def test_coverage_gap_requires_targeted_human_resolution(self):
+    def test_coverage_gap_routes_to_evidence_review_without_inventing_human_experience(self):
         cid = policy.COVERAGE_CRITERION
         criterion = next(a for a in self.agent["assessments"] if a["criterion_id"] == cid)
         fixtures.fill(criterion, self.prep, "insufficient_evidence")
         handoff = review.validate_value(self.prep, "d" * 64, self.agent)["completion_preflight"]
-        self.assertIn(cid, handoff["targeted_escalations"]["high_impact_insufficient_criterion_ids"])
-        other_cid = next(s["criterion_id"] for s in self.specs if s["group"] == "context_recovery")
-        for resolutions in ({}, {cid: ["f" * 32]},
-                {other_cid: [self.agent["reviewer"]["run_id"]]}):
-            self.human["resolves_review_runs"] = resolutions
-            result = self.result()
-            self.assertEqual(result["replacement_qualification"], "unresolved")
-            self.assertIn(cid, result["qualitative_review"]["human_escalations"])
-            self.assertIn(cid, result["qualitative_review"]["unresolved_criteria"])
-        self.human["resolves_review_runs"] = {}
-        self.human["resolves_review_runs"][cid] = [self.agent["reviewer"]["run_id"]]
-        human_result = review.validate_value(self.human_prep, "d" * 64, self.human)
-        self.assertIn(cid, human_result["completion_preflight"]["targeted_escalations"]
-            ["declared_conflict_resolution_criterion_ids"])
-        self.assertEqual(self.result()["replacement_qualification"], "qualified")
-        # Even an explicit resolution cannot supply the independent agent judgment.
+        self.assertIn(cid, handoff["targeted_escalations"]["evidence_gap_criterion_ids"])
+        result = self.result([self.agent])
+        self.assertNotIn(cid, result['qualitative_review']['human_escalations'])
+        self.assertIn(cid, result['qualitative_review']['unresolved_criteria'])
+        stronger = copy.deepcopy(self.agent)
+        stronger['reviewer']['run_id'] = 'c' * 32
+        fixtures.fill(next(a for a in stronger['assessments'] if a['criterion_id'] == cid), self.prep)
+        # Authored controls supply actual citations, not a confidence/count shortcut.
+        result = self.result([self.agent, stronger, self.human])
+        self.assertIn(cid, result['qualitative_review']['resolved_criteria'])
+        self.assertNotIn(cid, result['qualitative_review']['human_escalations'])
+        # Human-only experience still requires its own direct observation.
+        self.assertTrue(self.result([self.agent, stronger])['qualitative_review']['human_escalations'])
+        # A human assessment cannot supply the separate independent agent inspection.
         self.agent["assessments"][self.agent["assessments"].index(criterion)] = review.observation(cid)
         review.validate_value(self.prep, "d" * 64, self.agent)
         result = self.result()
@@ -585,7 +583,7 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "only human"):
             review.validate_value(self.prep, "d" * 64, self.agent)
 
-    def test_additional_outcome_insufficiency_requires_targeted_human_resolution(self):
+    def test_additional_outcome_insufficiency_retains_evidence_gap_without_human_escalation(self):
         cid = "journey-volicord-work-a/authority/additional-durability"
         agent_extra = fixtures.fill(review.observation(cid), self.prep, "insufficient_evidence")
         agent_extra["authority"] = fixtures.assessment()
@@ -596,7 +594,9 @@ class PolicyTests(unittest.TestCase):
         human_extra = fixtures.fill(review.observation(cid), self.human_prep)
         human_extra["authority"] = fixtures.assessment()
         self.human["additional_outcomes"] = [{"sample_id": "journey-volicord-work-a", "finding": human_extra}]
-        self.assertEqual(self.result()["replacement_qualification"], "unresolved")
+        gap = self.result([self.agent])
+        self.assertIn(cid, gap['qualitative_review']['unresolved_criteria'])
+        self.assertNotIn(cid, gap['qualitative_review']['human_escalations'])
         self.human["resolves_review_runs"] = {cid: [self.agent["reviewer"]["run_id"]]}
         review.validate_value(self.human_prep, "d" * 64, self.human)
         result = self.result()
@@ -1107,6 +1107,82 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
 
 class FileBoundaryTests(unittest.TestCase):
+    def test_retained_retry_and_source_evidence_reach_independent_review_and_copied_qualification(self):
+        import campaign
+        import campaign_self_test as support
+        import review_operations as ops
+        import review_captures
+        import result_lineage
+        from review_operations_self_test import append_reviewable_execution, rollout_bytes, insufficient_draft, snapshot
+        prefix = self.parent / self._testMethodName; prefix.mkdir()
+        binary = prefix / 'bin/volicord'; support.write_fake_binary(binary)
+        with patch.object(harness, 'git_clean', return_value=True):
+            root, raw, bundles = support.prepared_batch(prefix, 'authored', binary)
+            # These inputs are newly authored, before any collection/publication.
+            events = [json.loads(line) for line in raw[0].read_text().splitlines()]
+            raw[0].write_bytes(rollout_bytes(append_reviewable_execution(events)))
+            campaign.collect_batch(root, raw, exporter=support.batch_exporter(bundles),
+                documenter=support.documenter, snapshotter=support.snapshotter)
+        original = snapshot(root)
+        evaluation_result = campaign.evaluate_campaign(root)
+        evaluation_path = root / evaluation_result['evaluation']
+        target = prefix / 'review'
+        ops.prepare(root, target, reviewer_kind='agent', session_id='independent-evidence-review',
+            include_raw=True, evaluation_path=evaluation_path)
+        prep, sha, _ = ops.load_package(target)
+        specs = review.criterion_specs(prep['index'], prep['rubric'])
+        cid = 'journey-volicord-work-a/interaction/source_grounding'
+        number = next(i + 1 for i,s in enumerate(specs) if s['criterion_id'] == cid)
+        brief = ops.inspect_agent_criterion(target, number)
+        self.assertEqual(brief['review_authority'], 'independent_semantic_review')
+        self.assertTrue(all(e['inspection_state'] == 'available_not_inspected' for e in brief['evidence']))
+        identity = 'journey-volicord-work-a-start'
+        entry = prep['index']['evidence'][identity]
+        captured = review_captures.validate((target / entry['path']).read_bytes())
+        facts = [r for r in captured['records'] if r['semantic_role'] == 'execution_fact'
+            and (r['raw_call_id'] or '').startswith('review-control-')]
+        self.assertEqual([r['exit_code'] for r in facts], [1, 0, 0])
+        self.assertIn('invariant changed', facts[0]['output']['value'])
+        self.assertIn('authored_fixture', facts[2]['output']['value'])
+        source_entry = prep['index']['evidence']['journey-volicord-sources']
+        sources = json.loads((target / source_entry['path']).read_bytes())
+        self.assertTrue(sources['sources'])
+        self.assertTrue(any(loc['value'].endswith('/detail/value/locator')
+            for loc in source_entry['locators']))
+        draft = insufficient_draft(target)
+        judgment = next(a for a in draft['assessments'] if a['criterion_id'] == cid)
+        evidence_ids = [identity, 'journey-volicord-sources']
+        judgment.update(assessment='satisfied', inspected_evidence=evidence_ids,
+            reasoning='Authored reviewer compared available Source rows with the actual retained inspection and retry.',
+            uncertainty='Authored structural support only; no historical campaign or human experience is established.',
+            criterion_observations=prep['rubric']['criterion_observations'].get('source_grounding', []),
+            counterevidence={'state': 'none_found', 'reasoning': 'No contrary source grounding in this bounded authored control.', 'evidence': []},
+            evidence=[{'evidence_id': eid, 'locator': next(loc for loc in prep['index']['evidence'][eid]['locators']
+                if loc['value'].endswith('/output/value'))
+                    if eid == identity else next(loc for loc in source_entry['locators'] if loc['value'].endswith('/detail/value/locator')),
+                'criterion_id': cid, 'relevance': 'Actual retained inspection and Source detail support this exact criterion.'}
+                for eid in evidence_ids])
+        draft['observation_scope']['inspected_evidence'] = sorted({eid for a in draft['assessments'] for eid in a['inspected_evidence']})
+        (target / 'draft.json').write_bytes(ops.encoded(draft))
+        ops.record(target, target / 'draft.json')
+        archive = prefix / 'review.tar.gz'; ops.package_review(target, archive)
+        candidate = campaign.load_evidence_set(root)['candidate_head']
+        result = policy.qualify(root, evaluation_path, prefix / 'qualification', candidate=candidate, review_roots=[target])
+        self.assertIn(cid, result['qualitative_review']['resolved_criteria'])
+        self.assertEqual(result['replacement_qualification'], 'blocked', result['machine_summary'])
+        self.assertTrue(result['machine_summary']['hard_findings'])
+        self.assertIn(policy.COVERAGE_CRITERION, result['qualitative_review']['unresolved_criteria'])
+        self.assertNotIn(policy.COVERAGE_CRITERION, result['qualitative_review']['human_escalations'])
+        published = result_lineage.publish(root, evaluation_path, [target], prefix / 'qualification/qualification.json', output=prefix / 'lineage')
+        copied = prefix / 'copied'; shutil.copytree(published['lineage_root'], copied)
+        self.assertTrue(all((root / name).read_bytes() == data for name,data in original.items()))
+        # Remove all original staging roots, then replay from copied contents only.
+        shutil.rmtree(root); shutil.rmtree(target); shutil.rmtree(prefix / 'lineage')
+        shutil.rmtree(prefix / 'qualification')
+        with patch.object(campaign, 'load_evidence_set', side_effect=AssertionError('original staging accessed')):
+            verified = result_lineage.verify(copied)
+        self.assertFalse(verified['external_staging_paths_used'])
+
     def test_work_scoped_historical_absence_resolves_only_proven_targets_in_copied_lineage(self):
         import campaign
         import review_operations as ops
@@ -1669,8 +1745,11 @@ class FileBoundaryTests(unittest.TestCase):
         # Rejection must come from inner returned-meaning/lifecycle consistency.
         from review_meaning_self_test import rehash_package
         import review_captures
-        for control in ('resume_capture', 'explanation_lifecycle', 'explanation_plan_content', 'explanation_locator'):
-            surface = 'resume_capture' if control == 'resume_capture' else 'explanation_lifecycle'
+        for control in ('resume_capture', 'execution_output', 'execution_invocation', 'source_details',
+                'explanation_lifecycle', 'explanation_plan_content', 'explanation_locator'):
+            surface = ('resume_capture' if control == 'resume_capture' else 'work_capture'
+                if control.startswith('execution_') else 'source_details' if control == 'source_details'
+                else 'explanation_lifecycle')
             tampered = self.parent / ('returned-meaning-tamper-' + control)
             shutil.copytree(lineage_root, tampered)
             index = json.loads((tampered / 'index.json').read_bytes())
@@ -1685,6 +1764,20 @@ class FileBoundaryTests(unittest.TestCase):
                 returned['body']['value']['returned_meaning']['value']['next_step'] = 'Corrupted captured action'
                 returned['body'] = review_captures.body_projection(returned['body']['value'])
                 expected_error = 'omissions/consistency changed'
+            elif control.startswith('execution_'):
+                fact = next(v for v in content['records'] if v['semantic_role'] == 'execution_fact'
+                    and v['output_state'] == 'retained')
+                if control == 'execution_output':
+                    fact['output'] = review_captures.body_projection('Invented passing output')
+                else:
+                    fact['invocation'] = review_captures.body_projection({'cmd': 'invented successful command'})
+                    fact['normalized_command_sha256'] = fact['invocation']['source_body_sha256']
+                expected_error = 'copied conversation projection differs from immutable source'
+            elif control == 'source_details':
+                source = content['sources'][0]
+                row = dict(source['detail']['value']); row['locator'] = 'Invented Source content'
+                source['detail'] = review_captures.body_projection(row)
+                expected_error = 'Source detail projection differs from retained canonical bundle'
             elif control == 'explanation_lifecycle':
                 body = content['stages']['record']
                 body['value']['value']['explanation']['realization']['paragraphs'][0]['text'] = 'Corrupted recorded claim'

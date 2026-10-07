@@ -1923,10 +1923,11 @@ automatically parsed. Available confirmed numeric failures remain independently 
 Checkpoint reconciliation distinguishes missing raw execution from unresolved raw
 normalization without inventing an execution/outcome match.
 
-Reviewer capture schema 4 retains bounded `execution_coverage` records and aggregate
+Reviewer capture schema 5 retains bounded `execution_coverage` records and aggregate
 coverage separately from semantic completeness, plus execution launch/continuation
-coordinates, numeric exit/signal/termination and output-retention state. No command,
-JS or shell output body is copied. Current unsupported forms include mixed MCP/state
+coordinates, numeric exit/signal/termination and output-retention state. Bounded exact
+command arguments, available combined output and wrapper source/completion bodies are
+retained under the unchanged sensitive-body policy, with explicit missing/truncated states. Current unsupported forms include mixed MCP/state
 code, dynamic arguments/forwarding, and `Promise.allSettled` callbacks. These remain
 review evidence, never successful operations. The read-only eight-rollout diagnostic
 and Session 2 consumer handoff are in
@@ -2105,8 +2106,8 @@ qualification은 `qualification_policy.py`가 결정한다. Volicord one-Project
 main-campaign journey의 immutable structural finding이 소유한다. Live accessibility, browser input/paint
 responsiveness, 그 Viewer organization의 human comprehension과 실제 사용자 Decision comprehension은
 human observation을 요구하고 나머지 semantic criteria는 evidence-backed agent
-review로 해결할 수 있다. Conflict 또는 high-impact authority/context-recovery insufficiency는
-해당 criterion만 human에게 escalate한다. Human은 `resolves_review_runs`로 충돌한 review ID를
+review로 해결할 수 있다. Conflict는 해당 criterion만 human에게 escalate한다. Authority/context-recovery
+insufficiency는 stronger actual evidence와 independent review 전까지 unresolved다. Human은 `resolves_review_runs`로 충돌한 review ID를
 명시하며 무관한 criterion을 재검토할 필요가 없다. 어떤 hard violation도 override하지 못한다.
 Human conversational capture는 multi-line observation과 limit을 한 response로 보존하고,
 `skip`, `already_covered`, `same_as_prior`, `same_as_other_locale`, `cannot_assess`,
@@ -2120,8 +2121,8 @@ Work identity를 보존한 세 projection에 적용된다. CLI group만 `volicor
 `polyglot-medium` repository class별 일곱 criterion으로 생성된다. Dedicated observation이 없는
 class는 일곱 bounded unresolved gap을 남기며 `not_applicable`로 숨기지 않는다.
 
-Naturalistic review-capture support는 `review_captures.py`의 current schema 4 /
-`naturalistic-review-capture-4` policy를 사용한다. Immutable source member bytes/hash를 projection
+Naturalistic review-capture support는 `review_captures.py`의 current schema 5 /
+`naturalistic-review-capture-5` policy를 사용한다. Immutable source member bytes/hash를 projection
 전에 검증하며 origin raw identity와 projected artifact identity를 분리한다. User/agent/Question
 semantic omission은 typed reason과 count를 남기고 required direct capture에 대한 `satisfied` 및
 `violated`를 거부한다. `insufficient_evidence`는 observation gap이며 Product failure가 아니다.
@@ -2334,8 +2335,9 @@ validation checks inspection/citation discipline rather than semantic answers.
   Current high-impact qualitative blocking/conflict-resolution policy applies.
 
 Required campaign coverage cannot be `not_observed` or `not_applicable`. Missing review
-also remains unresolved. Conflicting judgments or high-impact coverage insufficiency
-need targeted human resolution naming the other reviewed runs; direct human observations
+also remains unresolved. Conflicting judgments
+need targeted human resolution naming the other reviewed runs; evidence insufficiency
+remains unresolved until stronger actual evidence supports independent review; direct human observations
 remain required under their existing policy. A human review cannot replace the independent
 agent semantic inspection. No count threshold supplies a verdict or qualification.
 
@@ -2603,7 +2605,7 @@ Overview/Work cards, Work facts/history disclosure and shared CLI/document summa
 require current-candidate observation; historical b57 Human/Agent evidence remains
 diagnostic for its own candidate. No Human-review policy or campaign is changed here.
 
-Qualitative-review schema 16 / policy revision 16 separates current displayed multi-Work
+Qualitative-review schema 17 / policy revision 17 separates current displayed multi-Work
 and Decision comprehension from retained snapshot and measured-conversation fidelity.
 The rubric, qualification policy and copied-lineage reconstruction consume one current
 inventory. Direct screen complaints do not establish historical inconsistency; historical
@@ -2645,3 +2647,30 @@ historical rows in the primary reading path after their disclosure change. Its d
 `negative-work-history` control removes the disclosure and must fail for the intended
 missing-history reason before the restored Product view passes. Prior failed browser
 attempts remain failed evidence; supporting browser checks do not establish Human experience.
+
+
+### Retained qualitative evidence access
+
+Current review capture schema 5, review schema/policy 17, evaluation policy
+`evidence-evaluation-13` and qualification policy `replacement-qualification-13`
+preserve supported exact invocations, numeric signal/exit completion, available
+combined process output, wrapper source/completion, normalized operation detail,
+and readable retained canonical Source rows. These remain local untrusted evidence.
+Separate stderr/stdout and missing repository contents are not synthesized.
+Typed-schema selection gaps can be inspected against complete retained detail;
+actual missing/transport-truncated/privacy-omitted semantic evidence stays incomplete.
+Execution coverage and interaction semantic completeness remain separate facts.
+
+Focused capture/projection/meaning controls cover numeric signal forwarding, output
+absence versus available empty/truncated output, failed-then-successful chronology,
+unsupported wrapper limits, Source detail privacy and rehashed invented Source bodies.
+`qualification_self_test.FileBoundaryTests.test_retained_retry_and_source_evidence_reach_independent_review_and_copied_qualification`
+uses newly authored inputs before collection, then the maintained collect/evaluate,
+criterion inspection, record/package, qualification and copied-lineage consumers.
+It deletes original staging roots before independent copied verification. Existing
+copied controls also refresh every package/review/qualification/lineage hash after
+inventing command/output/Source content; unchanged immutable raw/bundle bytes must
+still reject those claims. Original campaign/evaluation/review records are never edited.
+Missing technical evidence is an unresolved evidence gap; direct human experience
+and explicit semantic conflicts retain their separate human authority. These controls
+establish no new naturalistic session, authenticated reviewer identity or Phase 9 approval.

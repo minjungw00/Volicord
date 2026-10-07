@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 # Shared by completion/handoff reporting and replacement qualification.
 HIGH_IMPACT_INSUFFICIENCY_GROUPS = ("authority", "context_recovery", "campaign_interaction")
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
@@ -313,7 +313,8 @@ def completion_obligations(index, policy):
         "human_only_criteria": human_ids,
         "targeted_escalation_rules": {
             "machine_relationships": "qualitative_review_required findings need an evidence-backed permitted-group relationship",
-            "high_impact_insufficiency_groups": list(HIGH_IMPACT_INSUFFICIENCY_GROUPS),
+            "evidence_gap_groups": list(HIGH_IMPACT_INSUFFICIENCY_GROUPS),
+            "evidence_gaps": "retain unresolved; obtain actual evidence for independent review, never infer human experience",
             "review_conflicts": "human review must name each conflicting review run for the exact criterion",
         },
     }
@@ -371,7 +372,7 @@ def completion_progress(preparation, value, specs):
         "missing_cli_criterion_ids_by_class": missing_cli,
         "human_only_criterion_ids_requiring_human_review": human_remaining,
         "targeted_escalations": {
-            "high_impact_insufficient_criterion_ids": high_impact,
+            "evidence_gap_criterion_ids": high_impact,
             "declared_conflict_resolution_criterion_ids": sorted(value["resolves_review_runs"]),
         },
     }

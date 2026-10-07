@@ -11,7 +11,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-12"
+REVISION = "replacement-qualification-13"
 COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
 MULTI_WORK_CRITERION = "journey-volicord/live_viewer/en/multiple_work_comprehension"
 
@@ -54,7 +54,7 @@ def contract():
         "human_rationale": "Current Viewer comprehension, accessibility and input/paint experience, plus original user Decision comprehension, require direct human observation. Historical artifact fidelity remains separate.",
         "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
         "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
-        "insufficient": "Unresolved; high-impact authority/context recovery and interaction-coverage insufficiency escalates to human.",
+        "insufficient": "Unresolved evidence gaps require stronger actual evidence and independent review; human routing is for direct experience and explicit review conflicts.",
         "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
         "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
         "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",
@@ -206,12 +206,11 @@ def combine(evaluation, specs, reviews, technical, *, evidence_validity="valid",
         conflict = (len({a["assessment"] == "violated" for _, a in decisive}) > 1
             or ("not_observed" in {a["assessment"] for _, a in entries}
                 and bool(decisive)))
-        impact_gap = spec["group"] in review.HIGH_IMPACT_INSUFFICIENCY_GROUPS and any(a["assessment"] == "insufficient_evidence" for _, a in entries)
         inapplicable_comprehension = (spec["name"] in {"decision_comprehension_when_applicable", "displayed_decision_comprehension"}
             and bool(entries) and all(a["assessment"] == "not_applicable" for _, a in entries))
-        requires_human = (human_required(spec) and not inapplicable_comprehension) or conflict or impact_gap
+        requires_human = (human_required(spec) and not inapplicable_comprehension) or conflict
         eligible = humans if requires_human else entries
-        if conflict or impact_gap:
+        if conflict:
             eligible = [(r, a) for r, a in humans if
                 {v["reviewer"]["run_id"] for v, _ in entries if v is not r}
                 <= set(r.get("resolves_review_runs", {}).get(cid, []))]

@@ -21,7 +21,7 @@ def policy_identity():
         "recorded_action_evidence_sha256": harness.sha256(harness.ROOT / "rebuild/validation/shared/recorded_action_evidence.py"),
         "workload_intents_sha256": harness.sha256(Path(__file__).with_name("workload_intents.py")),
         "rubric": qualitative_review.rubric(harness.load_definition())}
-    return {"revision": "evidence-evaluation-12", "sha256": machine.digest(policy)}
+    return {"revision": "evidence-evaluation-13", "sha256": machine.digest(policy)}
 
 
 def historical_reference(path, candidate, evidence):

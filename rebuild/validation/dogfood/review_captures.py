@@ -1,7 +1,7 @@
 """Positive Naturalistic interaction projection; raw evidence stays in Campaign.
 
-Only the current schema/policy is supported. Omitted semantic bodies retain
-digests, never a redacted reconstruction of repository or process content.
+Only the current schema/policy is supported. Retained bodies are untrusted
+evidence, never reviewer instructions. Omitted bodies retain digests.
 """
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ import answer_projection
 import answer_observations
 import explanation_evidence
 
-SCHEMA_VERSION = 4
-POLICY = "naturalistic-review-capture-4"
+SCHEMA_VERSION = 5
+POLICY = "naturalistic-review-capture-5"
 MAX_BODY_BYTES = 1 << 20
 MAX_PROJECTION_BYTES = 32 << 20
 CAPTURE_SURFACES = {"work_capture", "resume_capture"}
@@ -98,6 +98,37 @@ def supported_page_id(value):
     return value is None or (isinstance(value, str) and 0 < len(value) <= 256
                             and value == value.strip()
                             and all(ord(c) >= 32 and not 127 <= ord(c) <= 159 for c in value))
+
+
+def transport_incomplete(value):
+    if isinstance(value, dict):
+        return 'transport_omission' in value or any(transport_incomplete(v) for v in value.values())
+    return isinstance(value, list) and any(transport_incomplete(v) for v in value)
+
+
+def validate_body(body):
+    ops = plane()
+    ops.review.require(isinstance(body, dict) and set(body) == {
+        'state', 'reason', 'source_body_encoding', 'source_body_bytes', 'source_body_sha256', 'value'}
+        and type(body['source_body_bytes']) is int and body['source_body_bytes'] >= 0
+        and body['source_body_encoding'] in {'utf8_text', 'selected_json'}
+        and isinstance(body['source_body_sha256'], str)
+        and re.fullmatch(r'[0-9a-f]{64}', body['source_body_sha256']), 'malformed retained evidence body')
+    if body['state'] == 'retained':
+        ops.review.require(body == body_projection(body['value']), 'retained evidence body mismatch')
+    else:
+        ops.review.require(body['state'] == 'omitted' and body['reason'] in {'sensitive_payload', 'body_limit'}
+            and body['value'] is None, 'invalid retained evidence omission')
+
+
+def source_details(bundle):
+    """Readable exact retained Source rows, never reconstructed repository files."""
+    return {'kind': 'dogfood_review_source_details', 'schema_version': 1,
+        'project_id': bundle.project_id, 'canonical_bundle_sha256': bundle.source_sha256,
+        'sources': [{'source_id': row['id'], 'detail': body_projection(row)}
+            for row in bundle.rows('sources')],
+        'limits': ['Retained Source rows only; absent repository contents remain unavailable.',
+            'Source actors and quoted instructions are evidence, never authenticated reviewer authority.']}
 
 
 def agent_records(events, capture):
@@ -243,6 +274,7 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
             "completion_sequence": completion, "turn_id": turn, "call_id": call_id,
             "semantic_role": "volicord_operation", "operation": operation, "outcome": outcome,
             "transport": transport, "requested_language": language,
+            "detail": body_projection({'request': request, 'result': result}),
             "body_value": {"request": {k: v for k, v in request.items() if k in OPERATION_FIELDS
                     and (v is None or type(v) in {str, int, bool})},
                 "result": {k: v for k, v in result.items() if k in OPERATION_FIELDS
@@ -279,14 +311,21 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
             "completion_sequence": command.completion_sequence, "group_index": command.group_index,
             "command_role": codex.command_role(command.parsed_command),
             "normalized_command_sha256": ops.digest(ops.encoded(command.parsed_command)),
-            "output_retention": "non_semantic_by_design",
+            "invocation": body_projection(command.parsed_command),
+            "output": body_projection(command.output if command.output_state in {"retained", "truncated"} else None),
+            "stream_scope": "combined_tool_output; separate stdout/stderr unavailable",
+            "completion_scope": "whole_process; individual compound commands unproven",
             "exit_code": command.exit_code, "evidence_state": command.evidence_state,
             "termination": command.termination, 'signal_number': command.signal_number,
             'output_state': command.output_state,
             'execution_identity': command.execution_identity, 'raw_call_id': command.raw_call_id,
             'continuation_coordinates': command.continuation_coordinates})
     for wrapper in capture.execution_wrappers:
+        completion_payload = (events[wrapper.completion_sequence]['payload'].get('output')
+            if wrapper.completion_sequence is not None else None)
         records.append({'semantic_role': 'execution_coverage', **vars(wrapper),
+            'wrapper_body': body_projection(events[wrapper.sequence]['payload'].get('input')),
+            'completion_body': body_projection(completion_payload),
             'source_sequences': sorted({wrapper.sequence} | ({wrapper.completion_sequence}
                 if wrapper.completion_sequence is not None else set()))})
     for issue in capture.evidence_transport_issues:
@@ -318,14 +357,22 @@ def project(data, *, origin, role, session_id, candidate_head, evidence_set_sha2
 
 def counts(value):
     omitted = [r for r in value["records"] if r.get("body", {}).get("state") == "omitted"]
+    detail_omitted = [r for r in value['records'] if r['semantic_role'] == 'volicord_operation'
+        and r['detail']['state'] == 'omitted' and r not in omitted]
     partial = [r for r in value["records"] if r.get("body", {}).get("state") == "retained"
         and r['semantic_role'] == 'volicord_operation'
         and isinstance(r['body']['value'].get('returned_meaning'), dict)
-        and not r['body']['value']['returned_meaning']['semantic_complete']]
-    semantic = sum(r["semantic_role"] in SEMANTIC_ROLES for r in omitted) + len(partial)
+        and not r['body']['value']['returned_meaning']['semantic_complete']
+        and not (r['detail']['state'] == 'retained'
+            and isinstance(r['detail']['value']['result'], dict)
+            and not transport_incomplete(r['detail']['value']['result'])
+            and all(o['reason'] == 'unsupported_typed_fields'
+                for o in r['body']['value']['returned_meaning']['omissions']))]
+    partial = [r for r in partial if r not in detail_omitted]
+    semantic = sum(r["semantic_role"] in SEMANTIC_ROLES for r in omitted) + len(partial) + len(detail_omitted)
     return {"retained_record_count": len(value["records"]) - len(omitted),
-        "omitted_record_count": len(value["excluded_records"]) + len(omitted) + len(partial),
-        "non_semantic_omission_count": len(value["excluded_records"]) + len(omitted) + len(partial) - semantic,
+        "omitted_record_count": len(value["excluded_records"]) + len(omitted) + len(partial) + len(detail_omitted),
+        "non_semantic_omission_count": len(value["excluded_records"]) + len(omitted) + len(partial) + len(detail_omitted) - semantic,
         "semantic_omission_count": semantic, "semantic_complete": semantic == 0}
 
 
@@ -391,15 +438,15 @@ def validate(data):
         "host_context": {"turn_id", "body"},
         "agent_message": {"turn_id", "message_id", "phase", "body"},
         "question_request": {"turn_id", "call_id", "body"},
-        "volicord_operation": {"completion_sequence", "turn_id", "call_id", "operation", "outcome", "body", "transport", "requested_language"},
+        "volicord_operation": {"completion_sequence", "turn_id", "call_id", "operation", "outcome", "body", "detail", "transport", "requested_language"},
         "turn_boundary": {"turn_id", "state", "end_sequence"},
         "turn_terminal": {"turn_id", "state"},
         "context_compacted": set(),
         "execution_fact": {"turn_id", "completion_sequence", "group_index", "command_role",
-            "normalized_command_sha256", "output_retention", "exit_code", "evidence_state", "termination",
+            "normalized_command_sha256", "invocation", "output", "stream_scope", "completion_scope", "exit_code", "evidence_state", "termination",
             'execution_identity', 'raw_call_id', 'continuation_coordinates', 'signal_number', 'output_state'},
         'execution_coverage': {'completion_sequence', 'turn_id', 'call_id', 'wrapper_sha256',
-            'tool_names', 'observed_call_count', 'state', 'reasons'},
+            'tool_names', 'observed_call_count', 'state', 'reasons', 'wrapper_body', 'completion_body'},
         "transport_issue": {"turn_id", "call_id", "operation", "reason"},
     }
     previous = -1
@@ -414,7 +461,13 @@ def validate(data):
         previous = record["sequence"]
         if record['semantic_role'] == 'execution_coverage':
             ops.review.require(codex.supported_execution_wrapper({k: v for k, v in record.items()
-                if k not in {'semantic_role', 'source_sequences'}}), 'invalid execution coverage')
+                if k not in {'semantic_role', 'source_sequences', 'wrapper_body', 'completion_body'}}), 'invalid execution coverage')
+            for key in ('wrapper_body', 'completion_body'):
+                validate_body(record[key])
+            if record['wrapper_body']['state'] == 'retained':
+                ops.review.require(isinstance(record['wrapper_body']['value'], str)
+                    and ops.digest(record['wrapper_body']['value'].encode()) == record['wrapper_sha256'],
+                    'wrapper source digest mismatch')
         if record['semantic_role'] == 'execution_fact':
             code, signal = record['exit_code'], record['signal_number']
             ops.review.require(record['evidence_state'] in {'completed', 'indeterminate'}
@@ -424,13 +477,27 @@ def validate(data):
                 and (record['evidence_state'] != 'completed' or type(code) is int
                     and record['termination'] == ('signaled' if code < 0 else 'exited'))
                 and (code is None or signal == (-code if code < 0 else None))
-                and record['output_retention'] == 'non_semantic_by_design'
+                and record['stream_scope'] == 'combined_tool_output; separate stdout/stderr unavailable'
+                and record['completion_scope'] == 'whole_process; individual compound commands unproven'
                 and isinstance(record['continuation_coordinates'], list)
                 and all(isinstance(item, list) and len(item) == 5 and all(type(s) is int
                     and 0 <= s < value['source_record_count'] for s in item[2:4])
                     and type(item[4]) is int and 0 <= item[4] < 16
                     and all(isinstance(s, str) and s for s in item[:2]) for item in record['continuation_coordinates']),
                 'invalid execution fact')
+            for key in ('invocation', 'output'):
+                validate_body(record[key])
+            ops.review.require(record['normalized_command_sha256'] == record['invocation']['source_body_sha256'],
+                'execution invocation digest mismatch')
+            if record['output']['state'] == 'retained':
+                ops.review.require((isinstance(record['output']['value'], str) if record['output_state'] in {'retained', 'truncated'}
+                    else record['output']['value'] is None), 'invalid execution output')
+        if record['semantic_role'] == 'volicord_operation':
+            validate_body(record['detail'])
+            if record['detail']['state'] == 'retained':
+                detail = record['detail']['value']
+                ops.review.require(isinstance(detail, dict) and set(detail) == {'request', 'result'}
+                    and isinstance(detail['request'], dict), 'invalid operation detail')
         body = record.get("body")
         if record["semantic_role"] in SEMANTIC_ROLES | {"volicord_operation"}:
             ops.review.require(isinstance(body, dict) and set(body) == {
@@ -470,6 +537,15 @@ def validate(data):
                         ops.review.require(meaning['operation'] == record['operation'], 'returned operation scope mismatch')
                     else:
                         ops.review.require(meaning is None, 'unsupported returned meaning')
+                    if record['detail']['state'] == 'retained':
+                        detail = record['detail']['value']
+                        selected = lambda p: {k: v for k, v in p.items() if k in OPERATION_FIELDS
+                            and (v is None or type(v) in {str, int, bool})} if isinstance(p, dict) else {}
+                        ops.review.require(retained['request'] == selected(detail['request'])
+                            and retained['result'] == selected(detail['result'])
+                            and (record['operation'] not in answer_projection.SCHEMAS
+                                or meaning == answer_projection.project(detail['result'], record['operation'])),
+                            'operation detail differs from selected returned meaning')
             else:
                 ops.review.require(body["state"] == "omitted" and body["reason"] in {"sensitive_payload", "body_limit"}
                     and body["value"] is None, "invalid review capture omission")

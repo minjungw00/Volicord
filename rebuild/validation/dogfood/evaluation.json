@@ -381,7 +381,7 @@
       "purpose": "Review independently material outcomes observed in actual Work and coupled artifacts."
     },
     "qualification_authority": false,
-    "policy_revision": 16,
+    "policy_revision": 17,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -494,7 +494,7 @@
       "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
       "qualification_authority": false
     },
-    "schema_version": 16
+    "schema_version": 17
   },
   "fixture_regression_command": [
     "python3",
@@ -964,7 +964,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-12",
+    "revision": "replacement-qualification-13",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "live_viewer/*"
@@ -972,7 +972,7 @@
     "human_rationale": "Current Viewer comprehension, accessibility and input/paint experience, plus original user Decision comprehension, require direct human observation. Historical artifact fidelity remains separate.",
     "agent_permitted": "All other rubric criteria with required evidence surfaces and valid references.",
     "conflicts": "A human assessment must explicitly resolve the conflicting review run IDs.",
-    "insufficient": "Unresolved; high-impact authority/context recovery and interaction-coverage insufficiency escalates to human.",
+    "insufficient": "Unresolved evidence gaps require stronger actual evidence and independent review; human routing is for direct experience and explicit review conflicts.",
     "hard": "Integrity uncertainty and confirmed hard violations cannot be waived by any review or approval.",
     "technical": "Independently verified exact-candidate gate capsule/archive; no technical rerun.",
     "approval": "Explicit operator authorization bound to a complete qualification run and exact input hashes.",

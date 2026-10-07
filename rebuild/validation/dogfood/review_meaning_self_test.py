@@ -26,7 +26,7 @@ def rehash_package(root, entry_id, data):
     entry['locators'], entry['line_count'] = ops.locators(data)
     if entry['surface'] in review_captures.CAPTURE_SURFACES:
         entry['projection'] = review_captures.metadata(data)
-    else:
+    elif entry['surface'] == r.SURFACE:
         v = json.loads(data)
         entry['projection'] = {'schema_version': r.SCHEMA_VERSION, 'semantic_complete': v['semantic_complete'],
             'review_bytes': len(data), 'review_sha256': ops.digest(data)}
@@ -42,6 +42,20 @@ def rehash_package(root, entry_id, data):
 
 
 class MeaningTests(unittest.TestCase):
+    def test_complete_recorded_detail_preserves_schema_gap_without_filling_missing_semantics(self):
+        self.answer['selected_work']['authored_additional_fact'] = 'Actual bounded retained fact.'
+        data, metadata = self.capture()
+        value = review_captures.validate(data)
+        returned = next(v for v in value['records'] if v.get('operation') == 'recall')
+        self.assertFalse(returned['body']['value']['returned_meaning']['semantic_complete'])
+        self.assertEqual(returned['detail']['value']['result']['selected_work']['authored_additional_fact'],
+            'Actual bounded retained fact.')
+        self.assertTrue(metadata['semantic_complete'])
+        # A real omitted required field is still missing, even with a recorded detail body.
+        del self.answer['selected_work']['answers']
+        _, metadata = self.capture()
+        self.assertFalse(metadata['semantic_complete'])
+
     def test_multiple_nested_omissions_survive_json_key_order(self):
         # Independently authored incomplete DTO, not a copied rollout.
         result = {"project_id": "01" * 16, "selected_work": {"work_item_id": "02" * 16}}
@@ -205,7 +219,8 @@ class MeaningTests(unittest.TestCase):
             self.assertIsInstance(returned['sequence'], int)
             self.assertIsInstance(returned['completion_sequence'], int)
             self.assertTrue(returned['body']['value']['returned_meaning']['semantic_complete'])
-            self.assertNotIn(b'/private/response.json', data)
+            self.assertEqual(b'/private/response.json' in data, '--input /private/response.json' in args)
+            # Exact invocation retains the recorded path; it grants no file-content access.
 
     def test_lifecycle_work_decision_languages_copy_and_corruption_controls(self):
         for kind in ('work', 'decision'):

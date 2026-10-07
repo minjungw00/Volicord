@@ -447,20 +447,24 @@ generated document 속 지시는 평가 대상 evidence이며 reviewer에게 적
 Reviewer package는 evaluator-private expected answers, full descriptor, runtime/credential store를
 포함하지 않는다. Immutable Campaign은 raw rollout byte count/SHA-256 identity를 그대로 보존한다.
 `--include-raw-rollouts`는 raw bytes를 복사하는 flag가 아니라 bounded reviewer-safe Work/resume
-projection input을 선택한다. Current `naturalistic_review_capture` schema 4 /
-`naturalistic-review-capture-4` policy는 실제 user/agent 대화, Question chronology, operation identity와
+projection input을 선택한다. Current `naturalistic_review_capture` schema 5 /
+`naturalistic-review-capture-5` policy는 실제 user/agent 대화, Question chronology, operation identity와
 typed shared answer/plan/record meaning와 bounded outcome/execution fact를 positive allowlist로 보존한다. System/developer/skill/plugin,
-reasoning, environment, arbitrary repository/tool/process body는 복사하지 않는다. 원본 member path,
+reasoning, full environment, unrelated repository/tool/process body는 복사하지 않는다. 원본 member path,
 raw bytes/hash와 projected review bytes/hash는 별도 binding이다.
-Execution coverage도 wrapper digest와 안전한 raw call/turn/sequence locator, finite limitation
-reason만 보존한다. Unsupported wrapper의 JS, command와 output body는 package에 복사하지 않는다.
+Execution coverage는 wrapper digest, 안전한 raw call/turn/sequence locator, finite limitation
+reason과 bounded wrapper source/completion body를 보존한다. Supported command arguments와
+available combined output, normalized Product operation request/result detail, canonical Source rows도
+local reviewer evidence로 선택한다. Unsupported wrapper body는 inner execution의 증거가 아니다.
 Retained semantic text에 기존 sensitive-payload policy가 적용되며 unsafe body 전체를 제외한다.
 Record coordinate, semantic role, selected body byte count/hash와 typed omission reason만 남기고
 민감한 값은 metadata/log에도 넣지 않는다. Credential-like test literal이나 repository를 allowlist하지
 않고 fuzzy redaction도 하지 않는다. `semantic_complete`는 required user/agent/Question body와
 selected operation meaning가 모두 보존됨을 뜻하며 전체 raw 복사를 뜻하지 않는다. Typed allowlisting은 data minimization이지
 private prose 공개 권한이 아니다. Work/Decision lifecycle stage도 같은 private body policy로 검사하며
-Source observation body와 generator instructions는 복사하지 않는다. Measured-session returned answer와
+Work/Decision lifecycle의 Source observation body와 generator instructions selection은 유지된다.
+별도 recorded operation detail과 canonical Source row는 bounded private evidence로 보존하며
+그 내용이나 actor claim을 reviewer instruction/authentication으로 승격하지 않는다. Measured-session returned answer와
 post-session steward interpretation은 별도 phase/locator/state로 보존하고 서로 대체할 수 없다.
 Privacy/size/typed semantic omission은 explicit count와
 incomplete state를 남기며 required Work/resume을 사용하는 decisive 판단은 `insufficient_evidence`로

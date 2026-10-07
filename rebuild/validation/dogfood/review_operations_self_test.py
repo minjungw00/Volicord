@@ -152,7 +152,7 @@ def assert_review_workflow(root, parent):
     assert "campaign/campaign_interaction/interaction_coverage_adequacy" in expected_escalations
     for result in (preflight, recorded["result"]):
         assert result["completion_preflight"]["targeted_escalations"] \
-            ["high_impact_insufficient_criterion_ids"] == expected_escalations
+            ["evidence_gap_criterion_ids"] == expected_escalations
     assert (target / "recorded/review.json").read_bytes() == original["draft.json"]
     fixed = snapshot(target)
     try:
@@ -196,7 +196,74 @@ def rollout_bytes(events):
     return b"".join(ops.encoded(e).replace(b"\n", b"") + b"\n" for e in events)
 
 
+def append_reviewable_execution(events):
+    """Independently authored controls; never patch a historical campaign."""
+    terminal = max(i for i, e in enumerate(events) if e['type'] == 'event_msg'
+        and e['payload'].get('type') in {'task_completed', 'task_complete'})
+    turn = events[terminal]['payload']['turn_id']
+    additions = []
+    for name, invocation, output, code in (
+            ('failed', 'cargo test --lib', 'authored test failed: invariant changed\n', 1),
+            ('retry', 'cargo test --lib', 'authored covering retry passed\n', 0),
+            ('source', "sed -n '1,5p' src/lib.rs", 'pub fn authored_fixture() -> bool { true }\n', 0)):
+        call = 'review-control-' + name
+        metadata = {'turn_id': turn}
+        additions += [
+            {'type': 'response_item', 'payload': {'type': 'custom_tool_call', 'name': 'exec',
+                'status': 'completed', 'call_id': call,
+                'input': 'text(await tools.exec_command(' + json.dumps({'cmd': invocation}) + '));',
+                'internal_chat_message_metadata_passthrough': metadata}},
+            {'type': 'response_item', 'payload': {'type': 'custom_tool_call_output', 'call_id': call,
+                'output': [{'type': 'input_text', 'text': 'Script completed\nWall time 0.1 seconds\nOutput:\n'},
+                    {'type': 'input_text', 'text': json.dumps({'output': output, 'exit_code': code})}],
+                'internal_chat_message_metadata_passthrough': metadata}}]
+    events[terminal:terminal] = additions
+    return events
+
+
 class ProjectionTests(unittest.TestCase):
+    def test_retry_source_and_numeric_outcomes_are_available_without_semantic_verdict(self):
+        data, metadata = self.project(append_reviewable_execution(synthetic_rollout()))
+        value = captures.validate(data)
+        facts = [r for r in value['records'] if r['semantic_role'] == 'execution_fact']
+        self.assertEqual([r['exit_code'] for r in facts], [1, 0, 0])
+        self.assertEqual([r['raw_call_id'] for r in facts],
+            ['review-control-failed', 'review-control-retry', 'review-control-source'])
+        self.assertEqual(facts[0]['invocation']['value'], {'cmd': 'cargo test --lib'})
+        self.assertIn('invariant changed', facts[0]['output']['value'])
+        self.assertIn('authored_fixture', facts[-1]['output']['value'])
+        self.assertTrue(metadata['semantic_complete'])
+        for field in ('exit_code', 'invocation'):
+            bad = copy.deepcopy(value)
+            fact = next(r for r in bad['records'] if r['semantic_role'] == 'execution_fact')
+            if field == 'exit_code': fact[field] = True
+            else: fact[field]['value']['cmd'] = 'invented success'
+            with self.assertRaises(ValueError): captures.validate(ops.encoded(bad))
+
+    def test_execution_output_limits_do_not_become_empty_successful_streams(self):
+        for replacement, state in (({'exit_code': 0}, 'missing'),
+                ({'output': 'Warning: truncated output (original token count: 20)\nkept', 'exit_code': 0}, 'truncated'),
+                ({'output': '', 'exit_code': None}, 'retained'),
+                ({'output': 'actual error text despite malformed status', 'exit_code': True}, 'retained'),
+                ({'output': 'access_token=authored-sensitive-529163', 'exit_code': 0}, 'retained')):
+            events = append_reviewable_execution(synthetic_rollout())
+            event = next(e for e in events if e['payload'].get('type') == 'custom_tool_call_output')
+            event['payload']['output'][1]['text'] = json.dumps(replacement)
+            projected, _ = self.project(events)
+            fact = next(r for r in captures.validate(projected)['records'] if r['semantic_role'] == 'execution_fact')
+            self.assertEqual(fact['output_state'], state)
+            if 'access_token' in replacement.get('output', ''):
+                self.assertEqual(fact['output']['state'], 'omitted')
+                self.assertNotIn(b'authored-sensitive', projected)
+            if state == 'missing':
+                self.assertIsNone(fact['output']['value'])
+                self.assertEqual(fact['evidence_state'], 'indeterminate')
+            if replacement.get('exit_code') is None:
+                self.assertEqual(fact['evidence_state'], 'indeterminate')
+            if replacement.get('exit_code') is True:
+                self.assertEqual(fact['output']['value'], replacement['output'])
+                self.assertIsNone(fact['exit_code'])
+                self.assertEqual(fact['evidence_state'], 'indeterminate')
     def page_event(self, page_id=None):
         event = json.loads((Path(__file__).parent / 'fixtures/typed-host-page.json').read_text())
         event['payload']['content'][0]['text'] = ('<external_codex_apps_open_page>'
@@ -450,7 +517,7 @@ class ProjectionTests(unittest.TestCase):
             self.assertEqual((record["sequence"], record["completion_sequence"], record["turn_id"], record["call_id"], record["operation"], record["outcome"]),
                 (call.sequence, call.completion_sequence, call.turn_id, call.call_id, call.operation, call.outcome))
 
-    def test_normalized_execution_facts_exclude_command_and_output_bodies(self):
+    def test_normalized_execution_facts_retain_available_command_and_output_bodies(self):
         path = Path(__file__).with_name("fixtures") / "current-codex-execution-evidence.jsonl"
         raw = path.read_bytes()
         capture = codex_events.parse_codex_capture(raw)
@@ -465,9 +532,8 @@ class ProjectionTests(unittest.TestCase):
             self.assertEqual(fact["command_role"], codex_events.command_role(command.parsed_command))
             self.assertEqual(fact["exit_code"], command.exit_code)
             self.assertEqual(fact["normalized_command_sha256"], ops.digest(ops.encoded(command.parsed_command)))
-            self.assertEqual(fact["output_retention"], "non_semantic_by_design")
-            self.assertNotIn("output", fact)
-            self.assertNotIn("parsed_command", fact)
+            self.assertEqual(fact["invocation"]["value"], command.parsed_command)
+            self.assertEqual(fact["output"]["value"], command.output if command.output_state in {"retained", "truncated"} else None)
 
     def test_execution_projection_distinguishes_absence_failure_and_unsupported(self):
         source = Path(__file__).with_name('fixtures') / 'current-codex-execution-evidence.jsonl'
@@ -493,8 +559,8 @@ class ProjectionTests(unittest.TestCase):
             value = captures.validate(projected)
             self.assertEqual(value['execution_coverage']['state'], expected)
             self.assertEqual(value['execution_coverage']['failed_command_count'], int(code == 143))
-            self.assertNotIn(b'private-command', projected)
-            self.assertNotIn(b'private-output', projected)
+            self.assertEqual(b'private-command' in projected, expected == 'limited')
+            self.assertEqual(b'private-output' in projected, expected != 'not_observed')
             corrupted = copy.deepcopy(value)
             corrupted['execution_coverage']['failed_command_count'] = bool(code == 143)
             with self.assertRaisesRegex(ValueError, 'execution coverage counts'):
@@ -550,6 +616,21 @@ class ProjectionTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_source_projection_rejects_fresh_hashes_with_invented_source_content(self):
+        from review_meaning_self_test import rehash_package
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='source-detail-review', include_raw=True)
+        prep, _, _ = ops.load_package(target)
+        identity = 'journey-volicord-sources'
+        entry = prep['index']['evidence'][identity]
+        value = json.loads((target / entry['path']).read_bytes())
+        row = value['sources'][0]['detail']['value']
+        row['locator'] = 'Invented original source content.'
+        value['sources'][0]['detail'] = captures.body_projection(row)
+        rehash_package(target, identity, ops.encoded(value))
+        with self.assertRaisesRegex(ValueError, 'Source detail projection'):
+            ops.load_package(target)
+
     def test_historical_no_decision_scope_survives_copied_package_with_other_work_decision(self):
         target = self.parent / self._testMethodName
         ops.prepare(self.root, target, reviewer_kind="agent", session_id="work-scoped-decision-review", include_raw=True)

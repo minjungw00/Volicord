@@ -180,7 +180,7 @@ class ContractTests(unittest.TestCase):
         expected.add(additional_id)
         progress = q.validate_value(p, "d" * 64, value)["completion_preflight"]
         self.assertIn("campaign/campaign_interaction/interaction_coverage_adequacy", expected)
-        self.assertEqual(progress["targeted_escalations"]["high_impact_insufficient_criterion_ids"],
+        self.assertEqual(progress["targeted_escalations"]["evidence_gap_criterion_ids"],
             sorted(expected))
 
         # Presentation IDs cannot add or remove structured high-impact authority.
@@ -193,7 +193,7 @@ class ContractTests(unittest.TestCase):
                 expected.remove(old_id)
                 expected.add(new_id)
         self.assertEqual(q.completion_progress(p, value, specs)["targeted_escalations"]
-            ["high_impact_insufficient_criterion_ids"], sorted(expected))
+            ["evidence_gap_criterion_ids"], sorted(expected))
 
     def test_required_interaction_coverage_cannot_be_unobserved(self):
         p = preparation()
