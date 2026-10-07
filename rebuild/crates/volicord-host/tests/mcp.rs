@@ -2477,6 +2477,7 @@ fn materiality_validation_reports_exact_correction_context() {
                 "bounded_implementation_discretion_rationale":"all alternatives preserve settled behavior",
                 "ownership_source_ids":[current_source_id],
                 "alternative_accounting":unresolved_alternative_accounting("not-in-discovery", &["first","second"], &current_source_id),
+                "discretion_counterfactuals":discretion_counterfactuals("not-in-discovery", &["first","second"], &current_source_id),
                 "learning_value":{"state":"routine","rationale":"routine"}
             }]
         }),
@@ -8842,9 +8843,52 @@ fn pre_work_authoring_failures_report_exact_fields_and_supported_correction_path
     let mut forbidden_authority = review_request.clone();
     forbidden_authority["judgments"][0]["contract_basis"] =
         json!(["not authority for private discretion"]);
+    let contract = materiality["judgment_contracts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|contract| contract["variant_id"] == "agent_owned_implementation_choice")
+        .unwrap();
+    for field in [
+        "bounded_implementation_discretion_rationale",
+        "discretion_counterfactuals",
+    ] {
+        assert!(contract["required_fields"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(field)));
+        assert!(contract["caller_must_semantically_provide"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(field)));
+    }
+    let mut missing_discretion = review_request.clone();
+    missing_discretion["judgments"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("bounded_implementation_discretion_rationale");
+    let mut missing_counterfactuals = review_request.clone();
+    missing_counterfactuals["judgments"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("discretion_counterfactuals");
+    let mut empty_counterfactuals = review_request.clone();
+    empty_counterfactuals["judgments"][0]["discretion_counterfactuals"] = json!([]);
     for (request, field) in [
         (unknown_disposition, "arguments.judgments[0].disposition"),
         (forbidden_authority, "arguments.judgments[0].contract_basis"),
+        (
+            missing_discretion,
+            "arguments.judgments[0].bounded_implementation_discretion_rationale",
+        ),
+        (
+            missing_counterfactuals,
+            "arguments.judgments[0].discretion_counterfactuals",
+        ),
+        (
+            empty_counterfactuals,
+            "arguments.judgments[0].discretion_counterfactuals",
+        ),
     ] {
         let response = call(&mut adapter, "materiality_review", request);
         assert_eq!(response["result"]["isError"], true, "{response}");

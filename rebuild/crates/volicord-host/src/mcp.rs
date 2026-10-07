@@ -3476,6 +3476,21 @@ fn materiality_judgment_schema(
     if required_fields.contains(&"authority_coverage") {
         required.push("authority_source_evidence");
     }
+    // This disposition always needs the agent-owned proof. Other dispositions
+    // may have either ownership assessment; their conditional semantic checks
+    // remain with Inquiry.
+    if disposition == "agent_owned_implementation_choice" {
+        required.extend([
+            "bounded_implementation_discretion_rationale",
+            "discretion_counterfactuals",
+        ]);
+        if let Some((_, schema)) = common
+            .iter_mut()
+            .find(|(name, _)| *name == "discretion_counterfactuals")
+        {
+            schema["minItems"] = json!(1);
+        }
+    }
     required.extend_from_slice(required_fields);
     object_schema(common, &required)
 }

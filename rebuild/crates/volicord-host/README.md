@@ -166,6 +166,13 @@ names/required fields, and ready-to-fill `record_request.skeleton` and
 learning, residual-fork, interaction and commitment fields and bounds. Fill every
 null semantic placeholder and one judgment per choice; record binds behavioral
 Context, while revise retains that binding. No malformed schema probe is needed.
+The agent-owned variant requires `bounded_implementation_discretion_rationale`
+and nonempty `discretion_counterfactuals` in both inputSchema and the derived
+draft field table. Inquiry still checks exact alternative coverage and Source
+grounding. Other dispositions can have either ownership assessment; when the
+assessment is agent-owned, the same discretion evidence is semantically required.
+Discovery's two-alternative requirement is conditional on `evidence_state=sufficient`;
+unresolved research/prototype discoveries may have fewer alternatives.
 After authority and learning are resolved, fill the exact inspect scope, six artifact
 assessments and commitment closure. Full explanatory semantics remain in the
 [Inquiry owner](../../docs/design/inquiry-and-decision.md); full current discovery,
