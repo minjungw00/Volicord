@@ -395,6 +395,13 @@ raw host capture를 별도로 가진 evaluator만 두 text의 byte identity를 �
 있다. Normalized 또는 reconstructed semantic statement는 별도 Context statement로만
 남으며 Source의 supplied turn을 rewrite하거나 raw-host authentication으로 승격하지 않는다.
 
+For an asynchronous Decision response, the attributed user-turn Source is the
+exact selected answer supplied through the Host contract, not its raw transport
+envelope. Raw envelope/request provenance remains separate host evidence; a
+caller-supplied request reference does not authenticate either content or consent.
+The Decision, response relation and history witness retain the same canonical
+answer Source. The kernel does not interpret host-specific envelopes.
+
 ### Agent provenance
 
 Agent-authored record는 agent identity, host와 session context, 사용한 Source basis와

@@ -777,6 +777,26 @@ provider output과 일반적인 “좋아요”는 이 Source를 대신하지 �
 여러 Question에 명시적으로 답할 수는 있지만 각 Question identity/revision linkage를
 독립적으로 확인한다.
 
+### Host selected-answer input
+
+For MCP `decision_record`, `user_turn` is the exact selected user's answer:
+plain response text, or the selected `request_user_input_async` reply's `answer`.
+The caller must select by the actual `questionItemId` request call identity and
+question index, and supply those coordinates as `async_reply`. It must verify
+request acceptance, Question linkage, current raw session/task and temporal order
+before recording; missing, duplicate, malformed, stale, ambiguous or cross-request
+responses leave authority unresolved. Host rejects XML-like envelopes in this
+answer field; it does not parse caller envelopes into authenticated responses.
+
+MCP has no authenticated raw-event channel. The returned `async_reply` reference
+is explicitly caller-supplied correlation, not user-authority attestation. The
+canonical response Source contains exactly `user_turn`; response relation, Decision
+and history witness use that same Source identity. The original envelope stays
+inspectable in the original host rollout, separately from canonical selected-answer
+content. No new canonical entity, transport parser in the kernel, reconstructed
+answer, recommendation, or inferred consent is introduced. An independent evaluator
+must prove the actual request/reply and all persisted canonical bindings.
+
 ## 7. Response Interpretation과 Decision 생성
 
 `Response Interpretation`은 user-turn Source를 Question의 displayed alternatives 또는

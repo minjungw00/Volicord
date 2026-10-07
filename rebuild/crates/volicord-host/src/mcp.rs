@@ -1103,6 +1103,16 @@ impl HostAdapter {
             }
         };
         let turn = required_str(args, "user_turn")?.to_owned();
+        // This MCP boundary receives caller text, not authenticated host events.
+        // Never interpret a transport envelope as the user's selected answer.
+        if turn.trim_start().starts_with('<')
+            || turn.contains("<send_user_message_question_reply>")
+            || turn.contains("</send_user_message_question_reply>")
+        {
+            return Err(HostError::new(
+                "user_turn must contain the selected user's answer, never a host envelope",
+            ));
+        }
         let presented = self
             .presented_questions
             .get(presentation_receipt_id)
@@ -1174,7 +1184,7 @@ impl HostAdapter {
             )
             .map_err(operation_error)?;
         let all_succeeded = result.all_succeeded();
-        let response = json!({"project_id":project_id.to_string(),"user_response_source_id":source_id.to_string(),"all_succeeded":all_succeeded,"outcomes":result.items.into_iter().map(|(id,revision,outcome)| json!({"question_id":id.to_string(),"revision":revision,"outcome":format!("{:?}",outcome)})).collect::<Vec<_>>(),"post_choice_agent_feedback":all_succeeded.then(|| json!({"recommendation":recommendation.alternative_key,"rationale":recommendation.rationale,"source_ids":recommendation.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })) });
+        let response = json!({"project_id":project_id.to_string(),"user_response_source_id":source_id.to_string(),"user_turn_content_provenance":"caller_supplied_not_host_authenticated","async_reply":args.get("async_reply"),"all_succeeded":all_succeeded,"outcomes":result.items.into_iter().map(|(id,revision,outcome)| json!({"question_id":id.to_string(),"revision":revision,"outcome":format!("{:?}",outcome)})).collect::<Vec<_>>(),"post_choice_agent_feedback":all_succeeded.then(|| json!({"recommendation":recommendation.alternative_key,"rationale":recommendation.rationale,"source_ids":recommendation.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })) });
         Ok(
             match self
                 .operations
@@ -2376,7 +2386,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "inquiry_frontier" => (
-            "Read and present current promoted material Questions. Each returned Question includes a session-local presentation_receipt_id binding its exact revision and alternatives. The canonical agent recommendation is withheld until the current user makes an initial choice, then decision_record returns it as post-choice feedback. Pass the receipt only after the current user responds to that presentation. For a clear valid answer, call decision_record promptly with the existing valid presentation_receipt_id, exact revision and exact current user_turn. Do not re-present an unchanged Question merely for confirmation. If presentation or another required transition fails, report the blocker and retry the same canonical path; ordinary prose does not resolve the Question. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
+            "Read and present current promoted material Questions. Each returned Question includes a session-local presentation_receipt_id binding its exact revision and alternatives. The canonical agent recommendation is withheld until the current user makes an initial choice, then decision_record returns it as post-choice feedback. Pass the receipt only after the current user responds to that presentation. For a clear valid answer, call decision_record promptly with the existing valid presentation_receipt_id, exact revision and exact current user_turn. For asynchronous replies, supply only the selected reply.answer as user_turn plus async_reply request_call_id/question_index; retain the raw envelope in the host rollout. Do not re-present an unchanged Question merely for confirmation. If presentation or another required transition fails, report the blocker and retry the same canonical path; ordinary prose does not resolve the Question. Repository-resolvable facts remain research; accepted Decisions and contracts are applied; delegated choices stay agent-owned; exploratory uncertainty may use research, prototype, deferment, or revisit. Submit, attach source-grounded research, review, mark ready, and explicitly promote material Question Candidates through candidate_manage first.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -2387,7 +2397,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "decision_record" => (
-            "Record one explicit current-host user response against the exact current Question revision previously presented by this host through inquiry_frontier. For a clear valid answer, use the existing valid presentation_receipt_id, exact revision and exact current user_turn promptly. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions, stale/invalid receipts, rejected calls, or unavailable transitions leave authority unresolved and require the current canonical presentation/response path. This boundary accepts a caller-supplied current-host response and does not authenticate arbitrary chat text; never infer a Decision from recommendation, silence, or ordinary prose. A caller-supplied Question basis, agent recommendation, or implementation preference is not presentation evidence or a user Decision.",
+            "Record one explicit current-host user response against the exact current Question revision previously presented by this host through inquiry_frontier. For a clear valid answer, use the existing valid presentation_receipt_id, exact revision and exact current user_turn promptly. Do not re-present an unchanged Question merely for confirmation. Explanation requests before selection are not Decisions; clarify genuinely ambiguous answers. Changed revisions, stale/invalid receipts, rejected calls, or unavailable transitions leave authority unresolved and require the current canonical presentation/response path. This boundary accepts a caller-supplied current-host response and does not authenticate arbitrary chat text; never infer a Decision from recommendation, silence, or ordinary prose. A caller-supplied Question basis, agent recommendation, or implementation preference is not presentation evidence or a user Decision. For request_user_input_async, user_turn is exactly the selected reply.answer, never the <send_user_message_question_reply> envelope. Supply async_reply with its request_call_id and question_index from questionItemId, after verifying the actual request, Question, current session/task and response order; malformed, duplicate, ambiguous, stale or cross-request replies remain unresolved. Keep the exact raw envelope in the host rollout as separate inspectable provenance. async_reply is caller-supplied correlation, not authenticated consent.",
             object_schema(
                 vec![
                     ("project_id", identity_schema("Project identity")),
@@ -2397,7 +2407,8 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                     ("alternative_key", text_schema("Displayed alternative key", 1, 1024)),
                     ("work_scope", enum_schema("Explicit Decision work grouping", &["unresolved", "project_wide", "work_item"])),
                     ("work_item_id", identity_schema("Goal Context identity required when work_scope is work_item")),
-                    ("user_turn", user_turn_schema()),
+                    ("user_turn", text_schema("Exact selected user answer (plain message or async reply.answer); caller-supplied, never a raw host envelope", 1, 16_384)),
+                    ("async_reply", async_reply_schema()),
                     ("user_rationale", text_schema("Optional user rationale", 1, 16_384)),
                 ],
                 &["project_id", "question_id", "question_revision", "presentation_receipt_id", "alternative_key", "work_scope", "user_turn"],
@@ -4386,6 +4397,24 @@ fn text_schema(description: &str, minimum: usize, maximum: usize) -> Value {
         "minLength": minimum,
         "maxLength": maximum,
     })
+}
+
+fn async_reply_schema() -> Value {
+    let mut schema = object_schema(
+        vec![
+            (
+                "request_call_id",
+                text_schema("Actual request_user_input_async call identity", 1, 1024),
+            ),
+            (
+                "question_index",
+                unsigned_schema("Exact questionItemId index in that request", 0),
+            ),
+        ],
+        &["request_call_id", "question_index"],
+    );
+    schema["description"] = json!("Caller-supplied async request/index correlation; not host authentication. Keep raw envelope in the host rollout.");
+    schema
 }
 
 fn user_turn_schema() -> Value {

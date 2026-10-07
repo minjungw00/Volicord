@@ -243,3 +243,13 @@ from the retained Discovery/Review when available. Invalid submissions preserve
 Candidates and never establish work authority. Other domain failures retain their
 named invariant and draft/inspection recovery path; no semantic conclusions are
 inferred from diagnostic prose.
+
+Decision inputs use the exact selected user answer in `user_turn`. For
+`request_user_input_async`, copy only the selected `reply.answer` and supply
+`async_reply: {"request_call_id": "…", "question_index": 0}` using its
+`questionItemId`. Verify the actual accepted request, Question, current raw
+session/task and ordering first; uncertain replies remain unresolved. Preserve
+the original envelope in the host rollout, separately from the canonical answer
+Source. MCP rejects envelopes in `user_turn`; request references are caller-supplied
+correlation and do not authenticate chat content. Independent evaluation must
+verify raw evidence and persisted Source/Decision provenance together.

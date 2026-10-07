@@ -7608,6 +7608,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 "work_scope",
                 "user_turn",
                 "user_rationale",
+                "async_reply",
             ],
             &[
                 "project_id",
@@ -8826,4 +8827,110 @@ fn pre_work_authoring_failures_report_exact_fields_and_supported_correction_path
     );
     let response = call(&mut adapter, "materiality_review", review_request);
     assert_eq!(response["result"]["isError"], false, "{response}");
+}
+
+#[test]
+fn decision_selected_answers_persist_without_host_envelopes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::{Availability, PrincipalKind, SourceDraft, SourcePayload, Store};
+    for asynchronous in [false, true] {
+        let (_temporary, mut adapter, project) = setup();
+        let project_id = parse_project(&project);
+        let mut store = Store::open(adapter.operations().layout().canonical_store())?;
+        let revision = store.get_project(project_id)?.revision;
+        let source = store
+            .record_source(
+                OperationId::from_bytes([231; 16]),
+                project_id,
+                SourceDraft {
+                    expected_project_revision: revision,
+                    payload: SourcePayload::RepositorySnapshot {
+                        revision: "selected-answer-test".into(),
+                    },
+                    actor: Principal {
+                        kind: PrincipalKind::Repository,
+                        identity: "selected-answer-test".into(),
+                    },
+                    observer: None,
+                    availability: Availability::Available,
+                },
+            )?
+            .value;
+        drop(store);
+        let submitted = structured(&call(
+            &mut adapter,
+            "candidate_manage",
+            question_candidate_arguments(&project, &source.id.to_string(), 1, "Choose storage"),
+        ))
+        .clone();
+        let promoted = structured(&call(&mut adapter, "candidate_manage", json!({
+            "action":"promote_question", "project_id":project, "candidate_id":submitted["candidate_id"]
+        }))).clone();
+        let frontier = structured(&call(
+            &mut adapter,
+            "inquiry_frontier",
+            json!({"project_id":project}),
+        ))
+        .clone();
+        let mut args = json!({"project_id":project, "question_id":promoted["question_id"],
+            "question_revision":frontier["questions"][0]["revision"],
+            "presentation_receipt_id":frontier["questions"][0]["presentation_receipt_id"],
+            "alternative_key":"local", "work_scope":"unresolved", "user_turn":"Choose local storage"});
+        if asynchronous {
+            args["async_reply"] = json!({"request_call_id":"request-actual", "question_index":0});
+        }
+        let before = adapter.operations().canonical_basis(project_id)?;
+        for wrapper in [
+            "<send_user_message_question_reply>[]</send_user_message_question_reply>",
+            "<send_user_message_question_reply>{bad JSON}",
+            "<unknown>Choose local storage</unknown>",
+        ] {
+            let mut bad = args.clone();
+            bad["user_turn"] = json!(wrapper);
+            assert_eq!(
+                call(&mut adapter, "decision_record", bad)["result"]["isError"],
+                true
+            );
+            assert_eq!(adapter.operations().canonical_basis(project_id)?, before);
+        }
+        for reference in [
+            json!({"request_call_id":"", "question_index":0}),
+            json!({"request_call_id":"actual", "question_index":true}),
+            json!({"request_call_id":"actual", "question_index":-1}),
+            json!({"request_call_id":"actual", "question_index":0, "answer":"invented"}),
+        ] {
+            let mut bad = args.clone();
+            bad["async_reply"] = reference;
+            assert_eq!(
+                call(&mut adapter, "decision_record", bad)["result"]["isError"],
+                true
+            );
+            assert_eq!(adapter.operations().canonical_basis(project_id)?, before);
+        }
+        let result = structured(&call(&mut adapter, "decision_record", args.clone())).clone();
+        assert_eq!(result["all_succeeded"], true, "{result}");
+        assert_eq!(
+            result["user_turn_content_provenance"],
+            "caller_supplied_not_host_authenticated"
+        );
+        assert_eq!(result["async_reply"], args["async_reply"]);
+        // Query persisted Product output, rather than only a helper return value.
+        let db = Connection::open(adapter.operations().layout().canonical_store())?;
+        let (answer, host, session): (String, String, String) = db.query_row(
+            "SELECT locator, detail_one, detail_two FROM sources WHERE lower(hex(id)) = ?1",
+            [result["user_response_source_id"]
+                .as_str()
+                .ok_or("response Source")?],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(answer, "Choose local storage");
+        assert_eq!(host, "codex");
+        assert_eq!(session, adapter.host_session());
+        let links: i64 = db.query_row("SELECT count(*) FROM decisions d
+            JOIN question_response_sources r ON r.source_id=d.user_turn_source_id AND r.question_id=d.question_id
+            JOIN question_decision_history_witnesses w ON w.response_source_id=r.source_id AND w.root_decision_id=d.id
+            WHERE lower(hex(d.user_turn_source_id))=?1", [result["user_response_source_id"].as_str().ok_or("Source")?], |r| r.get(0))?;
+        assert_eq!(links, 1);
+    }
+    Ok(())
 }
