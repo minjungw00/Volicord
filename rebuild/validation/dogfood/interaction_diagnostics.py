@@ -21,7 +21,8 @@ def work_summary(descriptor, work, resume, bundle):
         if capture is None:
             continue
         calls = [c for c in capture.tool_calls if c.outcome == "succeeded"]
-        decision_facts = harness.decision_facts(capture, bundle)
+        decision_bindings = []
+        decision_facts = harness.decision_facts(capture, bundle, diagnostics=decision_bindings)
         for evidence in decision_facts[-1].values():
             transport = evidence["current_host_response_transport"]
             response_ids.add((capture.session_id, transport["captured_turn_id"],
@@ -67,6 +68,7 @@ def work_summary(descriptor, work, resume, bundle):
             "operation_outcome_counts": dict(sorted(Counter(c.outcome for c in capture.tool_calls).items())),
             "learning_participation_observations": participation,
             "learning_deliberation_activity": deliberations,
+            "decision_binding_diagnostics": decision_bindings,
             "recall_sequences": [c.sequence for c in calls if c.operation == "recall"],
             'project_resolve_sequences': [c.sequence for c in calls if c.operation == 'project_resolve'],
             'execution_coverage': capture.execution_evidence(),

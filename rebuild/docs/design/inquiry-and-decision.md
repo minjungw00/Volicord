@@ -788,7 +788,9 @@ before recording; missing, duplicate, malformed, stale, ambiguous or cross-reque
 responses leave authority unresolved. Host rejects XML-like envelopes in this
 answer field; it does not parse caller envelopes into authenticated responses.
 
-MCP has no authenticated raw-event channel. The returned `async_reply` reference
+MCP has no authenticated raw-event channel. The returned `user_response_host_session`
+binds server-generated session correlation to the persisted answer Source; it is
+separate from raw host session/task identity. The returned `async_reply` reference
 is explicitly caller-supplied correlation, not user-authority attestation. The
 canonical response Source contains exactly `user_turn`; response relation, Decision
 and history witness use that same Source identity. The original envelope stays

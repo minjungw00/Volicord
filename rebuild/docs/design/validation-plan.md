@@ -1978,7 +1978,7 @@ unique-alignment Markdown escape and CRLF/terminal-line-ending primitive. In thi
 comparison, additional terminal ASCII space/tab/CR/LF in the host response may be removed; no leading,
 interior, Unicode-whitespace, case, punctuation, paraphrase or fuzzy normalization is permitted.
 Frozen task and Context transport contracts are unchanged. Canonical response Source content must
-remain the exact caller-supplied text, with the existing Source identity, Project, host/session,
+remain the exact caller-supplied selected answer (`user_turn`), with the existing Source identity, Project, host/session,
 Question revision and presentation linkage. The canonical session belongs to HostAdapter and need
 not equal the raw Codex thread ID. Cross-layer correlation uses the observed call/result, exact
 Source/response/Decision/witness, maintained presentation receipt and captured current user turn.
@@ -2008,13 +2008,45 @@ function call, its same-task `function_call_output` with `{"accepted":true}`, an
 the same raw session/task. Request and acceptance must precede the unique latest
 user event, which must precede Decision invocation. Each item's question matches
 its requested title through the maintained directional text-equivalence primitive;
-exactly one item's answer matches the caller through that same primitive. Duplicate
-requests, ambiguous matching answers, stale, future or cross-task/session responses
+the Decision caller's `async_reply.request_call_id/question_index` selects exactly
+one verified item by identity; its `answer` matches `user_turn` through that same
+primitive. The Product result must return that same caller-supplied correlation and
+explicitly identify content as `caller_supplied_not_host_authenticated`. The returned
+`user_response_host_session` must equal the canonical answer Source session; it is
+server-generated correlation, independently distinct from the raw request session. Selection
+by searching answer text or reply array position is not Decision authority. Equal
+answers in distinct items remain distinct request/index identities; missing or
+ambiguous coordinates do not qualify. Non-Decision learning consumers retain their
+existing bounded answer-matching contract. Duplicate
+requests, stale, future or cross-task/session responses
 cannot establish authority. The result preserves raw-envelope and answer hashes,
 request identity/index/order and the original user event identity. All canonical
 Source/actor/Project/Question/revision/response-relation/receipt/Decision/history
 requirements remain independent, including agreement with explicitly supplied
-Decision Work scope. No raw reply alone proves a canonical Decision.
+Decision Work scope and selected alternative. No raw reply alone proves a canonical Decision.
+
+`decision_selected_answers_persist_without_host_envelopes` in the Host MCP test
+exports a fresh actual Product bundle after plain and async recording, then invokes
+`decision_transport_self_test.py --product` with the actual call arguments, receipt,
+result and export. Synthetic host events supply a labeled transport seam; canonical
+Source/Decision/response/history are actual persisted Product output. Negative
+controls alter Source content/actor, Decision choice/authority and history linkage
+and must remain blocking. This is integration support, not a measured campaign.
+
+Diagnostics keep `canonical_bindings_valid`, `selected_answer_transport_valid` and
+`failure_kind` separately. A verified exact raw envelope stored as `user_turn` is
+`raw_envelope_as_answer`, not independent proof of user-answer fabrication.
+Canonical actor/Source/Project/Question/response/witness failure remains
+`canonical_provenance_invalid`. Both fail Decision integrity and remain hard blocking;
+no qualitative policy or canonical authority check is relaxed. Raw-envelope hashes,
+selected-answer hashes, request/session/task/index/order and canonical Source hashes
+remain separately inspectable without retaining conversation bodies in diagnostics.
+
+Evaluator policy identity `evidence-evaluation-12` includes the changed evaluator
+file hashes; new evaluations also retain their evaluator Git revision and previous
+immutable evaluation reference. Preserved failed raw evidence and canonical records
+are never rewritten or converted. Re-evaluating them creates a separately identified
+append-only result and does not promote wrapper text to canonical answer authority.
 
 Interaction diagnostics consume the same canonical-validated Decision response
 facts. They count unique `(raw session, task turn, user client)` events, so one

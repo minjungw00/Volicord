@@ -1746,26 +1746,34 @@ class CodexCapture:
     def response_transport_for_call(
         self, call: ToolCall, compare: Callable[[Any, Any], dict[str, Any]],
     ) -> dict[str, Any]:
-        """Bind the latest response to its request without searching older answer text.
+        """Verify selected-answer transport against independently captured host events.
 
-        This proves raw transport only. Canonical Source and Decision provenance
-        remain independent checks in the evaluator.
+        Caller request coordinates identify an item; they never authenticate it.
+        Canonical provenance is checked separately by the evaluator.
         """
         turn = self.turn_for_call(call)
         caller = call.arguments.get("user_turn")
-        result = {**compare(caller, None), "response_kind": "unverified"}
+        reference = call.arguments.get("async_reply")
+        result = {**compare(caller, None), "response_kind": "unverified",
+            "failure_kind": "response_binding_invalid"}
         if turn is None:
             return result
-        # XML-like host wrappers cannot acquire authority through the plain path.
         wrapped = (turn.text.lstrip().startswith("<")
             or "<send_user_message_question_reply>" in turn.text
             or "</send_user_message_question_reply>" in turn.text)
         if not wrapped:
-            return {**compare(caller, turn.text), "response_kind": "plain_user_message"}
+            if reference is not None:
+                return result
+            comparison = compare(caller, turn.text)
+            return {**comparison, "response_kind": "plain_user_message",
+                "failure_kind": None if comparison["equivalent"] else "answer_text_mismatch"}
+        result["raw_host_text_sha256"] = sha256_bytes(turn.text.encode("utf-8"))
         replies = parse_async_question_replies(turn.text)
         if replies is None:
             return result
-        matched = []
+        # Validate every item before selecting one. A valid selected item cannot
+        # hide malformed/cross-request evidence elsewhere in the same envelope.
+        bound = []
         for reply in replies:
             requests = [request for request in self.async_question_requests
                 if request.call_id == reply.call_id]
@@ -1777,18 +1785,39 @@ class CodexCapture:
                 or reply.question_index >= len(request.questions)
                 or not compare(request.questions[reply.question_index], reply.question)["equivalent"]):
                 return result
-            comparison = compare(caller, reply.answer)
-            if comparison["equivalent"]:
-                matched.append((reply, request, comparison))
-        if len(matched) != 1:
+            bound.append((reply, request))
+        if call.operation == "decision_record":
+            if (not isinstance(reference, dict)
+                or set(reference) != {"request_call_id", "question_index"}
+                or not nonempty(reference["request_call_id"])
+                or type(reference["question_index"]) is not int
+                or reference["question_index"] < 0):
+                # Historical wrappers stay invalid and unchanged. Their matching
+                # bytes establish a representation error, not fabricated consent.
+                if caller == turn.text:
+                    return {**result, "failure_kind": "raw_envelope_as_answer"}
+                return result
+            selected = [(reply, request) for reply, request in bound
+                if (reply.call_id, reply.question_index) ==
+                    (reference["request_call_id"], reference["question_index"])]
+        else:
+            # Non-Decision consumers retain their existing bounded contract.
+            selected = [(reply, request) for reply, request in bound
+                if compare(caller, reply.answer)["equivalent"]]
+        if len(selected) != 1:
             return result
-        reply, request, comparison = matched[0]
+        reply, request = selected[0]
+        comparison = compare(caller, reply.answer)
         return {**comparison, "response_kind": "async_question_reply",
+            "failure_kind": (None if comparison["equivalent"] else
+                "raw_envelope_as_answer" if caller == turn.text else "answer_text_mismatch"),
             "transport_equivalence_used": True,
             "answer_transport_equivalence_used": comparison["transport_equivalence_used"],
             "raw_host_text_sha256": sha256_bytes(turn.text.encode("utf-8")),
             "answer_text_sha256": sha256_bytes(reply.answer.encode("utf-8")),
             "async_request_call_id": request.call_id,
+            "async_request_session_id": request.session_id,
+            "async_request_turn_id": request.turn_id,
             "async_request_sequence": request.sequence,
             "async_request_completion_sequence": request.completion_sequence,
             "async_question_index": reply.question_index,

@@ -5112,6 +5112,7 @@ def inspect_work(args: argparse.Namespace) -> int:
 def decision_facts(
     work: CodexCapture | None,
     bundle: CanonicalBundle | None,
+    *, diagnostics: list[dict[str, Any]] | None = None,
 ) -> tuple[
     bool,
     str | None,
@@ -5217,7 +5218,6 @@ def decision_facts(
             and revision >= 1
             and nonempty_string(call.arguments.get("presentation_receipt_id"))
             and nonempty_string(user_text)
-            and response_transport["equivalent"]
             and nonempty_string(source_id)
             and call.result.get("all_succeeded") is True
             and call.arguments.get("project_id") == bundle.project_id
@@ -5237,10 +5237,37 @@ def decision_facts(
             and source.get("actor_kind") == "user"
             and isinstance(material_scope, list)
         )
+        canonical_valid = bool(call_valid)
+        reference_valid = (call.arguments.get("async_reply") is None
+            or call.result.get("async_reply") == call.arguments.get("async_reply")
+            and call.result.get("user_turn_content_provenance") == "caller_supplied_not_host_authenticated")
+        session_valid = (source is not None and
+            (call.result.get("user_response_host_session") == source.get("detail_two")
+                if call.arguments.get("async_reply") is not None or "user_response_host_session" in call.result
+                else nonempty_string(source.get("detail_two"))))
+        choice_valid = (len(decisions) == 1
+            and decisions[0].get("choice_kind") == "alternative"
+            and decisions[0].get("choice_value") == call.arguments.get("alternative_key"))
+        call_valid = canonical_valid and reference_valid and session_valid and choice_valid and response_transport["equivalent"]
+        if diagnostics is not None:
+            diagnostics.append({"call_id": call.call_id, "question_id": question_id,
+                "canonical_response_source_id": source_id,
+                "canonical_bindings_valid": canonical_valid and reference_valid and session_valid and choice_valid,
+                "selected_answer_transport_valid": response_transport["equivalent"],
+                "failure_kind": ("canonical_provenance_invalid" if not (canonical_valid and reference_valid and session_valid and choice_valid)
+                    else response_transport.get("failure_kind")),
+                "raw_capture_sha256": work.source_sha256,
+                "captured_user_turn_id": turn.user_turn_id if turn else None,
+                "canonical_source_text_sha256": hashlib.sha256(source["locator"].encode("utf-8")).hexdigest()
+                    if source and isinstance(source.get("locator"), str) else None,
+                "response_transport": response_transport})
         valid &= bool(call_valid)
         if call_valid and nonempty_string(decision_id):
             if decision_id in evidence or decision_id in ambiguous_decision_ids:
                 valid = False
+                if diagnostics is not None:
+                    diagnostics[-1]["canonical_bindings_valid"] = False
+                    diagnostics[-1]["failure_kind"] = "duplicate_decision_binding"
                 ambiguous_decision_ids.add(str(decision_id))
                 evidence.pop(str(decision_id), None)
                 continue
@@ -9659,6 +9686,8 @@ def real_session_evidence(
     validation_status = required_validation_machine_status(
         validation, checkpoint_verification_evidence_basis
     )
+    decision_diagnostics: list[dict[str, Any]] = []
+    decision_facts(work_capture, bundle, diagnostics=decision_diagnostics)
     recorded_decisions = work_capture.successful_calls("decision_record") if work_capture else []
     observed_ids = {call.result.get("project_id") for capture in (work_capture, resume_capture) if capture
         for op in ("project_initialize", "project_resolve", "recall") for call in capture.successful_calls(op)
@@ -9673,7 +9702,9 @@ def real_session_evidence(
             else "not_observed" if bundle is None
             else "confirmed_pass" if decision_ok else "confirmed_violation"),
             "basis": {"successful_decision_calls": len(recorded_decisions), "canonical_bundle_observed": bundle is not None,
-                "valid_response_decision_ids": sorted(decision_evidence), "response_source_question_witness_valid": decision_ok}},
+                "valid_response_decision_ids": sorted(decision_evidence), "response_source_question_witness_valid": decision_ok,
+                "decision_binding_diagnostics": decision_diagnostics,
+                "authority_fabrication_established_by_transport_failure": False}},
         "measured_project_identity": {"status": (
             "not_observed" if not observed_ids or bundle is None
             else "confirmed_pass" if observed_ids == {bundle.project_id} else "confirmed_violation"),

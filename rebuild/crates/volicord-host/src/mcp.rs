@@ -1184,7 +1184,7 @@ impl HostAdapter {
             )
             .map_err(operation_error)?;
         let all_succeeded = result.all_succeeded();
-        let response = json!({"project_id":project_id.to_string(),"user_response_source_id":source_id.to_string(),"user_turn_content_provenance":"caller_supplied_not_host_authenticated","async_reply":args.get("async_reply"),"all_succeeded":all_succeeded,"outcomes":result.items.into_iter().map(|(id,revision,outcome)| json!({"question_id":id.to_string(),"revision":revision,"outcome":format!("{:?}",outcome)})).collect::<Vec<_>>(),"post_choice_agent_feedback":all_succeeded.then(|| json!({"recommendation":recommendation.alternative_key,"rationale":recommendation.rationale,"source_ids":recommendation.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })) });
+        let response = json!({"project_id":project_id.to_string(),"user_response_source_id":source_id.to_string(),"user_response_host_session":self.host_session,"user_turn_content_provenance":"caller_supplied_not_host_authenticated","async_reply":args.get("async_reply"),"all_succeeded":all_succeeded,"outcomes":result.items.into_iter().map(|(id,revision,outcome)| json!({"question_id":id.to_string(),"revision":revision,"outcome":format!("{:?}",outcome)})).collect::<Vec<_>>(),"post_choice_agent_feedback":all_succeeded.then(|| json!({"recommendation":recommendation.alternative_key,"rationale":recommendation.rationale,"source_ids":recommendation.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>() })) });
         Ok(
             match self
                 .operations

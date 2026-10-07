@@ -6,9 +6,35 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import sys
 
 import harness as h
 import interaction_diagnostics as diagnostics
+
+
+def rewrite_calls(events, operation, *, arguments=None, result=None,
+                  argument_updates=None, result_updates=None):
+    identities = set()
+    for event in events:
+        payload = event.get("payload", {})
+        if payload.get("type") == "custom_tool_call":
+            parsed = h.parse_mcp_wrapper(payload.get("input"))
+            if parsed and parsed.operation == operation:
+                values = arguments if arguments is not None else {**parsed.arguments, **(argument_updates or {})}
+                payload["input"] = "const r=await tools.mcp__volicord__" + operation + "(" + json.dumps(values) + "); text(JSON.stringify(r));"
+                identities.add(payload["call_id"])
+        invocation = payload.get("invocation", {})
+        if invocation.get("tool") == operation:
+            invocation["arguments"] = arguments if arguments is not None else {**invocation["arguments"], **(argument_updates or {})}
+            structured = payload["result"]["Ok"]
+            value = result if result is not None else {**structured["structuredContent"], **(result_updates or {})}
+            structured["structuredContent"] = value
+            structured["content"] = [{"type": "text", "text": json.dumps(value)}]
+    for event in events:
+        payload = event.get("payload", {})
+        if payload.get("type") == "custom_tool_call_output" and payload.get("call_id") in identities:
+            value = result if result is not None else {**json.loads(payload["output"][-1]["text"]), **(result_updates or {})}
+            payload["output"][-1]["text"] = json.dumps(value)
 
 
 class DecisionTransportTests(unittest.TestCase):
@@ -35,7 +61,7 @@ class DecisionTransportTests(unittest.TestCase):
         bundle = h.load_canonical_bundle(root / descriptor["evidence"]["canonical_bundle"]["file"])
         return capture, bundle
 
-    def async_response_fixture(self, *, structured=False, mutate=None):
+    def async_response_fixture(self, *, structured=False, mutate=None, selected_index=0):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = Path(directory.name)
@@ -76,9 +102,19 @@ class DecisionTransportTests(unittest.TestCase):
                     "client_id": payload["client_id"], "content": [{"type": "text", "text": self.envelope([
                         {"answer": answer, "question": question,
                          "questionItemId": json.dumps(["request_user_input_async", "async-request", 0])}])}]}}
+        if structured:
+            fixture_bundle = h.load_canonical_bundle(root / descriptor["evidence"]["canonical_bundle"]["file"])
+            fixture_session = next(row["detail_two"] for row in fixture_bundle.rows("sources")
+                if row["source_kind"] == "current_host_user_turn")
+            reference = {"request_call_id": "async-request", "question_index": selected_index}
+            rewrite_calls(joined, "decision_record", argument_updates={"async_reply": reference},
+                result_updates={"async_reply": reference,
+                    "user_turn_content_provenance": "caller_supplied_not_host_authenticated",
+                    "user_response_host_session": fixture_session})
         if mutate:
             mutate(joined)
         path.write_text("".join(json.dumps(e) + "\n" for e in joined))
+        self.response_path = path
         return h.load_codex_capture(path), h.load_canonical_bundle(
             root / descriptor["evidence"]["canonical_bundle"]["file"])
 
@@ -117,9 +153,56 @@ class DecisionTransportTests(unittest.TestCase):
             items.append({"questionItemId": json.dumps(["request_user_input_async", "async-request", 0]),
                 "question": "An unrelated question?", "answer": "Another answer"})
             reply["content"][0]["text"] = self.envelope(items)
-        capture, bundle = self.async_response_fixture(structured=True, mutate=change)
+        capture, bundle = self.async_response_fixture(structured=True, mutate=change, selected_index=1)
         facts = self.assert_response(capture, bundle, True)
         self.assertEqual(facts[-1][facts[1]]["current_host_response_transport"]["async_question_index"], 1)
+
+    def test_explicit_reference_and_product_correlation_fail_closed(self):
+        capture, bundle = self.async_response_fixture(structured=True)
+        original = capture.successful_calls("decision_record")[0]
+        for reference in (None, {}, {"request_call_id": "wrong-request", "question_index": 0},
+            {"request_call_id": "async-request", "question_index": 1},
+            {"request_call_id": "async-request", "question_index": True},
+            {"request_call_id": "async-request", "question_index": 0, "extra": "untrusted"}):
+            with self.subTest(reference=reference):
+                altered = replace(original, arguments={**original.arguments, "async_reply": reference})
+                self.assert_response(replace(capture, tool_calls=tuple(altered if c is original else c
+                    for c in capture.tool_calls)), bundle, False)
+        for field, value in (("async_reply", {"request_call_id": "other", "question_index": 0}),
+            ("user_turn_content_provenance", "host_authenticated"),
+            ("user_response_host_session", "another-host-session")):
+            altered = replace(original, result={**original.result, field: value})
+            self.assert_response(replace(capture, tool_calls=tuple(altered if c is original else c
+                for c in capture.tool_calls)), bundle, False)
+
+    def test_historical_wrapper_is_representation_failure_without_rewrite(self):
+        capture, bundle = self.async_response_fixture(structured=True)
+        original = capture.successful_calls("decision_record")[0]
+        raw = capture.user_turns[-1].text
+        altered = replace(original, arguments={**original.arguments, "user_turn": raw})
+        capture = replace(capture, tool_calls=tuple(altered if c is original else c for c in capture.tool_calls))
+        tables = deepcopy(bundle.tables)
+        source = next(r for r in tables["sources"] if r["id"] == original.result["user_response_source_id"])
+        source["locator"] = raw
+        bundle = replace(bundle, tables=tables)
+        before = deepcopy(bundle.tables)
+        for reference in (True, False):
+            observed = capture if reference else replace(capture, tool_calls=tuple(
+                replace(c, arguments={k: v for k, v in c.arguments.items() if k != "async_reply"})
+                if c is altered else c for c in capture.tool_calls))
+            report = []
+            self.assertFalse(h.decision_facts(observed, bundle, diagnostics=report)[0])
+            self.assertTrue(report[0]["canonical_bindings_valid"])
+            self.assertEqual(report[0]["failure_kind"], "raw_envelope_as_answer")
+            self.assertFalse(report[0]["selected_answer_transport_valid"])
+            diagnostic = diagnostics.work_summary({"workload_intent": "decision_rich"}, observed, None, bundle)
+            self.assertEqual(diagnostic["sessions"][0]["decision_binding_diagnostics"], report)
+        self.assertEqual(bundle.tables, before)
+        tables = deepcopy(bundle.tables)
+        next(r for r in tables["sources"] if r["id"] == original.result["user_response_source_id"])["actor_kind"] = "agent"
+        report = []
+        self.assertFalse(h.decision_facts(capture, replace(bundle, tables=tables), diagnostics=report)[0])
+        self.assertEqual(report[0]["failure_kind"], "canonical_provenance_invalid")
 
     def test_structured_identity_text_and_transport_fail_closed(self):
         capture, bundle = self.async_response_fixture(structured=True)
@@ -178,6 +261,7 @@ class DecisionTransportTests(unittest.TestCase):
         for table, field, value in (
             ("sources", "actor_kind", "agent"), ("sources", "detail_one", "another-host"),
             ("sources", "locator", "another answer"), ("sources", "project_id", "another-project"),
+            ("sources", "detail_two", "another-host-session"),
             ("question_response_sources", "question_revision", 99),
             ("decisions", "question_id", "another-question"), ("decisions", "user_authority", "agent"),
             ("question_decision_history_witnesses", "root_decision_id", "another-decision"),
@@ -189,7 +273,7 @@ class DecisionTransportTests(unittest.TestCase):
                     row[field] = value
                 self.assert_response(capture, replace(bundle, tables=tables), False)
 
-    def test_multi_item_same_answer_is_ambiguous(self):
+    def test_multi_item_same_answer_requires_exact_reference(self):
         capture, bundle = self.async_response_fixture(structured=True)
         turn = capture.user_turns[-1]
         items = json.loads(turn.text.split('>', 1)[1].rsplit('<', 1)[0])
@@ -197,7 +281,12 @@ class DecisionTransportTests(unittest.TestCase):
         items.append({**items[0], "questionItemId": json.dumps(["request_user_input_async", request.call_id, 1])})
         capture = replace(capture, async_question_requests=(replace(request, questions=request.questions * 2),),
             user_turns=(*capture.user_turns[:-1], replace(turn, text=self.envelope(items))))
-        self.assert_response(capture, bundle, False)
+        # Identical answers alone cannot select an item; exact coordinates can.
+        self.assert_response(capture, bundle, True)
+        first = capture.successful_calls("decision_record")[0]
+        no_reference = replace(first, arguments={k: v for k, v in first.arguments.items() if k != "async_reply"})
+        self.assert_response(replace(capture, tool_calls=tuple(no_reference if c is first else c
+            for c in capture.tool_calls)), bundle, False)
 
     def test_unknown_wrapper_never_gains_plain_authority(self):
         capture, bundle = self.async_response_fixture(structured=True)
@@ -308,8 +397,10 @@ class DecisionTransportTests(unittest.TestCase):
             "answer": answer, "question": question})
         request = capture.async_question_requests[0]
         second = replace(first, sequence=first.sequence + 1, completion_sequence=first.completion_sequence + 1,
-            call_id="second-decision", arguments={**first.arguments, "question_id": new_question, "user_turn": answer},
-            result={**first.result, "user_response_source_id": new_source})
+            call_id="second-decision", arguments={**first.arguments, "question_id": new_question, "user_turn": answer,
+                "async_reply": {"request_call_id": "async-request", "question_index": 1}},
+            result={**first.result, "user_response_source_id": new_source,
+                "async_reply": {"request_call_id": "async-request", "question_index": 1}})
         calls = []
         for call in capture.tool_calls:
             if call.operation == "inquiry_frontier" and call.outcome == "succeeded":
@@ -469,5 +560,51 @@ def check_decision_transport_regressions():
         raise AssertionError("Decision transport regressions failed")
 
 
+def verify_product(config):
+    tests = DecisionTransportTests()
+    try:
+        capture, _ = tests.async_response_fixture(structured=config["asynchronous"])
+        raw_path = tests.response_path
+        events = [json.loads(line) for line in raw_path.read_text().splitlines()]
+        old = capture.successful_calls("decision_record")[0]
+        answer = config["arguments"]["user_turn"]
+        if config["asynchronous"]:
+            request = next(e["payload"] for e in events if e.get("payload", {}).get("name") == "request_user_input_async")
+            request["call_id"] = config["arguments"]["async_reply"]["request_call_id"]
+            completion = next(e["payload"] for e in events if e.get("payload", {}).get("type") == "function_call_output"
+                and e["payload"].get("call_id") == "async-request")
+            completion["call_id"] = request["call_id"]
+            reply = next(e["payload"]["item"] for e in events if e.get("payload", {}).get("item", {}).get("type") == "UserMessage")
+            reply["content"][0]["text"] = tests.envelope([{"answer": answer,
+                "question": "Which report style should be used?",
+                "questionItemId": json.dumps(["request_user_input_async", request["call_id"], 0])}])
+        else:
+            event = next(e for e in events if e.get("payload", {}).get("type") == "user_message"
+                and e["payload"].get("message") == old.arguments["user_turn"])
+            event["payload"]["message"] = answer
+        rewrite_calls(events, "decision_record", arguments=config["arguments"], result=config["result"])
+        rewrite_calls(events, "inquiry_frontier", arguments={"project_id": config["arguments"]["project_id"]}, result=config["frontier"])
+        raw_path.write_text("".join(json.dumps(e) + "\n" for e in events))
+        capture = h.load_codex_capture(raw_path)
+        bundle = h.load_canonical_bundle(Path(config["bundle"]))
+        tests.assert_response(capture, bundle, True)
+        call = capture.successful_calls("decision_record")[0]
+        for table, field, value in (("sources", "locator", "agent reconstructed answer"),
+            ("sources", "actor_kind", "agent"), ("decisions", "choice_value", "remote"),
+            ("decisions", "user_authority", "agent"),
+            ("question_decision_history_witnesses", "response_source_id", "ff" * 16)):
+            tables = deepcopy(bundle.tables)
+            for row in tables[table]:
+                if row.get("id") == call.result["user_response_source_id"] or row.get("question_id") == call.arguments["question_id"]:
+                    row[field] = value
+            tests.assert_response(capture, replace(bundle, tables=tables), False)
+        print("Actual persisted Product export verified; synthetic host events; negative provenance controls blocked.")
+    finally:
+        tests.doCleanups()
+
+
 if __name__ == "__main__":
-    check_decision_transport_regressions()
+    if len(sys.argv) == 3 and sys.argv[1] == "--product":
+        verify_product(json.loads(Path(sys.argv[2]).read_text()))
+    else:
+        check_decision_transport_regressions()

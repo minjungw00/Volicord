@@ -8926,11 +8926,32 @@ fn decision_selected_answers_persist_without_host_envelopes(
         assert_eq!(answer, "Choose local storage");
         assert_eq!(host, "codex");
         assert_eq!(session, adapter.host_session());
+        assert_eq!(result["user_response_host_session"], session);
         let links: i64 = db.query_row("SELECT count(*) FROM decisions d
             JOIN question_response_sources r ON r.source_id=d.user_turn_source_id AND r.question_id=d.question_id
             JOIN question_decision_history_witnesses w ON w.response_source_id=r.source_id AND w.root_decision_id=d.id
             WHERE lower(hex(d.user_turn_source_id))=?1", [result["user_response_source_id"].as_str().ok_or("Source")?], |r| r.get(0))?;
         assert_eq!(links, 1);
+        let bundle = _temporary.path().join("selected-answer.bundle.json");
+        adapter.operations().export_bundle(project_id, &bundle)?;
+        let config = json!({"asynchronous":asynchronous, "arguments":args,
+            "result":result, "frontier":frontier, "bundle":bundle});
+        let input = _temporary.path().join("selected-answer-consumer.json");
+        fs::write(&input, serde_json::to_vec(&config)?)?;
+        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../validation/dogfood/decision_transport_self_test.py");
+        let output = Command::new("python3")
+            .arg(script)
+            .arg("--product")
+            .arg(input)
+            .env("PYTHONDONTWRITEBYTECODE", "1")
+            .output()?;
+        assert!(
+            output.status.success(),
+            "Independent Product consumer failed: stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     Ok(())
 }

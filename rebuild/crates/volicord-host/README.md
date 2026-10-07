@@ -253,3 +253,8 @@ the original envelope in the host rollout, separately from the canonical answer
 Source. MCP rejects envelopes in `user_turn`; request references are caller-supplied
 correlation and do not authenticate chat content. Independent evaluation must
 verify raw evidence and persisted Source/Decision provenance together.
+
+`decision_record` returns `user_response_host_session` as server-generated
+correlation. Independent verification compares it to the persisted answer Source's
+session and compares the returned `async_reply` to the actual request/index; neither
+field replaces separately captured raw host evidence.
