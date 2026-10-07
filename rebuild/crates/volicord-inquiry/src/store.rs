@@ -160,7 +160,7 @@ impl CandidateStore {
                         "first Materiality Review is late; meaningful repository paths already changed: {}",
                         changed_paths.join(", ")
                     ),
-                ));
+                ).at_authoring_field("baseline_analysis_snapshot_id", None));
             }
             crate::ChangeAttribution::Unavailable { reason, .. } => {
                 return Err(Error::new(ErrorKind::StaleBasis, reason));
@@ -1631,8 +1631,7 @@ fn validate_candidate_draft(draft: &CandidateDraft) -> Result<(), Error> {
 }
 
 fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> {
-    crate::learning_authority::validate(review)
-        .map_err(|message| Error::new(ErrorKind::InvalidInput, message))?;
+    crate::learning_authority::validate(review)?;
     validate_text("Materiality Review rationale", &review.rationale)?;
     validate_text(
         "behavioral Context completeness rationale",
@@ -1708,8 +1707,12 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
         }
         validate_list(&dimension.affected_scope)?;
         validate_list(&dimension.material_consequences)?;
-        crate::work_authority::validate_discretion_counterfactuals(dimension)
-            .map_err(|message| Error::new(ErrorKind::InvalidInput, message))?;
+        crate::work_authority::validate_discretion_counterfactuals(dimension).map_err(
+            |message| {
+                Error::new(ErrorKind::InvalidInput, message)
+                    .at_authoring_field("discretion_counterfactuals", Some(&dimension.dimension_id))
+            },
+        )?;
         validate_list(&dimension.ownership.materially_varying_outcomes)?;
         validate_list(&dimension.ownership.user_owned_outcomes)?;
         validate_text(
@@ -2624,7 +2627,9 @@ fn validate_review_against_canonical(
         verbatim_statement,
     } = &review.learning_participation
     {
-        validate_current_host_user_source(canonical, *user_turn_source_id)?;
+        validate_current_host_user_source(canonical, *user_turn_source_id).map_err(|error| {
+            error.at_authoring_field("learning_participation.user_turn_source_id", None)
+        })?;
         let source = canonical
             .sources
             .iter()
@@ -2634,6 +2639,7 @@ fn validate_review_against_canonical(
                     ErrorKind::InvalidInput,
                     "learning participation Source is missing",
                 )
+                .at_authoring_field("learning_participation.user_turn_source_id", None)
             })?;
         let volicord_context::SourcePayload::CurrentHostUserTurn { turn, .. } =
             &source.source.payload
@@ -2641,13 +2647,15 @@ fn validate_review_against_canonical(
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "learning participation requires a current-host user-turn Source",
-            ));
+            )
+            .at_authoring_field("learning_participation.user_turn_source_id", None));
         };
         if !turn.contains(verbatim_statement) {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "learning participation must preserve the explicit user statement verbatim",
-            ));
+            )
+            .at_authoring_field("learning_participation.verbatim_statement", None));
         }
         if !behavior_context.iter().any(|item| {
             matches!(
@@ -2659,7 +2667,7 @@ fn validate_review_against_canonical(
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "active learning participation must bind its exact durable Learning or Preference Context",
-            ));
+            ).at_authoring_field("behavioral_context_basis.context_item_ids", None));
         }
     }
     for dimension in &review.dimensions {
@@ -2681,6 +2689,9 @@ fn validate_review_against_canonical(
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "explicit delegation evidence must bind the exact Goal, its user-turn Source, a verbatim Goal statement, and the dimension scope",
+            ).at_authoring_field(
+                if !goal.statement.contains(&delegation.verbatim_statement) { "delegation_statement" } else { "delegated_scope" },
+                Some(&dimension.dimension_id),
             ));
         }
         let source = canonical
@@ -2692,6 +2703,7 @@ fn validate_review_against_canonical(
                     ErrorKind::InvalidInput,
                     "explicit delegation user-turn Source is missing",
                 )
+                .at_authoring_field("delegation_statement", Some(&dimension.dimension_id))
             })?;
         if source.freshness != volicord_context::SourceFreshness::Current
             || source.source.project_id != canonical.project.id
@@ -2700,7 +2712,8 @@ fn validate_review_against_canonical(
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "explicit delegation evidence requires the current Project user Source",
-            ));
+            )
+            .at_authoring_field("delegation_statement", Some(&dimension.dimension_id)));
         }
         let volicord_context::SourcePayload::CurrentHostUserTurn { turn, .. } =
             &source.source.payload
@@ -2708,13 +2721,14 @@ fn validate_review_against_canonical(
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "explicit delegation evidence requires a current-host user-turn Source",
-            ));
+            )
+            .at_authoring_field("delegation_statement", Some(&dimension.dimension_id)));
         };
         if !turn.contains(&goal.statement) || !turn.contains(&delegation.verbatim_statement) {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "explicit delegation statement must remain verbatim-grounded in the exact current-host user turn",
-            ));
+            ).at_authoring_field("delegation_statement", Some(&dimension.dimension_id)));
         }
     }
     Ok(())
@@ -2835,7 +2849,7 @@ fn validate_review_against_discovery(
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "Materiality authority must account exactly once for every alternative of each referenced discovered choice",
-            ));
+            ).at_authoring_field("alternative_accounting", Some(&dimension.dimension_id)));
         }
         for choice_id in &dimension.discovered_choice_ids {
             let accounts = dimension
@@ -3264,8 +3278,9 @@ fn validate_learning_value_revisions(
         let request = request.ok_or_else(|| {
             Error::new(
                 ErrorKind::DomainConflict,
-                "deliberation-worthy learning cannot be downgraded to routine without a supported research, prototype, or current-user withdrawal basis",
+                format!("deliberation-worthy learning cannot be downgraded to routine without a supported research, prototype, or current-user withdrawal basis for dimension {}", revised.dimension_id),
             )
+            .at_authoring_field("learning_value_revision_bases", None)
         })?;
         validate_learning_value_revision_basis_against_canonical(&request.basis, canonical)?;
         revisions.push(crate::LearningValueRevision {

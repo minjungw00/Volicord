@@ -3720,7 +3720,9 @@ impl LocalOperations {
             compatibility_required,
             draft.work_state == volicord_context::WorkState::Completed,
         )
-        .map_err(Error::new)?;
+        .map_err(|error| {
+            Error::with_source(format!("compatibility review failed: {error}"), error)
+        })?;
         let verification_outcomes = draft
             .verification
             .iter()

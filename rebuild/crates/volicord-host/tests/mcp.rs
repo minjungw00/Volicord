@@ -9068,3 +9068,351 @@ fn decision_selected_answers_persist_without_host_envelopes(
     }
     Ok(())
 }
+
+fn recovery_authoring_fixture() -> (tempfile::TempDir, HostAdapter, String, Value, Value, Value) {
+    let (temporary, mut adapter, project, discovery_draft, request) = discovery_authoring_fixture();
+    let recorded = call(&mut adapter, "engineering_choice_discovery", request);
+    assert_eq!(recorded["result"]["isError"], false, "{recorded}");
+    let materiality = structured(&call(&mut adapter, "materiality_review", json!({
+        "action":"draft","project_id":project,
+        "engineering_choice_discovery_candidate_id":structured(&recorded)["discovery_candidate_id"],
+    }))).clone();
+    let judgment = draft_judgment(
+        &materiality,
+        "choice-1",
+        "agent_owned_implementation_choice",
+        json!({
+            "basis_summary":"Private organization within the inspected fixture contract",
+            "learning_value":{"state":"routine","rationale":"Private organization requires no learning interruption"},
+        }),
+    );
+    let mut request = draft_request(
+        &materiality,
+        "Current bounded review",
+        json!({"state":"inactive"}),
+        vec![judgment],
+    );
+    request["behavioral_context_basis"]["context_item_ids"] =
+        json!([discovery_draft["behavioral_context"][0]["context_item_id"]]);
+    (
+        temporary,
+        adapter,
+        project,
+        discovery_draft,
+        materiality,
+        request,
+    )
+}
+
+fn execute_recovery(adapter: &mut HostAdapter, next: &Value) -> Value {
+    let mut args = next.clone();
+    let tool = args.as_object_mut().unwrap().remove("tool").unwrap();
+    let response = call(adapter, tool.as_str().unwrap(), args);
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    structured(&response).clone()
+}
+
+#[test]
+fn workflow_recovery_is_callable_and_keeps_exact_retained_authority() {
+    let (temporary, mut adapter, project, discovery, materiality, request) =
+        recovery_authoring_fixture();
+    let mut learning = request.clone();
+    learning["learning_participation"] = json!({"state":"active",
+        "user_turn_source_id":discovery["current_goal"]["current_host_sources"][0]["source_id"],
+        "verbatim_statement":"An invented participation statement"});
+    let mut delegation = request.clone();
+    delegation["judgments"][0] = draft_judgment(
+        &materiality,
+        "choice-1",
+        "delegated_implementation_choice_current_task",
+        json!({
+            "basis_summary":"Invalid claimed delegation", "delegation_statement":"An invented delegation statement",
+            "delegated_scope":["src.txt"], "learning_value":{"state":"routine","rationale":"Routine"},
+        }),
+    );
+    let mut alternatives = request.clone();
+    alternatives["judgments"][0]["alternative_accounting"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    let mut learning_authority = request.clone();
+    learning_authority["judgments"][0]["learning_authority"]["independent_user_authority"] =
+        json!(true);
+    let candidates = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .unwrap();
+    for (invalid, field) in [
+        (
+            learning,
+            "arguments.learning_participation.verbatim_statement",
+        ),
+        (
+            learning_authority,
+            "arguments.judgments[0].learning_authority.independent_user_authority",
+        ),
+        (delegation, "arguments.judgments[0].delegation_statement"),
+        (
+            alternatives,
+            "arguments.judgments[0].alternative_accounting",
+        ),
+    ] {
+        let response = call(&mut adapter, "materiality_review", invalid);
+        assert_eq!(response["result"]["isError"], true, "{response}");
+        let details = &structured(&response)["details"];
+        assert_eq!(details["field_path"], field, "{details}");
+        assert_eq!(
+            details["bound_identities"]["baseline_analysis_snapshot_id"],
+            discovery["baseline_analysis_snapshot_id"]
+        );
+        let recovered = execute_recovery(&mut adapter, &details["next_supported_action"]);
+        assert_eq!(recovered["record_request"]["action"], "record");
+        assert_eq!(
+            candidates,
+            adapter
+                .operations()
+                .candidate_basis(parse_project(&project))
+                .unwrap()
+        );
+    }
+    fs::write(
+        temporary.path().join("repository/src.txt"),
+        "A premature meaningful mutation\n",
+    )
+    .unwrap();
+    let late = call(&mut adapter, "materiality_review", request);
+    assert_eq!(late["result"]["isError"], true, "{late}");
+    let details = &structured(&late)["details"];
+    assert_eq!(
+        details["field_path"],
+        "arguments.engineering_choice_discovery_candidate_id"
+    );
+    assert!(details["recovery_constraint"]
+        .as_str()
+        .unwrap()
+        .contains("post-write snapshot"));
+    execute_recovery(&mut adapter, &details["next_supported_action"]);
+    assert_eq!(
+        candidates,
+        adapter
+            .operations()
+            .candidate_basis(parse_project(&project))
+            .unwrap()
+    );
+    assert!(adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .unwrap()
+        .active_decisions
+        .is_empty());
+}
+
+#[test]
+fn resume_draft_selects_newest_retained_review_instead_of_highest_revision() {
+    let (temporary, mut adapter, project, _discovery, materiality, request) =
+        recovery_authoring_fixture();
+    let first = call(&mut adapter, "materiality_review", request.clone());
+    assert_eq!(first["result"]["isError"], false, "{first}");
+    let first_id = structured(&first)["review_candidate_id"].clone();
+    let mut revise = request.clone();
+    let object = revise.as_object_mut().unwrap();
+    object.remove("engineering_choice_discovery_candidate_id");
+    object.remove("behavioral_context_basis");
+    revise["action"] = json!("revise");
+    revise["review_candidate_id"] = first_id.clone();
+    for _ in 0..2 {
+        let response = call(&mut adapter, "materiality_review", revise.clone());
+        assert_eq!(response["result"]["isError"], false, "{response}");
+    }
+    let second = call(&mut adapter, "materiality_review", request);
+    assert_eq!(second["result"]["isError"], false, "{second}");
+    let second_id = structured(&second)["review_candidate_id"].clone();
+    assert_ne!(first_id, second_id);
+    let mut restarted = HostAdapter::new(LocalOperations::new(
+        RuntimeLayout::new(temporary.path().join("runtime")).unwrap(),
+    ));
+    let before = restarted
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .unwrap();
+    let resumed = call(
+        &mut restarted,
+        "materiality_review",
+        json!({"action":"draft","project_id":project,
+        "engineering_choice_discovery_candidate_id":materiality["engineering_choice_discovery_candidate_id"]}),
+    );
+    assert_eq!(resumed["result"]["isError"], false, "{resumed}");
+    let resumed = structured(&resumed);
+    assert_eq!(resumed["record_request"]["action"], "revise");
+    assert_eq!(resumed["current_review"]["candidate_id"], second_id);
+    assert_eq!(resumed["current_review"]["revision"], 1);
+    assert_eq!(
+        resumed["baseline_analysis_snapshot_id"],
+        materiality["baseline_analysis_snapshot_id"]
+    );
+    assert_eq!(
+        before,
+        restarted
+            .operations()
+            .candidate_basis(parse_project(&project))
+            .unwrap()
+    );
+    revise["review_candidate_id"] = second_id.clone();
+    revise["judgments"][0]["discretion_counterfactuals"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    let rejected = call(&mut restarted, "materiality_review", revise);
+    assert_eq!(rejected["result"]["isError"], true, "{rejected}");
+    let details = &structured(&rejected)["details"];
+    assert_eq!(
+        details["field_path"],
+        "arguments.judgments[0].discretion_counterfactuals"
+    );
+    assert_eq!(
+        details["bound_identities"]["review_candidate_id"],
+        second_id
+    );
+    assert_eq!(details["bound_identities"]["review_revision"], 1);
+    let recovered = execute_recovery(&mut restarted, &details["next_supported_action"]);
+    assert_eq!(
+        recovered["record_request"]["prefilled_fields"]["review_candidate_id"],
+        second_id
+    );
+    assert_eq!(
+        before,
+        restarted
+            .operations()
+            .candidate_basis(parse_project(&project))
+            .unwrap()
+    );
+}
+
+#[test]
+fn candidate_order_rejection_recovers_exact_review_without_submission() {
+    let (_temporary, mut adapter, project, _discovery, _materiality, request) =
+        recovery_authoring_fixture();
+    let review = call(&mut adapter, "materiality_review", request);
+    assert_eq!(review["result"]["isError"], false, "{review}");
+    let before = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .unwrap();
+    let invalid = call(
+        &mut adapter,
+        "candidate_manage",
+        json!({
+            "action":"submit_question_from_materiality","project_id":project,
+            "review_candidate_id":structured(&review)["review_candidate_id"],"dimension_id":"choice-1",
+            "research_state":"ready_to_ask","research_state_basis":"Inspected fixture",
+            "retention_basis":"Bounded work","bounded_summary":"Fixture","prompt":"Which approach?",
+            "why_now":"Before work","alternatives":[{"key":"first","label":"First","consequence":"Private shape"}],
+            "recommendation_key":"first","recommendation_rationale":"Fixture preference",
+            "duplicate_basis":"Inspected current Questions","presentation_order":0,
+        }),
+    );
+    assert_eq!(invalid["result"]["isError"], true, "{invalid}");
+    let details = &structured(&invalid)["details"];
+    assert!(details["problems"]
+        .to_string()
+        .contains("arguments.presentation_order"));
+    assert_eq!(
+        details["next_supported_action"]["candidate_id"],
+        structured(&review)["review_candidate_id"]
+    );
+    execute_recovery(&mut adapter, &details["next_supported_action"]);
+    assert_eq!(
+        before,
+        adapter
+            .operations()
+            .candidate_basis(parse_project(&project))
+            .unwrap()
+    );
+    assert!(adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .unwrap()
+        .active_decisions
+        .is_empty());
+}
+
+#[test]
+fn compatibility_recovery_names_exact_evidence_and_never_publishes_failed_checkpoint() {
+    let (_temporary, mut adapter, project, discovery, materiality, request) =
+        recovery_authoring_fixture();
+    let review = call(&mut adapter, "materiality_review", request);
+    assert_eq!(review["result"]["isError"], false, "{review}");
+    let draft = structured(&call(&mut adapter, "materiality_review", json!({"action":"draft","project_id":project,
+        "engineering_choice_discovery_candidate_id":materiality["engineering_choice_discovery_candidate_id"]}))).clone();
+    let mut inspect = draft["pre_write_materiality_closure"]["inspect_request"]["skeleton"].clone();
+    inspect["paths"] = json!(["src.txt"]);
+    inspect["coupled_artifact_review"] = json!({
+        "assessments":draft["pre_write_materiality_closure"]["artifact_categories"].as_array().unwrap().iter().map(|category| json!({
+            "category":category,"disposition":if category == "implementation" { json!({"state":"included","repository_paths":["src.txt"]}) } else { json!({"state":"no_coupled_artifact"}) },
+            "basis_summary":"The inspected fixture has one implementation file and no coupled artifacts"
+        })).collect::<Vec<_>>(),
+        "materiality_closure":{"state":"no_new_material_outcome","rationale":"Only private organization within the fixed fixture contract",
+            "commitments":[{"commitment_id":"private-organization","description":"Preserve the entire current outcome graph",
+                "repository_paths":["src.txt"],"temporal_effect":{"state":"no_temporal_change","outcome_id":"temporal_and_lifetime-outcome-1","result_id":"temporal_and_lifetime-result-1","rationale":"Private organization preserves the fixed temporal result"},
+                "outcome_binding":{"state":"private_equivalent","equivalence_rationale":"Private organization preserves the entire graph"}}]}
+    });
+    let bound = call(&mut adapter, "materiality_review", inspect);
+    assert_eq!(bound["result"]["isError"], false, "{bound}");
+    let code = "from pathlib import Path; assert Path('src.txt').read_text().startswith('Maintain the exact same')";
+    let observed = std::process::Command::new("python3")
+        .args(["-c", code])
+        .current_dir(_temporary.path().join("repository"))
+        .output()
+        .unwrap();
+    assert!(observed.status.success());
+    let invocation = format!("python3 -c \"{code}\"");
+    let valid = json!({"project_id":project,"goal_context_id":discovery["goal_context_id"],
+        "baseline_analysis_snapshot_id":discovery["baseline_analysis_snapshot_id"],
+        "kind":"completion","work_state":"completed","applied_decision_ids":[],
+        "verification_basis":{"state":"behavior_preserving","preservation_rationale":"The focused command exercises the preserved result",
+            "surfaces":[{"surface_id":"fixture-result","inspected_paths":["src.txt"],"preserved_contract":"Same fixture result",
+                "verification_indices":[0],"coverage_rationale":"Focused fixture command exercises its result"}]},
+        "verification":[{"state":"passed","command_label":"fixture result test","command_invocation":invocation,
+            "exit_code":observed.status.code(),"termination":"exited","outcome":"Fixture result passed"}],"next_step":"Inspect the completed result"});
+    let before = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .unwrap();
+    for (path, value) in [
+        ("inspected_paths", json!(["missing.py"])),
+        ("verification_indices", json!([1])),
+        ("verification_indices", json!([0, 0])),
+    ] {
+        let mut request = valid.clone();
+        request["verification_basis"]["surfaces"][0][path] = value;
+        let response = call(&mut adapter, "checkpoint_record", request);
+        assert_eq!(response["result"]["isError"], true, "{response}");
+        let details = &structured(&response)["details"];
+        assert!(details["field_path"]
+            .as_str()
+            .unwrap()
+            .starts_with(&format!("arguments.verification_basis.surfaces[0].{path}[")));
+        assert_eq!(details["checkpoint_recorded"], false);
+        assert_eq!(details["completion_ready"], false);
+        assert_eq!(
+            details["bound_identities"]["baseline_analysis_snapshot_id"],
+            discovery["baseline_analysis_snapshot_id"]
+        );
+        execute_recovery(&mut adapter, &details["next_supported_action"]);
+        assert_eq!(
+            before,
+            adapter
+                .operations()
+                .candidate_basis(parse_project(&project))
+                .unwrap()
+        );
+        assert!(adapter
+            .operations()
+            .canonical_basis(parse_project(&project))
+            .unwrap()
+            .latest_checkpoint
+            .is_none());
+    }
+    let response = call(&mut adapter, "checkpoint_record", valid);
+    assert_eq!(response["result"]["isError"], false, "{response}");
+}

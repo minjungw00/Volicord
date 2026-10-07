@@ -4,7 +4,7 @@ use crate::{
 };
 use std::collections::BTreeSet;
 
-pub(crate) fn validate(review: &MaterialityReview) -> Result<(), String> {
+pub(crate) fn validate(review: &MaterialityReview) -> Result<(), crate::Error> {
     for dimension in &review.dimensions {
         match &dimension.learning_authority {
             LearningAuthorityAssessment::Inactive => {
@@ -12,7 +12,9 @@ pub(crate) fn validate(review: &MaterialityReview) -> Result<(), String> {
                     review.learning_participation,
                     LearningParticipation::Active { .. }
                 ) {
-                    return Err("active learning requires an independent user-authority determination for every dimension".into());
+                    return Err(crate::Error::new(crate::ErrorKind::InvalidInput,
+                        "active learning requires an independent user-authority determination for every dimension")
+                        .at_authoring_field("learning_authority.state", Some(&dimension.dimension_id)));
                 }
             }
             LearningAuthorityAssessment::Assessed {
@@ -36,13 +38,24 @@ pub(crate) fn validate(review: &MaterialityReview) -> Result<(), String> {
                         .iter()
                         .any(|source| !dimension.ownership.source_basis.contains(source))
                 {
-                    return Err("learning authority must agree with current choice/outcome ownership and cite its current Sources with a bounded counterfactual rationale".into());
+                    return Err(crate::Error::new(crate::ErrorKind::InvalidInput,
+                        "learning authority must agree with current choice/outcome ownership and cite its current Sources with a bounded counterfactual rationale")
+                        .at_authoring_field(if *independent_user_authority != dimension.ownership.contains_user_owned_outcome {
+                            "learning_authority.independent_user_authority"
+                        } else { "learning_authority" }, Some(&dimension.dimension_id)));
                 }
                 if !independent_user_authority && (!dimension.basis.decision_basis.is_empty()
                         || matches!(dimension.disposition, MaterialityDisposition::UnresolvedUserOwnedOutcome { .. })
                         || dimension.alternative_accounting.iter().any(|account| matches!(account.resolution, crate::DiscoveredAlternativeResolution::EliminatedByApplicableDecision { .. })))
                     {
-                        return Err("a learning-only dimension cannot use a canonical Decision as product authority".into());
+                        return Err(crate::Error::new(crate::ErrorKind::InvalidInput,
+                            "a learning-only dimension cannot use a canonical Decision as product authority")
+                            .at_authoring_field(match dimension.disposition {
+                                MaterialityDisposition::UnresolvedUserOwnedOutcome { resolution_decision_id: Some(_) } => "resolution_decision_id",
+                                MaterialityDisposition::UnresolvedUserOwnedOutcome { .. } => "disposition",
+                                _ if !dimension.basis.decision_basis.is_empty() => "decision_ids",
+                                _ => "alternative_accounting",
+                            }, Some(&dimension.dimension_id)));
                     }
             }
         }
@@ -96,8 +109,7 @@ pub fn validate_question_authority(
         .chain(&canonical.terminal_question_history)
         .find(|question| question.id == question_id);
     if let (Some((_, review)), Some(question)) = (review, question) {
-        validate(review)
-            .map_err(|message| crate::Error::new(crate::ErrorKind::InvalidInput, message))?;
+        validate(review)?;
         if review.dimensions.iter().any(|dimension| {
             !permits_decision(dimension)
                 && question

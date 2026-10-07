@@ -5273,12 +5273,17 @@ fn preserving_refactor_requires_override_and_default_propagation_evidence(
     draft.work_state = WorkState::Completed;
     draft.handoff_to = None;
     draft.verification = vec![base];
-    assert!(
-        fixture
-            .operations
-            .record_grounded_checkpoint(draft.clone())
-            .is_err(),
-        "compatibility impact cannot omit the review"
+    let rejected = fixture
+        .operations
+        .record_grounded_checkpoint(draft.clone())
+        .err()
+        .ok_or("missing review accepted")?;
+    assert_eq!(
+        rejected
+            .inquiry_cause()
+            .and_then(|cause| cause.authoring_location())
+            .map(|location| location.field_path.as_str()),
+        Some("verification_basis.state")
     );
     let mut surfaces = vec![
         CompatibilitySurfaceReview {
@@ -5302,23 +5307,38 @@ fn preserving_refactor_requires_override_and_default_propagation_evidence(
         CheckpointVerificationBasis::BehaviorPreserving { surfaces, preservation_rationale: "The affected extension hook and default propagation are exercised alongside direct calls.".into() }
     };
     draft.verification_basis = basis(surfaces.clone());
-    assert!(
-        fixture
-            .operations
-            .record_grounded_checkpoint(draft.clone())
-            .is_err(),
-        "base tests alone do not cover the known override"
+    let rejected = fixture
+        .operations
+        .record_grounded_checkpoint(draft.clone())
+        .err()
+        .ok_or("uncovered override accepted")?;
+    assert_eq!(
+        rejected
+            .inquiry_cause()
+            .and_then(|cause| cause.authoring_location())
+            .map(|location| location.field_path.as_str()),
+        Some("verification_basis.surfaces[1].verification_indices")
     );
     surfaces[1].verification_indices = vec![1];
     draft.verification_basis = basis(surfaces);
     draft.verification.push(broken);
-    assert!(
-        fixture
-            .operations
-            .record_grounded_checkpoint(draft.clone())
-            .is_err(),
-        "broken extension test blocks completion despite passing base tests"
+    let rejected = fixture
+        .operations
+        .record_grounded_checkpoint(draft.clone())
+        .err()
+        .ok_or("failed extension accepted")?;
+    assert_eq!(
+        rejected
+            .inquiry_cause()
+            .and_then(|cause| cause.authoring_location())
+            .map(|location| location.field_path.as_str()),
+        Some("verification_basis.surfaces[1].verification_indices[0]")
     );
+    assert!(fixture
+        .operations
+        .canonical_basis(fixture.project_id)?
+        .latest_checkpoint
+        .is_none());
     fs::write(
         fixture.repository.join("src/signer.py"),
         format!("{original_signer}\n# Preserve virtual dispatch and default propagation.\n"),

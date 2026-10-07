@@ -251,6 +251,29 @@ Candidates and never establish work authority. Other domain failures retain thei
 named invariant and draft/inspection recovery path; no semantic conclusions are
 inferred from diagnostic prose.
 
+Recovery `next_supported_action` contains the tool name and schema-valid read
+arguments, or `method=tools/list` when no trustworthy binding is available.
+Remove `tool` before passing the remaining fields as tool arguments; schema
+references and recovery instructions are separate metadata. Materiality failures
+resolve Goal/baseline and available Candidate revisions from retained content.
+Late first reviews point to exact Discovery inspection and retain the requirement
+to restore the bounded changes before review; a replacement baseline cannot
+authorize earlier work. Candidate submission errors expose the exact input
+contract and inspect the named Review/Candidate when available.
+
+Materiality draft selects the newest retained Review for the exact Discovery by
+creation order, using its current revision. An older Review's revision count
+does not select it during resume. Draft reads preserve the original Goal/baseline
+and do not create a Review. Fresh bounded continuation and read-only completed
+state inspection retain their existing distinct paths.
+
+Compatibility Checkpoint failures name the exact surface field or verification
+index and preserve the original Goal/baseline and work-authority workflow.
+`checkpoint_recorded=false` and `completion_ready=false` distinguish rejection
+from the retained authority to continue bounded work. Inspect retained state,
+correct the surface review or obtain truthful focused verification, and resubmit
+`checkpoint_record`; no automatic retry, inferred success, or Decision occurs.
+
 Decision inputs use the exact selected user answer in `user_turn`. For
 `request_user_input_async`, copy only the selected `reply.answer` and supply
 `async_reply: {"request_call_id": "…", "question_index": 0}` using its

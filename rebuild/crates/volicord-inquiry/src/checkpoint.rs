@@ -47,7 +47,7 @@ pub fn compatibility_verification_notes(
     repository: &RepositoryWorkBasis<'_>,
     compatibility_required: bool,
     terminal: bool,
-) -> Result<Vec<Vec<String>>, String> {
+) -> Result<Vec<Vec<String>>, crate::Error> {
     let mut notes = vec![Vec::new(); states.len()];
     let CheckpointVerificationBasis::BehaviorPreserving {
         surfaces,
@@ -55,14 +55,28 @@ pub fn compatibility_verification_notes(
     } = basis
     else {
         return if compatibility_required && terminal {
-            Err("compatibility impact requires a behavior-preserving surface review before completion".into())
+            Err(crate::Error::new(crate::ErrorKind::InvalidInput,
+                "compatibility impact requires a behavior-preserving surface review before completion")
+                .at_authoring_field("verification_basis.state", None))
         } else {
             Ok(notes)
         };
     };
     let bounded = |text: &str| !text.trim().is_empty() && text.len() <= 2048;
-    if surfaces.is_empty() || surfaces.len() > 32 || !bounded(preservation_rationale) {
-        return Err("behavior-preserving verification requires bounded relevant surfaces and preservation rationale".into());
+    let invalid = |field: String, message: &str| {
+        crate::Error::new(crate::ErrorKind::InvalidInput, message).at_authoring_field(field, None)
+    };
+    if surfaces.is_empty() || surfaces.len() > 32 {
+        return Err(invalid(
+            "verification_basis.surfaces".into(),
+            "behavior-preserving verification requires bounded relevant surfaces",
+        ));
+    }
+    if !bounded(preservation_rationale) {
+        return Err(invalid(
+            "verification_basis.preservation_rationale".into(),
+            "behavior-preserving verification requires a bounded preservation rationale",
+        ));
     }
     let paths = repository
         .baseline
@@ -79,41 +93,50 @@ pub fn compatibility_verification_notes(
         .map(|entry| entry.area.path.as_str())
         .collect::<BTreeSet<_>>();
     let mut identities = BTreeSet::new();
-    for surface in surfaces {
-        if !bounded(&surface.surface_id)
-            || !identities.insert(&surface.surface_id)
-            || !bounded(&surface.preserved_contract)
-            || !bounded(&surface.coverage_rationale)
-            || surface.inspected_paths.is_empty()
-            || surface.inspected_paths.len() > 32
-            || surface
-                .inspected_paths
-                .iter()
-                .collect::<BTreeSet<_>>()
-                .len()
-                != surface.inspected_paths.len()
-            || surface
-                .inspected_paths
-                .iter()
-                .any(|path| !paths.contains(path.as_str()))
-        {
-            return Err("compatibility surfaces require unique identities, inspected repository paths, exact contracts and coverage rationale".into());
+    for (surface_index, surface) in surfaces.iter().enumerate() {
+        let field = |name: &str| format!("verification_basis.surfaces[{surface_index}].{name}");
+        if !bounded(&surface.surface_id) || !identities.insert(&surface.surface_id) {
+            return Err(invalid(
+                field("surface_id"),
+                "compatibility surfaces require unique bounded identities",
+            ));
         }
-        if surface.verification_indices.is_empty()
-            || surface
-                .verification_indices
-                .iter()
-                .collect::<BTreeSet<_>>()
-                .len()
-                != surface.verification_indices.len()
-            || surface.verification_indices.iter().any(|index| {
-                states.get(*index).is_none_or(|state| {
+        for (name, text) in [
+            ("preserved_contract", &surface.preserved_contract),
+            ("coverage_rationale", &surface.coverage_rationale),
+        ] {
+            if !bounded(text) {
+                return Err(invalid(
+                    field(name),
+                    "compatibility surfaces require exact bounded contracts and coverage rationale",
+                ));
+            }
+        }
+        if surface.inspected_paths.is_empty() || surface.inspected_paths.len() > 32 {
+            return Err(invalid(
+                field("inspected_paths"),
+                "compatibility surfaces require bounded inspected repository paths",
+            ));
+        }
+        let mut inspected = BTreeSet::new();
+        for (index, path) in surface.inspected_paths.iter().enumerate() {
+            if !inspected.insert(path) || !paths.contains(path.as_str()) {
+                return Err(invalid(format!("{}[{index}]", field("inspected_paths")), "compatibility inspected paths must be unique Included files in the retained baseline or current snapshot"));
+            }
+        }
+        if surface.verification_indices.is_empty() {
+            return Err(invalid(field("verification_indices"), "compatibility surface lacks adequate focused verification; every completion surface must link passed command evidence"));
+        }
+        let mut indices = BTreeSet::new();
+        for (index, verification_index) in surface.verification_indices.iter().enumerate() {
+            if !indices.insert(verification_index)
+                || states.get(*verification_index).is_none_or(|state| {
                     *state == VerificationState::NotRun
                         || (terminal && *state != VerificationState::Passed)
                 })
-            })
-        {
-            return Err(format!("compatibility surface {} lacks adequate focused verification; every completion surface must link passed command evidence", surface.surface_id));
+            {
+                return Err(invalid(format!("{}[{index}]", field("verification_indices")), &format!("compatibility surface {} lacks adequate focused verification at index {}; every completion surface must link passed command evidence", surface.surface_id, verification_index)));
+            }
         }
         let note = format!("Compatibility surface {}: {}; inspected paths: {}; coverage: {}; preservation basis: {}",
             surface.surface_id, surface.preserved_contract, surface.inspected_paths.join(", "), surface.coverage_rationale, preservation_rationale);

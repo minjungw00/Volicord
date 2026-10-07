@@ -240,7 +240,6 @@ impl HostAdapter {
                             "materiality_review_candidate_id":arguments.get("review_candidate_id"),
                         },
                         "missing_prerequisite_or_evidence":"The problem names the failed typed invariant; call draft to recover current identities and disposition contracts.",
-                        "next_supported_action":{"tool":"materiality_review","action":"draft"},
                     }));
                 }
                 if name == "engineering_choice_discovery" || name == "materiality_review" {
@@ -276,6 +275,8 @@ impl HostAdapter {
                                                     .to_string());
                                             bound["engineering_choice_discovery_candidate_id"] =
                                                 json!(candidate_id.to_string());
+                                            bound["engineering_choice_discovery_revision"] =
+                                                json!(candidate.revision);
                                         } else if let Some(review) =
                                             content.materiality_review.as_ref()
                                         {
@@ -290,6 +291,7 @@ impl HostAdapter {
                                                     .to_string());
                                             bound["review_candidate_id"] =
                                                 json!(candidate_id.to_string());
+                                            bound["review_revision"] = json!(candidate.revision);
                                         }
                                     }
                                 }
@@ -305,34 +307,155 @@ impl HostAdapter {
                                 .unwrap_or(Value::Null);
                         }
                         object.insert("bound_identities".into(), bound.clone());
-                        object.entry("next_supported_action").or_insert_with(|| json!({
-                            "tool":name,"action":"draft","project_id":bound["project_id"],
-                            "engineering_choice_discovery_candidate_id":bound.get("engineering_choice_discovery_candidate_id"),
-                            "baseline_analysis_snapshot_id":if name == "engineering_choice_discovery" { bound.get("baseline_analysis_snapshot_id") } else { None },
-                            "schema":"tools/list inputSchema; fill semantic placeholders before record/revise",
-                        }));
+                        if object
+                            .get("next_supported_action")
+                            .is_none_or(|action| action["action"] == "draft")
+                        {
+                            let identity_field = if name == "materiality_review" {
+                                "engineering_choice_discovery_candidate_id"
+                            } else {
+                                "baseline_analysis_snapshot_id"
+                            };
+                            let next = if bound["project_id"].is_string()
+                                && bound[identity_field].is_string()
+                            {
+                                let mut next = json!({"tool":name,"action":"draft","project_id":bound["project_id"]});
+                                next[identity_field] = bound[identity_field].clone();
+                                next
+                            } else {
+                                json!({"method":"tools/list"})
+                            };
+                            object.insert("next_supported_action".into(), next);
+                        }
                         if let Some(location) = object.get("authoring_location") {
-                            let domain_path = location["field_path"].as_str().unwrap_or_default();
+                            let domain_path = location["field_path"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_owned();
                             let host_path = if name == "materiality_review" {
                                 let choice_id = location["choice_id"].as_str();
-                                arguments["judgments"]
-                                    .as_array()
-                                    .and_then(|judgments| {
-                                        judgments.iter().position(|judgment| {
-                                            judgment["choice_id"].as_str() == choice_id
+                                if choice_id.is_none() {
+                                    Some(format!("arguments.{domain_path}"))
+                                } else {
+                                    arguments["judgments"]
+                                        .as_array()
+                                        .and_then(|judgments| {
+                                            judgments.iter().position(|judgment| {
+                                                judgment["choice_id"].as_str() == choice_id
+                                            })
                                         })
-                                    })
-                                    .map(|index| {
-                                        format!(
-                                            "arguments.judgments[{index}].{}",
-                                            domain_path.replace("source_basis", "source_ids")
-                                        )
-                                    })
+                                        .map(|index| {
+                                            format!(
+                                                "arguments.judgments[{index}].{}",
+                                                domain_path.replace("source_basis", "source_ids")
+                                            )
+                                        })
+                                }
                             } else {
                                 Some(format!("arguments.{domain_path}"))
                             };
                             if let Some(host_path) = host_path {
                                 object.insert("field_path".into(), json!(host_path));
+                            }
+                            if name == "materiality_review"
+                                && arguments["action"] == "record"
+                                && domain_path == "baseline_analysis_snapshot_id"
+                            {
+                                object.insert(
+                                    "field_path".into(),
+                                    json!("arguments.engineering_choice_discovery_candidate_id"),
+                                );
+                                object.insert("next_supported_action".into(), json!({"tool":"candidate_inspect",
+                                    "project_id":bound["project_id"],"candidate_id":bound["engineering_choice_discovery_candidate_id"]}));
+                                object.insert("recovery_constraint".into(), json!("The first review is after repository mutation. Inspect the retained discovery/baseline and changed paths; restore only the bounded work's changes before reviewing. A post-write snapshot or a new review cannot authorize earlier writes. An unchanged record retry remains rejected."));
+                            }
+                        }
+                        object.insert(
+                            "request_contract".into(),
+                            json!({"method":"tools/list","tool":name,"field":"inputSchema"}),
+                        );
+                    }
+                }
+                if name == "candidate_manage" {
+                    let problem = error.to_string();
+                    let details = error
+                        .details
+                        .get_or_insert_with(|| json!({"problem":problem}));
+                    details["request_contract"] =
+                        json!({"method":"tools/list","tool":name,"field":"inputSchema"});
+                    details["next_supported_action"] = match (
+                        arguments.get("project_id"),
+                        arguments
+                            .get("candidate_id")
+                            .or_else(|| arguments.get("review_candidate_id")),
+                    ) {
+                        (Some(project), Some(candidate))
+                            if project.is_string() && candidate.is_string() =>
+                        {
+                            json!({"tool":"candidate_inspect","project_id":project,"candidate_id":candidate})
+                        }
+                        _ => json!({"method":"tools/list"}),
+                    };
+                    if let Some(location) = details.get("authoring_location") {
+                        details["field_path"] = json!(format!(
+                            "arguments.{}",
+                            location["field_path"].as_str().unwrap_or_default()
+                        ));
+                    }
+                    if let (Ok(project_id), Some(Ok(candidate_id))) = (
+                        project(&arguments),
+                        arguments
+                            .get("candidate_id")
+                            .or_else(|| arguments.get("review_candidate_id"))
+                            .and_then(Value::as_str)
+                            .map(parse_candidate),
+                    ) {
+                        match self
+                            .operations
+                            .inspect_workflow_candidate(project_id, candidate_id)
+                        {
+                            Ok(candidate) => {
+                                let mut bound = json!({"project_id":project_id.to_string(),"candidate_id":candidate_id.to_string(),"revision":candidate.revision});
+                                if let Some(review) = candidate
+                                    .content
+                                    .as_ref()
+                                    .and_then(|content| content.materiality_review.as_ref())
+                                {
+                                    bound["goal_context_id"] =
+                                        json!(review.goal_context_id.to_string());
+                                    bound["baseline_analysis_snapshot_id"] =
+                                        json!(review.baseline_analysis_snapshot_id.to_string());
+                                }
+                                details["bound_identities"] = bound;
+                            }
+                            Err(_) => {
+                                details["next_supported_action"] = json!({"method":"tools/list"})
+                            }
+                        }
+                    }
+                }
+                // Recovery metadata must itself satisfy the published schema.
+                // This validates shape only; it never executes or retries a tool.
+                if matches!(
+                    name,
+                    "engineering_choice_discovery"
+                        | "materiality_review"
+                        | "candidate_manage"
+                        | "checkpoint_record"
+                ) {
+                    if let Some(details) = error.details.as_mut() {
+                        if let Some(next) = details.get("next_supported_action") {
+                            if let Some(tool) = next.get("tool").and_then(Value::as_str) {
+                                let mut args = next.clone();
+                                if let Some(args) = args.as_object_mut() {
+                                    args.remove("tool");
+                                }
+                                if tool_contract(tool)
+                                    .is_none_or(|contract| contract.validate(&args).is_err())
+                                {
+                                    details["next_supported_action"] =
+                                        json!({"method":"tools/list"});
+                                }
                             }
                         }
                     }
@@ -667,15 +790,17 @@ impl HostAdapter {
                     .into_iter()
                     .filter(|candidate| {
                         candidate.kind == CandidateKind::MaterialityReview
+                            && matches!(
+                                candidate.disposition,
+                                CandidateDisposition::PendingOrRetained
+                            )
                             && candidate.content.as_ref().is_some_and(|content| {
                                 content.materiality_review.as_ref().is_some_and(|review| {
                                     review.engineering_choice_discovery_candidate_id == candidate_id
                                 })
                             })
                     })
-                    .max_by_key(|candidate| {
-                        (candidate.revision, candidate.created_at, candidate.id)
-                    });
+                    .max_by_key(|candidate| (candidate.created_at, candidate.id));
                 let mut draft = materiality_draft_json(
                     project_id,
                     candidate_id,
@@ -1288,10 +1413,38 @@ impl HostAdapter {
                             "diagnostic":workflow_error.to_string(),
                         })
                     });
-                return Err(HostError::with_details(
-                    error.to_string(),
-                    json!({"workflow":workflow,"cause":canonical_cause_json(&error)}),
-                ));
+                let cause = canonical_cause_json(&error);
+                let mut host_error = operation_error(error);
+                let details = host_error.details.get_or_insert_with(|| json!({}));
+                details["workflow"] = workflow;
+                details["cause"] = cause;
+                details["bound_identities"] = json!({"project_id":project_id.to_string(),
+                    "goal_context_id":goal_context_id.to_string(),"baseline_analysis_snapshot_id":baseline_analysis_snapshot_id.to_string()});
+                details["checkpoint_recorded"] = json!(false);
+                details["completion_ready"] = json!(false);
+                if let Some(location) = details.get("authoring_location") {
+                    details["field_path"] = json!(format!(
+                        "arguments.{}",
+                        location["field_path"].as_str().unwrap_or_default()
+                    ));
+                    let review_id = details["workflow"]["satisfied_basis_identities"]
+                        .as_array()
+                        .and_then(|identities| {
+                            identities
+                                .iter()
+                                .find(|identity| identity["kind"] == "materiality_review_candidate")
+                        })
+                        .map(|identity| identity["identity"].clone());
+                    let mut next =
+                        json!({"tool":"candidate_inspect","project_id":project_id.to_string()});
+                    if let Some(review_id) = review_id {
+                        next["candidate_id"] = review_id;
+                    }
+                    details["next_supported_action"] = next;
+                    details["recovery_operation"] = json!({"tool":"checkpoint_record",
+                        "instruction":"Correct the named evidence field using actual inspected surfaces and observed focused verification, then resubmit with the same retained Goal/baseline. Do not infer passed evidence or change work_state to conceal a failure."});
+                }
+                return Err(host_error);
             }
         };
         let workflow = LocalOperations::workflow_after_checkpoint(
@@ -5497,8 +5650,10 @@ fn question_candidate_draft(
         .iter()
         .any(|alternative| alternative.key == recommendation_key)
     {
-        return Err(HostError::new(
+        return Err(HostError::with_details(
             "recommendation_key must name one submitted alternative",
+            json!({"field_path":"arguments.recommendation_key","invalid_value":recommendation_key,
+                "allowed_values":alternatives.iter().map(|alternative| &alternative.key).collect::<Vec<_>>()}),
         ));
     }
     let established_facts = string_array(args, "established_facts")?

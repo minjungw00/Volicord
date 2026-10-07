@@ -120,8 +120,7 @@ pub fn bind_question_candidate_to_materiality(
                 "Materiality Review content is unavailable",
             )
         })?;
-    crate::learning_authority::validate(review)
-        .map_err(|message| crate::Error::new(crate::ErrorKind::InvalidInput, message))?;
+    crate::learning_authority::validate(review)?;
     let dimension = review
         .dimensions
         .iter()
@@ -276,7 +275,7 @@ pub fn evaluate_work_authority(
         return invalid(result, None, "Materiality Review content is unavailable");
     };
     if let Err(reason) = crate::learning_authority::validate(review) {
-        return invalid(result, None, reason);
+        return invalid(result, None, reason.to_string());
     }
     if review.goal_context_id != goal_context_id
         || review.baseline_analysis_snapshot_id != baseline_analysis_snapshot_id
