@@ -582,6 +582,7 @@ struct EntityDraft {
     start: tree_sitter::Point,
     end: tree_sitter::Point,
     parser_node_kind: String,
+    body_observations: Option<crate::BodyObservations>,
     diagnostic_ids: Vec<String>,
 }
 
@@ -787,12 +788,15 @@ impl ParseState<'_> {
         let range_start = exact_named_token(node, self.source, &name).unwrap_or(node);
         self.entities.push(EntityDraft {
             key,
-            kind,
+            kind: kind.clone(),
             name,
             qualified_name,
             start: range_start.start_position(),
             end: node.end_position(),
             parser_node_kind: node.kind().to_owned(),
+            body_observations: is_callable(&kind)
+                .then(|| crate::behavior::observe_body(node, self.language, self.source))
+                .flatten(),
             diagnostic_ids: Vec::new(),
         });
         if let Some(parent) = parent {
@@ -1484,6 +1488,12 @@ fn materialize_file(
                 "parser_node_kind".to_owned(),
                 Value::String(entity.parser_node_kind.clone()),
             );
+            if let Some(observations) = entity.body_observations {
+                // The existing language syntax extension owns these parser facts.
+                if let Ok(value) = serde_json::to_value(observations) {
+                    values.insert(crate::BODY_OBSERVATIONS_KEY.to_owned(), value);
+                }
+            }
             let extension = LanguageExtension {
                 language: parsed.language.clone(),
                 owning_adapter: parsed.adapter.clone(),
@@ -1901,7 +1911,7 @@ fn parser_language(language: &Language) -> Result<ParserLanguage, FileFailure> {
 fn adapter_identity(language: &Language) -> AdapterIdentity {
     AdapterIdentity {
         name: format!("volicord-{}-structural-adapter", language_label(language)),
-        version: STRUCTURAL_ADAPTER_VERSION.to_owned(),
+        version: format!("{STRUCTURAL_ADAPTER_VERSION}:body-observations-1"),
     }
 }
 

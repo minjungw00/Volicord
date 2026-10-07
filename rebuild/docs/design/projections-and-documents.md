@@ -1468,3 +1468,28 @@ generates explanations, collects Candidates or changes canonical authority.
 Learning association ranking borrows permitted Goal identity through the same content-admission rule as Candidate Inspection; full rounds/choices materialize only after selection bounds. Identity reference byte omissions retain their exact transport count independently of Candidate list omissions.
 
 Shared Work answers also carry the latest Checkpoint's recorded limits and non-goals with exact Checkpoint/revision keys, independently of optional generated limits prose. Earlier limit observations remain history evidence; omission of a new statement does not assert resolution.
+
+### Source-bound code behavior reading
+
+`MapEntity.behavior` carries bounded body-expression claims and their exact Source
+ranges, explanation state, omissions and limitations. Component explanations use
+these observations to describe declared inputs, conditions, processing expressions,
+assignments and returns, preserving source-authored responsibility text when
+available. Work applicability comes from the existing changed-path, canonical-link
+and grounded-neighbor selection basis, never from a function name or a shared
+Repository Snapshot Source. No unobserved business purpose or callee effect is inferred.
+
+`Current`, `Partial`, `Stale`, `Unsupported` and `Unavailable` describe explanation
+reliability separately from underlying structural/semantic capability. Missing body
+observations do not make a structural declaration a behavior explanation. Partial
+coverage preserves usable expressions and exact omissions; historical evidence cannot
+establish current behavior. Viewer consumers expose state ordinarily and exact
+expression ranges, Source/Repository/Analysis identity, static supporting relations
+and limitations in evidence disclosure. There is no read-side source access, analyzer
+execution, provider invocation or new navigation/styling contract.
+
+Retained RI `AgentInterpretation` consumption resolves its `analysis_basis` to exact
+entities/relations and carries source ranges, producer, generated time, freshness and
+uncertainty. Only interpretations grounded in the displayed entity scope are consumed;
+a repository-wide Source alone is insufficient. Generated prose remains a separate
+interpretation role and cannot add graph edges or execution observations.

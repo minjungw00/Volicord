@@ -1167,8 +1167,11 @@ fn code(
     for explanation in &u.deterministic_explanations {
         render_deterministic_explanation(html, r, explanation);
     }
+    for entity in &u.architecture.components {
+        render_code_behavior(html, r, entity, &u.architecture.relationships);
+    }
     for interpretation in &u.generated_interpretations {
-        html.push_str(&format!("<details data-statement-role=\"generated-interpretation\"><summary>{}</summary><p>{}</p><p>{}</p></details>",escape(text(r.locale,"Generated interpretation","생성 해석")),escape(&interpretation.text),escape(&interpretation.known_gaps.join("; "))));
+        html.push_str(&format!("<details data-statement-role=\"generated-interpretation\" data-explanation-state=\"{:?}\"><summary>{} · {:?}</summary><p>{}</p><p>{}</p><pre>{}</pre></details>", interpretation.freshness.state, escape(text(r.locale,"Generated interpretation","생성 해석")), interpretation.freshness.state, escape(&interpretation.text), escape(&interpretation.known_gaps.join("; ")), escape(&format!("producer: {}\ngenerated: {}\nSource: {:?}\nAnalysis: {}\nRepository: {}\nentities: {:?}\nrelations: {:?}\nranges: {:?}\nuncertainty: {:?}", interpretation.producer, interpretation.generated_at_unix_micros, interpretation.source_basis, interpretation.analysis_snapshot, interpretation.repository_snapshot, interpretation.entity_basis, interpretation.relation_basis, interpretation.source_ranges, interpretation.uncertainty))));
     }
     if !u.architecture.components.is_empty() || !u.architecture.relationships.is_empty() {
         render_grounded_diagram(
@@ -1341,6 +1344,31 @@ fn code(
     }
     render_understanding_evidence(html, r, u);
     section_end(html);
+}
+
+fn render_code_behavior(
+    html: &mut String,
+    r: &ViewerRequest,
+    entity: &MapEntity,
+    relations: &[MapRelation],
+) {
+    let behavior = &entity.behavior;
+    html.push_str(&format!("<div data-statement-role=\"deterministic-derived\" data-code-behavior=\"{}\" data-explanation-state=\"{:?}\"><p>{}: {} · {:?}</p>", escape(&entity.identity), behavior.state, text(r.locale, "Source-bound behavior", "소스에 연결된 동작"), escape(&entity.display_name), behavior.state));
+    if !matches!(
+        behavior.state,
+        volicord_projections::CodeExplanationState::Current
+            | volicord_projections::CodeExplanationState::Partial
+    ) {
+        html.push_str(&format!(
+            "<p>{}</p>",
+            text(
+                r.locale,
+                "Current behavior cannot be established from this evidence.",
+                "이 근거로 현재 동작을 확인할 수 없습니다."
+            )
+        ));
+    }
+    html.push_str(&format!("<p>{}</p><details><summary>{}</summary><pre>{}</pre></details></div>", escape(&behavior.limitations.join("; ")), text(r.locale, "Body expressions and exact source evidence", "본문 표현식과 정확한 소스 근거"), escape(&format!("Source: {}\nAnalysis: {}\nRepository: {}\nfreshness: {:?}\nclaims: {:#?}\nomitted: {}\nsupporting static relations: {:?}", entity.source_id, entity.analysis_snapshot, entity.repository_snapshot, entity.freshness, behavior.claims, behavior.omitted_count, relations.iter().filter(|relation| relation.source_entity == entity.identity || relation.target_entity.as_deref() == Some(entity.identity.as_str())).map(|relation| (&relation.identity, &relation.kind, relation.class)).collect::<Vec<_>>()))));
 }
 pub(super) fn fragment_identity(id: &str) -> String {
     id.as_bytes()

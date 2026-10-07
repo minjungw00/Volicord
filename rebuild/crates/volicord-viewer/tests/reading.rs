@@ -1286,3 +1286,50 @@ fn decision_only_work_code_limits_reach_latest_and_exact_viewer_reads(
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }
+
+#[test]
+fn code_reading_explains_source_operations_with_work_and_exact_entity_evidence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture()?;
+    let before = fixture.operations.canonical_basis(fixture.project)?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(fixture.operations.layout().clone())),
+        fixture.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    for locale in ["en", "ko"] {
+        let page = exchange(
+            &server,
+            &format!(
+                "/?view=code&scope=work&work={}&locale={locale}",
+                fixture.goals["older"]
+            ),
+        );
+        assert!(page.contains("name.strip()"));
+        assert!(page.contains("return format_name(name)"));
+        assert!(page.contains("data-code-behavior="));
+        assert!(page.contains("data-explanation-state=\"Current\""));
+        assert!(
+            page.contains("Body expressions and exact source evidence")
+                || page.contains("본문 표현식과 정확한 소스 근거")
+        );
+        assert!(page.contains("ZeroBasedUtf8Byte"));
+        assert!(page.contains("Source:"));
+        assert!(page.contains("supporting static relations"));
+        assert!(!page.contains("runtime sequence"));
+    }
+    let after_analysis = fixture.operations.canonical_basis(fixture.project)?;
+    assert_eq!(before, after_analysis);
+    let _ = exchange(
+        &server,
+        &format!("/?view=code&scope=work&work={}", fixture.goals["older"]),
+    );
+    assert_eq!(
+        after_analysis,
+        fixture.operations.canonical_basis(fixture.project)?
+    );
+    Ok(())
+}

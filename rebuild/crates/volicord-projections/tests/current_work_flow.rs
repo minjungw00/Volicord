@@ -1557,3 +1557,182 @@ fn work_decision_code_relevance_selects_limits_without_other_work_leakage(
     }
     Ok(())
 }
+
+#[test]
+fn work_behavior_explains_rust_python_and_polyglot_source_operations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::CodeExplanationState;
+    use volicord_repository_intelligence::BodyObservationKind;
+    let files = [
+        ("src/lib.rs", "pub fn normalize(name: &str) -> String { let trimmed = name.trim(); if trimmed.is_empty() { return String::new(); } trimmed.to_lowercase() }"),
+        ("worker.py", "def normalize(name):\n    \"\"\"Normalize the supplied name.\"\"\"\n    value = name.strip()\n    if not value:\n        return None\n    return value.lower()\n"),
+        ("boundary.ts", "export function encode(value: string) { return JSON.stringify(value); }"),
+        ("unrelated.py", "def unrelated():\n    return 'foreign behavior'\n"),
+    ];
+    let (projection, _) = build_projection_scenario(
+        &files,
+        &["src/lib.rs", "worker.py", "boundary.ts"],
+        &[vec!["src/lib.rs", "worker.py", "boundary.ts"]],
+        64,
+        |_| Ok(()),
+    )?;
+    let understanding = build_project_understanding(
+        &projection,
+        UnderstandingBound {
+            max_items_per_section: 64,
+        },
+    );
+    for (path, expression) in [
+        ("src/lib.rs", "trimmed.to_lowercase()"),
+        ("worker.py", "return value.lower()"),
+        ("boundary.ts", "return JSON.stringify(value);"),
+    ] {
+        let entity = understanding
+            .architecture
+            .components
+            .iter()
+            .find(|e| e.locator == path && e.kind == CodeEntityKind::Function)
+            .ok_or("function missing")?;
+        assert_eq!(entity.behavior.state, CodeExplanationState::Current);
+        assert!(entity
+            .behavior
+            .claims
+            .iter()
+            .any(|c| c.kind == BodyObservationKind::Return && c.expression == expression));
+        assert!(entity
+            .behavior
+            .claims
+            .iter()
+            .any(|c| c.kind == BodyObservationKind::Inputs));
+        for claim in &entity.behavior.claims {
+            assert_eq!(claim.source_range.locator, path);
+            assert_eq!(claim.source_range.source.identity(), entity.source_id);
+            assert_eq!(
+                claim.source_range.repository_snapshot,
+                entity.repository_snapshot
+            );
+        }
+        let explanation = understanding
+            .deterministic_explanations
+            .iter()
+            .find(|e| e.identity == format!("deterministic:component:{}", entity.identity))
+            .ok_or("behavior explanation missing")?;
+        assert!(explanation.english.contains(expression));
+        assert!(explanation.korean.contains(expression));
+        assert!(
+            explanation.english.contains("changed paths")
+                || explanation.english.contains("changed path")
+        );
+        assert!(explanation
+            .english
+            .contains("do not establish branch execution"));
+    }
+    assert!(!understanding
+        .architecture
+        .components
+        .iter()
+        .any(|e| e.locator == "unrelated.py"));
+    // Unresolved JSON/string-method calls cannot fabricate a cross-language flow.
+    assert!(!understanding
+        .architecture
+        .relationships
+        .iter()
+        .any(|r| r.kind == "CallsSyntactically"
+            && r.target_entity.as_ref().is_some_and(|target| understanding
+                .architecture
+                .components
+                .iter()
+                .any(|e| &e.identity == target && e.locator != "boundary.ts"))
+            && understanding
+                .architecture
+                .components
+                .iter()
+                .any(|e| e.identity == r.source_entity && e.locator == "boundary.ts")));
+    Ok(())
+}
+
+#[test]
+fn body_explanations_do_not_attribute_nested_functions_or_unknown_callee_effects(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (projection, _) = build_projection(&[("worker.py", "def send(payload):\n    def nested():\n        return destroy_database()\n    return unknown_transport(payload)\n")], "worker.py", 24)?;
+    let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+    let send = understanding
+        .architecture
+        .components
+        .iter()
+        .find(|e| e.display_name.ends_with("send"))
+        .ok_or("send")?;
+    assert!(send
+        .behavior
+        .claims
+        .iter()
+        .any(|c| c.expression.contains("unknown_transport(payload)")));
+    assert!(!send
+        .behavior
+        .claims
+        .iter()
+        .any(|c| c.expression.contains("destroy_database")));
+    assert!(send
+        .behavior
+        .limitations
+        .iter()
+        .any(|gap| gap.contains("call outcomes")));
+    assert_eq!(
+        understanding.architecture.flow_evidence.state,
+        volicord_projections::ArchitectureFlowState::NoResolvedCalls
+    );
+    Ok(())
+}
+
+#[test]
+fn generated_code_interpretation_is_consumed_only_for_exact_selected_analysis_entities(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (projection, _) = build_projection_scenario(
+        &[
+            ("worker.py", "def run(name):\n    return name.strip()\n"),
+            ("other.py", "def other():\n    return 0\n"),
+        ],
+        &["worker.py"],
+        &[vec!["worker.py"]],
+        24,
+        |analysis| {
+            for path in ["worker.py", "other.py"] {
+                let entity = analysis
+                    .structural_facts
+                    .iter()
+                    .find(|f| {
+                        f.entity.area.path == path && f.entity.kind == CodeEntityKind::Function
+                    })
+                    .ok_or("entity")?;
+                analysis.agent_interpretations.push(
+                    volicord_repository_intelligence::AgentInterpretation {
+                        identity: format!("interpretation:{path}"),
+                        analysis_snapshot: analysis.identity,
+                        agent: "authored-test-agent".into(),
+                        host: "authored-test-host".into(),
+                        session: "test".into(),
+                        source_basis: vec![entity.entity.source.clone()],
+                        analysis_basis: vec![entity.entity.identity.clone()],
+                        text: format!("Authored source interpretation for {path}"),
+                        generated_at_unix_micros: 1,
+                        known_gaps: vec!["No observed execution".into()],
+                        uncertainty: volicord_repository_intelligence::Uncertainty::none(),
+                        provenance_class: ProvenanceClass::AgentInterpretation,
+                    },
+                );
+            }
+            Ok(())
+        },
+    )?;
+    let understanding = build_project_understanding(&projection, UnderstandingBound::default());
+    assert_eq!(understanding.generated_interpretations.len(), 1);
+    let interpretation = &understanding.generated_interpretations[0];
+    assert_eq!(interpretation.identity, "interpretation:worker.py");
+    assert_eq!(interpretation.source_ranges[0].locator, "worker.py");
+    assert!(interpretation.producer.contains("authored-test-host"));
+    assert!(understanding
+        .deterministic_explanations
+        .iter()
+        .all(|e| !e.english.contains("Authored source interpretation")));
+    Ok(())
+}

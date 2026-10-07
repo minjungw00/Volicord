@@ -4,6 +4,8 @@
 //! This crate has no mutation handle. Automatic Recall trigger state is local
 //! to one in-memory agent session and never enters canonical storage.
 
+mod code_behavior;
+pub use code_behavior::{CodeBehaviorClaim, CodeBehaviorReading, CodeExplanationState};
 mod answers;
 pub use answers::*;
 mod analysis_status;

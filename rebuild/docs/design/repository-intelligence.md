@@ -643,3 +643,29 @@ additional-scope counts; analyzer/audit detail remains in the full `--json` resu
 coverage scopes while returning all diagnostics (`diagnostics_omitted_count = 0`).
 The existing bounded host projection stays separate; this is output formatting, not
 analysis recomputation, a new capability or a background transmission path.
+
+### Bounded function-body source observations
+
+The existing structural parser additionally records bounded body observations in
+its language-owned syntax extension (`body_observations`). Rust, Python,
+JavaScript and TypeScript callable declarations with a body can expose exact
+parameter, condition, call, binding/assignment and return expressions; Python
+leading docstrings preserve source-authored responsibility wording. Rust's
+supported simple tail expressions are return syntax. Nested callables/classes
+are separate scopes. Other languages retain their existing capabilities; absence
+of this extension supplies no behavior claim and does not narrow structural support.
+
+Each expression carries half-open zero-based UTF-8 positions within the existing
+entity/extension Source range, retaining canonical Source, Repository/Analysis
+identity and owning adapter. At most 16 expressions of at most 256 UTF-8 bytes
+are retained per callable; oversized/excess observations have an exact omission
+count. Expressions are never truncated into a different claim. The adapter
+contract identity changes so incremental reuse cannot silently reuse observations
+from an earlier producer. These optional language-owned values use the existing
+Analysis format 5 extension envelope, without a parallel explanation store.
+
+These observations establish source syntax only. A call expression supplies no
+callee outcome, external effect, observed branch execution or runtime/data flow.
+They add no graph edge. Parser diagnostics, omissions and source freshness remain
+independent constraints on consumer explanations. Source bodies are observed only
+during explicit local analysis, never fetched or transmitted by projection reads.

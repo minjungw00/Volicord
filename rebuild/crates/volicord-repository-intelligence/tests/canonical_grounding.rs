@@ -1233,3 +1233,68 @@ fn automatic_and_manual_reference_ingress_is_grounded_before_consumption(
     Ok(())
 }
 mod support;
+
+#[test]
+fn syntax_body_observations_keep_canonical_source_and_snapshot_range_binding(
+) -> Result<(), Box<dyn Error>> {
+    let (_runtime, fixture) = canonical_fixture()?;
+    let grounding = CanonicalGrounding::from_read_basis(&fixture.basis()?)?;
+    let repository = tempdir()?;
+    std::fs::write(
+        repository.path().join("worker.py"),
+        "def normalize(name):\n    return name.strip()\n",
+    )?;
+    let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(InventoryRequest::new(
+            repository.path(),
+            &grounding,
+            fixture.repository.id,
+            OBSERVED_AT,
+        )?),
+    ))?;
+    grounding.validate_analysis_snapshot(&analysis)?;
+    let function = analysis
+        .structural_facts
+        .iter()
+        .find(|f| f.entity.kind == volicord_repository_intelligence::CodeEntityKind::Function)
+        .ok_or("function")?;
+    let extension = function
+        .entity
+        .extensions
+        .iter()
+        .find(|e| {
+            e.values
+                .contains_key(volicord_repository_intelligence::BODY_OBSERVATIONS_KEY)
+        })
+        .ok_or("body")?;
+    assert_eq!(extension.source_range, function.entity.source_range);
+    assert_eq!(
+        extension
+            .source_range
+            .as_ref()
+            .ok_or("range")?
+            .source
+            .identity(),
+        fixture.repository.id
+    );
+    let observations: volicord_repository_intelligence::BodyObservations = serde_json::from_value(
+        extension.values[volicord_repository_intelligence::BODY_OBSERVATIONS_KEY].clone(),
+    )?;
+    assert!(observations
+        .observations
+        .iter()
+        .any(|o| o.expression == "return name.strip()"));
+    let round_trip: volicord_repository_intelligence::AnalysisSnapshot =
+        serde_json::from_slice(&canonical_json(&analysis)?)?;
+    assert_eq!(analysis, round_trip);
+    let basis = grounded_explanation_basis(&analysis, analysis.repository_snapshot, &grounding)?;
+    assert!(!basis.background_source_transmitted);
+    assert!(basis
+        .evidence
+        .iter()
+        .any(|e| e.identity == function.entity.identity
+            && e.source_range == function.entity.source_range
+            && e.statement_class
+                == volicord_repository_intelligence::GroundingStatementClass::StructuralFact));
+    Ok(())
+}

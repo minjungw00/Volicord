@@ -142,6 +142,7 @@ fn directed_cycle_shares_a_layer_without_inventing_an_order() {
 fn map_entity(identity: String) -> MapEntity {
     let repository_snapshot = repository_snapshot();
     MapEntity {
+        behavior: volicord_projections::CodeBehaviorReading::unavailable(),
         display_name: identity.clone(),
         locator: format!("src/{identity}.rs"),
         identity,

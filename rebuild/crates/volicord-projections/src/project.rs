@@ -175,6 +175,7 @@ pub struct ProjectOverview {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MapEntity {
+    pub behavior: crate::CodeBehaviorReading,
     pub identity: String,
     pub display_name: String,
     /// Portable repository-relative area locator retained even when a symbol
@@ -255,6 +256,12 @@ pub struct CapabilityGap {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MapInterpretation {
+    pub entity_basis: Vec<String>,
+    pub relation_basis: Vec<String>,
+    pub source_ranges: Vec<SourceRange>,
+    pub freshness: FreshnessBasis,
+    pub producer: String,
+    pub generated_at_unix_micros: i64,
     pub identity: String,
     pub text: String,
     pub source_basis: Vec<SourceId>,
@@ -1729,6 +1736,7 @@ fn materialize_entity(entity: &volicord_repository_intelligence::CodeEntity) -> 
         count.set((entities + 1, relations));
     });
     MapEntity {
+        behavior: crate::CodeBehaviorReading::from_entity(entity),
         identity: entity.identity.clone(),
         display_name: entity
             .qualified_name
@@ -1870,7 +1878,39 @@ fn build_repository_map(
             }
         }
         agent_interpretations.extend(analysis.agent_interpretations.iter().map(|interpretation| {
+            let mut entity_basis = Vec::new();
+            let mut relation_basis = Vec::new();
+            let mut source_ranges = Vec::new();
+            for basis in &interpretation.analysis_basis {
+                if let Some(fact) = analysis
+                    .structural_facts
+                    .iter()
+                    .find(|f| &f.entity.identity == basis)
+                {
+                    entity_basis.push(basis.clone());
+                    source_ranges.extend(fact.entity.source_range.iter().cloned());
+                }
+                for relation in analysis
+                    .structural_facts
+                    .iter()
+                    .flat_map(|f| &f.relations)
+                    .filter(|r| &r.identity == basis)
+                {
+                    relation_basis.push(basis.clone());
+                    entity_basis.push(relation.source_entity.clone());
+                    source_ranges.extend(relation.supporting_range.iter().cloned());
+                }
+            }
             MapInterpretation {
+                entity_basis,
+                relation_basis,
+                source_ranges,
+                freshness: analysis.freshness.clone(),
+                producer: format!(
+                    "{} / {} / {}",
+                    interpretation.agent, interpretation.host, interpretation.session
+                ),
+                generated_at_unix_micros: interpretation.generated_at_unix_micros,
                 identity: interpretation.identity.clone(),
                 text: interpretation.text.clone(),
                 source_basis: interpretation
@@ -3214,6 +3254,7 @@ mod tests {
     fn map_entity(identity: String) -> MapEntity {
         let repository_snapshot = snapshot_id();
         MapEntity {
+            behavior: crate::CodeBehaviorReading::unavailable(),
             display_name: identity.clone(),
             locator: format!("src/{identity}.rs"),
             identity,

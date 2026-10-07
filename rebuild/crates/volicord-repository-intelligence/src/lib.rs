@@ -4,6 +4,11 @@
 //! Derived State bound to typed Canonical Context references and an observed
 //! repository source snapshot.
 
+mod behavior;
+pub use behavior::{
+    BodyObservation, BodyObservationKind, BodyObservations, BODY_EXPRESSION_BYTE_LIMIT,
+    BODY_OBSERVATIONS_KEY, BODY_OBSERVATIONS_LIMIT,
+};
 mod canonical;
 mod freshness;
 mod grounding;

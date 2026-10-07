@@ -546,6 +546,12 @@ pub fn build_project_understanding(
     };
 
     let mut generated_interpretations = projection.repository_map.agent_interpretations.clone();
+    generated_interpretations.retain(|interpretation| {
+        interpretation
+            .entity_basis
+            .iter()
+            .any(|id| components.iter().any(|e| &e.identity == id))
+    });
     generated_interpretations.sort_by(|left, right| left.identity.cmp(&right.identity));
     bound_section(
         &mut generated_interpretations,
@@ -1145,6 +1151,18 @@ fn component_explanation(
                 _ => None,
             }));
     }
+    for (text, korean) in [
+        (&mut explanation.english, false),
+        (&mut explanation.korean, true),
+    ] {
+        let behavior = crate::code_behavior::behavior_sentences(entity, korean);
+        if !behavior.is_empty() {
+            *text = format!("{} {}", selection_explanation(selection, korean), behavior);
+        }
+    }
+    explanation
+        .known_gaps
+        .extend(entity.behavior.limitations.clone());
     normalize_explanation_basis(&mut explanation);
     explanation
 }
@@ -2249,6 +2267,7 @@ mod tests {
 
     fn entity(identity: &str, locator: &str, language: Language) -> MapEntity {
         MapEntity {
+            behavior: crate::CodeBehaviorReading::unavailable(),
             identity: identity.into(),
             display_name: identity.into(),
             locator: locator.into(),
