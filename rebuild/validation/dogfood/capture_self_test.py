@@ -272,8 +272,36 @@ class CurrentExecutionTests(unittest.TestCase):
         for status in ("EXIT_CODE=undefined", "EXIT_CODE=0 tests passed", "prefix EXIT_CODE=0"):
             self.assertIsNone(self.command(source, [status]).commands[0].exit_code)
         source = 'const r=await tools.exec_command({cmd:"pytest"});text(JSON.stringify({exit_code:r.exit_code}));'
-        for status in ({}, {"exit_code": True}, {"exit_code": "0"}, {"exit_code": -1}, {"exit_code": 2**31}):
+        for status in ({}, {"exit_code": True}, {"exit_code": "0"}, {"exit_code": 2**31}):
             self.assertIsNone(self.command(source, [json.dumps(status)]).commands[0].exit_code)
+        signaled = self.command(source, [json.dumps({'exit_code': -9})]).commands[0]
+        self.assertEqual((signaled.exit_code, signaled.termination, signaled.signal_number), (-9, 'signaled', 9))
+        self.assertEqual(signaled.output_state, 'missing')
+
+    def test_supported_forwarding_preserves_signal_and_available_stream_scope(self):
+        prefix = 'const r=await tools.exec_command({cmd:"pytest"});'
+        for suffix, parts, state in (
+            ('text(r.output);text(`exit=${r.exit_code}`);', ['interrupted\n', 'exit=-9'], 'retained'),
+            ('text(`exit=${r.exit_code}`);', ['exit=-9'], 'missing'),
+            ('text(r.output);text(JSON.stringify({exit_code:r.exit_code}));',
+                ['interrupted\n', json.dumps({'exit_code': -9})], 'retained'),
+            ('text(JSON.stringify({output:r.output,exit_code:r.exit_code}));',
+                [json.dumps({'output': 'interrupted\n', 'exit_code': -9})], 'retained')):
+            with self.subTest(suffix=suffix):
+                command = self.command(prefix + suffix, parts).commands[0]
+                self.assertEqual((command.exit_code, command.termination, command.signal_number), (-9, 'signaled', 9))
+                self.assertEqual(command.output_state, state)
+        source = ('const [a,b]=await Promise.all([tools.exec_command({cmd:"pytest"}),'
+            'tools.exec_command({cmd:"pytest"})]);text(JSON.stringify({a,b}));')
+        commands = self.command(source, [json.dumps({'a': {'output': 'interrupted', 'exit_code': -9},
+            'b': {'output': 'retry passed', 'exit_code': 0}})]).commands
+        self.assertEqual([c.exit_code for c in commands], [-9, 0])
+        self.assertEqual([c.output_state for c in commands], ['retained', 'retained'])
+        commands = self.command(source, [json.dumps({'a': {'output': 'actual failure text', 'exit_code': True},
+            'b': {'output': 'actual retry text', 'exit_code': 0}})]).commands
+        self.assertEqual([c.exit_code for c in commands], [None, 0])
+        self.assertEqual(commands[0].output, 'actual failure text')
+        self.assertEqual(commands[0].evidence_state, 'indeterminate')
 
     def test_current_validation_programs(self):
         from codex_events import command_role

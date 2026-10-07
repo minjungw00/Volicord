@@ -1471,7 +1471,7 @@ def custom_correlated_command_result(
     ):
         return None
     exit_code = status["exit_code"]
-    if exit_code is not None and (type(exit_code) is not int or not 0 <= exit_code <= 2_147_483_647):
+    if exit_code is not None and (type(exit_code) is not int or not -2_147_483_647 <= exit_code <= 2_147_483_647):
         return None
     session_id = status.get("session_id")
     return parts[1], exit_code, session_id
@@ -1482,11 +1482,11 @@ def custom_template_command_result(value: Any) -> tuple[str, int] | None:
     if parts is None or len(parts) not in {2, 3}:
         return None
     header = CUSTOM_OUTPUT_HEADER.fullmatch(parts[0])
-    status = re.fullmatch(r"\n?(?:exit=|exit_code=|exit:|EXIT:|EXIT |EXIT_CODE=)([0-9]+)", parts[-1])
+    status = re.fullmatch(r"\n?(?:exit=|exit_code=|exit:|EXIT:|EXIT |EXIT_CODE=)(-?[0-9]+)", parts[-1])
     if header is None or header.group("body") or status is None:
         return None
     exit_code = int(status.group(1))
-    return (parts[1] if len(parts) == 3 else "", exit_code) if exit_code <= 2_147_483_647 else None
+    return (parts[1] if len(parts) == 3 else "", exit_code) if abs(exit_code) <= 2_147_483_647 else None
 
 
 def custom_indexed_command_results(
@@ -1500,22 +1500,22 @@ def custom_indexed_command_results(
         return None
     patterns = {
         "indexed_entries_zero": re.compile(
-            r"---(?:FILE)?(?P<index>[0-9]+) exit=(?P<exit>[0-9]+)\n(?P<output>.*)\Z",
+            r"---(?:FILE)?(?P<index>[0-9]+) exit=(?P<exit>-?[0-9]+)\n(?P<output>.*)\Z",
             re.DOTALL,
         ),
         "indexed_suffix_zero": re.compile(
             r"[A-Za-z][A-Za-z0-9 _-]{0,31}(?P<index>[0-9]+)\n"
-            r"(?P<output>.*)\nexit=(?P<exit>[0-9]+)\Z",
+            r"(?P<output>.*)\nexit=(?P<exit>-?[0-9]+)\Z",
             re.DOTALL,
         ),
         "indexed_prefix_one": re.compile(
             r"[A-Za-z][A-Za-z0-9 _-]{0,31}(?P<index>[0-9]+)\s+exit="
-            r"(?P<exit>[0-9]+)\n(?P<output>.*)\Z",
+            r"(?P<exit>-?[0-9]+)\n(?P<output>.*)\Z",
             re.DOTALL,
         ),
         "indexed_suffix_one": re.compile(
             r"[A-Za-z][A-Za-z0-9 _-]{0,31}(?P<index>[0-9]+)\n"
-            r"(?P<output>.*)\nEXIT\s+(?P<exit>[0-9]+)\Z",
+            r"(?P<output>.*)\nEXIT\s+(?P<exit>-?[0-9]+)\Z",
             re.DOTALL,
         ),
     }
@@ -1529,7 +1529,7 @@ def custom_indexed_command_results(
         if match is None or int(match.group("index")) != position + expected_base:
             return None
         exit_code = int(match.group("exit"))
-        if exit_code > 2_147_483_647:
+        if abs(exit_code) > 2_147_483_647:
             return None
         results.append((match.group("output"), exit_code))
     return results
@@ -2714,9 +2714,9 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                     for value in values:
                         output, code = value.get("output"), value.get("exit_code")
                         if not isinstance(output, str) or (code is not None and
-                            (type(code) is not int or not 0 <= code <= 2_147_483_647)):
+                            (type(code) is not int or not -2_147_483_647 <= code <= 2_147_483_647)):
                             malformed = True
-                            normalized_results.append(("", None))
+                            normalized_results.append((output if isinstance(output, str) else "", None))
                         elif value.get("session_id") is not None:
                             normalized_results.append((output, None))
                         else:
@@ -2730,6 +2730,10 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                     raw_output, parsed.output_mode, len(arguments)
                 )
                 normalized_results = indexed
+                if indexed is not None:
+                    output_states = ['truncated' if output.startswith(
+                        'Warning: truncated output (original token count:') else 'retained'
+                        for output, _ in indexed]
             else:
                 body = custom_output_body(raw_output)
                 correlated = (
@@ -2752,6 +2756,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                 if parsed.output_mode == 'result':
                     output_states = [forwarded_output_state(result, arguments[0])]
                 if parsed.output_mode == "projection":
+                    output_states = [forwarded_output_state(result, arguments[0])]
                     if isinstance(result, dict) and set(result) <= set(parsed.result_keys):
                         result = {"output": "", **result}
                     else:
@@ -2790,16 +2795,26 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                     "template_exit",
                 } and correlated is None:
                     exit_code = None
+                if parsed.output_mode != 'result':
+                    # Forwarded text is available independently of numeric completion.
+                    # Projection-only status never proves that an empty stream was read.
+                    output_states = [output_states[0] if parsed.output_mode == 'projection'
+                        else 'missing' if parsed.output_mode == 'template_exit'
+                            and len(custom_output_parts(raw_output) or []) == 2
+                        else 'truncated' if isinstance(output, str) and output.startswith(
+                            'Warning: truncated output (original token count:')
+                        else 'retained' if correlated is not None or parsed.output_mode == 'output'
+                            and body is not None else 'unknown']
                 if (raw_session_id is not None and type(raw_session_id) is not int) or not isinstance(output, str) or (
                     exit_code is not None
                     and (
                         isinstance(exit_code, bool)
                         or not isinstance(exit_code, int)
-                        or not (-2_147_483_647 if parsed.output_mode == 'result' else 0) <= exit_code <= 2_147_483_647
+                        or not -2_147_483_647 <= exit_code <= 2_147_483_647
                     )
                 ):
                     malformed = raw_output is not None
-                    output, exit_code = "", None
+                    output, exit_code = output if isinstance(output, str) else "", None
                 normalized_results = [(output, exit_code)]
             if normalized_results is None or len(normalized_results) != len(arguments):
                 normalized_results = [("", None) for _ in arguments]
