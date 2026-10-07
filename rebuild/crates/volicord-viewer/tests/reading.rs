@@ -1513,3 +1513,46 @@ fn presentation_keeps_subject_navigation_and_readable_history_before_raw_evidenc
     }
     Ok(())
 }
+
+#[test]
+fn language_controls_preserve_page_subject_and_arbitrary_request_without_writes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    f.operations.analyze(f.project, Vec::new())?;
+    let p = f
+        .operations
+        .project_projection_selected(f.project, volicord_projections::WorkSelector::Repository)?;
+    assert!(!p.repository_map.entities.is_empty());
+    let before = f.operations.canonical_basis(f.project)?;
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let cases = [
+        "view=work&page=1".to_string(),
+        "view=decisions&page=1".into(),
+        format!("view=work&work={}", f.goals["older"]),
+        format!("view=decisions&decision={}", f.decisions["explicit"]),
+    ];
+    for fields in cases {
+        let page = exchange(&server, &format!("/?{fields}&locale=ko&language=fr-CA"));
+        assert!(page.starts_with("HTTP/1.1 200"));
+        let settings = page
+            .split("class=\"reading-settings\"")
+            .nth(1)
+            .ok_or("settings")?;
+        assert!(settings.contains("method=\"get\" action=\"/\""));
+        assert!(settings.contains("name=\"language\" value=\"fr-CA\""));
+        assert!(settings.contains(&format!(
+            "{}&amp;locale=en&amp;language=fr-CA",
+            fields.replace('&', "&amp;")
+        )));
+        assert!(settings.contains("내용을 생성하거나 번역하지 않습니다"));
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}

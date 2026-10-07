@@ -79,3 +79,39 @@ pub(super) fn escape(value: &str) -> String {
 }
 
 pub(super) const STYLE: &str = concat!("<style>", include_str!("presentation.css"), "</style>");
+
+// A presentation hint, never the arbitrary requested-language identity. Unknown
+// values must not inherit the fixed interface locale as a translation claim.
+pub(super) fn content_language_tag(requested: &str) -> String {
+    let candidate = requested.trim().replace('_', "-");
+    let parts = candidate.split('-').collect::<Vec<_>>();
+    if candidate.len() <= 63
+        && candidate.is_ascii()
+        && parts.first().is_some_and(|p| {
+            (2..=8).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_alphabetic())
+        })
+        && parts
+            .iter()
+            .skip(1)
+            .all(|p| !p.is_empty() && p.len() <= 8 && p.bytes().all(|b| b.is_ascii_alphanumeric()))
+        && !parts.last().is_some_and(|p| p.len() == 1)
+    {
+        candidate
+    } else {
+        String::new()
+    }
+}
+
+pub(super) const fn code_explanation_state_label(
+    state: volicord_projections::CodeExplanationState,
+    locale: ViewerLocale,
+) -> &'static str {
+    use volicord_projections::CodeExplanationState::*;
+    match state {
+        Current => text(locale, "Current", "최신"),
+        Partial => text(locale, "Partial", "일부"),
+        Stale => text(locale, "Stale", "오래됨"),
+        Unsupported => text(locale, "Unsupported", "지원하지 않음"),
+        Unavailable => text(locale, "Unavailable", "이용 불가"),
+    }
+}

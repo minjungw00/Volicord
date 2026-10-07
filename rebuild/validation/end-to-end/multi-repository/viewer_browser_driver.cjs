@@ -386,6 +386,79 @@ async function live() {
       for(const tool of ['status','documents']) evidence.push(await activate(page.locator(`nav[aria-label="Viewer"] a[href*="tool=${tool}"]`)));
       return evidence;
     });
+    await check(`keyboard-reading-settings-${locale}`, async()=>{
+      const observed=[];
+      for (const address of [url('work',locale,{page:1}), routes(locale).decision, routes(locale).detail]) {
+        await go(address); await zoom(1);
+        await activate(page.locator('.skip-link'),false);
+        requireFact(await page.evaluate(()=>document.activeElement.id==='viewer-content'),'skip_link_did_not_focus_main');
+        const initial=new URL(page.url());
+        const settings=page.locator('.reading-settings');
+        await activate(settings.locator(':scope > summary'),false);
+        const input=settings.locator('input[name="language"]');
+        await keyboardReach(input);await page.keyboard.press('Control+A');await page.keyboard.type('fr-CA');
+        await activate(settings.locator('button[type="submit"]'));
+        const changed=new URL(page.url());
+        requireFact(changed.searchParams.get('language')==='fr-CA'&&changed.searchParams.get('locale')===locale,'reading_language_request_lost');
+        for (const key of ['view','page','work','decision','scope','entity']) requireFact(initial.searchParams.get(key)===changed.searchParams.get(key),`language_changed_subject:${key}`);
+        await activate(settings.locator(':scope > summary'),false);
+        const other=locale==='en'?'ko':'en';
+        await activate(settings.locator(`a[data-locale="${other}"]`));
+        const localized=new URL(page.url());
+        requireFact(localized.searchParams.get('language')==='fr-CA'&&await page.locator('html').getAttribute('lang')===other,'interface_locale_relabels_generation');
+        for (const key of ['view','page','work','decision','scope','entity']) requireFact(changed.searchParams.get(key)===localized.searchParams.get(key),`locale_changed_subject:${key}`);
+        await overflow();observed.push({before:initial.search,after:localized.search});
+      }
+      return {native_keyboard:true,read_only:true,observed};
+    });
+    await check(`keyboard-tools-${locale}`,async()=>{
+      await go(routes(locale).default);await zoom(1);
+      await activate(page.locator('.utility-navigation > summary'),false);
+      for (const tool of ['memory','evidence']) {
+        await activate(page.locator(`nav[aria-label="Tools"] a[href*="tool=${tool}"]`));
+        requireFact(await page.locator('nav[aria-label="Tools"] a[aria-current="page"]').count()===1,'secondary_navigation_state_ambiguous');
+        requireFact(await page.locator(tool==='memory'?'#memory-actions':'#diagnostics').count()===1,'tool_surface_missing');
+        await overflow();
+      }
+    });
+    for(const width of [390,768,1440])for(const factor of [1,2])await check(`latest-work-boundary-${locale}-${width}-${factor}`,async()=>{
+      await page.setViewportSize({width,height:900});
+      let address=routes(locale).catalog;
+      for(let n=0;n<3;n++) {
+        await go(address);await zoom(1);if(factor===2)await zoom(2);
+        if(await page.locator('.current-work').count())break;
+        const next=page.locator('nav[aria-label="List pages"] a').last();
+        requireFact(await next.count()===1,'highlighted_work_missing');
+        address=new URL(await next.getAttribute('href'),config.url).href;
+      }
+      const highlight=page.locator('.current-work');
+      requireFact(await highlight.count()===1&&await highlight.locator('.work-summary').getAttribute('data-work-id')===F.latest_work,'highlighted_work_identity_mismatch');
+      async function contained() {
+        await overflow();
+        const geometry=await highlight.evaluate(root=>{
+          const outer=root.getBoundingClientRect();const card=root.querySelector('.work-summary');const box=card.getBoundingClientRect();
+          const children=[...card.querySelectorAll('h4,p,span,a')].filter(e=>e.getClientRects().length).map(e=>e.getBoundingClientRect());
+          return {outer:outer.toJSON(),card:box.toJSON(),contained:box.bottom<=outer.bottom+1&&box.right<=outer.right+1&&children.every(r=>r.left>=box.left-1&&r.right<=box.right+1&&r.bottom<=box.bottom+1)};
+        });
+        requireFact(geometry.contained,'latest_work_highlight_overflow');return geometry;
+      }
+      const firstWord = await highlight.locator('.work-summary .empty-state').first().evaluate(e=>{
+        const node=e.firstChild;const match=node.textContent.match(/^\S+/);
+        const range=document.createRange();range.setStart(node,0);range.setEnd(node,match[0].length);
+        return {word:match[0],lines:range.getClientRects().length};
+      });
+      requireFact(firstWord.lines===1,'ordinary_word_fragmented_by_nested_padding');
+      const actual=await contained();await capture(`latest-work-${locale}-${width}-${factor}.png`,highlight);
+      // Labeled DOM stress is geometry support; it supplies no renderer/display receipt.
+      await highlight.locator('h4 a').evaluate(e=>e.textContent=('긴 작업 Unicode 🧭 / extremely_long_path_without_spaces_').repeat(20));
+      await contained();
+      // Reproduce the old nested 100% height error and require the actual check to detect it.
+      await highlight.evaluate(e=>{e.style.height=e.getBoundingClientRect().height+'px';e.querySelector('.work-summary').style.height='100%';});
+      let detected;try{await contained();}catch(e){detected=String(e);}
+      requireFact(detected?.includes('latest_work_highlight_overflow'),'highlight_overflow_regression_not_sensitive');
+      await go(address);await zoom(1);if(factor===2)await zoom(2);await contained();
+      return {actual,stress:'long Unicode title/path',negative_detected:detected,restored:true};
+    });
     await check(`keyboard-paged-old-work-${locale}`, async()=>{
       await go(url('work',locale));
       requireFact(!await page.locator(`a[href*="work=${F.goals.older}"]`).count(), 'old_work_not_beyond_list_bound');

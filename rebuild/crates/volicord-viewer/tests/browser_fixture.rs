@@ -16,7 +16,11 @@ fn seed_browser_runtime() -> Result<(), Box<dyn std::error::Error>> {
         .map(std::path::PathBuf::from)
         .or_else(|| disposable.as_ref().map(|d| d.path().to_owned()))
         .ok_or("fixture output")?;
-    let fixture = reading_fixture::fixture_in(&output)?;
+    let mut scenario: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    // Keep latest Work association explicit so real catalog geometry exercises
+    // the reported highlighted-card overflow; unresolved history has Rust coverage.
+    scenario["unassociated_checkpoint"] = serde_json::json!(false);
+    let fixture = reading_fixture::scenario_in(&output, scenario)?;
     let prefix = "relay_boundary_with_a_very_long_common_prefix_for_distinguishing_labels_";
     let alpha = format!("{prefix}alpha");
     let beta = format!("{prefix}beta");
@@ -27,6 +31,12 @@ fn seed_browser_runtime() -> Result<(), Box<dyn std::error::Error>> {
         format!("def {alpha}():\n    return {beta}()\n\ndef {beta}():\n    return {alpha}()\n\ndef {wide}():\n    return 1\n\ndef {broad}():\n    return 2\n"),
     )?;
     let canonical = fixture.operations.canonical_basis(fixture.project)?;
+    let latest_work = canonical
+        .checkpoint_history
+        .iter()
+        .max_by_key(|cp| (cp.recorded_at, cp.id))
+        .and_then(|cp| cp.work_item_id)
+        .ok_or("associated latest Work")?;
     let decision_sources = fixture
         .decisions
         .iter()
@@ -166,7 +176,7 @@ fn seed_browser_runtime() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let manifest = serde_json::json!({
-        "kind":"viewer_browser_runtime", "prefixes":prefixes, "project": fixture.project.to_string(),
+        "kind":"viewer_browser_runtime", "latest_work":latest_work.to_string(), "prefixes":prefixes, "project": fixture.project.to_string(),
         "runtime": fixture.operations.layout().root(), "repository": fixture.repository,
         "goals": fixture.goals.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(), "checkpoints": fixture.checkpoints.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(), "decisions": fixture.decisions.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(),
         "purpose":fixture.purpose.to_string(), "purpose_absent_project":absent.id.to_string(), "analysis_directory":fixture.operations.layout().analysis_project_dir(fixture.project), "entities": entities, "relations":relations, "decision_sources":decision_sources,

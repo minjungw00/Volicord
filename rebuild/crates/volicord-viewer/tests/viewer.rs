@@ -1427,7 +1427,12 @@ fn representative_large_repository_page_is_deterministically_bounded() {
                 .find("class=\"global-diagnostics\"")
                 .expect("closed diagnostics")
     );
-    assert!(!first.html.contains("<details open"));
+    assert!(!first
+        .html
+        .split("<main id=\"viewer-content\"")
+        .nth(1)
+        .expect("main reading")
+        .contains("<details open"));
     // This fixture-specific regression detects accidental unbounded rendering;
     // it is not a universal product or hardware ceiling.
     assert!(

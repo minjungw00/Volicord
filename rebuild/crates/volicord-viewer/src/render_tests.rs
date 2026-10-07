@@ -460,3 +460,20 @@ fn exact_display_omissions_are_disclosed_without_hiding_incompleteness() {
         }));
     }
 }
+
+#[test]
+fn generated_language_hint_never_substitutes_the_fixed_ui_language() {
+    assert_eq!(super::content_language_tag("fr-CA"), "fr-CA");
+    assert_eq!(super::content_language_tag("ko_KR"), "ko-KR");
+    for unknown in [
+        "",
+        "한국어",
+        "en\" onclick=\"bad",
+        "en-",
+        "x",
+        "en-x",
+        "French please",
+    ] {
+        assert_eq!(super::content_language_tag(unknown), "");
+    }
+}

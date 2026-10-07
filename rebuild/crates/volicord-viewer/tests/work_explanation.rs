@@ -111,6 +111,29 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
     );
     assert!(page.contains("class=\"work-explanation\""));
     assert!(page.contains("Fake unit-test paragraph"));
+    assert!(page.contains("data-question=\"Purpose\" lang=\"ko\" data-content-language=\"ko\""));
+    let mixed = get(
+        &f,
+        &format!("/?view=work&work={work}&locale=en&language=ko"),
+    );
+    assert!(mixed.contains("<html lang=\"en\">"));
+    assert!(mixed.contains("data-question=\"Purpose\" lang=\"ko\" data-content-language=\"ko\""));
+    let snapshot = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()))
+        .render_snapshot(
+            &volicord_viewer::ViewerRequest {
+                project_id: f.project,
+                locale: ViewerLocale::English,
+                view: ViewerView::Overview,
+                requested_language: "ko".into(),
+                guarded_request: None,
+            },
+            TimestampMicros::from_unix_micros(123),
+        )?
+        .html;
+    assert!(snapshot.contains("data-question=\"Purpose\" lang=\"ko\" data-content-language=\"ko\""));
+    assert!(snapshot.contains("Fake unit-test paragraph"));
+    assert!(!snapshot.contains("<form"));
+
     let action = "Run a browser check with slow responses and confirm loading feedback.";
     assert!(page.contains(&format!(
         "data-question=\"RecordedNextStep\">기록된 다음 행동 인용 (원문 언어): {action}</p>"

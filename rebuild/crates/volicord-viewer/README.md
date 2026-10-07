@@ -45,8 +45,8 @@ Live reads use purpose-oriented views (default `overview`):
 ```
 
 Top-level navigation is Overview, Work, Code Understanding, Decisions, Analysis,
-and Tools. Analysis reuses `/?view=tools&tool=status`; Tools opens Documents and
-retains Memory and Evidence. The active navigation item has `aria-current="page"`.
+and Documents. Analysis reuses `/?view=tools&tool=status`; Documents reuses
+`/?view=tools&tool=documents`. Evidence and Memory are in a native Tools disclosure. The active navigation item has `aria-current="page"`.
 Overview begins with Project Purpose and distinct Work cards. Cards show lifecycle,
 result availability, verification and the recorded next action; selecting one opens
 its explanation sections before closed evidence/history disclosures. Decisions have
@@ -216,7 +216,8 @@ the main landmark. Current navigation uses text emphasis and `aria-current`.
 Project Purpose has its own panel; distinct Work cards keep problem, outcome,
 verification limits and recorded next action together. Exact Work navigation retains
 that Work when opening Code; All Work returns to the paged catalog. Documents,
-Memory, Analysis/Runtime and Evidence remain reachable through secondary navigation.
+Analysis/Runtime remains a primary destination; Memory and Evidence remain reachable
+through a native Tools disclosure. Snapshot Evidence links only to included diagnostics.
 
 Work explanation sections precede closed source quotations, grounding and history.
 The history disclosure offers localized observation/state/verification rows before
@@ -230,6 +231,29 @@ Styles use system fonts, wrapping text, visible keyboard outlines and textual st
 labels. Color supplements labels and line patterns. Ordinary text reflows; diagrams
 have their own horizontal scroll region. All included snapshot navigation stays within
 existing fragment targets, and forms/authentication/live context remain live-only.
+Reading language is a native disclosure. Live locale links and the GET language
+form preserve the parsed view, exact subject and catalog page. Requested language
+is unrestricted and independent of fixed English/Korean labels. It reads retained
+explanations and does not generate or translate on navigation. Recorded generated
+paragraphs carry their declared requested language separately from UI labels;
+syntactically unknown language requests use an unknown HTML language hint rather
+than inheriting the fixed locale. Original evidence remains original-language text.
+Offline settings disclose the chosen values and provide no forms or locale links.
+Overview section shortcuts work in both modes, including empty sections.
+
+At effective widths below 320px, nested card padding is reduced without reducing
+font size; ordinary fixed words keep room at native 200% zoom.
+
+The maintained browser fixture explicitly associates its latest Checkpoint with
+Work so the highlighted catalog card is exercised. Browser checks compare card and
+container bounds at 390/768/1440 and native 200% zoom, challenge long Unicode
+text and reproduce the former nested 100% height overflow. They also exercise
+skip-to-main, language changes, locale switching, secondary Tools and page/subject
+preservation through native keyboard actions. Generated-language parity is retained
+HTML support using explicitly labeled test realizations, not host prose-quality proof.
+Direct human evaluation of comprehension, screen-reader pronunciation, visual comfort
+and Decision/Learning clarity is still separate from automated geometry and focus.
+
 Visual reference patterns came from Understand-Anything's ProjectOverview, NodeInfo,
 CodeViewer and responsive navigation, and agentmemory's compact status/history;
 no external frontend source or runtime dependency was copied.

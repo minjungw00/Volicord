@@ -139,3 +139,31 @@ button { width: max-content; min-height: 2.75rem; cursor: pointer; }
   .work-summary { padding: .85rem; }
   .button-row button { width: 100%; }
 }
+
+.overview-jumps { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0 1.5rem; }
+.overview-jumps a { padding: .4rem .6rem; border: 1px solid var(--line); border-radius: .4rem; font-size: .9rem; }
+.utility-navigation { background: transparent; padding: .5rem; font-size: .9rem; }
+.utility-navigation .view-nav { margin: .5rem 0 0; }
+.reading-settings input { width: 100%; }
+@media (max-width: 30rem) {
+  main > section, main > article { padding: .85rem; }
+  .selected-code, .code-work-meaning, [data-code-behavior] { padding: .6rem; }
+  .viewer-navigation > details { margin: .35rem 0; }
+  h2 { font-size: 1.25rem; }
+}
+@media print {
+  .viewer-navigation, .skip-link, .action-form { display: none; }
+  .viewer-shell { display: block; padding: 0; }
+  main > section, main > article { border-color: #999; }
+}
+/* At native zoom the effective width can be below 320px. Avoid multiplying
+   card/disclosure padding; keep the font size and give ordinary words room. */
+@media (max-width: 20rem) {
+  .viewer-shell { padding: 0 .5rem 1rem; }
+  main > section, main > article { padding: .6rem; }
+  .current-work { padding: .35rem; }
+  .work-summary { padding: .55rem; }
+  .work-summary .empty-state { padding: 0; border: 0; background: transparent; }
+  .work-summary .next-action { padding: .5rem; }
+  .selected-code, .code-work-meaning, [data-code-behavior] { padding: .4rem; }
+}
