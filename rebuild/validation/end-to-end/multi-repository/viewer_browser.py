@@ -214,6 +214,7 @@ def main():
         result["inputs"] = {str(p.relative_to(ROOT)): harness.sha256(p) for p in [
             ROOT / "rebuild/Cargo.lock", FIXTURE / "scenario.json", FIXTURE / "expected.json",
             ROOT / "rebuild/crates/volicord-viewer/tests/browser_fixture.rs",
+            ROOT / "rebuild/crates/volicord-viewer/tests/support/code_fixture.rs",
             ROOT / "rebuild/crates/volicord-viewer/tests/reading.rs",
             ROOT / "rebuild/crates/volicord-operations/tests/support/reading_fixture.rs",
             HERE / "viewer_browser.py", HERE / "viewer_browser_driver.cjs", FIXTURE / "answer-cases.json", HERE / "viewer-read-budgets.json",

@@ -30,7 +30,7 @@ async function paint() {
   requireFact(observed.entries.some(e=>e.name==='first-contentful-paint' && e.start_ms>0),'browser_paint_timing_unavailable');
   return observed;
 }
-async function capture(name, target=page.locator('main > section').first()) {
+async function capture(name, target=page.locator('main > section').first(), stress=false) {
   // Capture the current browser viewport, including native zoom, at the reading
   // surface. Surface screenshots can be blank at deep offsets with tab zoom.
   if (await target.count()) await target.first().evaluate(e=>window.scrollTo({left:0,top:e.getBoundingClientRect().top+scrollY,behavior:'instant'}));
@@ -79,8 +79,8 @@ async function capture(name, target=page.locator('main > section').first()) {
     browser:{version:context.browser().version(),geometry,zoom:result.zoom.at(-1)||null}};
   // Offline snapshots have no live process/render authority. Keep their image
   // and stability observation without manufacturing a live display receipt.
-  if(mode!=='offline')(result.display_captures ??= []).push(receipt);
-  (result.captures ??= []).push({path:name,mechanism:'Page.captureScreenshot fromSurface=false; browser viewport',...geometry});
+  if(mode!=='offline' && !stress)(result.display_captures ??= []).push(receipt);
+  (result.captures ??= []).push({path:name,mechanism:'Page.captureScreenshot fromSurface=false; browser viewport',...(stress?{evidence_class:'dom_stress; not a renderer display receipt'}:{}),...geometry});
 }
 async function go(url) {
   const response = await page.goto(url, {waitUntil: 'load'});
@@ -315,7 +315,7 @@ async function copyMutation(name, mutate, verify, positiveUrl) {
   try { await verify(); } catch (error) { failure = String(error); }
   requireFact(failure, `negative_control_not_detected:${name}`);
   // Assert the intended failure, not merely a navigation/shape failure.
-  const expected = {wrapping:'ordinary_page_overflow',prefix:'common_prefix_truncation',fragment:'fragment_target',substitution:'cross_work_next_step_substitution',live_link:'snapshot_live_link',historical:'overview_promotes_historical_pass',flow:'graph_relation_basis_mismatch',work_history:'work_history_disclosure_missing'}[name];
+  const expected = {wrapping:'ordinary_page_overflow',prefix:'common_prefix_truncation',fragment:'fragment_target',substitution:'cross_work_next_step_substitution',live_link:'snapshot_live_link',historical:'overview_promotes_historical_pass',flow:'graph_relation_basis_mismatch',work_history:'work_history_disclosure_missing',code_expanded:'code_diagnostics_initially_expanded',code_count:'code_diagnostic_counts_mismatch',code_warning:'material_source_blocker_hidden'}[name];
   requireFact(failure.includes(expected), `wrong_negative_control_reason:${failure}`);
   await page.screenshot({path:path.join(config.output, `${mode}-negative-${name}.png`)});
   await go(positiveUrl);
@@ -331,11 +331,87 @@ async function snapshotSafety() {
   await fragments();
   return facts;
 }
+async function codeHierarchy(locale, scope='repository') {
+  const code=page.locator('#code');
+  const summary=code.locator('[data-code-reliability]');
+  const details=code.locator('#code-limit-details');
+  requireFact(await summary.count()===1 && await details.count()===1,'code_diagnostic_reading_missing');
+  requireFact(!await details.evaluate(e=>e.open),'code_diagnostics_initially_expanded');
+  const counts={issues:Number(await details.getAttribute('data-issue-count')),gaps:Number(await details.getAttribute('data-gap-count'))};
+  requireFact(counts.issues===await details.locator('[data-limit-kind="issue"]').count() && counts.gaps===await details.locator('[data-limit-kind="gap"]').count(),'code_diagnostic_counts_mismatch');
+  requireFact(counts.issues===Number(await summary.getAttribute('data-issue-count')) && counts.gaps===Number(await summary.getAttribute('data-gap-count')),'code_summary_counts_mismatch');
+  const ordinary=await ordinaryText(code);
+  const scopeLabel=locale==='en'?{repository:'Repository evidence',work:'Selected Work evidence',entity:'Selected entity evidence'}[scope]:{repository:'저장소 근거',work:'선택한 작업 근거',entity:'선택한 엔터티 근거'}[scope];
+  requireFact((await summary.textContent()).includes(scopeLabel),'code_scope_label_mismatch');
+  const heading=code.locator('h3').filter({hasText:locale==='en'?'How the architecture and code connect':'아키텍처와 코드의 연결'});
+  const geometry=await code.evaluate(root=>{
+    const detail=root.querySelector('#code-limit-details'),warning=root.querySelector('[data-code-reliability]');
+    const heading=[...root.querySelectorAll('h3')].find(e=>/How the architecture and code connect|아키텍처와 코드의 연결/.test(e.textContent));
+    const behavior=root.querySelector('[data-code-behavior]');
+    return {warning_height:warning.getBoundingClientRect().height,explanation_offset:heading.getBoundingClientRect().top-root.getBoundingClientRect().top,
+      detail_after_meaning:!!(heading.compareDocumentPosition(detail)&Node.DOCUMENT_POSITION_FOLLOWING) && !!(behavior.compareDocumentPosition(detail)&Node.DOCUMENT_POSITION_FOLLOWING),
+      diagnostic_list_visible:!!detail.querySelector('ul').getBoundingClientRect().height};
+  });
+  requireFact(geometry.detail_after_meaning && !geometry.diagnostic_list_visible,'code_diagnostic_reading_order');
+  requireFact(await code.locator('[data-code-behavior][data-explanation-state="Current"]').count()>0,'supported_behavior_missing_from_viewer');
+  if(scope==='repository') {
+    requireFact(counts.issues===30 && counts.gaps===15,'large_code_diagnostic_fixture_mismatch');
+    requireFact(ordinary.includes(locale==='en'?'Source unavailable: 30':'Source 사용 불가: 30'),'material_source_blocker_hidden');
+    requireFact((await details.textContent()).includes(locale==='en'?'Repository coverage (root)':'저장소 분석 범위 (루트)'),'generic_root_scope_not_readable');
+    for(const source of F.diagnostic_sources)requireFact(await details.locator(`[data-limit-id="${source}"]`).count()===1,'diagnostic_identity_lost');
+    if(await page.evaluate(()=>innerWidth)>=1400)requireFact(geometry.explanation_offset<1100 && geometry.warning_height<600,'code_meaning_displaced_by_diagnostics');
+  } else {
+    requireFact(counts.issues===0 && counts.gaps<15,'unrelated_scope_diagnostics_conflated');
+    requireFact(!(await details.locator('li > p').allTextContents()).join(' ').includes('outside_work'),'unrelated_work_scope_diagnostic');
+    requireFact(ordinary.includes(locale==='en'?'returns the result of calling `name.strip()`':'name.strip()'),'source_behavior_consumer_binding');
+  }
+  await overflow();
+  return {...counts,...geometry,heading:await heading.innerText()};
+}
+async function codeDisclosure(locale, key) {
+  const detail=page.locator('#code-limit-details');
+  const summary=detail.locator(':scope > summary');
+  const label=await summary.innerText();
+  requireFact(label.includes(locale==='en'?'Full Code diagnostics':'전체 코드 진단'),'code_disclosure_accessible_name');
+  const accessibility=await summary.ariaSnapshot();
+  requireFact(accessibility.includes(label),'code_disclosure_accessible_name_missing_from_browser');
+  const focus=await activate(summary,false);
+  requireFact(await detail.evaluate(e=>e.open),'code_diagnostics_keyboard_open_failed');
+  // Long authored diagnostic prose is layout stress only, separately restored.
+  const item=detail.locator('li p').first();const original=await item.innerText();
+  await item.evaluate(e=>e.textContent=('긴 한국어 진단 · English diagnostic · very_long_scope_without_spaces_').repeat(40));
+  await overflow();
+  await capture(`code-diagnostic-stress-${locale}-${mode}-${key}.png`,item,true);
+  await item.evaluate((e,text)=>e.textContent=text,original);
+  await capture(`code-diagnostics-${locale}-${mode}-${key}.png`,summary);
+  await page.keyboard.press('Space');await frames();
+  requireFact(!await detail.evaluate(e=>e.open),'code_diagnostics_keyboard_close_failed');
+  return {label,accessibility,focus,expanded_count:await detail.locator('li').count(),long_bilingual_reflow:'passed'};
+}
 async function live() {
   const url = (view, locale, fields={}) => config.url+'?'+new URLSearchParams({view,locale,language:locale,...fields});
   const entity = F.entities.find(e=>e.path==='unsafe<&>.py' && e.name==='unsafe<&>');
   requireFact(entity, 'source_fixture_alpha_not_analyzed');
   const routes = locale => ({default:config.url+'?locale='+locale,work:url('work',locale,{work:F.goals.older}),decision:url('decisions',locale,{decision:F.decisions.explicit}),detail:url('code',locale,{scope:'repository',entity:entity.id}),analysis:url('tools',locale,{tool:'status'}),catalog:url('work',locale)});
+  const callable=F.entities.find(e=>e.path==='python/worker.py' && e.name==='format_name');
+  requireFact(callable,'source_behavior_fixture_missing');
+  const parity={};
+  for(const locale of ['en','ko']) for(const width of [390,768,1440]) for(const factor of [1,2]) for(const scope of ['repository','work','entity']) {
+    await page.setViewportSize({width,height:900});
+    await check(`code-hierarchy-${locale}-${width}-${factor}-${scope}`,async()=>{
+      await go(url('code',locale,scope==='repository'?{scope:'repository'}:{scope:'work',work:F.goals.older,...(scope==='entity'?{entity:callable.id}:{})}));
+      await zoom(1);if(factor===2)await zoom(2);
+      const hierarchy=await codeHierarchy(locale,scope);
+      if(scope==='repository')parity[locale]={diagnostics:await page.locator('#code-limit-details').textContent(),behaviors:await page.locator('#code [data-code-behavior]').evaluateAll(elements=>elements.map(e=>({id:e.dataset.codeBehavior,state:e.dataset.explanationState,ordinary:[...e.children].filter(c=>c.tagName!=='DETAILS').map(c=>c.textContent).join(' ')})))};
+      await capture(`code-${locale}-${width}-${factor}-${scope}.png`,page.locator('#code'));
+      return {hierarchy,disclosure:await codeDisclosure(locale,`${width}-${factor}-${scope}`)};
+    });
+  }
+  fs.writeFileSync(path.join(config.output,'code-live-reading.json'),JSON.stringify(parity,null,2));
+  const repositoryCode=url('code','en',{scope:'repository'});
+  await check('negative-code-expanded',()=>copyMutation('code_expanded',()=>document.querySelector('#code-limit-details').open=true,()=>codeHierarchy('en'),repositoryCode));
+  await check('negative-code-count',()=>copyMutation('code_count',()=>document.querySelector('#code-limit-details li').remove(),()=>codeHierarchy('en'),repositoryCode));
+  await check('negative-code-warning',()=>copyMutation('code_warning',()=>document.querySelector('[data-code-reliability]').hidden=true,()=>codeHierarchy('en'),repositoryCode));
   for (const locale of ['en','ko']) {
     for (const width of [390,768,1440]) {
       await page.setViewportSize({width,height:900});
@@ -514,7 +590,9 @@ async function live() {
         fs.appendFileSync(source,'\n/* browser stale fixture */\n');
         await go(url('code',locale,{scope:'work',work:F.goals.older}));
         const body=await page.locator('main').innerText();
-        requireFact(/repository has changed|저장소.*변경/.test(body),'stale_state_hidden');
+        requireFact(/not confirmed|확인되지 않습니다/.test(body),'stale_state_hidden');
+        requireFact(await page.locator('#code [data-code-behavior][data-explanation-state="Current"]').count()===0,'stale_behavior_claimed_current');
+        requireFact(!(await ordinaryText(page.locator('#code'))).includes('returns the result of calling'),'stale_behavior_prose_not_withheld');
         requireFact((await page.locator('main').textContent()).includes('state: Stale'),'stale_basis_missing');
         await capture(`stale-${locale}.png`);
       } finally {fs.writeFileSync(source,original);}
@@ -558,13 +636,20 @@ async function offline() {
     await check(`offline-${locale}-${width}-${factor}`,async()=>{
       await page.setViewportSize({width,height:900});await go(pathToFileURL(config.snapshots[locale]).href);await zoom(1);if(factor===2)await zoom(2);
       await snapshotSafety();await overflow();
+      const hierarchy=await codeHierarchy(locale);
+      const live=JSON.parse(fs.readFileSync(path.join(config.output,'code-live-reading.json')))[locale];
+      requireFact(await page.locator('#code-limit-details').textContent()===live.diagnostics,'snapshot_code_diagnostics_differ');
+      const behaviors=await page.locator('#code [data-code-behavior]').evaluateAll(elements=>elements.map(e=>({id:e.dataset.codeBehavior,state:e.dataset.explanationState,ordinary:[...e.children].filter(c=>c.tagName!=='DETAILS').map(c=>c.textContent).join(' ')})));
+      requireFact(JSON.stringify(behaviors)===JSON.stringify(live.behaviors),'snapshot_code_behavior_differs');
+      await capture(`offline-code-${locale}-${width}-${factor}.png`,page.locator('#code'));
+      await codeDisclosure(locale,`${width}-${factor}-repository`);
       for(const id of ['works','code','decision-reading','overview']) {
         const nav=page.locator(`nav[aria-label="Viewer"] a[href="#${id}"]`);await activate(nav,false);
         requireFact(await page.evaluate(()=>location.hash)==='#'+id,'offline_fragment_navigation_failed');
       }
       await evidenceOpen();await snapshotSafety();
       await capture(`offline-${locale}-${width}-${factor}.png`,page.locator('main details[open] > summary').first());
-      return overflow();
+      return {hierarchy,...await overflow()};
     });
   }
   for(const f of config.prefix_snapshots) await check(`history-prefix-${f.prefix}-${f.locale}`,async()=>{

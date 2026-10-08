@@ -1,3 +1,5 @@
+#[path = "support/code_fixture.rs"]
+mod code_fixture;
 #[path = "../../volicord-operations/tests/support/reading_fixture.rs"]
 mod reading_fixture;
 use reading_fixture::fixture;
@@ -1048,7 +1050,7 @@ fn unrelated_analyzer_failure_stays_in_analysis_while_related_limits_remain_ordi
         .split("</aside>")
         .next()
         .ok_or("end")?;
-    assert!(limits.contains("stale") || limits.contains("repository has changed"));
+    assert!(limits.contains("stale") || limits.contains("not confirmed"));
     assert!(limits.contains("Open Analysis"));
     assert!(!limits.contains("<details"));
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
@@ -1135,10 +1137,10 @@ fn offline_repository_code_uses_live_repository_limits_without_another_analysis_
     };
     let contextual_limits = |html: &str| -> Result<String, Box<dyn std::error::Error>> {
         Ok(html
-            .split("<aside class=\"contextual-limits\">")
+            .split("id=\"code-limit-details\"")
             .nth(1)
             .ok_or("Contextual limits")?
-            .split("</aside>")
+            .split("</details>")
             .next()
             .ok_or("Limits end")?
             .to_owned())
@@ -1262,10 +1264,11 @@ fn decision_only_work_code_limits_reach_latest_and_exact_viewer_reads(
             .split("</aside>")
             .next()
             .ok_or("limits end")?;
-        assert!(limits.contains(&gap.reason));
+        assert!(limits.contains("structural / partial"));
         assert!(limits.contains("Open Analysis"));
         assert!(!limits.contains("<details"));
         assert!(!limits.contains("unrelated.rs"));
+        assert!(page.html.contains(&gap.reason));
     }
     let server = ViewerServer::new(
         viewer,
@@ -1839,5 +1842,254 @@ fn default_repository_code_preserves_eligible_behavior_without_broadening_work(
         assert!(no_body.contains("Current behavior cannot be established"));
         assert!(no_body.contains("&amp;entity="));
     }
+    Ok(())
+}
+
+#[test]
+fn code_diagnostics_follow_supported_meaning_with_exact_scoped_counts_and_snapshot_parity(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::{ProjectionIssueKind, WorkSelector};
+    use volicord_viewer::CodeScope;
+    let f = fixture()?;
+    let sources = code_fixture::add_code_diagnostics(&f)?;
+    let analysis = f
+        .operations
+        .analyze(f.project, Vec::new())?
+        .value
+        .ok_or("analysis")?
+        .analysis;
+    let before = f.operations.canonical_basis(f.project)?;
+    let projection = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::Repository)?;
+    assert_eq!(
+        projection
+            .answer_issues
+            .iter()
+            .filter(|i| i.kind != ProjectionIssueKind::Bound)
+            .count(),
+        30
+    );
+    assert_eq!(projection.answer_capability_gaps.len(), 15);
+    let entity = analysis
+        .structural_facts
+        .iter()
+        .find(|f| f.entity.display_name.as_deref() == Some("format_name"))
+        .ok_or("format_name")?
+        .entity
+        .clone();
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let code_section = |html: &str| -> Result<String, Box<dyn std::error::Error>> {
+        Ok(html
+            .split("id=\"code\"")
+            .nth(1)
+            .ok_or("Code")?
+            .split("</section>")
+            .next()
+            .ok_or("Code end")?
+            .to_owned())
+    };
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let mut repository = reading_request(
+            f.project,
+            ViewerView::Code {
+                scope: CodeScope::Repository,
+                entity: None,
+            },
+        );
+        repository.locale = locale;
+        let live = code_section(&viewer.render(&repository, "test-token")?.html)?;
+        let snapshot = viewer
+            .render_snapshot(
+                &repository,
+                volicord_context::TimestampMicros::from_unix_micros(123),
+            )?
+            .html;
+        let offline = code_section(&snapshot)?;
+        for page in [&live, &offline] {
+            assert_eq!(page.matches("data-limit-kind=\"issue\"").count(), 30);
+            assert_eq!(page.matches("data-limit-kind=\"gap\"").count(), 15);
+            assert_eq!(
+                page.matches("data-issue-count=\"30\" data-gap-count=\"15\"")
+                    .count(),
+                2
+            );
+            let detail = page
+                .find("<details id=\"code-limit-details\"")
+                .ok_or("disclosure")?;
+            assert!(!page[detail..]
+                .split('>')
+                .next()
+                .ok_or("details start")?
+                .contains(" open"));
+            assert!(page.find("data-code-behavior=").ok_or("body meaning")? < detail);
+            assert!(
+                page.find(if locale == ViewerLocale::English {
+                    "How the architecture and code connect"
+                } else {
+                    "아키텍처와 코드의 연결"
+                })
+                .ok_or("explanation")?
+                    < detail
+            );
+            assert!(page[..detail].contains(if locale == ViewerLocale::English {
+                "Source unavailable: 30"
+            } else {
+                "Source 사용 불가: 30"
+            }));
+            assert!(page.contains(if locale == ViewerLocale::English {
+                "Repository coverage (root)"
+            } else {
+                "저장소 분석 범위 (루트)"
+            }));
+            for source in &sources {
+                assert!(page.contains(&format!("data-limit-id=\"{source}\"")));
+            }
+            // Consumer ordering is checked against the producer's complete selected basis.
+            let retained: Vec<_> = page
+                .split("data-limit-id=\"")
+                .skip(1)
+                .map(|s| s.split('"').next().ok_or("identity"))
+                .collect::<Result<_, _>>()?;
+            assert_eq!(
+                retained,
+                projection
+                    .answer_issues
+                    .iter()
+                    .map(|i| i.identity.as_str())
+                    .collect::<Vec<_>>()
+            );
+            for gap in &projection.answer_capability_gaps {
+                assert!(page.contains(&gap.analysis_snapshot.to_string()));
+                assert!(page.contains(&gap.repository_snapshot.to_string()));
+                assert!(page.contains(&gap.reason));
+                assert!(page.contains("FreshnessBasis"));
+                if let Some(reason) = &gap.user_visible_consequence {
+                    assert!(page.contains(reason));
+                }
+                if let Some(remainder) = &gap.usable_remainder {
+                    assert!(page.contains(remainder));
+                }
+            }
+        }
+        let normalize = |s: &str| {
+            s.replace(
+                "href=\"/?view=tools&amp;tool=status&amp;locale=en&amp;language=en\"",
+                "href=\"#health\"",
+            )
+            .replace(
+                "href=\"/?view=tools&amp;tool=status&amp;locale=ko&amp;language=en\"",
+                "href=\"#health\"",
+            )
+        };
+        let details = |s: &str| {
+            s.split("id=\"code-limit-details\"")
+                .nth(1)
+                .unwrap()
+                .split("</details>")
+                .next()
+                .unwrap()
+                .to_owned()
+        };
+        assert_eq!(normalize(&details(&live)), details(&offline));
+        for selected in [None, Some(entity.identity.clone())] {
+            let mut request = reading_request(
+                f.project,
+                ViewerView::Code {
+                    scope: CodeScope::Work(Some(f.goals["older"])),
+                    entity: selected,
+                },
+            );
+            request.locale = locale;
+            let page = code_section(&viewer.render(&request, "test-token")?.html)?;
+            assert!(page.contains("data-explanation-state=\"Current\""));
+            assert!(page.contains(if locale == ViewerLocale::English {
+                "returns the result of calling `name.strip()`"
+            } else {
+                "name.strip()"
+            }));
+            assert!(!details(&page).contains("C++"));
+            for source in &sources {
+                assert!(!details(&page).contains(&source.to_string()));
+            }
+            assert!(
+                page.contains(
+                    if matches!(
+                        request.view,
+                        ViewerView::Code {
+                            entity: Some(_),
+                            ..
+                        }
+                    ) {
+                        "Selected entity evidence"
+                    } else {
+                        "Selected Work evidence"
+                    }
+                ) || locale == ViewerLocale::Korean
+            );
+        }
+        for forbidden in [
+            "<script",
+            "<form",
+            "request_authenticity",
+            "href=\"/?",
+            "href=\"http",
+            " src=",
+        ] {
+            assert!(!snapshot.contains(forbidden));
+        }
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    std::fs::write(
+        f.repository.join("python/worker.py"),
+        "def format_name(name):\n    return name.upper()\n",
+    )?;
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        for scope in [
+            CodeScope::Repository,
+            CodeScope::Work(Some(f.goals["older"])),
+        ] {
+            let mut request = reading_request(
+                f.project,
+                ViewerView::Code {
+                    scope,
+                    entity: Some(entity.identity.clone()),
+                },
+            );
+            request.locale = locale;
+            let page = code_section(&viewer.render(&request, "test-token")?.html)?;
+            assert!(page.contains("data-explanation-state=\"Stale\""));
+            assert!(!page.contains("data-explanation-state=\"Current\""));
+            assert!(!page.contains("returns the result of calling `name.strip()`"));
+            let summary = page.split("</aside>").next().ok_or("summary")?;
+            assert!(summary.contains(if locale == ViewerLocale::English {
+                "not confirmed"
+            } else {
+                "확인되지 않습니다"
+            }));
+        }
+    }
+    std::fs::remove_dir_all(f.operations.layout().analysis_project_dir(f.project))?;
+    let page = code_section(
+        &viewer
+            .render(
+                &reading_request(
+                    f.project,
+                    ViewerView::Code {
+                        scope: CodeScope::Repository,
+                        entity: None,
+                    },
+                ),
+                "test-token",
+            )?
+            .html,
+    )?;
+    let summary = page.split("</aside>").next().ok_or("unavailable summary")?;
+    assert!(
+        summary.contains("Stored analysis is unavailable")
+            || summary.contains("Code explanation unavailable")
+    );
+    assert!(!page.contains("data-explanation-state=\"Current\""));
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }

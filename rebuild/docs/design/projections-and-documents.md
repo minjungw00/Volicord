@@ -1312,8 +1312,19 @@ unavailable capability with unknown comparison evidence cannot imply currentness
 `answer_issues` separates selected Source and requested graph failures from exhaustive
 `issues`/`repository_map.gaps`. Ordinary reads with code `NotRequested` have no missing
 code-body warning; this is materialization intent, not an analyzer failure. Canonical
-limits remain distinct. Viewer consumers render contextual limits ordinarily and keep
-repository/runtime diagnostics inspectable in evidence disclosures. Blocking canonical
+limits remain distinct. Viewer consumers keep contextual reliability visible ordinarily.
+Code uses a scope-aware issue/gap summary beside its explanation, with capability
+state and freshness counted independently of the supported meaning. Source or analysis
+blockers remain visible without opening diagnostics. The primary supported Work/code
+reading precedes a closed native full-diagnostic disclosure; absence of supported
+meaning remains explicit. Expanded diagnostics preserve the selected producer order,
+every identity, original scope, state, freshness, reason, consequence and usable remainder.
+Root `.` coverage gets a readable repository-coverage label without changing identity
+or relevance; retained affected-area metadata still describes the original report.
+Summary counts match retained detail, and exact-entity, Work and repository bases stay
+distinct. Live and offline consumers use the same components and limitation states.
+Overview, Work and Decision warnings keep their existing ordinary presentation.
+Repository/runtime diagnostics remain inspectable in evidence disclosures. Blocking canonical
 runtime failure remains ordinary; unrelated auxiliary health is audit evidence.
 
 `ProjectProjection.repository_analysis` and `ProjectUnderstanding.repository_analysis`

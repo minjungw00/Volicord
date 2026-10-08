@@ -1,4 +1,6 @@
 //! Runtime construction only: browser expectations are independently authored in V11.
+#[path = "support/code_fixture.rs"]
+mod code_fixture;
 #[path = "../../volicord-operations/tests/support/reading_fixture.rs"]
 #[allow(dead_code)]
 mod reading_fixture;
@@ -21,6 +23,7 @@ fn seed_browser_runtime() -> Result<(), Box<dyn std::error::Error>> {
     // the reported highlighted-card overflow; unresolved history has Rust coverage.
     scenario["unassociated_checkpoint"] = serde_json::json!(false);
     let fixture = reading_fixture::scenario_in(&output, scenario)?;
+    let diagnostic_sources = code_fixture::add_code_diagnostics(&fixture)?;
     let prefix = "relay_boundary_with_a_very_long_common_prefix_for_distinguishing_labels_";
     let alpha = format!("{prefix}alpha");
     let beta = format!("{prefix}beta");
@@ -176,7 +179,7 @@ fn seed_browser_runtime() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     let manifest = serde_json::json!({
-        "kind":"viewer_browser_runtime", "latest_work":latest_work.to_string(), "prefixes":prefixes, "project": fixture.project.to_string(),
+        "kind":"viewer_browser_runtime", "diagnostic_sources":diagnostic_sources.iter().map(ToString::to_string).collect::<Vec<_>>(), "latest_work":latest_work.to_string(), "prefixes":prefixes, "project": fixture.project.to_string(),
         "runtime": fixture.operations.layout().root(), "repository": fixture.repository,
         "goals": fixture.goals.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(), "checkpoints": fixture.checkpoints.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(), "decisions": fixture.decisions.iter().map(|(k,v)|(k,v.to_string())).collect::<std::collections::BTreeMap<_,_>>(),
         "purpose":fixture.purpose.to_string(), "purpose_absent_project":absent.id.to_string(), "analysis_directory":fixture.operations.layout().analysis_project_dir(fixture.project), "entities": entities, "relations":relations, "decision_sources":decision_sources,

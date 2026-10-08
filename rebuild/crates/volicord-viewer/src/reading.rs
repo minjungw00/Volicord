@@ -1267,6 +1267,199 @@ pub(super) fn analysis_summary(
     }
     html.push_str("</div>");
 }
+fn code_limit_counts(p: &ProjectProjection) -> (usize, usize) {
+    (
+        p.answer_issues
+            .iter()
+            .filter(|i| i.kind != ProjectionIssueKind::Bound)
+            .count(),
+        p.answer_capability_gaps.len(),
+    )
+}
+
+fn code_limit_summary(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snapshot: bool) {
+    let (issues, gaps) = code_limit_counts(p);
+    use volicord_projections::RepositoryAnalysisState as State;
+    let repository = snapshot
+        || matches!(
+            r.view,
+            ViewerView::Code {
+                scope: CodeScope::Repository,
+                ..
+            }
+        );
+    let blocker = if repository {
+        match p.repository_analysis.state {
+            State::Absent => Some(text(r.locale, "No stored analysis: current code meaning is unavailable.", "저장된 분석이 없어 현재 코드 의미를 확인할 수 없습니다.")),
+            State::Stale => Some(text(r.locale, "The repository has changed. Stored evidence cannot establish current behavior.", "저장소가 변경되었습니다. 저장된 근거로 현재 동작을 확인할 수 없습니다.")),
+            State::Failed => Some(text(r.locale, "An analysis scope or latest explicit attempt failed. A retained prior result does not prove that attempt succeeded.", "분석 범위 또는 최근 명시적 시도가 실패했습니다. 유지된 이전 결과는 해당 시도의 성공을 입증하지 않습니다.")),
+            State::FreshnessUnknown => Some(text(r.locale, "The current repository basis could not be compared; stored code evidence is not confirmed current.", "현재 저장소 근거를 비교할 수 없어 저장된 코드 근거의 최신성이 확인되지 않습니다.")),
+            State::Unavailable => Some(text(r.locale, "Stored analysis is unavailable. Open Analysis for local recovery guidance.", "저장된 분석을 이용할 수 없습니다. 분석에서 로컬 복구 안내를 확인하세요.")),
+            State::Current | State::Partial => None,
+        }
+    } else {
+        None
+    };
+    if issues + gaps == 0 && blocker.is_none() {
+        return;
+    }
+    html.push_str(&format!("<aside class=\"contextual-limits\" data-code-reliability=\"true\" aria-label=\"{}\" data-issue-count=\"{issues}\" data-gap-count=\"{gaps}\"><h3>{}</h3>", text(r.locale, "Code reliability", "코드 신뢰성"), text(r.locale, "Limits of this answer", "이 설명의 한계")));
+    let scope = if r.view.detail().entity.is_some() {
+        text(r.locale, "Selected entity evidence", "선택한 엔터티 근거")
+    } else if matches!(
+        r.view,
+        ViewerView::Code {
+            scope: CodeScope::Work(_),
+            ..
+        }
+    ) {
+        text(r.locale, "Selected Work evidence", "선택한 작업 근거")
+    } else {
+        text(r.locale, "Repository evidence", "저장소 근거")
+    };
+    html.push_str(&format!(
+        "<p>{scope}: {issues} {} · {gaps} {}.</p>",
+        text(r.locale, "issues", "문제"),
+        text(r.locale, "capability gaps", "분석 지원 부족"),
+    ));
+    if issues + gaps > 0 {
+        html.push_str(&format!(
+            "<p><a href=\"#code-limit-details\">{}</a></p>",
+            text(r.locale, "Inspect all diagnostics", "모든 진단 확인")
+        ));
+    }
+    if let Some(blocker) = blocker {
+        empty_state(html, blocker);
+    }
+    // Count from the retained selected basis, without merging identities or
+    // inferring repository-wide failure from a scoped capability warning.
+    let mut states = BTreeMap::new();
+    for issue in p
+        .answer_issues
+        .iter()
+        .filter(|i| i.kind != ProjectionIssueKind::Bound)
+    {
+        *states
+            .entry(projection_issue_kind_label(issue.kind, r.locale).to_owned())
+            .or_insert(0_usize) += 1;
+    }
+    for gap in &p.answer_capability_gaps {
+        let key = format!(
+            "{} / {} / {}",
+            capability_label(gap.capability, r.locale),
+            capability_state_label(gap.state, r.locale),
+            freshness_state_label(gap.freshness.state, r.locale)
+        );
+        *states.entry(key).or_insert(0_usize) += 1;
+    }
+    html.push_str(&format!(
+        "<p class=\"code-limit-states\">{}</p>",
+        escape(
+            &states
+                .into_iter()
+                .map(|(label, count)| format!("{label}: {count}"))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    ));
+    if p.answer_issues.iter().any(|i| {
+        matches!(
+            i.kind,
+            ProjectionIssueKind::SourceUnavailable
+                | ProjectionIssueKind::SourceStale
+                | ProjectionIssueKind::WrongProject
+        )
+    }) {
+        empty_state(html, text(r.locale, "Some selected Source evidence is stale or unavailable. It cannot establish current code meaning; supported remainder stays readable.", "선택한 Source 근거 일부가 오래되었거나 이용 불가입니다. 현재 코드 의미를 확인할 수 없으며 근거 있는 나머지는 계속 읽을 수 있습니다."));
+    }
+    if p.answer_capability_gaps
+        .iter()
+        .any(|g| g.freshness.state != FreshnessState::Current)
+    {
+        empty_state(html, text(r.locale, "Current analysis evidence is not confirmed for every affected scope. Stale or unknown evidence cannot establish current behavior.", "영향 범위 모두에서 현재 분석 근거가 확인되지 않습니다. 오래되었거나 최신성을 알 수 없는 근거로 현재 동작을 확인할 수 없습니다."));
+    }
+    if p.sections.code == volicord_projections::ReadSectionState::Unavailable {
+        empty_state(html, text(r.locale, "Code explanation unavailable: stored analysis cannot be read or verified. Canonical memory remains readable; open Analysis for recovery guidance.", "코드 설명 이용 불가: 저장된 분석을 읽거나 검증할 수 없습니다. 정식 기억은 계속 읽을 수 있습니다. 분석에서 복구 안내를 확인하세요."));
+    }
+    html.push_str("<p>");
+    link(
+        html,
+        r,
+        ViewerView::Tools {
+            tool: ViewerTool::Status,
+        },
+        text(r.locale, "Open Analysis", "분석 열기"),
+        snapshot.then_some("health"),
+    );
+    html.push_str("</p></aside>");
+}
+
+fn code_limit_details(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snapshot: bool) {
+    let (issues, gaps) = code_limit_counts(p);
+    if issues + gaps == 0 {
+        return;
+    }
+    html.push_str(&format!("<details id=\"code-limit-details\" class=\"code-limit-details\" data-issue-count=\"{issues}\" data-gap-count=\"{gaps}\"><summary>{}: {issues} {} · {gaps} {}</summary><ul class=\"gap-list\">", text(r.locale, "Full Code diagnostics", "전체 코드 진단"), text(r.locale, "issues", "문제"), text(r.locale, "capability gaps", "분석 지원 부족")));
+    for issue in p
+        .answer_issues
+        .iter()
+        .filter(|i| i.kind != ProjectionIssueKind::Bound)
+    {
+        html.push_str(&format!("<li data-limit-kind=\"issue\" data-limit-id=\"{}\"><p>{} · {}: {}</p><pre>{}</pre></li>", escape(&issue.identity), projection_issue_kind_label(issue.kind, r.locale), escape(&issue.affected_scope), escape(&issue.reason), escape(&format!("{issue:#?}"))));
+    }
+    for gap in &p.answer_capability_gaps {
+        let area = if gap.area == "." {
+            text(
+                r.locale,
+                "Repository coverage (root)",
+                "저장소 분석 범위 (루트)",
+            )
+        } else {
+            &gap.area
+        };
+        html.push_str(&format!("<li data-limit-kind=\"gap\" data-analysis-id=\"{}\" data-scope=\"{}\"><p>{} · {} · {} · {} · {}: {}</p>", gap.analysis_snapshot, escape(&gap.area), escape(area), escape(&gap.language.as_ref().map(|l| language_label(l, r.locale)).unwrap_or_else(|| text(r.locale, "All languages", "모든 언어").into())), capability_label(gap.capability, r.locale), capability_state_label(gap.state, r.locale), freshness_state_label(gap.freshness.state, r.locale), escape(&gap.reason)));
+        html.push_str("<dl>");
+        definition(
+            html,
+            text(r.locale, "What cannot be concluded", "확인할 수 없는 내용"),
+            gap.user_visible_consequence.as_deref().unwrap_or(text(
+                r.locale,
+                "This scope cannot support a complete current code answer.",
+                "이 범위로 완전한 현재 코드 설명을 뒷받침할 수 없습니다.",
+            )),
+        );
+        definition(
+            html,
+            text(r.locale, "Usable remainder", "사용 가능한 나머지"),
+            gap.usable_remainder.as_deref().unwrap_or(text(
+                r.locale,
+                "Canonical memory remains readable.",
+                "정식 기억은 계속 읽을 수 있습니다.",
+            )),
+        );
+        html.push_str(&format!(
+            "</dl><pre>{}</pre></li>",
+            escape(&format!("{gap:#?}"))
+        ));
+    }
+    html.push_str("</ul><p class=\"next-action\">");
+    html.push_str(text(
+        r.locale,
+        "Inspect Analysis for affected coverage and local refresh or recovery guidance.",
+        "분석에서 영향받은 범위와 로컬 갱신 또는 복구 안내를 확인하세요.",
+    ));
+    link(
+        html,
+        r,
+        ViewerView::Tools {
+            tool: ViewerTool::Status,
+        },
+        text(r.locale, "Open Analysis", "분석 열기"),
+        snapshot.then_some("health"),
+    );
+    html.push_str("</p></details>");
+}
+
 fn code(
     html: &mut String,
     r: &ViewerRequest,
@@ -1289,6 +1482,7 @@ fn code(
             _ => text(r.locale, "Repository context", "저장소 범위"),
         },
     );
+    code_limit_summary(html, r, p, snapshot);
     if let Some(work) = &p.selected_work {
         html.push_str("<div class=\"code-work-meaning\">");
         heading(html, 3, work_reading_display(&work.reading.goal, r.locale));
@@ -1402,18 +1596,6 @@ fn code(
         }
         html.push_str("</div>");
     }
-    contextual_limits(html, r, p, snapshot);
-    // Repository-wide status belongs to Analysis; only Work-relevant gaps accompany code.
-    if matches!(
-        r.view,
-        ViewerView::Code {
-            scope: CodeScope::Repository,
-            ..
-        }
-    ) || snapshot
-    {
-        analysis_summary(html, r, &p.repository_analysis, false);
-    }
     if r.view.detail().entity.is_some()
         && p.selected_entity.is_none()
         && p.sections.code == volicord_projections::ReadSectionState::Unavailable
@@ -1472,6 +1654,18 @@ fn code(
             &interpretation.text
         };
         html.push_str(&format!("<details data-statement-role=\"generated-interpretation\" data-explanation-state=\"{:?}\"><summary>{} · {:?}</summary><p>{}</p><p>{}</p><pre>{}</pre></details>", interpretation.state, escape(text(r.locale,"Generated interpretation","생성 해석")), interpretation.state, escape(prose), escape(&interpretation.known_gaps.join("; ")), escape(&format!("producer: {}\ngenerated: {}\nSource: {:?}\nAnalysis: {}\nRepository: {}\nentities: {:?}\nrelations: {:?}\nranges: {:?}\nuncertainty: {:?}", interpretation.producer, interpretation.generated_at_unix_micros, interpretation.source_basis, interpretation.analysis_snapshot, interpretation.repository_snapshot, interpretation.entity_basis, interpretation.relation_basis, interpretation.source_ranges, interpretation.uncertainty))));
+    }
+    code_limit_details(html, r, p, snapshot);
+    // Repository-wide status belongs to Analysis; only Work-relevant gaps accompany code.
+    if matches!(
+        r.view,
+        ViewerView::Code {
+            scope: CodeScope::Repository,
+            ..
+        }
+    ) || snapshot
+    {
+        analysis_summary(html, r, &p.repository_analysis, false);
     }
     if !u.architecture.components.is_empty() || !u.architecture.relationships.is_empty() {
         render_grounded_diagram(

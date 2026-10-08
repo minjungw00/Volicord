@@ -57,8 +57,22 @@ Overview also keeps current open questions, canonical risks and unresolved Work
 association visible before next actions. There is no universal Material limitations
 section; unrelated capability failures do not precede ordinary Work meaning.
 
-Code starts with selected Work meaning, then supported structure and directed
-relationships. Containment/dependency/reference/type relations are labeled separately
+Code identifies the selected Work, repository or exact-entity read basis and keeps
+a concise reliability summary beside the ordinary explanation. The summary counts
+selected issues and capability gaps, distinguishes capability state from freshness,
+and keeps Source/analysis blockers visible with an Analysis link. Supported Work and
+source-bound behavior meaning precedes the closed **Full Code diagnostics** native
+disclosure. Expanding it retains every selected issue and gap in producer order,
+with identities, original scope, freshness, reason, consequence and usable remainder.
+Root `.` reports have a readable repository-coverage label while their exact source
+scope stays inspectable. A report's affected-area metadata can describe its wider
+repository coverage; its inclusion is determined by the selected read basis.
+Unavailable code meaning remains explicit. These same components serve live and
+self-contained snapshot reads in English and Korean. Overview, Work and Decision
+contextual warnings retain their existing ordinary presentation.
+
+Code then presents supported structure and directed relationships.
+Containment/dependency/reference/type relations are labeled separately
 from static syntactic calls; neither proves runtime or data flow. A scope with no
 relations shows components and an analysis action without an invented diagram.
 Analysis shows the shared stored-analysis availability and independent freshness,
@@ -200,6 +214,14 @@ They exercise the actual CLI/server/export path, both locales, narrow viewports,
 keyboard navigation, closed offline snapshots and real 200% tab zoom. Browser
 tools are validation dependencies only. Automated observations do not establish
 human comprehension or replace the authoritative technical gate.
+The shared authored Code diagnostic fixture supplies thirty unavailable Sources
+and fifteen polyglot capability gaps. Direct producer-to-Viewer tests bind selected
+behavior, exact diagnostic counts/order and snapshot parity. Browser checks exercise
+repository, Work and exact-callable reads at all maintained widths and native zoom,
+assert initial DOM order and geometry, operate the disclosure with Tab/Enter/Space,
+and reject expanded-by-default diagnostics, removed detail and hidden material warnings.
+Long bilingual diagnostic stress is restored before candidate capture. No budget is
+increased; optional named timing enforcement remains a separate diagnostic.
 
 ## Presentation and accessibility
 
