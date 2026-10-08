@@ -677,3 +677,17 @@ languages/files. Source-semantic analyzer `4` similarly withholds source text an
 results for changed/unavailable file bytes, recording file failure rather than using
 new text with old structural coordinates. Incremental rebind retains exact local
 body positions only when content and adapter/analyzer bases permit reuse.
+
+Body observations also retain parser-confirmed control context: a direct conditional
+branch references its retained condition, and continuation after a single direct
+conditional return references both condition and return. Nested branching, loops,
+else paths and other unsupported control structures keep unspecified relationships;
+a flattened expression order never establishes a guard/result relationship. Value
+kind and byte offsets into an existing expression distinguish a call result,
+calculation or value without duplicating source text. References stay within the
+16-observation bound; missing/oversized evidence cannot supply control context.
+Callable values containing nested bodies are omitted rather than attributed to their
+enclosing callable, with partial state and omission accounting. Compound updates
+retain the update syntax without treating the right operand as the stored result.
+The existing extension carries this evidence; adapter contract invalidation requires
+local reanalysis of prior observations, without a legacy decoder or another store.

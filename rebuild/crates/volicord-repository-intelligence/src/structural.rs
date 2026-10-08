@@ -1930,7 +1930,7 @@ fn parser_language(language: &Language) -> Result<ParserLanguage, FileFailure> {
 fn adapter_identity(language: &Language) -> AdapterIdentity {
     AdapterIdentity {
         name: format!("volicord-{}-structural-adapter", language_label(language)),
-        version: format!("{STRUCTURAL_ADAPTER_VERSION}:body-observations-1"),
+        version: format!("{STRUCTURAL_ADAPTER_VERSION}:body-observations-2"),
     }
 }
 

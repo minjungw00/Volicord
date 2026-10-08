@@ -1573,6 +1573,7 @@ fn render_code_behavior(
     relations: &[MapRelation],
 ) {
     let behavior = &entity.behavior;
+    let explanation = behavior.explanation(&entity.display_name, r.locale == ViewerLocale::Korean);
     html.push_str(&format!("<div data-statement-role=\"deterministic-derived\" data-code-behavior=\"{}\" data-explanation-state=\"{:?}\"><p>{}: {} · {}</p>", escape(&entity.identity), behavior.state, text(r.locale, "Source-bound behavior", "소스에 연결된 동작"), escape(&entity.display_name), code_explanation_state_label(behavior.state, r.locale)));
     if !matches!(
         behavior.state,
@@ -1587,6 +1588,9 @@ fn render_code_behavior(
                 "이 근거로 현재 동작을 확인할 수 없습니다."
             )
         ));
+    }
+    if !explanation.is_empty() {
+        html.push_str(&format!("<p>{}</p>", escape(&explanation)));
     }
     html.push_str(&format!("<p>{}</p><details><summary>{}</summary><pre>{}</pre></details></div>", escape(&behavior.limitations.join("; ")), text(r.locale, "Body expressions and exact source evidence", "본문 표현식과 정확한 소스 근거"), escape(&format!("Source: {}\nAnalysis: {}\nRepository: {}\nfreshness: {:?}\nclaims: {:#?}\nomitted: {}\nsupporting static relations: {:?}", entity.source_id, entity.analysis_snapshot, entity.repository_snapshot, entity.freshness, behavior.claims, behavior.omitted_count, relations.iter().filter(|relation| relation.source_entity == entity.identity || relation.target_entity.as_deref() == Some(entity.identity.as_str())).map(|relation| (&relation.identity, &relation.kind, relation.class, &relation.freshness)).collect::<Vec<_>>()))));
 }

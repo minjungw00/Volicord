@@ -6,8 +6,8 @@
 
 mod behavior;
 pub use behavior::{
-    BodyObservation, BodyObservationKind, BodyObservations, BODY_EXPRESSION_BYTE_LIMIT,
-    BODY_OBSERVATIONS_KEY, BODY_OBSERVATIONS_LIMIT,
+    BodyControl, BodyObservation, BodyObservationKind, BodyObservations, BodyValue, BodyValueKind,
+    BODY_EXPRESSION_BYTE_LIMIT, BODY_OBSERVATIONS_KEY, BODY_OBSERVATIONS_LIMIT,
 };
 mod canonical;
 mod freshness;

@@ -1407,11 +1407,7 @@ fn changed_removed_and_unavailable_sources_never_render_current_behavior(
         )?;
         let path = format!("/?view=code&scope=work&work={}", fixture.goals["older"]);
         let current = exchange(&server, &path);
-        assert!(
-            current.contains("format_name has a return expression")
-                || current.contains("format_name: has a return expression")
-                || current.contains("declares inputs: `(name)`")
-        );
+        assert!(current.contains("returns the result of calling `name.strip()`"));
         match case {
             "changed" => std::fs::write(
                 fixture.repository.join("python/worker.py"),
@@ -1437,7 +1433,7 @@ fn changed_removed_and_unavailable_sources_never_render_current_behavior(
                 }),
                 "{case}"
             );
-            assert!(!historical.contains("has a return expression"));
+            assert!(!historical.contains("returns the result of calling"));
             assert!(
                 historical.contains("Current behavior cannot be established")
                     || historical.contains("현재 동작을 확인할 수 없습니다")
@@ -1552,6 +1548,76 @@ fn language_controls_preserve_page_subject_and_arbitrary_request_without_writes(
             fields.replace('&', "&amp;")
         )));
         assert!(settings.contains("내용을 생성하거나 번역하지 않습니다"));
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn ordinary_and_exact_code_reads_show_guarded_behavior_before_raw_disclosure(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    std::fs::write(
+        f.repository.join("python/worker.py"),
+        "def double(n):\n    if n < 0:\n        return 0\n    return n * 2\n",
+    )?;
+    let analysis = f
+        .operations
+        .analyze(f.project, Vec::new())?
+        .value
+        .ok_or("analysis")?
+        .analysis;
+    let entity = &analysis
+        .structural_facts
+        .iter()
+        .find(|f| f.entity.display_name.as_deref() == Some("double"))
+        .ok_or("double")?
+        .entity;
+    let encoded = entity
+        .identity
+        .bytes()
+        .map(|b| format!("%{b:02X}"))
+        .collect::<String>();
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let before = f.operations.canonical_basis(f.project)?;
+    for route in [
+        "/?view=code&scope=repository".to_owned(),
+        format!("/?view=code&scope=work&work={}", f.goals["older"]),
+        format!("/?view=code&scope=repository&entity={encoded}"),
+    ] {
+        for locale in ["en", "ko"] {
+            let html = exchange(&server, &format!("{route}&locale={locale}&language=fr"));
+            let reading = html
+                .split(&format!("data-code-behavior=\"{}\"", entity.identity))
+                .nth(1)
+                .ok_or("body reading not reachable")?;
+            let ordinary = reading
+                .split("<details>")
+                .next()
+                .ok_or("ordinary reading")?;
+            if locale == "en" {
+                assert!(
+                    ordinary.contains("When `n &lt; 0` holds, returns `0`"),
+                    "{ordinary}"
+                );
+                assert!(ordinary.contains("continuing past the early return for `n &lt; 0`, computes `n * 2` and returns the result"));
+            } else {
+                assert!(ordinary.contains("`n &lt; 0` 조건이 참인 분기에서, `0`를 반환"));
+                assert!(ordinary.contains("`n * 2`를 계산하고 결과를 반환"));
+            }
+            assert!(reading.contains(&format!("Analysis: {}", entity.analysis_snapshot)));
+            assert!(reading.contains(&format!("Source: {}", entity.source.identity())));
+            assert!(!ordinary.contains("has a return expression"));
+            // A fixed UI locale does not supply arbitrary requested-language generation.
+            assert!(html.contains("fr"));
+        }
     }
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())

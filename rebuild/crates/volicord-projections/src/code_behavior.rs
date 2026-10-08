@@ -2,10 +2,10 @@ use crate::MapEntity;
 use std::collections::{BTreeMap, BTreeSet};
 use volicord_context::{Availability, CanonicalReadBasis, SourceFreshness};
 use volicord_repository_intelligence::{
-    AnalysisSnapshot, AnalysisSnapshotId, BodyObservationKind, BodyObservations,
-    CanonicalSourceBasis, Capability, CapabilityState, CodeEntity, CoordinateConvention,
-    FreshnessState, InventoryClassification, Language, SourceRange, StructuralFact,
-    BODY_EXPRESSION_BYTE_LIMIT, BODY_OBSERVATIONS_KEY, BODY_OBSERVATIONS_LIMIT,
+    AnalysisSnapshot, AnalysisSnapshotId, BodyControl, BodyObservationKind, BodyObservations,
+    BodyValue, BodyValueKind, CanonicalSourceBasis, Capability, CapabilityState, CodeEntity,
+    CoordinateConvention, FreshnessState, InventoryClassification, Language, SourceRange,
+    StructuralFact, BODY_EXPRESSION_BYTE_LIMIT, BODY_OBSERVATIONS_KEY, BODY_OBSERVATIONS_LIMIT,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -438,6 +438,8 @@ pub struct CodeBehaviorClaim {
     pub kind: BodyObservationKind,
     pub expression: String,
     pub source_range: SourceRange,
+    pub control: BodyControl,
+    pub value: Option<BodyValue>,
 }
 
 /// Source syntax, separate from generated interpretations and actual execution.
@@ -519,6 +521,42 @@ impl CodeBehaviorReading {
         }) {
             return reading;
         }
+        for (index, claim) in body.observations.iter().enumerate() {
+            let condition_valid = |condition: usize| {
+                condition < index
+                    && body.observations.get(condition).is_some_and(|c| {
+                        c.kind == BodyObservationKind::Condition
+                            && position(c.end) <= position(claim.start)
+                    })
+            };
+            let valid = match claim.control {
+                BodyControl::StraightLine | BodyControl::Unspecified => true,
+                BodyControl::Conditional { condition } => condition_valid(condition),
+                BodyControl::AfterEarlyReturn {
+                    condition,
+                    returned,
+                } => {
+                    condition_valid(condition)
+                        && returned < index
+                        && body.observations.get(returned).is_some_and(|r| {
+                            r.kind == BodyObservationKind::Return
+                                && r.control == BodyControl::Conditional { condition }
+                                && position(r.end) <= position(claim.start)
+                        })
+                }
+            };
+            if !valid
+                || claim.value.is_some_and(|v| {
+                    v.start_byte >= v.end_byte
+                        || claim.expression.get(v.start_byte..v.end_byte).is_none()
+                })
+            {
+                reading.limitations = vec![
+                    "Invalid body control or value evidence; behavior explanation withheld.".into(),
+                ];
+                return reading;
+            }
+        }
         reading.claims = body
             .observations
             .into_iter()
@@ -531,6 +569,8 @@ impl CodeBehaviorReading {
                     kind: claim.kind,
                     expression: claim.expression,
                     source_range,
+                    control: claim.control,
+                    value: claim.value,
                 }
             })
             .collect();
@@ -551,42 +591,192 @@ impl CodeBehaviorReading {
         if reading.state != CodeExplanationState::Current {
             reading.limitations.push(format!("Explanation evidence is {:?}; inspect source freshness, parser diagnostics and omissions.", reading.state));
         }
+        if !reading.claims.iter().any(|c| {
+            matches!(
+                c.kind,
+                BodyObservationKind::Return
+                    | BodyObservationKind::Call
+                    | BodyObservationKind::Binding
+                    | BodyObservationKind::Assignment
+            )
+        }) {
+            if reading.state == CodeExplanationState::Current {
+                reading.state = CodeExplanationState::Unavailable;
+            }
+            reading.limitations.push("No supported processing or return observation was retained; input declarations alone do not establish behavior. Inspect the exact entity's structural details.".into());
+        }
+        if reading
+            .claims
+            .iter()
+            .any(|c| c.control == BodyControl::Unspecified)
+        {
+            reading.limitations.push("Control relationships outside the supported simple branch are unspecified; expression order alone does not establish reachability.".into());
+        }
         reading
     }
 }
 
 pub(crate) fn behavior_sentences(entity: &MapEntity, korean: bool) -> String {
-    let behavior = &entity.behavior;
-    if !matches!(
-        behavior.state,
-        CodeExplanationState::Current | CodeExplanationState::Partial
-    ) || behavior.claims.is_empty()
-    {
-        return String::new();
+    entity.behavior.explanation(&entity.display_name, korean)
+}
+
+impl CodeBehaviorReading {
+    /// Fixed locale realization of retained syntax; no source reads or generation.
+    pub fn explanation(&self, display_name: &str, korean: bool) -> String {
+        let behavior = self;
+        if !matches!(
+            behavior.state,
+            CodeExplanationState::Current | CodeExplanationState::Partial
+        ) || behavior.claims.is_empty()
+        {
+            return String::new();
+        }
+        let mut sentences = Vec::new();
+        for claim in &behavior.claims {
+            // Calls already described as a retained value do not need a second sentence.
+            if claim.kind == BodyObservationKind::Call
+                && behavior.claims.iter().any(|owner| {
+                    matches!(
+                        owner.kind,
+                        BodyObservationKind::Return
+                            | BodyObservationKind::Binding
+                            | BodyObservationKind::Assignment
+                    ) && (
+                        owner.source_range.start.line,
+                        owner.source_range.start.column,
+                    ) <= (
+                        claim.source_range.start.line,
+                        claim.source_range.start.column,
+                    ) && (owner.source_range.end.line, owner.source_range.end.column)
+                        >= (claim.source_range.end.line, claim.source_range.end.column)
+                })
+            {
+                continue;
+            }
+            let prefix = match claim.control {
+                BodyControl::Conditional { condition } => {
+                    let Some(condition) = behavior
+                        .claims
+                        .get(condition)
+                        .filter(|c| c.kind == BodyObservationKind::Condition)
+                    else {
+                        return String::new();
+                    };
+                    let condition = &condition.expression;
+                    if korean {
+                        format!("`{condition}` 조건이 참인 분기에서, ")
+                    } else {
+                        format!("When `{condition}` holds, ")
+                    }
+                }
+                BodyControl::AfterEarlyReturn { condition, .. } => {
+                    let Some(condition) = behavior
+                        .claims
+                        .get(condition)
+                        .filter(|c| c.kind == BodyObservationKind::Condition)
+                    else {
+                        return String::new();
+                    };
+                    let condition = &condition.expression;
+                    if korean {
+                        format!("`{condition}` 조건의 조기 반환을 지나 계속하는 경로에서, ")
+                    } else {
+                        format!("On the path continuing past the early return for `{condition}`, ")
+                    }
+                }
+                BodyControl::Unspecified => {
+                    if korean {
+                        "분기 관계가 확인되지 않은 소스 표현식에서, ".into()
+                    } else {
+                        "With its control relationship unspecified, the source ".into()
+                    }
+                }
+                BodyControl::StraightLine => String::new(),
+            };
+            let value = claim.value.and_then(|v| {
+                claim
+                    .expression
+                    .get(v.start_byte..v.end_byte)
+                    .map(|text| (v.kind, text))
+            });
+            let action = match (claim.kind, korean) {
+                (BodyObservationKind::Inputs, false) => format!(
+                    "`{}` accepts the declared inputs `{}`",
+                    display_name, claim.expression
+                ),
+                (BodyObservationKind::Inputs, true) => format!(
+                    "`{}`의 선언된 입력은 `{}`입니다",
+                    display_name, claim.expression
+                ),
+                (BodyObservationKind::Documentation, false) => format!(
+                    "Its source-authored responsibility is `{}`",
+                    claim.expression
+                ),
+                (BodyObservationKind::Documentation, true) => {
+                    format!("소스에 기록된 책임은 `{}`입니다", claim.expression)
+                }
+                (BodyObservationKind::Condition, _) => continue,
+                (BodyObservationKind::Return, false) => match value {
+                    Some((BodyValueKind::Call, v)) => format!(
+                        "returns the result of calling `{v}` (source: `{}`)",
+                        claim.expression
+                    ),
+                    Some((BodyValueKind::Calculation, v)) => format!(
+                        "computes `{v}` and returns the result (source: `{}`)",
+                        claim.expression
+                    ),
+                    Some((_, v)) => format!("returns `{v}` (source: `{}`)", claim.expression),
+                    None => format!("returns without a value (source: `{}`)", claim.expression),
+                },
+                (BodyObservationKind::Return, true) => match value {
+                    Some((BodyValueKind::Call, v)) => format!(
+                        "`{v}` 호출의 결과를 반환합니다 (소스: `{}`)",
+                        claim.expression
+                    ),
+                    Some((BodyValueKind::Calculation, v)) => format!(
+                        "`{v}`를 계산하고 결과를 반환합니다 (소스: `{}`)",
+                        claim.expression
+                    ),
+                    Some((_, v)) => format!("`{v}`를 반환합니다 (소스: `{}`)", claim.expression),
+                    None => format!("값 없이 반환합니다 (소스: `{}`)", claim.expression),
+                },
+                (BodyObservationKind::Assignment, false) if value.is_none() => format!(
+                    "updates the assignment target according to `{}`",
+                    claim.expression
+                ),
+                (BodyObservationKind::Assignment, true) if value.is_none() => {
+                    format!("`{}`에 따라 대입 대상을 갱신합니다", claim.expression)
+                }
+                (BodyObservationKind::Binding | BodyObservationKind::Assignment, false) => {
+                    let processing = match value {
+                        Some((BodyValueKind::Call, v)) => format!("requests the result of `{v}`"),
+                        Some((BodyValueKind::Calculation, v)) => format!("computes `{v}`"),
+                        Some((_, v)) => format!("evaluates `{v}`"),
+                        None => "evaluates the source value".into(),
+                    };
+                    format!("{processing} and stores it with `{}`", claim.expression)
+                }
+                (BodyObservationKind::Binding | BodyObservationKind::Assignment, true) => {
+                    let processing = match value {
+                        Some((BodyValueKind::Call, v)) => format!("`{v}`의 호출 결과를 요청하고"),
+                        Some((BodyValueKind::Calculation, v)) => format!("`{v}`를 계산하고"),
+                        Some((_, v)) => format!("`{v}`를 평가하고"),
+                        None => "소스 값을 평가하고".into(),
+                    };
+                    format!("{processing} `{}`로 저장합니다", claim.expression)
+                }
+                (BodyObservationKind::Call, false) => format!(
+                    "requests the call `{}`; the callee's behavior is not established",
+                    claim.expression
+                ),
+                (BodyObservationKind::Call, true) => format!(
+                    "`{}` 호출을 요청합니다. 호출 대상의 동작은 확인되지 않았습니다",
+                    claim.expression
+                ),
+            };
+            sentences.push(format!("{prefix}{action}."));
+        }
+        sentences.push(if korean { "이 설명은 소스가 지정한 동작이며 분기 실행, 호출 결과와 외부 효과는 관찰되지 않았습니다. 호출 대상의 효과와 지원 범위 밖의 제어 흐름은 확인되지 않았습니다." } else { "These source operations do not establish branch execution, call outcomes or external effects. Callee effects and control flow outside the supported structure remain unknown." }.into());
+        sentences.join(" ")
     }
-    let mut sentences = Vec::new();
-    for claim in &behavior.claims {
-        let verb = match (claim.kind, korean) {
-            (BodyObservationKind::Inputs, false) => "declares inputs",
-            (BodyObservationKind::Condition, false) => "contains a condition",
-            (BodyObservationKind::Call, false) => "contains a call expression",
-            (BodyObservationKind::Binding, false) => "binds a value with",
-            (BodyObservationKind::Assignment, false) => "contains an assignment",
-            (BodyObservationKind::Return, false) => "has a return expression",
-            (BodyObservationKind::Documentation, false) => "documents its responsibility as",
-            (BodyObservationKind::Inputs, true) => "입력 선언",
-            (BodyObservationKind::Condition, true) => "조건식",
-            (BodyObservationKind::Call, true) => "호출식",
-            (BodyObservationKind::Binding, true) => "값 바인딩",
-            (BodyObservationKind::Assignment, true) => "대입식",
-            (BodyObservationKind::Return, true) => "반환식",
-            (BodyObservationKind::Documentation, true) => "소스에 기록된 책임",
-        };
-        sentences.push(format!(
-            "{} {verb}: `{}`.",
-            entity.display_name, claim.expression
-        ));
-    }
-    sentences.push(if korean { "소스 구문을 설명하며 분기 실행, 호출 결과와 외부 효과는 관찰되지 않았습니다." } else { "These source expressions do not establish branch execution, call outcomes or external effects." }.into());
-    sentences.join(" ")
 }

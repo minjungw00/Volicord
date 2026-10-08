@@ -1509,3 +1509,16 @@ body reading. Invalid generated prose is withheld while applicable state and rea
 remain inspectable. Current state means source-bound generated interpretation,
 never independent prose verification. A component with source-grounded return/body
 observations remains readable without resolved calls and acquires no flow edge.
+
+Fixed English/Korean behavior prose explains the retained value operation and its
+result: a source call result, calculation, binding/update or return. Supported
+conditional returns and their continuation are described only through RI's explicit
+control references. Unspecified relationships remain limitations; no expression
+ordering, name, business-purpose guess or callee effect supplies missing meaning.
+Source-authored documentation remains attributed wording. Control/value references
+are validated inside the exact callable before explanation, alongside existing
+Source/range/snapshot/capability checks. Viewer body reading renders this same fixed
+explanation before raw disclosure, including exact-entity reads and components whose
+topology explanation was omitted by the separate explanation bound. Each retained
+claim still carries its exact Source range and owning entity/snapshots; generated
+interpretations and arbitrary requested-language realizations remain separate.

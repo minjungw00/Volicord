@@ -410,3 +410,35 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 mod support;
+
+#[test]
+fn body_control_preserves_simple_guard_results_and_excludes_nested_scopes(
+) -> Result<(), Box<dyn Error>> {
+    use volicord_repository_intelligence::{
+        BodyControl, BodyObservationKind, BodyObservations, BodyValueKind, BODY_OBSERVATIONS_KEY,
+    };
+    // Independently authored meaning: reject negatives, otherwise double the input.
+    for (path, source, condition, early, later) in [
+        ("lib.rs", "pub fn double(n: i32) -> i32 { if n < 0 { return 0; } n * 2 }", "n < 0", "return 0", "n * 2"),
+        ("worker.py", "def double(n):\n    if n < 0:\n        return 0\n    def hidden():\n        return erase()\n    return n * 2\n", "n < 0", "return 0", "return n * 2"),
+        ("worker.js", "function double(n) { if (n < 0) { return 0; } return n * 2; }", "(n < 0)", "return 0;", "return n * 2;"),
+        ("worker.ts", "export function double(n: number) { if (n < 0) { return 0; } return n * 2; }", "(n < 0)", "return 0;", "return n * 2;"),
+    ] {
+        let temporary = tempfile::tempdir()?;
+        fs::write(temporary.path().join(path), source)?;
+        let (_, analysis) = analyze_repository(StructuralAnalysisRequest::new(inventory(temporary.path())?))?;
+        let entity = &analysis.structural_facts.iter().find(|f| f.entity.display_name.as_deref() == Some("double")).ok_or("double")?.entity;
+        let body: BodyObservations = serde_json::from_value(entity.extensions.iter().find_map(|e| e.values.get(BODY_OBSERVATIONS_KEY)).ok_or("body")?.clone())?;
+        let condition_index = body.observations.iter().position(|o| o.kind == BodyObservationKind::Condition && o.expression == condition).ok_or("condition")?;
+        let returned = body.observations.iter().position(|o| o.kind == BodyObservationKind::Return && o.expression == early).ok_or("early return")?;
+        let final_return = body.observations.iter().find(|o| o.kind == BodyObservationKind::Return && o.expression == later).ok_or("final return")?;
+        assert_eq!(body.observations[returned].control, BodyControl::Conditional { condition: condition_index });
+        assert_eq!(final_return.control, BodyControl::AfterEarlyReturn { condition: condition_index, returned }, "{path}");
+        let value = final_return.value.ok_or("value")?;
+        assert_eq!(value.kind, BodyValueKind::Calculation);
+        assert_eq!(&final_return.expression[value.start_byte..value.end_byte], "n * 2");
+        assert!(!body.observations.iter().any(|o| o.expression.contains("erase")));
+        assert_eq!(body.omitted_count, 0);
+    }
+    Ok(())
+}

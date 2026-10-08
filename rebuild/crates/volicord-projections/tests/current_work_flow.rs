@@ -1761,6 +1761,8 @@ fn invalid_or_negative_body_evidence_never_supports_current_work_behavior(
         "missing_payload",
         "foreign_namespace",
         "foreign_freshness",
+        "invalid_control",
+        "invalid_value",
     ] {
         let (projection, _) = build_projection_scenario(
             &[
@@ -1833,6 +1835,20 @@ fn invalid_or_negative_body_evidence_never_supports_current_work_behavior(
                                 &"f".repeat(64),
                             )?
                     }
+                    "invalid_control" => {
+                        a.structural_facts[at].entity.extensions[0]
+                            .values
+                            .get_mut(BODY_OBSERVATIONS_KEY)
+                            .ok_or("body")?["observations"][1]["control"] =
+                            serde_json::json!({"conditional": {"condition": 999}});
+                    }
+                    "invalid_value" => {
+                        a.structural_facts[at].entity.extensions[0]
+                            .values
+                            .get_mut(BODY_OBSERVATIONS_KEY)
+                            .ok_or("body")?["observations"][1]["value"]["end_byte"] =
+                            serde_json::json!(999);
+                    }
                     "outside_range" => {
                         a.structural_facts[at].entity.extensions[0]
                             .values
@@ -1883,7 +1899,9 @@ fn invalid_or_negative_body_evidence_never_supports_current_work_behavior(
             assert!(explanation.english.contains("return name.strip()"));
         } else {
             assert!(
-                !explanation.english.contains("has a return expression"),
+                !explanation
+                    .english
+                    .contains("returns the result of calling"),
                 "{case}"
             );
         }
@@ -2101,5 +2119,140 @@ fn source_return_behavior_remains_readable_without_any_call_relation(
         );
         assert!(u.architecture.flow_evidence.relation_ids.is_empty());
     }
+    Ok(())
+}
+
+#[test]
+fn behavior_meaning_distinguishes_guarded_results_from_ambiguous_source_order(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (path, source, condition) in [
+        ("lib.rs", "pub fn double(n: i32) -> i32 { if n < 0 { return 0; } n * 2 }", "n < 0"),
+        ("worker.py", "def double(n):\n    \"\"\"Reject negatives; double other inputs.\"\"\"\n    if n < 0:\n        return 0\n    return n * 2\n", "n < 0"),
+        ("worker.js", "function double(n) { if (n < 0) { return 0; } return n * 2; }", "(n < 0)"),
+        ("worker.ts", "export function double(n: number) { if (n < 0) { return 0; } return n * 2; }", "(n < 0)"),
+    ] {
+        let (p, _) = build_projection(&[(path, source)], path, 24)?;
+        let u = build_project_understanding(&p, UnderstandingBound::default());
+        let entity = u.architecture.components.iter().find(|e| e.kind == CodeEntityKind::Function).ok_or("double")?;
+        let e = u.deterministic_explanations.iter().find(|e| e.identity == format!("deterministic:component:{}", entity.identity)).ok_or("explanation")?;
+        assert!(e.english.contains(&format!("When `{condition}` holds, returns `0`")), "{}", e.english);
+        assert!(e.english.contains(&format!("continuing past the early return for `{condition}`, computes `n * 2` and returns the result")));
+        assert!(e.korean.contains(&format!("`{condition}` 조건이 참인 분기에서, `0`를 반환")));
+        assert!(e.korean.contains("`n * 2`를 계산하고 결과를 반환"));
+        assert!(e.english.contains("accepts the declared inputs"));
+        assert!(e.english.contains("Callee effects"));
+        assert_eq!(e.analysis_snapshot_basis, vec![entity.analysis_snapshot]);
+        assert!(e.source_basis.contains(&entity.source_id));
+        assert!(e.entity_basis.contains(&entity.identity));
+        if path == "worker.py" { assert!(e.english.contains("source-authored responsibility")); }
+    }
+    // A nested conditional return does not prove an exhaustive guard/otherwise split.
+    for source in [
+        "def double(n):\n    if n < 0:\n        if allowed(n):\n            return 0\n    return n * 2\n",
+        "def double(n):\n    while n < 0:\n        return 0\n    return n * 2\n",
+        "def double(n):\n    def hidden():\n        if n < 0:\n            return erase()\n    return unknown(n)\n",
+    ] {
+        let (p, _) = build_projection(&[("worker.py", source)], "worker.py", 24)?;
+        let entity = p.current_work_topology.entities.iter().find(|e| e.display_name.ends_with("double")).ok_or("double")?;
+        let en = entity.behavior.explanation(&entity.display_name, false);
+        let ko = entity.behavior.explanation(&entity.display_name, true);
+        assert!(!en.contains("continuing past the early return"));
+        assert!(!ko.contains("조기 반환을 지나"));
+        assert!(!en.contains("erase"));
+        assert!(!en.contains("When `n < 0` holds, returns `0`"));
+        assert!(en.contains("external effects"));
+    }
+    Ok(())
+}
+
+#[test]
+fn nested_callable_values_and_compound_updates_do_not_invent_processing(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (path, source) in [
+        (
+            "worker.py",
+            "def outer(n):\n    hidden = lambda: erase()\n    n += 2\n    return n\n",
+        ),
+        (
+            "worker.js",
+            "function outer(n) { const hidden = () => erase(); n += 2; return n; }",
+        ),
+        (
+            "lib.rs",
+            "pub fn outer(mut n: i32) -> i32 { let hidden = || erase(); n += 2; n }",
+        ),
+    ] {
+        let (p, _) = build_projection(&[(path, source)], path, 24)?;
+        let entity = p
+            .current_work_topology
+            .entities
+            .iter()
+            .find(|e| e.display_name.ends_with("outer"))
+            .ok_or("outer")?;
+        let en = entity.behavior.explanation(&entity.display_name, false);
+        assert!(!en.contains("erase"), "{en}");
+        assert!(
+            en.contains("updates the assignment target according to `n += 2`"),
+            "{en}"
+        );
+        assert!(!en.contains("evaluates `2` and stores"));
+        assert_eq!(
+            entity.behavior.state,
+            volicord_projections::CodeExplanationState::Partial
+        );
+        assert_eq!(entity.behavior.omitted_count, 1);
+    }
+    Ok(())
+}
+
+#[test]
+fn omitted_branch_context_and_input_only_declarations_cannot_supply_behavior_cases(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = format!(
+        "def double(n):\n{}    if n < 0:\n        return 0\n    return n * 2\n",
+        "    touch()\n".repeat(15)
+    );
+    let (p, _) = build_projection(&[("worker.py", &source)], "worker.py", 24)?;
+    let entity = p
+        .current_work_topology
+        .entities
+        .iter()
+        .find(|e| e.display_name.ends_with("double"))
+        .ok_or("double")?;
+    assert_eq!(entity.behavior.claims.len(), 16);
+    // One condition and two returns were omitted, each exactly once.
+    assert_eq!(entity.behavior.omitted_count, 3);
+    assert_eq!(
+        entity.behavior.state,
+        volicord_projections::CodeExplanationState::Partial
+    );
+    let en = entity.behavior.explanation(&entity.display_name, false);
+    assert!(!en.contains("When `n < 0`"));
+    assert!(!en.contains("continuing past"));
+    assert!(!en.contains("computes `n * 2`"));
+    let (p, _) = build_projection(
+        &[("worker.py", "def placeholder(n):\n    pass\n")],
+        "worker.py",
+        24,
+    )?;
+    let entity = p
+        .current_work_topology
+        .entities
+        .iter()
+        .find(|e| e.kind == CodeEntityKind::Function)
+        .ok_or("placeholder")?;
+    assert_eq!(
+        entity.behavior.state,
+        volicord_projections::CodeExplanationState::Unavailable
+    );
+    assert!(entity
+        .behavior
+        .explanation(&entity.display_name, false)
+        .is_empty());
+    assert!(entity
+        .behavior
+        .limitations
+        .iter()
+        .any(|l| l.contains("input declarations alone")));
     Ok(())
 }
