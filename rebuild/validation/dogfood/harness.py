@@ -15888,6 +15888,11 @@ def self_test() -> int:
         primary_dimension_id = "operator-error-boundary"
         second_dimension_id = "repository-shape-boundary"
         second_prompt = "Which repository-shape boundary should this change preserve?"
+        second_alternatives = [
+            {"key": "bounded", "label": "Bounded shape", "consequence": "Limits the maintained surface"},
+            {"key": "expanded", "label": "Expanded shape", "consequence": "Broadens the maintained surface"},
+        ]
+        second_recommendation = "The bounded shape minimizes unrelated surface."
         response_text = (
             "Keep concise diagnostics and preserve the bounded repository shape."
         )
@@ -15936,12 +15941,9 @@ def self_test() -> int:
                 "established_facts": ["Both bounded and expanded shapes are viable."],
                 "assumptions": [],
                 "uncertainty": ["The preferred maintained scope is user-owned."],
-                "alternatives": [
-                    {"key": "bounded", "label": "Bounded shape", "consequence": "Limits the maintained surface"},
-                    {"key": "expanded", "label": "Expanded shape", "consequence": "Broadens the maintained surface"},
-                ],
+                "alternatives": second_alternatives,
                 "recommendation_key": "bounded",
-                "recommendation_rationale": "The bounded shape minimizes unrelated surface.",
+                "recommendation_rationale": second_recommendation,
                 "trade_offs": ["A narrower shape preserves fewer extension points."],
                 "known_limits": [],
                 "what_unlocks": ["ordinary implementation work"],
@@ -16113,6 +16115,11 @@ def self_test() -> int:
             tables = {
                 table["name"]: table for table in bundle["payload"]["tables"]
             }
+            alternatives = len(second_alternatives).to_bytes(8, "big")
+            for alternative in second_alternatives:
+                for field in ("key", "label", "consequence"):
+                    value = alternative[field].encode("utf-8")
+                    alternatives += len(value).to_bytes(8, "big") + value
             for table_name in (
                 "questions",
                 "question_revisions",
@@ -16137,6 +16144,25 @@ def self_test() -> int:
                     row[columns.index("id")] = {
                         "type": "bytes",
                         "value": second_decision_id,
+                    }
+                    row[columns.index("choice_value")] = {
+                        "type": "text",
+                        "value": "bounded",
+                    }
+                for field in ("alternatives", "displayed_alternatives"):
+                    if field in columns:
+                        row[columns.index(field)] = {
+                            "type": "bytes",
+                            "value": alternatives.hex(),
+                        }
+                if "recommendation_key" in columns:
+                    row[columns.index("recommendation_key")] = {
+                        "type": "text",
+                        "value": "bounded",
+                    }
+                    row[columns.index("recommendation_rationale")] = {
+                        "type": "text",
+                        "value": second_recommendation,
                     }
                 if "root_decision_id" in columns:
                     row[columns.index("root_decision_id")] = {
@@ -16761,6 +16787,26 @@ def self_test() -> int:
         raise AssertionError(
             "valid independent material lifecycles were treated as an early blocker"
         )
+
+    mismatched_independent_choice = independent_two_question_fixture()
+
+    def mismatch_second_choice(bundle: dict[str, Any]) -> None:
+        table = next(table for table in bundle["payload"]["tables"]
+                     if table["name"] == "decisions")
+        for row in table["rows"]:
+            if row[table["columns"].index("id")]["value"] == "23" * 16:
+                row[table["columns"].index("choice_value")] = {
+                    "type": "text", "value": "concise",
+                }
+
+    mutate_bundle(mismatched_independent_choice, mismatch_second_choice)
+    if real_session_evidence(
+        mismatched_independent_choice,
+        kind="volicord",
+        cycle=1,
+        repository_revision=revision,
+    )["checks"]["decision_provenance_when_required"] != "failed":
+        raise AssertionError("a conflicting independent canonical Decision choice qualified")
 
     missing_independent_promotion = independent_two_question_fixture()
     remove_mcp_completion(
