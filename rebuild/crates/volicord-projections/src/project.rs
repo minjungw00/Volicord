@@ -297,7 +297,53 @@ pub(crate) fn select_bounded_topology(
         entity_limit,
         relation_limit,
         include_unresolved,
+        preferred_behavior(entities).map(|entity| entity.identity.as_str()),
     )
+}
+
+pub(crate) fn preferred_behavior(entities: &[MapEntity]) -> Option<&MapEntity> {
+    entities
+        .iter()
+        .filter(|entity| entity.behavior.has_supported_operations())
+        .min_by_key(|entity| {
+            (
+                entity.behavior.state != crate::CodeExplanationState::Current,
+                &entity.identity,
+            )
+        })
+}
+
+// Inspect bounded body payloads only while finding one eligible candidate. Negative
+// Source/analysis/capability evidence is checked before a syntax payload can rank.
+fn preferred_source_behavior<'a>(
+    entities: &[&'a volicord_repository_intelligence::CodeEntity],
+    evidence: &crate::code_behavior::CodeEvidenceIndex<'_>,
+) -> Option<&'a str> {
+    let mut candidates = entities
+        .iter()
+        .copied()
+        .filter(|entity| {
+            matches!(
+                entity.kind,
+                CodeEntityKind::Function | CodeEntityKind::Method
+            ) && matches!(
+                entity.language,
+                Language::Rust | Language::Python | Language::JavaScript | Language::TypeScript
+            )
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|entity| &entity.identity);
+    candidates
+        .into_iter()
+        .find(|entity| {
+            matches!(
+                evidence
+                    .validity(entity.analysis_snapshot, &entity.identity)
+                    .0,
+                crate::CodeExplanationState::Current | crate::CodeExplanationState::Partial
+            ) && crate::CodeBehaviorReading::from_entity(entity).has_supported_operations()
+        })
+        .map(|entity| entity.identity.as_str())
 }
 
 trait EntityView {
@@ -457,6 +503,7 @@ fn select_topology<E: EntityView + Clone, R: RelationView + Clone>(
     entity_limit: usize,
     relation_limit: usize,
     include_unresolved: bool,
+    preferred_entity: Option<&str>,
 ) -> BoundedTopology<E, R> {
     let entity_limit = entity_limit.max(1);
     let entity_by_id = entities
@@ -497,10 +544,19 @@ fn select_topology<E: EntityView + Clone, R: RelationView + Clone>(
         })
         .collect::<Vec<_>>();
     ranked_important_entities.sort_by_key(|(identity, kind_rank)| (*kind_rank, identity.as_str()));
-    let mut selected_entities = ranked_important_entities
+    // One useful body can coexist with a connected pair under ordinary bounds.
+    // Tiny bounds retain the established topology contract without reserving a slot.
+    let preferred_entity =
+        preferred_entity.filter(|id| entity_limit >= 3 && entity_by_id.contains_key(id));
+    let mut selected_entities = preferred_entity
         .into_iter()
+        .map(str::to_owned)
+        .chain(
+            ranked_important_entities
+                .into_iter()
+                .map(|(identity, _)| identity.clone()),
+        )
         .take(entity_limit)
-        .map(|(identity, _)| identity.clone())
         .collect::<BTreeSet<_>>();
     let mut incident = BTreeMap::<&str, Vec<usize>>::new();
     for (index, relation) in candidates.iter().enumerate() {
@@ -596,9 +652,12 @@ fn select_grounded_current_work_topology<E: EntityView + Clone, R: RelationView 
     grounded_seeds: &BTreeSet<String>,
     entity_limit: usize,
     relation_limit: usize,
+    preferred_entity: Option<&str>,
 ) -> BoundedTopology<E, R> {
     let entity_limit = entity_limit.max(1);
     let relation_limit = relation_limit.max(1);
+    let preferred_entity =
+        preferred_entity.filter(|id| entity_limit >= 3 && grounded_seeds.contains(*id));
     let entity_by_id = entities
         .iter()
         .map(|entity| (entity.identity(), entity))
@@ -632,6 +691,10 @@ fn select_grounded_current_work_topology<E: EntityView + Clone, R: RelationView 
             .map(|identity| degree.get(identity).copied().unwrap_or_default())
             .sum::<usize>();
         (
+            Reverse(
+                preferred_entity
+                    .is_some_and(|id| relation_endpoints(*relation).any(|endpoint| endpoint == id)),
+            ),
             relation.rank(),
             usize::from(relation.target().is_none()),
             Reverse(important_endpoint_count),
@@ -648,7 +711,10 @@ fn select_grounded_current_work_topology<E: EntityView + Clone, R: RelationView 
         }
     }
     let relevant_relation_count = relation_candidates.len();
-    let mut selected_ids = BTreeSet::<String>::new();
+    let mut selected_ids = preferred_entity
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
     let mut selected_relations = Vec::<R>::new();
     for relation in relation_candidates {
         if selected_relations.len() == relation_limit {
@@ -1241,7 +1307,7 @@ pub fn build_project_projection(
         selected_entity_relations = related.into_iter().map(materialize_relation).collect();
     }
     let mut current_work_topology =
-        build_current_work_topology(topology_canonical, &graph, limit, &mut issues);
+        build_current_work_topology(topology_canonical, &graph, &evidence, limit, &mut issues);
     let repository_map = build_repository_map(
         reading_canonical,
         analyses,
@@ -1816,6 +1882,7 @@ fn materialize_relation(reference: RelationRef<'_>) -> MapRelation {
 fn build_current_work_topology(
     canonical: &CanonicalReadBasis,
     graph: &ProjectionGraph<'_>,
+    evidence: &crate::code_behavior::CodeEvidenceIndex<'_>,
     limit: usize,
     issues: &mut Vec<ProjectionIssue>,
 ) -> CurrentWorkTopology {
@@ -1825,12 +1892,20 @@ fn build_current_work_topology(
         .filter(|entity| entity_matches_current_work(entity, canonical))
         .map(|entity| entity.identity.clone())
         .collect::<BTreeSet<_>>();
+    let grounded_entities = graph
+        .entities
+        .iter()
+        .copied()
+        .filter(|entity| grounded_seeds.contains(&entity.identity))
+        .collect::<Vec<_>>();
+    let preferred_entity = preferred_source_behavior(&grounded_entities, evidence);
     let selected = select_grounded_current_work_topology(
         &graph.entities,
         &graph.relations,
         &grounded_seeds,
         limit,
         limit,
+        preferred_entity,
     );
     if selected.omitted_entity_count > 0 {
         issues.push(bound_issue(
@@ -1963,6 +2038,7 @@ fn build_repository_map(
             limit,
             limit,
             true,
+            preferred_source_behavior(&entities, evidence),
         );
         if topology.omitted_entity_count > 0 {
             issues.push(bound_issue(

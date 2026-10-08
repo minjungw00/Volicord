@@ -1622,3 +1622,222 @@ fn ordinary_and_exact_code_reads_show_guarded_behavior_before_raw_disclosure(
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }
+
+#[test]
+fn default_repository_code_preserves_eligible_behavior_without_broadening_work(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::{
+        build_project_understanding, CodeExplanationState, UnderstandingBound, WorkSelector,
+    };
+    for include_in_work in [false, true] {
+        let mut scenario: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+        for work in scenario["works"].as_array_mut().ok_or("works")? {
+            work["paths"] = if include_in_work {
+                serde_json::json!(["native/query.c", "available.py"])
+            } else {
+                serde_json::json!(["native/query.c"])
+            };
+        }
+        let f = reading_fixture::fixture_scenario(scenario)?;
+        // Large supported structural topology with no supported body explanations in
+        // the Work. Repository scope also has independent eligible Python behavior.
+        let mut native = String::new();
+        for n in 0..120 {
+            native.push_str(&format!(
+                "int query_{n}(int value) {{ return value + {n}; }}\n"
+            ));
+        }
+        std::fs::write(f.repository.join("native/query.c"), native)?;
+        std::fs::write(
+            f.repository.join("python/worker.py"),
+            "def placeholder(name):\n    pass\n",
+        )?;
+        std::fs::write(
+            f.repository.join("runtime/query_boundary.ts"),
+            "export function placeholder(value: string) {}",
+        )?;
+        std::fs::write(
+            f.repository.join("available.py"),
+            "def double(n):\n    if n < 0:\n        return 0\n    return n * 2\n",
+        )?;
+        let analysis = f
+            .operations
+            .analyze(f.project, Vec::new())?
+            .value
+            .ok_or("analysis")?
+            .analysis;
+        let entity = &analysis
+            .structural_facts
+            .iter()
+            .find(|f| f.entity.display_name.as_deref() == Some("double"))
+            .ok_or("double")?
+            .entity;
+        let (exact_basis, profile) = f.operations.project_projection_detail_profiled(
+            f.project,
+            WorkSelector::Repository,
+            volicord_projections::ProjectionDetail {
+                entity: Some(entity.identity.clone()),
+                ..Default::default()
+            },
+        )?;
+        assert_eq!(profile.analysis_snapshot_decodes, 1);
+        assert_eq!(
+            exact_basis
+                .selected_entity
+                .as_ref()
+                .ok_or("exact entity")?
+                .behavior
+                .state,
+            CodeExplanationState::Current
+        );
+        let p = f
+            .operations
+            .project_projection_selected(f.project, WorkSelector::Repository)?;
+        let u = build_project_understanding(&p, UnderstandingBound::default());
+        println!("BEHAVIOR_BOUNDARY entities={} exact=Current retained_current={} retained_unavailable={} retained_unsupported={}", analysis.structural_facts.len(), p.repository_map.entities.iter().filter(|e| e.behavior.state == CodeExplanationState::Current).count(), p.repository_map.entities.iter().filter(|e| e.behavior.state == CodeExplanationState::Unavailable).count(), p.repository_map.entities.iter().filter(|e| e.behavior.state == CodeExplanationState::Unsupported).count());
+        assert!(analysis.structural_facts.len() > 120);
+        assert!(p.repository_map.entities.len() <= 64);
+        assert!(u.architecture.components.len() <= 24);
+        assert!(
+            p.repository_map
+                .entities
+                .iter()
+                .any(|e| e.identity == entity.identity
+                    && e.behavior.state == CodeExplanationState::Current),
+            "eligible behavior displaced by repository map bound"
+        );
+        assert!(
+            u.architecture
+                .components
+                .iter()
+                .any(|e| e.identity == entity.identity),
+            "eligible behavior displaced by Understanding bound"
+        );
+        assert!(
+            u.deterministic_explanations.iter().any(|e| e.identity
+                == format!("deterministic:component:{}", entity.identity)
+                && e.english.contains("computes `n * 2`")),
+            "behavior explanation displaced by explanation bound"
+        );
+        assert_eq!(
+            p.repository_scope_metadata.omitted_entity_count + p.repository_map.entities.len(),
+            analysis.structural_facts.len()
+        );
+        let relation_ids = analysis
+            .structural_facts
+            .iter()
+            .flat_map(|fact| fact.relations.iter().map(|r| r.identity.as_str()))
+            .chain(
+                analysis
+                    .semantic_results
+                    .iter()
+                    .map(|r| r.relation.identity.as_str()),
+            )
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            p.repository_scope_metadata.omitted_relation_count + p.repository_map.relations.len(),
+            relation_ids.len()
+        );
+
+        assert_eq!(
+            u.omissions
+                .iter()
+                .filter(|o| o.section == "architecture.components")
+                .map(|o| o.omitted_count)
+                .sum::<usize>()
+                + u.architecture.components.len(),
+            analysis.structural_facts.len()
+        );
+        assert!(u.architecture.relationships.iter().all(|r| u
+            .architecture
+            .components
+            .iter()
+            .any(|e| e.identity == r.source_entity)
+            && r.target_entity.as_ref().is_some_and(|target| u
+                .architecture
+                .components
+                .iter()
+                .any(|e| &e.identity == target))));
+        let before = f.operations.canonical_basis(f.project)?;
+        let server = ViewerServer::new(
+            ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+            f.project,
+            ViewerLocale::English,
+            ViewerView::Overview,
+            "en".into(),
+            "127.0.0.1:3219".parse()?,
+        )?;
+        for locale in ["en", "ko"] {
+            let html = exchange(
+                &server,
+                &format!("/?view=code&scope=repository&locale={locale}"),
+            );
+            let ordinary = html
+                .split(&format!("data-code-behavior=\"{}\"", entity.identity))
+                .nth(1)
+                .ok_or("repository behavior inaccessible")?
+                .split("<details>")
+                .next()
+                .ok_or("ordinary prose")?;
+            assert!(ordinary.contains(if locale == "en" {
+                "computes `n * 2` and returns the result"
+            } else {
+                "`n * 2`를 계산하고 결과를 반환"
+            }));
+            let work = exchange(
+                &server,
+                &format!(
+                    "/?view=code&scope=work&work={}&locale={locale}",
+                    f.goals["older"]
+                ),
+            );
+            if include_in_work {
+                let ordinary = work
+                    .split(&format!("data-code-behavior=\"{}\"", entity.identity))
+                    .nth(1)
+                    .ok_or("Work behavior inaccessible")?
+                    .split("<details>")
+                    .next()
+                    .ok_or("Work prose")?;
+                assert!(ordinary.contains(if locale == "en" {
+                    "computes `n * 2` and returns the result"
+                } else {
+                    "`n * 2`를 계산하고 결과를 반환"
+                }));
+            } else {
+                assert!(!work.contains(&format!("data-code-behavior=\"{}\"", entity.identity)));
+                assert!(!work.contains("computes `n * 2`"));
+                assert!(work.contains(if locale == "en" {
+                    "Current behavior cannot be established"
+                } else {
+                    "현재 동작을 확인할 수 없습니다"
+                }));
+            }
+            // Existing supported structural details stay inspectable when bodies are unsupported.
+            assert!(work.contains("native/query.c"));
+            assert!(work.contains("&amp;entity="));
+        }
+        let encoded = entity
+            .identity
+            .bytes()
+            .map(|b| format!("%{b:02X}"))
+            .collect::<String>();
+        let exact = exchange(
+            &server,
+            &format!("/?view=code&scope=repository&entity={encoded}"),
+        );
+        assert!(exact.contains("computes `n * 2` and returns the result"));
+        assert_eq!(before, f.operations.canonical_basis(f.project)?);
+        std::fs::remove_file(f.repository.join("available.py"))?;
+        let unavailable = exchange(&server, "/?view=code&scope=repository");
+        assert!(!unavailable.contains("computes `n * 2` and returns the result"));
+        assert!(!unavailable.contains("data-explanation-state=\"Current\""));
+        f.operations.analyze(f.project, Vec::new())?;
+        let no_body = exchange(&server, "/?view=code&scope=repository");
+        assert!(!no_body.contains("computes `n * 2`"));
+        assert!(!no_body.contains("data-explanation-state=\"Current\""));
+        assert!(no_body.contains("Current behavior cannot be established"));
+        assert!(no_body.contains("&amp;entity="));
+    }
+    Ok(())
+}

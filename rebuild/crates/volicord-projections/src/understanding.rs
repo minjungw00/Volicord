@@ -690,7 +690,17 @@ fn select_current_work_architecture(
         }
     }
 
-    let seed_ids = select_seed_entities(&basis, active_decisions, &entities, limit);
+    let mut seed_ids = select_seed_entities(&basis, active_decisions, &entities, limit);
+    if limit >= 3 {
+        if let Some(preferred) =
+            crate::project::preferred_behavior(&projection.current_work_topology.entities)
+                .filter(|entity| basis.contains_key(&entity.identity))
+        {
+            seed_ids.retain(|id| id != &preferred.identity);
+            seed_ids.insert(0, preferred.identity.clone());
+            seed_ids.truncate(limit);
+        }
+    }
     let mut selected_ids = seed_ids.iter().cloned().collect::<BTreeSet<_>>();
     let mut relation_candidates = projection
         .current_work_topology
@@ -959,7 +969,13 @@ fn deterministic_explanations(
         .map(|decision| decision_explanation(decision, &entities))
         .collect::<Vec<_>>();
 
-    component_explanations.sort_by(|left, right| left.identity.cmp(&right.identity));
+    component_explanations.sort_by_cached_key(|explanation| {
+        let has_behavior = components.iter().any(|entity| {
+            entity.behavior.has_supported_operations()
+                && explanation.identity == format!("deterministic:component:{}", entity.identity)
+        });
+        (Reverse(has_behavior), explanation.identity.clone())
+    });
     relationship_explanations.sort_by(|left, right| {
         (
             left.kind != UnderstandingExplanationKind::Flow,

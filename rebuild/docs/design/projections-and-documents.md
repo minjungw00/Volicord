@@ -1522,3 +1522,18 @@ explanation before raw disclosure, including exact-entity reads and components w
 topology explanation was omitted by the separate explanation bound. Each retained
 claim still carries its exact Source range and owning entity/snapshots; generated
 interpretations and arbitrary requested-language realizations remain separate.
+
+Ordinary bounded code selection gives one eligible retained behavior entity priority
+inside the existing topology selector before Repository Map and Understanding bounds.
+Eligibility checks the same Source, snapshot, inventory, parser and capability basis
+as explanation validity before body syntax can rank. Repository selection can use an
+independent repository entity; Work selection only considers already grounded Work
+seeds, and Understanding preserves their existing selection provenance. Tiny topology
+bounds below three entities retain the established connected-topology selection.
+Relations still require retained real endpoints, exact-entity details still resolve
+from the complete basis, and entity/relation/explanation omissions keep exact counts.
+The separate explanation bound ranks supported body meaning ahead of generic structural
+component descriptions. No bound, resource ceiling, Work authority, graph store or
+read-side provider/source operation is added or widened. With no eligible body, the
+existing entity detail links expose structural evidence and the unavailable/unsupported
+body limitation instead of synthesizing behavior.

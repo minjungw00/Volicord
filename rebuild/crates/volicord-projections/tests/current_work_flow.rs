@@ -2256,3 +2256,100 @@ fn omitted_branch_context_and_input_only_declarations_cannot_supply_behavior_cas
         .any(|l| l.contains("input declarations alone")));
     Ok(())
 }
+
+#[test]
+fn bounded_behavior_priority_checks_source_validity_before_selecting_a_candidate(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_repository_intelligence::{
+        CapabilityState, FreshnessState, BODY_OBSERVATIONS_KEY,
+    };
+    let native = (0..120)
+        .map(|n| format!("int query_{n}(int value) {{ return value + {n}; }}\n"))
+        .collect::<String>();
+    for case in [
+        "stale",
+        "removed",
+        "ambiguous",
+        "failed",
+        "unsupported",
+        "foreign",
+        "bad_control",
+    ] {
+        let (p, _) = build_projection_scenario(
+            &[
+                ("native.c", &native),
+                ("invalid.py", "def invalid(n):\n    return sabotage(n)\n"),
+                ("valid.py", "def offset(n):\n    return n + 2\n"),
+            ],
+            &["native.c", "invalid.py", "valid.py"],
+            &[vec!["native.c", "invalid.py", "valid.py"]],
+            64,
+            |a| {
+                let at = a
+                    .structural_facts
+                    .iter()
+                    .position(|f| f.entity.display_name.as_deref() == Some("invalid"))
+                    .ok_or("invalid")?;
+                match case {
+                    "stale" => {
+                        a.structural_facts[at].entity.freshness.state = FreshnessState::Stale
+                    }
+                    "removed" => a.inventory.entries.retain(|e| e.area.path != "invalid.py"),
+                    "ambiguous" => a.structural_facts.push(a.structural_facts[at].clone()),
+                    "failed" | "unsupported" => {
+                        a.structural_bases
+                            .iter_mut()
+                            .find(|b| b.area.path == "invalid.py")
+                            .ok_or("file basis")?
+                            .state = if case == "failed" {
+                            CapabilityState::Failed
+                        } else {
+                            CapabilityState::Unsupported
+                        }
+                    }
+                    "foreign" => {
+                        a.structural_facts[at].entity.extensions[0].namespace =
+                            "foreign.syntax".into()
+                    }
+                    "bad_control" => {
+                        a.structural_facts[at].entity.extensions[0]
+                            .values
+                            .get_mut(BODY_OBSERVATIONS_KEY)
+                            .ok_or("body")?["observations"][1]["control"] =
+                            serde_json::json!({"conditional": {"condition": 999}})
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(())
+            },
+        )?;
+        let u = build_project_understanding(&p, UnderstandingBound::default());
+        let good = u
+            .architecture
+            .components
+            .iter()
+            .find(|e| e.display_name.ends_with("offset"))
+            .ok_or("valid behavior was omitted")?;
+        assert_eq!(
+            good.behavior.state,
+            volicord_projections::CodeExplanationState::Current,
+            "{case}"
+        );
+        assert!(
+            u.deterministic_explanations.iter().any(|e| e.identity
+                == format!("deterministic:component:{}", good.identity)
+                && e.english
+                    .contains("computes `n + 2` and returns the result")),
+            "{case}"
+        );
+        assert!(
+            !u.deterministic_explanations.iter().any(|e| e
+                .english
+                .contains("returns the result of calling `sabotage(n)`")),
+            "{case}"
+        );
+        assert!(u.architecture.components.len() <= 24);
+        assert!(p.repository_map.entities.len() <= 64);
+    }
+    Ok(())
+}

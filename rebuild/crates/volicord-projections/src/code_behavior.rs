@@ -452,6 +452,21 @@ pub struct CodeBehaviorReading {
 }
 
 impl CodeBehaviorReading {
+    pub(crate) fn has_supported_operations(&self) -> bool {
+        matches!(
+            self.state,
+            CodeExplanationState::Current | CodeExplanationState::Partial
+        ) && self.claims.iter().any(|claim| {
+            matches!(
+                claim.kind,
+                BodyObservationKind::Return
+                    | BodyObservationKind::Call
+                    | BodyObservationKind::Binding
+                    | BodyObservationKind::Assignment
+            )
+        })
+    }
+
     pub fn unavailable() -> Self {
         Self { state: CodeExplanationState::Unavailable, claims: Vec::new(), omitted_count: 0,
             limitations: vec!["No bounded function-body observations were retained; structure alone cannot explain behavior.".into()] }
