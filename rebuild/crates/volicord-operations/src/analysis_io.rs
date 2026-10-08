@@ -110,7 +110,7 @@ pub(crate) fn encode_analysis(
         let unpacked = unpack_blob(&base.packed)?;
         let base_hash = base.hash;
         drop(base.packed);
-        let delta = pack_blob(&encode_delta(&unpacked, &normalized.values))?;
+        let delta = pack_delta(&unpacked, &normalized.values)?;
         if delta.len() < complete_values.len()
             && (complete_values.len() <= SMALL_COMPLETE_VALUES_BYTES
                 || delta.len() < complete_values.len() / 2)
@@ -526,7 +526,7 @@ fn unpack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(output)
 }
 
-fn encode_delta(base: &[u8], current: &[u8]) -> Vec<u8> {
+fn delta_operations(base: &[u8], current: &[u8]) -> Vec<DeltaOperation> {
     let mut base_chunks = HashMap::<[u8; 32], Range<usize>>::new();
     for range in content_defined_ranges(base) {
         let hash = Sha256::digest(&base[range.clone()]).into();
@@ -558,10 +558,11 @@ fn encode_delta(base: &[u8], current: &[u8]) -> Vec<u8> {
             }
         }
     }
-    // Literal operations refer to the existing current stream. Copying each
-    // literal before writing the final delta duplicates almost the whole stream
-    // when most source-bound identities changed between observations.
-    let output_length = VALUES_DELTA_MAGIC.len()
+    operations
+}
+
+fn delta_length(operations: &[DeltaOperation]) -> usize {
+    VALUES_DELTA_MAGIC.len()
         + 16
         + operations
             .iter()
@@ -569,26 +570,68 @@ fn encode_delta(base: &[u8], current: &[u8]) -> Vec<u8> {
                 DeltaOperation::Copy { .. } => 17,
                 DeltaOperation::Literal(range) => 9 + range.len(),
             })
-            .sum::<usize>();
-    let mut output = Vec::with_capacity(output_length);
-    output.extend_from_slice(VALUES_DELTA_MAGIC);
-    put_u64(&mut output, current.len() as u64);
-    put_u64(&mut output, operations.len() as u64);
+            .sum::<usize>()
+}
+
+fn write_delta(
+    output: &mut impl Write,
+    current: &[u8],
+    operations: &[DeltaOperation],
+) -> std::io::Result<()> {
+    output.write_all(VALUES_DELTA_MAGIC)?;
+    output.write_all(&(current.len() as u64).to_le_bytes())?;
+    output.write_all(&(operations.len() as u64).to_le_bytes())?;
     for operation in operations {
         match operation {
             DeltaOperation::Copy { offset, length } => {
-                output.push(0);
-                put_u64(&mut output, offset as u64);
-                put_u64(&mut output, length as u64);
+                output.write_all(&[0])?;
+                output.write_all(&(*offset as u64).to_le_bytes())?;
+                output.write_all(&(*length as u64).to_le_bytes())?;
             }
             DeltaOperation::Literal(range) => {
-                output.push(1);
-                put_u64(&mut output, range.len() as u64);
-                output.extend_from_slice(&current[range]);
+                output.write_all(&[1])?;
+                output.write_all(&(range.len() as u64).to_le_bytes())?;
+                output.write_all(&current[range.clone()])?;
             }
         }
     }
-    output
+    Ok(())
+}
+
+fn pack_delta(base: &[u8], current: &[u8]) -> Result<Vec<u8>, Error> {
+    let operations = delta_operations(base, current);
+    let length = delta_length(&operations);
+    let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 1)
+        .map_err(|error| Error::with_source("cannot compress Analysis delta", error))?;
+    // Emit directly into compression instead of allocating the entire decoded
+    // delta alongside the baseline, current graph and both value streams.
+    write_delta(&mut encoder, current, &operations)
+        .map_err(|error| Error::with_source("cannot encode Analysis delta", error))?;
+    let compressed = encoder
+        .finish()
+        .map_err(|error| Error::with_source("cannot finish Analysis delta compression", error))?;
+    if BLOB_ZSTD_MAGIC.len() + 8 + compressed.len() < BLOB_RAW_MAGIC.len() + length {
+        let mut output = Vec::with_capacity(BLOB_ZSTD_MAGIC.len() + 8 + compressed.len());
+        output.extend_from_slice(BLOB_ZSTD_MAGIC);
+        put_u64(&mut output, length as u64);
+        output.extend_from_slice(&compressed);
+        return Ok(output);
+    }
+    drop(compressed);
+    let mut output = Vec::with_capacity(BLOB_RAW_MAGIC.len() + length);
+    output.extend_from_slice(BLOB_RAW_MAGIC);
+    write_delta(&mut output, current, &operations)
+        .map_err(|error| Error::with_source("cannot encode raw Analysis delta", error))?;
+    Ok(output)
+}
+
+#[cfg(test)]
+fn encode_delta(base: &[u8], current: &[u8]) -> Result<Vec<u8>, Error> {
+    let operations = delta_operations(base, current);
+    let mut output = Vec::with_capacity(delta_length(&operations));
+    write_delta(&mut output, current, &operations)
+        .map_err(|error| Error::with_source("cannot encode test Analysis delta", error))?;
+    Ok(output)
 }
 
 fn apply_delta(base: &[u8], delta: &[u8]) -> Result<Vec<u8>, Error> {
@@ -1349,9 +1392,40 @@ mod tests {
     }
 
     #[test]
+    fn streamed_delta_matches_retained_raw_and_compressed_bytes() -> Result<(), Error> {
+        let mut state = 1_u64;
+        let noisy = (0..64 * 1024)
+            .map(|_| {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                (state >> 56) as u8
+            })
+            .collect::<Vec<_>>();
+        let mut raw_seen = false;
+        let mut compressed_seen = false;
+        for current in [Vec::new(), noisy, vec![b'x'; 128 * 1024]] {
+            let plain = encode_delta(&[], &current)?;
+            let packed = pack_delta(&[], &current)?;
+            assert_eq!(packed, pack_blob(&plain)?);
+            assert_eq!(unpack_blob(&packed)?, plain);
+            assert_eq!(apply_delta(&[], &plain)?, current);
+            raw_seen |= packed.starts_with(BLOB_RAW_MAGIC);
+            compressed_seen |= packed.starts_with(BLOB_ZSTD_MAGIC);
+        }
+        assert!(raw_seen && compressed_seen);
+        let base = vec![b's'; CHUNK_MAX_BYTES * 4];
+        let mut current = base.clone();
+        current.splice(17_777..17_777, b"changed-source".iter().copied());
+        assert_eq!(
+            pack_delta(&base, &current)?,
+            pack_blob(&encode_delta(&base, &current)?)?
+        );
+        Ok(())
+    }
+
+    #[test]
     fn delta_literals_coalesce_without_changing_wire_bytes() -> Result<(), Error> {
         let current = vec![b'x'; CHUNK_MAX_BYTES * 3 + 17];
-        let delta = encode_delta(&[], &current);
+        let delta = encode_delta(&[], &current)?;
         let mut expected = VALUES_DELTA_MAGIC.to_vec();
         put_u64(&mut expected, current.len() as u64);
         put_u64(&mut expected, 1);
@@ -1382,7 +1456,7 @@ mod tests {
         current.splice(71_111..71_111, b"[$,$,$,$]".iter().copied());
         current.splice(181_000..181_021, b"{[$]}".iter().copied());
 
-        let delta = encode_delta(&base, &current);
+        let delta = encode_delta(&base, &current)?;
         assert_eq!(apply_delta(&base, &delta)?, current);
         assert!(
             delta.len() * 3 < current.len(),
@@ -1461,7 +1535,7 @@ mod tests {
             .map_err(|error| Error::with_source("cannot encode current test value", error))?;
         let current = current_writer.finish()?.values;
 
-        let delta = encode_delta(&base, &current);
+        let delta = encode_delta(&base, &current)?;
         assert_eq!(apply_delta(&base, &delta)?, current);
         assert!(
             delta.len() * 4 < current.len(),

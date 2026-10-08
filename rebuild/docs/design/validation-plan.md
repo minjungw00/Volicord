@@ -1332,6 +1332,9 @@ Analysis publication은 shape header를 기존 allocation 안에서 완성하고
 Value base는 normalization 동안 packed 상태로 유지하고 delta 계산 때 펼친다.
 Blob decoder는 envelope의 decoded length만큼 할당하고 실제 길이와 EOF를 검증한다.
 Symbol 목록과 lookup은 동일한 immutable bytes를 공유하며 first-seen index를 유지한다.
+Delta publication은 operation/range metadata만 모은 뒤 같은 wire bytes를 compressor에
+직접 쓴다. Raw fallback만 decoded delta를 할당하며, 두 표현의 exact bytes와
+round-trip을 `streamed_delta_matches_retained_raw_and_compressed_bytes`로 검증한다.
 `analysis_io`의 exact shape/value/literal wire-byte, round-trip과 corruption controls는
 이 메모리 최적화가 storage format, identity, provenance나 integrity 판정을 바꾸지
 않는지 검증한다. 보존된 대형 Snapshot의 읽기 전용 encoding 비교는 supporting
