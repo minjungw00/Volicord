@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import answer_projection as a
 from answer_observations_self_test import AnswerTests
@@ -42,6 +43,71 @@ def rehash_package(root, entry_id, data):
 
 
 class MeaningTests(unittest.TestCase):
+    def test_retention_status_and_checkpoint_course_survive_copied_lifecycle(self):
+        preparation, response, record, after = lifecycle()
+        course = {'goal': 'Preserve the bounded repository shape', 'kind': 'Completed',
+            'next_step': 'Inspect the result', 'observed_at': 100,
+            'open_questions': [{'identity': '09' * 16, 'revision': 2}],
+            'forgotten_source_count': 1}
+        for status in (preparation['plan']['source_status'][0],
+                       record['explanation']['source_status'][0]):
+            status['body'] = 'policy_withheld'
+        preparation['plan']['source_status'][0]['observation'] = 'Excluded Source observation prose'
+        preparation['plan']['retention_budget']['metadata_byte_reserve'] = e.retention_metadata_bytes(preparation['plan'])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); c.write_json(c.inventory_path(root), c.load_inventory(root))
+            with patch('explanation_evidence_self_test.lifecycle',
+                       return_value=(preparation, response, record, after)):
+                directory = publish_fixture(root, extra_evidence=[{
+                    'key': 'course:09', 'record_kind': 'checkpoint', 'identity': '09' * 16,
+                    'revision': 2, 'field': 'goal,kind,next_step,open_questions',
+                    'sources': ['03' * 16], 'content': course}])
+            data, metadata = r.project(root, directory / 'preparation.json', evidence_set_sha256='b' * 64)
+            self.assertTrue(metadata['semantic_complete'])
+            value = r.validate(data)
+            plan = value['stages']['plan']['value']['value']['plan']
+            self.assertEqual(plan['evidence'][1]['content'], course)
+            self.assertEqual(plan['source_status'][0]['body'], 'policy_withheld')
+            self.assertNotIn(b'Excluded Source observation prose', data)
+            self.assertEqual(value['private_artifacts']['record'],
+                e.binding(c.json_bytes(value['stages']['record']['value']['value'])))
+        self.assertTrue(r.validate(data)['semantic_complete'])
+
+    def test_canonical_detail_coordinates_preserve_types_and_unknown_limits(self):
+        coordinates = {'tool': 'canonical_inspect', 'record_kind': 'checkpoint',
+            'record_id': '09' * 16, 'revision': 2, 'field': 'verification'}
+        reading_coordinates = {**coordinates, 'field': 'next_step'}
+        state = {'checkpoint_id': '09' * 16, 'checkpoint_revision': 2,
+            'work_state': 'completed', 'observed_at_unix_micros': 100,
+            'work_source_basis': ['03' * 16], 'verification': [],
+            'user_review': {'state': 'not_requested'}, 'user_acceptance': {'state': 'not_requested'},
+            'later_changed_checkpoint_ids': [], 'detail_inspection': coordinates}
+        reading = {'availability': 'available', 'original_text': 'Inspect the result',
+            'representation': 'original_quotation', 'display_english': 'Inspect the result',
+            'display_korean': 'Inspect the result', 'original_language_preserved': True,
+            'omitted_characters': 0, 'omitted_utf8_bytes': 0, 'gaps': [],
+            'detail_inspection': reading_coordinates,
+            'basis': {'record_kind': 'checkpoint', 'identity': '09' * 16, 'revision': 2,
+                'field': 'next_step', 'source_ids': ['03' * 16], 'source_status': [],
+                'available_revisions': [1, 2], 'analysis_snapshot_ids': [], 'repository_snapshot_ids': []}}
+        self.answer['selected_work']['evidence'] = {'goal': reading, 'next_step': reading,
+            'result': None, 'result_observed_at': None, 'original_changes': [], 'states': [state],
+            'latest_state': state, 'verification': state, 'review': state, 'acceptance': state,
+            'analysis_snapshot_ids': [], 'repository_snapshot_ids': [], 'source_status': [],
+            'code_availability': 'unavailable'}
+        data, metadata = self.capture()
+        self.assertTrue(metadata['semantic_complete'])
+        record = next(r for r in review_captures.validate(data)['records'] if r.get('operation') == 'recall')
+        selected = record['body']['value']['returned_meaning']
+        self.assertTrue(selected['semantic_complete'])
+        self.assertEqual(selected['value']['selected_work']['evidence']['goal']['detail_inspection'], reading_coordinates)
+        pointers, _ = ops.locators(data)
+        self.assertTrue(any(p['value'].endswith('/states/0/detail_inspection/record_id') for p in pointers))
+        for field, value in (('revision', 'wrong-type'), ('unregistered_field', 'unknown')):
+            malformed = copy.deepcopy(self.answer)
+            malformed['selected_work']['evidence']['states'][0]['detail_inspection'][field] = value
+            self.assertFalse(a.project(malformed, 'recall')['semantic_complete'])
+
     def test_complete_recorded_detail_preserves_schema_gap_without_filling_missing_semantics(self):
         self.answer['selected_work']['authored_additional_fact'] = 'Actual bounded retained fact.'
         data, metadata = self.capture()

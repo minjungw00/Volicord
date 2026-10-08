@@ -387,6 +387,9 @@ provenance: subject, language, fingerprint, generation time, generator claims, r
 Sources/snapshots and conflicts. Status/Decision CLI reads preserve corresponding typed rows.
 Plans retain typed canonical evidence content and subject/language; records retain the accepted
 realization and basis. No Work-specific MCP tool is assumed.
+Source status retains the returned body-retention label (not the Source observation prose).
+Reading and state observations retain typed `canonical_inspect` coordinates, and Checkpoint
+course evidence retains kind, Goal, next step, open Question revisions and forgotten-Source count.
 
 Language comes from the request and generated provenance; `QuestionAnswers` has no language
 member. Missing required fields become `_semantic_omission = transport_omission`; unsupported

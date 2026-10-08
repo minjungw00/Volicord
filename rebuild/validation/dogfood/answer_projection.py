@@ -26,7 +26,7 @@ S, I, B = str, int, bool
 PRINCIPAL = {'kind': S, 'identity': S}
 STATUS = {k: optional(t) for k, t in {
     'source_id': S, 'identity': S, 'availability': S, 'freshness': S,
-    'snapshot_basis': S, 'snapshot': S, 'immutable': B, 'recorded_at': I,
+    'snapshot_basis': S, 'snapshot': S, 'immutable': B, 'body': S, 'recorded_at': I,
     'recorded_at_unix_micros': I, 'actor': ('union', S, PRINCIPAL),
     'observer': ('union', S, PRINCIPAL)}.items()}
 SUBJECT = {'kind': S, 'identity': [I]}
@@ -41,7 +41,8 @@ CONTENT = {k: optional(t) for k, t in {
     'consequence': S, 'key': S, 'label': S, 'assumptions': [S], 'components': [S],
     'paths': [S], 'source_ids': [S], 'reported_change': S,
     'review_basis': [S], 'revisit_triggers': [S], 'scope': S,
-    'work_contexts': [S]}.items()}
+    'work_contexts': [S], 'kind': S, 'goal': S, 'next_step': S,
+    'open_questions': [{'identity': S, 'revision': I}], 'forgotten_source_count': I}.items()}
 EVIDENCE = {'key': S, 'record_kind': S, 'identity': S, 'revision': I,
     'field': S, 'sources': [S], 'content': nullable(('union', S, CONTENT, [CONTENT]))}
 CONFLICT = {'from': ('union', S, SUBJECT, [I]), 'relation': S, 'to': ('union', S, SUBJECT, [I])}
@@ -57,12 +58,15 @@ ANSWERS = {'facts': [CLAIM], 'prose': [CLAIM], 'explanation_state': S,
 BASIS = {'record_kind': S, 'identity': S, 'revision': I, 'field': S,
     'source_ids': [S], 'source_status': [STATUS], 'available_revisions': [I],
     'analysis_snapshot_ids': [S], 'repository_snapshot_ids': [S]}
+DETAIL_INSPECTION = {'tool': S, 'record_kind': S, 'record_id': S, 'revision': I, 'field': S}
 READING = {'availability': S, 'basis': BASIS, 'original_text': nullable(S),
     'representation': S, 'display_english': S, 'display_korean': S,
-    'original_language_preserved': B, 'omitted_characters': I, 'omitted_utf8_bytes': I, 'gaps': [S]}
+    'original_language_preserved': B, 'omitted_characters': I, 'omitted_utf8_bytes': I, 'gaps': [S],
+    'detail_inspection': optional(DETAIL_INSPECTION)}
 STATE = {'checkpoint_id': S, 'checkpoint_revision': I, 'work_state': S,
     'observed_at_unix_micros': I, 'work_source_basis': [S], 'verification': [VERIFICATION],
-    'user_review': REVIEW, 'user_acceptance': REVIEW, 'later_changed_checkpoint_ids': [S]}
+    'user_review': REVIEW, 'user_acceptance': REVIEW, 'later_changed_checkpoint_ids': [S],
+    'detail_inspection': optional(DETAIL_INSPECTION)}
 WORK_EVIDENCE = {'goal': READING, 'next_step': READING, 'result': nullable(READING),
     'result_observed_at': nullable(I), 'original_changes': [READING], 'states': [STATE],
     'latest_state': nullable(STATE), 'verification': nullable(STATE), 'review': nullable(STATE), 'acceptance': nullable(STATE),
