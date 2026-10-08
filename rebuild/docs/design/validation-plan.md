@@ -1326,6 +1326,17 @@ snapshot을 재직렬화한 측정은 진단일 뿐이며 fresh clean-HEAD gate�
 qualification을 대체하지 않는다. 기존 V11 한도, observer, workload와 history
 retention 조건은 그대로 적용한다.
 
+Analysis publication은 shape header를 기존 allocation 안에서 완성하고 value/delta의
+최종 길이를 미리 계산한다. Delta literal은 current value stream의 범위를 참조하다
+최종 출력 때 한 번만 복사하며, raw blob은 압축 표현보다 작을 때만 할당한다.
+Value base는 normalization 동안 packed 상태로 유지하고 delta 계산 때 펼친다.
+Blob decoder는 envelope의 decoded length만큼 할당하고 실제 길이와 EOF를 검증한다.
+Symbol 목록과 lookup은 동일한 immutable bytes를 공유하며 first-seen index를 유지한다.
+`analysis_io`의 exact shape/value/literal wire-byte, round-trip과 corruption controls는
+이 메모리 최적화가 storage format, identity, provenance나 integrity 판정을 바꾸지
+않는지 검증한다. 보존된 대형 Snapshot의 읽기 전용 encoding 비교는 supporting
+measurement이며 새 clean-HEAD gate의 resource qualification을 대체하지 않는다.
+
 ### Phase 8 naturalistic Dogfood qualification
 
 Phase 8 is a fresh real-session campaign for one exact clean Product candidate.

@@ -8,6 +8,7 @@ use std::{
     io::{BufReader, Read, Write},
     ops::Range,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 use volicord_context::ProjectId;
 use volicord_repository_intelligence::{
@@ -65,6 +66,11 @@ pub(crate) struct EncodedAnalysis {
     pub metadata_hash: String,
 }
 
+pub(crate) struct PackedAnalysisValues {
+    hash: String,
+    packed: Vec<u8>,
+}
+
 pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
     let file = File::open(path)
         .map_err(|error| Error::with_source("cannot open Analysis Snapshot", error))?;
@@ -81,10 +87,10 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T
 
 pub(crate) fn encode_analysis(
     analysis: &AnalysisSnapshot,
-    base_values: Option<(String, Vec<u8>)>,
+    base_values: Option<PackedAnalysisValues>,
 ) -> Result<EncodedAnalysis, Error> {
     let mut encoder = match &base_values {
-        Some((_, base)) => NormalizingWriter::with_base_symbols(base)?,
+        Some(base) => NormalizingWriter::with_base_symbols(&unpack_blob(&base.packed)?)?,
         None => NormalizingWriter::default(),
     };
     serde_json::to_writer(&mut encoder, analysis)
@@ -98,8 +104,13 @@ pub(crate) fn encode_analysis(
         })
         .collect::<Result<Vec<_>, Error>>()?;
     let complete_values = pack_blob(&normalized.values)?;
-    let (values, values_base_blob) = if let Some((base_hash, base)) = base_values {
-        let delta = pack_blob(&encode_delta(&base, &normalized.values))?;
+    let (values, values_base_blob) = if let Some(base) = base_values {
+        // Normalization only needs the base symbols. Keep the full reference
+        // stream packed until delta generation, after encoder scratch is gone.
+        let unpacked = unpack_blob(&base.packed)?;
+        let base_hash = base.hash;
+        drop(base.packed);
+        let delta = pack_blob(&encode_delta(&unpacked, &normalized.values))?;
         if delta.len() < complete_values.len()
             && (complete_values.len() <= SMALL_COMPLETE_VALUES_BYTES
                 || delta.len() < complete_values.len() / 2)
@@ -418,7 +429,7 @@ pub(crate) fn digest_file(path: &Path) -> Result<String, Error> {
 
 pub(crate) fn reusable_base_values(
     project_directory: &Path,
-) -> Result<Option<(String, Vec<u8>)>, Error> {
+) -> Result<Option<PackedAnalysisValues>, Error> {
     if !project_directory.exists() {
         return Ok(None);
     }
@@ -452,10 +463,13 @@ pub(crate) fn reusable_base_values(
         else {
             continue;
         };
-        let Ok(values) = unpack_blob(&bytes) else {
+        if unpack_blob(&bytes).is_err() {
             continue;
-        };
-        return Ok(Some((values_hash, values)));
+        }
+        return Ok(Some(PackedAnalysisValues {
+            hash: values_hash,
+            packed: bytes,
+        }));
     }
     Ok(None)
 }
@@ -467,18 +481,20 @@ fn pack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
 fn pack_blob_at_level(input: &[u8], level: i32) -> Result<Vec<u8>, Error> {
     let compressed = zstd::stream::encode_all(input, level)
         .map_err(|error| Error::with_source("cannot compress Analysis blob", error))?;
-    let mut packed = Vec::with_capacity(BLOB_ZSTD_MAGIC.len() + 8 + compressed.len());
-    packed.extend_from_slice(BLOB_ZSTD_MAGIC);
-    put_u64(&mut packed, input.len() as u64);
-    packed.extend_from_slice(&compressed);
+    if BLOB_ZSTD_MAGIC.len() + 8 + compressed.len() < BLOB_RAW_MAGIC.len() + input.len() {
+        let mut packed = Vec::with_capacity(BLOB_ZSTD_MAGIC.len() + 8 + compressed.len());
+        packed.extend_from_slice(BLOB_ZSTD_MAGIC);
+        put_u64(&mut packed, input.len() as u64);
+        packed.extend_from_slice(&compressed);
+        return Ok(packed);
+    }
+    // Large value streams normally compress. Do not allocate their full raw
+    // copy merely to compare lengths; release the rejected representation first.
+    drop(compressed);
     let mut raw = Vec::with_capacity(BLOB_RAW_MAGIC.len() + input.len());
     raw.extend_from_slice(BLOB_RAW_MAGIC);
     raw.extend_from_slice(input);
-    if packed.len() < raw.len() {
-        Ok(packed)
-    } else {
-        Ok(raw)
-    }
+    Ok(raw)
 }
 
 fn unpack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
@@ -488,9 +504,23 @@ fn unpack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
     let mut at = expect_magic(input, BLOB_ZSTD_MAGIC)?;
     let expected = usize::try_from(take_u64(input, &mut at)?)
         .map_err(|_| Error::new("Analysis packed blob length is unsupported"))?;
-    let output = zstd::stream::decode_all(&input[at..])
+    let mut decoder = zstd::stream::read::Decoder::new(&input[at..])
         .map_err(|error| Error::with_source("cannot decompress Analysis blob", error))?;
-    if output.len() != expected {
+    let mut output = Vec::new();
+    output
+        .try_reserve_exact(expected)
+        .map_err(|error| Error::with_source("cannot allocate unpacked Analysis blob", error))?;
+    // The verified envelope states the decoded length. Avoid geometric growth
+    // of a hundreds-of-megabytes base, while still consuming and validating EOF.
+    decoder
+        .by_ref()
+        .take(expected as u64)
+        .read_to_end(&mut output)
+        .map_err(|error| Error::with_source("cannot decompress Analysis blob", error))?;
+    let trailing = decoder
+        .read(&mut [0_u8; 1])
+        .map_err(|error| Error::with_source("cannot decompress Analysis blob", error))?;
+    if output.len() != expected || trailing != 0 {
         return Err(Error::new("Analysis packed blob length is corrupt"));
     }
     Ok(output)
@@ -523,12 +553,25 @@ fn encode_delta(base: &[u8], current: &[u8]) -> Vec<u8> {
             }
         } else {
             match operations.last_mut() {
-                Some(DeltaOperation::Literal(value)) => value.extend_from_slice(bytes),
-                _ => operations.push(DeltaOperation::Literal(bytes.to_vec())),
+                Some(DeltaOperation::Literal(value)) => value.end = range.end,
+                _ => operations.push(DeltaOperation::Literal(range)),
             }
         }
     }
-    let mut output = VALUES_DELTA_MAGIC.to_vec();
+    // Literal operations refer to the existing current stream. Copying each
+    // literal before writing the final delta duplicates almost the whole stream
+    // when most source-bound identities changed between observations.
+    let output_length = VALUES_DELTA_MAGIC.len()
+        + 16
+        + operations
+            .iter()
+            .map(|operation| match operation {
+                DeltaOperation::Copy { .. } => 17,
+                DeltaOperation::Literal(range) => 9 + range.len(),
+            })
+            .sum::<usize>();
+    let mut output = Vec::with_capacity(output_length);
+    output.extend_from_slice(VALUES_DELTA_MAGIC);
     put_u64(&mut output, current.len() as u64);
     put_u64(&mut output, operations.len() as u64);
     for operation in operations {
@@ -538,10 +581,10 @@ fn encode_delta(base: &[u8], current: &[u8]) -> Vec<u8> {
                 put_u64(&mut output, offset as u64);
                 put_u64(&mut output, length as u64);
             }
-            DeltaOperation::Literal(bytes) => {
+            DeltaOperation::Literal(range) => {
                 output.push(1);
-                put_u64(&mut output, bytes.len() as u64);
-                output.extend_from_slice(&bytes);
+                put_u64(&mut output, range.len() as u64);
+                output.extend_from_slice(&current[range]);
             }
         }
     }
@@ -624,7 +667,7 @@ fn chunk_byte_hash(byte: u8) -> u64 {
 
 enum DeltaOperation {
     Copy { offset: usize, length: usize },
-    Literal(Vec<u8>),
+    Literal(Range<usize>),
 }
 
 impl AnalysisHeader {
@@ -652,8 +695,8 @@ impl AnalysisHeader {
 #[derive(Default)]
 struct NormalizingWriter {
     shape: Vec<u8>,
-    symbols: Vec<Vec<u8>>,
-    symbol_index: HashMap<Vec<u8>, u32>,
+    symbols: Vec<Rc<[u8]>>,
+    symbol_index: HashMap<Rc<[u8]>, u32>,
     references: Vec<u32>,
     token: Vec<u8>,
     in_string: bool,
@@ -717,8 +760,11 @@ impl NormalizingWriter {
                 .checked_add(length)
                 .filter(|end| *end <= values.len())
                 .ok_or_else(|| Error::new("Analysis base symbol is truncated"))?;
-            let symbol = values[at..end].to_vec();
-            if symbol_index.insert(symbol.clone(), index as u32).is_some() {
+            let symbol = Rc::<[u8]>::from(&values[at..end]);
+            if symbol_index
+                .insert(Rc::clone(&symbol), index as u32)
+                .is_some()
+            {
                 return Err(Error::new("Analysis base contains duplicate symbols"));
             }
             symbols.push(symbol);
@@ -739,12 +785,13 @@ impl NormalizingWriter {
     }
 
     fn finish_scalar(&mut self) -> std::io::Result<()> {
-        let index = if let Some(index) = self.symbol_index.get(&self.token) {
+        let index = if let Some(index) = self.symbol_index.get(self.token.as_slice()) {
             *index
         } else {
             let index = u32::try_from(self.symbols.len()).map_err(std::io::Error::other)?;
-            self.symbol_index.insert(self.token.clone(), index);
-            self.symbols.push(self.token.clone());
+            let symbol = Rc::<[u8]>::from(self.token.as_slice());
+            self.symbol_index.insert(Rc::clone(&symbol), index);
+            self.symbols.push(symbol);
             index
         };
         // Repeated field names and values dominate large graphs. Keep the
@@ -764,24 +811,49 @@ impl NormalizingWriter {
             self.finish_scalar()
                 .map_err(|error| Error::with_source("cannot finish Analysis scalar", error))?;
         }
-        let mut shape = SHAPE_MAGIC.to_vec();
-        put_u64(&mut shape, self.shape.len() as u64);
-        shape.extend_from_slice(&self.shape);
-        let mut values = VALUES_MAGIC.to_vec();
+        // Finish in the existing shape allocation and reserve the exact value
+        // stream length. Holding copied shapes or a geometrically grown values
+        // buffer alongside baseline/current graphs raises long-lived MCP peaks.
+        drop(self.symbol_index);
+        let scalar_count = self.references.len() as u64;
+        let shape_length = self.shape.len();
+        let header_length = SHAPE_MAGIC.len() + 8;
+        let mut shape = self.shape;
+        shape
+            .try_reserve_exact(header_length)
+            .map_err(|error| Error::with_source("cannot allocate Analysis shape header", error))?;
+        shape.resize(shape_length + header_length, 0);
+        shape.copy_within(..shape_length, header_length);
+        shape[..SHAPE_MAGIC.len()].copy_from_slice(SHAPE_MAGIC);
+        shape[SHAPE_MAGIC.len()..header_length]
+            .copy_from_slice(&(shape_length as u64).to_le_bytes());
+        let value_length = self
+            .symbols
+            .iter()
+            .try_fold(VALUES_MAGIC.len() + 16, |length, symbol| {
+                length.checked_add(8)?.checked_add(symbol.len())
+            })
+            .and_then(|length| length.checked_add(self.references.len().checked_mul(4)?))
+            .ok_or_else(|| Error::new("Analysis value stream length is unsupported"))?;
+        let mut values = Vec::new();
+        values
+            .try_reserve_exact(value_length)
+            .map_err(|error| Error::with_source("cannot allocate Analysis value stream", error))?;
+        values.extend_from_slice(VALUES_MAGIC);
         put_u64(&mut values, self.symbols.len() as u64);
         for symbol in self.symbols {
             put_u64(&mut values, symbol.len() as u64);
             values.extend_from_slice(&symbol);
         }
         put_u64(&mut values, self.references.len() as u64);
-        for reference in &self.references {
+        for reference in self.references {
             values.extend_from_slice(&reference.to_le_bytes());
         }
         Ok(Normalized {
             shape,
             values,
             logical_bytes: self.logical_bytes,
-            scalar_count: self.references.len() as u64,
+            scalar_count,
         })
     }
 }
@@ -928,6 +1000,32 @@ mod tests {
     use serde::ser::SerializeSeq;
     use serde_json::json;
     use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn packed_blobs_preserve_both_formats_and_reject_corrupt_lengths() -> Result<(), Error> {
+        for input in [b"".as_slice(), b"x"] {
+            let packed = pack_blob(input)?;
+            let mut expected = BLOB_RAW_MAGIC.to_vec();
+            expected.extend_from_slice(input);
+            assert_eq!(packed, expected);
+            assert_eq!(unpack_blob(&packed)?, input);
+        }
+        let input = vec![b'x'; 64 * 1024];
+        let packed = pack_blob(&input)?;
+        assert!(packed.starts_with(BLOB_ZSTD_MAGIC));
+        assert_eq!(unpack_blob(&packed)?, input);
+        assert_eq!(pack_blob(&input)?, packed);
+        let mut wrong_length = packed.clone();
+        wrong_length[BLOB_ZSTD_MAGIC.len()..BLOB_ZSTD_MAGIC.len() + 8]
+            .copy_from_slice(&(input.len() as u64 + 1).to_le_bytes());
+        assert!(unpack_blob(&wrong_length).is_err());
+        let mut short_length = packed.clone();
+        short_length[BLOB_ZSTD_MAGIC.len()..BLOB_ZSTD_MAGIC.len() + 8]
+            .copy_from_slice(&(input.len() as u64 - 1).to_le_bytes());
+        assert!(unpack_blob(&short_length).is_err());
+        assert!(unpack_blob(&packed[..packed.len() - 1]).is_err());
+        Ok(())
+    }
 
     struct StreamingValue {
         count: u32,
@@ -1112,7 +1210,13 @@ mod tests {
         for index in [0_u32, 1, 0, 2, 3, 2, 4, 4, 5, 5] {
             expected_values.extend_from_slice(&index.to_le_bytes());
         }
-        assert_eq!(scalar_writer.finish()?.values, expected_values);
+        let normalized = scalar_writer.finish()?;
+        let shape_tokens = b"[$,$,$,$,$,$,$,$,$,$]";
+        let mut expected_shape = SHAPE_MAGIC.to_vec();
+        put_u64(&mut expected_shape, shape_tokens.len() as u64);
+        expected_shape.extend_from_slice(shape_tokens);
+        assert_eq!(normalized.shape, expected_shape);
+        assert_eq!(normalized.values, expected_values);
 
         let value = json!({
             "escaped": ["quote\"slash\\line\n", "한글 λ", "quote\"slash\\line\n"],
@@ -1241,6 +1345,25 @@ mod tests {
             normalized.scalar_count,
         )?;
         assert!(missing_reference.read_to_end(&mut Vec::new()).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn delta_literals_coalesce_without_changing_wire_bytes() -> Result<(), Error> {
+        let current = vec![b'x'; CHUNK_MAX_BYTES * 3 + 17];
+        let delta = encode_delta(&[], &current);
+        let mut expected = VALUES_DELTA_MAGIC.to_vec();
+        put_u64(&mut expected, current.len() as u64);
+        put_u64(&mut expected, 1);
+        expected.push(1);
+        put_u64(&mut expected, current.len() as u64);
+        expected.extend_from_slice(&current);
+        assert_eq!(delta, expected);
+        assert_eq!(apply_delta(&[], &delta)?, current);
+        assert!(apply_delta(&[], &delta[..delta.len() - 1]).is_err());
+        let mut invalid_kind = delta;
+        invalid_kind[VALUES_DELTA_MAGIC.len() + 16] = 2;
+        assert!(apply_delta(&[], &invalid_kind).is_err());
         Ok(())
     }
 
