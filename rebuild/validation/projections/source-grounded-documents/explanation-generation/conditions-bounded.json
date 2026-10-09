@@ -1,0 +1,52 @@
+{
+  "format_version": 1,
+  "condition_id": "bounded-explanation-20261010",
+  "purpose": "new bounded experimental condition; no measured generation authorized",
+  "language": "ko",
+  "budgets": {
+    "total_seconds": 180,
+    "reads": 48,
+    "read_bytes": 131072,
+    "output_bytes": 16384,
+    "stream_bytes": 1048576,
+    "retries": 0,
+    "cleanup_seconds": 2
+  },
+  "execution": {
+    "compact_initial_inventory": true,
+    "analysis_seconds": 90,
+    "prose_reserve_seconds": 90,
+    "analysis_output_bytes": 6144,
+    "analysis_finalization_seconds": 30,
+    "prose_finalization_seconds": 60
+  },
+  "conditions": {
+    "current": {
+      "starting_evidence": "exact current Product prepare",
+      "instructions": "unchanged instructions from exact Product prepare",
+      "output": "unchanged ExplanationRealization contract",
+      "dispatch_requires": "cutoff-bound current prepare; no archive source enrichment"
+    },
+    "direct": {
+      "starting_evidence": "shared frozen input manifest and compact unranked metadata; complete inventory remains accessible",
+      "allowed_reads": "shared opaque-ID inventory until the explicit finalization deadline",
+      "instructions": "Investigate the permitted source and Work records. Write natural prose in the requested language with exact input and byte-range citations. Distinguish code observations, original reports, choices, checks and missing information. Choose the reading order yourself.",
+      "output": "prose and citations; a single generation call"
+    },
+    "note_then_prose": {
+      "starting_evidence": "shared frozen input manifest and compact unranked metadata; complete inventory remains accessible",
+      "allowed_reads": "shared opaque-ID inventory until each explicit finalization deadline",
+      "instructions": "Investigate the permitted source and Work records. First write a concise cited technical note separating observations and interpretations. Then write natural prose in the requested language with exact citations. Choose the reading order yourself. Preserve choices, checks and missing information.",
+      "output": "technical note and prose; both charged to the same total budget; incomplete analysis cannot be final prose"
+    }
+  },
+  "runtime": {
+    "model": null,
+    "reasoning_effort": null,
+    "destination": null,
+    "state": "dispatch_blocked_until_explicit_runtime_and_current_authorization",
+    "sampling": "unsupported_or_unobserved",
+    "token_counts": "unobserved",
+    "price": "unobserved"
+  }
+}

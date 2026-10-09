@@ -17,8 +17,16 @@ APPROACHES = ('current', 'direct', 'note_then_prose')
 DESTINATION = 'OpenAI Codex service'
 
 
-def initial_input(spec, lane):
+def initial_input(spec, lane, *, compact=False):
     view = generation_inventory(spec, lane)
+    if compact:
+        # Keep every initial record/diff ID in the same unranked order. Detailed
+        # provenance and all other authorized entries remain on inventory, with
+        # bodies on read. This changes context size, never evidence membership.
+        view['entries'] = [{k: e[k] for k in ('id', 'path', 'role', 'lane', 'representation',
+                                             'attribution', 'before_state', 'missing')}
+                           | {'chronology': e['chronology']['state']}
+                           for e in view['entries']]
     # Mechanical inventory, no case-specific ranking. Bodies stay behind Reader.
     return {'scope': view['scope'], 'identities': view['identities'],
             'inventory_boundary': view['inventory_boundary'],
@@ -147,24 +155,71 @@ def evidence_configuration(configuration_path):
             + 'enabled_tools = ["inventory", "read"]\ndefault_tools_approval_mode = "approve"\n')
 
 
-def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_path=None):
+def execution_policy(conditions):
+    policy = conditions.get('execution')
+    if policy is None:
+        return None  # Historical conditions remain available, byte-identical.
+    require(isinstance(conditions.get('condition_id'), str) and conditions['condition_id'].strip(),
+            'new execution policy requires an explicit condition identity')
+    require(set(policy) == {'compact_initial_inventory', 'analysis_seconds', 'prose_reserve_seconds',
+                            'analysis_output_bytes', 'analysis_finalization_seconds', 'prose_finalization_seconds'},
+            'explicit execution allocation required')
+    require(type(policy['compact_initial_inventory']) is bool, 'explicit inventory preparation required')
+    budgets = conditions['budgets']
+    for key in ('analysis_seconds', 'prose_reserve_seconds', 'analysis_finalization_seconds', 'prose_finalization_seconds'):
+        require(type(policy[key]) in {int, float} and 0 < policy[key] < budgets['total_seconds'],
+                'invalid execution time allocation')
+    require(policy['analysis_seconds'] + policy['prose_reserve_seconds'] <= budgets['total_seconds']
+            and policy['analysis_finalization_seconds'] < policy['analysis_seconds']
+            and policy['prose_finalization_seconds'] < policy['prose_reserve_seconds'], 'infeasible execution allocation')
+    require(type(policy['analysis_output_bytes']) is int
+            and 0 < policy['analysis_output_bytes'] < budgets['output_bytes'], 'invalid output allocation')
+    return dict(policy, condition_id=conditions['condition_id'])
+
+
+def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_path=None, conditions_path=None):
+    preparation_started = time.monotonic()
     require(approach in APPROACHES and lane in {'product', 'archive_diagnostic'}, 'unsupported experiment scope')
     spec = verify(manifest)
-    conditions = json.loads((HERE / 'conditions.json').read_bytes())
+    conditions_path = Path(conditions_path or HERE / 'conditions.json')
+    condition_bytes = conditions_path.read_bytes()
+    condition_binding = binding(conditions_path)
+    require(digest(condition_bytes) == condition_binding['sha256'], 'condition identity drift')
+    conditions = json.loads(condition_bytes)
+    policy = execution_policy(conditions)
+    instruction_bytes = (HERE / 'instructions.txt').read_bytes()
+    instruction_binding = binding(HERE / 'instructions.txt')
+    require(digest(instruction_bytes) == instruction_binding['sha256'], 'instruction identity drift')
     output = Path(output).resolve()
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
-    frozen_initial = initial_input(spec, lane)
+    (output / 'frozen-conditions.json').write_bytes(condition_bytes)
+    (output / 'frozen-instructions.txt').write_bytes(instruction_bytes)
+    frozen_initial = initial_input(spec, lane, compact=bool(policy and policy['compact_initial_inventory']))
     (output / 'initial-input.json').write_bytes(encoded(frozen_initial))
     budgets = conditions['budgets']
     record = {'format_version': 1, 'approach': approach, 'lane': lane, 'input': binding(manifest),
               'initial_input': binding(output / 'initial-input.json'), 'scope': spec['scope'],
-              'runtime': runtime, 'budgets': budgets, 'conditions': binding(HERE / 'conditions.json'),
-              'instructions': binding(HERE / 'instructions.txt'),
-              'support': [binding(HERE / p) for p in ('approaches.py', 'source_tools.py', 'grounding.py', 'response-schema.json', 'invocations.py')],
+              'runtime': runtime, 'budgets': budgets, 'conditions': condition_binding,
+              'frozen_conditions': binding(output / 'frozen-conditions.json'), 'language': conditions['language'],
+              'execution': policy,
+              'instructions': instruction_binding,
+              'frozen_instructions': binding(output / 'frozen-instructions.txt'),
+              'support': [binding(HERE / p) for p in ('approaches.py', 'source_tools.py', 'inputs.py', 'grounding.py', 'response-schema.json', 'invocations.py')],
               'status': 'not_run', 'blockers': [], 'calls': [], 'original_outputs': [],
               'generation_output': None, 'tokens': [], 'price': None, 'corrections': [],
               'isolation': 'fresh process/home/cwd; cooperative filesystem access, not enforced isolation',
               'semantic_quality': 'not_assessed', 'clean_comparison': False}
+    record['preparation_budget_boundary'] = 'local manifest verification/freezing precedes execution; stage setup and probes share total_seconds'
+    producer_sources = output / 'producer-sources'
+    producer_sources.mkdir()
+    record['frozen_support'] = []
+    for origin in record['support']:
+        data = Path(origin['path']).read_bytes()
+        require(digest(data) == origin['sha256'] and len(data) == origin['bytes'], 'support identity drift')
+        snapshot = producer_sources / Path(origin['path']).name
+        snapshot.write_bytes(data)
+        record['frozen_support'].append({'origin': origin, 'snapshot': binding(snapshot)})
+    record['preparation_seconds'] = time.monotonic() - preparation_started
     if approach == 'current':
         record['blockers'].extend(current_blockers(spec))
     require(set(runtime) == {'model', 'reasoning_effort', 'destination', 'authorization'}, 'explicit runtime fields required')
@@ -199,7 +254,12 @@ def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_
 
 def _execute(record, spec, manifest, initial, output, executable, auth_path):
     budgets = record['budgets']
-    deadline = time.monotonic() + budgets['total_seconds']
+    started = time.monotonic()
+    deadline = started + budgets['total_seconds']
+    policy = record.get('execution')
+    conditions = json.loads(Path(record['frozen_conditions']['path']).read_bytes())
+    record['execution_started_monotonic'] = started
+    record['execution_deadline_monotonic'] = deadline
     stages = ('analysis', 'prose') if record['approach'] == 'note_then_prose' else ('prose',)
     output_used, stream_used, note = 0, 0, None
     trace = output / 'retrievals.jsonl'
@@ -216,7 +276,17 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             require(binding(manifest) == record['input'], 'input identity drift')
             for support in record['support']:
                 require(binding(support['path']) == support, 'support identity drift')
-            remaining = deadline - time.monotonic()
+            check_binding(record['frozen_conditions'])
+            check_binding(record['frozen_instructions'])
+            stage_deadline = (min(started + policy['analysis_seconds'], deadline - policy['prose_reserve_seconds'])
+                              if policy and stage == 'analysis' else deadline)
+            remaining = stage_deadline - time.monotonic()
+            if policy and stage == 'prose' and note is not None and remaining < policy['prose_reserve_seconds']:
+                # Cleanup/grounding between calls also consumes the shared time.
+                # Report a lost reserve rather than silently start a starved call.
+                record['status'] = 'finalization_reserve_unavailable'
+                record['prose_seconds_remaining'] = max(0, remaining)
+                break
             if remaining <= 0 or stream_used >= budgets['stream_bytes'] or output_used >= budgets['output_bytes']:
                 record['status'] = 'budget_exhausted'
                 break
@@ -229,6 +299,15 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                 (workspace / 'codex/auth.json').symlink_to(Path(auth_path).resolve())
             configuration = {'manifest': str(Path(manifest).resolve()), 'lane': record['lane'],
                              'budgets': budgets, 'trace': str(trace), 'protocol_trace': str(protocol_trace)}
+            allocation = budgets['output_bytes'] - output_used
+            if policy:
+                allocation = min(allocation, policy['analysis_output_bytes']) if stage == 'analysis' else allocation
+                finalization = policy['analysis_finalization_seconds'] if stage == 'analysis' else policy['prose_finalization_seconds']
+                configuration.update(stage=stage, read_deadline_monotonic=stage_deadline - finalization,
+                                     execution_deadline_monotonic=deadline)
+                record.setdefault('stage_allocations', []).append({'stage': stage,
+                    'deadline_monotonic': stage_deadline, 'read_deadline_monotonic': stage_deadline - finalization,
+                    'output_bytes': allocation, 'remaining_seconds_before_preparation': remaining})
             (workspace / 'reader.json').write_bytes(encoded(configuration))
             config = workspace / 'codex/config.toml'
             # Use explicit top-level -c settings. MCP stdio configuration is the
@@ -240,17 +319,30 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             shutil.copyfile(config, stage_root / 'effective-config.toml')
             record.setdefault('configured_context', []).append(binding(stage_root / 'effective-config.toml'))
             directive = ('Write a short cited technical analysis, separating observations and interpretations.'
-                         if stage == 'analysis' else conditions_directive(record['approach']))
-            prompt = ((HERE / 'instructions.txt').read_text() + '\n' + directive
-                      + '\nLanguage: ' + json.loads((HERE / 'conditions.json').read_bytes())['language']
+                         if stage == 'analysis' else conditions_directive(record['approach'], conditions))
+            prompt = (Path(record['frozen_instructions']['path']).read_text() + '\n' + directive
+                      + '\nLanguage: ' + conditions['language']
                       + '\nUse only the evidence MCP tools. Choose important code and paragraph structure yourself.'
                       + '\nReturn free prose and a separate strict sidecar: selections[{id,start,end,sha256,state}], gaps[str].'
                       + '\nSelections use exact retrieved byte spans and their SHA-256, state before/after/context.'
                       + '\nInitial evidence inventory (bodies require reads):\n' + json.dumps(initial, ensure_ascii=False)
                       + ('\nPrior short technical analysis, revisitable and correctable:\n' + note if note else '')
-                      + '\nRemaining response UTF-8 byte budget: ' + str(budgets['output_bytes'] - output_used))
+                      + '\nRemaining response UTF-8 byte budget: ' + str(allocation))
+            if policy:
+                prompt += ('\nExecution allocation: ' + json.dumps({'stage': stage,
+                    'stage_seconds_remaining': max(0, stage_deadline - time.monotonic()),
+                    'evidence_seconds_remaining': max(0, configuration['read_deadline_monotonic'] - time.monotonic()),
+                    'total_reads': budgets['reads'], 'total_returned_bytes': budgets['read_bytes'],
+                    'stage_output_bytes': allocation, 'retries': budgets['retries']})
+                    + '\nTool results report remaining time/reads/bytes. Finish the complete response within this allocation.'
+                    + '\nReserve finalization time; after the read deadline use inspected evidence and explicitly report unresolved material gaps.'
+                    + '\nDo not treat absent evidence or unfinished analysis as a complete explanation.')
             settings = ['-c', 'model=' + json.dumps(record['runtime']['model']), '-c',
                         'model_reasoning_effort=' + json.dumps(record['runtime']['reasoning_effort'])]
+            remaining = stage_deadline - time.monotonic()
+            if remaining <= 0:
+                record['status'] = 'budget_exhausted'
+                break
             probe = capture([executable, *settings, 'debug', 'prompt-input', prompt], cwd=workspace, env=env,
                             output=stage_root / 'context', timeout=min(15, remaining),
                             stream_bytes=budgets['stream_bytes'] - stream_used)
@@ -261,7 +353,7 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                 record.update(status='context_blocked', exposure_issues=issues)
                 break
             response_path = stage_root / 'original-response.json'
-            remaining = deadline - time.monotonic()
+            remaining = stage_deadline - time.monotonic()
             if remaining <= 0 or stream_used >= budgets['stream_bytes']:
                 record['status'] = 'budget_exhausted'
                 break
@@ -270,7 +362,8 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                                '-o', str(response_path), '-'], cwd=workspace, env=env,
                               output=stage_root / 'process', timeout=remaining,
                               stream_bytes=budgets['stream_bytes'] - stream_used,
-                              cleanup_seconds=budgets['cleanup_seconds'], stdin=prompt.encode())
+                              cleanup_seconds=budgets['cleanup_seconds'], stdin=prompt.encode(),
+                              **({'response_file': response_path, 'response_bytes': allocation} if policy else {}))
             stream_used += process['retained_stream_bytes']
             record['calls'].append({'stage': stage, 'kind': 'model_call', 'process': process})
             observed, invalid = events(process['stdout']['path'])
@@ -312,7 +405,7 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             if not response_path.exists():
                 record['status'] = 'response_absent'
                 break
-            if output_used > budgets['output_bytes']:
+            if output_used > budgets['output_bytes'] or response_path.stat().st_size > allocation:
                 record['status'] = 'budget_exhausted'
                 break
             try:
@@ -344,11 +437,12 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
     record['mcp_protocol_incomplete'] = invalid_protocol
     record['output_bytes'] = output_used
     record['retained_stream_bytes'] = stream_used
+    record['execution_elapsed_seconds'] = time.monotonic() - started
     record['clean_comparison'] = False  # Requires independent observed-context review.
 
 
-def conditions_directive(approach):
-    conditions = json.loads((HERE / 'conditions.json').read_bytes())
+def conditions_directive(approach, conditions=None):
+    conditions = conditions or json.loads((HERE / 'conditions.json').read_bytes())
     if approach == 'note_then_prose':
         return 'Write source-grounded natural prose. Revisit evidence and correct the short technical analysis where needed.'
     return conditions['conditions'][approach]['instructions']
@@ -361,8 +455,10 @@ if __name__ == '__main__':
     parser.add_argument('--lane', choices=('product', 'archive_diagnostic'), required=True)
     parser.add_argument('--runtime', type=Path, required=True)
     parser.add_argument('--auth-path', type=Path)
+    parser.add_argument('--conditions', type=Path, default=HERE / 'conditions.json')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    result = attempt(args.manifest, args.approach, args.lane, json.loads(args.runtime.read_bytes()), args.output, auth_path=args.auth_path)
+    result = attempt(args.manifest, args.approach, args.lane, json.loads(args.runtime.read_bytes()), args.output,
+                     auth_path=args.auth_path, conditions_path=args.conditions)
     print(json.dumps({'status': result['status'], 'blockers': result['blockers'], 'model_calls': sum(c['kind'] == 'model_call' for c in result['calls']),
                       'output_count': len(result['original_outputs'])}))

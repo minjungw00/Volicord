@@ -48,9 +48,13 @@ def environment(root):
             'GIT_CONFIG_GLOBAL': '/dev/null'}
 
 
-def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2, stdin=b''):
+def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2, stdin=b'',
+            response_file=None, response_bytes=None):
     """Exact bounded streams plus numeric process truth, including leader-exit children."""
     require(timeout > 0 and stream_bytes > 0 and cleanup_seconds > 0, 'positive process budgets required')
+    require((response_file is None and response_bytes is None) or
+            (response_file is not None and type(response_bytes) is int and response_bytes > 0),
+            'positive response file budget required')
     output, cwd = Path(output), Path(cwd).resolve()
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
     input_path = output / 'stdin.bin'; input_path.write_bytes(stdin)
@@ -63,7 +67,8 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
               'environment_keys': sorted(env), 'stop_cause': None, 'spawn_error': None,
               'stream_error': None,
               'exit_code': None, 'signal_number': None, 'returncode': None,
-              'cleanup': None, 'streams_complete': True}
+              'cleanup': None, 'streams_complete': True,
+              'response_budget': {'path': str(response_file), 'bytes': response_bytes} if response_file is not None else None}
     (output / 'command.json').write_bytes(encoded(result))
     process = None
     streams = {'stdout': output / 'stdout.bin', 'stderr': output / 'stderr.bin'}
@@ -72,14 +77,20 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
     interrupted = None
     with input_path.open('rb') as incoming, streams['stdout'].open('wb') as out, streams['stderr'].open('wb') as err:
         try:
+            result['spawn_started_monotonic'] = time.monotonic()
             process = subprocess.Popen(result['argv'], cwd=cwd, env=env, stdin=incoming,
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+            result['spawned_monotonic'] = time.monotonic()
             result['pid'] = process.pid
             with selectors.DefaultSelector() as selector:
                 for pipe, sink in ((process.stdout, out), (process.stderr, err)):
                     os.set_blocking(pipe.fileno(), False)
                     selector.register(pipe, selectors.EVENT_READ, sink)
                 while selector.get_map():
+                    if (result['cleanup'] is None and response_file is not None and Path(response_file).exists()
+                            and Path(response_file).stat().st_size > response_bytes):
+                        result['stop_cause'] = 'response_budget'
+                        result['cleanup'] = owner.cleanup_process_group(process, cleanup_seconds / 2, cleanup_seconds / 2)
                     if result['cleanup'] is None and (process.poll() is not None or time.monotonic() - start >= timeout):
                         if process.poll() is None:
                             result['stop_cause'] = 'timeout'
@@ -129,6 +140,12 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
     result.update(ended_at_unix_ns=time.time_ns(), duration_seconds=time.monotonic() - start,
                   observed_stream_bytes=observed, retained_stream_bytes=retained,
                   stdout=binding(streams['stdout']), stderr=binding(streams['stderr']))
+    # A file written just before normal exit must obey the same limit. Preserve
+    # its original bytes; exit zero cannot override an exhausted response budget.
+    if response_file is not None and Path(response_file).exists():
+        result['observed_response_bytes'] = Path(response_file).stat().st_size
+        if result['observed_response_bytes'] > response_bytes and result['stop_cause'] is None:
+            result['stop_cause'] = 'response_budget'
     result['outcome'] = ('spawn_failed' if result['spawn_error'] else
                          'stopped' if result['stop_cause'] else
                          'failed' if result['exit_code'] != 0 or not result['cleanup']['complete'] else 'succeeded')

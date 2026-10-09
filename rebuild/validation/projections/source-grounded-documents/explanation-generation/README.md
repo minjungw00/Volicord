@@ -236,6 +236,55 @@ Use a unique output directory per initial opportunity. The private append-only
 index binds every outcome; earlier attempts are never overwritten or selected away.
 Fixture checks establish transport and numerical controls, not semantic quality.
 
+### Bounded execution condition
+
+`conditions-bounded.json` is a new condition, selected explicitly with
+`approaches.py --conditions ...`; `conditions.json` remains the byte-identical
+historical condition. Each attempt retains an exact condition copy plus its
+origin binding, support hashes, input/instruction identities and runtime scope.
+Authorization for the old condition cannot dispatch the new one.
+
+The aggregate remains 180 seconds / 48 calls / 131072 returned evidence bytes /
+16384 response bytes / zero retries for both direct and staged generation.
+Local manifest verification/freezing is separately timed before that execution
+budget; stage setup, context probes and model calls share the execution deadline.
+Staged analysis has at most 90 seconds and 6144 response bytes, preserving at least
+90 execution seconds and 10240 response bytes for prose. Analysis must complete;
+a timed-out note cannot stand in for prose or launch another opportunity.
+If cleanup or grounding consumes the prose reserve before the next stage starts,
+the attempt reports `finalization_reserve_unavailable` and retains the note.
+Evidence access stops 30 seconds before the analysis deadline and 60 seconds
+before a prose deadline. These are experimental allocations, not Product limits
+or a demonstrated sufficient budget for natural explanation quality.
+
+The compact initial inventory retains every starting record/diff ID, path, role,
+state and missing-evidence marker in its original unranked order. Full metadata
+and the complete authorized source inventory remain available through inventory;
+all bodies remain behind exact scoped reads. Timed tool results report remaining
+calls, returned bytes and time, including denied calls across restarts/stages.
+Response-file size is monitored during the subprocess; oversized original bytes
+are preserved with an explicit stop cause. Original partial results, streams,
+numeric exits, signals and cleanup stay independently inspectable.
+
+The [execution investigation](execution-budget-report.md) distinguishes retained
+observations, reproduced adapter defects, synthetic controls and unresolved model
+feasibility. No new external run is authorized by that report or by old receipts.
+
+```bash
+rebuild/scripts/validate focused explanation-bounded-execution -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/execution_self_test.py \
+  --retain rebuild/.local/explanation-generation/unique-bounded-controls
+rebuild/scripts/validate focused explanation-execution-audit -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/execution_audit.py \
+  --cohort rebuild/.local/explanation-generation/comparison-20261010-0fe2f6458665 \
+  --repository "$PWD" --output rebuild/.local/explanation-generation/unique-timelines.json
+```
+
+The audit verifies changed maintained producers against their original Git objects,
+while still requiring exact runtime artifacts at their original paths. It does
+not rewrite or execute historical launchers, which can overwrite handoff files.
+Clock-domain differences and unavailable per-read/provider timings remain explicit.
+
 The read-only evidence tools explicitly declare MCP annotations and the authorized
 adapter sets `default_tools_approval_mode = "approve"` for that server's two
 allowlisted tools only. This supported [Codex MCP setting](https://learn.chatgpt.com/docs/extend/mcp)

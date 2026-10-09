@@ -6,16 +6,23 @@ import fcntl
 import json
 from pathlib import Path
 import sys
+import time
 
 from inputs import Reader, encoded, generation_inventory, require, verify
 
 
 class Surface:
-    def __init__(self, manifest, lane, budgets, trace, protocol_trace=None):
+    def __init__(self, manifest, lane, budgets, trace, protocol_trace=None, *, stage=None,
+                 read_deadline_monotonic=None, execution_deadline_monotonic=None):
         self.spec = verify(manifest)
         Reader(self.spec, lane, max_reads=budgets['reads'], max_bytes=budgets['read_bytes'])
         self.lane, self.budgets, self.trace = lane, budgets, Path(trace)
         self.protocol_trace = Path(protocol_trace) if protocol_trace else None
+        require((read_deadline_monotonic is None and execution_deadline_monotonic is None) or
+                (type(read_deadline_monotonic) in {int, float} and type(execution_deadline_monotonic) in {int, float}
+                 and read_deadline_monotonic <= execution_deadline_monotonic), 'invalid evidence time allocation')
+        self.stage, self.read_deadline = stage, read_deadline_monotonic
+        self.execution_deadline = execution_deadline_monotonic
 
     def call(self, name, arguments, request_id=None):
         # All calls, including failed lookups and inventory pages, share a locked
@@ -27,11 +34,13 @@ class Surface:
             reads = len(history)
             used = sum(row.get('charged_bytes', 0) for row in history)
             row = {'sequence': reads, 'name': name, 'arguments': arguments}
+            started = time.monotonic()
             if request_id is not None:
                 row['mcp_request_id'] = request_id
             try:
                 require(isinstance(arguments, dict), 'tool arguments must be an object')
                 require(reads < self.budgets['reads'], 'read budget exhausted')
+                require(self.read_deadline is None or started < self.read_deadline, 'read time budget exhausted')
                 view = generation_inventory(self.spec, self.lane)
                 if name == 'inventory':
                     require(set(arguments) <= {'offset', 'limit', 'path_contains', 'role'}, 'unexpected inventory arguments')
@@ -62,9 +71,16 @@ class Surface:
                 message = str(error)
                 outcome = ('source_unavailable' if message == 'bytes unavailable' or isinstance(error, OSError)
                            else 'evidence_changed' if message == 'changed bytes or stale preparation'
-                           else 'budget_exhausted' if message == 'read budget exhausted'
+                           else 'budget_exhausted' if message in {'read budget exhausted', 'read time budget exhausted'}
                            else 'invalid_utf8' if isinstance(error, UnicodeError) else 'policy_denied')
                 row.update(status='failed', outcome=outcome, error=message, charged_bytes=0)
+            if self.read_deadline is not None:
+                ended = time.monotonic()
+                row['execution'] = {'stage': self.stage, 'started_monotonic': started, 'ended_monotonic': ended,
+                    'reads_remaining': max(0, self.budgets['reads'] - reads - 1),
+                    'bytes_remaining': max(0, self.budgets['read_bytes'] - used - row['charged_bytes']),
+                    'evidence_seconds_remaining': max(0, self.read_deadline - ended),
+                    'total_seconds_remaining': max(0, self.execution_deadline - ended)}
             stream.seek(0, 2)
             # Escaping also preserves malformed surrogate arguments as evidence
             # without letting UTF-8 serialization kill the server after denial.
