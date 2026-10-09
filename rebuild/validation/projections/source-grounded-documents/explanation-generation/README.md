@@ -114,3 +114,61 @@ bytes, stale preparation, missing before bytes, partial excerpts, ambiguous
 chronology, reconstruction, editorial roles, allowed/forbidden reads,
 instruction-like source and append-only index integrity. They supply no generated
 explanation, Human qualification, semantic evaluation or V11 acceptance.
+
+## Invocation capture and admission
+
+`invocations.capture` adds stdin, enforced combined stream byte bound and an
+isolated cwd/environment to the existing V11 Linux process-group cleanup primitive.
+Importing that primitive does not call V11, its Recorder or gate. Exact retained
+stdin/stdout/stderr, argv, executable/adapter/cleanup-owner hashes, PID, duration,
+numeric exit/signal, timeout/stream trigger, spawn errno and cleanup are recorded.
+An over-bound stream is an explicit retained prefix with incomplete state; it is
+never called exact complete output. Remaining descendants are cleaned even when
+their leader exits normally. Escaped process groups remain outside this primitive's
+guarantee. Interrupted and failed attempts retain failure identity.
+
+`environment` creates a new child home, Codex home, cache and temporary directory,
+without inherited credentials, host/session IDs, startup environment or MCP config.
+Explicit configuration disables hooks, memory, plugins/apps, extra host capabilities
+and web search. `diagnose` executes **only local** installed version, help, feature
+listing and `debug prompt-input` probes from a fresh `/tmp` directory. It records
+the actual prompt JSON, observed disabled flags and sanitized explicit original
+settings, without reading auth files or copying credentials. Built-in fresh Codex
+skills may still appear; inherited user skills, memory and hooks are not requested.
+The inspected installed CLI, rather than assumed docs, determines support.
+
+Official OpenAI documentation describes [non-interactive execution](https://learn.chatgpt.com/docs/non-interactive-mode)
+and [configuration](https://learn.chatgpt.com/docs/config-file/config-basic).
+Local help/version/configuration observations remain this adapter's evidence;
+documentation alone proves neither configured isolation nor model identity.
+
+`freeze_run` records a blocked real-run manifest: exact input/instruction/condition
+identities, requested runtime, language, budgets, destination/purpose/source
+authorization scope, provenance gaps and dispatch state. Its declared authorization
+is **not verified authority**. There is deliberately no live dispatch implementation:
+installed help and local prompt construction do not establish authenticated
+invocation, an available model retrieval adapter, or neutral model behavior.
+`current` additionally blocks without cutoff-bound Product prepare. Unsupported or
+unauthorized execution never creates generation output or synthetic success.
+
+The actual fresh-process neutral fixture checks permitted/forbidden opaque-ID
+reads and instruction-like source text, separate streams and inherited canaries.
+A separate authored canary demonstrates that ordinary absolute filesystem reads
+are still possible. This demonstrates the cooperative filesystem limitation; it
+does not consume real prohibited material or prove model-side prompt-injection
+resistance. Real dispatch remains blocked pending exact current authorization and
+verified live host retrieval/model controls in a separate fresh context. Explicit
+runtime choice must precede that dispatch; default model/auth/settings, token
+counts and price are never invented.
+
+```bash
+rebuild/scripts/validate focused explanation-invocations -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/invocation_self_test.py \
+  --retain rebuild/.local/explanation-generation/unique-neutral-controls
+rebuild/scripts/validate focused explanation-installed-host -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/invocations.py \
+  --diagnose --output rebuild/.local/explanation-generation/unique-host-diagnostic
+```
+
+Retained neutral controls are self-authored process support, not generated prose.
+Inspect each actual control's result and streams, not only the wrapper exit.
