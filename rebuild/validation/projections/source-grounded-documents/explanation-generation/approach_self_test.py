@@ -67,6 +67,25 @@ class ApproachTests(unittest.TestCase):
                 history = []
             self.assertEqual(validate_output(value, frozen, 'archive_diagnostic', history)['selections'][0]['reference_status'], 'invalid')
 
+    def test_selection_project_range_and_unavailable_before_are_rejected(self):
+        response = self.response()
+        for field in ('project', 'work'):
+            frozen = copy.deepcopy(self.spec)
+            frozen['entries'][0][field] = 'foreign'
+            result = validate_output(response, frozen, 'archive_diagnostic', self.history())
+            self.assertEqual(result['selections'][0]['reference_status'], 'invalid', field)
+        for start, end in ((-1, 1), (0, 0), (4, 2), (0, 1000), (True, 2)):
+            value = copy.deepcopy(response)
+            value['selections'][0].update(start=start, end=end)
+            result = validate_output(value, self.spec, 'archive_diagnostic', self.history())
+            self.assertEqual(result['selections'][0]['issues'], ['invalid byte span'])
+        frozen = copy.deepcopy(self.spec)
+        frozen['entries'][0].update(attribution='explicit_before_patch', asset=None,
+                                    representation='unavailable')
+        response['selections'][0]['state'] = 'before'
+        result = validate_output(response, frozen, 'archive_diagnostic', self.history())
+        self.assertEqual(result['selections'][0]['issues'], ['unavailable source'])
+
     def test_failed_reads_persist_and_charge_across_restarts(self):
         for _ in range(3):
             self.assertEqual(self.surface.call('read', {'id': '../answer'})['status'], 'failed')

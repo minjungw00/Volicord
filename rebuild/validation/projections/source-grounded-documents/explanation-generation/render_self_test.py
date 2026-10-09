@@ -81,6 +81,43 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(self.response_path.read_bytes(), original)
         self.assertIn('not verified', body)
 
+    def test_unrelated_helper_in_same_file_is_preserved_without_semantic_promotion(self):
+        # Authored code demonstrates why valid bytes alone cannot select main code.
+        main = b'def operation():\n    return "main result"\n\n'
+        helper = b'def unrelated_helper():\n    return "other result"\n'
+        source = self.root / 'helper-source'; source.write_bytes(main + helper)
+        value = spec(source)
+        spec_path = self.root / 'helper-spec.json'; spec_path.write_bytes(i.encoded(value))
+        manifest = i.freeze(spec_path, self.root / 'helper-frozen', self.root)
+        surface = Surface(manifest, 'archive_diagnostic', {'reads': 4, 'read_bytes': 1024}, self.root / 'helper-trace')
+        row = surface.call('read', {'id': 'source-0001', 'offset': len(main), 'limit': len(helper)})
+        response = {'prose': 'Authored claim about the operation; semantic support remains unchecked.',
+                    'selections': [{'id': 'source-0001', 'start': len(main), 'end': len(main + helper),
+                                    'sha256': row['result']['metadata']['sha256'], 'state': 'context'}],
+                    'gaps': []}
+        self.response_path.write_bytes(i.encoded(response))
+        self.record.update(input=i.binding(manifest), retrievals=i.binding(surface.trace),
+                           original_outputs=[i.binding(self.response_path)])
+        body, integrity, parser = self.present()
+        self.assertEqual(parser.values['prose'], [response['prose']])
+        self.assertEqual(parser.values['code'], [helper.decode()])
+        self.assertNotIn('def operation()', body)
+        self.assertEqual(integrity['semantic_quality'], 'not_assessed')
+        self.assertEqual(integrity['outputs'][0]['selections'][0]['selection'], response['selections'][0])
+        self.assertIn('Reference checks certify byte identity only', body)
+
+    def test_invalid_range_remains_visible_without_replacement_code(self):
+        self.response['selections'] = [dict(self.selections[0], start=-1),
+                                       dict(self.selections[0], end=1000)]
+        self.response_path.write_bytes(i.encoded(self.response))
+        self.record['original_outputs'] = [i.binding(self.response_path)]
+        body, _, parser = self.present()
+        self.assertEqual(parser.values['prose'], [self.response['prose']])
+        self.assertEqual([json.loads(s) for s in parser.values['selection-request']], self.response['selections'])
+        self.assertNotIn('code', parser.values)
+        self.assertIn('invalid byte span', body)
+        self.assertIn('No substitute code', body)
+
     def test_escaped_markup_no_script_or_instructions_executed(self):
         body, _, parser = self.present()
         self.assertNotIn('<script>', body)
