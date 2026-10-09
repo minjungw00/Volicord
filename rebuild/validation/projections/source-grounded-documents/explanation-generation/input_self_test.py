@@ -168,6 +168,16 @@ class InputTests(unittest.TestCase):
         with self.assertRaisesRegex(i.InputError, 'Work absent'):
             archive.canonical_records(bundle, 'other-project', 'w', 30)
 
+    def test_unavailable_chronology_cannot_become_an_exact_file(self):
+        entry = self.spec['entries'][0]
+        entry.update(representation='unavailable', origin=None, file_sha256=None,
+                     missing='cutoff file reconstruction ambiguous',
+                     chronology={'state': 'ambiguous', 'reason': 'no independent timestamp'})
+        value = i.generation_inventory(i.verify(self.frozen()), 'archive_diagnostic')['entries'][0]
+        self.assertEqual(value['representation'], 'unavailable')
+        self.assertEqual(value['chronology'], {'state': 'ambiguous', 'reason': 'no independent timestamp'})
+        self.assertIsNone(value['file_sha256'])
+
 
 if __name__ == '__main__':
     unittest.main()

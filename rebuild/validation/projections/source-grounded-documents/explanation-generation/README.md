@@ -72,7 +72,10 @@ cutoff-bound baseline, not generation input.
 This adapter deliberately reports a partial dirty-state boundary. Untouched pinned
 blobs prove the baseline revision, not an independently attested clean cutoff tree.
 Unsupported or uncorroborated dirty paths are omitted explicitly; original bounded
-command excerpts remain inspectable. No-change investigation retains the complete
+command excerpts remain inspectable. Each such path also has an `unavailable`
+input entry. Canonical attachment rows without their own recorded timestamp retain
+ambiguous chronology even when their parent has exact Work/cutoff membership;
+preparation does not invent an observation time for them. No-change investigation retains the complete
 permitted command and pinned repository inventory rather than a list of selected
 answer functions. Work A and other campaign slots are addressable with `--slot`;
 missing captures, canonical records or bytes fail or degrade that scope explicitly.

@@ -160,7 +160,7 @@ def prepare(archive_root, slot, destination, producer_head):
 
     def add(data, *, name, role, producer, locator, observed_at, lane='archive_diagnostic',
             representation='full_file', attribution='explicit_work_record', proof=None,
-            before_state='unavailable', extent=None, origin_witness=None):
+            before_state='unavailable', extent=None, origin_witness=None, chronology=None):
         key = f'input-{len(entries):06d}'
         path = source_root / key
         path.write_bytes(data)
@@ -168,9 +168,17 @@ def prepare(archive_root, slot, destination, producer_head):
                         'lane': lane, 'producer': producer, 'representation': representation,
                         'origin': binding(path), 'locator': locator, 'extent': extent,
                         'file_sha256': digest(data) if role == 'source' and representation != 'bounded_excerpt' else None,
-                        'chronology': {'state': 'known', 'observed_at': observed_at},
+                        'chronology': chronology or {'state': 'known', 'observed_at': observed_at},
                         'before_state': before_state, 'attribution': attribution, 'missing': None,
                         'proof': proof, 'origin_witness': origin_witness})
+
+    def unavailable(name, reason):
+        entries.append({'id': f'input-{len(entries):06d}', 'path': name, 'role': 'source',
+                        'project': project, 'work': identity, 'lane': 'archive_diagnostic',
+                        'producer': {'state': 'missing_capability', 'name': 'cutoff source snapshot unavailable'},
+                        'representation': 'unavailable', 'origin': None, 'file_sha256': None,
+                        'locator': None, 'extent': None, 'chronology': {'state': 'ambiguous', 'reason': reason},
+                        'before_state': 'unavailable', 'attribution': 'unknown', 'missing': reason})
 
     product_read = {'state': 'available', 'name': 'canonical read / current explanation prepare'}
     archive_read = {'state': 'missing_capability', 'name': 'archive capture; historical body not retained by Product'}
@@ -223,6 +231,7 @@ def prepare(archive_root, slot, destination, producer_head):
     bundle = json.loads(bundle_path.read_bytes())
     cutoff_micros = int(dt.datetime.fromisoformat(cut).timestamp() * 1_000_000)
     selected = canonical_records(bundle, project, identity, cutoff_micros)
+    table_indices = {table['name']: index for index, table in enumerate(bundle['payload']['tables'])}
     for table, records in selected.items():
         for number, row in records:
             stamp = row.get('recorded_at')
@@ -230,8 +239,10 @@ def prepare(archive_root, slot, destination, producer_head):
                         if stamp is not None else cut)
             add(encoded({'table': table, 'row': row}), name=f'canonical/{table}/{number}',
                 role='canonical_record', producer=product_read, lane='product',
-                locator=f'{bundle_path.relative_to(root)}#/payload/tables/{table}/rows/{number}',
-                observed_at=observed, origin_witness=binding(bundle_path))
+                locator=f'{bundle_path.relative_to(root)}#/payload/tables/{table_indices[table]}/rows/{number}',
+                observed_at=observed, origin_witness=binding(bundle_path),
+                chronology=({'state': 'ambiguous', 'reason': 'no independent row timestamp; '
+                             'membership selected through exact cutoff-bound parent records'} if stamp is None else None))
     files = baseline(repository, journey['repository_revision'])
     before = dict(files)
     changes, unsupported_paths = {}, set()
@@ -276,6 +287,7 @@ def prepare(archive_root, slot, destination, producer_head):
     for name, data in sorted(files.items()):
         change = changes.get(name)
         if name in unsupported_paths:
+            unavailable(name, 'unsupported patch; cutoff bytes not independently verified')
             omissions.append({'kind': 'unavailable_cutoff_file', 'path': name,
                               'reason': 'unsupported patch; baseline/later file not substituted'})
             continue
@@ -299,6 +311,7 @@ def prepare(archive_root, slot, destination, producer_head):
                 if formatted is not None and digest(formatted) == final_hashes.get(name):
                     data = formatted
                 else:
+                    unavailable(name, 'literal patch reconstruction differs from independently archived bytes')
                     omissions.append({'kind': 'reconstruction_not_final_hash_verified', 'path': name,
                                       'cutoff_bytes_sha256': digest(data), 'later_state_not_substituted': True})
                     continue
