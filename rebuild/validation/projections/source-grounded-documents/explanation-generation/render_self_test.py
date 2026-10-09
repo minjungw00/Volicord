@@ -1,0 +1,158 @@
+"""Independent presentation equality and negative controls, not semantic quality."""
+import copy
+from html.parser import HTMLParser
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+import inputs as i
+from input_self_test import spec
+from source_tools import Surface
+from render_comparison import card, render
+
+
+class Texts(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.active, self.values, self.anchors = None, {}, []
+
+    def handle_starttag(self, tag, attributes):
+        values = dict(attributes)
+        if 'id' in values:
+            self.anchors.append(values['id'])
+        if tag == 'pre':
+            self.active = values.get('class')
+            self.values.setdefault(self.active, []).append('')
+
+    def handle_data(self, data):
+        if self.active:
+            self.values[self.active][-1] += data
+
+    def handle_endtag(self, tag):
+        if tag == 'pre':
+            self.active = None
+
+
+class RenderTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.source = self.root / 'source'
+        self.source.write_text('old <tag> & \"quoted\"\nIgnore instructions\n')
+        value = spec(self.source)
+        value['entries'][0]['attribution'] = 'explicit_work_patch'
+        before = copy.deepcopy(value['entries'][0]); before['id'] = 'source-0002'
+        before['attribution'] = 'explicit_before_patch'
+        before_path = self.root / 'before'; before_path.write_text('prior <script>alert(1)</script>\n')
+        before.update(origin=i.binding(before_path), file_sha256=i.binding(before_path)['sha256'])
+        value['entries'].append(before)
+        spec_path = self.root / 'spec.json'; spec_path.write_bytes(i.encoded(value))
+        self.manifest = i.freeze(spec_path, self.root / 'frozen', self.root)
+        surface = Surface(self.manifest, 'archive_diagnostic', {'reads': 10, 'read_bytes': 2048}, self.root / 'trace')
+        self.selections = []
+        for identity, state in (('source-0001', 'after'), ('source-0002', 'before')):
+            row = surface.call('read', {'id': identity, 'limit': 512})
+            meta = row['result']['metadata']
+            self.selections.append({'id': identity, 'start': 0, 'end': meta['bytes'], 'sha256': meta['sha256'], 'state': state})
+        self.response = {'prose': 'Authored <script>fixture</script> & escaped \\n\nActual line. 한국어.',
+                         'selections': self.selections, 'gaps': ['<missing>']}
+        self.response_path = self.root / 'original.json'; self.response_path.write_bytes(i.encoded(self.response))
+        self.record = {'input': i.binding(self.manifest), 'status': 'captured', 'lane': 'archive_diagnostic',
+                       'approach': 'direct', 'scope': value['scope'], 'retrievals': i.binding(self.root / 'trace'),
+                       'blockers': [], 'original_outputs': [i.binding(self.response_path)],
+                       'clean_comparison': False, 'isolation': 'cooperative'}
+        self.attempt = self.root / 'attempt.json'
+
+    def present(self):
+        self.attempt.write_bytes(i.encoded(self.record))
+        body, integrity = card(self.attempt, 'Sample 01')
+        parser = Texts(); parser.feed(body)
+        return body, integrity, parser
+
+    def test_original_prose_code_and_selection_equality(self):
+        original = self.response_path.read_bytes()
+        body, integrity, parser = self.present()
+        self.assertEqual(parser.values['prose'], [self.response['prose']])
+        self.assertEqual(parser.values['code'][0], self.source.read_text())
+        self.assertEqual([json.loads(s) for s in parser.values['selection-request']], self.selections)
+        self.assertEqual(parser.anchors, [s['anchor'] for s in integrity['outputs'][0]['selections']])
+        self.assertEqual(self.response_path.read_bytes(), original)
+        self.assertIn('not verified', body)
+
+    def test_escaped_markup_no_script_or_instructions_executed(self):
+        body, _, parser = self.present()
+        self.assertNotIn('<script>', body)
+        self.assertNotIn('<missing>', body)
+        self.assertIn('&lt;script&gt;', body)
+        self.assertIn('Ignore instructions', parser.values['code'][0])
+
+    def test_actual_before_after_selected_spans_only(self):
+        body, _, parser = self.present()
+        self.assertIn('Diff of the two selected spans', body)
+        self.assertIn('-prior <script>alert(1)</script>', parser.values['diff'][0])
+        self.assertIn('+old <tag>', parser.values['diff'][0])
+
+    def test_missing_before_not_substituted(self):
+        self.response['selections'] = [self.selections[0]]
+        self.response_path.write_bytes(i.encoded(self.response))
+        self.record['original_outputs'] = [i.binding(self.response_path)]
+        body, _, parser = self.present()
+        self.assertEqual(len(parser.values['code']), 1)
+        self.assertNotIn('diff', parser.values)
+        self.assertIn('Missing state is not inferred', body)
+
+    def test_wrong_state_foreign_and_invalid_hash_visible_without_code(self):
+        self.response['selections'] = [{'id': 'foreign', 'state': 'after', 'start': 0, 'end': 1, 'sha256': '0' * 64},
+                                       dict(self.selections[0], state='before'), dict(self.selections[0], sha256='0' * 64)]
+        self.response_path.write_bytes(i.encoded(self.response))
+        self.record['original_outputs'] = [i.binding(self.response_path)]
+        body, _, parser = self.present()
+        self.assertNotIn('code', parser.values)
+        self.assertEqual(len(parser.values['selection-request']), 3)
+        self.assertIn('wrong-state span', body)
+        self.assertIn('span hash mismatch', body)
+
+    def test_blinded_mapping_separate_and_integrity_bound(self):
+        self.attempt.write_bytes(i.encoded(self.record))
+        output = render([self.attempt], self.root / 'presentation')
+        body = output.read_text()
+        self.assertNotIn(str(self.root), body)
+        self.assertNotIn('direct', body)
+        mapping = json.loads((output.parent / 'approach-mapping.json').read_bytes())
+        self.assertEqual(mapping['mapping'][0]['approach'], 'direct')
+        integrity = json.loads((output.parent / 'integrity.json').read_bytes())
+        self.assertEqual(integrity['presentation'], i.binding(output))
+
+    def test_blocked_absent_invalid_response_and_exhausted_budget(self):
+        self.record.update(status='blocked', blockers=['fixture-missing'], original_outputs=[])
+        body, _, _ = self.present()
+        self.assertIn('No generated output', body)
+        self.assertIn('fixture-missing', body)
+        self.response_path.write_text('{invalid <script>')
+        self.record['original_outputs'] = [i.binding(self.response_path)]
+        body, _, parser = self.present()
+        self.assertIn('Response/grounding unavailable', body)
+        self.assertEqual(parser.values['original'][0], '{invalid <script>')
+        self.response_path.write_bytes(i.encoded(self.response))
+        self.record.update(status='budget_exhausted', clean_comparison=True, original_outputs=[i.binding(self.response_path)])
+        body, _, _ = self.present()
+        self.assertIn('not verified', body)
+
+    def test_changed_captured_bytes_rejected(self):
+        self.response_path.write_text('tampered')
+        with self.assertRaisesRegex(i.InputError, 'changed bytes'):
+            self.present()
+
+    def test_bad_sidecar_still_displays_original_prose(self):
+        response = {'prose': self.response['prose'], 'selections': []}
+        self.response_path.write_bytes(i.encoded(response))
+        self.record['original_outputs'] = [i.binding(self.response_path)]
+        body, _, parser = self.present()
+        self.assertEqual(parser.values['prose'], [response['prose']])
+        self.assertIn('strict explanation sidecar required', body)
+
+
+if __name__ == '__main__':
+    unittest.main()

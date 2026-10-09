@@ -235,3 +235,25 @@ python3 -B rebuild/validation/projections/source-grounded-documents/explanation-
 Use a unique output directory per initial opportunity. The private append-only
 index binds every outcome; earlier attempts are never overwritten or selected away.
 Fixture checks establish transport and numerical controls, not semantic quality.
+
+## Private comparison presentation
+
+`render_comparison.py --attempt /absolute/attempt.json ... --output UNIQUE_DIRECTORY`
+creates one self-contained escaped HTML presentation, a separate approach mapping
+and integrity sidecar. Sample order is shuffled. All approaches use the same card
+layout with every original intermediate/final output, selected spans in original
+order, actual selected before/after span diffs and explicit gaps. Missing states
+are never reconstructed or replaced with preferred code. Invalid references retain
+their requested coordinates without presenting foreign or wrong-state bytes as
+verified evidence. Run/coverage/isolation gaps remain visible. Original responses,
+including malformed responses, are neither rewritten nor silently omitted.
+
+Label blinding removes renderer-added approach names and private input paths; it
+does not rewrite self-identifying prose or hide stage counts and failures. It is
+presentation blinding, not guaranteed reviewer anonymity. Unsupported inference
+and semantic quality remain unassessed. Run the focused presentation controls:
+
+```bash
+rebuild/scripts/validate focused explanation-render-controls -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/render_self_test.py
+```
