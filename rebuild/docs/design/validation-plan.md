@@ -2127,8 +2127,10 @@ Human conversational capture는 multi-line observation과 limit을 한 response�
 `skip`, `already_covered`, `same_as_prior`, `same_as_other_locale`, `cannot_assess`,
 `not_applicable`을 prose observation이 아닌 typed `human_controls`로 기록한다. Locale/criterion
 reference는 compatible prior assessment를 가리키며 literal answer는 provenance trace에만 남는다.
-`insufficient_evidence`는 fabricated locator를 요구하지 않고 inspected set과 missing-evidence
-설명을 보존한다. Partial review의 `not_reviewed`/`insufficient_evidence`는 semantic failure나
+`insufficient_evidence`는 valid partial citation과 dimension별 observed support/failure/unobserved,
+inspected set과 missing-evidence 설명을 보존한다. `satisfied`는 모든 required support를,
+`violated`는 적어도 한 required dimension의 observed failure를 요구한다. Required surface,
+complete capture, authority와 historical conversation guard는 그대로 적용한다. Partial review의 `not_reviewed`/`insufficient_evidence`는 semantic failure나
 qualification success로 재분류하지 않는다.
 Work-specific criterion은 모든 5개 Work에 남고, journey-final projection criterion은 represented
 Work identity를 보존한 세 projection에 적용된다. CLI group만 `volicord`, `small-python`,
@@ -2619,7 +2621,7 @@ Overview/Work cards, Work facts/history disclosure and shared CLI/document summa
 require current-candidate observation; historical b57 Human/Agent evidence remains
 diagnostic for its own candidate. No Human-review policy or campaign is changed here.
 
-Qualitative-review schema 17 / policy revision 17 separates current displayed multi-Work
+Qualitative-review schema 18 / policy revision 18 separates current displayed multi-Work
 and Decision comprehension from retained snapshot and measured-conversation fidelity.
 The rubric, qualification policy and copied-lineage reconstruction consume one current
 inventory. Direct screen complaints do not establish historical inconsistency; historical
@@ -2665,8 +2667,8 @@ attempts remain failed evidence; supporting browser checks do not establish Huma
 
 ### Retained qualitative evidence access
 
-Current review capture schema 5, review schema/policy 17, evaluation policy
-`evidence-evaluation-13` and qualification policy `replacement-qualification-13`
+Current review capture schema 5, review schema/policy 18, evaluation policy
+`evidence-evaluation-14` and qualification policy `replacement-qualification-14`
 preserve supported exact invocations, numeric signal/exit completion, available
 combined process output, wrapper source/completion, normalized operation detail,
 and readable retained canonical Source rows. These remain local untrusted evidence.

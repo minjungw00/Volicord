@@ -482,7 +482,8 @@ def apply_observation_assessments(review_root, mapping_path):
         finding = {**review.observation(spec["criterion_id"]),
             **{k: copy.deepcopy(mapping[k]) for k in ("assessment", "reasoning", "uncertainty", "criterion_observations", "counterevidence")},
             "inspected_evidence": [identity], "human_answer_trace": trace,
-            "evidence": ([] if state == "insufficient_evidence" else [{"evidence_id": identity,
+            "evidence": ([] if state == "insufficient_evidence" and not any(
+                item["state"] != "unobserved" for item in mapping["criterion_observations"]) else [{"evidence_id": identity,
                 "locator": {"kind": "json_pointer", "value": "/response"} if observed["response"] is not None
                     else {"kind": "json_pointer", "value": "/control"},
                 "criterion_id": spec["criterion_id"], "relevance": mapping["reasoning"]}])}
@@ -584,6 +585,9 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
             input_fn, output_fn, trace)
         finding = {**review.observation(spec["criterion_id"]),
             "assessment": "insufficient_evidence", "reasoning": reasoning,
+            "criterion_observations": [{"dimension": name, "state": "unobserved",
+                "reasoning": reasoning, "evidence_indexes": []}
+                for name in preparation["rubric"]["criterion_observations"].get(spec["name"], [])],
             "uncertainty": reasoning,
             "counterevidence": {"state": "not_observable", "reasoning": reasoning, "evidence": []},
             "human_answer_trace": trace}
@@ -604,7 +608,9 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
         _choice("What is your judgment?", review.STATES[:-1], input_fn, output_fn, trace))
     reasoning = (observation if not forced_not_applicable else
         _ask_multiline("Explain why the maintained applicability rule applies.", input_fn, output_fn, trace))
-    references = ([] if state == "insufficient_evidence" else
+    retain_partial = state == "insufficient_evidence" and _yes_no(
+        "Have you inspected partial evidence to retain with this unresolved judgment?", input_fn, output_fn, trace)
+    references = ([] if state == "insufficient_evidence" and not retain_partial else
         _reused_references(reused_context, spec, input_fn, output_fn, trace)
         if reused_context is not None and reused_context["evidence"] else
         _references(root, preparation, spec, input_fn, output_fn, trace, purpose="the judgment"))
@@ -620,15 +626,19 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
         review.require(rule is not None, "this criterion cannot be marked not applicable")
         applicability = {"code": rule, "reasoning": reasoning}
     observations = []
-    if state in {"satisfied", "violated"}:
+    if state in {"satisfied", "violated", "insufficient_evidence"}:
         dimensions = preparation["rubric"]["criterion_observations"].get(spec["name"], [])
         if dimensions:
-            answer = _ask("Confirm the independently inspected dimensions by entering their comma-separated names: "
-                + ", ".join(dimensions), input_fn, output_fn, trace)
-            supplied = [item.strip() for item in answer.split(",")]
-            review.require(supplied == dimensions,
-                "satisfied/violated requires every unresolved criterion-specific dimension")
-            observations.extend(dimensions)
+            answer = _ask("For each dimension enter name=observed_support, name=observed_failure "
+                "or name=unobserved, separated by commas: " + ", ".join(dimensions),
+                input_fn, output_fn, trace)
+            supplied = [item.strip().split("=", 1) for item in answer.split(",")]
+            review.require(all(len(item) == 2 for item in supplied)
+                and [item[0] for item in supplied] == dimensions,
+                "each dimension requires its own explicit state")
+            observations = [{"dimension": name, "state": status, "reasoning": reasoning,
+                "evidence_indexes": list(range(len(references))) if status != "unobserved" else []}
+                for name, status in supplied]
     detail = None
     if spec["group"] == "authority" and spec["name"] != "coverage" \
             and state in {"satisfied", "violated"}:

@@ -70,13 +70,23 @@ def completed(p):
     return value
 
 
+def dimensions(names, state="violated"):
+    """Authored fixture observations, never real human or semantic evidence."""
+    return [{"dimension": name,
+        "state": "observed_support" if state == "satisfied" else
+            "observed_failure" if state == "violated" else "unobserved",
+        "reasoning": "Authored bounded dimension observation for " + name,
+        "evidence_indexes": [0] if state in {"satisfied", "violated"} else []}
+        for name in names]
+
+
 def fill(value, p, state="satisfied"):
     scope = None if value["criterion_id"].startswith("campaign/") else value["criterion_id"].split("/", 1)[0]
     criterion = value["criterion_id"].rsplit("/", 1)[-1]
     value.update(assessment=state, reasoning=f"Synthetic reviewer independently inspected {criterion} in the cited artifact.",
         uncertainty="Fixture-only judgment; no actual Product qualification.",
-        criterion_observations=(list(p["rubric"]["criterion_observations"].get(criterion, []))
-                                if state in {"satisfied", "violated"} else []),
+        criterion_observations=(dimensions(p["rubric"]["criterion_observations"].get(criterion, []), state)
+                                if state in {"satisfied", "violated", "insufficient_evidence"} else []),
         counterevidence={"state": "none_found", "reasoning": "No contrary evidence in the inspected synthetic case.", "evidence": []},
         human_answer_trace=([{"prompt": "What is your bounded judgment?",
             "answer": f"The human reviewer selected {state} for {criterion}."}]
@@ -86,6 +96,13 @@ def fill(value, p, state="satisfied"):
                    "relevance": f"This cited location was inspected specifically for {criterion}."}
             for name, entry in sorted(p["index"]["evidence"].items())
             if q.evidence_applies(entry, scope) and not (scope is None and entry["surface"] == "cli_observation")])
+    if "/live_viewer/" in value["criterion_id"] and state in {"satisfied", "violated"}:
+        locale = value["criterion_id"].split("/")[-2]
+        n = next(n for n,r in enumerate(value["evidence"])
+            if p["index"]["evidence"][r["evidence_id"]]["surface"] == "live_viewer_observation"
+            and p["index"]["evidence"][r["evidence_id"]]["locale"] == locale)
+        for item in value["criterion_observations"]:
+            item["evidence_indexes"] = [n]
     value["inspected_evidence"] = sorted({reference["evidence_id"] for reference in value["evidence"]})
     if state == "insufficient_evidence":
         value["evidence"] = []
@@ -106,6 +123,54 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_partial_failure_and_partial_citations_preserve_unobserved_dimensions(self):
+        p = preparation()
+        value = completed(p)
+        a = next(a for a in value['assessments'] if a['criterion_id'].endswith('/code_behavior'))
+        fill(a, p, 'violated')
+        for item in a['criterion_observations']:
+            item.update(state='unobserved', evidence_indexes=[])
+        a['criterion_observations'][1].update(state='observed_failure', evidence_indexes=[0])
+        self.assertEqual(q.validate_value(p, 'd' * 64, value)['counts']['violated'], 1)
+        a['assessment'] = 'insufficient_evidence'
+        # Limit primary citations to the explicitly retained partial observation.
+        a['evidence'] = [a['evidence'][0]]
+        self.assertEqual(q.validate_value(p, 'd' * 64, value)['counts']['insufficient_evidence'], 1)
+        q.validate_value(p, 'd' * 64, value)
+        for mutate in (
+            lambda v: v.update(assessment='satisfied'),
+            lambda v: v['criterion_observations'][1].update(evidence_indexes=[999]),
+            lambda v: v['criterion_observations'][0].update(evidence_indexes=[0]),
+            lambda v: v['criterion_observations'][1].update(state='observed_support'),
+        ):
+            changed = copy.deepcopy(value)
+            b = next(b for b in changed['assessments'] if b['criterion_id'] == a['criterion_id'])
+            mutate(b)
+            if b['criterion_observations'][1]['state'] == 'observed_support':
+                b['assessment'] = 'violated'
+            with self.assertRaises(ValueError): q.validate_value(p, 'd' * 64, changed)
+
+    def test_partial_failure_does_not_bypass_decisive_conversation_or_surface_guards(self):
+        p = preparation('human')
+        value = completed(p)
+        a = next(a for a in value['assessments']
+            if a['criterion_id'].endswith('/decision_comprehension_when_applicable'))
+        fill(a, p, 'violated')
+        for item in a['criterion_observations'][1:]: item.update(state='unobserved', evidence_indexes=[])
+        p['index']['evidence']['work_capture']['projection']['semantic_complete'] = False
+        with self.assertRaisesRegex(ValueError, 'semantically incomplete'):
+            q.validate_value(p, 'd' * 64, value)
+        # Honest partial observations survive while historical verdict remains unresolved.
+        a['assessment'] = 'insufficient_evidence'
+        a['evidence'] = [a['evidence'][0]]
+        a['criterion_observations'][0]['evidence_indexes'] = [0]
+        spec = next(s for s in q.criterion_specs(p['index'], p['rubric']) if s['criterion_id'] == a['criterion_id'])
+        q.validate_assessment(a, spec, p, value['observation_scope']['inspected_evidence'])
+        a['assessment'] = 'violated'
+        a['evidence'] = [r for r in a['evidence'] if r['evidence_id'] != 'work_capture']
+        with self.assertRaises(ValueError):
+            q.validate_assessment(a, spec, p, value['observation_scope']['inspected_evidence'])
+
     def test_historical_inapplicability_is_exact_work_scoped_and_requires_complete_capture(self):
         p = preparation()
         value = completed(p)
@@ -285,6 +350,7 @@ class ContractTests(unittest.TestCase):
             finding["evidence"] = [r for r in finding["evidence"]
                 if r["evidence_id"] == "live_viewer_observation-en"]
             finding["inspected_evidence"] = ["live_viewer_observation-en"]
+            for item in finding["criterion_observations"]: item["evidence_indexes"] = [0]
             finding["reasoning"] = "I cannot distinguish the displayed items; user rationale was not recorded."
             finding["human_answer_trace"] = [{"prompt": "What did you experience?", "answer": finding["reasoning"]}]
         value["observation_scope"]["inspected_evidence"] = ["live_viewer_observation-en"]
@@ -319,6 +385,14 @@ class ContractTests(unittest.TestCase):
                 finding = next(a for a in value["assessments"] if a["criterion_id"].endswith("/" + name))
                 fill(finding, p, state)
                 finding["reasoning"] = case["evidence_summary"]
+                if name in case.get("dimension_states", {}):
+                    finding["evidence"] = [{"evidence_id": "viewer_snapshot",
+                        "locator": p["index"]["evidence"]["viewer_snapshot"]["locators"][0],
+                        "criterion_id": finding["criterion_id"], "relevance": case["evidence_summary"]}]
+                    for item in finding["criterion_observations"]:
+                        status = case["dimension_states"][name].get(item["dimension"], "unobserved")
+                        item.update(state=status, evidence_indexes=[] if status == "unobserved" else [0])
+
             result = q.validate_value(p, "d" * 64, value)
             self.assertEqual(result["assessment_state"],
                 "violated" if "violated" in case["assessments"].values() else

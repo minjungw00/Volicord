@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "cases": [
     {
       "id": "concrete-code-behavior-with-missing-topology",
@@ -58,6 +58,30 @@
         "not_color_only": "satisfied"
       },
       "evidence_summary": "Synthetic direct live observation: text and shape carry meaning, but Work cards are difficult to distinguish. This supports live grouping failure without asserting incorrect historical snapshots or color-only meaning."
+    },
+    {
+      "id": "partial-concrete-behavior-failure",
+      "assessments": {
+        "code_behavior": "violated"
+      },
+      "dimension_states": {
+        "code_behavior": {
+          "concrete_behavior": "observed_failure"
+        }
+      },
+      "evidence_summary": "Authored retained behavior failure with topology and source-basis interpretation unobserved. Required Viewer observation remains present."
+    },
+    {
+      "id": "partial-behavior-failure-with-unresolved-context",
+      "assessments": {
+        "code_behavior": "insufficient_evidence"
+      },
+      "dimension_states": {
+        "code_behavior": {
+          "concrete_behavior": "observed_failure"
+        }
+      },
+      "evidence_summary": "Authored bounded failure is retained as partial evidence while the reviewer leaves the overall judgment unresolved."
     }
   ]
 }

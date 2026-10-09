@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 17 / policy revision 17, machine evaluation
-policy `evidence-evaluation-13`, human observation/receipt schema 6, qualification policy
-`replacement-qualification-13`, and result-lineage schema 2. Historical runs retain their old
+Current identities are qualitative review schema 18 / policy revision 18, machine evaluation
+policy `evidence-evaluation-14`, human observation/receipt schema 6, qualification policy
+`replacement-qualification-14`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -91,8 +91,14 @@ machine evidence when available; qualitative stopwatch prose does not become tim
 and snapshot-export duration does not establish browser input/paint latency. Document usefulness inspects primary
 semantic content rather than placeholders or audit/integrity material; and document
 fidelity separately inspects user choice, recommended alternative, their respective
-rationales, and alternative-specific consequences. A reviewed `satisfied` or `violated`
-state is structurally incomplete until these criterion-specific dimensions are recorded.
+rationales, and alternative-specific consequences. Each required dimension records `observed_support`, `observed_failure` or `unobserved`,
+bounded reasoning and zero-based `evidence_indexes` into the assessment citations.
+`satisfied` requires support for every required dimension. `violated` requires at least
+one observed failure; unrelated dimensions may remain unobserved. `insufficient_evidence`
+retains valid partial citations, observed failures and explicit gaps without converting
+them into an aggregate verdict. All existing required-surface, complete-capture,
+locale, authority and historical-conversation guards still apply. No unobserved
+dimension can claim evidence. Contradictory evidence and reviewer kind remain explicit.
 This discipline does not derive a verdict from keywords or turn structural validation
 into a prose-quality oracle. A criterion that cannot be judged remains
 `insufficient_evidence`.
@@ -436,7 +442,7 @@ identities include the changed producer/consumer hashes.
 
 Typed artifacts have nested JSON pointers into claim text, action, plan content and lifecycle
 stages (up to 8,192 per artifact); exact line locators always remain available. Package and record
-receipt schema 2 bind preparation schema 17. Copied result-lineage schema 2 rechecks typed shape,
+receipt schema 2 bind preparation schema 18. Copied result-lineage schema 2 rechecks typed shape,
 omissions, stage/receipt/readback consistency and observation-index meaning/stage/locator bindings without original
 Runtime Homes, response files or staging paths. New modules participate in preparer, evaluator
 and qualification dependency hashing. Fresh outer hashes cannot excuse inconsistent inner claims.

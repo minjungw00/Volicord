@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Reviewer isolation, bounded packaging and append-only review operations."""
 import copy
+from qualitative_review_self_test import dimensions
 import json
 from pathlib import Path
 import subprocess
@@ -84,6 +85,7 @@ def insufficient_draft(root):
         finding.update(assessment="insufficient_evidence", reasoning="Only the bounded evidence availability inventory was inspected.",
             inspected_evidence=([spec["sample_id"] + "-availability"] if spec["sample_id"] is not None else []),
             evidence=[],
+            criterion_observations=dimensions(p["rubric"]["criterion_observations"].get(spec["name"], []), "insufficient_evidence"),
             uncertainty="No substantive judgment has been established from actual observations.",
             counterevidence={"state": "not_observable", "reasoning": "Missing inspection limits both positive and contrary observations.", "evidence": []},
             human_answer_trace=([{"prompt": "What is your bounded judgment?",
@@ -651,7 +653,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(capture["projection"]["work_bindings"], [{
                 "project_id": actual[spec["sample_id"]]["project_id"],
                 "work_item_id": actual[spec["sample_id"]]["work_item_id"]}])
-            a.update(assessment="not_applicable", inspected_evidence=identities,
+            a.update(assessment="not_applicable", criterion_observations=[], inspected_evidence=identities,
                 applicability_reason={"code": "no_user_decision_in_scope", "reasoning": "Authored actual Work scope and canonical explicit Decision scope were inspected."},
                 evidence=[{"evidence_id": identity, "locator": prep["index"]["evidence"][identity]["locators"][0],
                     "criterion_id": cid, "relevance": "Actual target Work identity and canonical Decision scope."} for identity in identities])
@@ -1104,7 +1106,7 @@ class WorkflowTests(unittest.TestCase):
             number = next(i + 1 for i, spec in enumerate(specs) if spec["name"] == name and spec["locale"] == "en")
             mappings.append({"criterion_number": number, "observation_evidence_id": identity,
                 "assessment": "violated", "reasoning": "The direct answer reports difficulty distinguishing displayed items.",
-                "uncertainty": "not_reported", "criterion_observations": p["rubric"]["criterion_observations"][name],
+                "uncertainty": "not_reported", "criterion_observations": dimensions(p["rubric"]["criterion_observations"][name]),
                 "counterevidence": {"state": "not_reported", "reasoning": "The person did not report counterevidence.", "evidence": []}})
         path = self.parent / (self._testMethodName + "-mapping.json")
         path.write_bytes(ops.encoded(mappings))
@@ -1163,7 +1165,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(claims, set(prep["rubric"]["criteria"]["live_viewer"]))
         mappings = [{"criterion_number": i + 1, "observation_evidence_id": "journey-volicord-live-" + spec["locale"],
             "assessment": "violated", "reasoning": "The authored answer reports a direct comprehension/interaction problem.",
-            "uncertainty": "not_reported", "criterion_observations": prep["rubric"]["criterion_observations"].get(spec["name"], []),
+            "uncertainty": "not_reported", "criterion_observations": dimensions(prep["rubric"]["criterion_observations"].get(spec["name"], [])),
             "counterevidence": {"state": "not_reported", "reasoning": "The answer reports no counterevidence.", "evidence": []}}
             for i, spec in enumerate(specs) if spec["group"] == "live_viewer"]
         mapping = self.parent / (self._testMethodName + "-mapping.json")
@@ -1214,7 +1216,7 @@ class WorkflowTests(unittest.TestCase):
                 if spec["name"] == name and spec["locale"] == "en"),
                 "observation_evidence_id": "journey-volicord-live-en", "assessment": "violated",
                 "reasoning": "The preserved answer reports difficulty comparing Works.", "uncertainty": "not_reported",
-                "criterion_observations": prep["rubric"]["criterion_observations"][name],
+                "criterion_observations": dimensions(prep["rubric"]["criterion_observations"][name]),
                 "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence reported.", "evidence": []}}
         path = self.parent / (self._testMethodName + "-mapping.json")
         path.write_bytes(ops.encoded([mapping("displayed_decision_comprehension")]))

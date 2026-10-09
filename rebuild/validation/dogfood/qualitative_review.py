@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 # Shared by completion/handoff reporting and replacement qualification.
 HIGH_IMPACT_INSUFFICIENCY_GROUPS = ("authority", "context_recovery", "campaign_interaction")
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
@@ -166,6 +166,12 @@ def rubric(definition):
         "criteria": criteria_contract(contract), "group_prompts": GROUP_PROMPTS,
         "criterion_prompts": CRITERION_PROMPTS, "workload_prompts": WORKLOAD_PROMPTS,
         "criterion_observations": CRITERION_OBSERVATIONS,
+        "dimension_observation_contract": {
+            "states": ["observed_support", "observed_failure", "unobserved"],
+            "evidence_indexes": "Zero-based indexes into this assessment's evidence references.",
+            "satisfaction": "All required dimensions must have observed support.",
+            "violation": "At least one observed failure, subject to existing surface and context guards.",
+            "insufficiency": "Retain partial observations and explicit unobserved dimensions; no aggregate conclusion is implied."},
         "required_surfaces": SURFACES,
         "criterion_required_surfaces": CRITERION_SURFACES,
         "behavior_criteria": contract["interaction_behavior_criterion_contracts"],
@@ -420,6 +426,57 @@ def validate_references(references, index, inspected, spec, *, allow_empty=False
             "evidence locator does not resolve in the bound review index")
 
 
+def validate_dimension_observations(value, spec, preparation):
+    """Validate observation shape and binding, never semantic sufficiency.
+
+    An observed failure can coexist with unobserved dimensions and an unresolved
+    aggregate. The caller still enforces every existing decisive-context guard.
+    """
+    state, observations = value["assessment"], value["criterion_observations"]
+    required = preparation["rubric"]["criterion_observations"].get(spec["name"], [])
+    require(isinstance(observations, list), "criterion observations must be a list")
+    if state in {"not_applicable", "not_observed"}:
+        require(not observations, "inapplicable or absent opportunity cannot claim dimension observations")
+        return
+    require(len(observations) == len(required),
+        "criterion-specific semantic dimensions need explicit observation or unobserved entries")
+    states, used = [], set()
+    for expected, item in zip(required, observations):
+        require(isinstance(item, dict) and set(item) == {
+            "dimension", "state", "reasoning", "evidence_indexes"}
+            and item["dimension"] == expected
+            and item["state"] in {"observed_support", "observed_failure", "unobserved"}
+            and authority.bounded_text(item["reasoning"]),
+            "dimension observation requires its identity, state and bounded reasoning")
+        references = item["evidence_indexes"]
+        require(isinstance(references, list) and len(references) <= 64
+            and all(type(n) is int and 0 <= n < len(value["evidence"]) for n in references)
+            and len(references) == len(set(references)),
+            "dimension evidence indexes must resolve in this assessment")
+        if item["state"] == "unobserved":
+            require(not references, "an unobserved dimension cannot claim observation evidence")
+        else:
+            require(references, "an observed dimension requires located evidence")
+            if spec["group"] == "live_viewer":
+                entries = [preparation["index"]["evidence"][
+                    value["evidence"][n]["evidence_id"]] for n in references]
+                require(any(e["surface"] == "live_viewer_observation"
+                    and e.get("locale") == spec["locale"]
+                    and spec["name"] in e.get("prepared_claims", []) for e in entries),
+                    "a live dimension needs its own locale and prepared direct observation")
+            used.update(references)
+        states.append(item["state"])
+    if state == "satisfied":
+        require(all(s == "observed_support" for s in states),
+            "satisfaction requires observed support for every required dimension")
+    elif state == "violated" and required:
+        require("observed_failure" in states,
+            "violation requires an observed failure in a required dimension")
+    elif state == "insufficient_evidence" and required:
+        require(used == set(range(len(value["evidence"]))),
+            "insufficient evidence may cite only explicitly retained dimension observations")
+
+
 def validate_assessment(value, spec, preparation, inspected):
     require(isinstance(value, dict) and set(value) == FIELDS
         and value["criterion_id"] == spec["criterion_id"], "criterion identity/shape changed")
@@ -460,8 +517,6 @@ def validate_assessment(value, spec, preparation, inspected):
         and authority.bounded_text(counter["reasoning"]), "explicit counterevidence or its absence is required")
     validate_references(counter["evidence"], index, criterion_inspected, spec, allow_empty=counter["state"] != "cited")
     require(counter["state"] == "cited" or not counter["evidence"], "absence cannot contain counterevidence")
-    require(state != "insufficient_evidence" or not value["evidence"],
-        "insufficient evidence records inspection and missing information without fabricated citations")
     require(state != "not_observed" or not value["evidence"], "not_observed cannot fabricate event citations")
     require(state != "not_observed" or (spec["group"] == "interaction"
         and spec["name"] in NOT_OBSERVED_OPPORTUNITIES),
@@ -480,15 +535,7 @@ def validate_assessment(value, spec, preparation, inspected):
 
     require(state != "not_observed" or spec["group"] not in {"live_viewer", "cli"}, "required direct observations cannot be not_observed")
     require(state != "satisfied" or counter["state"] not in {"not_observable", "not_reported"}, "unobservable counterevidence cannot satisfy a criterion")
-    observations = value["criterion_observations"]
-    required_observations = preparation["rubric"]["criterion_observations"].get(spec["name"], [])
-    require(isinstance(observations, list) and len(observations) == len(set(observations))
-        and all(isinstance(item, str) for item in observations), "criterion observations must be distinct strings")
-    if state in {"satisfied", "violated"}:
-        require(observations == required_observations,
-            "criterion-specific semantic dimensions were not inspected independently")
-    else:
-        require(not observations, "incomplete or inapplicable judgment cannot claim completed semantic inspection")
+    validate_dimension_observations(value, spec, preparation)
     if state == "not_applicable":
         rule = preparation["rubric"]["not_applicable_rules"].get(spec["name"])
         reason = value["applicability_reason"]

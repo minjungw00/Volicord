@@ -560,8 +560,11 @@ For agent review, run inspect-agent-review for one criterion before judging it.
 That operation presents evidence identities and locators but never proposes a verdict.
 Use exact indexed JSON pointers or 1-based line numbers in evidence references.
 For every citation, explain its relevance to that exact criterion. Complete the
-criterion-specific semantic dimensions in preparation.json independently; do not
-inherit a group verdict. SAME AS PREVIOUS and ALREADY COVERED reuse only inspected
+criterion-specific semantic dimensions in preparation.json independently as observed_support,
+observed_failure or unobserved, with reasoning and indexes into this criterion's citations.
+Satisfied requires all support; violated needs a sufficient observed failure under
+the existing context guards. Insufficient judgments retain valid partial evidence.
+Do not inherit a group verdict. SAME AS PREVIOUS and ALREADY COVERED reuse only inspected
 observation/evidence context and still require a new criterion-specific judgment.
 Only SAME AS ENGLISH for the identical criterion is an exact-semantic mirror.
 In particular, judge code behavior separately from

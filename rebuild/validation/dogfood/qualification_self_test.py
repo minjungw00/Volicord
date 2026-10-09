@@ -1,5 +1,6 @@
 """Qualification authority negative controls; no naturalistic passage claims."""
 import copy
+from qualitative_review_self_test import dimensions
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -1107,6 +1108,76 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
 
 class FileBoundaryTests(unittest.TestCase):
+    def test_partial_dimensions_reach_record_qualification_and_copied_lineage(self):
+        import campaign
+        import review_operations as ops
+        import result_lineage
+        from review_operations_self_test import snapshot
+        original = snapshot(self.root)
+        cid = 'journey-volicord/viewer_snapshot/code_behavior'
+        for state in ('violated', 'insufficient_evidence', 'satisfied'):
+            prefix = self.parent / ('partial-' + state); prefix.mkdir()
+            target = prefix / 'review'
+            ops.prepare(self.root, target, reviewer_kind='agent', session_id='partial-review-' + state,
+                evaluation_path=self.evaluation)
+            prep, sha, _ = ops.load_package(target)
+            draft = review.template(prep, sha)
+            a = next(a for a in draft['assessments'] if a['criterion_id'] == cid)
+            eid, entry = next((eid, e) for eid,e in prep['index']['evidence'].items()
+                if e['surface'] == 'viewer_snapshot' and review.evidence_applies(e, 'journey-volicord'))
+            a.update(assessment=state, reasoning='Authored inspection of concrete behavior only.',
+                uncertainty='Other dimensions remain unobserved in this authored partial control.',
+                inspected_evidence=[eid], evidence=[{'evidence_id': eid, 'locator': {'kind': 'line', 'value': 1},
+                    'criterion_id': cid, 'relevance': 'The actual retained Viewer body exposes the authored behavior.'}],
+                counterevidence={'state': 'cited', 'reasoning': 'Contradictory details remain visible for review.',
+                    'evidence': [{'evidence_id': eid, 'locator': {'kind': 'line', 'value': 1}, 'criterion_id': cid,
+                        'relevance': 'Authored contrary detail in the same retained body.'}]},
+                criterion_observations=dimensions(prep['rubric']['criterion_observations']['code_behavior'], state))
+            if state != 'satisfied':
+                for item in a['criterion_observations']:
+                    item.update(state='unobserved', evidence_indexes=[])
+                a['criterion_observations'][1].update(state='observed_failure', evidence_indexes=[0])
+            draft['observation_scope']['inspected_evidence'] = [eid]
+            changed = copy.deepcopy(draft)
+            next(a for a in changed['assessments'] if a['criterion_id'] == cid)['evidence'][0]['locator']['value'] = '/invalid'
+            with self.assertRaisesRegex(ValueError, 'locator'):
+                review.validate_value(prep, sha, changed)
+            (target / 'draft.json').write_bytes(ops.encoded(draft))
+            preflight = ops.validate(target, target / 'draft.json')
+            self.assertEqual(preflight['counts'][state], 1)
+            ops.record(target, target / 'draft.json')
+            ops.package_review(target, prefix / 'review.tar.gz')
+            result = policy.qualify(self.root, self.evaluation, prefix / 'qualification',
+                candidate=prep['binding']['candidate_head'], review_roots=[target])
+            key = {'violated': 'violated_criteria', 'insufficient_evidence': 'unresolved_criteria',
+                'satisfied': 'resolved_criteria'}[state]
+            self.assertIn(cid, result['qualitative_review'][key])
+            self.assertNotEqual(result['replacement_qualification'], 'qualified')
+            published = result_lineage.publish(self.root, self.evaluation, [target],
+                prefix / 'qualification/qualification.json', output=prefix / 'lineage')
+            copied = prefix / 'copied'; shutil.copytree(published['lineage_root'], copied)
+            with patch.object(campaign, 'load_evidence_set', side_effect=AssertionError('original campaign read')):
+                result_lineage.verify(copied)
+            index = json.loads((copied / 'index.json').read_bytes())
+            copied_review = copied / index['qualitative_reviews'][0]['root']
+            retained = json.loads((copied_review / 'recorded/review.json').read_bytes())
+            self.assertEqual(next(a for a in retained['assessments'] if a['criterion_id'] == cid), a)
+            if state == 'violated':
+                # Rehash outer publication and recorded review wrappers. Structural
+                # semantics still reject a violation with no observed failure.
+                finding = next(a for a in retained['assessments'] if a['criterion_id'] == cid)
+                finding['criterion_observations'][1]['state'] = 'observed_support'
+                path = copied_review / 'recorded/review.json'; path.chmod(0o600); path.write_bytes(ops.encoded(retained))
+                path = copied_review / 'recorded/receipt.json'; receipt = json.loads(path.read_bytes())
+                receipt['review_sha256'] = ops.digest(ops.encoded(retained))
+                path.chmod(0o600); path.write_bytes(ops.encoded(receipt))
+                path = copied / 'receipt.json'; receipt = json.loads(path.read_bytes())
+                receipt['artifacts'] = {name: result_lineage._binding((copied / name).read_bytes()) for name in receipt['artifacts']}
+                path.chmod(0o600); path.write_bytes(ops.encoded(receipt))
+                with self.assertRaisesRegex(ValueError, 'observed failure'):
+                    result_lineage.verify(copied)
+        self.assertEqual(snapshot(self.root), original)
+
     def test_retained_retry_and_source_evidence_reach_independent_review_and_copied_qualification(self):
         import campaign
         import campaign_self_test as support
@@ -1199,7 +1270,7 @@ class FileBoundaryTests(unittest.TestCase):
             resolved.append(cid)
             a = next(a for a in draft["assessments"] if a["criterion_id"] == cid)
             identities = [f"journey-volicord-work-{work}-start", "journey-volicord-bundle"]
-            a.update(assessment="not_applicable", inspected_evidence=identities,
+            a.update(assessment="not_applicable", criterion_observations=[], inspected_evidence=identities,
                 applicability_reason={"code": "no_user_decision_in_scope", "reasoning": "Canonical Decision belongs explicitly to Work B; actual target Work scope required none."},
                 evidence=[{"evidence_id": identity, "locator": prep["index"]["evidence"][identity]["locators"][0],
                     "criterion_id": cid, "relevance": "Actual Work identity and canonical Decision scope were inspected."} for identity in identities])
@@ -1259,7 +1330,7 @@ class FileBoundaryTests(unittest.TestCase):
         specs = review.criterion_specs(prep["index"], prep["rubric"])
         mappings = [{"criterion_number": i + 1, "observation_evidence_id": "journey-volicord-live-" + spec["locale"],
             "assessment": "violated", "reasoning": "The exact authored answer reports difficulty with this experience.",
-            "uncertainty": "not_reported", "criterion_observations": prep["rubric"]["criterion_observations"].get(spec["name"], []),
+            "uncertainty": "not_reported", "criterion_observations": dimensions(prep["rubric"]["criterion_observations"].get(spec["name"], [])),
             "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence was reported.", "evidence": []}}
             for i,spec in enumerate(specs) if spec["group"] == "live_viewer"]
         mapping = prefix / "mapping.json"; mapping.write_bytes(ops.encoded(mappings))
@@ -1360,7 +1431,7 @@ class FileBoundaryTests(unittest.TestCase):
         specs = review.criterion_specs(prep["index"], prep["rubric"])
         mappings = [{"criterion_number": i+1, "observation_evidence_id": "journey-volicord-live-"+spec["locale"],
             "assessment": "violated", "reasoning": "The authored answer reports confusing Work grouping.",
-            "uncertainty": "not_reported", "criterion_observations": prep["rubric"]["criterion_observations"][spec["name"]],
+            "uncertainty": "not_reported", "criterion_observations": dimensions(prep["rubric"]["criterion_observations"][spec["name"]]),
             "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence reported.", "evidence": []}}
             for i,spec in enumerate(specs) if spec["name"] == "multiple_work_comprehension"]
         mapping = prefix/"mapping.json"; mapping.write_bytes(ops.encoded(mappings))
@@ -1371,7 +1442,7 @@ class FileBoundaryTests(unittest.TestCase):
         aprep, asha, _ = ops.load_package(agent)
         for a in draft["assessments"]:
             if not a["criterion_id"].endswith("/displayed_decision_comprehension"): continue
-            a.update(assessment="not_applicable", reasoning="Authored delegated-work scope required no user Decision; canonical inventory has none.",
+            a.update(assessment="not_applicable", criterion_observations=[], reasoning="Authored delegated-work scope required no user Decision; canonical inventory has none.",
                 applicability_reason={"code": "no_user_decision_in_scope", "reasoning": "No user-owned Decision was required by these authored Works."},
                 evidence=[{"evidence_id": identity, "locator": entry["locators"][0],
                     "criterion_id": a["criterion_id"], "relevance": "Inspect actual Work scope and canonical absence."}
