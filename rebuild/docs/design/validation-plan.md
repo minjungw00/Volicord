@@ -2668,7 +2668,7 @@ attempts remain failed evidence; supporting browser checks do not establish Huma
 ### Retained qualitative evidence access
 
 Current review capture schema 5, review schema/policy 18, evaluation policy
-`evidence-evaluation-14` and qualification policy `replacement-qualification-14`
+`evidence-evaluation-15` and qualification policy `replacement-qualification-15`
 preserve supported exact invocations, numeric signal/exit completion, available
 combined process output, wrapper source/completion, normalized operation detail,
 and readable retained canonical Source rows. These remain local untrusted evidence.

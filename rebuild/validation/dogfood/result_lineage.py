@@ -97,17 +97,17 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
         review.require(previous_evaluation is None, 'unexpected historical evaluation input')
     if (campaign_root / 'collection/publication.json').is_file():
         files['source/collection/publication.json'] = operations.bounded_read(campaign_root / 'collection/publication.json')
-    reviews, observed_references = [], []
+    reviews, observed_references, review_snapshots = [], [], []
     for review_root in review_roots:
         review_root = review_root.resolve()
-        preparation, preparation_sha, package = operations.load_package(review_root)
+        preparation, preparation_sha, package, snapshot = operations.verified_package_bytes(review_root)
         recorded = operations.recorded_files(review_root, preparation, preparation_sha)
         review.require(recorded, "result lineage accepts only immutable recorded reviews")
         value = json.loads(recorded["recorded/review.json"])
         run_id = value["reviewer"]["run_id"]
         prefix = f"reviews/{run_id}"
-        package_names = {*package["artifacts"], "package.json"}
-        for name, data in _relative_files(review_root, package_names).items():
+        review_snapshots.append((review_root, snapshot, recorded))
+        for name, data in snapshot.items():
             files[f"{prefix}/{name}"] = data
         for name, data in recorded.items():
             files[f"{prefix}/{name}"] = data
@@ -171,6 +171,10 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
         and operations.bounded_read(evaluation_path) == evaluation_data
         and operations.bounded_read(qualification_path) == qualification_data,
         "result source changed during lineage publication")
+    for root, snapshot, recorded in review_snapshots:
+        prep, sha, _, current_bytes = operations.verified_package_bytes(root)
+        review.require(current_bytes == snapshot and operations.recorded_files(root, prep, sha) == recorded,
+            "review input changed during lineage publication")
     operations.publish_directory(destination, files)
     return {"state": "published", "lineage_root": str(destination),
         "lineage_id": lineage_id, "candidate_head": manifest["candidate_head"],

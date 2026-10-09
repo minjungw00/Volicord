@@ -1108,6 +1108,35 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
 
 class FileBoundaryTests(unittest.TestCase):
+    def test_qualification_and_lineage_reject_valid_but_changed_review_bytes(self):
+        import review_operations as ops
+        import result_lineage
+        from review_operations_self_test import insufficient_draft
+        target = self.parent / 'publication-drift-review'
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='publication-drift-review',
+            evaluation_path=self.evaluation)
+        insufficient_draft(target); ops.record(target, target / 'draft.json')
+        path = target / 'package.json'; original = path.read_bytes()
+        def drift():
+            path.chmod(0o600); path.write_bytes(original + b' ')
+        combine = policy.combine
+        def mutate_combine(*args, **kwargs):
+            result = combine(*args, **kwargs); drift(); return result
+        output = self.parent / 'drift-qualification'
+        candidate = ops.load_package(target)[0]['binding']['candidate_head']
+        with patch.object(policy, 'combine', side_effect=mutate_combine), self.assertRaisesRegex(ValueError, 'changed during qualification'):
+            policy.qualify(self.root, self.evaluation, output, candidate=candidate, review_roots=[target])
+        self.assertFalse(output.exists())
+        path.write_bytes(original)
+        policy.qualify(self.root, self.evaluation, output, candidate=candidate, review_roots=[target])
+        bound = result_lineage._binding
+        def mutate_binding(data):
+            result = bound(data); drift(); return result
+        destination = self.parent / 'drift-lineage'
+        with patch.object(result_lineage, '_binding', side_effect=mutate_binding), self.assertRaisesRegex(ValueError, 'changed during lineage'):
+            result_lineage.publish(self.root, self.evaluation, [target], output / 'qualification.json', output=destination)
+        self.assertFalse(destination.exists())
+
     def test_partial_dimensions_reach_record_qualification_and_copied_lineage(self):
         import campaign
         import review_operations as ops

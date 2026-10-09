@@ -618,6 +618,74 @@ class ProjectionTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_batch_inspection_shares_only_one_verified_byte_snapshot(self):
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='batch-review')
+        numbers = [1, 2, 3, 4]
+        single_sizes = []
+        original = ops._load_package
+        def measure(root):
+            result = original(root)
+            single_sizes.append(sum(map(len, result[3].values())))
+            return result
+        with patch.object(ops, '_load_package', side_effect=measure) as verify:
+            singles = [ops.inspect_agent_criterion(target, n) for n in numbers]
+            single_verifications = verify.call_count
+        with patch.object(ops, '_load_package', wraps=ops._load_package) as verify:
+            batch = ops.inspect_agent_batch(target, numbers)
+            self.assertEqual(verify.call_count, 1)
+        self.assertEqual(batch['criteria'], singles)
+        self.assertEqual(single_verifications, len(numbers))
+        self.assertEqual(batch['verification']['verified_file_count'],
+            len(json.loads((target / 'package.json').read_bytes())['artifacts']) + 1)
+        size = batch['verification']['verified_bytes']
+        print(json.dumps({'inspection_measurement': {'criteria': len(numbers),
+            'single_full_verifications': single_verifications, 'batch_full_verifications': 1,
+            'single_verified_bytes': sum(single_sizes), 'batch_verified_bytes': size,
+            'wall_time_comparison': None}}))
+        for bad in ([], [1, 1], [True], [0], [9999]):
+            with self.assertRaises(ValueError): ops.inspect_agent_batch(target, bad)
+        before = snapshot(target)
+        cli = subprocess.run(['python3', '-B', str(Path(c.__file__)), 'inspect-agent-review',
+            '--review-root', str(target), '--criterion-numbers', '1', '2', '3', '4'],
+            capture_output=True, text=True)
+        self.assertEqual(cli.returncode, 0, cli.stdout + cli.stderr)
+        self.assertEqual(json.loads(cli.stdout), batch)
+        self.assertEqual(snapshot(target), before)
+        # A later request must not inherit the first request's successful check.
+        package = json.loads((target / 'package.json').read_bytes())
+        name = next(name for name in package['artifacts'] if name.startswith('evidence/'))
+        path = target / name; path.chmod(0o600); path.write_bytes(path.read_bytes() + b' ')
+        with self.assertRaisesRegex(ValueError, 'hash mismatch'): ops.inspect_agent_batch(target, numbers)
+
+    def test_record_rechecks_actual_package_and_draft_bytes(self):
+        for changed_name in ('package.json', 'draft.json'):
+            target = self.parent / (self._testMethodName + changed_name)
+            ops.prepare(self.root, target, reviewer_kind='agent', session_id='drift-review')
+            insufficient_draft(target)
+            original_validate = q.validate_value
+            def mutate(*args):
+                result = original_validate(*args)
+                path = target / changed_name; path.chmod(0o600); path.write_bytes(path.read_bytes() + b' ')
+                return result
+            with patch.object(q, 'validate_value', side_effect=mutate), self.assertRaisesRegex(ValueError, 'changed during recording'):
+                ops.record(target, target / 'draft.json')
+            self.assertFalse((target / 'recorded').exists())
+
+    def test_archive_rechecks_snapshot_before_publication(self):
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='archive-drift-review')
+        insufficient_draft(target); ops.record(target, target / 'draft.json')
+        original = ops.recorded_files
+        def mutate(*args):
+            result = original(*args)
+            path = target / 'package.json'; path.chmod(0o600); path.write_bytes(path.read_bytes() + b' ')
+            return result
+        output = self.parent / (self._testMethodName + '.tar.gz')
+        with patch.object(ops, 'recorded_files', side_effect=mutate), self.assertRaisesRegex(ValueError, 'changed during archive'):
+            ops.package_review(target, output)
+        self.assertFalse(output.exists())
+
     def test_source_projection_rejects_fresh_hashes_with_invented_source_content(self):
         from review_meaning_self_test import rehash_package
         target = self.target()

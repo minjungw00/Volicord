@@ -586,14 +586,30 @@ No review result grants final replacement or Phase 9 approval.
 
 
 def inspect_agent_criterion(root, criterion_number):
-    """Present one evidence-first task without deriving or suggesting a verdict."""
-    preparation, sha, package = load_package(root)
+    """Present one criterion from a fresh verified byte snapshot."""
+    return inspect_agent_batch(root, [criterion_number])["criteria"][0]
+
+
+def inspect_agent_batch(root, criterion_numbers):
+    """One bounded request, one verified immutable byte set; no trust cache."""
+    review.require(isinstance(criterion_numbers, list) and 1 <= len(criterion_numbers) <= 1024
+        and all(type(n) is int for n in criterion_numbers)
+        and len(set(criterion_numbers)) == len(criterion_numbers), "invalid inspection batch")
+    preparation, sha, package, contents = verified_package_bytes(root)
     review.require(preparation["reviewer"]["kind"] == "agent",
         "agent inspection requires an agent review preparation")
     specs = review.criterion_specs(preparation["index"], preparation["rubric"])
-    review.require(1 <= criterion_number <= len(specs), "criterion number is unavailable")
-    spec = specs[criterion_number - 1]
+    review.require(all(1 <= n <= len(specs) for n in criterion_numbers), "criterion number is unavailable")
     draft = json.loads(draft_bytes(root.resolve(), root.resolve() / "draft.json", package))
+    return {"kind": "dogfood_agent_review_batch_inspection", "schema_version": 1,
+        "criteria": [_inspect_agent_criterion(preparation, sha, specs, draft, n) for n in criterion_numbers],
+        "verification": {"full_package_verifications": 1, "verified_file_count": len(contents),
+            "verified_bytes": sum(len(data) for data in contents.values()),
+            "reuse_scope": "this_request_only"}, "mutation": "none"}
+
+
+def _inspect_agent_criterion(preparation, sha, specs, draft, criterion_number):
+    spec = specs[criterion_number - 1]
     evidence = []
     required = review.required_surfaces(spec)
     for identity, entry in sorted(preparation["index"]["evidence"].items()):
@@ -782,6 +798,11 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
 
 
 def load_package(root):
+    return verified_package_bytes(root)[:3]
+
+
+def verified_package_bytes(root):
+    """Verify current bytes every call and retain exactly those bytes for this request."""
     try:
         return _load_package(root)
     except (KeyError, TypeError, AttributeError, IndexError) as error:
@@ -791,7 +812,8 @@ def load_package(root):
 def _load_package(root):
     root = root.resolve()
     review.require(not root.with_name(root.name + ".publication-lock").exists(), "review publication requires recovery")
-    package = json.loads(bounded_read(root / "package.json"))
+    package_data = bounded_read(root / "package.json")
+    package = json.loads(package_data)
     review.require(isinstance(package, dict) and set(package) == {"kind", "schema_version", "package_id", "preparation_sha256", "artifacts"}
         and package["kind"] == "dogfood_qualitative_review_package" and package["schema_version"] == 2,
         "invalid review package")
@@ -938,7 +960,7 @@ def _load_package(root):
             "copied campaign subject inventory differs from retained canonical/Work evidence")
         human_observation_plan.validate_scope(live[0]["scope"], {v["locale"]: v["contexts"] for v in live},
             binding["candidate_head"], live[0]["binding"]["display"]["viewer_sha256"])
-    return preparation, package["preparation_sha256"], package
+    return preparation, package["preparation_sha256"], package, {**contents, "package.json": package_data}
 
 
 def draft_bytes(root, draft, package):
@@ -959,15 +981,17 @@ def validate(root, draft):
 
 
 def record(root, draft):
-    preparation, sha, package = load_package(root)
+    preparation, sha, package, snapshot = verified_package_bytes(root)
     data = draft_bytes(root, draft, package)
     result = review.validate_value(preparation, sha, json.loads(data))
     review.require(result["counts"]["not_reviewed"] < sum(result["counts"].values()), "empty draft is not a completed review effort")
     receipt = {"kind": "dogfood_qualitative_review_receipt", "schema_version": 2,
         "review_run_id": preparation["reviewer"]["run_id"], "reviewer_kind": preparation["reviewer"]["kind"],
         "preparation_sha256": sha, "review_sha256": digest(data), "result": result}
-    current, current_sha, _ = load_package(root)
-    review.require(current == preparation and current_sha == sha, "preparation changed during recording")
+    current, current_sha, _, current_bytes = verified_package_bytes(root)
+    review.require(current_bytes == snapshot and current == preparation and current_sha == sha,
+        "preparation changed during recording")
+    review.require(draft_bytes(root, draft, package) == data, "draft changed during recording")
     # The exact input bytes and receipt become visible together. Neither is ever
     # overwritten; another review requires another prepared run.
     publish_directory(root / "recorded", {"review.json": data, "receipt.json": encoded(receipt)})
@@ -992,14 +1016,10 @@ def recorded_files(root, preparation, sha):
 
 def package_review(root, output):
     """Archive only a verified reviewer package, never campaign/evaluator state."""
-    preparation, sha, package = load_package(root)
-    names = sorted({*package["artifacts"], "package.json", "draft.json"})
-    files = {name: bounded_read(safe_path(root, name), MAX_DRAFT_BYTES if name == "draft.json" else
-        MAX_FILE_BYTES) for name in names}
-    for name, binding in package["artifacts"].items():
-        review.require(binding == {"bytes": len(files[name]), "sha256": digest(files[name])}, "review evidence changed during archive preparation")
-    review.require(json.loads(files["package.json"]) == package, "review package changed during archive preparation")
-    files.update(recorded_files(root, preparation, sha))
+    preparation, sha, package, snapshot = verified_package_bytes(root)
+    files = {**snapshot, "draft.json": bounded_read(safe_path(root, "draft.json"), MAX_DRAFT_BYTES)}
+    recorded = recorded_files(root, preparation, sha)
+    files.update(recorded)
     # A copied draft is mutable work product; it is not promoted by packaging.
     output.parent.mkdir(parents=True, exist_ok=True)
     review.require(not output.resolve().is_relative_to(root.resolve()), "archive must remain outside review package")
@@ -1010,6 +1030,11 @@ def package_review(root, output):
                 with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive:
                     for name, content in sorted(files.items()):
                         archive.addfile(campaign_api().tar_info(name, len(content)), io.BytesIO(content))
+        current, current_sha, _, current_bytes = verified_package_bytes(root)
+        review.require(current_bytes == snapshot
+            and recorded_files(root, current, current_sha) == recorded
+            and bounded_read(safe_path(root, "draft.json"), MAX_DRAFT_BYTES) == files["draft.json"],
+            "review evidence changed during archive preparation")
         os.link(temporary, output)  # Atomic create-only publication, including races.
     finally:
         Path(temporary).unlink(missing_ok=True)

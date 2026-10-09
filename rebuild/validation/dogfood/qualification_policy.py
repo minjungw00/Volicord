@@ -11,7 +11,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-14"
+REVISION = "replacement-qualification-15"
 COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
 MULTI_WORK_CRITERION = "journey-volicord/live_viewer/en/multiple_work_comprehension"
 
@@ -302,6 +302,7 @@ def verify_technical(candidate, capsule_path, archive_path, *, candidate_artifac
 def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsule_path=None, archive_path=None):
     import campaign
     manifest = campaign.load_evidence_set(root)
+    evaluation_data = operations.bounded_read(evaluation_path)
     evaluation = evaluation_runs.load(evaluation_path)
     purpose = evidence_purpose.require_same(manifest, evaluation)
     evidence_hash = campaign.harness.sha256(root / "evidence-set.json")
@@ -309,12 +310,13 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
     review.require(evaluation["evidence_set"] == {"path": "evidence-set.json", "sha256": evidence_hash}, "evaluation evidence mismatch")
     _, index, _ = operations.select_evidence(root, manifest, evaluation, include_raw=False)
     specs = review.criterion_specs(index, review.rubric(campaign.harness.load_definition()))
-    reviews, references = [], []
+    reviews, references, review_snapshots = [], [], []
     for path in review_roots:
-        prep, sha, _ = operations.load_package(path)
+        prep, sha, _, snapshot = operations.verified_package_bytes(path)
         operations.verify_campaign_work_scope(prep["index"], manifest)
         files = operations.recorded_files(path, prep, sha)
         review.require(files, "qualification consumes only immutable recorded reviews")
+        review_snapshots.append((path, snapshot, files))
         value = json.loads(files["recorded/review.json"])
         binding = value["binding"]
         evidence_purpose.require_same(manifest, binding)
@@ -344,6 +346,13 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
     result["run_id"] = machine.digest(result)
     validate_result(result)
     campaign.load_evidence_set(root)
+    review.require(campaign.harness.sha256(root / "evidence-set.json") == evidence_hash
+        and operations.bounded_read(evaluation_path) == evaluation_data
+        and evaluation_runs.load(evaluation_path) == evaluation, "qualification inputs changed during review")
+    for path, snapshot, recorded in review_snapshots:
+        prep, sha, _, current_bytes = operations.verified_package_bytes(path)
+        review.require(current_bytes == snapshot and operations.recorded_files(path, prep, sha) == recorded,
+            "review input changed during qualification")
     if output is not None:
         review.require(not output.resolve().is_relative_to(root.resolve()), "qualification output must be outside campaign")
         inputs = {"campaign_root": str(root.resolve()), "evaluation": str(evaluation_path.resolve()),

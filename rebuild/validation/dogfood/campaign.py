@@ -3312,7 +3312,10 @@ def parser() -> argparse.ArgumentParser:
     prepare_qualitative.add_argument("--human-observations", help="Candidate/evidence-bound direct human en/ko live accessibility observations")
     prepare_qualitative.add_argument("--cli-observations", help="Candidate/evidence-bound repository-class CLI observation directory")
     inspect_agent.add_argument("--review-root", required=True)
-    inspect_agent.add_argument("--criterion-number", type=int, required=True)
+    inspection_scope = inspect_agent.add_mutually_exclusive_group(required=True)
+    inspection_scope.add_argument("--criterion-number", type=int)
+    inspection_scope.add_argument("--criterion-numbers", type=int, nargs="+",
+        help="Inspect a bounded batch from one freshly verified package")
     capture_human.add_argument("--campaign-root", required=True)
     capture_human.add_argument("--output", required=True)
     capture_human.add_argument("--observation-plan", type=Path,
@@ -3453,7 +3456,9 @@ def main() -> int:
             human_observations=Path(args.human_observations) if args.human_observations else None,
             cli_observation_root=Path(args.cli_observations) if args.cli_observations else None)
     elif args.command == "inspect-agent-review":
-        value = review_operations.inspect_agent_criterion(root, args.criterion_number)
+        value = (review_operations.inspect_agent_batch(root, args.criterion_numbers)
+            if args.criterion_numbers is not None else
+            review_operations.inspect_agent_criterion(root, args.criterion_number))
     elif args.command == "record-resources":
         value = record_resources(root, Path(args.input))
     elif args.command == "capture-human-viewer-observations":

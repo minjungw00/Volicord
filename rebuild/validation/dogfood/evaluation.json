@@ -964,7 +964,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-14",
+    "revision": "replacement-qualification-15",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "live_viewer/*"

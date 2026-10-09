@@ -6,6 +6,11 @@ surface, not a Volicord product command or production architecture.
 
 ## Commands
 
+Read-only qualitative inspection accepts `inspect-agent-review --review-root <private-run>
+--criterion-numbers 1 2 3`. Each request verifies one full package byte set; single
+inspection uses the same presentation. Recording and publication recheck current bytes.
+See [the qualitative review owner](../docs/design/qualitative-review.md).
+
 Bounded explanation input/invocation experiments are documented under
 [V06 explanation generation support](projections/source-grounded-documents/explanation-generation/README.md).
 They are focused support only, independent of gate/official V11, Product schema

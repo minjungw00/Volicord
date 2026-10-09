@@ -5,8 +5,8 @@ This contract owns review artifacts and operations, not Product behavior or fina
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 18 / policy revision 18, machine evaluation
-policy `evidence-evaluation-14`, human observation/receipt schema 6, qualification policy
-`replacement-qualification-14`, and result-lineage schema 2. Historical runs retain their old
+policy `evidence-evaluation-15`, human observation/receipt schema 6, qualification policy
+`replacement-qualification-15`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -241,6 +241,16 @@ rebuild/scripts/dogfood-campaign inspect-agent-review \
   --review-root /absolute/private/review-run \
   --criterion-number 1
 ```
+
+Batch inspection uses the same operation with `--criterion-numbers 1 2 3`. It verifies
+one complete immutable byte set, holds those exact bytes only within the request, and
+presents the same per-criterion evidence as single inspection. The result reports actual
+verified byte/file counts and one full verification; it supplies no estimated latency
+or missing-cost success. Another request verifies its inputs anew. Filenames and mtime
+are never integrity proof. Record, archive, qualification and result-lineage publication
+recheck the actual immutable snapshot and mutable/recorded inputs immediately before
+create-only publication; drift is rejected even for semantically identical JSON bytes.
+No caller-supplied verification flag or persistent trust cache exists.
 
 The result names the criterion, prompts, required surfaces and semantic dimensions, exact
 evidence identities/hashes/paths and available locators. It deliberately contains no proposed
