@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 import archive
 import inputs as i
@@ -177,6 +178,20 @@ class InputTests(unittest.TestCase):
         self.assertEqual(value['representation'], 'unavailable')
         self.assertEqual(value['chronology'], {'state': 'ambiguous', 'reason': 'no independent timestamp'})
         self.assertIsNone(value['file_sha256'])
+
+    def test_unnormalized_cell_preserves_independent_raw_values(self):
+        wrapper = SimpleNamespace(sequence=0, completion_sequence=1, state='unsupported')
+        capture = SimpleNamespace(execution_wrappers=[wrapper])
+        events = [{'payload': {'input': 'opaque original read request'}},
+                  {'payload': {'output': 'original bounded source excerpt'}}]
+        result = list(archive.unnormalized_cells(capture, events))
+        self.assertEqual(result[0]['input'], 'opaque original read request')
+        self.assertEqual(result[0]['output'], 'original bounded source excerpt')
+        self.assertEqual(result[0]['numeric_execution_outcome'], 'not_normalized')
+        events = [{'payload': {'input': 'text(await tools.exec_command({cmd:"cargo fmt --all"}));'}},
+                  {'payload': {'input': 'text(await tools.exec_command({cmd:"cargo fmt --all -- --check"}));'}}]
+        self.assertEqual(list(archive.formatting_requests(events)), [
+            {'record': 1, 'command': 'cargo fmt --all', 'state': 'literal_request_not_execution_attestation'}])
 
 
 if __name__ == '__main__':

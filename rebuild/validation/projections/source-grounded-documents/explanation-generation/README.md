@@ -54,7 +54,12 @@ historical evaluation. Existing `dogfood/codex_events.py` owns current capture
 normalization. Explicit canonical Work/Checkpoint/Decision/Question/Source links
 select records at the cutoff, independently of path/commit proximity. Exact
 start/resume sessions supply **all** normalized command observations and original
-reports/user replies. Inherited system/developer/turn context, prototype prose,
+reports/user replies. Unsupported/indeterminate execution cells also retain their
+exact original request and bounded output, with unavailable normalized numeric
+outcome. They are never dropped from the investigation inventory or counted as
+successful commands. Literal formatting requests in those cells can support
+diagnostic reconstruction, but do not attest historical execution success.
+Inherited system/developer/turn context, prototype prose,
 source-tour ranking, expected claims, review directories and later generated
 explanations are excluded.
 

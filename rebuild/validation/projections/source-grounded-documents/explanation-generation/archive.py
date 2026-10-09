@@ -11,6 +11,7 @@ import io
 import json
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -41,6 +42,30 @@ def patch_literals(events):
         for match in re.finditer(r'tools\.apply_patch\(("(?:\\.|[^"\\])*")\)', text):
             literal = codex_events.JsLiteralParser(match[1]).parse()
             yield index + 1, payload['call_id'], decode_patch(literal)
+
+
+def unnormalized_cells(capture, events):
+    for wrapper in capture.execution_wrappers:
+        if wrapper.state == 'normalized':
+            continue
+        start = events[wrapper.sequence]['payload']
+        end = (events[wrapper.completion_sequence]['payload']
+               if wrapper.completion_sequence is not None else {})
+        yield {'wrapper': vars(wrapper), 'input': start.get('input', start.get('arguments')),
+               'output': end.get('output'), 'numeric_execution_outcome': 'not_normalized'}
+
+
+def formatting_requests(events):
+    for number, event in enumerate(events, 1):
+        text = event.get('payload', {}).get('input', '')
+        for match in re.finditer(r'tools\.exec_command\(\s*\{\s*cmd:\s*("(?:\\.|[^"\\])*")', text):
+            command = codex_events.JsLiteralParser(match[1]).parse()
+            try:
+                tokens = shlex.split(command)
+            except ValueError:
+                continue
+            if tokens[:2] == ['cargo', 'fmt'] and '--check' not in tokens:
+                yield {'record': number, 'command': command, 'state': 'literal_request_not_execution_attestation'}
 
 
 def update_files(files, patch, repository):
@@ -190,6 +215,20 @@ def prepare(archive_root, slot, destination, producer_head):
             origin_witness=binding(path))
     for path, capture, events in captures:
         witness = binding(path)
+        for cell in unnormalized_cells(capture, events):
+            wrapper = cell['wrapper']
+            investigation.append({'project': project, 'work': identity, 'session': capture.session_id,
+                                  'sequence': wrapper['sequence'], 'kind': 'unnormalized_execution_cell',
+                                  'state': wrapper['state'], 'tool_names': wrapper['tool_names'],
+                                  'call_id': wrapper['call_id'], 'numeric_execution_outcome': 'unavailable'})
+            completed = wrapper['completion_sequence']
+            number = (completed if completed is not None else wrapper['sequence']) + 1
+            add(encoded(cell), name=f'cell/{capture.session_id}/{wrapper["sequence"]}',
+                role='command_observation', producer=archive_read,
+                locator=f'{path.relative_to(root)}#record={wrapper["sequence"] + 1}',
+                observed_at=events[number - 1]['timestamp'], representation='bounded_excerpt',
+                extent={'kind': 'unnormalized_original_tool_cell', 'coordinates': 'file coordinates unknown'},
+                attribution='original_tool_cell_not_normalized_command_success', origin_witness=witness)
         for command in capture.commands:
             # Preserve every observed command; never curate only known answer functions.
             investigation.append({'project': project, 'work': identity, 'session': capture.session_id,
@@ -292,13 +331,14 @@ def prepare(archive_root, slot, destination, producer_head):
                               'reason': 'unsupported patch; baseline/later file not substituted'})
             continue
         if change:
+            formatted, fmt_requests = None, []
             # The later final inventory corroborates bytes only. It supplies no Work attribution.
             if final_hashes.get(name) != digest(data):
                 # Formatting is a diagnostic reconstruction, admitted only when it
                 # exactly matches independent historical bytes. Never run captured shell.
-                formatted = None
-                if name.endswith('.rs') and any('cargo fmt' in c.parsed_command.get('cmd', '')
-                        for _, capture, _ in captures for c in capture.commands):
+                fmt_requests = [{'capture': binding(p), **request} for p, _, events in captures
+                                for request in formatting_requests(events)]
+                if name.endswith('.rs') and fmt_requests:
                     try:
                         manifest = tomllib.loads(files.get('rebuild/Cargo.toml', files.get('Cargo.toml', b'')).decode())
                         edition = str(manifest.get('workspace', {}).get('package', {}).get('edition',
@@ -319,6 +359,7 @@ def prepare(archive_root, slot, destination, producer_head):
                 observed_at=change['time'], representation='verified_reconstruction',
                 before_state='available', attribution='explicit_work_patch' if change['work'] == identity else 'earlier_work_context',
                 proof={'expected_sha256': final_hashes[name], 'patches': change['patches'],
+                       'formatting_requests': fmt_requests if formatted is not None else [],
                        'independent_witnesses': [change['witness'], binding(state_path)]})
             if change['work'] == identity:
                 add(change['before'], name=name, role='source', producer=archive_read,
@@ -352,7 +393,7 @@ def prepare(archive_root, slot, destination, producer_head):
                                                     'dirty_state': 'partial_recorded_patch_replay'},
                            'experiment_producer': {'head': producer_head, 'adapter': binding(Path(__file__))}},
             'entries': entries, 'investigation_inventory': investigation,
-            'inventory_boundary': {'scope': 'all normalized commands in exact start/resume captures and all pinned tracked files',
+            'inventory_boundary': {'scope': 'all normalized commands, unnormalized execution cells in exact start/resume captures and all pinned tracked files',
                                    'raw_context_excluded': True, 'no_source_tour_selection': True,
                                    'omissions': omissions}, 'archive_witnesses': [binding(campaign_path), binding(state_path), binding(bundle_path)]}
     spec_path = destination / 'input-spec.json'
