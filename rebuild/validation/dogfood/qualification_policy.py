@@ -11,7 +11,7 @@ import machine_findings as machine
 import qualitative_review as review
 import review_operations as operations
 
-REVISION = "replacement-qualification-15"
+REVISION = "replacement-qualification-16"
 COVERAGE_CRITERION = "campaign/campaign_interaction/interaction_coverage_adequacy"
 MULTI_WORK_CRITERION = "journey-volicord/live_viewer/en/multiple_work_comprehension"
 

@@ -2621,7 +2621,7 @@ Overview/Work cards, Work facts/history disclosure and shared CLI/document summa
 require current-candidate observation; historical b57 Human/Agent evidence remains
 diagnostic for its own candidate. No Human-review policy or campaign is changed here.
 
-Qualitative-review schema 18 / policy revision 18 separates current displayed multi-Work
+Qualitative-review schema 19 / policy revision 19 separates current displayed multi-Work
 and Decision comprehension from retained snapshot and measured-conversation fidelity.
 The rubric, qualification policy and copied-lineage reconstruction consume one current
 inventory. Direct screen complaints do not establish historical inconsistency; historical
@@ -2642,7 +2642,7 @@ campaign or approve Phase 9 as part of this engineering validation.
 
 Block-local Human support recomputes prepared claims from candidate-bound locale/subject
 contexts, retains missing Decision scope as unresolved, and allows unrelated ready blocks
-to proceed. Current observation/receipt schema 6 and changed-surface preparation schema 2
+to proceed. Current observation/receipt schema 7 and changed-surface preparation schema 2
 replace their earlier contracts; historical artifacts remain immutable diagnostic evidence.
 Evidence-backed no-user-Decision inapplicability requires canonical and actual-work scope
 inspection. Required-but-missing Decision authority remains independently unresolved/blocking.
@@ -2667,8 +2667,8 @@ attempts remain failed evidence; supporting browser checks do not establish Huma
 
 ### Retained qualitative evidence access
 
-Current review capture schema 5, review schema/policy 18, evaluation policy
-`evidence-evaluation-15` and qualification policy `replacement-qualification-15`
+Current review capture schema 5, review schema/policy 19, evaluation policy
+`evidence-evaluation-16` and qualification policy `replacement-qualification-16`
 preserve supported exact invocations, numeric signal/exit completion, available
 combined process output, wrapper source/completion, normalized operation detail,
 and readable retained canonical Source rows. These remain local untrusted evidence.

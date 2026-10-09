@@ -30,7 +30,7 @@ def _campaign():
 
 def _ask(prompt, input_fn, output_fn, trace):
     output_fn(prompt)
-    answer = input_fn().strip()
+    answer = input_fn()
     review.require(authority.bounded_text(answer), "human answer must be non-empty and bounded")
     trace.append({"prompt": prompt, "answer": answer})
     return answer
@@ -101,12 +101,13 @@ def observation_confirmation(locale, contexts):
 def _live_observation_requests(contexts, scope):
     import human_observation_plan as plan
     blocks = plan.validate_scope(scope, contexts,
-        contexts["en"][0]["candidate_head"],
-        contexts["en"][0]["context"]["process"]["executable_sha256"])
+        next(c for local in contexts.values() for c in local)["candidate_head"],
+        next(c for local in contexts.values() for c in local)["context"]["process"]["executable_sha256"])
     requests = []
     for locale in ("en", "ko"):
-        ready = {b["id"] for b in scope["readiness"][locale] if b["state"] == "ready"}
-        review.require(ready, "no prepared observation block in " + locale)
+        ready = set(scope["selection"][locale])
+        if not ready:
+            continue
         prompt = "For locale " + locale + ", describe only these prepared experiences:\n" + "\n".join(
             b["prompt"] for b in blocks if b["id"] in ready)
         prompt += ("\nMention only personally inspected interactions and any gaps; optional LIMITS: section. "
@@ -116,7 +117,8 @@ def _live_observation_requests(contexts, scope):
 
 
 def capture_viewer_observations(campaign_root, output, *, input_fn=input, output_fn=print,
-                                run_id=None, context_paths=(), observation_plan=None):
+                                run_id=None, context_paths=(), observation_plan=None,
+                                locales=("en", "ko"), block_ids=()):
     """Capture required direct live Viewer observations."""
     ops, campaign = _ops(), _campaign()
     root, output = campaign_root.resolve(), output.absolute()
@@ -125,13 +127,18 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
     evidence_purpose.require_measured(manifest)
     evidence_hash = ops.digest(ops.bounded_read(root / "evidence-set.json"))
     subjects = viewer_observation.load_subjects(root, manifest)
-    contexts = viewer_observation.load_contexts(context_paths, manifest, subjects)
+    review.require(locales and len(locales) == len(set(locales)) and set(locales) <= {"en", "ko"},
+        "invalid requested observation locales")
+    contexts = viewer_observation.load_contexts(context_paths, manifest, subjects, locales=locales)
+    context_receipts = [ops.bounded_read(path / "display-context.json") for path in context_paths]
     import human_observation_plan
-    plan = json.loads(ops.bounded_read(observation_plan)) if observation_plan is not None else None
+    plan_bytes = ops.bounded_read(observation_plan) if observation_plan is not None else None
+    plan = json.loads(plan_bytes) if plan_bytes is not None else None
     readiness = (human_observation_plan.require_contexts(plan, contexts, manifest["candidate_head"],
         manifest["candidate_artifacts"]["volicord-viewer"]["sha256"], subjects) if plan is not None else
         human_observation_plan.block_readiness(json.loads(human_observation_plan.FIXTURE.read_bytes())["observation_blocks"], contexts, subjects))
-    scope = {"plan": plan, "readiness": readiness, "subjects": subjects}
+    scope = {"plan": plan, "readiness": readiness, "subjects": subjects,
+        "selection": human_observation_plan.select_blocks(readiness, locales, block_ids)}
     observer = review.reviewer("human", run_id or secrets.token_hex(16))
     observations, answer_trace = [], []
     for request in _live_observation_requests(contexts, scope):
@@ -143,6 +150,8 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
         answer = _ask_multiline(request["prompt"], input_fn, output_fn, trace)
         if surface == "live_viewer_observation" and locale == "ko" \
                 and answer.casefold() == "same as english":
+            review.require(any(o["locale"] == "en" and o["response"] is not None for o in observations),
+                "locale reference requires a captured English answer")
             observations.append({"sample_id": "journey-volicord", "surface": surface,
                 "locale": locale, "contexts": contexts[locale], "personally_observed": True,
                 "control": {"action": "same_as_locale", "reference_locale": "en"},
@@ -155,16 +164,19 @@ def capture_viewer_observations(campaign_root, output, *, input_fn=input, output
                 "response": {"observation": observation, "limits": limits}})
         answer_trace.append({"surface": surface, "locale": locale, "turns": trace})
     # Recheck the original browser receipt/screenshot after the human interaction.
-    review.require(viewer_observation.load_subjects(root, manifest) == subjects
-        and viewer_observation.load_contexts(context_paths, manifest, subjects) == contexts,
+    review.require(ops.digest(ops.bounded_read(root / "evidence-set.json")) == evidence_hash
+        and viewer_observation.load_subjects(root, manifest) == subjects
+        and viewer_observation.load_contexts(context_paths, manifest, subjects, locales=locales) == contexts
+        and [ops.bounded_read(path / "display-context.json") for path in context_paths] == context_receipts
+        and (observation_plan is None or ops.bounded_read(observation_plan) == plan_bytes),
         "display evidence changed during human capture")
     value = {"kind": "dogfood_human_observations",
-        "schema_version": 6,
+        "schema_version": 7,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer": observer, "observations": observations, "scope": scope}
     data = ops.encoded(value)
     ops.require_review_artifact_safe(data, "human observations contain sensitive payload")
-    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 6,
+    receipt = {"kind": "dogfood_human_observation_receipt", "schema_version": 7,
         "candidate_head": manifest["candidate_head"], "evidence_set_sha256": evidence_hash,
         "observer_run_id": observer["run_id"], "observations_sha256": ops.digest(data),
         "answer_trace": answer_trace}
@@ -187,7 +199,8 @@ def load_viewer_observations(path):
     data = ops.bounded_read(path / "observations.json")
     receipt = json.loads(ops.bounded_read(path / "receipt.json"))
     value = json.loads(data)
-    contexts = {item["locale"]: item["contexts"] for item in value["observations"]}
+    contexts = {locale: next((item["contexts"] for item in value["observations"]
+        if item["locale"] == locale), []) for locale in ("en", "ko")}
     requests = {(item["surface"], item["locale"]): item
         for item in _live_observation_requests(contexts, value["scope"])}
     review.require(len(receipt.get("answer_trace", [])) == len(value.get("observations", [])),
@@ -205,11 +218,18 @@ def load_viewer_observations(path):
         else:
             review.require(answer == item.get("response", {}).get("observation"),
                 "direct human answer text changed")
+        confirmation_answer = turns[0].get("answer")
+        review.require(isinstance(confirmation_answer, str), "personal confirmation must preserve its literal answer")
+        try:
+            confirmed = int(confirmation_answer) == 1
+        except ValueError:
+            confirmed = False
+        review.require(confirmed, "personal confirmation did not report direct inspection")
         expected_trace.append({"surface": surface, "locale": locale, "turns": [
-            {"prompt": observation_confirmation(locale, item.get("contexts", [])) + " (1=yes, 2=no)", "answer": "1"},
+            {"prompt": observation_confirmation(locale, item.get("contexts", [])) + " (1=yes, 2=no)", "answer": confirmation_answer},
             {"prompt": request["prompt"], "answer": answer},
         ]})
-    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 6,
+    expected = {"kind": "dogfood_human_observation_receipt", "schema_version": 7,
         "candidate_head": value.get("candidate_head"),
         "evidence_set_sha256": value.get("evidence_set_sha256"),
         "observer_run_id": value.get("observer", {}).get("run_id"),
@@ -357,7 +377,7 @@ def _control_reference(answer, position, specs, draft):
 
 def _human_control(action, reference_criterion_id, reuse_scope, trace):
     return {"action": action, "reference_criterion_id": reference_criterion_id,
-        "reuse_scope": reuse_scope, "answer_trace": trace}
+        "reuse_scope": reuse_scope, "answer_trace": trace, "observation_binding": None}
 
 
 def _reused_references(prior, spec, input_fn, output_fn, trace):
@@ -401,7 +421,7 @@ def _locale_mirror(preparation, prior, spec, trace):
     return mirrored
 
 
-def _store_draft(root, draft_path, draft):
+def _store_draft(root, draft_path, draft, *, snapshot, original_draft):
     ops = _ops()
     data = ops.encoded(draft)
     ops.require_review_artifact_safe(data, "conversational review draft contains sensitive payload")
@@ -411,6 +431,11 @@ def _store_draft(root, draft_path, draft):
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
+        _, _, _, current_bytes = ops.verified_package_bytes(root)
+        review.require(current_bytes == snapshot, "preparation changed during human draft update")
+        review.require(not (root / "recorded").exists(), "human draft was recorded during interaction")
+        review.require(ops.bounded_read(draft_path, ops.MAX_DRAFT_BYTES) == original_draft,
+            "draft changed during human interaction; retain current progress")
         os.replace(temporary, draft_path)
         draft_path.chmod(0o600)
     finally:
@@ -426,19 +451,21 @@ def apply_observation_assessments(review_root, mapping_path):
     """
     ops = _ops()
     root = review_root.resolve()
-    preparation, sha, package = ops.load_package(root)
+    preparation, sha, package, snapshot = ops.verified_package_bytes(root)
     review.require(preparation["reviewer"]["kind"] == "human" and not (root / "recorded").exists(),
         "operator mapping requires a new unrecorded human preparation")
-    mappings = json.loads(ops.bounded_read(mapping_path))
+    mapping_bytes = ops.bounded_read(mapping_path)
+    mappings = json.loads(mapping_bytes)
     review.require(isinstance(mappings, list) and 0 < len(mappings) <= 64,
         "bounded operator observation mappings required")
-    draft = json.loads(ops.draft_bytes(root, root / "draft.json", package))
+    original_draft = ops.draft_bytes(root, root / "draft.json", package)
+    draft = json.loads(original_draft)
     specs = review.criterion_specs(preparation["index"], preparation["rubric"])
     updated = []
     for mapping in mappings:
         review.require(isinstance(mapping, dict) and set(mapping) == {
             "criterion_number", "observation_evidence_id", "assessment", "reasoning",
-            "uncertainty", "criterion_observations", "counterevidence"},
+            "uncertainty", "criterion_observations", "counterevidence", "dimension_answer_quotes"},
             "operator supplies formal fields; human supplies experience only")
         n = mapping["criterion_number"]
         review.require(type(n) is int and 1 <= n <= len(specs), "unknown mapped criterion")
@@ -450,20 +477,20 @@ def apply_observation_assessments(review_root, mapping_path):
         entry = preparation["index"]["evidence"].get(identity)
         review.require(entry is not None and entry["surface"] == "live_viewer_observation"
             and entry["locale"] == spec["locale"], "mapping requires the actual named locale experience")
-        observed = json.loads(ops.bounded_read(ops.safe_path(root, entry["path"])))
+        observed = json.loads(snapshot[entry["path"]])
         review.require(observed["personally_observed"] is True, "missing direct human trace")
         if observed["control"]["action"] == "same_as_locale":
             english = [e for e in preparation["index"]["evidence"].values()
                 if e["surface"] == "live_viewer_observation" and e["locale"] == "en"]
             review.require(len(english) == 1, "locale reference requires the captured English answer")
-            response = json.loads(ops.bounded_read(ops.safe_path(root, english[0]["path"])))["response"]
+            response = json.loads(snapshot[english[0]["path"]])["response"]
             answer = observed["answer_trace"][-1]["answer"]
         else:
             response = observed["response"]
             answer = response["observation"]
         if observed["control"]["action"] == "same_as_locale":
             import human_observation_plan
-            english_observed = json.loads(ops.bounded_read(ops.safe_path(root, english[0]["path"])))
+            english_observed = json.loads(snapshot[english[0]["path"]])
             human_observation_plan.require_claim_context(english_observed["scope"], english_observed["contexts"],
                 "en", spec["name"], mapping["assessment"])
         # Unreported experience may not become a claim of no uncertainty/counterevidence.
@@ -482,18 +509,21 @@ def apply_observation_assessments(review_root, mapping_path):
         finding = {**review.observation(spec["criterion_id"]),
             **{k: copy.deepcopy(mapping[k]) for k in ("assessment", "reasoning", "uncertainty", "criterion_observations", "counterevidence")},
             "inspected_evidence": [identity], "human_answer_trace": trace,
-            "evidence": ([] if state == "insufficient_evidence" and not any(
-                item["state"] != "unobserved" for item in mapping["criterion_observations"]) else [{"evidence_id": identity,
+            "evidence": ([] if state == "insufficient_evidence" and not mapping["dimension_answer_quotes"] else [{"evidence_id": identity,
                 "locator": {"kind": "json_pointer", "value": "/response"} if observed["response"] is not None
                     else {"kind": "json_pointer", "value": "/control"},
                 "criterion_id": spec["criterion_id"], "relevance": mapping["reasoning"]}])}
         draft["assessments"][n - 1] = finding
-        draft["human_controls"][spec["criterion_id"]] = _human_control("direct", None, None, trace)
+        draft["human_controls"][spec["criterion_id"]] = {
+            **_human_control("mapped_observation", None, None, trace),
+            "observation_binding": {"evidence_id": identity,
+                "dimension_answer_quotes": copy.deepcopy(mapping["dimension_answer_quotes"])}}
         draft["observation_scope"]["inspected_evidence"] = sorted({
             *draft["observation_scope"]["inspected_evidence"], identity})
         updated.append(spec["criterion_id"])
     result = review.validate_value(preparation, sha, draft)
-    data = _store_draft(root, root / "draft.json", draft)
+    review.require(ops.bounded_read(mapping_path) == mapping_bytes, "observation mapping changed during draft update")
+    data = _store_draft(root, root / "draft.json", draft, snapshot=snapshot, original_draft=original_draft)
     return {"state": "draft_updated", "mapped_criteria": updated,
         "draft_sha256": ops.digest(data), "review_result": result,
         "question_count_available": False}
@@ -504,11 +534,12 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
     """Capture exactly one human criterion and update only the mutable draft."""
     ops = _ops()
     root = review_root.resolve()
-    preparation, sha, package = ops.load_package(root)
+    preparation, sha, package, snapshot = ops.verified_package_bytes(root)
     review.require(preparation["reviewer"]["kind"] == "human",
         "conversational human review requires a human review preparation")
     draft_path = root / "draft.json"
-    draft = json.loads(ops.draft_bytes(root, draft_path, package))
+    original_draft = ops.draft_bytes(root, draft_path, package)
+    draft = json.loads(original_draft)
     specs = review.criterion_specs(preparation["index"], preparation["rubric"])
     if criterion_number is None:
         positions = [number for number, item in enumerate(draft["assessments"])
@@ -543,7 +574,7 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
         draft["human_controls"][spec["criterion_id"]] = _human_control(
             "skip", None, None, trace)
         result = review.validate_value(preparation, sha, draft)
-        data = _store_draft(root, draft_path, draft)
+        data = _store_draft(root, draft_path, draft, snapshot=snapshot, original_draft=original_draft)
         return {"state": "draft_updated", "criterion_number": position + 1,
             "criterion_id": spec["criterion_id"], "assessment": "not_reviewed",
             "control": "skip", "draft_sha256": ops.digest(data),
@@ -564,7 +595,7 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
             inspected.update(mirrored["inspected_evidence"])
             draft["observation_scope"]["inspected_evidence"] = sorted(inspected)
             result = review.validate_value(preparation, sha, draft)
-            data = _store_draft(root, draft_path, draft)
+            data = _store_draft(root, draft_path, draft, snapshot=snapshot, original_draft=original_draft)
             return {"state": "draft_updated", "criterion_number": position + 1,
                 "criterion_id": spec["criterion_id"], "assessment": mirrored["assessment"],
                 "control": action, "reference_criterion_id": prior_id,
@@ -595,7 +626,7 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
         draft["human_controls"][spec["criterion_id"]] = _human_control(
             "cannot_assess", None, None, trace)
         result = review.validate_value(preparation, sha, draft)
-        data = _store_draft(root, draft_path, draft)
+        data = _store_draft(root, draft_path, draft, snapshot=snapshot, original_draft=original_draft)
         return {"state": "draft_updated", "criterion_number": position + 1,
             "criterion_id": spec["criterion_id"], "assessment": "insufficient_evidence",
             "control": "cannot_assess", "draft_sha256": ops.digest(data),
@@ -668,7 +699,7 @@ def converse_one(review_root, *, criterion_number=None, resolve_review_roots=(),
             draft["resolves_review_runs"].setdefault(spec["criterion_id"], []).append(run_id)
     finding["human_answer_trace"] = trace
     result = review.validate_value(preparation, sha, draft)
-    data = _store_draft(root, draft_path, draft)
+    data = _store_draft(root, draft_path, draft, snapshot=snapshot, original_draft=original_draft)
     return {"state": "draft_updated", "criterion_number": position + 1,
         "criterion_id": spec["criterion_id"], "assessment": state,
         **({"control": reuse_action, "reference_criterion_id": reuse_prior_id,

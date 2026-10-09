@@ -13,7 +13,7 @@ import authority_obligations as authority
 import identity_provenance
 import machine_findings as machine
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 # Shared by completion/handoff reporting and replacement qualification.
 HIGH_IMPACT_INSUFFICIENCY_GROUPS = ("authority", "context_recovery", "campaign_interaction")
 STATES = ["satisfied", "violated", "insufficient_evidence", "not_observed", "not_applicable", "not_reviewed"]
@@ -704,11 +704,13 @@ def _validate_value(preparation, preparation_sha256, value):
     assessment_by_id = {item["criterion_id"]: item for item in value["assessments"]}
     for criterion_id, control in controls.items():
         require(criterion_id in spec_by_id and isinstance(control, dict)
-            and set(control) == {"action", "reference_criterion_id", "reuse_scope", "answer_trace"}
+            and set(control) == {"action", "reference_criterion_id", "reuse_scope", "answer_trace", "observation_binding"}
             and control["action"] in {"direct", "skip", "already_covered", "same_as_prior",
-                "same_as_other_locale", "cannot_assess", "not_applicable"}
+                "same_as_other_locale", "cannot_assess", "not_applicable", "mapped_observation"}
             and isinstance(control["answer_trace"], list) and control["answer_trace"],
             "invalid structured human control")
+        if control["action"] != "mapped_observation":
+            require(control["observation_binding"] is None, "non-mapped control cannot claim captured observation binding")
         reference = control["reference_criterion_id"]
         if control["action"] in {"already_covered", "same_as_prior", "same_as_other_locale"}:
             require(reference in spec_by_id and reference != criterion_id,
@@ -730,7 +732,26 @@ def _validate_value(preparation, preparation_sha256, value):
             require(reference is None and control["reuse_scope"] is None,
                 "non-reference human control cannot name reused meaning")
         assessment = assessment_by_id[criterion_id]
-        if control["action"] == "skip":
+        if control["action"] == "mapped_observation":
+            bound = control["observation_binding"]
+            require(isinstance(bound, dict) and set(bound) == {"evidence_id", "dimension_answer_quotes"},
+                "mapped observation requires exact captured answer binding")
+            entry = preparation["index"]["evidence"].get(bound["evidence_id"])
+            spec = spec_by_id[criterion_id]
+            require(entry is not None and entry["surface"] == "live_viewer_observation"
+                and entry["locale"] == spec["locale"] and evidence_applies(entry, spec["sample_id"])
+                and control["answer_trace"] == entry.get("answer_trace")
+                and assessment["human_answer_trace"] == control["answer_trace"],
+                "mapped human answer trace differs from its captured answer")
+            quotes = bound["dimension_answer_quotes"]
+            observed_dimensions = {item["dimension"] for item in assessment["criterion_observations"]
+                if item["state"] != "unobserved"}
+            if not preparation["rubric"]["criterion_observations"].get(spec["name"], []) and assessment["evidence"]:
+                observed_dimensions = {"criterion"}
+            require(isinstance(quotes, dict) and set(quotes) == observed_dimensions
+                and all(authority.bounded_text(quote) and quote in entry.get("observation_text", "")
+                    for quote in quotes.values()), "dimension quote is absent from the literal human answer")
+        elif control["action"] == "skip":
             require(assessment == observation(criterion_id), "skip must remain not_reviewed")
         elif control["action"] == "cannot_assess":
             require(assessment["assessment"] == "insufficient_evidence",

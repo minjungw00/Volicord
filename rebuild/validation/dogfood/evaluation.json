@@ -381,7 +381,7 @@
       "purpose": "Review independently material outcomes observed in actual Work and coupled artifacts."
     },
     "qualification_authority": false,
-    "policy_revision": 18,
+    "policy_revision": 19,
     "reviewer_kinds": [
       "agent",
       "human"
@@ -494,7 +494,7 @@
       "cli_observations": "explicit_candidate_bound_raw_identity_and_path_safe_repository_class_process_observations",
       "qualification_authority": false
     },
-    "schema_version": 18
+    "schema_version": 19
   },
   "fixture_regression_command": [
     "python3",
@@ -964,7 +964,7 @@
     }
   },
   "qualification_policy": {
-    "revision": "replacement-qualification-15",
+    "revision": "replacement-qualification-16",
     "human_required": [
       "interaction/decision_comprehension_when_applicable",
       "live_viewer/*"

@@ -4,9 +4,9 @@ Status: active Phase 8 evaluation contract, subordinate to `validation-plan.md`.
 This contract owns review artifacts and operations, not Product behavior or final
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
-Current identities are qualitative review schema 18 / policy revision 18, machine evaluation
-policy `evidence-evaluation-15`, human observation/receipt schema 6, qualification policy
-`replacement-qualification-15`, and result-lineage schema 2. Historical runs retain their old
+Current identities are qualitative review schema 19 / policy revision 19, machine evaluation
+policy `evidence-evaluation-16`, human observation/receipt schema 7, qualification policy
+`replacement-qualification-16`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
 ## One rubric, explicit reviewers
@@ -452,7 +452,7 @@ identities include the changed producer/consumer hashes.
 
 Typed artifacts have nested JSON pointers into claim text, action, plan content and lifecycle
 stages (up to 8,192 per artifact); exact line locators always remain available. Package and record
-receipt schema 2 bind preparation schema 18. Copied result-lineage schema 2 rechecks typed shape,
+receipt schema 2 bind preparation schema 19. Copied result-lineage schema 2 rechecks typed shape,
 omissions, stage/receipt/readback consistency and observation-index meaning/stage/locator bindings without original
 Runtime Homes, response files or staging paths. New modules participate in preparer, evaluator
 and qualification dependency hashing. Fresh outer hashes cannot excuse inconsistent inner claims.
@@ -646,7 +646,7 @@ For direct live observations, human preparation additionally accepts `--human-ob
 pointing to the conversational capture directory. The lower-level JSON-file input remains
 available for automation. The object has kind `dogfood_human_observations`, original `candidate_head`,
 `evidence_set_sha256`, an `observer` using the common human reviewer identity shape, and
-exactly two `observations`: English and Korean live Viewer observations. Each retains
+one or two `observations`: only the actually observed English/Korean live Viewer locales. Each retains
 closed browser `contexts` and `personally_observed: true`. The maintained
 [display capture](../../validation/dogfood/viewer-observation.md) attaches to the
 actual existing local tab and binds executable/process, Runtime/Project/view/subject,
@@ -989,7 +989,7 @@ remain immutable diagnostic artifacts with their original identities, without a 
 
 ## Block-local observation readiness
 
-Human observation schema/receipt 6 binds the changed-surface plan (preparation schema 2)
+Human observation schema/receipt 7 binds the changed-surface plan (preparation schema 2)
 and each locale's recomputed block readiness. The capture groups only ready block prompts
 into one direct experience answer per locale. Every context required by an asked block
 must exist first; Work detail needs a selected Work, comparing Works needs two distinct
@@ -1015,3 +1015,34 @@ Grouped color/hierarchy experience does not waive the two-Work requirement of th
 individual `multiple_work_comprehension` claim. Prepared-claim reconstruction checks
 that requirement even when another ready block lists the same claim; unrelated color
 or hierarchy claims remain available from their own prepared contexts.
+
+
+## Scoped observation drafts
+
+`capture-human-viewer-observations --locale ko --observation-block work` asks only
+one ready Work block on the supplied actual Korean display. Omitted locales and
+blocks remain pending. The current schema 7 scope stores a closed per-locale block
+`selection`; readiness and subject inventory are recomputed from actual contexts.
+Prepared claims are the intersection of selection, readiness and exact subject
+requirements. No selected Decision, second Work or locale is synthesized. Full
+rubric obligations remain in preparation, qualification and copied replay.
+
+Operator mappings supply `dimension_answer_quotes` for every observed dimension
+(or `criterion` for a criterion without named dimensions). Each quote must be a
+literal nonempty excerpt of that bound answer, retained with a `mapped_observation`
+control and its `observation_binding`. Unobserved dimensions carry no quote or
+citation. Original answer traces, display/candidate/Work/language context, limits
+and prior compatible draft assessments are preserved; invented answer traces and
+quotes are rejected by record and copied replay even with refreshed outer hashes.
+Quote membership verifies provenance, never semantic adequacy: vague praise,
+silence or an unrelated answer cannot establish dimension support. The operator
+must leave ambiguous meaning unresolved and request only the missing clarification.
+No keyword oracle supplies a verdict.
+
+Mapping and conversation recheck exact package and prior draft bytes before saving;
+a changed capture, mapping or concurrent draft rejects the update and retains current
+progress. Capture also rechecks its evidence set and displayed-context bytes after
+the conversation. Mapping only updates a mutable draft. It does not record a review, publish
+qualification, approve Phase 9 or convert remaining rubric gaps into human questions.
+A new captured observation or correction to recorded meaning requires a new
+append-only run. Supplemental compatible reviews remain separate policy inputs.

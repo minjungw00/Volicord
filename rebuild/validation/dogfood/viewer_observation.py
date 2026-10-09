@@ -178,7 +178,7 @@ def for_manifest(manifest, value, locale, subjects):
         project=journey['project_id'],locale=locale,subjects=subjects)
 
 
-def load_contexts(paths, manifest, subjects):
+def load_contexts(paths, manifest, subjects, *, locales=("en", "ko")):
     contexts={locale:[] for locale in ('en','ko')};seen=set()
     for path in paths:
         value=json.loads((path/'display-context.json').read_bytes())
@@ -190,5 +190,6 @@ def load_contexts(paths, manifest, subjects):
         identity=hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
         require(identity not in seen,'same displayed observation cannot be reused')
         seen.add(identity);contexts[locale].append(value)
-    require(all(contexts.values()),'both locales require actual displayed contexts before a locale reference')
+    require(all(contexts[locale] for locale in locales),'both locales require actual displayed contexts before a locale reference')
+    contexts = {locale: contexts[locale] if locale in locales else [] for locale in ('en', 'ko')}
     return contexts

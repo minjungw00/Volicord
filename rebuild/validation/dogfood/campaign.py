@@ -3318,6 +3318,10 @@ def parser() -> argparse.ArgumentParser:
         help="Inspect a bounded batch from one freshly verified package")
     capture_human.add_argument("--campaign-root", required=True)
     capture_human.add_argument("--output", required=True)
+    capture_human.add_argument("--locale", choices=["en", "ko"], action="append",
+        help="Capture only named locales; other locales remain pending")
+    capture_human.add_argument("--observation-block", action="append", default=[],
+        help="Ask only named ready observation blocks, such as work")
     capture_human.add_argument("--observation-plan", type=Path,
         help="Final changed-surface preparation; validates required contexts before questions")
     capture_human.add_argument("--viewer-context", type=Path, action="append", required=True,
@@ -3462,7 +3466,8 @@ def main() -> int:
     elif args.command == "record-resources":
         value = record_resources(root, Path(args.input))
     elif args.command == "capture-human-viewer-observations":
-        value = human_review.capture_viewer_observations(root, Path(args.output), context_paths=args.viewer_context, observation_plan=args.observation_plan)
+        value = human_review.capture_viewer_observations(root, Path(args.output), context_paths=args.viewer_context, observation_plan=args.observation_plan,
+            locales=tuple(args.locale or ("en", "ko")), block_ids=tuple(args.observation_block))
     elif args.command == "apply-human-observation-assessments":
         value = human_review.apply_observation_assessments(root, args.mapping)
     elif args.command == "converse-qualitative-review":

@@ -76,6 +76,23 @@ def collect_cli_fixture(campaign_root, output, *, emitted_private_paths=None,
         revision_reader=revision, clean_reader=lambda _path: True, run_id="9" * 32)
 
 
+def mapping_quotes(root, mappings):
+    """Bind authored fixtures to literal captured answers, never infer semantics."""
+    prep, _, _ = ops.load_package(root)
+    for mapping in mappings:
+        entry = prep['index']['evidence'][mapping['observation_evidence_id']]
+        observed = json.loads((root / entry['path']).read_bytes())
+        if observed['response'] is None:
+            english = next(e for e in prep['index']['evidence'].values()
+                if e['surface'] == 'live_viewer_observation' and e['locale'] == 'en')
+            observed = json.loads((root / english['path']).read_bytes())
+        dimensions = [d['dimension'] for d in mapping['criterion_observations'] if d['state'] != 'unobserved']
+        if not mapping['criterion_observations'] and mapping['assessment'] in {'satisfied','violated'}:
+            dimensions = ['criterion']
+        mapping['dimension_answer_quotes'] = {d: observed['response']['observation'] for d in dimensions}
+    return mappings
+
+
 def insufficient_draft(root):
     p, sha, _ = ops.load_package(root)
     value = q.template(p, sha)
@@ -1118,7 +1135,7 @@ class WorkflowTests(unittest.TestCase):
         evidence_hash = ops.digest((self.root / "evidence-set.json").read_bytes())
         observation = {
             "kind": "dogfood_human_observations",
-            "schema_version": 6,
+            "schema_version": 7,
             "candidate_head": c.load_evidence_set(self.root)["candidate_head"],
             "evidence_set_sha256": evidence_hash,
             "observer": q.reviewer("human", "b" * 32),
@@ -1142,6 +1159,7 @@ class WorkflowTests(unittest.TestCase):
         observation["scope"] = {"plan": None, "subjects": subjects, "readiness": human_observation_plan.block_readiness(
             json.loads(human_observation_plan.FIXTURE.read_bytes())["observation_blocks"],
             {item["locale"]: item["contexts"] for item in observation["observations"]}, subjects)}
+        observation["scope"]["selection"] = human_observation_plan.select_blocks(observation["scope"]["readiness"], ("en", "ko"), ())
         source.write_bytes(ops.encoded(observation))
         result = ops.prepare(self.root, self.target(), reviewer_kind="human", human_observations=source)
         self.assertEqual(result["state"], "prepared")
@@ -1177,7 +1195,7 @@ class WorkflowTests(unittest.TestCase):
                 "uncertainty": "not_reported", "criterion_observations": dimensions(p["rubric"]["criterion_observations"][name]),
                 "counterevidence": {"state": "not_reported", "reasoning": "The person did not report counterevidence.", "evidence": []}})
         path = self.parent / (self._testMethodName + "-mapping.json")
-        path.write_bytes(ops.encoded(mappings))
+        path.write_bytes(ops.encoded(mapping_quotes(target, mappings)))
         result = human_review.apply_observation_assessments(target, path)
         value = json.loads((target / "draft.json").read_bytes())
         self.assertFalse(result["question_count_available"])
@@ -1207,7 +1225,7 @@ class WorkflowTests(unittest.TestCase):
         # Changing the target to original conversation fidelity cannot invent user rationale.
         mappings[0]["criterion_number"] = next(i + 1 for i, spec in enumerate(specs)
             if spec["name"] == "decision_comprehension_when_applicable")
-        path.write_bytes(ops.encoded(mappings[:1]))
+        path.write_bytes(ops.encoded(mapping_quotes(target, mappings[:1])))
         with self.assertRaisesRegex(ValueError, "historical fidelity"):
             human_review.apply_observation_assessments(target, path)
 
@@ -1237,7 +1255,7 @@ class WorkflowTests(unittest.TestCase):
             "counterevidence": {"state": "not_reported", "reasoning": "The answer reports no counterevidence.", "evidence": []}}
             for i, spec in enumerate(specs) if spec["group"] == "live_viewer"]
         mapping = self.parent / (self._testMethodName + "-mapping.json")
-        mapping.write_bytes(ops.encoded(mappings))
+        mapping.write_bytes(ops.encoded(mapping_quotes(target, mappings)))
         human_review.apply_observation_assessments(target, mapping)
         ops.record(target, target / "draft.json")
         files = ops.recorded_files(target, prep, sha)
@@ -1287,12 +1305,12 @@ class WorkflowTests(unittest.TestCase):
                 "criterion_observations": dimensions(prep["rubric"]["criterion_observations"][name]),
                 "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence reported.", "evidence": []}}
         path = self.parent / (self._testMethodName + "-mapping.json")
-        path.write_bytes(ops.encoded([mapping("displayed_decision_comprehension")]))
+        path.write_bytes(ops.encoded(mapping_quotes(target, [mapping("displayed_decision_comprehension")])))
         before = (target / "draft.json").read_bytes()
         with self.assertRaisesRegex(ValueError, "prepared block"):
             human_review.apply_observation_assessments(target, path)
         self.assertEqual((target / "draft.json").read_bytes(), before)
-        path.write_bytes(ops.encoded([mapping("multiple_work_comprehension")]))
+        path.write_bytes(ops.encoded(mapping_quotes(target, [mapping("multiple_work_comprehension")])))
         human_review.apply_observation_assessments(target, path)
         ops.record(target, target / "draft.json")
         recorded = json.loads(ops.recorded_files(target, prep, sha)["recorded/review.json"])
@@ -1344,6 +1362,81 @@ class WorkflowTests(unittest.TestCase):
         captured = json.loads((observation_root / "observations.json").read_bytes())
         self.assertEqual(captured["observations"][1]["control"],
             {"action": "same_as_locale", "reference_locale": "en"})
+
+    def test_partial_human_claim_without_named_dimensions_retains_citation(self):
+        manifest = c.load_evidence_set(self.root)
+        context = context_directory(self.parent, self._testMethodName + '-en', manifest, 'en')
+        observed = self.parent / (self._testMethodName + '-observed')
+        answer = 'The first control is unreachable; other paths were not inspected.'
+        human_review.capture_viewer_observations(self.root, observed, context_paths=[context], locales=('en',),
+            input_fn=iter(['1', answer]).__next__, output_fn=lambda _: None)
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind='human', human_observations=observed)
+        prep, _, _ = ops.load_package(target)
+        specs = q.criterion_specs(prep['index'], prep['rubric'])
+        n = next(i + 1 for i, s in enumerate(specs) if s['name'] == 'keyboard_reachability' and s['locale'] == 'en')
+        mapping = {'criterion_number': n, 'observation_evidence_id': 'journey-volicord-live-en',
+            'assessment': 'insufficient_evidence', 'reasoning': 'Authored evidence covers only one control.',
+            'uncertainty': 'not_reported', 'criterion_observations': [],
+            'counterevidence': {'state': 'not_reported', 'reasoning': 'No counterevidence reported.', 'evidence': []},
+            'dimension_answer_quotes': {'criterion': 'The first control is unreachable'}}
+        path = self.parent / (self._testMethodName + '-mapping.json'); path.write_bytes(ops.encoded([mapping]))
+        human_review.apply_observation_assessments(target, path)
+        draft = json.loads((target / 'draft.json').read_bytes())
+        self.assertEqual(draft['assessments'][n - 1]['assessment'], 'insufficient_evidence')
+        self.assertEqual(len(draft['assessments'][n - 1]['evidence']), 1)
+        self.assertEqual(draft['assessments'][n - 1]['criterion_observations'], [])
+        recorded = ops.record(target, target / 'draft.json')
+        self.assertEqual(recorded['result']['counts']['insufficient_evidence'], 1)
+
+    def test_capture_rechecks_evidence_and_screenshot_after_answer(self):
+        manifest = c.load_evidence_set(self.root)
+        contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, campaign_root=self.root)
+        for number, path in enumerate((self.root / "evidence-set.json", contexts[0] / "display.png",
+                contexts[0] / "display-context.json")):
+            original = path.read_bytes()
+            destination = self.parent / (self._testMethodName + str(number))
+            answers = iter(["1", "Authored English observation.", "1", "Authored Korean observation."])
+            count = 0
+            def answer():
+                nonlocal count
+                count += 1
+                if count == 4:
+                    path.write_bytes(original + b" ")
+                return next(answers)
+            try:
+                with self.assertRaises(ValueError):
+                    human_review.capture_viewer_observations(self.root, destination, context_paths=contexts,
+                        input_fn=answer, output_fn=lambda _: None)
+                self.assertFalse(destination.exists())
+            finally:
+                path.write_bytes(original)
+
+    def test_conversation_retains_concurrent_draft_and_rejects_package_drift(self):
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind="human")
+        original = (target / "draft.json").read_bytes()
+        def concurrent_answer():
+            human_review.converse_one(target, criterion_number=2,
+                input_fn=iter(["CANNOT ASSESS", "Authored unresolved second criterion."]).__next__,
+                output_fn=lambda _: None)
+            return "SKIP"
+        with self.assertRaisesRegex(ValueError, "draft changed"):
+            human_review.converse_one(target, criterion_number=1,
+                input_fn=concurrent_answer, output_fn=lambda _: None)
+        retained = (target / "draft.json").read_bytes()
+        self.assertNotEqual(retained, original)
+        self.assertEqual(ops.validate(target, target / "draft.json")["counts"]["insufficient_evidence"], 1)
+        package_path = target / "package.json"
+        def changed_package():
+            package_path.chmod(0o600)
+            package_path.write_bytes(package_path.read_bytes() + b" ")
+            return "SKIP"
+        with self.assertRaisesRegex(ValueError, "preparation changed"):
+            human_review.converse_one(target, criterion_number=1,
+                input_fn=changed_package, output_fn=lambda _: None)
+        self.assertEqual((target / "draft.json").read_bytes(), retained)
+        self.assertFalse((target / "recorded").exists())
 
     def test_human_display_context_rejects_missing_locale_personal_denial_and_foreign_candidate(self):
         manifest = c.load_evidence_set(self.root)

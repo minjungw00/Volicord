@@ -1,6 +1,7 @@
 """Qualification authority negative controls; no naturalistic passage claims."""
 import copy
 from qualitative_review_self_test import dimensions
+from review_operations_self_test import mapping_quotes
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -1108,6 +1109,113 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
 
 class FileBoundaryTests(unittest.TestCase):
+    def test_one_work_locale_partial_human_mapping_survives_copied_lineage(self):
+        import campaign
+        import human_review
+        import review_operations as ops
+        import result_lineage
+        from viewer_observation_self_test import context_directory
+        prefix = self.parent / self._testMethodName; prefix.mkdir()
+        manifest = campaign.load_evidence_set(self.root)
+        work = next(w['work_item_id'] for w in manifest['work_evidence'] if w['work_slot_id'] == 'journey-volicord-work-b')
+        context = context_directory(prefix, 'work-b-ko', manifest, 'ko')
+        path = context / 'display-context.json'; display = json.loads(path.read_bytes())
+        display['context'].update(view={'view':'work','work':work}, selected_work=work)
+        display['url'] = 'http://127.0.0.1:3219/?view=work&work=' + work + '&locale=ko&language=ko'
+        path.write_bytes(ops.encoded(display))
+        answer = '  문제 설명을 이해할 수 없습니다.\n동작 변경은 확인했습니다.\n현재 상태도 구분하기 어렵습니다.  '
+        observed = prefix / 'observation'; prompts = []
+        human_review.capture_viewer_observations(self.root, observed, context_paths=[context],
+            locales=('ko',), block_ids=('work',), input_fn=iter([' 01 ',answer]).__next__, output_fn=prompts.append)
+        self.assertEqual(len(prompts), 2)
+        self.assertNotIn('keyboard', prompts[-1])
+        value = json.loads((observed/'observations.json').read_bytes())
+        self.assertEqual(value['scope']['selection'], {'en':[], 'ko':['work']})
+        self.assertEqual(value['observations'][0]['response']['observation'], answer)
+        self.assertEqual(json.loads((observed/'receipt.json').read_bytes())['answer_trace'][0]['turns'][0]['answer'], ' 01 ')
+        with self.assertRaisesRegex(ValueError, 'captured English'):
+            human_review.capture_viewer_observations(self.root, prefix/'bad-reference', context_paths=[context],
+                locales=('ko',), block_ids=('work',), input_fn=iter(['1','SAME AS ENGLISH']).__next__, output_fn=lambda _:None)
+        target = prefix / 'review'
+        ops.prepare(self.root, target, reviewer_kind='human', human_observations=observed, evaluation_path=self.evaluation)
+        prep, sha, _ = ops.load_package(target)
+        specs = review.criterion_specs(prep['index'], prep['rubric'])
+        identity = 'journey-volicord-live-ko'
+        def mapping(name, state):
+            n = next(i+1 for i,s in enumerate(specs) if s['group']=='live_viewer' and s['locale']=='ko' and s['name']==name)
+            dims = dimensions(prep['rubric']['criterion_observations'].get(name, []), 'insufficient_evidence')
+            return {'criterion_number':n, 'observation_evidence_id':identity, 'assessment':state,
+                'reasoning':'Authored Korean experience explicitly reports only this bounded failure.',
+                'uncertainty':'not_reported', 'criterion_observations':dims,
+                'counterevidence':{'state':'not_reported','reasoning':'No counterevidence reported.','evidence':[]},
+                'dimension_answer_quotes':{}}
+        meaning = mapping('work_meaning_comprehension', 'insufficient_evidence')
+        meaning['criterion_observations'][0].update(state='observed_failure', evidence_indexes=[0])
+        meaning['dimension_answer_quotes']={'actual_problem':'문제 설명을 이해할 수 없습니다.'}
+        file = prefix/'mapping.json';file.write_bytes(ops.encoded([meaning]))
+        # Drift after semantic validation must not publish the stale mapping or overwrite progress.
+        validate = review.validate_value
+        for changed_path, expected in ((file, 'mapping changed'),
+                (target/'draft.json', 'draft changed'), (target/'package.json', 'preparation changed')):
+            original = changed_path.read_bytes()
+            prior_draft = (target/'draft.json').read_bytes()
+            def change_after_validation(*args):
+                result = validate(*args)
+                changed_path.chmod(0o600)
+                changed_path.write_bytes(original + b' ')
+                return result
+            try:
+                with patch.object(review, 'validate_value', side_effect=change_after_validation):
+                    with self.assertRaisesRegex(ValueError, expected):
+                        human_review.apply_observation_assessments(target,file)
+                self.assertEqual((target/'draft.json').read_bytes(),
+                    prior_draft + b' ' if changed_path.name == 'draft.json' else prior_draft)
+                self.assertFalse((target/'recorded').exists())
+            finally:
+                changed_path.write_bytes(original)
+        human_review.apply_observation_assessments(target,file)
+        previous = json.loads((target/'draft.json').read_bytes())
+        for mutate in (
+            lambda a:a.update(dimension_answer_quotes={'actual_problem':'Invented human response.'}),
+            lambda a:a.update(dimension_answer_quotes={}),
+            lambda a:a.update(criterion_number=next(i+1 for i,s in enumerate(specs)
+                if s['name']=='work_meaning_comprehension' and s['locale']=='en')),
+        ):
+            # Use a second unreviewed claim to prove rejection leaves prior progress intact.
+            bad = mapping('work_state_and_next_action_comprehension','violated')
+            bad['criterion_observations'][0].update(state='observed_failure',evidence_indexes=[0])
+            bad['dimension_answer_quotes']={'completed_current_remaining_work':'현재 상태도 구분하기 어렵습니다.'}
+            mutate(bad);file.write_bytes(ops.encoded([bad]))
+            with self.assertRaises(ValueError): human_review.apply_observation_assessments(target,file)
+            self.assertEqual(json.loads((target/'draft.json').read_bytes()), previous)
+        state = mapping('work_state_and_next_action_comprehension','violated')
+        state['criterion_observations'][0].update(state='observed_failure',evidence_indexes=[0])
+        state['dimension_answer_quotes']={'completed_current_remaining_work':'현재 상태도 구분하기 어렵습니다.'}
+        file.write_bytes(ops.encoded([state]));human_review.apply_observation_assessments(target,file)
+        draft = json.loads((target/'draft.json').read_bytes())
+        self.assertEqual(draft['assessments'][meaning['criterion_number']-1], previous['assessments'][meaning['criterion_number']-1])
+        self.assertFalse((target/'recorded').exists())
+        self.assertTrue(draft['assessments'][meaning['criterion_number']-1]['evidence'])
+        ops.record(target,target/'draft.json')
+        result = policy.qualify(self.root,self.evaluation,prefix/'qualification',candidate=manifest['candidate_head'],review_roots=[target])
+        self.assertFalse(result['phase_9_ready'])
+        self.assertIn(specs[meaning['criterion_number']-1]['criterion_id'],result['qualitative_review']['unresolved_criteria'])
+        self.assertIn('journey-volicord/live_viewer/en/work_meaning_comprehension',result['qualitative_review']['unresolved_criteria'])
+        published=result_lineage.publish(self.root,self.evaluation,[target],prefix/'qualification/qualification.json',output=prefix/'lineage')
+        copied=prefix/'copied';shutil.copytree(published['lineage_root'],copied)
+        with patch.object(campaign,'load_evidence_set',side_effect=AssertionError('original campaign read')):
+            result_lineage.verify(copied)
+        index=json.loads((copied/'index.json').read_bytes());copied_review=copied/index['qualitative_reviews'][0]['root']
+        path=copied_review/'recorded/review.json';retained=json.loads(path.read_bytes())
+        retained['assessments'][meaning['criterion_number']-1]['human_answer_trace'][-1]['answer']='Invented experience.'
+        path.chmod(0o600);path.write_bytes(ops.encoded(retained))
+        path=copied_review/'recorded/receipt.json';receipt=json.loads(path.read_bytes())
+        receipt['review_sha256']=ops.digest(ops.encoded(retained));path.chmod(0o600);path.write_bytes(ops.encoded(receipt))
+        path=copied/'receipt.json';receipt=json.loads(path.read_bytes())
+        receipt['artifacts']={name:result_lineage._binding((copied/name).read_bytes()) for name in receipt['artifacts']}
+        path.chmod(0o600);path.write_bytes(ops.encoded(receipt))
+        with self.assertRaisesRegex(ValueError,'answer trace'): result_lineage.verify(copied)
+
     def test_qualification_and_lineage_reject_valid_but_changed_review_bytes(self):
         import review_operations as ops
         import result_lineage
@@ -1362,7 +1470,7 @@ class FileBoundaryTests(unittest.TestCase):
             "uncertainty": "not_reported", "criterion_observations": dimensions(prep["rubric"]["criterion_observations"].get(spec["name"], [])),
             "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence was reported.", "evidence": []}}
             for i,spec in enumerate(specs) if spec["group"] == "live_viewer"]
-        mapping = prefix / "mapping.json"; mapping.write_bytes(ops.encoded(mappings))
+        mapping = prefix / "mapping.json"; mapping.write_bytes(ops.encoded(mapping_quotes(target, mappings)))
         human_review.apply_observation_assessments(target, mapping)
         original = json.loads((target / "draft.json").read_bytes())
         for mutate in (lambda v:v["assessments"][mappings[0]["criterion_number"]-1].update(human_answer_trace=[]),
@@ -1463,7 +1571,7 @@ class FileBoundaryTests(unittest.TestCase):
             "uncertainty": "not_reported", "criterion_observations": dimensions(prep["rubric"]["criterion_observations"][spec["name"]]),
             "counterevidence": {"state": "not_reported", "reasoning": "No counterevidence reported.", "evidence": []}}
             for i,spec in enumerate(specs) if spec["name"] == "multiple_work_comprehension"]
-        mapping = prefix/"mapping.json"; mapping.write_bytes(ops.encoded(mappings))
+        mapping = prefix/"mapping.json"; mapping.write_bytes(ops.encoded(mapping_quotes(target, mappings)))
         human_review.apply_observation_assessments(target, mapping); ops.record(target, target/"draft.json")
         agent = prefix / "agent"
         ops.prepare(root, agent, reviewer_kind="agent", session_id="no-decision-scope-review", include_raw=True)

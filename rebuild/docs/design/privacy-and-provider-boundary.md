@@ -558,3 +558,11 @@ a Work link, problem, selection or feedback through an alternative reading surfa
 Identity-only references do not enlarge Source/body access or transmission authority.
 Read-time retention expiry applies to bounded Learning continuation as well as detail
 inspection, independently of whether cleanup has already executed.
+
+
+Scoped Human capture remains on the local reviewer plane: schema 7 can retain one
+actually displayed locale and selected ready blocks. Schema 19 mapped judgments
+retain exact answer quotes and original traces with their display/candidate/subject
+binding. These are private declarations, not authenticated person identity or proof
+of semantic truth. Pending blocks/locales stay unavailable; no response is synthesized
+or transmitted. The qualitative-review owner defines draft and publication behavior.

@@ -67,10 +67,12 @@ rebuild/scripts/dogfood-campaign capture-human-viewer-observations --campaign-ro
 ```
 
 Repeat `--viewer-context` for multiple views/phases. Human observation/receipt
-schema 6 retains those closed contexts and an explicit `personally_observed`
+schema 7 retains those closed contexts and an explicit `personally_observed`
 declaration for each locale before accepting narrative or `SAME AS ENGLISH`.
-Both locales require their own actual contexts and personal inspection; a locale
-reference reuses declared prose only. Capture rechecks the receipt and screenshot
+Use repeatable `--locale` and `--observation-block` to select only ready blocks
+on one or both actual locales. Every selected locale needs its own actual context
+and personal inspection; a locale reference also needs a captured English answer.
+Omitted blocks/locales remain pending. Capture rechecks the receipt and screenshot
 bytes after the conversation. It does not turn a browser artifact into a human
 judgment. Human preparation copies/hashes declared observations and context into
 the existing review package. Copied-package/lineage verification checks candidate,

@@ -696,17 +696,16 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         if receipt is not None:
             human_review.load_viewer_observations(human_observations.parent)
         review.require(isinstance(observed, dict) and set(observed) == {"kind", "schema_version", "candidate_head", "evidence_set_sha256", "observer", "observations", "scope"}
-            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 6
+            and observed["kind"] == "dogfood_human_observations" and observed["schema_version"] == 7
             and observed["candidate_head"] == manifest["candidate_head"]
             and observed["evidence_set_sha256"] == evidence_hash, "human observation candidate/evidence binding mismatch")
         review.validate_reviewer(observed["observer"], sessions)
         review.require(observed["observer"]["kind"] == "human", "agent authorship cannot claim direct human observation")
-        review.require(isinstance(observed["observations"], list)
+        review.require(isinstance(observed["observations"], list) and 1 <= len(observed["observations"]) <= 2
             and all(isinstance(item, dict) for item in observed["observations"])
-            and {(item.get("surface"), item.get("locale")) for item in observed["observations"]} == {
-                ("live_viewer_observation", "en"),
-                ("live_viewer_observation", "ko"),
-            }, "both live Viewer locales require observations")
+            and len({item.get("locale") for item in observed["observations"]}) == len(observed["observations"])
+            and all(item.get("surface") == "live_viewer_observation" and item.get("locale") in {"en", "ko"}
+                for item in observed["observations"]), "invalid observed Viewer locales")
         import human_observation_plan
         import viewer_observation
         review.require(observed["scope"]["subjects"] == viewer_observation.load_subjects(root, manifest),
@@ -759,9 +758,13 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
                 "sample_id": item["sample_id"], "surface": item["surface"], "locale": item["locale"],
                 "sample_ids": [item["sample_id"]],
                 "prepared_claims": human_observation_plan.prepared_claims(observed["scope"], item["locale"], item["contexts"]),
+                "answer_trace": human_review.observation_trace(item, receipt),
+                "observation_text": (item["response"]["observation"] if item["response"] is not None else
+                    next(previous["response"]["observation"] for previous in observed["observations"] if previous["locale"] == "en")),
                 "origin": {"kind": "declared_direct_human_observation", "sha256": digest(data)}, "locators": pointers, "line_count": count}
         unavailable = [u for u in unavailable if not (u["sample_id"] == c.journey_id("volicord")
-            and u["surface"] == "live_viewer_observation")]
+            and u["surface"] == "live_viewer_observation"
+            and {item["locale"] for item in observed["observations"]} == {"en", "ko"})]
     binding = {"state": "verified", "source": "immutable_campaign_evidence",
         "candidate_head": manifest["candidate_head"], "evidence_set": {"sha256": evidence_hash},
         "evidence_purpose": manifest["evidence_purpose"],
@@ -884,6 +887,13 @@ def _load_package(root):
                 observed["scope"], entry["locale"], observed["contexts"]), "copied prepared claim scope mismatch")
             review.validate_reviewer(observed["binding"]["observer"], preparation["evaluated_sessions"])
             review.require(observed["binding"]["observer"]["kind"] == "human", "copied observer must be Human")
+            english = [json.loads(contents[e["path"]]) for e in index["evidence"].values()
+                if e["surface"] == "live_viewer_observation" and e["locale"] == "en"]
+            actual_text = (observed["response"]["observation"] if observed["response"] is not None else
+                english[0]["response"]["observation"] if len(english) == 1 and english[0]["response"] is not None else None)
+            review.require(entry.get("answer_trace") == observed["answer_trace"]
+                and entry.get("observation_text") == actual_text and actual_text is not None,
+                "copied human observation text/trace binding mismatch")
             answer = observed["answer_trace"][-1]["answer"]
             review.require((observed["response"] is not None and answer == observed["response"]["observation"])
                 or (observed["response"] is None and answer.casefold() == "same as english"),
@@ -948,7 +958,8 @@ def _load_package(root):
     if live:
         import human_observation_plan
         import viewer_observation
-        review.require(len(live) == 2 and live[0]["scope"] == live[1]["scope"], "locale scope mismatch")
+        review.require(1 <= len(live) <= 2 and len({v["locale"] for v in live}) == len(live)
+            and all(v["scope"] == live[0]["scope"] for v in live), "locale scope mismatch")
         journey_id = index["live_viewer_sample"]
         bundle = canonical_bundles[journey_id]
         samples = [s for s in index["samples"] if s["journey_id"] == journey_id]

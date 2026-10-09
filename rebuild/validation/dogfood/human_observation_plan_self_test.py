@@ -97,10 +97,10 @@ class ChangedSurfaceTests(unittest.TestCase):
             contexts[locale].append(decisions)
         ready = p.block_readiness(inventory["observation_blocks"], contexts, subjects)
         self.assertEqual(next(b["state"] for b in ready["en"] if b["id"] == "color-grouping"), "ready")
-        self.assertIn("not_color_only", p.prepared_claims({"readiness": ready, "subjects": subjects}, "en", contexts["en"]))
-        self.assertNotIn("multiple_work_comprehension", p.prepared_claims({"readiness": ready, "subjects": subjects}, "en", contexts["en"]))
+        self.assertIn("not_color_only", p.prepared_claims({"readiness": ready, "subjects": subjects, "selection": p.select_blocks(ready, ("en", "ko"), ())}, "en", contexts["en"]))
+        self.assertNotIn("multiple_work_comprehension", p.prepared_claims({"readiness": ready, "subjects": subjects, "selection": p.select_blocks(ready, ("en", "ko"), ())}, "en", contexts["en"]))
         with self.assertRaisesRegex(ValueError, "prepared block"):
-            p.require_claim_context({"readiness": ready, "subjects": subjects}, contexts, "en", "code_behavior_comprehension", "violated")
+            p.require_claim_context({"readiness": ready, "subjects": subjects, "selection": p.select_blocks(ready, ("en", "ko"), ())}, contexts, "en", "code_behavior_comprehension", "violated")
 
     def test_changed_candidate_requires_new_context_and_no_screen_fixes_missing_execution(self):
         manifest = manifest_fixture("f" * 40)

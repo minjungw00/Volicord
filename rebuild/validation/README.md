@@ -1007,7 +1007,7 @@ gate. It creates no answers or verdicts. `capture-human-viewer-observations
 --observation-plan PRIVATE_OUTPUT/preparation.json` recomputes block readiness before
 asking grouped experience prompts. Missing Decision context leaves only that block
 insufficient; explicit no-user-Decision inapplicability requires separate canonical
-and actual-work review. Captured schema/receipt 6 preserves scope and exact answers.
+and actual-work review. Captured schema/receipt 7 preserves scope and exact answers.
 The mapper and recorded/copied consumers enforce prepared live claim context.
 
 Support regression `qualification_self_test.FileBoundaryTests.
@@ -1016,3 +1016,9 @@ uses authored answers and contexts through actual immutable review/package publi
 qualification and copied replay. It preserves unresolved historical snapshot/conversation
 claims alongside live violations and rejects absent traces and altered reviewer/candidate
 bindings. These fixtures supply no current-candidate Human or Naturalistic qualification.
+
+
+For a small direct observation, use `capture-human-viewer-observations --locale ko
+--observation-block work` with the actually inspected Korean Work display. Remaining
+blocks/locales stay pending. Operator mappings include literal `dimension_answer_quotes`;
+applying them updates only the private mutable draft. See the qualitative review owner.

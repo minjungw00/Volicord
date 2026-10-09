@@ -106,7 +106,8 @@ def block_readiness(blocks, contexts, subjects):
 
 def validate_scope(scope, contexts, candidate, viewer_sha256):
     """Copied packages recompute readiness without the original Campaign or Git."""
-    review.require(isinstance(scope, dict) and set(scope) == {"plan", "readiness", "subjects"},
+    contexts = {locale: contexts.get(locale, []) for locale in ("en", "ko")}
+    review.require(isinstance(scope, dict) and set(scope) == {"plan", "readiness", "subjects", "selection"},
         "invalid block applicability scope")
     inventory = json.loads(FIXTURE.read_bytes())
     value = scope["plan"]
@@ -132,14 +133,37 @@ def validate_scope(scope, contexts, candidate, viewer_sha256):
         expected["inputs"] = value["inputs"]
         review.require(value == expected, "copied changed-surface plan differs from authored routing")
     review.require(scope["readiness"] == block_readiness(blocks, contexts, scope["subjects"]), "block applicability/context mismatch")
+    selection = scope["selection"]
+    review.require(isinstance(selection, dict) and set(selection) == {"en", "ko"}
+        and any(selection.values()), "invalid requested observation blocks")
+    for locale, selected in selection.items():
+        ready = {b["id"] for b in scope["readiness"][locale] if b["state"] == "ready"}
+        review.require(isinstance(selected, list) and all(isinstance(b, str) for b in selected)
+            and len(selected) == len(set(selected)) and set(selected) <= ready,
+            "requested observation block lacks its actual displayed context")
     return blocks
+
+
+def select_blocks(readiness, locales, block_ids):
+    review.require(locales and len(locales) == len(set(locales)) and set(locales) <= {"en", "ko"},
+        "invalid requested observation locales")
+    inventory = {b["id"] for b in readiness["en"]}
+    review.require(len(block_ids) == len(set(block_ids)) and set(block_ids) <= inventory,
+        "unknown or duplicate observation block")
+    selected = {}
+    for locale in ("en", "ko"):
+        ready = [b["id"] for b in readiness[locale] if b["state"] == "ready"]
+        selected[locale] = (list(block_ids) if block_ids else ready) if locale in locales else []
+        review.require(set(selected[locale]) <= set(ready), "requested observation block lacks its actual displayed context")
+    review.require(all(selected[locale] for locale in locales), "no prepared observation block in requested locale")
+    return selected
 
 
 def prepared_claims(scope, locale, contexts):
     displays = [c["context"] for c in contexts]
     for display in displays:
         viewer_observation.require_subject_context(display, scope["subjects"])
-    claims = {claim for b in scope["readiness"][locale] if b["state"] == "ready" for claim in b["claims"]}
+    claims = {claim for b in scope["readiness"][locale] if b["state"] == "ready" and b["id"] in scope["selection"][locale] for claim in b["claims"]}
     if len({c["selected_work"] for c in displays
             if c["view"].get("view") == "work" and c["selected_work"] is not None}) < 2:
         claims.discard("multiple_work_comprehension")
