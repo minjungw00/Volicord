@@ -108,6 +108,27 @@ class ApproachTests(unittest.TestCase):
             self.assertIsNone(record['price'])
         self.assertEqual(a.current_blockers(self.spec), ['cutoff_bound_current_prepare_missing'])
 
+    def test_frozen_current_file_and_claimed_receipt_remain_blocked(self):
+        # Admission regression, not a selective historical attestation verifier.
+        value = copy.deepcopy(self.spec)
+        value['entries'][0].update(role='current_preparation', lane='product')
+        value['entries'][0]['unverified_declaration'] = {
+            'producer': 'claimed', 'scope': value['scope'], 'runtime_receipt': 'claimed',
+            'canonical_basis': 'claimed', 'format_kind': 'volicord_explanation'}
+        manifest = self.root / 'declared-prepare.json'; manifest.write_bytes(i.encoded(value))
+        runtime = {'model': 'fixture', 'reasoning_effort': 'high', 'destination': a.DESTINATION, 'authorization': None}
+        runtime['authorization'] = {'current_request_locator': 'authored admission control only', 'scope': {
+            'destination': a.DESTINATION, 'purpose': 'explanation-generation-experiment',
+            'input_sha256': i.binding(manifest)['sha256'], 'lane': 'product', 'approach': 'current',
+            'conditions_sha256': i.binding(a.HERE / 'conditions.json')['sha256'],
+            'instructions_sha256': i.binding(a.HERE / 'instructions.txt')['sha256']}}
+        with patch.object(a, 'capture', side_effect=AssertionError('unverified baseline dispatch')):
+            record = a.attempt(manifest, 'current', 'product', runtime, self.root / 'declared-current')
+        self.assertEqual(['current_producer_and_disposable_runtime_execution_receipt_missing'], record['blockers'])
+        self.assertEqual(record['status'], 'blocked')
+        self.assertEqual(record['calls'], [])
+        self.assertEqual(record['original_outputs'], [])
+
     def test_inspectable_context_and_non_scoped_tools(self):
         prompt = 'Authored\nfixture'
         context = i.encoded([{'role': 'user', 'content': [{'text': prompt}]}])

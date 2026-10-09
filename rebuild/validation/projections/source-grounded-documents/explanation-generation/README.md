@@ -248,6 +248,103 @@ external generation. The installed CLI refuses `--strict-config` for `mcp list`;
 that failed local diagnostic is retained separately. Its supported configuration
 listing is not live model retrieval qualification.
 
+## Live retrieval verification
+
+The adapter retains `mcp-protocol.jsonl` with initialization, notifications,
+`tools/list` and actual request/result pairs, alongside the separate body-read
+ledger and completed host events. Each fresh stage also preserves the exact
+effective configuration and runtime-observed session/model metadata. MCP tool
+advertisements are observed; completeness of the host's built-in tool definitions
+remains unknown. Filesystem access remains cooperative, and `clean_comparison`
+remains false.
+
+`retrieval_audit` joins each completed evidence call to its exact ledger row,
+checks requested ID/range and independently verifies returned UTF-8 bytes, length,
+hash, representation and scope against the frozen asset. Only a nonempty matching
+read counts as `source_read_verified`. Process exit, generated prose, an inventory
+page or an empty read cannot supply this proof. Host approval denial, other host
+failure, Reader policy denial, unavailable bytes, evidence drift and exhausted
+budgets retain separate outcomes. Malformed stdio requests return protocol errors;
+malformed tool arguments remain charged ledger failures and do not terminate the
+server.
+
+On 2026-10-10 (Asia/Seoul), a separately authorized disposable fixture pilot used
+installed Codex CLI 0.160.0, requested and runtime-observed `gpt-6.1-sol` / `high`,
+and OpenAI Codex service. The first invocation exited 1 with workspace routing
+discovery failure before any evidence call; it remains retained. A separately
+identified invocation with network permission performed inventory and a 139-byte
+body read. The subsequent instrumented control matched the host result, ledger,
+requested byte range and independently authored fixture bytes/hash, with exit 0
+and complete process/workspace cleanup. Its instruction-like source text stayed
+data in the observed call history. These are disposable transport controls,
+not campaign explanation success, general prompt-injection resistance or a
+generation-quality verdict. Existing approval configuration required no change.
+
+A negative diagnostic removing only `default_tools_approval_mode` still read the
+fixture successfully; its denial expectation failed (wrapper exit 1, model exit
+0) and is retained. A separate variant also removing the read-only annotations
+reproduced `MCP tool call requires approval, but approval policy is never` on
+inventory. MCP initialization and tool advertisement succeeded, the retrieval
+ledger stayed empty, and the model exited 0 with `captured_without_evidence_reads`.
+The negative control passed by observing that denial, not by treating model exit
+0 as retrieval success. This isolates the importance of tool metadata in the
+installed host and does not weaken the maintained explicit scoped approval.
+
+Private receipts are under
+`rebuild/.local/explanation-generation/live-read-20261010/`; original attempts and
+comparison outputs were not rewritten. Local controls include actual stdio
+inventory/body reads, forbidden IDs, Project/Work arguments, malformed arguments,
+missing before bytes and exhausted call budgets. Additional independent controls
+reject foreign input scope, changed evidence, exhausted byte budgets, empty-read
+success and inconsistent or forged host/ledger proof.
+
+```bash
+rebuild/scripts/validate focused explanation-evidence-controls -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/read_policy_self_test.py \
+  --retain rebuild/.local/explanation-generation/unique-evidence-controls
+```
+
+### Historical baseline limitation
+
+The original Work B cutoff is `2026-10-08T08:40:16.901Z`; Click's cutoff is
+`2026-10-08T09:09:53.929Z`. Their archived Korean preparations were observed at
+`09:56:21.778028Z` and `09:55:58.088147Z` respectively, after those cutoffs. The
+verified original executable hash is
+`7ea5451c0c207779af953ad5ccfdf79a38311624fd153e0df2cd370150658a65`, bound by the
+campaign manifest to candidate `757525bc6251407c5d1cf7422ff8331dc375268e`.
+
+A local diagnostic ran that archived executable against separate disposable
+copies of each final canonical database. Both preparations exited 0 and matched
+the respective archived later plans exactly. This establishes the producer's
+actual instructions and response shape on the final archived state; it supplies
+no cutoff-state attestation. Work B's final database contains thirteen later
+insert operations. Click has no recorded later canonical operations, which is
+useful evidence of stability, but that fact alone does not provide an independently
+bound cutoff snapshot or a complete verification of the historical preparation
+basis. The preserved portable bundles also mark repository Sources unavailable
+where these final-runtime plans report Available; importing them would change
+the preparation basis. Canonical attachment entries without observation timestamps
+remain explicitly ambiguous in the frozen experiment inputs. No cutoff Runtime
+was synthesized from these partial inputs or from a later plan.
+
+The executable's actual Product contract is `ExplanationRealization`:
+`format_kind`, `format_version`, `plan_fingerprint`, `language`, `generator` and
+`paragraphs` with question/text/evidence keys. The generic prose/selection
+transport is incompatible. Actual recording against a disposable Runtime rejected
+both a generic experiment response and a stale fingerprint with exit 1 and no
+success stdout. No new explanation was authored for these controls.
+
+Faithful historical preparation remains **unverified and unavailable to this
+adapter**, rather than demonstrated impossible under every possible recovery.
+`current_blockers()` remains fail-closed. The current-admission negative controls
+confirm that caller declarations of producer/cutoff/plan/Runtime receipt/basis or
+response format cannot dispatch; they do not claim an implemented selective
+receipt verifier. An implementation commit for historical baseline support is
+therefore omitted. A future implementation still needs independently verified
+cutoff canonical basis, exact producer/source identity, an actual disposable
+Runtime execution receipt and unchanged Product instructions/output handling.
+No Product lane was enriched with archive-only source bodies.
+
 ## Private comparison presentation
 
 `render_comparison.py --attempt /absolute/attempt.json ... --output UNIQUE_DIRECTORY`

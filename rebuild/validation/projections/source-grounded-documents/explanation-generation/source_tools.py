@@ -11,11 +11,13 @@ from inputs import Reader, encoded, generation_inventory, require, verify
 
 
 class Surface:
-    def __init__(self, manifest, lane, budgets, trace):
+    def __init__(self, manifest, lane, budgets, trace, protocol_trace=None):
         self.spec = verify(manifest)
+        Reader(self.spec, lane, max_reads=budgets['reads'], max_bytes=budgets['read_bytes'])
         self.lane, self.budgets, self.trace = lane, budgets, Path(trace)
+        self.protocol_trace = Path(protocol_trace) if protocol_trace else None
 
-    def call(self, name, arguments):
+    def call(self, name, arguments, request_id=None):
         # All calls, including failed lookups and inventory pages, share a locked
         # ledger across stages and MCP restarts. Denials cannot reset the budget.
         with self.trace.open('a+b') as stream:
@@ -25,7 +27,10 @@ class Surface:
             reads = len(history)
             used = sum(row.get('charged_bytes', 0) for row in history)
             row = {'sequence': reads, 'name': name, 'arguments': arguments}
+            if request_id is not None:
+                row['mcp_request_id'] = request_id
             try:
+                require(isinstance(arguments, dict), 'tool arguments must be an object')
                 require(reads < self.budgets['reads'], 'read budget exhausted')
                 view = generation_inventory(self.spec, self.lane)
                 if name == 'inventory':
@@ -51,11 +56,19 @@ class Surface:
                 else:
                     raise ValueError('unknown tool')
                 row.update(result=result, charged_bytes=(len(data) if name == 'read' else len(encoded(result))),
-                           status='returned')
+                           status='returned', outcome='source_returned' if name == 'read' and data else
+                           'empty_read' if name == 'read' else 'inventory_returned')
             except (ValueError, KeyError, TypeError, OSError) as error:
-                row.update(status='failed', error=str(error), charged_bytes=0)
+                message = str(error)
+                outcome = ('source_unavailable' if message == 'bytes unavailable' or isinstance(error, OSError)
+                           else 'evidence_changed' if message == 'changed bytes or stale preparation'
+                           else 'budget_exhausted' if message == 'read budget exhausted'
+                           else 'invalid_utf8' if isinstance(error, UnicodeError) else 'policy_denied')
+                row.update(status='failed', outcome=outcome, error=message, charged_bytes=0)
             stream.seek(0, 2)
-            stream.write(json.dumps(row, ensure_ascii=False).encode() + b'\n')
+            # Escaping also preserves malformed surrogate arguments as evidence
+            # without letting UTF-8 serialization kill the server after denial.
+            stream.write(json.dumps(row, ensure_ascii=True).encode() + b'\n')
             stream.flush()
             return row
 
@@ -78,29 +91,42 @@ for tool in TOOLS:
 
 def serve(surface, incoming=sys.stdin, outgoing=sys.stdout):
     for line in incoming:
-        request = json.loads(line)
-        if 'id' not in request:
-            continue
-        method = request.get('method')
-        if method == 'initialize':
-            result = {'protocolVersion': request['params']['protocolVersion'], 'capabilities': {'tools': {}},
-                      'serverInfo': {'name': 'explanation-evidence', 'version': '1.0.0'}}
-        elif method == 'tools/list':
-            result = {'tools': TOOLS}
-        elif method == 'tools/call':
-            params = request['params']
-            row = surface.call(params['name'], params.get('arguments', {}))
-            result = {'content': [{'type': 'text', 'text': json.dumps(row, ensure_ascii=False)}],
-                      'isError': row['status'] == 'failed'}
-        elif method == 'ping':
-            result = {}
-        else:
-            outgoing.write(json.dumps({'jsonrpc': '2.0', 'id': request['id'],
-                                       'error': {'code': -32601, 'message': 'method unavailable'}}) + '\n')
-            outgoing.flush()
-            continue
-        outgoing.write(json.dumps({'jsonrpc': '2.0', 'id': request['id'], 'result': result}, ensure_ascii=False) + '\n')
-        outgoing.flush()
+        request, response = None, None
+        try:
+            request = json.loads(line)
+            require(isinstance(request, dict), 'request must be an object')
+            if 'id' not in request:
+                continue
+            method = request.get('method')
+            if method == 'initialize':
+                result = {'protocolVersion': request['params']['protocolVersion'], 'capabilities': {'tools': {}},
+                          'serverInfo': {'name': 'explanation-evidence', 'version': '1.0.0'}}
+            elif method == 'tools/list':
+                result = {'tools': TOOLS}
+            elif method == 'tools/call':
+                params = request['params']
+                row = surface.call(params['name'], params.get('arguments', {}), request['id'])
+                result = {'content': [{'type': 'text', 'text': json.dumps(row, ensure_ascii=True)}],
+                          'isError': row['status'] == 'failed'}
+            elif method == 'ping':
+                result = {}
+            else:
+                response = {'jsonrpc': '2.0', 'id': request['id'],
+                            'error': {'code': -32601, 'message': 'method unavailable'}}
+            if response is None:
+                response = {'jsonrpc': '2.0', 'id': request['id'], 'result': result}
+        except (ValueError, KeyError, TypeError) as error:
+            response = {'jsonrpc': '2.0', 'id': request.get('id') if isinstance(request, dict) else None,
+                        'error': {'code': -32700 if isinstance(error, json.JSONDecodeError) else -32602,
+                                  'message': 'malformed request'}}
+        finally:
+            if surface.protocol_trace is not None:
+                with surface.protocol_trace.open('ab') as trace:
+                    fcntl.flock(trace, fcntl.LOCK_EX)
+                    trace.write(json.dumps({'request': request, 'response': response}, ensure_ascii=True).encode() + b'\n')
+            if response is not None:
+                outgoing.write(json.dumps(response, ensure_ascii=True) + '\n')
+                outgoing.flush()
 
 
 if __name__ == '__main__':

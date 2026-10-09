@@ -10,7 +10,7 @@ import tempfile
 import time
 
 from grounding import validate_output
-from inputs import append_index, binding, encoded, generation_inventory, require, verify
+from inputs import append_index, binding, check_binding, digest, encoded, generation_inventory, require, verify
 from invocations import HERE, REPOSITORY, capture, environment
 
 APPROACHES = ('current', 'direct', 'note_then_prose')
@@ -72,6 +72,72 @@ def events(path):
         except (ValueError, UnicodeError):
             invalid = True
     return result, invalid
+
+
+def retrieval_audit(spec, lane, calls, retrievals):
+    """Join actual completed host results to ledger rows and independently read bytes.
+
+    Process success, inventory, an empty read and model prose are not source proof.
+    This reports transport observations, never authorship or semantic quality.
+    """
+    entries = {e['id']: e for e in spec['entries'] if lane == 'archive_diagnostic' or e['lane'] == 'product'}
+    outcomes, matched, issues = [], set(), []
+    for call in calls:
+        if call.get('type') != 'mcp_tool_call' or call.get('server') != 'evidence':
+            continue
+        outcome = {'host_id': call.get('id'), 'tool': call.get('tool')}
+        try:
+            if call.get('error'):
+                message = call['error'].get('message', '')
+                outcome['outcome'] = 'host_denied' if 'requires approval' in message else 'host_call_failed'
+                outcomes.append(outcome)
+                continue
+            require(call.get('status') == 'completed', 'host call incomplete')
+            content = call['result']['content']
+            require(len(content) == 1 and content[0]['type'] == 'text', 'unexpected host tool result')
+            row = json.loads(content[0]['text'])
+            sequence = row['sequence']
+            require(type(sequence) is int and 0 <= sequence < len(retrievals), 'ledger sequence absent')
+            require(sequence not in matched and retrievals[sequence] == row, 'host/ledger mismatch')
+            require(row['name'] == call['tool'] and row['arguments'] == call['arguments'], 'host arguments mismatch')
+            matched.add(sequence)
+            outcome.update(sequence=sequence, outcome='reader_failed')
+            if row['status'] == 'failed':
+                require(row.get('outcome') in {None, 'policy_denied', 'source_unavailable', 'evidence_changed',
+                                               'budget_exhausted', 'invalid_utf8'}, 'invalid failed-read outcome')
+                outcome['outcome'] = row.get('outcome', 'reader_failed')
+            else:
+                require(row['status'] == 'returned', 'invalid ledger status')
+            if row['status'] == 'returned' and row['name'] == 'read':
+                meta, text = row['result']['metadata'], row['result']['text']
+                entry = entries[meta['id']]
+                require(entry['project'] == spec['scope']['project'] and entry['work'] == spec['scope']['work'], 'foreign source scope')
+                check_binding(entry['asset'])
+                start, length = meta['offset'], meta['bytes']
+                require(type(start) is int and type(length) is int and start >= 0 and length >= 0, 'invalid returned range')
+                require(meta['id'] == row['arguments']['id'] and start == row['arguments'].get('offset', 0)
+                        and length <= row['arguments'].get('limit', 2048), 'returned/requested range mismatch')
+                with Path(entry['asset']['path']).open('rb') as source:
+                    source.seek(start)
+                    data = source.read(length)
+                require(data == text.encode('utf-8') and len(data) == length
+                        and digest(data) == meta['sha256'] and row['charged_bytes'] == length, 'returned bytes mismatch')
+                require(meta['representation'] == entry['representation'], 'returned representation mismatch')
+                require(meta['role'] == 'untrusted_evidence'
+                        and meta['complete_asset'] == (start == 0 and length == entry['asset']['bytes']), 'returned metadata mismatch')
+                outcome.update(outcome='source_read_verified' if length else 'empty_read',
+                               source_id=meta['id'], offset=start, bytes=length, sha256=meta['sha256'])
+            elif row['status'] == 'returned':
+                outcome['outcome'] = 'inventory_returned'
+        except (ValueError, KeyError, TypeError, OSError, AttributeError) as error:
+            outcome.update(outcome='unverified', error=str(error))
+            issues.append(str(error))
+        outcomes.append(outcome)
+    unmatched = [r['sequence'] for r in retrievals if r['sequence'] not in matched]
+    if unmatched:
+        issues.append('ledger rows without matching host results')
+    return {'outcomes': outcomes, 'verified_source_reads': sum(o['outcome'] == 'source_read_verified' for o in outcomes),
+            'unmatched_sequences': unmatched, 'issues': sorted(set(issues))}
 
 
 def evidence_configuration(configuration_path):
@@ -138,6 +204,9 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
     output_used, stream_used, note = 0, 0, None
     trace = output / 'retrievals.jsonl'
     trace.touch(mode=0o600)
+    protocol_trace = output / 'mcp-protocol.jsonl'
+    protocol_trace.touch(mode=0o600)
+    all_tool_calls = []
     record['executable'] = binding(executable)
     with tempfile.TemporaryDirectory(prefix='volicord-explanation-call-') as temporary:
         base = Path(temporary)
@@ -159,13 +228,17 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             if auth_path is not None:
                 (workspace / 'codex/auth.json').symlink_to(Path(auth_path).resolve())
             configuration = {'manifest': str(Path(manifest).resolve()), 'lane': record['lane'],
-                             'budgets': budgets, 'trace': str(trace)}
+                             'budgets': budgets, 'trace': str(trace), 'protocol_trace': str(protocol_trace)}
             (workspace / 'reader.json').write_bytes(encoded(configuration))
             config = workspace / 'codex/config.toml'
             # Use explicit top-level -c settings. MCP stdio configuration is the
             # documented current CLI shape, checked with installed mcp list.
             with config.open('a') as stream:
                 stream.write(evidence_configuration(workspace / 'reader.json'))
+            stage_root = output / stage
+            stage_root.mkdir()
+            shutil.copyfile(config, stage_root / 'effective-config.toml')
+            record.setdefault('configured_context', []).append(binding(stage_root / 'effective-config.toml'))
             directive = ('Write a short cited technical analysis, separating observations and interpretations.'
                          if stage == 'analysis' else conditions_directive(record['approach']))
             prompt = ((HERE / 'instructions.txt').read_text() + '\n' + directive
@@ -176,8 +249,6 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                       + '\nInitial evidence inventory (bodies require reads):\n' + json.dumps(initial, ensure_ascii=False)
                       + ('\nPrior short technical analysis, revisitable and correctable:\n' + note if note else '')
                       + '\nRemaining response UTF-8 byte budget: ' + str(budgets['output_bytes'] - output_used))
-            stage_root = output / stage
-            stage_root.mkdir()
             settings = ['-c', 'model=' + json.dumps(record['runtime']['model']), '-c',
                         'model_reasoning_effort=' + json.dumps(record['runtime']['reasoning_effort'])]
             probe = capture([executable, *settings, 'debug', 'prompt-input', prompt], cwd=workspace, env=env,
@@ -206,6 +277,9 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             tool_calls = [event['item'] for event in observed if event.get('type') == 'item.completed'
                           and event.get('item', {}).get('type', '').endswith(('tool_call', 'command_execution'))]
             (stage_root / 'host-tool-calls.json').write_bytes(encoded(tool_calls))
+            all_tool_calls.extend(tool_calls)
+            retrievals = [json.loads(line) for line in trace.read_bytes().splitlines()]
+            record['evidence_reads'] = retrieval_audit(spec, record['lane'], all_tool_calls, retrievals)
             record['tokens'].extend(event.get('usage') for event in observed if event.get('type') == 'turn.completed')
             record.setdefault('exposure_issues', []).extend(context_audit(probe, Path(probe['stdout']['path']).read_bytes(), prompt, tool_calls))
             if invalid or not process['streams_complete']:
@@ -220,6 +294,11 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                 observed_context.extend(row for row in rows if row.get('type') in {'session_meta', 'turn_context', 'compacted'}
                     or (row.get('type') == 'response_item' and row.get('payload', {}).get('type') != 'reasoning'))
             (stage_root / 'observed-context.json').write_bytes(encoded(observed_context))
+            record.setdefault('runtime_observations', []).extend(
+                {'stage': stage, 'kind': row['type'], 'identity_status': 'runtime_observed_not_attested',
+                 'values': {key: row.get('payload', {}).get(key) for key in
+                            ('id', 'source', 'originator', 'cli_version', 'model_provider', 'model', 'effort', 'cwd')}}
+                for row in observed_context if row.get('type') in {'session_meta', 'turn_context'})
             if not observed_context:
                 record['exposure_issues'].append('observed_context_uninspectable')
             if any(row.get('type') == 'compacted' for row in observed_context):
@@ -250,11 +329,19 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             else:
                 record['generation_output'] = binding(response_path)
                 record['status'] = ('invalid_references' if any(s['reference_status'] == 'invalid' for s in validation['selections'])
-                                    else 'captured' if any(r['status'] == 'returned' and r['name'] == 'read' for r in retrievals)
+                                    else 'evidence_unverified' if record['evidence_reads']['issues']
+                                    else 'captured' if record['evidence_reads']['verified_source_reads']
                                     else 'captured_without_evidence_reads')
         record['workspace_cleanup'] = 'pending'
     record['workspace_cleanup'] = 'complete'
     record['retrievals'] = binding(trace)
+    record['mcp_protocol'] = binding(protocol_trace)
+    protocol, invalid_protocol = events(protocol_trace)
+    record['observed_tool_sets'] = [row['response']['result']['tools'] for row in protocol
+                                   if isinstance(row.get('request'), dict) and row['request'].get('method') == 'tools/list'
+                                   and row.get('response', {}).get('result', {}).get('tools') is not None]
+    record['host_tool_set_completeness'] = 'unknown; MCP tools/list observed, built-in tool definitions not exported'
+    record['mcp_protocol_incomplete'] = invalid_protocol
     record['output_bytes'] = output_used
     record['retained_stream_bytes'] = stream_used
     record['clean_comparison'] = False  # Requires independent observed-context review.
