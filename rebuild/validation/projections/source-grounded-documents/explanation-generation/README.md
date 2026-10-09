@@ -152,10 +152,10 @@ and [configuration](https://learn.chatgpt.com/docs/config-file/config-basic).
 Local help/version/configuration observations remain this adapter's evidence;
 documentation alone proves neither configured isolation nor model identity.
 
-`freeze_run` records a blocked real-run manifest: exact input/instruction/condition
+`freeze_run` records an admission-only blocked manifest: exact input/instruction/condition
 identities, requested runtime, language, budgets, destination/purpose/source
 authorization scope, provenance gaps and dispatch state. Its declared authorization
-is **not verified authority**. There is deliberately no live dispatch implementation:
+is **not verified authority**. This admission-only API does not dispatch:
 installed help and local prompt construction do not establish authenticated
 invocation, an available model retrieval adapter, or neutral model behavior.
 `current` additionally blocks without cutoff-bound Product prepare. Unsupported or
@@ -166,7 +166,7 @@ reads and instruction-like source text, separate streams and inherited canaries.
 A separate authored canary demonstrates that ordinary absolute filesystem reads
 are still possible. This demonstrates the cooperative filesystem limitation; it
 does not consume real prohibited material or prove model-side prompt-injection
-resistance. Real dispatch remains blocked pending exact current authorization and
+resistance. Real dispatch requires exact current authorization and
 verified live host retrieval/model controls in a separate fresh context. Explicit
 runtime choice must precede that dispatch; default model/auth/settings, token
 counts and price are never invented.
@@ -182,3 +182,56 @@ rebuild/scripts/validate focused explanation-installed-host -- \
 
 Retained neutral controls are self-authored process support, not generated prose.
 Inspect each actual control's result and streams, not only the wrapper exit.
+
+## Initial approach opportunities
+
+`approaches.py` adds the separately authorized live adapter. It requires the exact
+verified manifest, lane, approach, model, reasoning effort, destination and current
+request locator with matching input/instruction/condition scope. Accepting an
+operator declaration does not itself grant authority. It invokes the installed
+Codex executable in a new process, home and cwd with the neutral configuration
+above. Only its scoped evidence MCP server is configured. Authentication remains
+CLI-owned: an optional temporary auth-file symlink allows existing authentication
+without this support reading, copying or retaining credential material. The CLI
+may refresh its own authentication. The temporary home is removed after cleanup.
+
+`source_tools.py` supplies opaque-ID reads and unranked inventory pagination with
+literal path/role filters. Every body is untrusted evidence. A locked retrieval
+ledger charges calls including failed lookups, and returned bytes including inventory
+metadata, across restarts and both stages. Initial evidence and mechanical diff
+inventories are identical for direct and staged approaches within a lane.
+Staged generation uses two fresh calls: short cited analysis, then prose with that
+captured analysis as revisitable evidence. Both share the unchanged frozen total
+time/read/output/stream budgets. Local context probes also count toward elapsed
+time. There are no correction calls or retries under the zero-retry condition.
+
+Free prose and `response-schema.json` form an experiment-only transport envelope,
+not a Product schema. `grounding.py` validates the strict sidecar after preserving
+the original response. Scope, state, byte span, hash, retrieval and chronology
+checks do not judge entailment. There is no fixed paragraph count or preferred code
+selection. Invalid references and exhausted budgets remain visible outcomes.
+Raw streams, original intermediate/final responses, numeric process outcomes,
+observed usage and model-visible context projections remain private. No private
+reasoning transcript is selected. Unknown price remains null.
+
+The current-format opportunity fails closed without the frozen cutoff-bound actual
+Product preparation and its producing-executable/source and disposable-Runtime
+execution receipt. Later plans and fabricated equivalents cannot supply that
+baseline. This adapter captures that blocker; it does not implement a substitute
+Product preparation path. Product and archive-diagnostic lanes remain distinct;
+archive success cannot certify Product capability.
+
+Configured prompt-input inspection and observed tool/context capture expose
+unexpected context and non-scoped tools. Broader same-user filesystem access remains
+cooperative. `clean_comparison` stays false pending independent context/read audit.
+Missing or compacted observed context cannot support a clean-comparison claim.
+
+```bash
+rebuild/scripts/validate focused explanation-approach-controls -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/approach_self_test.py
+python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/approaches.py --help
+```
+
+Use a unique output directory per initial opportunity. The private append-only
+index binds every outcome; earlier attempts are never overwritten or selected away.
+Fixture checks establish transport and numerical controls, not semantic quality.

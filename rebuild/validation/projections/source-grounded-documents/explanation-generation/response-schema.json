@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "prose": {"type": "string"},
+    "selections": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string"}, "start": {"type": "integer"}, "end": {"type": "integer"},
+          "sha256": {"type": "string"}, "state": {"type": "string", "enum": ["before", "after", "context"]}
+        },
+        "required": ["id", "start", "end", "sha256", "state"]
+      }
+    },
+    "gaps": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["prose", "selections", "gaps"]
+}
