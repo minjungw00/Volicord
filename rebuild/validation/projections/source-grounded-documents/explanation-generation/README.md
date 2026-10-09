@@ -1,0 +1,116 @@
+# Explanation generation experiment support
+
+This thin V06 support facility freezes input evidence and neutral comparison
+conditions. It owns no production schema, Viewer replacement, semantic verdict,
+adoption, background provider dependency, gate or official V11. It never generates
+measured prose in the repository-editing conversation.
+
+Read the validation, projection, privacy, architecture and domain owners before
+changing these facilities. Experiment success does not promote code or contracts.
+All campaign inputs, manifests, retrieval histories, invocation streams, outputs
+and feedback belong under ignored `rebuild/.local/explanation-generation/`.
+Only authored fixtures, this contract and support code are maintained here.
+
+## Frozen input contract
+
+`inputs.freeze` verifies an explicit versioned input spec and publishes an
+immutable manifest and exact content assets. Product candidate, explained
+repository state and experiment producer have independent identities. Each input
+binds exact Project/Work, explanation cutoff, original locator and witness hashes,
+actual producer or missing capability, role, lane, chronology, before availability
+and attribution. Preparation and dependency drift are rejected at read time.
+
+`full_file`, `bounded_excerpt`, `verified_reconstruction` and `unavailable` are
+distinct. Completing retrieval of an excerpt does not make it a full file. Missing
+before bytes remain unavailable. Ambiguous chronology is recorded explicitly;
+such evidence cannot certify a cutoff state. Reconstruction requires independently
+observed expected bytes and witness hashes. Hashes certify identity, not meaning.
+
+`product` admits retained evidence obtainable through existing Product reads;
+`archive_diagnostic` additionally admits original task/raw/source captures. An
+archive body is never relabeled as an existing Product capability. Historical
+Candidate observations supply no current retention or read authorization. Current
+prepare still excludes Candidate prose; Candidate detail is a separately bounded,
+revision/policy checked read. Source locators do not retrieve missing historical
+bodies. An archive improvement would identify a needed producer, not Product
+generation success.
+
+The `Reader` admits only opaque IDs in the chosen lane, verifies exact assets and
+charges numerical read/byte budgets. It has no arbitrary pathname operation and
+does not interpret source instructions. This is an enforced retrieval boundary,
+**not an OS filesystem sandbox or a proof of model resistance to prompt injection**.
+Any host with independent filesystem tools must separately disclose its cooperative
+restriction and pass neutral context/read controls before real dispatch.
+
+The private `index.jsonl` is a locked append-only hash chain of actual artifact
+paths/hashes and input/approach/feedback states. It is not a database, task state
+machine, evaluation platform or production lifecycle. Earlier files are never
+rewritten to convert an incomplete attempt into success.
+
+## Historical preparation
+
+`archive.py` reads the original campaign without mutating Git, Runtime Homes or
+historical evaluation. Existing `dogfood/codex_events.py` owns current capture
+normalization. Explicit canonical Work/Checkpoint/Decision/Question/Source links
+select records at the cutoff, independently of path/commit proximity. Exact
+start/resume sessions supply **all** normalized command observations and original
+reports/user replies. Inherited system/developer/turn context, prototype prose,
+source-tour ranking, expected claims, review directories and later generated
+explanations are excluded.
+
+Pinned Git blobs supply the entire tracked investigation surface, including
+callers, helpers, config and original tests, in every implementation language.
+Literal recorded Update File patches can be replayed without executing captured
+JS/shell; ambiguous contexts and other write forms remain unsupported. Exact
+reconstruction is admitted only after independent archived final-hash comparison.
+That later inventory corroborates bytes, never assigns a change to a Work.
+Recorded formatting may be diagnostically reconstructed using the pinned Cargo
+edition, again requiring exact historical hash equality. Later upstream content
+is never fetched or substituted. A later preparation is metadata about a missing
+cutoff-bound baseline, not generation input.
+
+This adapter deliberately reports a partial dirty-state boundary. Untouched pinned
+blobs prove the baseline revision, not an independently attested clean cutoff tree.
+Unsupported or uncorroborated dirty paths are omitted explicitly; original bounded
+command excerpts remain inspectable. No-change investigation retains the complete
+permitted command and pinned repository inventory rather than a list of selected
+answer functions. Work A and other campaign slots are addressable with `--slot`;
+missing captures, canonical records or bytes fail or degrade that scope explicitly.
+
+```bash
+python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/archive.py \
+  --archive /absolute/original-campaign --slot exact-work-slot \
+  --producer-head exact-producer-head \
+  --output rebuild/.local/explanation-generation/unique-input-directory
+```
+
+## Neutral comparison conditions
+
+`conditions.json` freezes language and total time/read/output/retry budgets before
+dispatch. `current` requires the unchanged exact current prepare, its instructions
+and ExplanationRealization output. `direct` investigates source then writes prose;
+`note_then_prose` investigates the same starting evidence and read surface, writes
+a concise cited technical note and then prose. Both stages share one total budget;
+there is no extra allowance for the note, a repair, or another invocation. There
+are no example-specific functions, expected claims or answers in the conditions.
+
+Runtime model/destination/reasoning are initially unspecified and real dispatch
+is blocked. Freeze explicit observed configuration, input and instruction hashes,
+language and numerical budgets in a run manifest first. Never infer current
+transmission authorization from installed credentials, old campaign/gate consent,
+or sandbox access. Unobservable authentication identity, settings, token counts
+and prices stay unknown. No credential material belongs in evidence.
+
+## Focused checks
+
+```bash
+rebuild/scripts/validate focused explanation-inputs -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/input_self_test.py
+```
+
+Inspect retained stdout/stderr and numeric result. Fixtures use independent,
+authored expected bytes and identities. These checks cover foreign scope, changed
+bytes, stale preparation, missing before bytes, partial excerpts, ambiguous
+chronology, reconstruction, editorial roles, allowed/forbidden reads,
+instruction-like source and append-only index integrity. They supply no generated
+explanation, Human qualification, semantic evaluation or V11 acceptance.

@@ -795,6 +795,27 @@
       "content_sha256": "4fb06ef5618ea99db3e2e516a109bd227fc6844c5bcb7795eb36b09c54e73879",
       "origin": "Self-authored synthetic adversarial inputs; no user repositories, conversations or runtime data",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v06-explanation-input-boundaries",
+      "validation_id": "V06",
+      "path": "rebuild/validation/projections/source-grounded-documents/explanation-generation/fixtures",
+      "purpose": "Neutral evidence classification and instruction-like source control; no campaign or measured prose.",
+      "expected_entities": [
+        "exact-work-and-project",
+        "distinct-producer-and-target"
+      ],
+      "expected_relations": [
+        "explicit-canonical-work-links"
+      ],
+      "expected_unsupported": [
+        "arbitrary filesystem reads",
+        "model injection resistance",
+        "production generation qualification"
+      ],
+      "content_sha256": "be76364b845850756a1edb2a26cc66d2bb9f4493c1174fd7920597bab0029cfe",
+      "origin": "Self-authored deterministic input-boundary fixture.",
+      "license": "CC0-1.0"
     }
   ]
 }

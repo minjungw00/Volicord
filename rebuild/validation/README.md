@@ -6,6 +6,11 @@ surface, not a Volicord product command or production architecture.
 
 ## Commands
 
+Bounded explanation input/invocation experiments are documented under
+[V06 explanation generation support](projections/source-grounded-documents/explanation-generation/README.md).
+They are focused support only, independent of gate/official V11, Product schema
+and measured prose. Actual campaign material remains in ignored local artifacts.
+
 Current installation/host conformance is `python3
 rebuild/validation/linux-codex-integration/assertions.py`: actual mapped Product
 entry points, repository integration, HTTP authentication/removed routes, repair,

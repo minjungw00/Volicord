@@ -1,0 +1,43 @@
+{
+  "format_version": 1,
+  "purpose": "input and invocation support only; no measured generation",
+  "language": "ko",
+  "budgets": {
+    "total_seconds": 180,
+    "reads": 48,
+    "read_bytes": 131072,
+    "output_bytes": 16384,
+    "stream_bytes": 1048576,
+    "retries": 0,
+    "cleanup_seconds": 2
+  },
+  "conditions": {
+    "current": {
+      "starting_evidence": "exact current Product prepare",
+      "instructions": "unchanged instructions from exact Product prepare",
+      "output": "unchanged ExplanationRealization contract",
+      "dispatch_requires": "cutoff-bound current prepare; no archive source enrichment"
+    },
+    "direct": {
+      "starting_evidence": "shared frozen input manifest",
+      "allowed_reads": "shared opaque-ID inventory",
+      "instructions": "Investigate the permitted source and Work records. Write natural prose in the requested language with exact input and byte-range citations. Distinguish code observations, original reports, choices, checks and missing information. Choose the reading order yourself.",
+      "output": "prose and citations"
+    },
+    "note_then_prose": {
+      "starting_evidence": "shared frozen input manifest",
+      "allowed_reads": "shared opaque-ID inventory",
+      "instructions": "Investigate the permitted source and Work records. First write a concise cited technical note separating observations and interpretations. Then write natural prose in the requested language with exact citations. Choose the reading order yourself. Preserve choices, checks and missing information.",
+      "output": "technical note and prose; both charged to the same total budget"
+    }
+  },
+  "runtime": {
+    "model": null,
+    "reasoning_effort": null,
+    "destination": null,
+    "state": "dispatch_blocked_until_explicit_runtime_and_current_authorization",
+    "sampling": "unsupported_or_unobserved",
+    "token_counts": "unobserved",
+    "price": "unobserved"
+  }
+}
