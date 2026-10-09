@@ -214,6 +214,16 @@ Raw streams, original intermediate/final responses, numeric process outcomes,
 observed usage and model-visible context projections remain private. No private
 reasoning transcript is selected. Unknown price remains null.
 
+Codex may report an exact Reader denial payload as a terminal `failed` tool
+result. The retrieval consumer joins that payload only when its sequence,
+arguments and complete ledger row match and the row itself records failure.
+Policy, UTF-8 and budget denials stay failures and supply no source-read proof.
+A failed host result carrying successful bytes, an in-progress result, a missing
+payload, transport error or unmatched row remains incomplete/unverified. A complete
+denial audit does not establish completed prose or semantic adequacy. Original
+receipts and statuses are immutable; later consumer diagnostics have separate
+identities and do not repair historical attempts.
+
 The current-format opportunity fails closed without the frozen cutoff-bound actual
 Product preparation and its producing-executable/source and disposable-Runtime
 execution receipt. Later plans and fabricated equivalents cannot supply that

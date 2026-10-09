@@ -70,7 +70,8 @@ class ReadPolicyTests(unittest.TestCase):
                 partial = a.retrieval_audit(surface.spec,'archive_diagnostic',[interrupted],[row])
                 self.assertEqual(partial['unmatched_sequences'],[0])
                 self.assertEqual(partial['verified_source_reads'],0)
-                self.assertIn('host call incomplete',partial['issues'])
+                self.assertIn('host call incomplete' if status == 'in_progress' else
+                              'host failure cannot attest returned evidence', partial['issues'])
             invalid = copy.deepcopy(host)
             changed = copy.deepcopy(row); changed['result']['text'] = 'invented bytes'
             invalid['result']['content'][0]['text'] = json.dumps(changed)
@@ -80,6 +81,54 @@ class ReadPolicyTests(unittest.TestCase):
             unresolved = a.retrieval_audit(surface.spec,'archive_diagnostic',[host],[row,denied])
             self.assertEqual(unresolved['unmatched_sequences'],[1])
             self.assertTrue(unresolved['issues'])
+
+    def test_terminal_reader_denials_are_accounted_without_source_proof(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root/'source'; source.write_text('한글 evidence\n')
+            path = root/'spec.json'; path.write_bytes(i.encoded(spec(source)))
+            manifest = i.freeze(path, root/'frozen', root)
+            surface = Surface(manifest, 'archive_diagnostic', {'reads': 6, 'read_bytes': 256}, root/'ledger')
+            rows = [surface.call('inventory', {'limit': 100}),
+                    surface.call('read', {'id': 'source-0001', 'limit': 1}),
+                    surface.call('read', {'id': 'source-0001', 'limit': 257})]
+            self.assertEqual([r['outcome'] for r in rows],
+                             ['policy_denied', 'invalid_utf8', 'budget_exhausted'])
+            calls = [{'id': str(n), 'type': 'mcp_tool_call', 'server': 'evidence',
+                      'tool': row['name'], 'arguments': row['arguments'], 'status': 'failed', 'error': None,
+                      'result': {'content': [{'type': 'text', 'text': json.dumps(row)}]}}
+                     for n, row in enumerate(rows)]
+            audit = a.retrieval_audit(surface.spec, 'archive_diagnostic', calls, rows)
+            self.assertEqual(audit['issues'], [])
+            self.assertEqual(audit['unmatched_sequences'], [])
+            self.assertEqual(audit['verified_source_reads'], 0)
+            self.assertEqual([o['outcome'] for o in audit['outcomes']], [r['outcome'] for r in rows])
+            self.assertEqual([r['charged_bytes'] for r in rows], [0, 0, 0])
+
+    def test_terminal_denial_join_still_rejects_interruption_and_tampering(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root/'source'; source.write_bytes(b'authored bytes\n')
+            path = root/'spec.json'; path.write_bytes(i.encoded(spec(source)))
+            manifest = i.freeze(path, root/'frozen', root)
+            surface = Surface(manifest, 'archive_diagnostic', {'reads': 4, 'read_bytes': 256}, root/'ledger')
+            row = surface.call('read', {'id': 'foreign-id'})
+            host = {'id': 'denial', 'type': 'mcp_tool_call', 'server': 'evidence', 'tool': 'read',
+                    'arguments': row['arguments'], 'status': 'failed', 'error': None,
+                    'result': {'content': [{'type': 'text', 'text': json.dumps(row)}]}}
+            for variant in ('in_progress', 'arguments', 'payload', 'missing_result', 'host_error'):
+                changed = copy.deepcopy(host)
+                if variant == 'in_progress': changed['status'] = 'in_progress'
+                elif variant == 'arguments': changed['arguments'] = {'id': 'other-id'}
+                elif variant == 'payload':
+                    forged = dict(row, error='invented denial')
+                    changed['result']['content'][0]['text'] = json.dumps(forged)
+                elif variant == 'missing_result': changed['result'] = None
+                else: changed['error'] = {'message': 'host transport failure'}
+                audit = a.retrieval_audit(surface.spec, 'archive_diagnostic', [changed], [row])
+                self.assertEqual(audit['unmatched_sequences'], [0], variant)
+                self.assertEqual(audit['verified_source_reads'], 0, variant)
+                self.assertTrue(audit['issues'], variant)
 
     def test_real_stdio_inventory_body_denials_and_malformed_recovery(self):
         with tempfile.TemporaryDirectory() as directory:

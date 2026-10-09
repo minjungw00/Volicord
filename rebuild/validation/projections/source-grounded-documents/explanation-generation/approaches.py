@@ -100,7 +100,7 @@ def retrieval_audit(spec, lane, calls, retrievals):
                 outcome['outcome'] = 'host_denied' if 'requires approval' in message else 'host_call_failed'
                 outcomes.append(outcome)
                 continue
-            require(call.get('status') == 'completed', 'host call incomplete')
+            require(call.get('status') in {'completed', 'failed'}, 'host call incomplete')
             content = call['result']['content']
             require(len(content) == 1 and content[0]['type'] == 'text', 'unexpected host tool result')
             row = json.loads(content[0]['text'])
@@ -108,6 +108,11 @@ def retrieval_audit(spec, lane, calls, retrievals):
             require(type(sequence) is int and 0 <= sequence < len(retrievals), 'ledger sequence absent')
             require(sequence not in matched and retrievals[sequence] == row, 'host/ledger mismatch')
             require(row['name'] == call['tool'] and row['arguments'] == call['arguments'], 'host arguments mismatch')
+            # Codex reports isError Reader replies as terminal failed calls with
+            # an exact result payload. Account that denial without letting a
+            # failed host call attest a successful evidence return.
+            require(call.get('status') != 'failed' or row['status'] == 'failed',
+                    'host failure cannot attest returned evidence')
             matched.add(sequence)
             outcome.update(sequence=sequence, outcome='reader_failed')
             if row['status'] == 'failed':
