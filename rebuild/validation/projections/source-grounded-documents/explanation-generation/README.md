@@ -134,6 +134,8 @@ An over-bound stream is an explicit retained prefix with incomplete state; it is
 never called exact complete output. Remaining descendants are cleaned even when
 their leader exits normally. Escaped process groups remain outside this primitive's
 guarantee. Interrupted and failed attempts retain failure identity.
+Post-spawn stream observation errors remain distinct from spawn failure, and both
+stream errors and parent interruption mark retained streams incomplete.
 
 `environment` creates a new child home, Codex home, cache and temporary directory,
 without inherited credentials, host/session IDs, startup environment or MCP config.

@@ -22,6 +22,7 @@ PROCESS_OWNER = REPOSITORY / 'rebuild/validation/end-to-end/multi-repository/har
 FEATURES_OFF = ('hooks', 'memories', 'apps', 'plugins', 'remote_plugin', 'multi_agent',
                 'shell_snapshot', 'skill_search', 'browser_use', 'browser_use_external',
                 'computer_use', 'image_generation', 'external_agent_memory_import')
+read_stream = os.read
 
 
 def cleanup_owner():
@@ -60,6 +61,7 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
               'executable': binding(argv[0]) if Path(argv[0]).is_file() else None,
               'process_owner': binding(PROCESS_OWNER), 'adapter': binding(Path(__file__)),
               'environment_keys': sorted(env), 'stop_cause': None, 'spawn_error': None,
+              'stream_error': None,
               'exit_code': None, 'signal_number': None, 'returncode': None,
               'cleanup': None, 'streams_complete': True}
     (output / 'command.json').write_bytes(encoded(result))
@@ -83,7 +85,7 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
                             result['stop_cause'] = 'timeout'
                         result['cleanup'] = owner.cleanup_process_group(process, cleanup_seconds / 2, cleanup_seconds / 2)
                     for key, _ in selector.select(0.01):
-                        data = os.read(key.fileobj.fileno(), 65536)
+                        data = read_stream(key.fileobj.fileno(), 65536)
                         if not data:
                             selector.unregister(key.fileobj); key.fileobj.close()
                             continue
@@ -100,10 +102,17 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
                         result['streams_complete'] = False
                         break
         except OSError as error:
-            result['spawn_error'] = {'kind': type(error).__name__, 'errno': error.errno}
+            failure = {'kind': type(error).__name__, 'errno': error.errno}
+            if process is None:
+                result['spawn_error'] = failure
+            else:
+                result['stream_error'] = failure
+                result['stop_cause'] = 'stream_observation_failed'
+                result['streams_complete'] = False
         except BaseException as error:
             interrupted = error
             result['stop_cause'] = 'interruption'
+            result['streams_complete'] = False
         finally:
             if process is not None:
                 if result['cleanup'] is None:

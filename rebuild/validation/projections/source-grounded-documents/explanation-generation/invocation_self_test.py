@@ -1,5 +1,6 @@
 """Actual-process controls with authored values; never invoke external generation."""
 import json
+import errno
 import os
 from pathlib import Path
 import shutil
@@ -127,6 +128,24 @@ class InvocationTests(unittest.TestCase):
         self.assertEqual(result['values'], {'model': 'configured', 'model_reasoning_effort': 'high'})
         self.assertEqual(result['effective_defaults'], 'unobserved')
         self.assertNotIn('PRIVATE_CREDENTIAL_VARIABLE', json.dumps(result))
+
+    def test_stream_observation_failure_is_distinct_from_spawn_failure(self):
+        with patch.object(v, 'read_stream', side_effect=OSError(errno.EIO, 'authored observation control')):
+            result = self.run_process('import sys,time; print("started",flush=True); time.sleep(10)')
+        self.assertIsNone(result['spawn_error'])
+        self.assertEqual(result['stream_error']['errno'], 5)
+        self.assertEqual(result['stop_cause'], 'stream_observation_failed')
+        self.assertFalse(result['streams_complete'])
+        self.assertTrue(result['cleanup']['complete'])
+
+    def test_interrupted_capture_retains_partial_state_and_cleanup(self):
+        with patch.object(v, 'read_stream', side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.run_process('import time; print("started",flush=True); time.sleep(10)')
+        result = json.loads((self.root / 'process-1/result.json').read_bytes())
+        self.assertEqual(result['stop_cause'], 'interruption')
+        self.assertFalse(result['streams_complete'])
+        self.assertTrue(result['cleanup']['complete'])
 
 
 if __name__ == '__main__':
