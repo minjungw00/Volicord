@@ -74,6 +74,13 @@ def events(path):
     return result, invalid
 
 
+def evidence_configuration(configuration_path):
+    return ('\n[mcp_servers.evidence]\ncommand = ' + json.dumps(sys.executable)
+            + '\nargs = ' + json.dumps(['-B', str(HERE / 'source_tools.py'), str(configuration_path)])
+            + '\nstartup_timeout_sec = 20\ntool_timeout_sec = 20\nrequired = true\n'
+            + 'enabled_tools = ["inventory", "read"]\ndefault_tools_approval_mode = "approve"\n')
+
+
 def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_path=None):
     require(approach in APPROACHES and lane in {'product', 'archive_diagnostic'}, 'unsupported experiment scope')
     spec = verify(manifest)
@@ -158,9 +165,7 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             # Use explicit top-level -c settings. MCP stdio configuration is the
             # documented current CLI shape, checked with installed mcp list.
             with config.open('a') as stream:
-                stream.write('\n[mcp_servers.evidence]\ncommand = ' + json.dumps(sys.executable)
-                             + '\nargs = ' + json.dumps(['-B', str(HERE / 'source_tools.py'), str(workspace / 'reader.json')])
-                             + '\nstartup_timeout_sec = 20\ntool_timeout_sec = 20\n')
+                stream.write(evidence_configuration(workspace / 'reader.json'))
             directive = ('Write a short cited technical analysis, separating observations and interpretations.'
                          if stage == 'analysis' else conditions_directive(record['approach']))
             prompt = ((HERE / 'instructions.txt').read_text() + '\n' + directive
@@ -200,6 +205,7 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             observed, invalid = events(process['stdout']['path'])
             tool_calls = [event['item'] for event in observed if event.get('type') == 'item.completed'
                           and event.get('item', {}).get('type', '').endswith(('tool_call', 'command_execution'))]
+            (stage_root / 'host-tool-calls.json').write_bytes(encoded(tool_calls))
             record['tokens'].extend(event.get('usage') for event in observed if event.get('type') == 'turn.completed')
             record.setdefault('exposure_issues', []).extend(context_audit(probe, Path(probe['stdout']['path']).read_bytes(), prompt, tool_calls))
             if invalid or not process['streams_complete']:
@@ -244,7 +250,8 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             else:
                 record['generation_output'] = binding(response_path)
                 record['status'] = ('invalid_references' if any(s['reference_status'] == 'invalid' for s in validation['selections'])
-                                    else 'captured')
+                                    else 'captured' if any(r['status'] == 'returned' and r['name'] == 'read' for r in retrievals)
+                                    else 'captured_without_evidence_reads')
         record['workspace_cleanup'] = 'pending'
     record['workspace_cleanup'] = 'complete'
     record['retrievals'] = binding(trace)

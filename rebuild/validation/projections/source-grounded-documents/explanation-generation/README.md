@@ -236,6 +236,18 @@ Use a unique output directory per initial opportunity. The private append-only
 index binds every outcome; earlier attempts are never overwritten or selected away.
 Fixture checks establish transport and numerical controls, not semantic quality.
 
+The read-only evidence tools explicitly declare MCP annotations and the authorized
+adapter sets `default_tools_approval_mode = "approve"` for that server's two
+allowlisted tools only. This supported [Codex MCP setting](https://learn.chatgpt.com/docs/extend/mcp)
+is not permission for other tools or broader transmission. Initial attempts made
+before this repair retain their host approval failures unchanged; the zero-retry
+condition prevents silently rerunning them. The renderer exposes those failures,
+actual returned-read counts and available usage metrics. Local installed-CLI
+configuration loading and authored policy controls check the repair without another
+external generation. The installed CLI refuses `--strict-config` for `mcp list`;
+that failed local diagnostic is retained separately. Its supported configuration
+listing is not live model retrieval qualification.
+
 ## Private comparison presentation
 
 `render_comparison.py --attempt /absolute/attempt.json ... --output UNIQUE_DIRECTORY`

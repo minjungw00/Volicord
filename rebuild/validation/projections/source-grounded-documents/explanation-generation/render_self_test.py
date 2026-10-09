@@ -153,6 +153,17 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(parser.values['prose'], [response['prose']])
         self.assertIn('strict explanation sidecar required', body)
 
+    def test_host_denial_and_zero_reads_are_visible(self):
+        stdout = self.root / 'host-stdout'
+        stdout.write_text(json.dumps({'type': 'item.completed', 'item': {'type': 'mcp_tool_call', 'status': 'failed',
+                          'error': {'message': 'Authored host tool denial'}}}) + '\n')
+        self.record['calls'] = [{'kind': 'model_call', 'process': {'stdout': i.binding(stdout), 'exit_code': 0}}]
+        trace = self.root / 'empty'; trace.write_bytes(b'')
+        self.record['retrievals'] = i.binding(trace)
+        body, _, _ = self.present()
+        self.assertIn('Returned evidence reads: 0', body)
+        self.assertIn('Authored host tool denial', body)
+
 
 if __name__ == '__main__':
     unittest.main()

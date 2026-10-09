@@ -34,6 +34,28 @@ def card(attempt_path, label):
         parts.append('<p>Gaps: ' + escaped('; '.join(record['blockers'])) + '</p>')
     if record.get('exposure_issues'):
         parts.append('<p>Exposure gaps: ' + escaped('; '.join(record['exposure_issues'])) + '</p>')
+    failed_tools = []
+    for call in record.get('calls', []):
+        if call['kind'] != 'model_call':
+            continue
+        process = call['process']
+        check_binding(process['stdout'])
+        for line in Path(process['stdout']['path']).read_bytes().splitlines():
+            try:
+                event = json.loads(line)
+            except (ValueError, UnicodeError):
+                continue
+            item = event.get('item', {})
+            if event.get('type') == 'item.completed' and item.get('type') == 'mcp_tool_call' and item.get('status') == 'failed':
+                failed_tools.append(item.get('error'))
+    parts.append('<p>Returned evidence reads: ' + str(sum(r['status'] == 'returned' and r['name'] == 'read' for r in trace)) + '</p>')
+    if failed_tools:
+        parts.append('<p>Host tool failures: ' + escaped(json.dumps(failed_tools, ensure_ascii=False)) + '</p>')
+    model_calls = [call for call in record.get('calls', []) if call['kind'] == 'model_call']
+    parts.append('<p>Model calls: ' + str(len(model_calls)) + '; process exits: '
+                 + escaped([c['process'].get('returncode', c['process'].get('exit_code')) for c in model_calls]) + '</p>')
+    parts.append('<details><summary>Available usage metrics</summary><pre>'
+                 + escaped(json.dumps({'tokens': record.get('tokens'), 'price': record.get('price')}, ensure_ascii=False)) + '</pre></details>')
     parts.append('<p>Isolation: ' + escaped(record.get('isolation', 'unknown')) + '</p>')
     parts.append('<p>Clean comparison: ' + escaped(record.get('clean_comparison', False)) + '</p>')
     witnesses = {'label': label, 'attempt': binding(attempt_path), 'outputs': [], 'semantic_quality': 'not_assessed'}

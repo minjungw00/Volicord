@@ -68,6 +68,12 @@ TOOLS = [
      'inputSchema': {'type': 'object', 'properties': {'id': {'type': 'string'}, 'offset': {'type': 'integer'}, 'limit': {'type': 'integer'}},
                      'required': ['id'], 'additionalProperties': False}},
 ]
+for tool in TOOLS:
+    # These tools do not mutate Product/source state. The local retrieval ledger
+    # is process evidence, not write authority. Explicit host approval is still
+    # configured separately by the authorized invocation adapter.
+    tool['annotations'] = {'readOnlyHint': True, 'destructiveHint': False,
+                           'idempotentHint': False, 'openWorldHint': False}
 
 
 def serve(surface, incoming=sys.stdin, outgoing=sys.stdout):
