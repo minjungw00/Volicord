@@ -285,6 +285,15 @@ while still requiring exact runtime artifacts at their original paths. It does
 not rewrite or execute historical launchers, which can overwrite handoff files.
 Clock-domain differences and unavailable per-read/provider timings remain explicit.
 
+The evidence tool advertisement now states inventory limit 1–80/default 40 and
+nonnegative byte/page offsets in both schema and description. Historical reviewers
+requested 100/200-entry pages, which the Reader already denied. This preparation
+fix exposes the existing policy; it changes neither source scope nor failed-call
+accounting. A failed or interrupted host result still leaves an unmatched ledger
+row. Final assessment still requires independent inspection of original evidence
+and actual output, a completed assessment, and a complete valid host/ledger audit.
+Complete audit/partial audit boundaries are unchanged.
+
 The read-only evidence tools explicitly declare MCP annotations and the authorized
 adapter sets `default_tools_approval_mode = "approve"` for that server's two
 allowlisted tools only. This supported [Codex MCP setting](https://learn.chatgpt.com/docs/extend/mcp)

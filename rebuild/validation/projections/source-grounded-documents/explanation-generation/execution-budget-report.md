@@ -104,6 +104,29 @@ that such completion is impossible with narrower context/bounded investigation.
 
 ## Integrity, controls and readiness
 
+Both reviewers' sequence 0 requested an invalid inventory limit (100 for Work B,
+200 for Click). The original tool advertisement supplied only integer types and
+omitted the Reader's enforced maximum of 80. An actual stdio consumer reproduced
+that inconsistency: schema lacked `maximum`, while requests above 80 were denied.
+The advertisement now gives the same range/default in schema and description,
+which remains visible even when the host renders a simpler tool declaration.
+This removes a demonstrated preparation defect that created an unmatched failure
+before either reviewer could finish; it does not establish that timeouts are fixed.
+Offset and read-limit minima, remaining-byte constraints and UTF-8 boundaries are
+also explicit. The denied-call policy and all ledger accounting remain unchanged.
+
+Work B's unmatched sequence 9 is a different failure: offset 65000 split UTF-8
+bytes, and the exact-byte Reader rejected decoding. It is not a measured provider
+delay or proof of an interrupted MCP request. Both reviews were terminated before
+final output, but their unmatched rows are observed host-failed results of these
+Reader denials. None is retroactively matched or promoted to successful inspection.
+The original strict handoff assertion correctly exited 1; the separate partial
+handoff exited 0 while retaining the gaps and `semantic_success: false`. Authored
+consumer controls independently accept a complete exact join and reject failed,
+in-progress, forged and unmatched joins. Existing maintained batch inspection and
+partial-assessment consumers are reused, with no audit relaxation or new review
+framework. Review prompt duplication remains a hypothesis for later measured work.
+
 Real locally authored subprocesses exercise complete direct and staged output,
 exact scoped reads and downstream rendering; stalled analysis with a live child,
 response-budget termination and exit-zero/missing-output cases preserve their

@@ -18,6 +18,69 @@ CONTROL_ARTIFACT_ROOT = None
 
 
 class ReadPolicyTests(unittest.TestCase):
+    def test_advertised_inventory_ranges_match_actual_stdio_policy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root/'source'; source.write_bytes(b'authored bytes\n')
+            path = root/'spec.json'; path.write_bytes(i.encoded(spec(source)))
+            manifest = i.freeze(path, root/'frozen', root)
+            out = (CONTROL_ARTIFACT_ROOT/'advertised-ranges') if CONTROL_ARTIFACT_ROOT else root/'results'
+            out.mkdir(parents=True, exist_ok=False)
+            cfg = root/'reader.json'
+            cfg.write_bytes(i.encoded({'manifest':str(manifest), 'lane':'archive_diagnostic',
+                'budgets':{'reads':4, 'read_bytes':4096}, 'trace':str(out/'ledger.jsonl'),
+                'protocol_trace':str(out/'protocol.jsonl')}))
+            requests = [{'id':1,'method':'tools/list'}] + [
+                {'id':n+2,'method':'tools/call','params':{'name':'inventory','arguments':{'limit':limit}}}
+                for n,limit in enumerate((80,81,100,200))]
+            workspace = root/'cwd'; workspace.mkdir()
+            process = capture([sys.executable,'-B',str(a.HERE/'source_tools.py'),str(cfg)],
+                cwd=workspace, env=environment(workspace), output=out/'process', timeout=5, stream_bytes=65536,
+                stdin=b'\n'.join(json.dumps(r).encode() for r in requests)+b'\n')
+            self.assertEqual(process['returncode'], 0)
+            self.assertTrue(process['cleanup']['complete'])
+            responses = [json.loads(line) for line in Path(process['stdout']['path']).read_bytes().splitlines()]
+            inventory = next(t for t in responses[0]['result']['tools'] if t['name']=='inventory')
+            schema = inventory['inputSchema']['properties']
+            self.assertEqual(schema['limit'].get('maximum'), 80)
+            self.assertEqual(schema['limit'].get('minimum'), 1)
+            self.assertEqual(schema['offset'].get('minimum'), 0)
+            self.assertFalse(responses[1]['result']['isError'])
+            self.assertTrue(all(r['result']['isError'] for r in responses[2:]))
+            ledger = [json.loads(line) for line in (out/'ledger.jsonl').read_bytes().splitlines()]
+            self.assertEqual([r['error'] for r in ledger[1:]], ['invalid inventory range']*3)
+            self.assertEqual(len(ledger), 4)  # A schema improvement never erases failed calls.
+
+    def test_complete_partial_and_invalid_host_joins_remain_distinct(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root/'source'; source.write_bytes(b'authored bytes\n')
+            path = root/'spec.json'; path.write_bytes(i.encoded(spec(source)))
+            manifest = i.freeze(path, root/'frozen', root)
+            surface = Surface(manifest,'archive_diagnostic',{'reads':4,'read_bytes':4096},root/'ledger')
+            row = surface.call('read',{'id':'source-0001','limit':14})
+            host = {'id':'complete-read','type':'mcp_tool_call','server':'evidence','tool':'read',
+                    'arguments':row['arguments'],'status':'completed',
+                    'result':{'content':[{'type':'text','text':json.dumps(row)}]}}
+            complete = a.retrieval_audit(surface.spec,'archive_diagnostic',[host],[row])
+            self.assertEqual(complete['verified_source_reads'],1)
+            self.assertEqual(complete['issues'],[])
+            for status in ('in_progress','failed'):
+                interrupted = copy.deepcopy(host); interrupted['status'] = status
+                partial = a.retrieval_audit(surface.spec,'archive_diagnostic',[interrupted],[row])
+                self.assertEqual(partial['unmatched_sequences'],[0])
+                self.assertEqual(partial['verified_source_reads'],0)
+                self.assertIn('host call incomplete',partial['issues'])
+            invalid = copy.deepcopy(host)
+            changed = copy.deepcopy(row); changed['result']['text'] = 'invented bytes'
+            invalid['result']['content'][0]['text'] = json.dumps(changed)
+            self.assertIn('host/ledger mismatch',a.retrieval_audit(surface.spec,'archive_diagnostic',[invalid],[row])['issues'])
+            denied = surface.call('inventory',{'limit':100})
+            self.assertEqual(denied['outcome'],'policy_denied')
+            unresolved = a.retrieval_audit(surface.spec,'archive_diagnostic',[host],[row,denied])
+            self.assertEqual(unresolved['unmatched_sequences'],[1])
+            self.assertTrue(unresolved['issues'])
+
     def test_real_stdio_inventory_body_denials_and_malformed_recovery(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
