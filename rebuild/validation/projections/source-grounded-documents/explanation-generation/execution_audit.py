@@ -93,15 +93,23 @@ def stage_timeline(process, context_path, ledger):
                              'wall timestamps must not be subtracted from monotonic durations'}
 
 
-def audit_cohort(root, repository):
+def audit_cohort(root, repository, *, receipts=None, plan_path=None):
     root, repository = Path(root).resolve(), Path(repository).resolve()
-    plan = json.loads((root / 'plan.json').read_bytes())
+    plan_path = Path(plan_path or root / 'plan.json')
+    plan = json.loads(plan_path.read_bytes())
     reports = []
-    for name in ('work-b-direct', 'work-b-note_then_prose', 'click-direct', 'click-note_then_prose',
-                 'work-b-independent-review', 'click-independent-review'):
-        directory = root / name
-        review = 'independent-review' in name
-        receipt = directory / ('review-receipt.json' if review else 'attempt.json')
+    if receipts is None:
+        receipts = [root / name / filename for name, filename in (
+            ('work-b-direct', 'attempt.json'), ('work-b-note_then_prose', 'attempt.json'),
+            ('click-direct', 'attempt.json'), ('click-note_then_prose', 'attempt.json'),
+            ('work-b-independent-review', 'review-receipt.json'),
+            ('click-independent-review', 'review-receipt.json'))]
+    require(receipts and len({str(Path(p).resolve()) for p in receipts}) == len(receipts),
+            'distinct explicit receipts required')
+    for receipt in map(Path, receipts):
+        require(receipt.name in {'attempt.json', 'review-receipt.json'}, 'unknown receipt kind')
+        name = receipt.parent.name
+        review = receipt.name == 'review-receipt.json'
         record = json.loads(receipt.read_bytes())
         identities = []
         for key in ('input', 'initial_input', 'conditions', 'instructions', 'retrievals', 'mcp_protocol',
@@ -140,14 +148,14 @@ def audit_cohort(root, repository):
                 require(not invalid, 'malformed historical host events')
                 host_calls.extend(e['item'] for e in public if e.get('type') == 'item.completed'
                                   and e.get('item', {}).get('type') == 'mcp_tool_call')
-                scope_calls.extend(e['item'] for e in public if e.get('type') == 'item.completed'
-                                   and e.get('item', {}).get('type', '').endswith(
+                scope_calls.extend(e['item'] for e in public
+                                   if e.get('item', {}).get('type', '').endswith(
                                        ('tool_call', 'command_execution')))
                 for event in public:
                     item = event.get('item', {})
                     if item.get('type', '').endswith(('tool_call', 'command_execution')):
                         identity = (call['stage'], item.get('id'))
-                        if event.get('type') == 'item.started':
+                        if event.get('type') in {'item.started', 'item.updated'}:
                             pending_tools.add(identity)
                         elif event.get('type') == 'item.completed':
                             pending_tools.discard(identity)
@@ -176,8 +184,10 @@ def audit_cohort(root, repository):
             check_binding(record['observed_context'])
             context = json.loads(Path(record['observed_context']['path']).read_bytes())
             sessions = [r['payload']['id'] for r in context if r.get('type') == 'session_meta']
+            public, invalid = events(process['stdout']['path'])
+            host_sessions = [e['thread_id'] for e in public if e.get('type') == 'thread.started']
             require(sessions and sessions == record['review_sessions']
-                    and not set(sessions) & set(record['generator_sessions'])
+                    and sessions == host_sessions
                     and not any(r.get('type') == 'compacted' for r in context),
                     'review session separation unverified')
             require(all(record['review_input'][k] == process['stdin'][k] for k in ('sha256', 'bytes')),
@@ -186,12 +196,24 @@ def audit_cohort(root, repository):
             require(integrity['presentation'] == record['presentation'], 'review display identity changed')
             displayed = {s['label']: s for s in integrity['samples']}
             require(record.get('displayed_outputs'), 'review target outputs absent')
+            generator_sessions = set()
             for target in record['displayed_outputs']:
                 sample = displayed[target['label']]
                 check_binding(sample['attempt'])
                 attempt = json.loads(Path(sample['attempt']['path']).read_bytes())
                 require(attempt['input'] == record['input'] and attempt['scope'] == spec['scope'],
                         'review target Work/input changed')
+                target_sessions = []
+                for call in attempt.get('calls', []):
+                    if call['kind'] != 'model_call':
+                        continue
+                    check_binding(call['process']['stdout'])
+                    generation, malformed = events(call['process']['stdout']['path'])
+                    require(not malformed, 'generation session evidence malformed')
+                    target_sessions.extend(e['thread_id'] for e in generation
+                                           if e.get('type') == 'thread.started')
+                require(target_sessions, 'generation session evidence absent')
+                generator_sessions.update(target_sessions)
                 originals = {o['original']['sha256']: o for o in sample['outputs']}
                 require(target['outputs'], 'review target outputs absent')
                 for claimed in target['outputs']:
@@ -203,6 +225,8 @@ def audit_cohort(root, repository):
                         body = json.loads(Path(original['original']['path']).read_bytes())
                         require(claimed['prose_sha256'] == original['prose_sha256']
                                 == digest(body['prose'].encode()), 'review target prose changed')
+            require(generator_sessions == set(record['generator_sessions'])
+                    and not set(sessions) & generator_sessions, 'review session separation unverified')
             raw = Path(record['original_review']['path']).read_bytes()
             public, invalid = events(process['stdout']['path'])
             messages = [e['item']['text'] for e in public if e.get('type') == 'item.completed'
@@ -221,7 +245,7 @@ def audit_cohort(root, repository):
                         'original_review': record.get('original_review'),
                         'review_completion_verified': review and record['status'] == 'review_captured',
                         'workspace_cleanup': record['workspace_cleanup']})
-    return {'cohort_plan': binding(root / 'plan.json'), 'attempts': reports,
+    return {'cohort_plan': binding(plan_path), 'attempts': reports,
             'limits': 'Historical observations only. No semantic assessment or new model execution. '
                       'Unreported token usage, provider latency and preparation before capture remain unknown.'}
 
@@ -231,8 +255,11 @@ if __name__ == '__main__':
     parser.add_argument('--cohort', type=Path, required=True)
     parser.add_argument('--repository', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--receipt', type=Path, action='append',
+                        help='Exact original receipt; repeat to audit a separately identified cohort.')
+    parser.add_argument('--plan', type=Path, help='Explicit producer plan; never relabel original receipts.')
     args = parser.parse_args()
-    result = audit_cohort(args.cohort, args.repository)
+    result = audit_cohort(args.cohort, args.repository, receipts=args.receipt, plan_path=args.plan)
     with args.output.open('xb') as stream:
         stream.write(encoded(result))
     print(json.dumps({'attempts': len(result['attempts']), 'identities': 'verified', 'provider_dispatch': 'not_run'}))

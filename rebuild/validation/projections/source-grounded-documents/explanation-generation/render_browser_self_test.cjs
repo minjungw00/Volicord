@@ -58,7 +58,9 @@ const requireFact = (value, reason) => { if (!value) throw new Error(reason); };
           requireFact(!await overflow(), 'focused hunk overflows');
           await page.goto(pathToFileURL(process.argv[2]).href);
         }
-        const link = page.locator('a[href^="#"]').first();
+        // Native closed disclosures intentionally remove intermediate/secondary
+        // links from the tab order. Test the ordinary visible reading path.
+        const link = page.locator('a[href^="#"]:visible').first();
         reached = false;
         for (let step = 0; step < 100; step++) {
           await page.keyboard.press('Tab');

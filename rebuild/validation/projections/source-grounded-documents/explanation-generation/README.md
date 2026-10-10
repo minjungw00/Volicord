@@ -1078,3 +1078,39 @@ Run the registered independent controls with:
 rebuild/scripts/validate focused public-completion-diagnostics -- \
   python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/execution_audit_self_test.py -v
 ```
+
+### Assessment completion evidence
+
+The complete-review audit checks every observed tool phase, including started and
+updated events. A prohibited command cannot disappear by reusing a permitted MCP
+call's terminal identity, and an updated-only unfinished call cannot certify
+completion. Independently authored, rehashed Host/receipt controls reproduced both
+gaps before this correction. Successful scoped reads and complete failed/partial
+observations retain their separate meanings.
+
+Reviewer session metadata must match the actual process's `thread.started` event.
+Generation sessions are recomputed from the hash-bound Host streams of every exact
+displayed target attempt, then compared with the receipt's declared session set.
+An empty or invented generator list, missing original Host identity, changed review
+context, or a shared generation/review session cannot certify independence. These
+are observed correlations, not authenticated authorship or statistical independence.
+
+The offline browser check follows the first visible source link. Links inside
+closed intermediate-output disclosures are intentionally absent from Tab order;
+an authored intermediate/final fixture checks this distinction. The actual retained
+Click comparison reproduced the old driver's hidden-link selection failure without
+establishing a renderer or personal-reading defect.
+
+`execution_audit.py --receipt ORIGINAL_RECEIPT --plan PRODUCER_PLAN` accepts repeated
+explicit receipts for differently named retained cohorts. The default six-member
+cohort remains supported; absent required receipts still fail. Receipt content,
+target input/Work/output, display and process bindings determine the checked identity;
+directory names do not determine completion. The new audit is a derived observation
+and never rewrites original receipts, outputs, failures, selections or display hashes.
+
+This audit establishes transport, scope and identity only. It does not establish
+Source-first review order, complete semantic inspection, explanation correctness,
+prototype agreement or human H1. A fresh Source-first assessment needs separately
+recorded findings before generated output or editorial prototype exposure, and
+current scope-specific external-review authorization. Existing supplemental local
+agent findings and partial historical reviews cannot fill that gap.

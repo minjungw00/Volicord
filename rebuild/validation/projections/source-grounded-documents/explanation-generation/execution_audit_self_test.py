@@ -89,6 +89,7 @@ class ReviewAuditTests(unittest.TestCase):
         stage = self.root / 'stage'; stage.mkdir()
         process_root = stage / 'process'; process_root.mkdir()
         for name, data in [('stdout', b''.join((json.dumps(e) + '\n').encode() for e in [
+                {'type': 'thread.started', 'thread_id': 'authored-review-session'},
                 {'type': 'item.completed', 'item': self.host},
                 {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': self.original.read_text()}}])),
                            ('stderr', b''), ('stdin', b'authored reviewer input')]:
@@ -111,7 +112,18 @@ class ReviewAuditTests(unittest.TestCase):
         generated = self.root / 'generated.json'; generated.write_bytes(i.encoded({'prose': 'Authored explanation'}))
         attempt_path = self.root / 'work-b-direct/attempt.json'
         attempt = json.loads(attempt_path.read_bytes())
-        attempt.update(scope=surface.spec['scope'], original_outputs=[i.binding(generated)])
+        generator_root = self.root / 'generator/process'; generator_root.mkdir(parents=True)
+        generator_stream = generator_root / 'stdout.bin'
+        generator_stream.write_bytes((json.dumps({'type': 'thread.started',
+                                                'thread_id': 'authored-generation-session'}) + '\n').encode())
+        generator_process = copy.deepcopy(self.process)
+        generator_process['stdout'] = i.binding(generator_stream)
+        (generator_root / 'result.json').write_bytes(i.encoded(generator_process))
+        (generator_root.parent / 'observed-context.json').write_bytes(i.encoded([
+            {'type': 'session_meta', 'payload': {'id': 'authored-generation-session'}}]))
+        attempt.update(scope=surface.spec['scope'], original_outputs=[i.binding(generated)],
+                       calls=[{'kind': 'model_call', 'stage': 'prose',
+                               'process': generator_process}])
         attempt_path.write_bytes(i.encoded(attempt))
         presentation = self.root / 'comparison.html'; presentation.write_text('<p>Authored display fixture</p>')
         integrity = self.root / 'integrity.json'
@@ -195,6 +207,79 @@ class ReviewAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'review context/scope unverified'):
             self.run_audit()
 
+    def test_every_tool_phase_is_scoped_even_with_terminal_identity_substitution(self):
+        stream = Path(self.process['stdout']['path'])
+        original = stream.read_bytes()
+        for phase in ('item.started', 'item.updated', 'item.completed'):
+            with self.subTest(phase=phase):
+                # The ID deliberately matches the legitimate completed MCP read.
+                # Refresh all receipts, so rejection must be based on scope.
+                event = {'type': phase, 'item': {'id': self.host['id'],
+                         'type': 'command_execution', 'command': 'outside scoped Reader'}}
+                stream.write_bytes((json.dumps(event) + '\n').encode() + original)
+                self.process['stdout'] = i.binding(stream)
+                (stream.parent / 'result.json').write_bytes(i.encoded(self.process))
+                with self.assertRaisesRegex(ValueError, 'review context/scope unverified'):
+                    self.run_audit()
+        stream.write_bytes(original)
+        self.process['stdout'] = i.binding(stream)
+        (stream.parent / 'result.json').write_bytes(i.encoded(self.process))
+        self.assertTrue(self.run_audit()['attempts'][-1]['review_completion_verified'])
+
+    def test_updated_scoped_call_without_completion_is_partial(self):
+        stream = Path(self.process['stdout']['path'])
+        event = {'type': 'item.updated', 'item': {'id': 'unfinished',
+                 'type': 'mcp_tool_call', 'server': 'evidence', 'tool': 'read',
+                 'status': 'in_progress'}}
+        stream.write_bytes(stream.read_bytes() + (json.dumps(event) + '\n').encode())
+        self.process['stdout'] = i.binding(stream)
+        (stream.parent / 'result.json').write_bytes(i.encoded(self.process))
+        with self.assertRaisesRegex(ValueError, 'review context/scope unverified'):
+            self.run_audit()
+
+    def test_generator_and_reviewer_sessions_require_actual_host_evidence(self):
+        for mutation in ('missing', 'invented', 'same_session_hidden', 'foreign_review_context'):
+            with self.subTest(mutation=mutation):
+                record = copy.deepcopy(self.record)
+                if mutation == 'missing': record['generator_sessions'] = []
+                if mutation == 'invented': record['generator_sessions'] = ['invented-session']
+                if mutation == 'same_session_hidden': record['review_sessions'] = ['authored-generation-session']
+                if mutation in {'same_session_hidden', 'foreign_review_context'}:
+                    context = self.root / (mutation + '-context.json')
+                    context.write_bytes(i.encoded([{'type': 'session_meta', 'payload': {
+                        'id': record['review_sessions'][0] if mutation == 'same_session_hidden'
+                              else 'invented-review-session'}}]))
+                    record['observed_context'] = i.binding(context)
+                    if mutation == 'foreign_review_context': record['review_sessions'] = ['invented-review-session']
+                with self.assertRaisesRegex(ValueError, 'review session separation unverified'):
+                    self.run_audit(record)
+        generator = self.root / 'generator/process/stdout.bin'
+        generator.write_bytes((json.dumps({'type': 'thread.started', 'thread_id': 'authored-review-session'}) + '\n').encode())
+        attempt_path = self.root / 'work-b-direct/attempt.json'
+        attempt = json.loads(attempt_path.read_bytes())
+        attempt['calls'][0]['process']['stdout'] = i.binding(generator)
+        (generator.parent / 'result.json').write_bytes(i.encoded(attempt['calls'][0]['process']))
+        attempt_path.write_bytes(i.encoded(attempt))
+        integrity = json.loads(Path(self.record['integrity']['path']).read_bytes())
+        integrity['samples'][0]['attempt'] = i.binding(attempt_path)
+        Path(self.record['integrity']['path']).write_bytes(i.encoded(integrity))
+        self.record['integrity'] = i.binding(self.record['integrity']['path'])
+        self.record['generator_sessions'] = ['authored-review-session']
+        with self.assertRaisesRegex(ValueError, 'review session separation unverified'):
+            self.run_audit()
+
+    def test_explicit_receipts_use_actual_identity_without_directory_name_inference(self):
+        self.run_audit()
+        directory = self.root / 'neutral-label'; directory.mkdir()
+        receipt = directory / 'review-receipt.json'
+        receipt.write_bytes(i.encoded(self.record))
+        result = audit.audit_cohort(self.root, self.root, receipts=[receipt])
+        self.assertTrue(result['attempts'][0]['review_completion_verified'])
+        self.assertEqual(result['attempts'][0]['receipt'], i.binding(receipt))
+        receipt.unlink()
+        with self.assertRaises(FileNotFoundError):
+            audit.audit_cohort(self.root, self.root, receipts=[receipt])
+
     def test_failed_partial_or_foreign_probe_cannot_keep_completed_identity(self):
         for mutation in ('failed', 'incomplete_streams', 'incomplete_cleanup', 'foreign_prompt', 'prohibited_context'):
             with self.subTest(mutation=mutation):
@@ -244,6 +329,26 @@ class ReviewAuditTests(unittest.TestCase):
         self.run_audit()
         (self.root / 'click-independent-review/review-receipt.json').unlink()
         with self.assertRaises(FileNotFoundError): audit.audit_cohort(self.root, self.root)
+
+    def test_forged_process_receipt_cannot_certify_complete_capture(self):
+        receipt = Path(self.process['stdout']['path']).parent / 'result.json'
+        value = copy.deepcopy(self.process); value['duration_seconds'] = 99
+        receipt.write_bytes(i.encoded(value))
+        with self.assertRaisesRegex(ValueError, 'process receipt mismatch'):
+            self.run_audit()
+
+    def test_absent_generation_host_identity_cannot_certify_separation(self):
+        attempt_path = self.root / 'work-b-direct/attempt.json'
+        attempt = json.loads(attempt_path.read_bytes())
+        attempt['calls'] = []
+        attempt_path.write_bytes(i.encoded(attempt))
+        integrity_path = Path(self.record['integrity']['path'])
+        integrity = json.loads(integrity_path.read_bytes())
+        integrity['samples'][0]['attempt'] = i.binding(attempt_path)
+        integrity_path.write_bytes(i.encoded(integrity))
+        self.record['integrity'] = i.binding(integrity_path)
+        with self.assertRaisesRegex(ValueError, 'generation session evidence absent'):
+            self.run_audit()
 
 
 if __name__ == '__main__':

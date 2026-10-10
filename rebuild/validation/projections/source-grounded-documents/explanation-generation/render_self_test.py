@@ -11,7 +11,7 @@ import unittest
 import inputs as i
 from input_self_test import spec
 from source_tools import Surface
-from render_comparison import card, render, record_feedback
+from render_comparison import card, document, render, record_feedback
 
 
 class Texts(HTMLParser):
@@ -44,9 +44,29 @@ class RenderTests(unittest.TestCase):
     def test_real_browser_narrow_source_navigation_and_overflow_negative_control(self):
         self.response['gaps'] = ['Unavailable source: ' + 'repository/component/' * 12 + 'missing.py']
         self.response_path.write_bytes(i.encoded(self.response))
-        self.record['original_outputs'] = [i.binding(self.response_path)]
+        intermediate = self.root / 'intermediate.json'
+        intermediate.write_bytes(i.encoded(dict(self.response, prose='Authored intermediate; not the final prose.')))
+        self.record['original_outputs'] = [i.binding(intermediate), i.binding(self.response_path)]
+        self.record['generation_output'] = i.binding(self.response_path)
         self.attempt.write_bytes(i.encoded(self.record))
         display = render([self.attempt], self.root / 'browser-display')
+        # A source-invalid primary site precedes a readable sample. Its valid
+        # secondary link is inside a closed disclosure, reproducing the old
+        # driver's hidden first-link choice through the real card consumer.
+        invalid_response = copy.deepcopy(self.response)
+        invalid_response['selections'][1]['sha256'] = '0' * 64
+        invalid_response['claims'] = [{'start': 0, 'end': len(self.response['prose'].encode()),
+                                       'kind': 'source_fact', 'selections': [1]}]
+        invalid_response['primary_sites'] = [{'selections': [1], 'claims': [0],
+                                              'reason': 'Authored invalid primary; not a semantic judgment.'}]
+        invalid_path = self.root / 'invalid-reader.json'; invalid_path.write_bytes(i.encoded(invalid_response))
+        invalid_record = copy.deepcopy(self.record)
+        invalid_record.update(output_contract='reader_oriented', original_outputs=[i.binding(invalid_path)],
+                              generation_output=i.binding(invalid_path))
+        invalid_attempt = self.root / 'invalid-attempt.json'; invalid_attempt.write_bytes(i.encoded(invalid_record))
+        hidden, _ = card(invalid_attempt, 'Hidden secondary sample')
+        visible, _ = card(self.attempt, 'Visible source sample')
+        display = self.root / 'mixed-browser.html'; display.write_text(document([hidden, visible]))
         result = subprocess.run(['node', str(Path(__file__).with_name('render_browser_self_test.cjs')),
                                  str(display), os.environ['EXPLANATION_CHROMIUM'],
                                  os.environ['EXPLANATION_PLAYWRIGHT']], capture_output=True, text=True, timeout=30)
