@@ -125,7 +125,8 @@ class DerivedReadingTests(unittest.TestCase):
         self.assertIn('User review: not_requested. User acceptance: rejected', body)
         self.assertIn('Recorded command exit: 101', body)
         self.assertIn('Recorded failed verification observations: 1', body)
-        self.assertLess(body.index('An authored user problem.'), body.index('class="prose"'))
+        self.assertLess(body.index('class="prose"'), body.index('An authored user problem.'))
+        self.assertIn('class="work-problem-basis"', body)
         self.assertNotIn(str(self.h.root), body)
 
     def test_blank_latest_direction_and_tied_chronology_do_not_reuse_old_action(self):

@@ -1114,3 +1114,84 @@ prototype agreement or human H1. A fresh Source-first assessment needs separatel
 recorded findings before generated output or editorial prototype exposure, and
 current scope-specific external-review authorization. Existing supplemental local
 agent findings and partial historical reviews cannot fill that gap.
+
+### Problem-first experimental reading and visible primary sources
+
+The experimental comparison reader now places a compact source index in generator
+order and the unchanged original prose before recorded execution/history material.
+The latest recorded direction and verification scope have a visible shortcut and
+remain separately quoted after the explanation. Original Work wording and model
+claim classifications remain in native disclosures. Checkpoint supporting Source
+warnings explicitly concern Checkpoint relations; each code excerpt still requires
+its own independent byte, state, chronology and Project/Work verification. Missing
+command Source metadata is not repaired by available code bytes.
+
+Verified primary selections have one stable Work/attempt/output/selection anchor
+in an ordinary visible source region. One mouse or keyboard activation exposes
+code without opening a second disclosure. Actual matched pairs retain visible,
+bounded selected-range hunks; single after-state sites retain explicit missing-pair
+limits, and contextual sites acquire no invented before-state or diff. Complete
+selection provenance, claim bindings, secondary evidence, invalid requests, failed
+verification, selected-range and whole-file comparisons, original response bytes
+and execution/audit receipts remain inspectable. Long original prose is explicitly
+identified as a verbatim excerpt when the existing display bound applies.
+
+`problem_reading_self_test.py` joins the existing `*reading_self_test.py` discovery.
+Its inline authored fixtures exercise exact expressions, manually counted
+coordinates, genuine focused changes with unrelated edits kept diagnostic,
+invalid source/hash/state/range, missing before-state, Checkpoint Source gaps and
+output-bound pending feedback. The browser consumer checks the actual code's
+visibility and closed ancestors, not just a target element's rectangle. It checks
+1360×900 and 390/320px geometry, every primary link by mouse and Tab/Enter, exact
+selected text, visible focused diffs, absent fabricated diffs, native diagnostic
+disclosures and overflow. Existing renderer wrapping-sensitivity and remaining-hunk
+browser controls are preserved. Screen readers, Korean font fidelity, semantic
+correctness and human acceptance are not established by these checks.
+
+Optional retained controls pin these original resource-permissive identities:
+
+| Input | Attempt SHA-256 | Response SHA-256 |
+| --- | --- | --- |
+| Work B | `5984df1535f91c326b0f7f3285490ab60143e0907d806fff690b28f5eeae35e0` | `1d25357823a4407d5600e5414ca7d48ba327d388fa684b1f8429619f8e2f3522` |
+| Click | `f5d3d649d21ddddf715dc9d45b0172568b2ac9c7d98a7901c879c6fdb0e924e8` | `67c42f8fc0ac6f566e9fbe7ec0d4e88a57444fe56542d593c7626b24a2e008dc` |
+
+They independently verify original assets, Project/Work, source ordering,
+coordinates, hashes and focused change statements through grounding, HTML, browser
+and feedback consumers. Work B retains all seven sites and its original recorded
+next action; Click retains four contextual sites and no change hunks. Historical
+attempts, responses, displays and feedback are never rewritten. New display bytes
+require new feedback; old display identities cannot migrate to changed composition.
+
+```sh
+rebuild/scripts/validate focused problem-first-reading -- \
+  env EXPLANATION_CHROMIUM=/absolute/chrome \
+      EXPLANATION_PLAYWRIGHT=/absolute/playwright \
+      EXPLANATION_RETAINED_WORK_B=/absolute/work-b/attempt.json \
+      EXPLANATION_RETAINED_CLICK=/absolute/click/attempt.json \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/problem_reading_self_test.py -v
+```
+
+Absent explicit browser/retained paths, those controls skip with an exact reason;
+authored structural controls remain runnable. `EXPLANATION_READING_BASELINES`
+optionally names a private directory with untouched `work-b-baseline/`,
+`click-baseline/` and independently authored `authored-baseline/comparison.html`
+displays produced by the previous renderer. The browser then requires the original
+hierarchy and closed-code failures to reproduce before comparing the new display.
+
+Observed with local Chromium 151.0.7922.34 at 1360×900: original retained Work B
+prose began at 973.64px and its detailed primary list at 2566.27px; the new prose
+began at 554.09px with nine immediately usable source links for seven sites. Click
+prose moved from 957.64px to 449.53px. Both original primary activations left code
+inside a closed disclosure. The independent historical-detail control also placed
+prose below the initial viewport and left code closed. These measurements describe
+these exact retained displays and browser environment, not universal pixel
+expectations across languages, Product Viewer defects, or human comprehension.
+No provider invocation, source-access expansion, Product schema or canonical write
+is introduced.
+
+On narrow screens the compact index visually uses the basename; its complete path,
+state and coordinates remain in the accessible link name/title and visible source
+target. Screenshot inspection in this local browser showed missing Korean glyph
+fallback (boxes); Korean font fidelity was not validated. This environment limit
+is separate from verified original UTF-8 bytes and the observed layout/navigation
+results.

@@ -176,7 +176,7 @@ def prose_html(prose, rows):
         cursor = match.end()
     parts.append(escaped(text[cursor:]))
     if text != prose:
-        parts.append('\n[Display bound; complete prose in original response download]')
+        parts.append('\n[Verbatim excerpt at display bound; complete original prose in response download]')
     return '<pre class="prose">' + ''.join(parts) + '</pre>'
 
 
@@ -220,7 +220,9 @@ def selections_html(spec, entries, validation, original, *, primary_indices=()):
                  + ' · selection ' + str(number))
         rows.append({'index': number - 1, 'anchor': target, 'selection': selection, 'label': label, 'location': location,
                      'entry': entry if location else None})
-        body = '<details class="selection" id="' + target + '"><summary>' + escaped(label) + '</summary>'
+        primary = number - 1 in primary_indices and location is not None and location['start'] is not None
+        body = (('<section class="selection primary-source" id="' + target + '"><h5>' + escaped(label) + '</h5>')
+                if primary else '<details class="selection" id="' + target + '"><summary>' + escaped(label) + '</summary>')
         if location:
             body += '<p>' + escaped(location['coordinate_basis']) + '</p><pre class="code">' + preview(location['text']) + '</pre>'
             body += download(location['bytes'], 'selection-' + str(number) + '.bin', 'Exact selected bytes')
@@ -236,8 +238,12 @@ def selections_html(spec, entries, validation, original, *, primary_indices=()):
             body += '<pre>' + preview(json.dumps({k: entry.get(k) for k in
                                 ('id', 'path', 'role', 'locator', 'file_sha256', 'representation', 'extent',
                                  'attribution', 'chronology', 'before_state', 'missing')}, ensure_ascii=False)) + '</pre>'
-        body += '</details></details>'
-        if location and entry['role'] == 'source':
+        body += '</details>' + ('</section>' if primary else '</details>')
+        if primary:
+            # The primary-site composer owns these visible targets. Keep exactly
+            # one anchor for each original request, outside secondary disclosures.
+            rows[-1]['primary_html'] = body
+        elif location and entry['role'] == 'source':
             key = (location['path'], location['state'], entry['asset']['sha256'])
             groups.setdefault(key, []).append((rows[-1], body))
         else:
@@ -250,7 +256,9 @@ def selections_html(spec, entries, validation, original, *, primary_indices=()):
         source += '<details><summary>' + escaped(key[0] + ' · ' + key[1]) + ' (' + str(len(group)) + ' selections)</summary>'
         source += ''.join(body for _, body in group) + '</details>'
     if not groups:
-        source += '<p>No verified repository source selected. No code change is inferred.</p>'
+        source += ('<p>No secondary repository source displayed; verified primary targets appear above.</p>'
+                   if any('primary_html' in row for row in rows) else
+                   '<p>No verified repository source selected. No code change is inferred.</p>')
     if len(witnesses) > DISPLAY_SELECTIONS:
         source += '<p>Display bound: ' + str(len(witnesses) - DISPLAY_SELECTIONS) + ' selections available only in the complete original response download.</p>'
     diagnostic = '<details class="diagnostic"><summary>Diagnostic evidence selections (' + str(len(diagnostics)) + ' displayed)</summary>'

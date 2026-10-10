@@ -157,6 +157,11 @@ def direction_html(facts):
             body += '<p class="gap">Recorded failed verification observations: ' + str(failed) + '; later passes do not erase their scopes.</p>'
     for limit in facts['limitations']:
         body += '<p class="gap">' + escaped(limit) + '</p>'
+    if any(limit.startswith(('Recorded supporting Source availability:', 'Checkpoint supporting Source unavailable'))
+           for limit in facts['limitations']):
+        body += ('<p>These supporting Source warnings concern the latest Checkpoint relations. '
+                 'Code excerpt availability is checked separately for each selected source; '
+                 'this warning neither withholds an independently verified excerpt nor certifies one.</p>')
     body += '<details class="recorded-course"><summary>Original same-Work course; later silence does not resolve earlier limits</summary>'
     for member in facts['history']:
         checkpoint = member['checkpoint']

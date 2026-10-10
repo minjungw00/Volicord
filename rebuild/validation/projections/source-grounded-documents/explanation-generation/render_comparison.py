@@ -78,10 +78,9 @@ def card(attempt_path, label):
     verified_trace = [row for row in trace if row['sequence'] in verified_sequences]
     model_calls = [call for call in record.get('calls', []) if call['kind'] == 'model_call']
     problem, work_facts = recorded_work(spec, record['lane'], input_gap)
-    parts = ['<article><h2>' + escaped(label) + '</h2>', problem]
+    parts = ['<article><h2>' + escaped(label) + '</h2>']
     directed = record.get('output_contract') == 'work_directed_reader'
-    if directed:
-        parts.append(direction_html(work_facts))
+    work_details = '<details class="work-problem-basis"><summary>Recorded Work problem · original wording</summary>' + problem + '</details>'
     invocation_notice = ''
     if record['status'] != 'captured':
         invocation_notice = ('<p class="gap">The original invocation did not complete successfully. '
@@ -161,7 +160,8 @@ def card(attempt_path, label):
             receipt['source_dependencies'] = [{key: entries[identity][key]
                 for key in ('id', 'asset', 'locator', 'chronology')} for identity in used]
             witness['derived_reading'] = receipt
-            primary_indices = {n for site in response.get('primary_sites', []) for n in site['selections']}
+            primary_indices = ({n for site in response.get('primary_sites', []) for n in site['selections']}
+                               if validation.get('reading', {}).get('status') == 'valid_binding' else set())
             source, diagnostic, rows, selections = selections_html(spec, entries, validation, display_original,
                                                                    primary_indices=primary_indices)
             witness['selections'] = selections
@@ -169,8 +169,17 @@ def card(attempt_path, label):
             for selection in selections:
                 if not run_verified:
                     selection['reference_status'] += '; run not verified'
+            direction_target = output_anchor(spec['scope'], display_original) + '-direction'
+            view.append('<p class="reading-status">Original invocation: ' + escaped(record['status'])
+                        + ' · current byte binding: ' + status + ' · semantic assessment: not assessed. '
+                        '<a href="#' + direction_target + '">Recorded next action and verification scope</a></p>')
+            if record.get('output_contract'):
+                from reader_contract import primary_navigation_html
+                view.append(primary_navigation_html(response, validation, rows))
             view.append(prose_html(response['prose'], rows))
             view.append(invocation_notice)
+            view.append('<div id="' + direction_target + '">' + direction_html(work_facts) + '</div>')
+            view.append(work_details)
             view.append('<p class="derived-reading">Response availability: retained. Current derived reading: '
                         + status + ' · ' + ('diagnostic preview' if valid else 'unverified captured prose')
                         + '. Current local verifier checks exact response/Source bindings; '
@@ -183,7 +192,8 @@ def card(attempt_path, label):
                 witness['reading'] = validation['reading']
                 if directed:
                     authority, witness['claim_authority'] = authority_html(response, validation, rows)
-                    view.append(authority)
+                    view.append('<details class="authority-details"><summary>Task and action claim meanings · original model classifications</summary>'
+                                + authority + '</details>')
                 primary_comparisons = []
                 witness['primary_comparisons'] = []
                 if validation['reading']['status'] == 'valid_binding':
@@ -223,8 +233,9 @@ def card(attempt_path, label):
     parts.extend(body for _, body in sorted(views, key=lambda item: not item[0]))
     if not views:
         parts.append(invocation_notice)
-    if not directed:
+    if not any(output.get('prose_sha256') for output in witnesses['outputs']):
         parts.append(direction_html(work_facts))
+        parts.append(work_details)
     original = encoded(public_receipt(witnesses['original_invocation']))
     parts.append('<details class="invocation"><summary>Original invocation outcome and retained response identities</summary>'
                  + '<p>Original invocation outcome: ' + escaped(record['status']) + '</p><pre>'
@@ -254,10 +265,14 @@ def document(cards):
                 'pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:#f3f3f3}.prose{font:inherit;white-space:pre-wrap}'
                 'details{margin:.8rem 0}summary{cursor:pointer}a{overflow-wrap:anywhere}:target{outline:2px solid #467}'
                 '.citation span{display:none}.citation:after{content:attr(data-location)}'
-                '.selection{border-left:3px solid #aaa;padding-left:1rem}pre.code,pre.diff{max-height:32rem;overflow:auto}</style><h1>Explanation comparison</h1>'
-                '<p>Approach labels are withheld. Recorded Work problem and generated prose precede evidence and audit disclosures. '
-                'Current readings are diagnostic previews, not Product completion. Original bytes remain in diagnostic downloads. '
-                'Self-identifying wording and stage counts may reveal an approach. No ranking or semantic verdict is provided.</p>'
+                '.selection{border-left:3px solid #aaa;padding-left:1rem}pre.code,pre.diff{max-height:32rem;overflow:auto}'
+                '.primary-navigation ol{padding-left:1.5rem}.primary-navigation li{margin:.2rem 0}'
+                '@media(max-width:600px){body{margin:.75rem}article{padding:.75rem}pre{padding:.5rem}.selection{padding-left:.5rem}'
+                '.primary-navigation .path-directory{display:none}}</style><h1>Explanation comparison</h1>'
+                '<p>Original generated explanation · diagnostic preview, not Product completion. This presentation supplies no semantic or human verdict.</p>'
+                '<details class="presentation-basis"><summary>Presentation scope and original evidence</summary>'
+                '<p>Approach labels are withheld. Primary navigation preserves generator order; no ranking or semantic verdict is provided. '
+                'Original bytes remain in diagnostic downloads. Self-identifying wording and stage counts may reveal an approach.</p></details>'
                 + ''.join(cards) + '</html>')
 
 

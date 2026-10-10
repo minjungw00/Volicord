@@ -157,7 +157,7 @@ class ReadingTests(unittest.TestCase):
         self.h.response_path.write_bytes(i.encoded(response))
         self.h.record.update(original_outputs=[i.binding(self.h.response_path)], generation_output=i.binding(self.h.response_path))
         body, witness, parser = self.h.present()
-        self.assertLess(len(body.encode()), 400000)
+        self.assertLess(len(body.encode()), 410000)
         self.assertIn('32 selections available only', body)
         self.assertEqual(len(witness['outputs'][0]['selections']), 160)
         self.assertEqual(len(parser.values['selection-request']), 128)

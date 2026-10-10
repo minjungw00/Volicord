@@ -157,6 +157,33 @@ def validate_reading(response, spec, validation, *, contract=CONTRACT, lane='arc
             'relevance': 'pending_independent_examination', 'user_comprehension': 'pending'}
 
 
+def primary_navigation_html(response, validation, rows):
+    """Compact index in generator order; no new selection or semantic ranking."""
+    from source_reading import escaped
+    if validation['reading']['status'] != 'valid_binding' or not response['primary_sites']:
+        return ''
+    by_index = {row['index']: row for row in rows}
+    body = '<nav class="primary-navigation" aria-label="Primary code navigation"><ol>'
+    for site in response['primary_sites']:
+        selected = [by_index[n] for n in site['selections'] if n in by_index]
+        if len(selected) != len(site['selections']) or any('primary_html' not in row for row in selected):
+            body += '<li>Primary display gap; original site retained in response diagnostics.</li>'
+        else:
+            links = []
+            for row in selected:
+                path = row['location']['path']
+                directory, separator, _ = path.rpartition('/')
+                # A narrow index can omit the directory visually; the complete
+                # locator remains in its accessible name, title and source target.
+                prefix = directory + separator
+                label = ('<span class="path-directory">' + escaped(prefix) + '</span>'
+                         + escaped(row['label'][len(prefix):]))
+                links.append('<a href="#' + row['anchor'] + '" aria-label="' + escaped(row['label'])
+                             + '" title="' + escaped(row['label']) + '">' + label + '</a>')
+            body += '<li>' + ' / '.join(links) + '</li>'
+    return body + '</ol></nav>'
+
+
 def primary_html(response, validation, rows, *, comparisons=()):
     from source_reading import escaped, preview
     reading = validation['reading']
@@ -186,6 +213,7 @@ def primary_html(response, validation, rows, *, comparisons=()):
                 body += str(row['selection']['start']) + ',' + str(row['selection']['end']) + ').</p>'
         if site_number < len(comparisons):
             body += comparisons[site_number]
+        body += ''.join(row.get('primary_html', '') for row in selected)
         body += '<details><summary>Generator claim bindings; entailment unassessed</summary>'
         for index in site['claims']:
             claim = response['claims'][index]
