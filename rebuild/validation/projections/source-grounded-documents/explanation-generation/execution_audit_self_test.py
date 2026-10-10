@@ -12,6 +12,55 @@ from input_self_test import spec
 from source_tools import Surface
 
 
+class PublicTimelineTests(unittest.TestCase):
+    def test_real_multiline_public_results_locate_reads_without_promoting_a_final(self):
+        from invocations import capture, environment
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ledger = [
+                {'sequence': 0, 'name': 'read', 'arguments': {'id': 'alpha'},
+                 'status': 'returned', 'charged_bytes': 3},
+                {'sequence': 1, 'name': 'read', 'arguments': {'id': 'beta'},
+                 'status': 'returned', 'charged_bytes': 4},
+            ]
+            # A real producer emits two separate JSON lines, as code-mode text
+            # does. Expected timestamps and sequences are independently authored.
+            process = capture([sys.executable, '-B', '-c',
+                'import json,sys; [print(json.dumps(row)) for row in json.load(sys.stdin)]'],
+                cwd=root, env=environment(root), output=root / 'process',
+                timeout=2, stream_bytes=8192, stdin=i.encoded(ledger))
+            self.assertEqual(process['exit_code'], 0)
+            self.assertTrue(process['streams_complete'])
+            context = root / 'context.json'
+            context.write_bytes(i.encoded([
+                {'type': 'response_item', 'timestamp': '2026-01-01T00:00:02Z',
+                 'payload': {'type': 'custom_tool_call', 'call_id': 'batch', 'name': 'exec'}},
+                {'type': 'response_item', 'timestamp': '2026-01-01T00:00:03Z',
+                 'payload': {'type': 'custom_tool_call_output', 'call_id': 'batch', 'output': [
+                     {'type': 'input_text', 'text': Path(process['stdout']['path']).read_text()}]}},
+                {'type': 'response_item', 'payload': {'type': 'reasoning',
+                 'text': json.dumps(dict(ledger[0], sequence=99))}},
+            ]))
+            result = audit.stage_timeline(process, context, ledger)
+            self.assertEqual(result['public_tool_batches'][0]['ledger_sequences'], [0, 1])
+            self.assertEqual(result['evidence_batch_wall_seconds'], 1)
+            self.assertEqual(result['first_nonempty_read_return_at'], '2026-01-01T00:00:03Z')
+            self.assertEqual(result['last_nonempty_read_return_at'], '2026-01-01T00:00:03Z')
+            self.assertEqual(result['unpaired_public_tool_calls'], [])
+            self.assertEqual(result['publicly_located_ledger_sequences'], [0, 1])
+            self.assertNotIn('99', json.dumps(result['public_tool_batches']))
+            self.assertFalse((root / 'original-response.json').exists())
+
+    def test_filtered_truncated_and_intermediate_text_cannot_certify_other_reads(self):
+        rows = [dict(sequence=n, name='read', arguments={'id': str(n)}, status='returned') for n in (0, 1)]
+        text = '\n'.join([json.dumps(rows[0]), 'Warning: truncated output',
+                          json.dumps({'metadata': {'id': '1'}, 'text': 'source excerpt'}),
+                          json.dumps({'prose': 'Public intermediate candidate'}),
+                          json.dumps(rows[1])[:-3]])
+        self.assertEqual(audit.sequences(text), [0])
+
+
 class ReviewAuditTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

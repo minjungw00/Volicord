@@ -1048,3 +1048,33 @@ rebuild/scripts/validate focused evidentiary-reading-selections -- \
 Without that private artifact the retained control is skipped with an explicit
 reason; authored controls still run. These are local structural and presentation
 regressions, not semantic approval, human comprehension or gate/V11 qualification.
+
+### Public completion diagnostics
+
+`execution_audit.py` locates ledger sequences in both single-result and multiline
+code-mode public output. A real subprocess regression independently emits two
+JSON results in one text block; the diagnostic previously omitted that entire
+batch. Filtered, truncated or intermediate prose output cannot establish missing
+read identities. Timeline first/last returns and evidence-batch totals cover only
+the public batches exposing those sequences; `publicly_located_ledger_sequences`
+and `timing_limits` expose that boundary. Exact host/ledger/source verification
+still belongs to `retrieval_audit`; no join is repaired through the timeline.
+
+The retained Work-directed Work B attempt has a watchdog stop, no final response,
+and two unmatched ledger rows after a public code-mode host closure. Subsequent
+tool output reports an unavailable stored inventory and later public intermediate
+prose/sidecar formation. The last ledger read leaves about 220 execution seconds.
+These observations establish partial transport and incomplete finalization, not
+an exclusive model/provider duration or a demonstrated producer allocation defect.
+Click completes transport but retains twelve inadmissible uncertain selections.
+Earlier complete conditions share the input inventories and safety ceilings while
+instructions and output obligations differ; they do not isolate a single cause.
+No early read cutoff, larger watchdog, recovered intermediate final response or
+new dispatch authorization follows from this diagnostic correction.
+
+Run the registered independent controls with:
+
+```sh
+rebuild/scripts/validate focused public-completion-diagnostics -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/execution_audit_self_test.py -v
+```

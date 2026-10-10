@@ -41,7 +41,12 @@ def sequences(value):
         try:
             return sequences(json.loads(value))
         except ValueError:
-            return []
+            # Code-mode public text can contain multiple complete JSON results
+            # in one content block. Locate each original row without treating
+            # malformed/truncated lines as returned evidence. Single-line
+            # non-JSON text must terminate recursion.
+            lines = value.splitlines()
+            return [sequence for line in lines for sequence in sequences(line)] if len(lines) > 1 else []
     if isinstance(value, list):
         return [sequence for item in value for sequence in sequences(item)]
     if isinstance(value, dict):
@@ -81,7 +86,10 @@ def stage_timeline(process, context_path, ledger):
             'wall_seconds': wall, 'monotonic_seconds': process['duration_seconds'],
             'clock_difference_seconds': wall - process['duration_seconds'],
             'evidence_batch_wall_seconds': sum(b['wall_seconds'] for b in evidence),
-            'timing_limits': 'batch timing includes host orchestration; no per-read/provider timing; '
+            'publicly_located_ledger_sequences': sorted({s for b in evidence for s in b['ledger_sequences']}),
+            'timing_limits': 'first/last and evidence batch totals cover only public results exposing ledger sequences; '
+                             'filtered/truncated tool output can omit other reads; batch timing includes host orchestration '
+                             'and does not give per-read/provider timing; '
                              'wall timestamps must not be subtracted from monotonic durations'}
 
 
