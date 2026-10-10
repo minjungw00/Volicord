@@ -667,6 +667,15 @@ exact presentation and original output, preserve a supplied literal response, an
 leave H1 pending when no response was supplied. Requesting feedback supplies no
 human observation or approval of another Work.
 
+New literal feedback records require an explicit `reviewer_kind='human'` or
+`reviewer_kind='agent'`. Kind is declared, not authenticated. Agent evaluations
+retain their exact literal response and output/selection/display bindings with
+`feedback_state: assessment_recorded`, while human H1 stays `pending`. Only a
+declared human response uses `H1: response_recorded`; neither state asserts
+satisfaction, acceptance or a completed usability criterion. A missing response
+remains pending. Existing historical receipts and AI evaluations retain their
+original identities and limitations; they are not rewritten as human testimony.
+
 Label blinding removes renderer-added approach names and private input paths; it
 does not rewrite self-identifying prose or hide stage counts and failures. It is
 presentation blinding, not guaranteed reviewer anonymity. Unsupported inference

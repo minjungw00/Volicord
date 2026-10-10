@@ -186,10 +186,12 @@ def render(attempts, output):
     return output / 'comparison.html'
 
 
-def record_feedback(presentation, response, output):
-    """Retain one literal response or pending state; never infer a human verdict."""
+def record_feedback(presentation, response, output, *, reviewer_kind=None):
+    """Bind a declared human response or agent assessment; never infer authorship."""
     presentation, output = Path(presentation).resolve(), Path(output).resolve()
     require(response is None or isinstance(response, str) and response.strip(), 'literal response required')
+    require(reviewer_kind is None or reviewer_kind in {'human', 'agent'}, 'invalid reviewer kind')
+    require(response is None or reviewer_kind is not None, 'reviewer kind required for literal response')
     integrity_path = presentation.parent / 'integrity.json'
     integrity = json.loads(integrity_path.read_bytes())
     require(integrity['presentation']['path'] == str(presentation), 'feedback display path changed')
@@ -207,12 +209,16 @@ def record_feedback(presentation, response, output):
     require(presentation.read_bytes() == document(cards).encode(), 'feedback displayed content changed')
     value = {'presentation': integrity['presentation'], 'integrity': binding(integrity_path),
              'scope': scopes[0], 'original_outputs': originals, 'literal_response': response,
-             'H1': 'pending' if response is None else 'response_recorded',
-             'limits': 'Literal supplied observation only; no inferred verdict, authorship attestation or other Work approval.'}
+             'reviewer_kind': reviewer_kind, 'authorship': 'declared_not_authenticated',
+             'feedback_state': ('pending' if response is None else
+                                'assessment_recorded' if reviewer_kind == 'agent' else 'response_recorded'),
+             'H1': 'response_recorded' if response is not None and reviewer_kind == 'human' else 'pending',
+             'limits': 'Literal supplied observation only; declared reviewer kind is not authorship attestation. '
+                       'Agent assessment cannot complete human H1; no inferred verdict or other Work approval.'}
     with output.open('xb') as stream:
         stream.write(encoded(value))
     append_index(output.parent, {'input': 'verified', 'approach': 'presentation_only',
-                                 'feedback': value['H1']}, [output])
+                                 'feedback': value['feedback_state']}, [output])
     return output
 
 

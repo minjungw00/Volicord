@@ -296,14 +296,50 @@ class RenderTests(unittest.TestCase):
         self.assertIsNone(value['literal_response'])
         self.assertEqual(value['presentation'], i.binding(display))
         literal = '  Authored negative fixture: this explanation is hard to follow.\nThe code links help.  '
-        observed = record_feedback(display, literal, self.root / 'negative-feedback.json')
+        observed = record_feedback(display, literal, self.root / 'negative-feedback.json', reviewer_kind='human')
         recorded = json.loads(observed.read_bytes())
         self.assertEqual(recorded['literal_response'], literal)
         self.assertEqual(recorded['original_outputs'], self.record['original_outputs'])
         self.assertEqual(recorded['presentation'], value['presentation'])
+        self.assertEqual(recorded['reviewer_kind'], 'human')
+        self.assertEqual(recorded['authorship'], 'declared_not_authenticated')
+        self.assertEqual(recorded['H1'], 'response_recorded')
         self.assertEqual(json.loads(pending.read_bytes())['H1'], 'pending')
         with self.assertRaises(FileExistsError):
-            record_feedback(display, 'Another fixture', observed)
+            record_feedback(display, 'Another fixture', observed, reviewer_kind='human')
+
+    def test_literal_without_reviewer_kind_cannot_become_human_feedback(self):
+        self.attempt.write_bytes(i.encoded(self.record))
+        display = render([self.attempt], self.root / 'feedback-display')
+        output = self.root / 'unattributed-feedback.json'
+        with self.assertRaisesRegex(ValueError, 'reviewer kind required'):
+            record_feedback(display, 'Authored AI assessment fixture', output)
+        self.assertFalse(output.exists())
+
+    def test_agent_assessment_retains_literal_identity_and_leaves_human_h1_pending(self):
+        self.attempt.write_bytes(i.encoded(self.record))
+        display = render([self.attempt], self.root / 'feedback-display')
+        literal = '  Authored AI evaluation fixture; no human experience claimed.\n  '
+        path = record_feedback(display, literal, self.root / 'agent-feedback.json', reviewer_kind='agent')
+        value = json.loads(path.read_bytes())
+        self.assertEqual(value['literal_response'], literal)
+        self.assertEqual(value['reviewer_kind'], 'agent')
+        self.assertEqual(value['feedback_state'], 'assessment_recorded')
+        self.assertEqual(value['H1'], 'pending')
+        self.assertEqual(value['original_outputs'], self.record['original_outputs'])
+        self.assertEqual(value['presentation'], i.binding(display))
+        rows = [json.loads(line) for line in (self.root / 'index.jsonl').read_bytes().splitlines()]
+        self.assertEqual(rows[-1]['state']['feedback'], 'assessment_recorded')
+
+    def test_invalid_reviewer_kind_or_empty_literal_cannot_publish_feedback(self):
+        self.attempt.write_bytes(i.encoded(self.record))
+        display = render([self.attempt], self.root / 'feedback-display')
+        output = self.root / 'invalid-feedback.json'
+        for response, kind in [('Authored fixture', 'unknown'), ('', 'human'), ('  ', 'agent')]:
+            with self.subTest(response=response, kind=kind):
+                with self.assertRaises(ValueError):
+                    record_feedback(display, response, output, reviewer_kind=kind)
+                self.assertFalse(output.exists())
 
     def test_feedback_rejects_changed_display_or_output_witness(self):
         self.attempt.write_bytes(i.encoded(self.record))
@@ -311,17 +347,17 @@ class RenderTests(unittest.TestCase):
         original = display.read_bytes()
         display.write_text('Changed display')
         with self.assertRaises(ValueError):
-            record_feedback(display, 'Authored response', self.root / 'changed-feedback.json')
+            record_feedback(display, 'Authored response', self.root / 'changed-feedback.json', reviewer_kind='human')
         path = display.parent / 'integrity.json'; witness = json.loads(path.read_bytes())
         witness['presentation'] = i.binding(display); path.write_bytes(i.encoded(witness))
         with self.assertRaisesRegex(ValueError, 'displayed content changed'):
-            record_feedback(display, 'Authored response', self.root / 'rebound-feedback.json')
+            record_feedback(display, 'Authored response', self.root / 'rebound-feedback.json', reviewer_kind='human')
         display.write_bytes(original)
         witness['presentation'] = i.binding(display)
         witness['samples'][0]['outputs'][0]['prose_sha256'] = '0' * 64
         path.write_bytes(i.encoded(witness))
         with self.assertRaisesRegex(ValueError, 'output/selection identity changed'):
-            record_feedback(display, 'Authored response', self.root / 'wrong-output-feedback.json')
+            record_feedback(display, 'Authored response', self.root / 'wrong-output-feedback.json', reviewer_kind='human')
 
 
 if __name__ == '__main__':
