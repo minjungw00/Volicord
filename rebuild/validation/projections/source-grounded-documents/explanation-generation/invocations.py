@@ -86,7 +86,9 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
                 for pipe, sink in ((process.stdout, out), (process.stderr, err)):
                     os.set_blocking(pipe.fileno(), False)
                     selector.register(pipe, selectors.EVENT_READ, sink)
-                while selector.get_map():
+                # EOF is not process exit. Keep observing the watchdog/response
+                # file even if a live leader closed both pipes deliberately.
+                while selector.get_map() or process.poll() is None:
                     if (result['cleanup'] is None and response_file is not None and Path(response_file).exists()
                             and Path(response_file).stat().st_size > response_bytes):
                         result['stop_cause'] = 'response_budget'
@@ -111,6 +113,9 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
                                 result['cleanup'] = owner.cleanup_process_group(process, cleanup_seconds / 2, cleanup_seconds / 2)
                     if result['cleanup'] is not None and time.monotonic() - start > timeout + cleanup_seconds + 1:
                         result['streams_complete'] = False
+                        result['stream_drain_timed_out'] = True
+                        if result['stop_cause'] is None:
+                            result['stop_cause'] = 'stream_drain_timeout'
                         break
         except OSError as error:
             failure = {'kind': type(error).__name__, 'errno': error.errno}
@@ -148,7 +153,8 @@ def capture(argv, *, cwd, env, output, timeout, stream_bytes, cleanup_seconds=2,
             result['stop_cause'] = 'response_budget'
     result['outcome'] = ('spawn_failed' if result['spawn_error'] else
                          'stopped' if result['stop_cause'] else
-                         'failed' if result['exit_code'] != 0 or not result['cleanup']['complete'] else 'succeeded')
+                         'failed' if result['exit_code'] != 0 or not result['cleanup']['complete']
+                         or not result['streams_complete'] else 'succeeded')
     (output / 'result.json').write_bytes(encoded(result))
     if interrupted is not None:
         raise interrupted

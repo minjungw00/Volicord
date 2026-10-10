@@ -2,7 +2,9 @@
 import argparse
 import copy
 import json
+import os
 from pathlib import Path
+import signal
 import sys
 import tempfile
 import unittest
@@ -43,6 +45,7 @@ from inputs import encoded
 if 'prompt-input' in sys.argv:
     print(json.dumps([{'content':[{'text':sys.argv[-1]}]}])); sys.exit(0)
 prompt = sys.stdin.read()
+if MODE == 'invalid_events': print('{invalid observable event', flush=True)
 stage = pathlib.Path.cwd().name
 sessions = pathlib.Path('codex/sessions'); sessions.mkdir()
 (sessions/'control.jsonl').write_text(json.dumps({'type':'session_meta','payload':{'id':'authored-'+stage}}))
@@ -72,9 +75,17 @@ for n in range(50 if MODE in ('large','long') else 2):
         selection = {'id':meta['id'],'start':meta['offset'],'end':meta['offset']+meta['bytes'],
                      'sha256':meta['sha256'],'state':'context'}
 server.stdin.close(); server.wait()
+if MODE == 'invalid_protocol':
+    config = json.loads(pathlib.Path('reader.json').read_bytes())
+    with pathlib.Path(config['protocol_trace']).open('ab') as stream: stream.write(b'{invalid protocol\\n')
 if stage == 'analysis': time.sleep(DELAY)
 response.write_bytes(encoded({'prose':'Authored transport control. '+('x'*20000 if MODE in ('large','long') else ''),
     'selections':[selection] if 'selection' in globals() else [],'gaps':['Historical before bytes unavailable.']}))
+if MODE == 'escaped_stream':
+    pidfile = response.parent/'escaped.pid'
+    code = 'import os,time; from pathlib import Path; os.setsid(); Path('+repr(str(pidfile))+').write_text(str(os.getpid())); time.sleep(10)'
+    subprocess.Popen([sys.executable,'-c',code])
+    while not pidfile.exists(): time.sleep(.01)
 print(json.dumps({'type':'turn.completed','usage':{'input_tokens':1,'output_tokens':1}}),flush=True)
 '''.replace('HERE', repr(str(a.HERE))).replace('MODE', repr(mode)).replace('DELAY', repr(delay)))
         path.chmod(0o700)
@@ -185,6 +196,26 @@ print(json.dumps({'type':'turn.completed','usage':{'input_tokens':1,'output_toke
         self.assertGreater(process['observed_stream_bytes'], process['retained_stream_bytes'])
         self.assertTrue(process['cleanup']['complete'])
 
+    def test_incomplete_stream_with_zero_exit_censors_and_preserves_response(self):
+        try:
+            record, output = self.run_control('escaped_stream', approach='direct', total_seconds=.7, cleanup_seconds=.4)
+            self.assert_abort(record, 'watchdog')
+            process = record['calls'][-1]['process']
+            self.assertEqual(process['exit_code'], 0)
+            self.assertFalse(process['streams_complete'])
+            self.assertEqual(process['stop_cause'], 'stream_drain_timeout')
+            self.assertEqual(len(record['original_outputs']), 1)
+            i.check_binding(record['original_outputs'][0])
+            self.assertEqual(record['evidence_reads']['verified_source_reads'], 2)
+            self.assertEqual(record['evidence_reads']['issues'], [])
+        finally:
+            pidfile = self.root/'attempt/prose/escaped.pid'
+            if pidfile.exists():
+                try:
+                    os.killpg(int(pidfile.read_text()), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
     def test_shared_call_ceiling_censors_even_zero_exit(self):
         record, _ = self.run_control('read', reads=1)
         self.assert_abort(record, 'read')
@@ -204,6 +235,26 @@ print(json.dumps({'type':'turn.completed','usage':{'input_tokens':1,'output_toke
         self.assertEqual(record['status'], 'failed')
         self.assertFalse(record['diagnostic_outcome']['censored'])
         self.assertEqual(record['calls'][-1]['process']['exit_code'], 7)
+        self.assertIsNone(record['generation_output'])
+
+    def test_malformed_observable_events_are_not_ordinary_completion(self):
+        record, _ = self.run_control('invalid_events')
+        self.assertEqual(record['status'], 'observation_incomplete')
+        self.assertEqual(len(record['original_outputs']), 2)
+        self.assertTrue(all(c['process']['streams_complete'] for c in record['calls']))
+        self.assertIn('observed_events_incomplete', record['exposure_issues'])
+        self.assertFalse(record['diagnostic_outcome']['censored'])
+        self.assertEqual(record['diagnostic_outcome']['state'], 'not_completed')
+        self.assertIsNone(record['generation_output'])
+
+    def test_malformed_protocol_is_preserved_without_completion(self):
+        record, _ = self.run_control('invalid_protocol')
+        self.assertEqual(record['status'], 'observation_incomplete')
+        self.assertTrue(record['mcp_protocol_incomplete'])
+        self.assertIn(b'{invalid protocol', Path(record['mcp_protocol']['path']).read_bytes())
+        self.assertEqual(len(record['original_outputs']), 2)
+        self.assertEqual(record['evidence_reads']['issues'], [])
+        self.assertEqual(record['diagnostic_outcome']['state'], 'not_completed')
         self.assertIsNone(record['generation_output'])
 
     def test_safety_only_policy_rejects_hidden_allocations_and_unbounded_values(self):

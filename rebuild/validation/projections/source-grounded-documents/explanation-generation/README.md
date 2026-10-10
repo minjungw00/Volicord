@@ -527,3 +527,29 @@ states and unmatched sequences. No historical receipt was rewritten. Private
 controls and both successful/failed focused receipts are under ignored
 `rebuild/.local/explanation-generation/exploratory-*` and
 `rebuild/.local/validation/`. No external pilot or aggregate validation ran.
+
+### Complete-observation correction
+
+Relaxed-condition consumer controls reproduced a process leader exiting zero with
+an escaped descendant holding its pipe open. The original capture exhausted its
+finite drain window, marked streams incomplete, yet returned `succeeded`. Capture
+now records `stream_drain_timeout`, preserves the numeric zero exit and incomplete
+original stream, and refuses success. The diagnostic classifies this watchdog
+contact as censored. The original process-group cleanup receipt remains separate:
+it covers the owned group, not escaped descendants. Tests explicitly terminate
+their authored escaped children. TERM/KILL cleanup uses the configured allowance;
+the pre-existing final stream-drain bound also includes one second of grace after
+watchdog plus cleanup. No unbounded child observation is introduced.
+
+A second real process control showed EOF ending observation while the leader was
+still alive, causing immediate cleanup rather than the configured watchdog.
+Capture now waits for the live leader even with no open pipes and continues
+response-size monitoring. Malformed host event and MCP protocol controls also
+reproduced `captured`/ordinary completion despite uninspectable observations.
+Safety-only attempts now report `observation_incomplete`, retain originals and
+clear the final generation pointer. Historical condition allocation/receipt
+interpretation and strict host/ledger joins remain unchanged; the shared capture
+primitive corrects future process observations without rewriting historical bytes.
+All defect reproductions and corrected positive/negative subprocess receipts are
+retained privately. This is a transport correction, not a new handoff mechanism
+or proof of natural-language generation.

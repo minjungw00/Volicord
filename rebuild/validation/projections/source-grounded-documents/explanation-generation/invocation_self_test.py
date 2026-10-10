@@ -76,6 +76,43 @@ class InvocationTests(unittest.TestCase):
         self.assertEqual(result['spawn_error']['errno'], 2)
         self.assertIsNone(result['exit_code'])
 
+    def test_escaped_pipe_holder_cannot_make_incomplete_stream_success(self):
+        pidfile = self.root / 'escaped.pid'
+        child = ('import os,time; from pathlib import Path; os.setsid(); Path('
+                 + repr(str(pidfile)) + ').write_text(str(os.getpid())); time.sleep(10)')
+        command = ('import subprocess,sys,time; from pathlib import Path; '
+                   'subprocess.Popen([sys.executable,"-c",' + repr(child) + ']); '
+                   'p=Path(' + repr(str(pidfile)) + ');\n'
+                   'while not p.exists(): time.sleep(.01)\n'
+                   'print("original stdout",flush=True)')
+        try:
+            result = self.run_process(command, timeout=.2)
+            self.assertEqual(result['exit_code'], 0)
+            self.assertFalse(result['streams_complete'])
+            self.assertEqual(result['stop_cause'], 'stream_drain_timeout')
+            self.assertTrue(result['stream_drain_timed_out'])
+            self.assertEqual(result['outcome'], 'stopped')
+            self.assertLess(result['duration_seconds'], 3)
+            self.assertEqual(Path(result['stdout']['path']).read_bytes(), b'original stdout\n')
+            # The primitive covers only the original process group. The authored
+            # escaped child is explicitly torn down by this test, never hidden
+            # behind the owned-group cleanup receipt.
+            self.assertTrue(result['cleanup']['complete'])
+        finally:
+            if pidfile.exists():
+                try:
+                    os.killpg(int(pidfile.read_text()), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    def test_closed_pipes_do_not_end_live_leader_watchdog(self):
+        result = self.run_process('import os,time; os.close(1); os.close(2); time.sleep(10)', timeout=.2)
+        self.assertEqual(result['stop_cause'], 'timeout')
+        self.assertEqual(result['returncode'], -15)
+        self.assertGreaterEqual(result['duration_seconds'], .2)
+        self.assertTrue(result['streams_complete'])
+        self.assertTrue(result['cleanup']['complete'])
+
     def test_fresh_process_allowed_forbidden_instruction_and_environment_controls(self):
         source = self.workspace / 'source.txt'
         source.write_bytes((v.HERE / 'fixtures/source.txt').read_bytes())

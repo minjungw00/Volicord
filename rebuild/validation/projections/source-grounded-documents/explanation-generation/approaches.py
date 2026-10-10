@@ -478,6 +478,13 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
     record['retained_stream_bytes'] = stream_used
     record['execution_elapsed_seconds'] = time.monotonic() - started
     if safety_only:
+        # Full bytes are retained even when malformed observable events prevent
+        # a complete transport interpretation. Never promote that gap to a
+        # complete diagnostic solely because the child exited zero.
+        if record['status'] in {'captured', 'captured_without_evidence_reads'} and (
+                record.get('exposure_issues') or invalid_protocol):
+            record['status'] = 'observation_incomplete'
+            record['generation_output'] = None
         safety_outcome(record, retrievals if 'retrievals' in locals() else [], deadline)
     record['clean_comparison'] = False  # Requires independent observed-context review.
 
@@ -486,7 +493,8 @@ def safety_outcome(record, retrievals, deadline):
     """Ceiling contact censors a diagnostic even if the host later exits zero."""
     budgets = record['budgets']
     ceilings = set()
-    causes = {'timeout': 'watchdog', 'stream_budget': 'stream', 'response_budget': 'response'}
+    causes = {'timeout': 'watchdog', 'stream_drain_timeout': 'watchdog',
+              'stream_budget': 'stream', 'response_budget': 'response'}
     for call in record['calls']:
         process = call['process']
         if process['stop_cause'] in causes:
