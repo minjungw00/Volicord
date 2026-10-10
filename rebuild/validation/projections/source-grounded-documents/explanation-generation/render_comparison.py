@@ -93,7 +93,8 @@ def card(attempt_path, label):
             response = json.loads(raw)
             if isinstance(response, dict) and isinstance(response.get('prose'), str):
                 response['prose'].encode('utf-8')
-            validation = validate_output(response, spec, record['lane'], verified_trace)
+            validation = validate_output(response, spec, record['lane'], verified_trace,
+                                         contract=record.get('output_contract'))
         except (ValueError, KeyError, TypeError, OSError) as error:
             view.append('<p>Response/grounding unavailable: ' + escaped(error) + '</p>')
             if isinstance(response, dict) and isinstance(response.get('prose'), str):
@@ -101,16 +102,24 @@ def card(attempt_path, label):
         else:
             from inputs import digest
             witness['prose_sha256'] = digest(response['prose'].encode())
-            source, diagnostic, rows, selections = selections_html(spec, entries, validation, display_original)
+            primary_indices = {n for site in response.get('primary_sites', []) for n in site['selections']}
+            source, diagnostic, rows, selections = selections_html(spec, entries, validation, display_original,
+                                                                   primary_indices=primary_indices)
             witness['selections'] = selections
             run_verified = (record['status'] == 'captured' and not audit['issues'] and record.get('clean_comparison', False))
             for selection in selections:
                 if not run_verified:
                     selection['reference_status'] += '; run not verified'
             view.append(prose_html(response['prose'], rows))
+            if record.get('output_contract'):
+                from reader_contract import primary_html
+                witness['reading'] = validation['reading']
+                view.append(primary_html(response, validation, rows))
             view.append('<p>Declared gaps: ' + preview('; '.join(response['gaps']) if response['gaps'] else 'none declared; not independently checked') + '</p>')
             view.append('<p>Run verification: ' + ('verified' if run_verified else 'not verified') +
                         '. Valid source bytes remain distinct from whole-run and semantic validity.</p>')
+            if record.get('output_contract'):
+                source = '<details class="secondary"><summary>Complete secondary source selections</summary>' + source + '</details>'
             view.append(source)
             comparison, witness['comparisons'] = comparison_html(spec, rows)
             view.append(comparison)

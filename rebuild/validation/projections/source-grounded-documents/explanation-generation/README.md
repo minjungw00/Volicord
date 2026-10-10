@@ -11,6 +11,101 @@ All campaign inputs, manifests, retrieval histories, invocation streams, outputs
 and feedback belong under ignored `rebuild/.local/explanation-generation/`.
 Only authored fixtures, this contract and support code are maintained here.
 
+## Reader-oriented feasibility condition
+
+`conditions-reader.json` defines a distinct `reader_oriented` experimental output
+contract, using the resource-permissive safety envelope and one direct fresh call.
+`reader-instructions.txt` asks for the actual problem and practical effect first,
+then a flexible explanation of mechanism, choice/investigation, outcome and limits.
+It supplies no answer paths, functions, ranking, prototype or prior generated prose.
+The same unranked original evidence inventory and opaque-ID scoped reads remain
+available, including callers, helpers, tests and state transitions. Korean remains
+the requested language; the historical conditions/instructions/schema keep their
+original bytes. There is no additional analysis pass, retry or repair opportunity.
+
+`reader-response-schema.json` adds `claims` and `primary_sites` to the original
+prose/selections/gaps envelope. Claims bind half-open UTF-8 prose byte spans to
+zero-based selection indices and separate source fact, report, user choice,
+user rationale, interpretation, execution evidence and unverified expectation.
+One to six primary sites preserve generator order and the original relevance
+reason. Each site references one exact source selection or a verified before/after
+pair, plus its claim indices. The bound is a reading limit, not a quality oracle.
+Missing rationale, execution proof or historical states must stay explicit gaps.
+Relevant chronology-ambiguous records remain uncertain context in declared gaps;
+they cannot certify a claim or primary site. Matching hashes never change chronology.
+
+The existing grounding validator verifies every secondary selection. The reader
+validator additionally rejects malformed prose spans, unsupported fields, invalid
+indices, duplicate primary selections, non-source/excerpt primary sites and false
+change correspondence. Primary locators use the generic verified whole-file reader.
+Generation validates against host-joined successful reads under the new condition;
+ledger rows alone cannot establish a reading anchor. No semantic inference follows
+from these checks: valid helper bytes do not establish claim entailment or relevance,
+and a model's claim-kind label does not prove user rationale or execution success.
+Independent semantic correctness and actual user comprehension remain pending.
+
+The consumer shows unchanged prose, generator-ordered primary navigation and
+reasons, followed by closed secondary evidence and audit disclosures. Primary
+selections remain available beyond the ordinary secondary selection display bound;
+their indices and exact source anchors are unchanged, and their bounded source
+byte allocation is reserved before secondary downloads. Invalid sidecars retain
+original response bytes and readable prose without a successful primary surface.
+Missing before state exposes a comparison gap; context investigation infers no diff.
+Existing full response/source downloads, escaping and numerical display limits apply.
+No production ReadingPackage, canonical record, Viewer replacement or background
+provider is introduced. All supported languages retain exact locators; optional
+callable labels still require the existing independent syntax observation.
+
+`reader_experiment.py` takes explicit original attempt paths, verifies input,
+source/read bindings and retained process streams/numeric receipts, presents every
+original response, and freezes **blocked** reader attempts for each distinct input.
+It verifies real HTML prose and exact original/selected-source download equality.
+The plan records both comparison conditions, runtime proposal, original costs,
+source inventory, instructions/schema/executable identities and future command argv.
+Original outputs/prototype/assessments never enter the fresh initial inventory.
+This plan API supplies no authorization and cannot dispatch. Actual dispatch uses
+the existing `approaches.py` with a separately supplied current authorization
+covering the exact input, condition, instructions, lane, approach, purpose and
+destination. Use a new measured directory and retain the actual first opportunity,
+including every failure. CLI authentication remains CLI-owned; any applicable auth
+path must be explicitly provided to that existing adapter, without reading credentials.
+
+The comparison is **existing output with lossless presentation versus fresh
+reader-oriented generation**, not a controlled single-factor model experiment.
+Instructions, narrative generation, source prioritization and output transport
+change together. Presentation fidelity can be established locally; improvement
+and causal attribution cannot be inferred from completion, prose fluency or hashes.
+The missing historical current-format Product preparation and historical
+Product-obtainable bodies still block Product-output conclusions.
+
+```bash
+rebuild/scripts/validate focused reader-generation -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/reader_self_test.py \
+  --retain rebuild/.local/explanation-generation/UNIQUE-reader-controls -v
+python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/reader_experiment.py --help
+```
+
+`ReaderTests` and `ReaderExecutionTests` are registered through ordinary unittest
+discovery/direct execution. Independently authored fixtures exercise the actual
+subprocess/opaque-ID read/original-response/HTML path, changed pairs, no-change
+investigation, missing states, invalid sidecars, chronology, wrong scope/state,
+stale bytes, failed host joins, multibyte boundaries and primary display bounds.
+Authored execution establishes transport and accounting only, never natural model
+generation or comprehension. Existing input, approach, execution, read-policy,
+locator and renderer registrations remain the coupled focused regressions.
+
+Local source-bound checks on 2026-10-10 verified the original Work B and Click input
+manifests (`c5bb5876…` / `946977ba…`), all four prior attempts and all six original
+responses. Their exact compact initial inventories also match the reader inputs.
+Work B's verified changed pairs survive presentation; Click yields no inferred diff.
+Click direct's four chronology-ambiguous selections remain invalid. The original
+direct/staged states and costs are unchanged. New external calls: **zero**; fresh
+generation, semantic comparison and quality attribution remain missing for lack of
+current authorization. The inspectable plan, baseline audit, original presentation,
+authored process controls and focused receipts are private ignored artifacts under
+`rebuild/.local/explanation-generation/reader-*` and `rebuild/.local/validation/`.
+Workspace aggregates, gate and official V11 are outside this experiment.
+
 ## Frozen input contract
 
 `inputs.freeze` verifies an explicit versioned input spec and publishes an

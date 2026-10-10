@@ -3,8 +3,13 @@ from inputs import check_binding, digest, require
 from pathlib import Path
 
 
-def validate_output(response, spec, lane, retrievals):
-    require(set(response) == {'prose', 'selections', 'gaps'}, 'strict explanation sidecar required')
+def validate_output(response, spec, lane, retrievals, *, contract=None):
+    fields = {'prose', 'selections', 'gaps'}
+    if contract == 'reader_oriented':
+        fields |= {'claims', 'primary_sites'}
+    else:
+        require(contract is None, 'unknown output contract')
+    require(isinstance(response, dict) and set(response) == fields, 'strict explanation sidecar required')
     require(isinstance(response['prose'], str) and response['prose'].strip(), 'prose absent')
     require(isinstance(response['selections'], list) and isinstance(response['gaps'], list)
             and all(isinstance(g, str) for g in response['gaps']), 'sidecar lists required')
@@ -42,5 +47,9 @@ def validate_output(response, spec, lane, retrievals):
             issues.append(str(error))
         results.append({'selection': selection, 'reference_status': 'invalid' if issues and issues != ['bounded excerpt; does not certify a complete file'] else 'valid_reference',
                         'issues': issues})
-    return {'selections': results, 'semantic_quality': 'not_assessed', 'unsupported_inferences': 'not_verified',
-            'gaps': response['gaps'], 'missing_selection': not bool(response['selections'])}
+    validation = {'selections': results, 'semantic_quality': 'not_assessed', 'unsupported_inferences': 'not_verified',
+                  'gaps': response['gaps'], 'missing_selection': not bool(response['selections'])}
+    if contract == 'reader_oriented':
+        from reader_contract import validate_reading
+        validation['reading'] = validate_reading(response, spec, validation)
+    return validation

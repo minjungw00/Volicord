@@ -168,23 +168,36 @@ def prose_html(prose, rows):
     return '<pre class="prose">' + ''.join(parts) + '</pre>'
 
 
-def selections_html(spec, entries, validation, original):
+def selections_html(spec, entries, validation, original, *, primary_indices=()):
     rows, groups, diagnostics, witnesses = [], {}, [], []
     source_bytes = 0
+    displayed = set(primary_indices)
+    require(len(displayed) <= DISPLAY_SELECTIONS, 'primary display bound')
+    for index in range(len(validation['selections'])):
+        if len(displayed) >= DISPLAY_SELECTIONS:
+            break
+        displayed.add(index)
+    primary_reserve = {}
+    for index in primary_indices:
+        selection = validation['selections'][index]['selection']
+        length = (selection['end'] - selection['start'] if isinstance(selection, dict)
+                  and type(selection.get('start')) is int and type(selection.get('end')) is int else 0)
+        primary_reserve[index] = min(65536, max(0, length))
     for number, result in enumerate(validation['selections'], 1):
         selection = result['selection']
         target = anchor(spec['scope'], original, number)
         witness = {'anchor': target, 'selection': selection, 'reference_status': result['reference_status']}
         witnesses.append(witness)
-        if number > DISPLAY_SELECTIONS:
+        if number - 1 not in displayed:
             continue
+        primary_reserve.pop(number - 1, None)
         location, entry, error = None, None, None
         try:
             entry = entries[selection['id']]
             require(type(selection['start']) is int and type(selection['end']) is int,
                     'invalid byte span')
             length = selection['end'] - selection['start']
-            require(length <= 65536 and source_bytes + max(0, length) <= TRANSPORT_BYTES,
+            require(length <= 65536 and source_bytes + max(0, length) + sum(primary_reserve.values()) <= TRANSPORT_BYTES,
                     'source display byte bound; original selection preserved in diagnostic download')
             location = locate(spec, entry, result)
             source_bytes += length
@@ -193,7 +206,7 @@ def selections_html(spec, entries, validation, original):
         label = (location_label(location, selection) if location else
                  ('Source display gap' if result['reference_status'] == 'valid_reference' else 'Invalid reference')
                  + ' · selection ' + str(number))
-        rows.append({'anchor': target, 'selection': selection, 'label': label, 'location': location,
+        rows.append({'index': number - 1, 'anchor': target, 'selection': selection, 'label': label, 'location': location,
                      'entry': entry if location else None})
         body = '<details class="selection" id="' + target + '"><summary>' + escaped(label) + '</summary>'
         if location:

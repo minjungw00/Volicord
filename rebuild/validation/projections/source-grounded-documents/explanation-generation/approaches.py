@@ -207,8 +207,15 @@ def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_
     require(digest(condition_bytes) == condition_binding['sha256'], 'condition identity drift')
     conditions = json.loads(condition_bytes)
     policy = execution_policy(conditions)
-    instruction_bytes = (HERE / 'instructions.txt').read_bytes()
-    instruction_binding = binding(HERE / 'instructions.txt')
+    contract = conditions.get('output_contract')
+    require(contract in {None, 'reader_oriented'}, 'unknown output contract')
+    if contract:
+        require(approach == 'direct' and policy and policy.get('allocation_mode') == 'safety_only',
+                'reader condition requires one safety-only generation call')
+    instructions_path = HERE / ('reader-instructions.txt' if contract else 'instructions.txt')
+    schema_path = HERE / ('reader-response-schema.json' if contract else 'response-schema.json')
+    instruction_bytes = instructions_path.read_bytes()
+    instruction_binding = binding(instructions_path)
     require(digest(instruction_bytes) == instruction_binding['sha256'], 'instruction identity drift')
     output = Path(output).resolve()
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
@@ -229,6 +236,12 @@ def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_
               'generation_output': None, 'tokens': [], 'price': None, 'corrections': [],
               'isolation': 'fresh process/home/cwd; cooperative filesystem access, not enforced isolation',
               'semantic_quality': 'not_assessed', 'clean_comparison': False}
+    if contract:
+        record.update(output_contract=contract, response_schema=binding(schema_path))
+        record['support'].extend(binding(HERE / name) for name in
+                                 ('reader_contract.py', 'reader-response-schema.json', 'reader-instructions.txt'))
+        (output / 'frozen-response-schema.json').write_bytes(schema_path.read_bytes())
+        record['frozen_response_schema'] = binding(output / 'frozen-response-schema.json')
     record['preparation_budget_boundary'] = 'local manifest verification/freezing precedes execution; stage setup and probes share total_seconds'
     producer_sources = output / 'producer-sources'
     producer_sources.mkdir()
@@ -256,6 +269,8 @@ def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_
     executable = executable or shutil.which('codex')
     if not executable:
         record['blockers'].append('installed_codex_unavailable')
+    elif contract:
+        record['executable'] = binding(executable)  # Planned identity even for blocked attempts.
     if not record['blockers']:
         try:
             _execute(record, spec, manifest, frozen_initial, output, executable, auth_path)
@@ -300,6 +315,8 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                 require(binding(support['path']) == support, 'support identity drift')
             check_binding(record['frozen_conditions'])
             check_binding(record['frozen_instructions'])
+            if record.get('output_contract'):
+                check_binding(record['frozen_response_schema'])
             stage_deadline = (min(started + allocated['analysis_seconds'], deadline - allocated['prose_reserve_seconds'])
                               if allocated and stage == 'analysis' else deadline)
             remaining = stage_deadline - time.monotonic()
@@ -352,7 +369,11 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             prompt = (Path(record['frozen_instructions']['path']).read_text() + '\n' + directive
                       + '\nLanguage: ' + conditions['language']
                       + '\nUse only the evidence MCP tools. Choose important code and paragraph structure yourself.'
-                      + '\nReturn free prose and a separate strict sidecar: selections[{id,start,end,sha256,state}], gaps[str].'
+                      + ('\nReturn prose, selections[{id,start,end,sha256,state}], gaps[str],'
+                         + ' claims[{start,end,kind,selections[int]}], primary_sites[{selections[int],claims[int],reason}].'
+                         + ' Claim spans are UTF-8 prose byte offsets; all indices are zero-based.'
+                         if record.get('output_contract') else
+                         '\nReturn free prose and a separate strict sidecar: selections[{id,start,end,sha256,state}], gaps[str].')
                       + '\nSelections use exact retrieved byte spans and their SHA-256, state before/after/context.'
                       + '\nInitial evidence inventory (bodies require reads):\n' + json.dumps(initial, ensure_ascii=False)
                       + ('\nPrior short technical analysis, revisitable and correctable:\n' + note if note else '')
@@ -397,7 +418,9 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                 record['status'] = 'budget_exhausted'
                 break
             process = capture([executable, *settings, 'exec', '--skip-git-repo-check', '--ignore-rules',
-                               '--json', '--color', 'never', '--output-schema', str(HERE / 'response-schema.json'),
+                               '--json', '--color', 'never', '--output-schema',
+                               record['frozen_response_schema']['path'] if record.get('output_contract')
+                               else str(HERE / 'response-schema.json'),
                                '-o', str(response_path), '-'], cwd=workspace, env=env,
                               output=stage_root / 'process', timeout=remaining,
                               stream_bytes=budgets['stream_bytes'] - stream_used,
@@ -450,7 +473,14 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             try:
                 response = json.loads(response_path.read_bytes())
                 retrievals = [json.loads(line) for line in trace.read_bytes().splitlines()]
-                validation = validate_output(response, spec, record['lane'], retrievals)
+                if record.get('output_contract'):
+                    verified_sequences = {row['sequence'] for row in record['evidence_reads']['outcomes']
+                                          if row['outcome'] == 'source_read_verified'}
+                    grounding_trace = [row for row in retrievals if row['sequence'] in verified_sequences]
+                    validation = validate_output(response, spec, record['lane'], grounding_trace,
+                                                 contract=record['output_contract'])
+                else:
+                    validation = validate_output(response, spec, record['lane'], retrievals)
                 (stage_root / 'grounding.json').write_bytes(encoded(validation))
             except (ValueError, KeyError, TypeError, OSError) as error:
                 (stage_root / 'grounding.json').write_bytes(encoded({'error': str(error), 'semantic_quality': 'not_assessed'}))
@@ -461,6 +491,7 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             else:
                 record['generation_output'] = binding(response_path)
                 record['status'] = ('invalid_references' if any(s['reference_status'] == 'invalid' for s in validation['selections'])
+                                    or validation.get('reading', {}).get('status') == 'invalid'
                                     else 'evidence_unverified' if record['evidence_reads']['issues']
                                     else 'captured' if record['evidence_reads']['verified_source_reads']
                                     else 'captured_without_evidence_reads')
