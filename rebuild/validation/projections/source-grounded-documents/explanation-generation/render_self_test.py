@@ -47,6 +47,7 @@ class RenderTests(unittest.TestCase):
         value['entries'][0]['attribution'] = 'explicit_work_patch'
         before = copy.deepcopy(value['entries'][0]); before['id'] = 'source-0002'
         before['attribution'] = 'explicit_before_patch'
+        before['locator'] += ':before'
         before_path = self.root / 'before'; before_path.write_text('prior <script>alert(1)</script>\n')
         before.update(origin=i.binding(before_path), file_sha256=i.binding(before_path)['sha256'])
         value['entries'].append(before)
@@ -91,7 +92,7 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(parser.values['prose'], [self.response['prose']])
         self.assertEqual(parser.values['code'][0], self.source.read_text())
         self.assertEqual([json.loads(s) for s in parser.values['selection-request']], self.selections)
-        self.assertEqual(parser.anchors, [s['anchor'] for s in integrity['outputs'][0]['selections']])
+        self.assertEqual(parser.anchors[1:], [s['anchor'] for s in integrity['outputs'][0]['selections']])
         self.assertEqual(self.response_path.read_bytes(), original)
         self.assertIn('not verified', body)
 
@@ -244,7 +245,8 @@ class RenderTests(unittest.TestCase):
     def test_selection_navigation_links_only_to_exact_displayed_requests(self):
         body, integrity, parser = self.present()
         expected = [s['anchor'] for s in integrity['outputs'][0]['selections']]
-        self.assertEqual(parser.links, ['#' + anchor for anchor in expected])
+        self.assertEqual(set(link[1:] for link in parser.links if link.startswith('#')), set(parser.anchors))
+        self.assertTrue(set(expected) <= set(parser.anchors))
         self.assertTrue(all(' ' not in anchor for anchor in expected))
         self.assertEqual(parser.values['prose'], [self.response['prose']])
 
@@ -255,7 +257,7 @@ class RenderTests(unittest.TestCase):
         body, _, parser = self.present()
         self.assertIn('Intermediate response 1', body)
         self.assertIn('Final response 2', body)
-        self.assertEqual(parser.values['prose'], ['Authored intermediate.', self.response['prose']])
+        self.assertEqual(parser.values['prose'], [self.response['prose'], 'Authored intermediate.'])
 
     def test_missing_final_remains_explicit_with_captured_note(self):
         self.record.update(status='safety_aborted', generation_output=None)

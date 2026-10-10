@@ -1,0 +1,18 @@
+{
+  "origin": "Independently authored synthetic bytes and manually counted expectations; CC0-1.0",
+  "unicode_crlf": {
+    "path": "src/example.py",
+    "text": "# α\r\nclass Box:\r\n    def same(self):\r\n        return \"한\"\r\n\r\ndef same():\r\n    return 2\r\n",
+    "spans": [
+      {"start": 47, "end": 59, "text": "return \"한\"", "location_start": [4, 9], "location_end": [4, 19], "callable": "Box.same", "callable_extent": [22, 59]},
+      {"start": 80, "end": 88, "text": "return 2", "location_start": [7, 5], "location_end": [7, 13], "callable": "same", "callable_extent": [63, 88]}
+    ]
+  },
+  "change": {
+    "before": "def unchanged():\n    return 1\n\ndef changed():\n    return 2\n",
+    "after": "# added header\ndef unchanged():\n    return 1\n\ndef changed():\n    return 3\n",
+    "removed_line": "    return 2\n",
+    "added_line": "    return 3\n",
+    "unchanged_text": "def unchanged():\n    return 1\n"
+  }
+}

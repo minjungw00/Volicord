@@ -816,6 +816,29 @@
       "content_sha256": "be76364b845850756a1edb2a26cc66d2bb9f4493c1174fd7920597bab0029cfe",
       "origin": "Self-authored deterministic input-boundary fixture.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v06-source-linked-explanation-readings",
+      "validation_id": "V06",
+      "path": "rebuild/validation/projections/source-grounded-documents/explanation-generation/reading-fixtures",
+      "purpose": "Independent source byte, Unicode/CRLF locator and code change expectations for the experimental HTML consumer.",
+      "expected_entities": [
+        "exact-whole-file-locations",
+        "distinct-enclosing-declarations",
+        "unchanged-context"
+      ],
+      "expected_relations": [
+        "work-scoped-source-navigation",
+        "verified-before-after-states"
+      ],
+      "expected_unsupported": [
+        "semantic-relevance-from-byte-validity",
+        "fabricated-excerpt-line-bases",
+        "cutoff-evidence-from-ambiguous-chronology"
+      ],
+      "content_sha256": "bcb9ac73522eb77f68aa246eb3bfcf1b0f72ec213743b76873c1458be384fa11",
+      "origin": "Independently authored synthetic source and manually counted coordinates; no generated or editorial campaign answers.",
+      "license": "CC0-1.0"
     }
   ]
 }

@@ -18,6 +18,7 @@ def escaped(value):
 
 
 def card(attempt_path, label):
+    from source_reading import (TRANSPORT_BYTES, download, output_anchor, preview, prose_html, selections_html)
     attempt_path = Path(attempt_path)
     record = json.loads(attempt_path.read_bytes())
     check_binding(record['input'])
@@ -28,14 +29,6 @@ def card(attempt_path, label):
     if record.get('retrievals'):
         check_binding(record['retrievals'])
         trace = [json.loads(line) for line in Path(record['retrievals']['path']).read_bytes().splitlines()]
-    parts = ['<article><h2>' + escaped(label) + '</h2>',
-             '<p class="outcome">Outcome: ' + escaped(record['status']) + '</p>',
-             '<p>Lane: ' + escaped(record['lane']) + '</p>',
-             '<p>Semantic quality and inference support: not assessed. Reference checks certify byte identity only.</p>']
-    if record.get('blockers'):
-        parts.append('<p>Gaps: ' + escaped('; '.join(record['blockers'])) + '</p>')
-    if record.get('exposure_issues'):
-        parts.append('<p>Exposure gaps: ' + escaped('; '.join(record['exposure_issues'])) + '</p>')
     failed_tools, host_calls = [], []
     for call in record.get('calls', []):
         if call['kind'] != 'model_call':
@@ -50,100 +43,98 @@ def card(attempt_path, label):
             item = event.get('item', {})
             if event.get('type') == 'item.completed' and item.get('type') == 'mcp_tool_call':
                 host_calls.append(item)
-            if event.get('type') == 'item.completed' and item.get('type') == 'mcp_tool_call' and item.get('status') == 'failed':
-                failed_tools.append(item.get('error'))
-    parts.append('<p>Returned evidence reads: ' + str(sum(r['status'] == 'returned' and r['name'] == 'read' for r in trace)) + '</p>')
-    if failed_tools:
-        parts.append('<p>Host tool failures: ' + escaped(json.dumps(failed_tools, ensure_ascii=False)) + '</p>')
+                if item.get('status') == 'failed':
+                    failed_tools.append(item.get('error'))
     audit = retrieval_audit(spec, record['lane'], host_calls, trace)
-    if audit['issues']:
-        parts.append('<p>Evidence observation incomplete: ' + escaped('; '.join(audit['issues'])) + '</p>')
     verified_sequences = {row['sequence'] for row in audit['outcomes']
                           if row['outcome'] == 'source_read_verified'}
     verified_trace = [row for row in trace if row['sequence'] in verified_sequences]
     model_calls = [call for call in record.get('calls', []) if call['kind'] == 'model_call']
-    parts.append('<p>Model calls: ' + str(len(model_calls)) + '; process exits: '
-                 + escaped([c['process'].get('returncode', c['process'].get('exit_code')) for c in model_calls]) + '</p>')
-    parts.append('<details><summary>Available usage metrics</summary><pre>'
-                 + escaped(json.dumps({'tokens': record.get('tokens'), 'price': record.get('price')}, ensure_ascii=False)) + '</pre></details>')
-    parts.append('<p>Isolation: ' + escaped(record.get('isolation', 'unknown')) + '</p>')
-    parts.append('<p>Clean comparison: ' + escaped(record.get('clean_comparison', False)) + '</p>')
-    witnesses = {'label': label, 'attempt': binding(attempt_path), 'outputs': [], 'semantic_quality': 'not_assessed'}
+    parts = ['<article><h2>' + escaped(label) + '</h2>',
+             '<p class="outcome">Outcome: ' + escaped(record['status']) + '</p>',
+             '<p>Semantic quality and inference support: not assessed. Reference checks certify byte identity only.</p>']
+    if record.get('blockers'):
+        parts.append('<p>Gaps: ' + escaped('; '.join(record['blockers'])) + '</p>')
     final = record.get('generation_output')
-    if not final:
+    if final:
+        require(final in record['original_outputs'], 'final output absent from original outputs')
+    else:
         parts.append('<p>No verified final explanation. Captured intermediate or incomplete responses remain below.</p>')
     if not record['original_outputs']:
         parts.append('<p>No generated output. No code selected. Before/after comparison unavailable.</p>')
+    witnesses = {'label': label, 'attempt': binding(attempt_path), 'outputs': [], 'semantic_quality': 'not_assessed'}
+    views = []
     for number, output in enumerate(record['original_outputs'], 1):
         check_binding(output)
+        require(output['bytes'] <= TRANSPORT_BYTES, 'response exceeds local presentation bound')
         raw = Path(output['path']).read_bytes()
+        display_original = dict(output, attempt_sha256=witnesses['attempt']['sha256'])
         stage = ('Final response' if output == final else 'Intermediate response' if final
                  else 'Captured response; stage completion unverified')
-        parts.append('<section><h3>' + stage + ' ' + str(number) + '</h3>')
+        view = ['<section id="' + output_anchor(spec['scope'], display_original) + '"><h3>' + stage + ' ' + str(number) + '</h3>']
         witness = {'original': output, 'prose_sha256': None, 'selections': []}
         witnesses['outputs'].append(witness)
         response = None
         try:
             response = json.loads(raw)
+            if isinstance(response, dict) and isinstance(response.get('prose'), str):
+                response['prose'].encode('utf-8')
             validation = validate_output(response, spec, record['lane'], verified_trace)
         except (ValueError, KeyError, TypeError, OSError) as error:
-            parts.append('<p>Response/grounding unavailable: ' + escaped(error) + '</p>')
+            view.append('<p>Response/grounding unavailable: ' + escaped(error) + '</p>')
             if isinstance(response, dict) and isinstance(response.get('prose'), str):
-                parts.append('<pre class="prose">' + escaped(response['prose']) + '</pre>')
-            parts.append('<pre class="original">' + escaped(raw.decode('utf-8', errors='backslashreplace')) + '</pre></section>')
-            continue
-        from inputs import digest
-        witness['prose_sha256'] = digest(response['prose'].encode())
-        parts.append('<pre class="prose">' + escaped(response['prose']) + '</pre>')
-        parts.append('<p>Declared gaps: ' + escaped('; '.join(response['gaps']) if response['gaps'] else 'none declared; not independently checked') + '</p>')
-        anchors = [label.replace(' ', '-') + '-output-' + str(number) + '-selection-' + str(index)
-                   for index in range(1, len(validation['selections']) + 1)]
-        if anchors:
-            parts.append('<nav aria-label="Selected source navigation">' + ' · '.join(
-                '<a href="#' + escaped(anchor) + '">Selection ' + str(index) + '</a>'
-                for index, anchor in enumerate(anchors, 1)) + '</nav>')
-        if not response['selections']:
-            parts.append('<p>No code selected. Before/after comparison unavailable.</p>')
-        pairings = {}
-        for index, result in enumerate(validation['selections'], 1):
-            selection = result['selection']
-            status = result['reference_status']
-            # Preserve code selection order, even where it is invalid. No repair,
-            # offset adjustment, preferred entity or automatically chosen counterpart.
-            anchor = anchors[index - 1]
-            parts.append('<div class="selection" id="' + escaped(anchor) + '"><h4>Selection ' + str(index) + '</h4>')
-            parts.append('<pre class="selection-request">' + escaped(json.dumps(selection, ensure_ascii=False, sort_keys=True)) + '</pre>')
-            byte_valid = status == 'valid_reference'
-            if record['status'] != 'captured' or audit['issues'] or not record.get('clean_comparison', False):
-                status += '; run not verified'
-            parts.append('<p>Reference: ' + escaped(status) + '</p>')
-            if result['issues']:
-                parts.append('<p>Gaps: ' + escaped('; '.join(result['issues'])) + '</p>')
-            witness['selections'].append({'anchor': anchor, 'selection': selection, 'reference_status': status})
-            if byte_valid:
-                entry = entries[selection['id']]
-                check_binding(entry['asset'])
-                text = Path(entry['asset']['path']).read_bytes()[selection['start']:selection['end']].decode('utf-8')
-                parts.append('<p>Path: ' + escaped(entry['path']) + '; selected state: ' + escaped(selection['state']) + '</p>')
-                parts.append('<pre class="code">' + escaped(text) + '</pre>')
-                if selection['state'] in {'before', 'after'} and entry['role'] == 'source':
-                    pairings.setdefault(entry['path'], {'before': [], 'after': []})[selection['state']].append(text)
-                elif selection['state'] == 'context':
-                    parts.append('<p>Repository context; this span does not establish a Work change or after-state.</p>')
-            else:
-                parts.append('<p>Selected bytes withheld from verified presentation. No substitute code.</p>')
-            parts.append('</div>')
-        for path, states in pairings.items():
-            parts.append('<h4>Before/after: ' + escaped(path) + '</h4>')
-            if len(states['before']) == 1 and len(states['after']) == 1:
-                diff = ''.join(difflib.unified_diff(states['before'][0].splitlines(True), states['after'][0].splitlines(True),
-                                                  fromfile='selected before span', tofile='selected after span'))
-                parts.append('<p>Diff of the two selected spans; not a whole-file diff.</p><pre class="diff">' + escaped(diff) + '</pre>')
-            else:
-                parts.append('<p>Comparison gap: one exact before and after span was not selected. Missing state is not inferred.</p>')
-        parts.append('<details><summary>Original response transport</summary><pre class="original">' + escaped(raw.decode('utf-8')) + '</pre></details></section>')
-    parts.append('</article>')
-    return ''.join(parts), witnesses
+                view.append('<pre class="prose">' + preview(response['prose']) + '</pre>')
+        else:
+            from inputs import digest
+            witness['prose_sha256'] = digest(response['prose'].encode())
+            source, diagnostic, rows, selections = selections_html(spec, entries, validation, display_original)
+            witness['selections'] = selections
+            run_verified = (record['status'] == 'captured' and not audit['issues'] and record.get('clean_comparison', False))
+            for selection in selections:
+                if not run_verified:
+                    selection['reference_status'] += '; run not verified'
+            view.append(prose_html(response['prose'], rows))
+            view.append('<p>Declared gaps: ' + preview('; '.join(response['gaps']) if response['gaps'] else 'none declared; not independently checked') + '</p>')
+            view.append('<p>Run verification: ' + ('verified' if run_verified else 'not verified') +
+                        '. Valid source bytes remain distinct from whole-run and semantic validity.</p>')
+            view.append(source)
+            pairings = {}
+            for row in rows:
+                location, entry = row['location'], row['entry']
+                if location and entry['role'] == 'source' and location['state'] in {'before', 'after'}:
+                    pairings.setdefault(entry['path'], {'before': [], 'after': []})[location['state']].append(location['text'])
+            for path, states in pairings.items():
+                view.append('<details><summary>Before/after: ' + escaped(path) + '</summary>')
+                if len(states['before']) == 1 and len(states['after']) == 1:
+                    diff = ''.join(difflib.unified_diff(states['before'][0].splitlines(True), states['after'][0].splitlines(True),
+                                                      fromfile='selected before span', tofile='selected after span'))
+                    view.append('<p>Diff of the two selected spans; not a whole-file diff.</p><pre class="diff">' + preview(diff) + '</pre>')
+                else:
+                    view.append('<p>Comparison gap: one exact before and after span was not selected. Missing state is not inferred.</p>')
+                view.append('</details>')
+            view.append(diagnostic)
+        view.append('<details><summary>Original response transport · lossless diagnostic download</summary><pre class="original">'
+                    + preview(raw.decode('utf-8', errors='backslashreplace')) + '</pre>'
+                    + download(raw, 'original-response-' + str(number) + '.bin', 'Complete original response bytes') + '</details></section>')
+        body = ''.join(view)
+        if final and output != final:
+            body = '<details class="intermediate"><summary>' + stage + ' ' + str(number) + '</summary>' + body + '</details>'
+        views.append((output == final, body))
+    parts.extend(body for _, body in sorted(views, key=lambda item: not item[0]))
+    run_audit = {'lane': record['lane'], 'isolation': record.get('isolation', 'unknown'),
+                 'clean_comparison': record.get('clean_comparison', False),
+                 'exposure_issues': record.get('exposure_issues', []), 'retrieval_audit': audit,
+                 'inventory_boundary': spec['inventory_boundary'], 'tokens': record.get('tokens'), 'price': record.get('price')}
+    parts.append('<details class="audit"><summary>Run, retrieval and inventory audit</summary><p>Returned evidence reads: '
+                 + str(sum(r['status'] == 'returned' and r['name'] == 'read' for r in trace))
+                 + '</p><p>Model calls: ' + str(len(model_calls)) + '; process exits: '
+                 + escaped([c['process'].get('returncode', c['process'].get('exit_code')) for c in model_calls])
+                 + '</p><p>Host tool failures: ' + preview(json.dumps(failed_tools, ensure_ascii=False))
+                 + '</p><pre>' + preview(json.dumps(run_audit, ensure_ascii=False, indent=2)) + '</pre>'
+                 + download(encoded(run_audit), 'run-audit.json', 'Complete derived audit') + '</details></article>')
+    body = ''.join(parts)
+    require(len(body.encode()) <= 16 * 1024 * 1024, 'derived presentation exceeds local HTML bound')
+    return body, witnesses
 
 
 def document(cards):
@@ -152,8 +143,10 @@ def document(cards):
                 '<title>Explanation comparison</title><style>'
                 'body{font:16px system-ui;margin:2rem;max-width:1100px}article{border:1px solid #999;padding:1.5rem;margin:1rem 0}'
                 'pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:#f3f3f3}.prose{font:inherit;white-space:pre-wrap}'
-                '.selection{border-left:3px solid #aaa;padding-left:1rem}</style><h1>Explanation comparison</h1>'
-                '<p>Approach labels are withheld. Every captured output is displayed without editing. '
+                'details{margin:.8rem 0}summary{cursor:pointer}a{overflow-wrap:anywhere}:target{outline:2px solid #467}'
+                '.citation span{display:none}.citation:after{content:attr(data-location)}'
+                '.selection{border-left:3px solid #aaa;padding-left:1rem}pre.code,pre.diff{max-height:32rem;overflow:auto}</style><h1>Explanation comparison</h1>'
+                '<p>Approach labels are withheld. Final prose precedes closed evidence and audit disclosures. Original bytes remain in diagnostic downloads. '
                 'Self-identifying wording and stage counts may reveal an approach. No ranking or semantic verdict is provided.</p>'
                 + ''.join(cards) + '</html>')
 

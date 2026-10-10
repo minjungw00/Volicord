@@ -415,11 +415,60 @@ No Product lane was enriched with archive-only source bodies.
 
 ## Private comparison presentation
 
+The same experimental HTML consumer now includes `source_reading.py`, a disposable
+read-only locator adapter. Final output is read first; intermediate notes, evidence
+selections, transport and run audit use native closed `details`/`summary` disclosures.
+Exact literal sidecar citations link to their original selections. Their visible
+labels show paths and coordinates through CSS; underlying prose text is unchanged.
+Unmatched citations get no invented association. No source is ranked as primary or
+semantically important. Path/state/asset grouping is navigation only.
+
+Full-file and independently verified reconstruction assets supply one-based lines
+and Unicode scalar columns with half-open ends. LF resets the line; CR in a CRLF
+terminator remains a scalar when a requested endpoint falls between CR and LF.
+Tabs count as one scalar. Excerpts and non-source records expose asset byte ranges
+and their absolute-coordinate limitation; an asserted `first_line` is insufficient.
+Python's local AST can name an enclosing declaration with its exact byte extent;
+duplicate names remain distinguished by source range. Other languages or incomplete
+syntax retain exact source locators without invented callable identity. Existing
+RI/Viewer range types and rendering were inspected: they consume already observed
+analysis ranges, and do not establish frozen byte offsets or excerpt line bases.
+Importing their Product decoder or running new analysis would exceed this adapter's
+responsibility. Existing input, retrieval and grounding verification are reused.
+
+Diagnostic downloads contain exact original transport bytes (including malformed
+JSON), every paragraph and selection, and exact admitted selected source bytes.
+They preserve CRLF even where browser text normalization changes a displayed `pre`.
+Prose, code and JSON previews are capped at 16,384 UTF-8 bytes; at most 128 selections
+are expanded, with exact excess counts. An individual source preview admits at most
+65,536 original bytes, with a 2 MiB combined source download budget per output.
+Larger spans retain the original request with an explicit display gap. Original
+response transport is capped at 2 MiB and each card at 16 MiB; over-bound transports
+are explicitly rejected. These local display limits do not alter generator budgets.
+No script, HTTP source read, provider, canonical entity or production schema is added.
+
+Maintained consumer registration is the ordinary `unittest` discovery of named
+`ReadingTests` and `RenderTests` methods. Run these focused checks, inspect retained
+stdout/stderr and numeric results, and keep generated HTML under a new ignored path:
+
+```bash
+rebuild/scripts/validate focused explanation-source-reading -- \
+  python3 -B -m unittest discover -s rebuild/validation/projections/source-grounded-documents/explanation-generation -p '*reading_self_test.py' -v
+rebuild/scripts/validate focused explanation-render-regressions -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/render_self_test.py
+```
+
+`reading-fixtures/cases.json` supplies independently authored UTF-8/CRLF source and
+manually counted coordinates. The editorial prototype and retained reviewer prose
+are neither generation input nor the correctness oracle. This presentation change
+is experimental support, not evidence of a Product Viewer regression or human
+comprehension qualification.
+
 `render_comparison.py --attempt /absolute/attempt.json ... --output UNIQUE_DIRECTORY`
 creates one self-contained escaped HTML presentation, a separate approach mapping
 and integrity sidecar. Sample order is shuffled. All approaches use the same card
-layout with every original intermediate/final output, selected spans in original
-order, actual selected before/after span diffs and explicit gaps. Missing states
+layout with every original intermediate/final output, original selection identities,
+selected before/after span diffs and explicit gaps. Missing states
 are never reconstructed or replaced with preferred code. Invalid references retain
 their requested coordinates without presenting foreign or wrong-state bytes as
 verified evidence. Run/coverage/isolation gaps remain visible. Original responses,
@@ -441,8 +490,8 @@ remain partial. `review_completion_verified` describes this structural binding,
 never the truth of the reviewer's judgment. Authored positive and tampered controls
 run through `execution_audit_self_test.py`; they invoke no model or aggregate gate.
 
-Each original selection has an internal navigation link to its exact displayed
-request and code, including invalid requests with withheld code. Intermediate and
+Each displayed original selection has a Work/output-scoped internal anchor for its
+exact request and code, including invalid requests with withheld code. Intermediate and
 final responses are labeled from the retained final-output identity; a missing
 final pointer stays explicitly unverified. New presentations get new byte identities;
 existing HTML and originals are not overwritten. Focused feedback must name that
