@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 
 from approaches import events, retrieval_audit
+from grounding import validate_output
 from inputs import binding, check_binding, digest, encoded, require, verify
 
 
@@ -100,6 +101,10 @@ def audit_cohort(root, repository):
             if record.get(key):
                 identities.append({'binding': record[key], 'verified_from': historical_binding(
                     record[key], plan['producer_head'], repository)})
+        if review and record.get('original_review'):
+            # Reviewer output is a runtime artifact: Git history cannot repair it.
+            check_binding(record['original_review'])
+            identities.append({'binding': record['original_review'], 'verified_from': 'original_path'})
         for value in record.get('support', []) + record.get('original_outputs', []):
             identities.append({'binding': value, 'verified_from': historical_binding(
                 value, plan['producer_head'], repository)})
@@ -129,9 +134,56 @@ def audit_cohort(root, repository):
                                   and e.get('item', {}).get('type') == 'mcp_tool_call')
                 stages.append({'stage': call['stage'], **stage_timeline(
                     process, process_root.parent / 'observed-context.json', ledger)})
-        observed_audit = retrieval_audit(verify(record['input']['path']),
+        spec = verify(record['input']['path'])
+        observed_audit = retrieval_audit(spec,
                                         record.get('lane', 'archive_diagnostic'), host_calls, ledger)
         require(observed_audit == record['evidence_reads'], 'historical read audit mismatch')
+        if review and record['status'] == 'review_captured':
+            process = record['process']
+            require(record.get('original_review') and record.get('scope') == spec['scope']
+                    and process['outcome'] == 'succeeded' and process['returncode'] == 0
+                    and process['streams_complete'] and process['cleanup']['complete']
+                    and record['context_probe']['streams_complete'] and not record.get('exposure_issues')
+                    and observed_audit['verified_source_reads'] > 0 and not observed_audit['issues']
+                    and record['workspace_cleanup'] == 'complete', 'incomplete review claimed completion')
+            check_binding(record['observed_context'])
+            context = json.loads(Path(record['observed_context']['path']).read_bytes())
+            sessions = [r['payload']['id'] for r in context if r.get('type') == 'session_meta']
+            require(sessions and sessions == record['review_sessions']
+                    and not set(sessions) & set(record['generator_sessions'])
+                    and not any(r.get('type') == 'compacted' for r in context),
+                    'review session separation unverified')
+            require(record['review_input'] == process['stdin'], 'review input/process binding changed')
+            integrity = json.loads(Path(record['integrity']['path']).read_bytes())
+            require(integrity['presentation'] == record['presentation'], 'review display identity changed')
+            displayed = {s['label']: s for s in integrity['samples']}
+            require(record.get('displayed_outputs'), 'review target outputs absent')
+            for target in record['displayed_outputs']:
+                sample = displayed[target['label']]
+                check_binding(sample['attempt'])
+                attempt = json.loads(Path(sample['attempt']['path']).read_bytes())
+                require(attempt['input'] == record['input'] and attempt['scope'] == spec['scope'],
+                        'review target Work/input changed')
+                originals = {o['original']['sha256']: o for o in sample['outputs']}
+                require(target['outputs'], 'review target outputs absent')
+                for claimed in target['outputs']:
+                    original = originals[claimed['sha256']]
+                    check_binding(original['original'])
+                    require(original['original'] in attempt['original_outputs']
+                            and claimed['bytes'] == original['original']['bytes'], 'review target output changed')
+                    if 'prose_sha256' in claimed:
+                        body = json.loads(Path(original['original']['path']).read_bytes())
+                        require(claimed['prose_sha256'] == original['prose_sha256']
+                                == digest(body['prose'].encode()), 'review target prose changed')
+            raw = Path(record['original_review']['path']).read_bytes()
+            public, invalid = events(process['stdout']['path'])
+            messages = [e['item']['text'] for e in public if e.get('type') == 'item.completed'
+                        and e.get('item', {}).get('type') == 'agent_message']
+            require(not invalid and messages and messages[-1].strip() == raw.decode('utf-8').strip(),
+                    'review output/final host response changed')
+            validation = validate_output(json.loads(raw), spec, 'archive_diagnostic', ledger)
+            require(not any(s['reference_status'] == 'invalid' for s in validation['selections']),
+                    'completed review references invalid')
         reports.append({'name': name, 'receipt': binding(receipt), 'identities': identities,
                         'status': record['status'], 'calls': calls, 'stages': stages,
                         'evidence_reads': observed_audit, 'ledger_rows': len(ledger),
@@ -139,6 +191,7 @@ def audit_cohort(root, repository):
                         'tokens': record['tokens'], 'price': record['price'],
                         'original_outputs': record.get('original_outputs', []),
                         'original_review': record.get('original_review'),
+                        'review_completion_verified': review and record['status'] == 'review_captured',
                         'workspace_cleanup': record['workspace_cleanup']})
     return {'cohort_plan': binding(root / 'plan.json'), 'attempts': reports,
             'limits': 'Historical observations only. No semantic assessment or new model execution. '

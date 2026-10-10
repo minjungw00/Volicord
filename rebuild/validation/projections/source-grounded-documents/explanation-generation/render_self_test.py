@@ -64,6 +64,18 @@ class RenderTests(unittest.TestCase):
                        'blockers': [], 'original_outputs': [i.binding(self.response_path)],
                        'clean_comparison': False, 'isolation': 'cooperative'}
         self.attempt = self.root / 'attempt.json'
+        self.host_reads(self.root / 'trace')
+
+    def host_reads(self, trace):
+        rows = [json.loads(line) for line in Path(trace).read_bytes().splitlines()]
+        stdout = self.root / 'read-host.jsonl'
+        stdout.write_bytes(b''.join((json.dumps({'type': 'item.completed', 'item': {
+            'id': str(row['sequence']), 'type': 'mcp_tool_call', 'server': 'evidence',
+            'tool': row['name'], 'arguments': row['arguments'], 'status': 'completed',
+            'result': {'content': [{'type': 'text', 'text': json.dumps(row)}]}}}) + '\n').encode()
+            for row in rows))
+        self.record['calls'] = [{'kind': 'model_call', 'stage': 'prose',
+                                'process': {'stdout': i.binding(stdout), 'exit_code': 0}}]
 
     def present(self):
         self.attempt.write_bytes(i.encoded(self.record))
@@ -98,6 +110,7 @@ class RenderTests(unittest.TestCase):
         self.response_path.write_bytes(i.encoded(response))
         self.record.update(input=i.binding(manifest), retrievals=i.binding(surface.trace),
                            original_outputs=[i.binding(self.response_path)])
+        self.host_reads(surface.trace)
         body, integrity, parser = self.present()
         self.assertEqual(parser.values['prose'], [response['prose']])
         self.assertEqual(parser.values['code'], [helper.decode()])
@@ -200,6 +213,31 @@ class RenderTests(unittest.TestCase):
         body, _, _ = self.present()
         self.assertIn('Returned evidence reads: 0', body)
         self.assertIn('Authored host tool denial', body)
+
+    def test_forged_return_is_not_verified_even_with_matching_host_and_ledger(self):
+        trace = self.root / 'trace'
+        rows = [json.loads(line) for line in trace.read_bytes().splitlines()]
+        rows[0]['result']['text'] = 'forged source return'
+        trace.write_bytes(b''.join((json.dumps(row) + '\n').encode() for row in rows))
+        self.record['retrievals'] = i.binding(trace)
+        self.host_reads(trace)
+        body, _, parser = self.present()
+        self.assertEqual(parser.values['prose'], [self.response['prose']])
+        self.assertEqual(parser.values['code'], [rows[1]['result']['text']])
+        self.assertIn('returned bytes mismatch', body)
+        self.assertIn('span not retrieved', body)
+
+    def test_missing_host_join_keeps_output_but_withholds_unobserved_code(self):
+        self.record['calls'] = []
+        body, _, parser = self.present()
+        self.assertEqual(parser.values['prose'], [self.response['prose']])
+        self.assertNotIn('code', parser.values)
+        self.assertIn('ledger rows without matching host results', body)
+
+    def test_foreign_attempt_scope_is_rejected(self):
+        self.record['scope'] = dict(self.record['scope'], work='another-work')
+        with self.assertRaisesRegex(ValueError, 'attempt input scope changed'):
+            self.present()
 
 
 if __name__ == '__main__':

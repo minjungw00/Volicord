@@ -425,6 +425,22 @@ their requested coordinates without presenting foreign or wrong-state bytes as
 verified evidence. Run/coverage/isolation gaps remain visible. Original responses,
 including malformed responses, are neither rewritten nor silently omitted.
 
+The presentation consumer joins completed host evidence results to the exact retained
+ledger and verifies returned source bytes against the frozen input before displaying
+a selected span as verified. Ledger ranges alone are insufficient, even when their
+hashes name genuine source bytes. Missing host joins and forged returns remain visible
+as observation gaps; original prose and selection requests remain intact. The attempt's
+Project/Work/cutoff must match its bound input. These checks certify provenance only,
+not review completion or semantic accuracy, and do not revise historical receipts.
+
+The retained execution audit also verifies original reviewer response bytes. A
+`review_captured` receipt must have a complete successful process, exact stdin and
+final host-response linkage, distinct observed reviewer session, intact scope and
+valid source references with complete host/ledger joins. Partial review receipts
+remain partial. `review_completion_verified` describes this structural binding,
+never the truth of the reviewer's judgment. Authored positive and tampered controls
+run through `execution_audit_self_test.py`; they invoke no model or aggregate gate.
+
 Label blinding removes renderer-added approach names and private input paths; it
 does not rewrite self-identifying prose or hide stage counts and failures. It is
 presentation blinding, not guaranteed reviewer anonymity. Unsupported inference

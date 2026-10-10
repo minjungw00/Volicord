@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import secrets
 
+from approaches import retrieval_audit
 from grounding import validate_output
 from inputs import append_index, binding, check_binding, encoded, require, verify
 
@@ -21,6 +22,7 @@ def card(attempt_path, label):
     record = json.loads(attempt_path.read_bytes())
     check_binding(record['input'])
     spec = verify(record['input']['path'])
+    require(record['scope'] == spec['scope'], 'attempt input scope changed')
     entries = {entry['id']: entry for entry in spec['entries']}
     trace = []
     if record.get('retrievals'):
@@ -34,7 +36,7 @@ def card(attempt_path, label):
         parts.append('<p>Gaps: ' + escaped('; '.join(record['blockers'])) + '</p>')
     if record.get('exposure_issues'):
         parts.append('<p>Exposure gaps: ' + escaped('; '.join(record['exposure_issues'])) + '</p>')
-    failed_tools = []
+    failed_tools, host_calls = [], []
     for call in record.get('calls', []):
         if call['kind'] != 'model_call':
             continue
@@ -46,11 +48,19 @@ def card(attempt_path, label):
             except (ValueError, UnicodeError):
                 continue
             item = event.get('item', {})
+            if event.get('type') == 'item.completed' and item.get('type') == 'mcp_tool_call':
+                host_calls.append(item)
             if event.get('type') == 'item.completed' and item.get('type') == 'mcp_tool_call' and item.get('status') == 'failed':
                 failed_tools.append(item.get('error'))
     parts.append('<p>Returned evidence reads: ' + str(sum(r['status'] == 'returned' and r['name'] == 'read' for r in trace)) + '</p>')
     if failed_tools:
         parts.append('<p>Host tool failures: ' + escaped(json.dumps(failed_tools, ensure_ascii=False)) + '</p>')
+    audit = retrieval_audit(spec, record['lane'], host_calls, trace)
+    if audit['issues']:
+        parts.append('<p>Evidence observation incomplete: ' + escaped('; '.join(audit['issues'])) + '</p>')
+    verified_sequences = {row['sequence'] for row in audit['outcomes']
+                          if row['outcome'] == 'source_read_verified'}
+    verified_trace = [row for row in trace if row['sequence'] in verified_sequences]
     model_calls = [call for call in record.get('calls', []) if call['kind'] == 'model_call']
     parts.append('<p>Model calls: ' + str(len(model_calls)) + '; process exits: '
                  + escaped([c['process'].get('returncode', c['process'].get('exit_code')) for c in model_calls]) + '</p>')
@@ -70,7 +80,7 @@ def card(attempt_path, label):
         response = None
         try:
             response = json.loads(raw)
-            validation = validate_output(response, spec, record['lane'], trace)
+            validation = validate_output(response, spec, record['lane'], verified_trace)
         except (ValueError, KeyError, TypeError, OSError) as error:
             parts.append('<p>Response/grounding unavailable: ' + escaped(error) + '</p>')
             if isinstance(response, dict) and isinstance(response.get('prose'), str):
@@ -93,7 +103,7 @@ def card(attempt_path, label):
             parts.append('<div class="selection" id="' + escaped(anchor) + '"><h4>Selection ' + str(index) + '</h4>')
             parts.append('<pre class="selection-request">' + escaped(json.dumps(selection, ensure_ascii=False, sort_keys=True)) + '</pre>')
             byte_valid = status == 'valid_reference'
-            if record['status'] == 'budget_exhausted' or not record.get('clean_comparison', False):
+            if record['status'] != 'captured' or audit['issues'] or not record.get('clean_comparison', False):
                 status += '; run not verified'
             parts.append('<p>Reference: ' + escaped(status) + '</p>')
             if result['issues']:
