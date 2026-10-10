@@ -241,6 +241,33 @@ class WorkReaderTests(unittest.TestCase):
         self.assertIsNone(witness['recorded_work']['checkpoint'])
         self.assertNotIn('direction', parser.values)
 
+    def test_table_qualified_authority_preserves_exact_original_coordinates(self):
+        index = self.evidence('canonical_record', self.cp, table='checkpoints')
+        self.claim('recorded_next_action', index, self.cp, 'checkpoints.next_step')
+        original = copy.deepcopy(self.response)
+        self.assertEqual(self.validation()['reading']['status'], 'valid_binding')
+        body, witness, parser = self.present()
+        self.assertEqual(self.response, original)
+        self.assertIn('checkpoints.next_step', body)
+        self.assertEqual(witness['outputs'][0]['claim_authority']['status'], 'valid_binding')
+        for field in ('decisions.next_step', 'checkpoints.goal', 'checkpoints.next_step.extra'):
+            self.response['claims'][-1]['authority']['field'] = field
+            with self.assertRaisesRegex(ValueError, 'wrong canonical authority field'): self.validation()
+
+    def test_qualified_choice_and_recommendation_do_not_supply_missing_rationale(self):
+        scope = self.h.record['scope']
+        row = {'id': 'decision', 'revision': 1, 'project_id': scope['project'], 'work_item_id': scope['work'],
+            'choice_value': 'bounded_retry', 'user_rationale': None, 'recommendation_rationale': 'Limit waiting.'}
+        index = self.evidence('canonical_record', row, table='decisions')
+        self.claim('user_choice', index, row, 'decisions.choice_value')
+        self.assertEqual(self.validation()['reading']['status'], 'valid_binding')
+        self.claim('agent_recommendation', index, row, 'decisions.recommendation_rationale')
+        self.assertEqual(self.validation()['reading']['status'], 'valid_binding')
+        self.response['claims'][-1]['kind'] = 'user_rationale'
+        with self.assertRaisesRegex(ValueError, 'wrong canonical authority field'): self.validation()
+        self.response['claims'][-1]['authority']['field'] = 'decisions.user_rationale'
+        with self.assertRaisesRegex(ValueError, 'field absent'): self.validation()
+
     def test_wrong_field_partial_row_and_missing_authority_fail(self):
         index = self.evidence('canonical_record', self.cp, table='checkpoints')
         self.claim('recorded_next_action', index, self.cp, 'next_step')

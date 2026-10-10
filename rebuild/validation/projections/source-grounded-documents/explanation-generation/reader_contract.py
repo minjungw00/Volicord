@@ -52,9 +52,15 @@ def validate_authority(claim, spec, selections, lane):
                'user_rationale': ('decisions', {'user_rationale'}),
                'agent_recommendation': ('decisions', {'recommendation_rationale'}),
                'recorded_next_action': ('checkpoints', {'next_step'})}
+    # Instructions name fields as table.field. Validate that qualification
+    # against the actual row table, retaining the original response coordinates.
+    field = authority['field']
+    require(isinstance(field, str), 'wrong canonical authority field')
+    if field.startswith(table + '.'):
+        field = field[len(table) + 1:]
     require(kind in allowed and table == allowed[kind][0] and
-            authority['field'] in allowed[kind][1], 'wrong canonical authority field')
-    require(isinstance(row.get(authority['field']), str) and row[authority['field']].strip(),
+            field in allowed[kind][1], 'wrong canonical authority field')
+    require(isinstance(row.get(field), str) and row[field].strip(),
             'claimed authority field absent')
     if kind == 'recorded_next_action':
         from recorded_work import recorded_work

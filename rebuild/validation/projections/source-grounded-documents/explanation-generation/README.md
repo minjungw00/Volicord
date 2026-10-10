@@ -972,3 +972,17 @@ Invalid authority claims have no valid claim/primary surface; original prose and
 response downloads remain diagnostic. No producer wording, original response or
 historical execution status is rewritten. No-code responses expose their primary
 gap. Withheld/incomplete canonical evidence cannot revive an older action.
+
+### Qualified authority field coordinates
+
+The frozen Work-directed instructions name canonical fields as `table.field`.
+The first authorized Click response used `checkpoints.next_step`, while the
+consumer previously admitted only the local field `next_step`. Independent retry
+fixtures reproduce the mismatch for Checkpoint actions and Decision choices.
+Validation now checks an optional exact table qualification against the selected
+canonical row, then applies the existing kind/field, identity/revision, scope,
+chronology, full-read and latest-Checkpoint checks. Wrong tables, nested/unknown
+fields and recommendation-as-user-rationale remain rejected. Original coordinates
+and prose remain unchanged in HTML and response downloads. This is a consumer
+correction; frozen instructions, schema, condition, attempts and first responses
+remain immutable. Ambiguous secondary references still invalidate the reading.
