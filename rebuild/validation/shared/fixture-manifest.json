@@ -839,6 +839,18 @@
       "content_sha256": "bcb9ac73522eb77f68aa246eb3bfcf1b0f72ec213743b76873c1458be384fa11",
       "origin": "Independently authored synthetic source and manually counted coordinates; no generated or editorial campaign answers.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "v06-evidentiary-reading-selections",
+      "validation_id": "V06",
+      "path": "rebuild/validation/projections/source-grounded-documents/explanation-generation/selection-fixtures",
+      "purpose": "Independent valid, uncertain, unavailable and forged evidence-selection controls through the experimental reading, source-linked HTML and feedback consumers.",
+      "expected_entities": ["verified-primary-and-secondary", "gaps-only-uncertainty", "unchanged-original-response"],
+      "expected_relations": ["strict-all-selections-reading", "feedback-bound-original-identity", "append-only-retrieval-inventory"],
+      "expected_unsupported": ["chronology-from-matching-hashes", "archive-as-product-authority", "unbound-invalid-selection-as-success"],
+      "content_sha256": "54279f90a9c717ac5d9f9f1606a93137581979e9f81bdc0679b8bde8ca866fa2",
+      "origin": "Independently authored synthetic source, canonical row, chronology and rejection expectations; no generated responses or inferred observation times.",
+      "license": "CC0-1.0"
     }
   ]
 }

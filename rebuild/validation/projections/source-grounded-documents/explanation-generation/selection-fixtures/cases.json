@@ -1,0 +1,24 @@
+{
+  "origin": "Independently authored evidence-selection consumer fixtures; CC0-1.0. No historical response or inferred chronology.",
+  "source": "def compute():\n    return 7\n",
+  "secondary": "def helper():\n    return 9\n",
+  "unicode": "한",
+  "chronology": {
+    "known": {"state": "known", "observed_at": "2026-10-08T09:00:00+00:00"},
+    "ambiguous": {"state": "ambiguous", "reason": "No independent observation time for this row."},
+    "future": {"state": "known", "observed_at": "2026-10-08T11:00:00+00:00"}
+  },
+  "decision": {"id": "decision", "revision": 3, "project_id": "p", "work_item_id": "w", "choice_value": "bounded_retry"},
+  "checkpoint": {"id": "checkpoint", "revision": 2, "project_id": "p", "work_item_id": "w", "recorded_at": 2, "next_step": "Inspect the retry branch.", "work_state": "completed"},
+  "gap": "uncertain-checkpoint: No independent observation time; retained inventory and retrieval are observations, not citations.",
+  "rejections": {
+    "ambiguous": "ambiguous chronology",
+    "future": "source after cutoff",
+    "foreign_work": "foreign Work",
+    "foreign_project": "foreign Work",
+    "wrong_state": "wrong-state span",
+    "wrong_hash": "span hash mismatch",
+    "absent_retrieval": "span not retrieved",
+    "unavailable": "unavailable source"
+  }
+}

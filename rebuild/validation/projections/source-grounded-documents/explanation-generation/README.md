@@ -986,3 +986,65 @@ fields and recommendation-as-user-rationale remain rejected. Original coordinate
 and prose remain unchanged in HTML and response downloads. This is a consumer
 correction; frozen instructions, schema, condition, attempts and first responses
 remain immutable. Ambiguous secondary references still invalidate the reading.
+
+### Evidence selections and uncertain observations
+
+The existing experimental contract is retained: every `selections` entry is an
+evidence-bearing reference, including an unbound secondary selection. A single
+invalid secondary reference prevents a whole `valid_binding` reading. Claim or
+primary-site omission does not exempt a selection from scope, state, chronology,
+retrieval, exact range and hash checks. Matching bytes do not establish an
+observation time. Uncertain historical observations belong in existing `gaps`
+with their input identities; the full frozen inventory and append-only retrieval
+ledger preserve their audit context independently of citation selection. No
+non-evidentiary citation type or Product authority is introduced.
+
+The retained Work-directed Click response demonstrates a generator contract
+violation rather than a missing uncertainty representation. Attempt SHA-256
+`2f56afc681451392a66e2669a8aacc811420a16fa0db0f4c85b929fe1d453c55`,
+input `946977bacc2029f597a1e095f57cf060771718bf8763821d1ccc8541badb1f33`,
+and original response
+`3a7f86d34812eb34e1d06c75d7a28bb2dc972d19c4443ee1b58a41b6f866bd8c`
+are independently pinned by the optional offline control. Of 84 selections,
+indices 51–62 (`input-000129` through `input-000140`) are canonical rows with
+explicitly ambiguous chronology, absent from all 23 claim bindings and seven
+primary sites. They remain invalid under the frozen selection validator and the
+current consumer. The original model process exited 0; the original invocation
+remains `invalid_response` with no retained final-response identity.
+
+The frozen reader additionally rejected the table-qualified action field, with
+`wrong canonical authority field` in its original grounding receipt. The already
+maintained coordinate correction above does not repair that invocation or the
+twelve uncertain references. Current verification reports `invalid`, displays
+the unchanged prose and all original selections with exact rejection reasons,
+withholds their verified source bytes/locators, and retains usable independently
+valid source selections. Diagnostic selection disclosures are inspectable;
+they are not verified code anchors. Whole-reading, original process/invocation,
+semantic correctness, human comprehension and Product availability stay separate.
+
+`selection_reading_self_test.py` is registered by the existing
+`*reading_self_test.py` discovery pattern. Its independent CC0 fixtures in
+`selection-fixtures/` cover valid claim/primary/secondary and canonical authority,
+mixed secondary validity, gaps-only uncertainty with retained retrieval/inventory,
+foreign Project/Work, post-cutoff and forged timing, stale revision, unavailable
+bodies, unknown identity, wrong state/hash, malformed UTF-8 ranges and missing
+retrieval. Successful and unsuccessful original outputs pass through actual HTML
+and feedback identity consumers. Existing Work-reader controls continue to cover
+the full-row/latest-Checkpoint and authority-kind contracts.
+
+The optional retained control hashes all pre-existing attempt, source, instruction,
+review and feedback files in its retained roots before and after offline validation.
+It runs the exact frozen validator, independently checks returned source bytes,
+selected coverage and chronology, then uses the current renderer and feedback
+consumer in a disposable destination. It never invokes a model, rewrites the
+response, guesses row timing or changes a historical review. Run it explicitly:
+
+```sh
+rebuild/scripts/validate focused evidentiary-reading-selections -- \
+  env EXPLANATION_ACTUAL_UNCERTAIN_ATTEMPT=rebuild/.local/explanation-generation/work-directed-b27e1316/measured-2/attempt.json \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/selection_reading_self_test.py -v
+```
+
+Without that private artifact the retained control is skipped with an explicit
+reason; authored controls still run. These are local structural and presentation
+regressions, not semantic approval, human comprehension or gate/V11 qualification.
