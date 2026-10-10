@@ -586,6 +586,22 @@ are neither generation input nor the correctness oracle. This presentation chang
 is experimental support, not evidence of a Product Viewer regression or human
 comprehension qualification.
 
+The renderer's optional real-browser regression checks 390/320-pixel layout,
+native keyboard disclosures and exact source-fragment navigation over authored
+fixtures. Its negative control disables ordinary text wrapping and must reproduce
+overflow from a long missing-source path. Run with explicit local browser paths:
+
+```bash
+rebuild/scripts/validate focused explanation-render-browser -- \
+  env EXPLANATION_CHROMIUM=/absolute/chrome EXPLANATION_PLAYWRIGHT=/absolute/playwright-core \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/render_self_test.py -v
+```
+
+Without both paths, only this browser test is explicitly skipped. A successful
+browser check establishes layout/navigation behavior, not human comprehension,
+screen-reader usability or Korean font availability. Existing presentations remain
+immutable; a corrected layout creates a new presentation identity.
+
 `render_comparison.py --attempt /absolute/attempt.json ... --output UNIQUE_DIRECTORY`
 creates one self-contained escaped HTML presentation, a separate approach mapping
 and integrity sidecar. Sample order is shuffled. All approaches use the same card

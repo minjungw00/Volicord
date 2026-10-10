@@ -152,7 +152,7 @@ def document(cards):
     return ('<!doctype html><html lang="en"><meta charset="utf-8">'
                 '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
                 '<title>Explanation comparison</title><style>'
-                'body{font:16px system-ui;margin:2rem;max-width:1100px}article{border:1px solid #999;padding:1.5rem;margin:1rem 0}'
+                'body{font:16px system-ui;margin:2rem;max-width:1100px;overflow-wrap:anywhere}article{border:1px solid #999;padding:1.5rem;margin:1rem 0}'
                 'pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:#f3f3f3}.prose{font:inherit;white-space:pre-wrap}'
                 'details{margin:.8rem 0}summary{cursor:pointer}a{overflow-wrap:anywhere}:target{outline:2px solid #467}'
                 '.citation span{display:none}.citation:after{content:attr(data-location)}'

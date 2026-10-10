@@ -2,7 +2,9 @@
 import copy
 from html.parser import HTMLParser
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -37,6 +39,24 @@ class Texts(HTMLParser):
 
 
 class RenderTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('EXPLANATION_CHROMIUM') and os.environ.get('EXPLANATION_PLAYWRIGHT'),
+                         'real renderer browser requires explicit Chromium and Playwright paths')
+    def test_real_browser_narrow_source_navigation_and_overflow_negative_control(self):
+        self.response['gaps'] = ['Unavailable source: ' + 'repository/component/' * 12 + 'missing.py']
+        self.response_path.write_bytes(i.encoded(self.response))
+        self.record['original_outputs'] = [i.binding(self.response_path)]
+        self.attempt.write_bytes(i.encoded(self.record))
+        display = render([self.attempt], self.root / 'browser-display')
+        result = subprocess.run(['node', str(Path(__file__).with_name('render_browser_self_test.cjs')),
+                                 str(display), os.environ['EXPLANATION_CHROMIUM'],
+                                 os.environ['EXPLANATION_PLAYWRIGHT']], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        observed = json.loads(result.stdout)
+        self.assertEqual([row['width'] for row in observed['layouts']], [390, 320])
+        self.assertTrue(all(row['normal_no_overflow'] and row['unwrapped_control_overflows']
+                            and row['keyboard_source_visible'] and row['disclosure_opened']
+                            for row in observed['layouts']))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
