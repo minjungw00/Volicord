@@ -20,6 +20,16 @@ def escaped(value):
     return html.escape(str(value), quote=True)
 
 
+def public_receipt(value):
+    """Retain byte identities without disclosing private filesystem bindings."""
+    if isinstance(value, dict):
+        return {key: public_receipt(item) for key, item in value.items()
+                if not (key == 'path' and {'bytes', 'sha256'} <= value.keys())}
+    if isinstance(value, list):
+        return [public_receipt(item) for item in value]
+    return value
+
+
 def preview(text):
     data = text.encode('utf-8', errors='backslashreplace')
     text = data.decode('utf-8')

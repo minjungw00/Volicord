@@ -193,7 +193,7 @@ class RenderTests(unittest.TestCase):
         output = render([self.attempt], self.root / 'presentation')
         body = output.read_text()
         self.assertNotIn(str(self.root), body)
-        self.assertNotIn('direct', body)
+        self.assertNotIn('Approach: direct', body)
         mapping = json.loads((output.parent / 'approach-mapping.json').read_bytes())
         self.assertEqual(mapping['mapping'][0]['approach'], 'direct')
         integrity = json.loads((output.parent / 'integrity.json').read_bytes())
@@ -283,7 +283,7 @@ class RenderTests(unittest.TestCase):
     def test_missing_final_remains_explicit_with_captured_note(self):
         self.record.update(status='safety_aborted', generation_output=None)
         body, _, parser = self.present()
-        self.assertIn('No verified final explanation', body)
+        self.assertIn('No final response identity was retained by the original invocation', body)
         self.assertIn('stage completion unverified', body)
         self.assertEqual(parser.values['prose'], [self.response['prose']])
 

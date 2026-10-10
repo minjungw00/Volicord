@@ -9,7 +9,22 @@ import secrets
 
 from approaches import retrieval_audit
 from grounding import validate_output
-from inputs import append_index, binding, check_binding, encoded, require, verify
+from inputs import append_index, binding, check_binding, digest, encoded, require, verify
+
+
+def reading_receipt(record, attempt, output, *, status, issues=(), validation=None):
+    """Deterministic current read receipt, separate from the historical execution."""
+    here = Path(__file__).parent
+    return {'authority': 'current local structural reading validation; not Product completion',
+            'status': status, 'issues': list(issues), 'attempt': attempt, 'input': record['input'],
+            'output': output, 'contract': record.get('output_contract'),
+            'verifier': [binding(here / name) for name in ('render_comparison.py', 'grounding.py',
+                         'reader_contract.py', 'source_reading.py', 'inputs.py', 'approaches.py', 'recorded_work.py')],
+            'retrievals': record.get('retrievals'),
+            'host_observations': [call['process']['stdout'] for call in record.get('calls', [])
+                                  if call['kind'] == 'model_call'],
+            'selection_count': len(validation['selections']) if validation else None,
+            'reading': validation.get('reading') if validation else None}
 
 
 def escaped(value):
@@ -18,7 +33,8 @@ def escaped(value):
 
 def card(attempt_path, label):
     from source_reading import (TRANSPORT_BYTES, comparison_html, download, output_anchor, preview,
-                                prose_html, selections_html)
+                                prose_html, public_receipt, selections_html)
+    from recorded_work import direction_html, recorded_work
     attempt_path = Path(attempt_path)
     record = json.loads(attempt_path.read_bytes())
     check_binding(record['input'])
@@ -61,9 +77,13 @@ def card(attempt_path, label):
                           if row['outcome'] == 'source_read_verified'}
     verified_trace = [row for row in trace if row['sequence'] in verified_sequences]
     model_calls = [call for call in record.get('calls', []) if call['kind'] == 'model_call']
-    parts = ['<article><h2>' + escaped(label) + '</h2>',
-             '<p class="outcome">Outcome: ' + escaped(record['status']) + '</p>',
-             '<p>Semantic quality and inference support: not assessed. Reference checks certify byte identity only.</p>']
+    problem, work_facts = recorded_work(spec, record['lane'], input_gap)
+    parts = ['<article><h2>' + escaped(label) + '</h2>', problem]
+    invocation_notice = ''
+    if record['status'] != 'captured':
+        invocation_notice = ('<p class="gap">The original invocation did not complete successfully. '
+                             'Any currently valid reading below is a diagnostic preview only; '
+                             'the historical execution receipt is unchanged.</p>')
     if record.get('blockers'):
         parts.append('<p>Gaps: ' + escaped('; '.join(record['blockers'])) + '</p>')
     if input_gap is not None:
@@ -73,13 +93,29 @@ def card(attempt_path, label):
     if final:
         require(final in record['original_outputs'], 'final output absent from original outputs')
     else:
-        parts.append('<p>No verified final explanation. Captured intermediate or incomplete responses remain below.</p>')
+        invocation_notice += ('<p>No final response identity was retained by the original invocation. '
+                              'Current reading validation is reported separately for each captured response.</p>')
     if not record['original_outputs']:
         parts.append('<p>No generated output. No code selected. Before/after comparison unavailable.</p>')
-    witnesses = {'label': label, 'attempt': binding(attempt_path), 'outputs': [], 'semantic_quality': 'not_assessed'}
+    witnesses = {'label': label, 'attempt': binding(attempt_path), 'outputs': [], 'semantic_quality': 'not_assessed',
+                 'recorded_work': work_facts,
+                 'original_invocation': {'authority': 'immutable original attempt receipt',
+                    'attempt': binding(attempt_path),
+                    'status': record['status'], 'input': record['input'], 'generation_output': final,
+                    'original_outputs': record['original_outputs'], 'verifier': record.get('support', []),
+                    'frozen_verifier': record.get('frozen_support', []),
+                    'instructions': record.get('instructions'), 'conditions': record.get('conditions')}}
     views = []
     for number, output in enumerate(record['original_outputs'], 1):
-        check_binding(output)
+        try:
+            check_binding(output)
+        except FileNotFoundError:
+            receipt = reading_receipt(record, witnesses['attempt'], output, status='unavailable_response',
+                                      issues=['Captured response file missing; no substitute response'])
+            witnesses['outputs'].append({'original': output, 'prose_sha256': None, 'selections': [],
+                                        'derived_reading': receipt})
+            parts.append('<p class="gap">Response availability: missing. Derived reading unavailable_response; no substitute prose or code.</p>')
+            continue
         require(output['bytes'] <= TRANSPORT_BYTES, 'response exceeds local presentation bound')
         raw = Path(output['path']).read_bytes()
         display_original = dict(output, attempt_sha256=witnesses['attempt']['sha256'], output_sequence=number)
@@ -93,15 +129,35 @@ def card(attempt_path, label):
             response = json.loads(raw)
             if isinstance(response, dict) and isinstance(response.get('prose'), str):
                 response['prose'].encode('utf-8')
+            require(input_gap is None, 'frozen input unavailable: ' + str(input_gap))
             validation = validate_output(response, spec, record['lane'], verified_trace,
                                          contract=record.get('output_contract'))
         except (ValueError, KeyError, TypeError, OSError) as error:
-            view.append('<p>Response/grounding unavailable: ' + escaped(error) + '</p>')
+            status = 'unavailable_input' if input_gap else 'invalid_response'
+            witness['derived_reading'] = reading_receipt(record, witnesses['attempt'], output,
+                                                        status=status, issues=[str(error)])
+            view.append('<p class="gap">Response availability: retained. Current derived reading: '
+                        + status + '. Response/grounding unavailable: ' + escaped(error) + '</p>')
+            view.append('<p>Unverified captured prose · diagnostic only.</p>')
             if isinstance(response, dict) and isinstance(response.get('prose'), str):
                 view.append('<pre class="prose">' + preview(response['prose']) + '</pre>')
+            view.append(invocation_notice)
         else:
-            from inputs import digest
             witness['prose_sha256'] = digest(response['prose'].encode())
+            valid = (all(s['reference_status'] == 'valid_reference' for s in validation['selections'])
+                     and validation.get('reading', {}).get('status', 'valid_binding') == 'valid_binding')
+            status = 'valid_binding' if valid else 'invalid'
+            issues = [issue for s in validation['selections'] for issue in s['issues']]
+            issues += validation.get('reading', {}).get('issues', [])
+            receipt = reading_receipt(record, witnesses['attempt'], output, status=status,
+                                      issues=issues, validation=validation)
+            # Exact Source dependencies are independent of original run success.
+            used = dict.fromkeys(s['selection']['id'] for s in validation['selections']
+                                 if isinstance(s['selection'], dict) and isinstance(s['selection'].get('id'), str)
+                                 and s['selection']['id'] in entries)
+            receipt['source_dependencies'] = [{key: entries[identity][key]
+                for key in ('id', 'asset', 'locator', 'chronology')} for identity in used]
+            witness['derived_reading'] = receipt
             primary_indices = {n for site in response.get('primary_sites', []) for n in site['selections']}
             source, diagnostic, rows, selections = selections_html(spec, entries, validation, display_original,
                                                                    primary_indices=primary_indices)
@@ -111,19 +167,35 @@ def card(attempt_path, label):
                 if not run_verified:
                     selection['reference_status'] += '; run not verified'
             view.append(prose_html(response['prose'], rows))
+            view.append(invocation_notice)
+            view.append('<p class="derived-reading">Response availability: retained. Current derived reading: '
+                        + status + ' · ' + ('diagnostic preview' if valid else 'unverified captured prose')
+                        + '. Current local verifier checks exact response/Source bindings; '
+                        'semantic quality and inference support are not assessed. '
+                        'Reference checks certify byte identity only.</p>')
+            if issues:
+                view.append('<p class="gap">Current validation gaps: ' + escaped('; '.join(issues)) + '</p>')
             if record.get('output_contract'):
                 from reader_contract import primary_html
                 witness['reading'] = validation['reading']
                 view.append(primary_html(response, validation, rows))
             view.append('<p>Declared gaps: ' + preview('; '.join(response['gaps']) if response['gaps'] else 'none declared; not independently checked') + '</p>')
-            view.append('<p>Run verification: ' + ('verified' if run_verified else 'not verified') +
-                        '. Valid source bytes remain distinct from whole-run and semantic validity.</p>')
+            view.append('<details><summary>Original run verification</summary><p>Run verification: '
+                        + ('verified' if run_verified else 'not verified') +
+                        '. Valid source bytes remain distinct from whole-run and semantic validity.</p></details>')
             if record.get('output_contract'):
                 source = '<details class="secondary"><summary>Complete secondary source selections</summary>' + source + '</details>'
             view.append(source)
             comparison, witness['comparisons'] = comparison_html(spec, rows)
             view.append(comparison)
             view.append(diagnostic)
+        data = json.dumps(public_receipt(witness['derived_reading']), ensure_ascii=False,
+                          sort_keys=True, separators=(',', ':')).encode()
+        summary = {key: value for key, value in public_receipt(witness['derived_reading']).items()
+                   if key not in {'verifier', 'host_observations'}}
+        view.append('<details class="reading-receipt"><summary>Current derived validation authority and exact identities</summary><pre>'
+                    + preview(json.dumps(summary, ensure_ascii=False)) + '</pre>'
+                    + download(data, 'derived-reading.json', 'Complete current reading receipt') + '</details>')
         view.append('<details><summary>Original response transport · lossless diagnostic download</summary><pre class="original">'
                     + preview(raw.decode('utf-8', errors='backslashreplace')) + '</pre>'
                     + download(raw, 'original-response-' + str(number) + '.bin', 'Complete original response bytes') + '</details></section>')
@@ -132,6 +204,14 @@ def card(attempt_path, label):
             body = '<details class="intermediate"><summary>' + stage + ' ' + str(number) + '</summary>' + body + '</details>'
         views.append((output == final, body))
     parts.extend(body for _, body in sorted(views, key=lambda item: not item[0]))
+    if not views:
+        parts.append(invocation_notice)
+    parts.append(direction_html(work_facts))
+    original = encoded(public_receipt(witnesses['original_invocation']))
+    parts.append('<details class="invocation"><summary>Original invocation outcome and retained response identities</summary>'
+                 + '<p>Original invocation outcome: ' + escaped(record['status']) + '</p><pre>'
+                 + preview(original.decode()) + '</pre>'
+                 + download(original, 'original-invocation.json', 'Complete original invocation identities') + '</details>')
     run_audit = {'lane': record['lane'], 'isolation': record.get('isolation', 'unknown'),
                  'clean_comparison': record.get('clean_comparison', False),
                  'exposure_issues': record.get('exposure_issues', []), 'retrieval_audit': audit,
@@ -157,7 +237,8 @@ def document(cards):
                 'details{margin:.8rem 0}summary{cursor:pointer}a{overflow-wrap:anywhere}:target{outline:2px solid #467}'
                 '.citation span{display:none}.citation:after{content:attr(data-location)}'
                 '.selection{border-left:3px solid #aaa;padding-left:1rem}pre.code,pre.diff{max-height:32rem;overflow:auto}</style><h1>Explanation comparison</h1>'
-                '<p>Approach labels are withheld. Final prose precedes closed evidence and audit disclosures. Original bytes remain in diagnostic downloads. '
+                '<p>Approach labels are withheld. Recorded Work problem and generated prose precede evidence and audit disclosures. '
+                'Current readings are diagnostic previews, not Product completion. Original bytes remain in diagnostic downloads. '
                 'Self-identifying wording and stage counts may reveal an approach. No ranking or semantic verdict is provided.</p>'
                 + ''.join(cards) + '</html>')
 

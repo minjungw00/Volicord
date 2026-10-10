@@ -804,3 +804,52 @@ primitive corrects future process observations without rewriting historical byte
 All defect reproductions and corrected positive/negative subprocess receipts are
 retained privately. This is a transport correction, not a new handoff mechanism
 or proof of natural-language generation.
+
+### Original execution and current derived reading
+
+The experimental reader keeps three separate facts: the immutable original
+invocation outcome (including its final-output pointer and producing verifier
+identities), captured response availability, and current local reading validation.
+Each output's lightweight `derived_reading` receipt binds the unchanged response,
+frozen input, current verifier bytes, exact selected Source dependencies and
+host/ledger observations. The presentation/integrity files bind the displayed
+bytes. These are disposable read artifacts, not a persistent reading schema or
+repaired execution receipt. `valid_binding` certifies structural bindings only;
+all readings remain diagnostic previews, never fresh Product completion, semantic
+correctness, review or acceptance. Historical `invalid_response` stays unchanged.
+
+The ordinary page starts with the recorded Work problem and original generated
+prose. Material invocation failures and current validation gaps stay visible;
+raw statuses, transport and exact identities have named native disclosures.
+Missing output, malformed output, invalid current references and unavailable
+frozen dependencies are distinct states. Altered bound response/input receipts
+still reject rendering and feedback. Source dependencies are not silently replaced.
+
+`recorded_work.py` reads only permitted frozen canonical row evidence. It selects
+a uniquely ordered latest Checkpoint by exact Project/Work, displays its literal
+next step separately from generated prose, and preserves completion, command
+outcomes, verification scope, review and acceptance as independent observations.
+Blank latest direction does not inherit an older action. Unknown ordering and
+missing Checkpoints remain unavailable. Untimestamped verification/relation rows
+can be used only as exact members of that same cutoff-bound bundle and parent;
+they provide no independent execution chronology. Source availability gaps and
+recorded failures remain visible, and complete row/basis diagnostics remain
+available. No Product decoder, canonical mutation or new source authority is added.
+
+New feedback is checked against a fresh reconstruction of the exact display,
+including current reading receipts. Previously retained feedback stays attached
+to its original displayed bytes and cannot be transferred to a changed page.
+The independently authored controls also exercise the real historical
+original-invalid/current-valid Work B attempt when supplied explicitly:
+
+```bash
+rebuild/scripts/validate focused explanation-derived-reading -- \
+  env EXPLANATION_ACTUAL_ATTEMPT=/verified/path/to/original/attempt.json \
+  python3 -B -m unittest discover \
+  -s rebuild/validation/projections/source-grounded-documents/explanation-generation \
+  -p '*reading_self_test.py' -v
+```
+
+Without that path only the real-private-input test is skipped; authored state,
+negative provenance, original byte preservation and feedback controls still run.
+No model generation, aggregate, gate or official V11 is part of this check.
