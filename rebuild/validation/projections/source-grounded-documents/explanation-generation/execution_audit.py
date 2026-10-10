@@ -153,7 +153,8 @@ def audit_cohort(root, repository):
                     and not set(sessions) & set(record['generator_sessions'])
                     and not any(r.get('type') == 'compacted' for r in context),
                     'review session separation unverified')
-            require(record['review_input'] == process['stdin'], 'review input/process binding changed')
+            require(all(record['review_input'][k] == process['stdin'][k] for k in ('sha256', 'bytes')),
+                    'review input/process binding changed')
             integrity = json.loads(Path(record['integrity']['path']).read_bytes())
             require(integrity['presentation'] == record['presentation'], 'review display identity changed')
             displayed = {s['label']: s for s in integrity['samples']}

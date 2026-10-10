@@ -51,6 +51,7 @@ class ReviewAuditTests(unittest.TestCase):
         (process_root / 'result.json').write_bytes(i.encoded(self.process))
         self.context = stage / 'observed-context.json'
         self.context.write_bytes(i.encoded([{'type': 'session_meta', 'payload': {'id': 'authored-review-session'}}]))
+        review_input = self.root / 'review-input.txt'; review_input.write_text('authored reviewer input')
         generated = self.root / 'generated.json'; generated.write_bytes(i.encoded({'prose': 'Authored explanation'}))
         attempt_path = self.root / 'work-b-direct/attempt.json'
         attempt = json.loads(attempt_path.read_bytes())
@@ -65,7 +66,7 @@ class ReviewAuditTests(unittest.TestCase):
                        'presentation': i.binding(presentation), 'integrity': i.binding(integrity),
                        'displayed_outputs': [{'label': 'Sample 01', 'outputs': [i.binding(generated)]}],
                        'retrievals': i.binding(surface.trace), 'observed_context': i.binding(self.context),
-                       'review_input': self.process['stdin'], 'original_review': i.binding(self.original),
+                       'review_input': i.binding(review_input), 'original_review': i.binding(self.original),
                        'context_probe': self.process, 'process': self.process,
                        'evidence_reads': a.retrieval_audit(surface.spec, 'archive_diagnostic', [self.host], [row]),
                        'status': 'review_captured', 'exposure_issues': [], 'distinct_generation_session': True,
@@ -89,7 +90,7 @@ class ReviewAuditTests(unittest.TestCase):
 
     def test_incomplete_review_cannot_claim_completion(self):
         for mutation in ('absent', 'foreign_work', 'exposure', 'same_session', 'invalid_selection', 'unjoined_final',
-                         'wrong_target', 'target_missing'):
+                         'wrong_target', 'target_missing', 'changed_input'):
             with self.subTest(mutation=mutation):
                 record = copy.deepcopy(self.record)
                 if mutation == 'absent': record['original_review'] = None
@@ -98,6 +99,9 @@ class ReviewAuditTests(unittest.TestCase):
                 if mutation == 'same_session': record['generator_sessions'] = record['review_sessions']
                 if mutation == 'wrong_target': record['displayed_outputs'][0]['outputs'][0]['bytes'] += 1
                 if mutation == 'target_missing': record['displayed_outputs'] = []
+                if mutation == 'changed_input':
+                    path = self.root / 'changed-input.txt'; path.write_text('different reviewer input')
+                    record['review_input'] = i.binding(path)
                 if mutation in {'invalid_selection', 'unjoined_final'}:
                     response = copy.deepcopy(self.response)
                     if mutation == 'invalid_selection': response['selections'][0]['sha256'] = '0' * 64
