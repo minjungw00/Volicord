@@ -52,6 +52,13 @@ class ReviewAuditTests(unittest.TestCase):
         self.context = stage / 'observed-context.json'
         self.context.write_bytes(i.encoded([{'type': 'session_meta', 'payload': {'id': 'authored-review-session'}}]))
         review_input = self.root / 'review-input.txt'; review_input.write_text('authored reviewer input')
+        probe_root = self.root / 'probe'; probe_root.mkdir()
+        self.probe = copy.deepcopy(self.process)
+        for name, data in [('stdout', i.encoded([{'content': [{'text': review_input.read_text()}]}])),
+                           ('stderr', b''), ('stdin', b'')]:
+            path = probe_root / (name + '.bin'); path.write_bytes(data)
+            self.probe[name] = i.binding(path)
+        (probe_root / 'result.json').write_bytes(i.encoded(self.probe))
         generated = self.root / 'generated.json'; generated.write_bytes(i.encoded({'prose': 'Authored explanation'}))
         attempt_path = self.root / 'work-b-direct/attempt.json'
         attempt = json.loads(attempt_path.read_bytes())
@@ -67,7 +74,7 @@ class ReviewAuditTests(unittest.TestCase):
                        'displayed_outputs': [{'label': 'Sample 01', 'outputs': [i.binding(generated)]}],
                        'retrievals': i.binding(surface.trace), 'observed_context': i.binding(self.context),
                        'review_input': i.binding(review_input), 'original_review': i.binding(self.original),
-                       'context_probe': self.process, 'process': self.process,
+                       'context_probe': self.probe, 'process': self.process,
                        'evidence_reads': a.retrieval_audit(surface.spec, 'archive_diagnostic', [self.host], [row]),
                        'status': 'review_captured', 'exposure_issues': [], 'distinct_generation_session': True,
                        'generator_sessions': ['authored-generation-session'], 'review_sessions': ['authored-review-session'],
@@ -117,6 +124,77 @@ class ReviewAuditTests(unittest.TestCase):
                       exposure_issues=['observed_events_incomplete'])
         reports = self.run_audit(record)['attempts']
         self.assertEqual(reports[-1]['status'], 'review_incomplete_or_unverified')
+
+    def test_non_scoped_host_observation_cannot_keep_completed_identity(self):
+        # Refresh the exact stream/result hashes: identity alone cannot attest scope.
+        stream = Path(self.process['stdout']['path'])
+        event = {'type': 'item.completed', 'item': {'type': 'command_execution',
+                 'command': 'read outside the permitted evidence surface', 'exit_code': 0}}
+        stream.write_bytes(stream.read_bytes() + (json.dumps(event) + '\n').encode())
+        self.process['stdout'] = i.binding(stream)
+        (stream.parent / 'result.json').write_bytes(i.encoded(self.process))
+        with self.assertRaisesRegex(ValueError, 'review context/scope unverified'):
+            self.run_audit()
+
+    def test_unfinished_tool_observation_cannot_keep_completed_identity(self):
+        stream = Path(self.process['stdout']['path'])
+        event = {'type': 'item.started', 'item': {'id': 'unfinished', 'type': 'mcp_tool_call',
+                 'server': 'evidence', 'tool': 'read', 'status': 'in_progress'}}
+        stream.write_bytes(stream.read_bytes() + (json.dumps(event) + '\n').encode())
+        self.process['stdout'] = i.binding(stream)
+        (stream.parent / 'result.json').write_bytes(i.encoded(self.process))
+        with self.assertRaisesRegex(ValueError, 'review context/scope unverified'):
+            self.run_audit()
+
+    def test_failed_partial_or_foreign_probe_cannot_keep_completed_identity(self):
+        for mutation in ('failed', 'incomplete_streams', 'incomplete_cleanup', 'foreign_prompt', 'prohibited_context'):
+            with self.subTest(mutation=mutation):
+                record = copy.deepcopy(self.record)
+                probe = record['context_probe']
+                if mutation == 'failed': probe.update(outcome='failed', returncode=1)
+                if mutation == 'incomplete_streams': probe['streams_complete'] = False
+                if mutation == 'incomplete_cleanup': probe['cleanup']['complete'] = False
+                if mutation in {'foreign_prompt', 'prohibited_context'}:
+                    content = [{'text': 'another prompt'}] if mutation == 'foreign_prompt' else [
+                        {'text': 'authored reviewer input'}, {'text': 'prototype-data'}]
+                    path = self.root / (mutation + '.json')
+                    path.write_bytes(i.encoded([{'content': content}]))
+                    probe['stdout'] = i.binding(path)
+                    # Each process keeps its own matching result receipt.
+                    for key in ('stdin', 'stderr'):
+                        target = self.root / (mutation + '-' + key)
+                        target.write_bytes(Path(probe[key]['path']).read_bytes())
+                        probe[key] = i.binding(target)
+                    probe_root = self.root / mutation; probe_root.mkdir()
+                    destination = probe_root / 'stdout.bin'; destination.write_bytes(path.read_bytes())
+                    probe['stdout'] = i.binding(destination)
+                    (probe_root / 'result.json').write_bytes(i.encoded(probe))
+                else:
+                    (Path(probe['stdout']['path']).parent / 'result.json').write_bytes(i.encoded(probe))
+                with self.assertRaises(ValueError): self.run_audit(record)
+        (Path(self.probe['stdout']['path']).parent / 'result.json').write_bytes(i.encoded(self.probe))
+        self.assertTrue(self.run_audit()['attempts'][-1]['review_completion_verified'])
+
+    def test_incomplete_host_process_cannot_keep_completed_identity(self):
+        for mutation in ('failed', 'nonzero', 'incomplete_streams', 'incomplete_cleanup'):
+            with self.subTest(mutation=mutation):
+                record = copy.deepcopy(self.record)
+                process = record['process']
+                if mutation == 'failed': process['outcome'] = 'failed'
+                if mutation == 'nonzero': process['returncode'] = 1
+                if mutation == 'incomplete_streams': process['streams_complete'] = False
+                if mutation == 'incomplete_cleanup': process['cleanup']['complete'] = False
+                receipt = Path(process['stdout']['path']).parent / 'result.json'
+                receipt.write_bytes(i.encoded(process))
+                with self.assertRaisesRegex(ValueError, 'incomplete review claimed completion'):
+                    self.run_audit(record)
+        receipt.write_bytes(i.encoded(self.process))
+        self.assertTrue(self.run_audit()['attempts'][-1]['review_completion_verified'])
+
+    def test_missing_review_receipt_never_returns_completed_assessment(self):
+        self.run_audit()
+        (self.root / 'click-independent-review/review-receipt.json').unlink()
+        with self.assertRaises(FileNotFoundError): audit.audit_cohort(self.root, self.root)
 
 
 if __name__ == '__main__':

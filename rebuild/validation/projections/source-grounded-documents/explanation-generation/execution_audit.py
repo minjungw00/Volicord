@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from approaches import events, retrieval_audit
+from approaches import context_audit, events, retrieval_audit
 from grounding import validate_output
 from inputs import binding, check_binding, digest, encoded, require, verify
 
@@ -115,7 +115,7 @@ def audit_cohort(root, repository):
                      {'stage': 'review', 'kind': 'model_call', 'process': record['process']}]
         else:
             calls = record['calls']
-        stages, host_calls = [], []
+        stages, host_calls, scope_calls, pending_tools = [], [], [], set()
         for call in calls:
             process = call['process']
             for key in ('stdout', 'stderr', 'stdin'):
@@ -132,6 +132,17 @@ def audit_cohort(root, repository):
                 require(not invalid, 'malformed historical host events')
                 host_calls.extend(e['item'] for e in public if e.get('type') == 'item.completed'
                                   and e.get('item', {}).get('type') == 'mcp_tool_call')
+                scope_calls.extend(e['item'] for e in public if e.get('type') == 'item.completed'
+                                   and e.get('item', {}).get('type', '').endswith(
+                                       ('tool_call', 'command_execution')))
+                for event in public:
+                    item = event.get('item', {})
+                    if item.get('type', '').endswith(('tool_call', 'command_execution')):
+                        identity = (call['stage'], item.get('id'))
+                        if event.get('type') == 'item.started':
+                            pending_tools.add(identity)
+                        elif event.get('type') == 'item.completed':
+                            pending_tools.discard(identity)
                 stages.append({'stage': call['stage'], **stage_timeline(
                     process, process_root.parent / 'observed-context.json', ledger)})
         spec = verify(record['input']['path'])
@@ -144,8 +155,16 @@ def audit_cohort(root, repository):
                     and process['outcome'] == 'succeeded' and process['returncode'] == 0
                     and process['streams_complete'] and process['cleanup']['complete']
                     and record['context_probe']['streams_complete'] and not record.get('exposure_issues')
+                    and record['context_probe']['outcome'] == 'succeeded'
+                    and record['context_probe']['returncode'] == 0
+                    and record['context_probe']['cleanup']['complete']
                     and observed_audit['verified_source_reads'] > 0 and not observed_audit['issues']
                     and record['workspace_cleanup'] == 'complete', 'incomplete review claimed completion')
+            # Recompute observed scope; a stored empty issue list is not proof.
+            require(not pending_tools and not context_audit(record['context_probe'],
+                    Path(record['context_probe']['stdout']['path']).read_bytes(),
+                    Path(record['review_input']['path']).read_text(), scope_calls),
+                    'review context/scope unverified')
             check_binding(record['observed_context'])
             context = json.loads(Path(record['observed_context']['path']).read_bytes())
             sessions = [r['payload']['id'] for r in context if r.get('type') == 'session_meta']

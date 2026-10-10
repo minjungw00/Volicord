@@ -658,6 +658,16 @@ remain partial. `review_completion_verified` describes this structural binding,
 never the truth of the reviewer's judgment. Authored positive and tampered controls
 run through `execution_audit_self_test.py`; they invoke no model or aggregate gate.
 
+The audit recomputes configured-context and observed-tool scope from retained
+probe/host streams rather than trusting a receipt's empty `exposure_issues` list.
+A reproduced control inserted an out-of-scope shell completion while refreshing
+stream/result identities; the earlier consumer still certified completion.
+Current controls reject that case, unsuccessful or incompletely cleaned-up
+context probes, foreign/prohibited prompt context, incomplete host processes,
+unfinished host tool observations, tampered output and absent review receipts. Genuine complete reviews still pass,
+and retained partial reviews remain partial. These controls certify review
+binding, not semantic judgment, personal observation or generation-method ranking.
+
 Each displayed original selection has a Work/output-scoped internal anchor for its
 exact request and code, including invalid requests with withheld code. Intermediate and
 final responses are labeled from the retained final-output identity; a missing
