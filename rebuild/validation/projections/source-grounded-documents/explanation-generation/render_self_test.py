@@ -113,7 +113,8 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(parser.values['prose'], [self.response['prose']])
         self.assertEqual(parser.values['code'][0], self.source.read_text())
         self.assertEqual([json.loads(s) for s in parser.values['selection-request']], self.selections)
-        self.assertEqual(parser.anchors[1:], [s['anchor'] for s in integrity['outputs'][0]['selections']])
+        self.assertEqual([a for a in parser.anchors if '-selection-' in a and '-comparison-' not in a],
+                         [s['anchor'] for s in integrity['outputs'][0]['selections']])
         self.assertEqual(self.response_path.read_bytes(), original)
         self.assertIn('not verified', body)
 

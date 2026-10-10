@@ -86,7 +86,7 @@ def validate_reading(response, spec, validation):
             'relevance': 'pending_independent_examination', 'user_comprehension': 'pending'}
 
 
-def primary_html(response, validation, rows):
+def primary_html(response, validation, rows, *, comparisons=()):
     from source_reading import escaped, preview
     reading = validation['reading']
     if reading['status'] != 'valid_binding':
@@ -94,7 +94,7 @@ def primary_html(response, validation, rows):
                 '. Original requests remain in the response download.</p>')
     body = '<nav class="primary-sites" aria-label="Generator ordered primary code sites"><ol>'
     by_index = {row['index']: row for row in rows}
-    for result in reading['sites']:
+    for site_number, result in enumerate(reading['sites']):
         site = result['site']
         selected = [by_index[n] for n in site['selections'] if n in by_index]
         if len(selected) != len(site['selections']) or any(
@@ -104,6 +104,8 @@ def primary_html(response, validation, rows):
         body += '<li>' + ' / '.join('<a href="#' + row['anchor'] + '">' + escaped(row['label']) + '</a>'
                                    for row in selected)
         body += '<p class="primary-reason">' + escaped(site['reason']) + '</p>'
+        if site_number < len(comparisons):
+            body += comparisons[site_number]
         body += '<details><summary>Generator claim bindings; entailment unassessed</summary>'
         for index in site['claims']:
             claim = response['claims'][index]

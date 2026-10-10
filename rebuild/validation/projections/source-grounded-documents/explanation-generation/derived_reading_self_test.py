@@ -179,6 +179,18 @@ class DerivedReadingTests(unittest.TestCase):
         self.assertEqual(len(witness['recorded_work']['verification']), 10)
         self.assertEqual(sum(f['observation']['verification_state'] == 'failed'
                              for f in witness['recorded_work']['verification']), 3)
+        primary = witness['outputs'][0]['primary_comparisons'][0]['comparisons'][0]
+        self.assertEqual((primary['displayed_hunks'], primary['remaining_hunks']), (3, 15))
+        # Independently inspected original source lines: old 1275 is the if;
+        # new 1275-1277 dispatch repository analysis before the previous branch.
+        parser = baseline.Texts(); parser.feed(body)
+        first = parser.values['diff'][0]
+        self.assertIn('@@ -1273,5 +1273,7 @@', first)
+        self.assertIn('-                if [\n', first)
+        self.assertIn('+                if *key == "repository_analysis" {\n', first)
+        self.assertIn('+                    render_analysis_status(field, mode.locale, stdout)?;\n', first)
+        self.assertIn('@@ -1323,2 +1325,14 @@', parser.values['diff'][1])
+        self.assertIn('+fn render_analysis_status(\n', parser.values['diff'][1])
         with tempfile.TemporaryDirectory() as directory:
             display = render([path], Path(directory) / 'display')
             feedback = record_feedback(display, None, Path(directory) / 'feedback.json')
@@ -186,6 +198,25 @@ class DerivedReadingTests(unittest.TestCase):
         self.assertEqual(i.binding(path), original)
         for output in record['original_outputs']:
             i.check_binding(output)
+
+    @unittest.skipUnless(os.environ.get('EXPLANATION_ACTUAL_NO_CHANGE_ATTEMPT'), 'explicit frozen no-change attempt path required')
+    def test_actual_no_change_investigation_preserves_prose_and_sites_without_diff(self):
+        path = Path(os.environ['EXPLANATION_ACTUAL_NO_CHANGE_ATTEMPT'])
+        record = json.loads(path.read_bytes())
+        original = i.binding(path)
+        self.assertEqual(record['original_outputs'][0]['sha256'], '62e756ee205ad37b292f8e3c1fb92ce916b0c0f507849eb43eab629274598eaa')
+        response = json.loads(Path(record['original_outputs'][0]['path']).read_bytes())
+        body, witness = card(path, 'Sample 01')
+        output = witness['outputs'][0]
+        self.assertEqual(output['derived_reading']['status'], 'valid_binding')
+        self.assertEqual(output['comparisons'], [])
+        self.assertTrue(all(s['state'] == 'context' for s in response['selections']))
+        self.assertEqual([s['site'] for s in output['reading']['sites']], response['primary_sites'])
+        parser = baseline.Texts(); parser.feed(body)
+        self.assertEqual(parser.values['prose'], [response['prose']])
+        self.assertNotIn('diff', parser.values)
+        self.assertNotIn('full-diff', parser.values)
+        self.assertEqual(i.binding(path), original)
 
 
 if __name__ == '__main__':

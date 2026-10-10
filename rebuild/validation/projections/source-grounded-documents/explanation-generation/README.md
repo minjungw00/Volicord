@@ -853,3 +853,46 @@ rebuild/scripts/validate focused explanation-derived-reading -- \
 Without that path only the real-private-input test is skipped; authored state,
 negative provenance, original byte preservation and feedback controls still run.
 No model generation, aggregate, gate or official V11 is part of this check.
+
+### Compact verified change navigation
+
+Each generator primary site keeps its original position, selected spans and claim
+bindings. A verified same-Work file pair supplies deterministic source-ordered
+change navigation directly under that site. File grouping and valid secondary
+helpers cannot add primary focus. All-selected-file comparisons stay in a separate
+closed diagnostic disclosure. Context-only sites and no-change investigations
+produce no invented pair or diff.
+
+The local display shows at most three navigation hunks per primary pair. Original
+selected diff hunks with more than twelve changed lines are divided into bounded
+line slices, retaining accurate old/new coordinates and at most two surrounding
+equal lines on either side. These slices are navigation aids, not new semantic
+selections, statements of importance or inferred old/new semantic alignment.
+The original selected-diff-hunk count, total navigation count and exact remainder
+are explicit. Native disclosures expose every remaining slice, the complete
+original selected-range comparison and complete verified whole-file diff,
+including unselected edits under diagnostic authority. Original code selections
+and lossless response/source downloads remain available. Zero-count insertion
+points, CRLF and missing final newlines keep their diff coordinates/bytes.
+
+`comparison_reading_self_test.py` supplies authored expected coordinates, counts,
+complete changed-line coverage, missing-pair controls and an unchanged primary
+operation next to an edited unrelated helper. The real-private-input controls
+independently check Work B's old/new statements and no-change investigation:
+
+```bash
+rebuild/scripts/validate focused explanation-comparison-reading -- \
+  env EXPLANATION_ACTUAL_ATTEMPT=/verified/path/to/work/attempt.json \
+  EXPLANATION_ACTUAL_NO_CHANGE_ATTEMPT=/verified/path/to/investigation/attempt.json \
+  python3 -B -m unittest discover \
+  -s rebuild/validation/projections/source-grounded-documents/explanation-generation \
+  -p '*reading_self_test.py' -v
+```
+
+The offline browser driver additionally checks keyboard hunk links, the hidden
+remainder disclosure and 390/320-pixel geometry on actual generated pages. Its
+separate authored long-path overflow sensitivity control changes only the browser
+DOM after reading checks, never retained HTML. Browser geometry, screen-reader
+usability, Korean font availability and human comprehension are separate claims;
+these machine controls do not attest the latter three. Feedback is exercised
+against the newly rendered pages; older displayed bytes/receipts remain immutable.

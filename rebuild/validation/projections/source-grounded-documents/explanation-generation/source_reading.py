@@ -14,6 +14,8 @@ from inputs import check_binding, digest, encoded, require
 DISPLAY_BYTES = 16384
 DISPLAY_SELECTIONS = 128
 TRANSPORT_BYTES = 2 * 1024 * 1024
+VISIBLE_HUNKS = 3
+HUNK_CHANGED_LINES = 12
 
 
 def escaped(value):
@@ -272,7 +274,59 @@ def intersects(left, right, span):
     return span[0] < left < span[1] if left == right else left < span[1] and span[0] < right
 
 
-def comparison_html(spec, rows):
+def diff_text(path, groups, old_lines, new_lines):
+    def prefixed(prefix, lines):
+        return ''.join(prefix + line + ('' if line.endswith('\n') else '\n\\ No newline at end of file\n')
+                       for line in lines)
+
+    def coordinates(start, end):
+        return str(start + 1 if end > start else start) + ',' + str(end - start)
+
+    text = '--- ' + path + ' (before)\n+++ ' + path + ' (after)\n'
+    for group in groups:
+        i1, j1, i2, j2 = group[0][1], group[0][3], group[-1][2], group[-1][4]
+        text += '@@ -' + coordinates(i1, i2) + ' +' + coordinates(j1, j2) + ' @@\n'
+        for kind, left, right, new_left, new_right in group:
+            if kind == 'equal':
+                text += prefixed(' ', old_lines[left:right])
+            if kind in {'delete', 'replace'}:
+                text += prefixed('-', old_lines[left:right])
+            if kind in {'insert', 'replace'}:
+                text += prefixed('+', new_lines[new_left:new_right])
+    return text
+
+
+def compact_groups(groups):
+    """Bound line navigation, never infer statement importance or alignment."""
+    result = []
+    for group in groups:
+        changed = sum(i2 - i1 + j2 - j1 for kind, i1, i2, j1, j2 in group if kind != 'equal')
+        context = sum(i2 - i1 for kind, i1, i2, _, _ in group if kind == 'equal')
+        if changed <= HUNK_CHANGED_LINES and changed + context <= HUNK_CHANGED_LINES + 4:
+            result.append(group)
+            continue
+        for number, (kind, i1, i2, j1, j2) in enumerate(group):
+            if kind == 'equal':
+                continue
+            left, right = i1, j1
+            while left < i2 or right < j2:
+                old_count = min(HUNK_CHANGED_LINES // 2 if right < j2 else HUNK_CHANGED_LINES, i2 - left)
+                new_count = min(HUNK_CHANGED_LINES - old_count, j2 - right)
+                chunk = [(kind, left, left + old_count, right, right + new_count)]
+                if left == i1 and right == j1 and number and group[number - 1][0] == 'equal':
+                    _, a, b, c, d = group[number - 1]
+                    count = min(2, b - a)
+                    chunk.insert(0, ('equal', b - count, b, d - count, d))
+                left += old_count; right += new_count
+                if left == i2 and right == j2 and number + 1 < len(group) and group[number + 1][0] == 'equal':
+                    _, a, b, c, d = group[number + 1]
+                    count = min(2, b - a)
+                    chunk.append(('equal', a, a + count, c, c + count))
+                result.append(chunk)
+    return result
+
+
+def comparison_html(spec, rows, *, compact=True, namespace='selected'):
     """Compare classified whole-file states; selected excerpts supply focus only."""
     paths, views, witnesses = {}, [], []
     for row in rows:
@@ -283,7 +337,9 @@ def comparison_html(spec, rows):
         return ('<p>No verified Work change selected. Context and no-change investigation conclusions '
                 'remain in the original prose; no diff is inferred.</p>'), witnesses
     for path, selected in paths.items():
-        view = '<details class="comparison"><summary>Source before/after: ' + escaped(path) + '</summary>'
+        target = selected[0]['anchor'] + '-comparison-' + namespace
+        view = '<section class="comparison" id="' + target + '"><h4><a href="#' + target
+        view += '">Source before/after: ' + escaped(path) + '</a></h4>'
         witness = {'path': path, 'status': 'gap', 'reason': None}
         witnesses.append(witness)
         try:
@@ -312,7 +368,7 @@ def comparison_html(spec, rows):
             require(len(old) + len(new) <= 2 * TRANSPORT_BYTES, 'comparison byte bound')
             old_lines, new_lines = file_lines(old), file_lines(new)
             require(len(old_lines) + len(new_lines) <= 20000, 'comparison line bound')
-            matcher = difflib.SequenceMatcher(None, old_lines, new_lines)
+            matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=False)
             opcodes = matcher.get_opcodes()
             spans = {state: [line_interval(row['location']) for row in selected if row['location']['state'] == state]
                      for state in ('before', 'after')}
@@ -358,10 +414,14 @@ def comparison_html(spec, rows):
                     if kind == 'equal' and first <= left <= right <= last:
                         unchanged += 1
                         break
+            chunks = compact_groups(retained)
             witness.update(status='verified_pair', reason=None, change_locator=after['locator'],
                            before=before['asset'], after=after['asset'],
                            kinds=kinds, exact_block_relocations=moves, unchanged_selected_excerpts=unchanged,
-                           displayed_hunks=len(retained),
+                           focused_hunks=len(retained), navigation_hunks=len(chunks),
+                           displayed_hunks=min(VISIBLE_HUNKS, len(chunks)) if compact else 0,
+                           remaining_hunks=max(0, len(chunks) - VISIBLE_HUNKS) if compact else len(chunks),
+                           hunks=[], hunk_coordinate_basis='zero-based line intervals; unified headers use one-based lines and zero-count insertion points',
                            omitted_change_blocks=sum(op[0] != 'equal' and not focused(op) for op in opcodes))
             view += '<p>Verified whole-file states from one Work and change identity. Original selections supply '
             view += 'line focus; independently observed surrounding bytes supply context, not new generator selections.</p>'
@@ -376,24 +436,44 @@ def comparison_html(spec, rows):
                 if moves:
                     view += '<p>Exact block removal/reinsertion: ' + str(moves) + '; movement of identical bytes, '
                     view += 'not verified symbol continuity or semantic identity.</p>'
-                diff = '--- ' + path + ' (before)\n+++ ' + path + ' (after)\n'
-
-                def prefixed(prefix, lines):
-                    return ''.join(prefix + line + ('' if line.endswith('\n') else '\n\\ No newline at end of file\n')
-                                   for line in lines)
-
-                for group in retained:
-                    i1, j1, i2, j2 = group[0][1], group[0][3], group[-1][2], group[-1][4]
-                    diff += f'@@ -{i1 + 1},{i2 - i1} +{j1 + 1},{j2 - j1} @@\n'
-                    for kind, left, right, new_left, new_right in group:
-                        if kind == 'equal':
-                            diff += prefixed(' ', old_lines[left:right])
-                        if kind in {'delete', 'replace'}:
-                            diff += prefixed('-', old_lines[left:right])
-                        if kind in {'insert', 'replace'}:
-                            diff += prefixed('+', new_lines[new_left:new_right])
-                view += '<pre class="diff">' + preview(diff) + '</pre>'
-                view += download(diff.encode(), 'source-comparison.diff', 'Complete focused source diff')
+                if compact:
+                    view += '<p>Derived change navigation: ' + str(min(VISIBLE_HUNKS, len(chunks))) + ' of '
+                    view += str(len(chunks)) + ' line hunks shown in source order. Selected diff hunks: '
+                    view += str(len(retained)) + '. No importance ranking. '
+                    view += 'Large change blocks are divided into line slices; slices do not establish semantic alignment. '
+                    view += 'Original generator-selected spans remain unchanged.</p>'
+                    chunk_views = []
+                    for number, group in enumerate(chunks, 1):
+                        hunk = diff_text(path, [group], old_lines, new_lines)
+                        hunk_id = target + '-hunk-' + str(number)
+                        old_start, new_start = group[0][1], group[0][3]
+                        old_end, new_end = group[-1][2], group[-1][4]
+                        witness['hunks'].append({'anchor': hunk_id, 'old_start': old_start,
+                            'old_count': old_end - old_start, 'new_start': new_start,
+                            'new_count': new_end - new_start, 'diff_sha256': digest(hunk.encode())})
+                        chunk_views.append('<section class="change-hunk" id="' + hunk_id + '"><h5><a href="#'
+                            + hunk_id + '">Change hunk ' + str(number) + '</a></h5><pre class="diff">'
+                            + preview(hunk) + '</pre></section>')
+                    view += '<nav aria-label="Derived change hunks">' + ' · '.join(
+                        '<a href="#' + h['anchor'] + '">Hunk ' + str(n) + '</a>'
+                        for n, h in enumerate(witness['hunks'][:VISIBLE_HUNKS], 1)) + '</nav>'
+                    view += ''.join(chunk_views[:VISIBLE_HUNKS])
+                    if len(chunks) > VISIBLE_HUNKS:
+                        view += '<details class="remaining-hunks" id="' + target + '-remainder"><summary>Remaining '
+                        view += str(len(chunks) - VISIBLE_HUNKS) + ' change hunks in source order</summary>'
+                        view += ''.join(chunk_views[VISIBLE_HUNKS:]) + '</details>'
+                        view += '<p><a href="#' + target + '-remainder">Browse remaining change hunks</a></p>'
+                diff = diff_text(path, retained, old_lines, new_lines)
+                view += '<details><summary>Complete original selected-range comparison</summary>'
+                view += '<pre class="focused-diff">' + preview(diff) + '</pre>'
+                view += download(diff.encode(), 'source-comparison.diff', 'Complete focused source diff') + '</details>'
+            full = list(matcher.get_grouped_opcodes(2))
+            if full:
+                full_diff = diff_text(path, full, old_lines, new_lines)
+                view += '<details class="full-comparison"><summary>Complete verified whole-file comparison · includes unselected edits</summary>'
+                view += '<p>Diagnostic file comparison; unselected edits acquire no primary claim relevance.</p>'
+                view += '<pre class="full-diff">' + preview(full_diff) + '</pre>'
+                view += download(full_diff.encode(), 'whole-file-comparison.diff', 'Complete verified whole-file diff') + '</details>'
             if witness['omitted_change_blocks']:
                 view += '<p>Unselected change blocks omitted from focus: ' + str(witness['omitted_change_blocks']) + '.</p>'
         except (ValueError, KeyError, TypeError, OSError) as error:
@@ -403,6 +483,6 @@ def comparison_html(spec, rows):
         # Bindings retain the exact assets without exposing private absolute paths.
         public = {key: ({k: v for k, v in value.items() if k != 'path'} if key in {'before', 'after'} else value)
                   for key, value in witness.items()}
-        view += preview(json.dumps(public, ensure_ascii=False, indent=2)) + '</pre></details></details>'
+        view += preview(json.dumps(public, ensure_ascii=False, indent=2)) + '</pre></details></section>'
         views.append(view)
     return ''.join(views), witnesses

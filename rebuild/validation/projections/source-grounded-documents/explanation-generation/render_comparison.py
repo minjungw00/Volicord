@@ -178,7 +178,15 @@ def card(attempt_path, label):
             if record.get('output_contract'):
                 from reader_contract import primary_html
                 witness['reading'] = validation['reading']
-                view.append(primary_html(response, validation, rows))
+                primary_comparisons = []
+                witness['primary_comparisons'] = []
+                if validation['reading']['status'] == 'valid_binding':
+                    for site_number, site in enumerate(response['primary_sites'], 1):
+                        site_rows = [row for index in site['selections'] for row in rows if row['index'] == index]
+                        site_html, site_witness = comparison_html(spec, site_rows, namespace='primary-' + str(site_number))
+                        primary_comparisons.append(site_html)
+                        witness['primary_comparisons'].append({'site': site, 'comparisons': site_witness})
+                view.append(primary_html(response, validation, rows, comparisons=primary_comparisons))
             view.append('<p>Declared gaps: ' + preview('; '.join(response['gaps']) if response['gaps'] else 'none declared; not independently checked') + '</p>')
             view.append('<details><summary>Original run verification</summary><p>Run verification: '
                         + ('verified' if run_verified else 'not verified') +
@@ -186,7 +194,10 @@ def card(attempt_path, label):
             if record.get('output_contract'):
                 source = '<details class="secondary"><summary>Complete secondary source selections</summary>' + source + '</details>'
             view.append(source)
-            comparison, witness['comparisons'] = comparison_html(spec, rows)
+            comparison, witness['comparisons'] = comparison_html(spec, rows,
+                compact=not bool(record.get('output_contract')), namespace='diagnostic')
+            if record.get('output_contract'):
+                comparison = '<details class="all-comparisons"><summary>All selected file comparisons · diagnostic grouping</summary>' + comparison + '</details>'
             view.append(comparison)
             view.append(diagnostic)
         data = json.dumps(public_receipt(witness['derived_reading']), ensure_ascii=False,
