@@ -69,12 +69,17 @@ def card(attempt_path, label):
     parts.append('<p>Isolation: ' + escaped(record.get('isolation', 'unknown')) + '</p>')
     parts.append('<p>Clean comparison: ' + escaped(record.get('clean_comparison', False)) + '</p>')
     witnesses = {'label': label, 'attempt': binding(attempt_path), 'outputs': [], 'semantic_quality': 'not_assessed'}
+    final = record.get('generation_output')
+    if not final:
+        parts.append('<p>No verified final explanation. Captured intermediate or incomplete responses remain below.</p>')
     if not record['original_outputs']:
         parts.append('<p>No generated output. No code selected. Before/after comparison unavailable.</p>')
     for number, output in enumerate(record['original_outputs'], 1):
         check_binding(output)
         raw = Path(output['path']).read_bytes()
-        parts.append('<section><h3>Captured output ' + str(number) + '</h3>')
+        stage = ('Final response' if output == final else 'Intermediate response' if final
+                 else 'Captured response; stage completion unverified')
+        parts.append('<section><h3>' + stage + ' ' + str(number) + '</h3>')
         witness = {'original': output, 'prose_sha256': None, 'selections': []}
         witnesses['outputs'].append(witness)
         response = None
@@ -91,6 +96,12 @@ def card(attempt_path, label):
         witness['prose_sha256'] = digest(response['prose'].encode())
         parts.append('<pre class="prose">' + escaped(response['prose']) + '</pre>')
         parts.append('<p>Declared gaps: ' + escaped('; '.join(response['gaps']) if response['gaps'] else 'none declared; not independently checked') + '</p>')
+        anchors = [label.replace(' ', '-') + '-output-' + str(number) + '-selection-' + str(index)
+                   for index in range(1, len(validation['selections']) + 1)]
+        if anchors:
+            parts.append('<nav aria-label="Selected source navigation">' + ' · '.join(
+                '<a href="#' + escaped(anchor) + '">Selection ' + str(index) + '</a>'
+                for index, anchor in enumerate(anchors, 1)) + '</nav>')
         if not response['selections']:
             parts.append('<p>No code selected. Before/after comparison unavailable.</p>')
         pairings = {}
@@ -99,7 +110,7 @@ def card(attempt_path, label):
             status = result['reference_status']
             # Preserve code selection order, even where it is invalid. No repair,
             # offset adjustment, preferred entity or automatically chosen counterpart.
-            anchor = label + '-output-' + str(number) + '-selection-' + str(index)
+            anchor = anchors[index - 1]
             parts.append('<div class="selection" id="' + escaped(anchor) + '"><h4>Selection ' + str(index) + '</h4>')
             parts.append('<pre class="selection-request">' + escaped(json.dumps(selection, ensure_ascii=False, sort_keys=True)) + '</pre>')
             byte_valid = status == 'valid_reference'
@@ -135,6 +146,18 @@ def card(attempt_path, label):
     return ''.join(parts), witnesses
 
 
+def document(cards):
+    return ('<!doctype html><html lang="en"><meta charset="utf-8">'
+                '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
+                '<title>Explanation comparison</title><style>'
+                'body{font:16px system-ui;margin:2rem;max-width:1100px}article{border:1px solid #999;padding:1.5rem;margin:1rem 0}'
+                'pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:#f3f3f3}.prose{font:inherit;white-space:pre-wrap}'
+                '.selection{border-left:3px solid #aaa;padding-left:1rem}</style><h1>Explanation comparison</h1>'
+                '<p>Approach labels are withheld. Every captured output is displayed without editing. '
+                'Self-identifying wording and stage counts may reveal an approach. No ranking or semantic verdict is provided.</p>'
+                + ''.join(cards) + '</html>')
+
+
 def render(attempts, output):
     require(bool(attempts), 'attempts required')
     require(len({str(Path(p).resolve()) for p in attempts}) == len(attempts), 'duplicate attempt')
@@ -149,22 +172,43 @@ def render(attempts, output):
         cards.append(body); integrity.append(witness)
         record = json.loads(Path(path).read_bytes())
         mapping.append({'label': label, 'attempt': binding(path), 'approach': record['approach'], 'scope': record['scope']})
-    document = ('<!doctype html><html lang="en"><meta charset="utf-8">'
-                '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
-                '<title>Explanation comparison</title><style>'
-                'body{font:16px system-ui;margin:2rem;max-width:1100px}article{border:1px solid #999;padding:1.5rem;margin:1rem 0}'
-                'pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:1rem;background:#f3f3f3}.prose{font:inherit;white-space:pre-wrap}'
-                '.selection{border-left:3px solid #aaa;padding-left:1rem}</style><h1>Explanation comparison</h1>'
-                '<p>Approach labels are withheld. Every captured output is displayed without editing. '
-                'Self-identifying wording and stage counts may reveal an approach. No ranking or semantic verdict is provided.</p>'
-                + ''.join(cards) + '</html>')
-    (output / 'comparison.html').write_text(document)
+    (output / 'comparison.html').write_text(document(cards))
     # Mapping and detailed private paths never appear in the presentation.
     (output / 'approach-mapping.json').write_bytes(encoded({'format_version': 1, 'mapping': mapping}))
     (output / 'integrity.json').write_bytes(encoded({'format_version': 1, 'presentation': binding(output / 'comparison.html'), 'samples': integrity}))
     append_index(output.parent, {'input': 'verified', 'approach': 'presentation_only', 'feedback': 'not_requested'},
                  [output / name for name in ('comparison.html', 'approach-mapping.json', 'integrity.json')])
     return output / 'comparison.html'
+
+
+def record_feedback(presentation, response, output):
+    """Retain one literal response or pending state; never infer a human verdict."""
+    presentation, output = Path(presentation).resolve(), Path(output).resolve()
+    require(response is None or isinstance(response, str) and response.strip(), 'literal response required')
+    integrity_path = presentation.parent / 'integrity.json'
+    integrity = json.loads(integrity_path.read_bytes())
+    require(integrity['presentation']['path'] == str(presentation), 'feedback display path changed')
+    check_binding(integrity['presentation'])
+    scopes, originals, cards = [], [], []
+    for sample in integrity['samples']:
+        check_binding(sample['attempt'])
+        body, witness = card(sample['attempt']['path'], sample['label'])
+        cards.append(body)
+        require(witness == sample, 'feedback output/selection identity changed')
+        attempt = json.loads(Path(sample['attempt']['path']).read_bytes())
+        scopes.append(attempt['scope'])
+        originals.extend(o['original'] for o in sample['outputs'])
+    require(scopes and all(scope == scopes[0] for scope in scopes), 'feedback must concern one Work')
+    require(presentation.read_bytes() == document(cards).encode(), 'feedback displayed content changed')
+    value = {'presentation': integrity['presentation'], 'integrity': binding(integrity_path),
+             'scope': scopes[0], 'original_outputs': originals, 'literal_response': response,
+             'H1': 'pending' if response is None else 'response_recorded',
+             'limits': 'Literal supplied observation only; no inferred verdict, authorship attestation or other Work approval.'}
+    with output.open('xb') as stream:
+        stream.write(encoded(value))
+    append_index(output.parent, {'input': 'verified', 'approach': 'presentation_only',
+                                 'feedback': value['H1']}, [output])
+    return output
 
 
 if __name__ == '__main__':

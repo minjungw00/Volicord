@@ -441,6 +441,15 @@ remain partial. `review_completion_verified` describes this structural binding,
 never the truth of the reviewer's judgment. Authored positive and tampered controls
 run through `execution_audit_self_test.py`; they invoke no model or aggregate gate.
 
+Each original selection has an internal navigation link to its exact displayed
+request and code, including invalid requests with withheld code. Intermediate and
+final responses are labeled from the retained final-output identity; a missing
+final pointer stays explicitly unverified. New presentations get new byte identities;
+existing HTML and originals are not overwritten. Focused feedback must name that
+exact presentation and original output, preserve a supplied literal response, and
+leave H1 pending when no response was supplied. Requesting feedback supplies no
+human observation or approval of another Work.
+
 Label blinding removes renderer-added approach names and private input paths; it
 does not rewrite self-identifying prose or hide stage counts and failures. It is
 presentation blinding, not guaranteed reviewer anonymity. Unsupported inference

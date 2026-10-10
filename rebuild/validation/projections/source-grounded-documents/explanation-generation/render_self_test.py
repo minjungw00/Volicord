@@ -9,18 +9,20 @@ import unittest
 import inputs as i
 from input_self_test import spec
 from source_tools import Surface
-from render_comparison import card, render
+from render_comparison import card, render, record_feedback
 
 
 class Texts(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.active, self.values, self.anchors = None, {}, []
+        self.active, self.values, self.anchors, self.links = None, {}, [], []
 
     def handle_starttag(self, tag, attributes):
         values = dict(attributes)
         if 'id' in values:
             self.anchors.append(values['id'])
+        if tag == 'a':
+            self.links.append(values.get('href'))
         if tag == 'pre':
             self.active = values.get('class')
             self.values.setdefault(self.active, []).append('')
@@ -238,6 +240,65 @@ class RenderTests(unittest.TestCase):
         self.record['scope'] = dict(self.record['scope'], work='another-work')
         with self.assertRaisesRegex(ValueError, 'attempt input scope changed'):
             self.present()
+
+    def test_selection_navigation_links_only_to_exact_displayed_requests(self):
+        body, integrity, parser = self.present()
+        expected = [s['anchor'] for s in integrity['outputs'][0]['selections']]
+        self.assertEqual(parser.links, ['#' + anchor for anchor in expected])
+        self.assertTrue(all(' ' not in anchor for anchor in expected))
+        self.assertEqual(parser.values['prose'], [self.response['prose']])
+
+    def test_intermediate_and_final_identity_are_explicit(self):
+        note = self.root / 'note.json'; note.write_bytes(i.encoded(dict(self.response, prose='Authored intermediate.')))
+        self.record.update(original_outputs=[i.binding(note), i.binding(self.response_path)],
+                           generation_output=i.binding(self.response_path))
+        body, _, parser = self.present()
+        self.assertIn('Intermediate response 1', body)
+        self.assertIn('Final response 2', body)
+        self.assertEqual(parser.values['prose'], ['Authored intermediate.', self.response['prose']])
+
+    def test_missing_final_remains_explicit_with_captured_note(self):
+        self.record.update(status='safety_aborted', generation_output=None)
+        body, _, parser = self.present()
+        self.assertIn('No verified final explanation', body)
+        self.assertIn('stage completion unverified', body)
+        self.assertEqual(parser.values['prose'], [self.response['prose']])
+
+    def test_pending_and_literal_negative_feedback_keep_exact_display_output_identity(self):
+        self.attempt.write_bytes(i.encoded(self.record))
+        display = render([self.attempt], self.root / 'feedback-display')
+        pending = record_feedback(display, None, self.root / 'pending-feedback.json')
+        value = json.loads(pending.read_bytes())
+        self.assertEqual(value['H1'], 'pending')
+        self.assertIsNone(value['literal_response'])
+        self.assertEqual(value['presentation'], i.binding(display))
+        literal = '  Authored negative fixture: this explanation is hard to follow.\nThe code links help.  '
+        observed = record_feedback(display, literal, self.root / 'negative-feedback.json')
+        recorded = json.loads(observed.read_bytes())
+        self.assertEqual(recorded['literal_response'], literal)
+        self.assertEqual(recorded['original_outputs'], self.record['original_outputs'])
+        self.assertEqual(recorded['presentation'], value['presentation'])
+        self.assertEqual(json.loads(pending.read_bytes())['H1'], 'pending')
+        with self.assertRaises(FileExistsError):
+            record_feedback(display, 'Another fixture', observed)
+
+    def test_feedback_rejects_changed_display_or_output_witness(self):
+        self.attempt.write_bytes(i.encoded(self.record))
+        display = render([self.attempt], self.root / 'feedback-display')
+        original = display.read_bytes()
+        display.write_text('Changed display')
+        with self.assertRaises(ValueError):
+            record_feedback(display, 'Authored response', self.root / 'changed-feedback.json')
+        path = display.parent / 'integrity.json'; witness = json.loads(path.read_bytes())
+        witness['presentation'] = i.binding(display); path.write_bytes(i.encoded(witness))
+        with self.assertRaisesRegex(ValueError, 'displayed content changed'):
+            record_feedback(display, 'Authored response', self.root / 'rebound-feedback.json')
+        display.write_bytes(original)
+        witness['presentation'] = i.binding(display)
+        witness['samples'][0]['outputs'][0]['prose_sha256'] = '0' * 64
+        path.write_bytes(i.encoded(witness))
+        with self.assertRaisesRegex(ValueError, 'output/selection identity changed'):
+            record_feedback(display, 'Authored response', self.root / 'wrong-output-feedback.json')
 
 
 if __name__ == '__main__':
