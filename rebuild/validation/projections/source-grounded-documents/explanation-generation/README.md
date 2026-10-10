@@ -938,3 +938,16 @@ retains the old producer/attempt identity. Authored controls are registered by
 independently authored retry-policy evidence through Source reads, byte grounding
 and the actual HTML consumer, including original prose preservation and failures.
 Run them with `rebuild/scripts/validate focused`; aggregates/gate/V11 are excluded.
+
+The Work-directed condition has no universal primary-site count or line cap. Each
+site includes `extent_reason`, explaining the necessity of its complete selected
+region relative to its bound claims. Instructions prefer changed expressions,
+branch conditions and connected data-flow segments, splitting distant mechanisms
+when appropriate. Large necessary regions remain possible and require independent
+review. The consumer displays exact line/column and byte extents with that rationale.
+A valid path/hash or a nonempty extent reason still does not certify relevance.
+Authored controls retain narrow changed expressions plus a complete secondary
+source, allow more than six independently bound sites and allow no-code gaps;
+the historical six-site contract is unchanged. Actual first subprocess output
+passes through opaque-ID Source reads, exact authorization, grounding and HTML.
+These controls remain authored transport tests, not live semantic acceptance.

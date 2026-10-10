@@ -70,12 +70,13 @@ def indices(value, count, name):
 def validate_reading(response, spec, validation, *, contract=CONTRACT, lane='archive_diagnostic'):
     """Bindings are structural. Independent semantic examination remains pending."""
     require(isinstance(response['claims'], list) and response['claims'], 'claims required')
+    directed = contract == DIRECTED_CONTRACT
     require(isinstance(response['primary_sites'], list) and
-            1 <= len(response['primary_sites']) <= MAX_SITES, 'one to six primary sites required')
+            (directed or 1 <= len(response['primary_sites']) <= MAX_SITES),
+            'historical reader requires one to six primary sites')
     prose = response['prose'].encode('utf-8')
     selections = validation['selections']
     entries = {e['id']: e for e in spec['entries']}
-    directed = contract == DIRECTED_CONTRACT
     for claim in response['claims']:
         fields = {'start', 'end', 'kind', 'selections'} | ({'authority'} if directed else set())
         require(isinstance(claim, dict) and set(claim) == fields,
@@ -91,12 +92,16 @@ def validate_reading(response, spec, validation, *, contract=CONTRACT, lane='arc
     seen = set()
     sites, issues = [], []
     for site in response['primary_sites']:
-        require(isinstance(site, dict) and set(site) == {'selections', 'claims', 'reason'},
+        fields = {'selections', 'claims', 'reason'} | ({'extent_reason'} if directed else set())
+        require(isinstance(site, dict) and set(site) == fields,
                 'strict primary site fields required')
         indices(site['selections'], len(selections), 'primary selection')
         indices(site['claims'], len(response['claims']), 'primary claim')
         require(len(site['selections']) <= 2, 'at most two states per site')
         require(isinstance(site['reason'], str) and site['reason'].strip(), 'primary reason absent')
+        if directed:
+            require(isinstance(site['extent_reason'], str) and site['extent_reason'].strip(),
+                    'primary extent justification absent')
         require(not seen.intersection(site['selections']), 'duplicate primary selection')
         seen.update(site['selections'])
         covered = set()
@@ -162,6 +167,13 @@ def primary_html(response, validation, rows, *, comparisons=()):
         body += '<li>' + ' / '.join('<a href="#' + row['anchor'] + '">' + escaped(row['label']) + '</a>'
                                    for row in selected)
         body += '<p class="primary-reason">' + escaped(site['reason']) + '</p>'
+        if 'extent_reason' in site:
+            body += '<p class="primary-extent">' + escaped(site['extent_reason']) + '</p>'
+            for row in selected:
+                location = row['location']
+                body += '<p>Exact selected region: line:column ' + ':'.join(map(str, location['start']))
+                body += '–' + ':'.join(map(str, location['end'])) + '; bytes ['
+                body += str(row['selection']['start']) + ',' + str(row['selection']['end']) + ').</p>'
         if site_number < len(comparisons):
             body += comparisons[site_number]
         body += '<details><summary>Generator claim bindings; entailment unassessed</summary>'

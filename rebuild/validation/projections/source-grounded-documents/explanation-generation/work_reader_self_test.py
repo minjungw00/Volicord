@@ -22,7 +22,7 @@ class WorkReaderTests(unittest.TestCase):
         self.response = self.h.response
         self.response.update(claims=[{'start': 0, 'end': len(self.response['prose'].encode()),
             'kind': 'source_fact', 'selections': [0, 1], 'authority': None}],
-            primary_sites=[{'selections': [0, 1], 'claims': [0], 'reason': 'Authored source pair.'}])
+            primary_sites=[{'selections': [0, 1], 'claims': [0], 'reason': 'Authored source pair.', 'extent_reason': 'Only the independent changed statement and needed context.'}])
         scope = self.h.record['scope']
         self.cp = {'id': 'cp', 'revision': 3, 'project_id': scope['project'],
             'work_item_id': scope['work'], 'recorded_at': 3, 'goal': 'Inspect retry behavior.',
@@ -159,6 +159,49 @@ class WorkReaderTests(unittest.TestCase):
         self.assertNotIn('direction', parser.values)
         self.assertIn('no uniquely ordered same-Work Checkpoint', body)
 
+    def test_site_count_is_claim_driven_and_extent_justification_is_required(self):
+        original = copy.deepcopy(self.response)
+        self.response['primary_sites'] = []
+        self.response['gaps'].append('This authored interpretation needs no primary code.')
+        self.assertEqual(self.validation()['reading']['status'], 'valid_binding')
+        self.response.update(copy.deepcopy(original))
+        first = self.response['selections'][0]
+        data = Path(i.verify(self.h.manifest)['entries'][0]['asset']['path']).read_bytes()
+        self.response['selections'] = [dict(first, start=n, end=n+1, sha256=i.digest(data[n:n+1])) for n in range(7)]
+        self.response['claims'][0]['selections'] = list(range(7))
+        self.response['primary_sites'] = [{'selections': [n], 'claims': [0], 'reason': 'Authored site.',
+            'extent_reason': 'Independently bound original byte; count control only.'} for n in range(7)]
+        self.assertEqual(self.validation()['reading']['status'], 'valid_binding')
+        body, witness, _ = self.present()
+        self.assertEqual(len(witness['outputs'][0]['reading']['sites']), 7)
+        self.response['primary_sites'][0]['extent_reason'] = ''
+        with self.assertRaisesRegex(ValueError, 'extent justification'): self.validation()
+
+    def test_focused_statement_keeps_exact_ranges_and_complete_secondary_source(self):
+        import source_reading_self_test as sources
+        control = sources.ComparisonTests(methodName='runTest')
+        control.setUp(); self.addCleanup(control.doCleanups)
+        before = 'def operation():\n    return 1\n\ndef unrelated():\n    return 4\n'
+        after = 'def operation():\n    return 2\n\ndef unrelated():\n    return 4\n'
+        response = control.paired(before, after, ranges=[(21, 29), (21, 29)])
+        response.update(claims=[{'start': 0, 'end': len(response['prose'].encode()), 'kind': 'source_fact',
+            'selections': [0, 1], 'authority': None}], primary_sites=[{'selections': [0, 1], 'claims': [0],
+            'reason': 'The return statement demonstrates the value change.',
+            'extent_reason': 'Only the changed expression is needed; unrelated helper remains secondary.'}])
+        response['selections'].append(dict(response['selections'][1], start=0, end=len(after.encode()), sha256=i.digest(after.encode())))
+        control.h.response_path.write_bytes(i.encoded(response))
+        control.h.record.update(output_contract=DIRECTED_CONTRACT, original_outputs=[i.binding(control.h.response_path)],
+            generation_output=i.binding(control.h.response_path))
+        body, witness, parser = control.h.present()
+        self.assertEqual(witness['outputs'][0]['reading']['status'], 'valid_binding')
+        self.assertEqual([r['selection'] for r in witness['outputs'][0]['selections']], response['selections'])
+        self.assertEqual(parser.values['code'][:2], ['return 1', 'return 2'])
+        self.assertIn(after, parser.values['code'])
+        self.assertIn('line:column 2:5–2:13; bytes [21,29)', body)
+        import base64
+        self.assertIn(after.encode(), [base64.b64decode(link.split(',', 1)[1]) for link in parser.links if link.startswith('data:')])
+        self.assertEqual(witness['outputs'][0]['reading']['relevance'], 'pending_independent_examination')
+
     def test_wrong_field_partial_row_and_missing_authority_fail(self):
         index = self.evidence('canonical_record', self.cp, table='checkpoints')
         self.claim('recorded_next_action', index, self.cp, 'next_step')
@@ -172,6 +215,49 @@ class WorkReaderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'complete retrieved row'): self.validation()
         self.response['claims'][-1]['authority'] = None
         with self.assertRaisesRegex(ValueError, 'authority coordinates'): self.validation()
+
+
+class WorkExecutionTests(unittest.TestCase):
+    def test_exact_new_condition_authorization_and_first_process_to_html(self):
+        import approaches as a
+        import reader_self_test as reader
+        control = reader.ReaderExecutionTests(methodName='runTest')
+        control.setUp(); self.addCleanup(control.doCleanups)
+        h = control.h
+        executable = h.executable('ordinary', 0)
+        code = executable.read_text().replace("'gaps':['Historical before bytes unavailable.']}",
+            "'gaps':['Historical before bytes unavailable.'], 'claims':[{'start':0,'end':27,"
+            "'kind':'source_fact','selections':[0],'authority':None}], 'primary_sites':[{'selections':[0],"
+            "'claims':[0],'reason':'Authored mechanism.','extent_reason':'Only the relevant statement.'}]}")
+        executable.write_text(code)
+        condition = a.HERE / 'conditions-work-reader.json'
+        runtime = control.runtime
+        blocked = a.attempt(h.manifest, 'direct', 'archive_diagnostic', runtime, h.root / 'new-plan',
+                            executable=executable, conditions_path=condition)
+        self.assertEqual(blocked['status'], 'blocked'); self.assertEqual(blocked['calls'], [])
+        scope = {'destination': a.DESTINATION, 'purpose': 'explanation-generation-experiment',
+            'input_sha256': blocked['input']['sha256'], 'lane': 'archive_diagnostic', 'approach': 'direct',
+            'conditions_sha256': blocked['conditions']['sha256'], 'instructions_sha256': blocked['instructions']['sha256'],
+            'response_schema_sha256': blocked['response_schema']['sha256'], 'executable_sha256': blocked['executable']['sha256'],
+            'support_sha256': i.digest(i.encoded(blocked['support'])), 'model': runtime['model'],
+            'reasoning_effort': runtime['reasoning_effort']}
+        for n, key in enumerate(('response_schema_sha256', 'executable_sha256', 'support_sha256', 'model')):
+            runtime['authorization'] = {'current_request_locator': 'authored-local-control-only', 'scope': dict(scope, **{key: 'different'})}
+            record = a.attempt(h.manifest, 'direct', 'archive_diagnostic', runtime, h.root / ('denied-' + str(n)),
+                               executable=executable, conditions_path=condition)
+            self.assertEqual(record['status'], 'blocked'); self.assertEqual(record['calls'], [])
+        runtime['authorization'] = {'current_request_locator': 'authored-local-control-only', 'scope': scope}
+        record = a.attempt(h.manifest, 'direct', 'archive_diagnostic', runtime, h.root / 'first-response',
+                           executable=executable, conditions_path=condition)
+        self.assertEqual(record['status'], 'captured')
+        self.assertEqual(record['resource_accounting']['model_calls'], 1)
+        self.assertEqual(record['corrections'], [])
+        from render_comparison import card
+        original = Path(record['generation_output']['path']).read_bytes()
+        body, witness = card(h.root / 'first-response/attempt.json', 'Authored process output')
+        self.assertEqual(witness['outputs'][0]['derived_reading']['status'], 'valid_binding')
+        self.assertEqual(Path(record['generation_output']['path']).read_bytes(), original)
+        self.assertIn('Only the relevant statement.', body)
 
 
 if __name__ == '__main__':

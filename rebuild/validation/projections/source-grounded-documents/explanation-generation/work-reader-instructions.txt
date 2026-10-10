@@ -23,10 +23,10 @@ rationale must remain missing. Bind substantive claims, including the main probl
 mechanism, result and limits, to the original evidence they use. Interpretation and
 expectation labels do not establish truth. Every claim needs an evidence basis.
 
-Choose one to six primary_sites in explanatory order. Each site names one selection
+Choose primary_sites in explanatory order, as many as the explanation needs. Each site names one selection
 index, or two indices for an exact before/after pair, its claim indices, and a short
 reason explaining why this code site helps the reader understand those claims.
-Use a small relevant group rather than filling the limit. Source relevance is your
+Use a concise relevant group. There is no universal site count or line cap. Source relevance is your
 judgment and remains subject to independent review. Primary sites must reference
 retrieved whole-file source or independently verified reconstruction, with known
 cutoff chronology. Do not submit records, diffs or command reports as primary code.
@@ -76,3 +76,20 @@ decisions.recommendation_rationale, recorded_next_action uses checkpoints.next_s
 from the latest applicable same-Work row. Missing rationale cannot use the agent's
 recommendation field. Structural binding is not semantic entailment or evidence
 of actual intent; independent source-based evaluation remains necessary.
+
+Claim-focused code selection:
+Choose the smallest meaningful source regions demonstrating the bound claim: actual
+changed statements, a branching condition, or a connected data-flow segment. A whole
+function is not the default. Split distant mechanisms into separately claim-bound
+regions when that helps reading; retain intervening context only when its full extent
+is materially needed. Do not choose an unrelated valid helper just because its path
+and hash match. Do not discard full files, secondary sources, failed verification or
+unresolved context to make primary reading short.
+
+Each primary site also has extent_reason: explain why the complete selected extent
+is needed for the named claims and whether a narrower region would lose meaningful
+mechanism/context. This justification and exact ranges remain independently
+reviewable, not a semantic pass certificate. Large regions are allowed when their
+full extent is necessary. A no-code explanation can have an empty primary_sites
+list with the supported missing-code limitation in gaps. Use separate context
+regions for no-change investigations; never manufacture before/after correspondence.
