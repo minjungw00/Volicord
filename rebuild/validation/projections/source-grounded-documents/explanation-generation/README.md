@@ -99,12 +99,39 @@ manifests (`c5bb5876…` / `946977ba…`), all four prior attempts and all six o
 responses. Their exact compact initial inventories also match the reader inputs.
 Work B's verified changed pairs survive presentation; Click yields no inferred diff.
 Click direct's four chronology-ambiguous selections remain invalid. The original
-direct/staged states and costs are unchanged. New external calls: **zero**; fresh
-generation, semantic comparison and quality attribution remain missing for lack of
-current authorization. The inspectable plan, baseline audit, original presentation,
+direct/staged states and costs are unchanged. At that preparation, external calls
+were **zero** and both reader attempts were blocked pending current authorization.
+The inspectable plan, baseline audit, original presentation,
 authored process controls and focused receipts are private ignored artifacts under
 `rebuild/.local/explanation-generation/reader-*` and `rebuild/.local/validation/`.
 Workspace aggregates, gate and official V11 are outside this experiment.
+
+### First reader attempts and primary-pair correction
+
+After explicit current source/destination/purpose authorization, one fresh call
+ran for Work B and one for Click under the frozen reader condition. Both complete
+processes returned original responses with verified host/ledger reads, no observed
+exposure issues and no safety-ceiling contact. Work B selected two primary sites;
+Click selected three context sites and retained the no-change investigation.
+Those counts and the problem-led prose shape are observations, not quality scores.
+The original responses, requested model/runtime, actual tokens, numerical exits,
+latencies, source reads and all original failures remain private immutable artifacts.
+No repair generation or independent reviewer model call ran; price and per-provider
+request latency remain unobserved. Technical correctness, relevance, user
+comprehension and attribution of any improvement remain independently unassessed.
+
+Work B's actual first response reproduced a consumer defect: a primary before/after
+site named separate claims citing their own respective sides, but validation
+required every claim to cite both sides. Its original `invalid_response` receipt
+and original response bytes remain unchanged. Independent authored before/after
+statements reproduce that rejection. Corrected validation requires each named
+claim to bind at least one selected side, and the claims together to cover every
+selected side. An orphaned side or unrelated named claim still fails. Source
+identity, Work/Project, read proof, cutoff chronology, coordinates and exact
+change correspondence checks remain unchanged. Claim disclosures now link each
+statement to its own exact selections rather than implying all paired sources
+support every statement. Corrected reading is a new derived consumer artifact,
+not a rewritten historical receipt or a new generation attempt.
 
 ## Frozen input contract
 

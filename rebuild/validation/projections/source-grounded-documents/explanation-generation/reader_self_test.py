@@ -2,6 +2,7 @@
 import copy
 import argparse
 import json
+from html.parser import HTMLParser
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -12,6 +13,24 @@ from grounding import validate_output
 from reader_contract import CONTRACT
 import render_self_test as baseline
 import exploratory_self_test as controls
+
+
+class ClaimLinks(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.active, self.claims = None, {}
+
+    def handle_starttag(self, tag, attributes):
+        attributes = dict(attributes)
+        if tag == 'p' and attributes.get('class') == 'claim-sources':
+            self.active = int(attributes['data-claim-index'])
+            self.claims[self.active] = []
+        if tag == 'a' and self.active is not None:
+            self.claims[self.active].append(int(attributes['data-selection-index']))
+
+    def handle_endtag(self, tag):
+        if tag == 'p':
+            self.active = None
 
 
 class ReaderTests(unittest.TestCase):
@@ -48,6 +67,33 @@ class ReaderTests(unittest.TestCase):
         self.assertLess(body.index('class="primary-sites"'), body.index('class="secondary"'))
         self.assertIn('Authored reason &lt;tag&gt;', body)
         self.assertTrue(all(link[1:] in parser.anchors for link in parser.links if link.startswith('#')))
+
+    def split_pair(self):
+        self.response['prose'] = 'Before value.\nAfter value.'
+        self.response['claims'] = [{'start': 0, 'end': 13, 'kind': 'source_fact', 'selections': [1]},
+                                   {'start': 14, 'end': 26, 'kind': 'source_fact', 'selections': [0]}]
+        self.response['primary_sites'] = [{'selections': [0, 1], 'claims': [0, 1],
+                                          'reason': 'Independent before and after statements explain the pair.'}]
+
+    def test_separate_before_after_claims_keep_exact_side_links(self):
+        self.split_pair()
+        body, witness, parser = self.present()
+        self.assertEqual(witness['outputs'][0]['reading']['status'], 'valid_binding')
+        self.assertEqual(witness['outputs'][0]['comparisons'][0]['status'], 'verified_pair')
+        self.assertEqual(parser.values['prose'], ['Before value.\nAfter value.'])
+        self.assertEqual(parser.values['bound-claim'], ['Before value.', 'After value.'])
+        links = ClaimLinks(); links.feed(body)
+        self.assertEqual(links.claims, {0: [1], 1: [0]})
+
+    def test_pair_cannot_hide_unbound_side_or_attach_unrelated_claim(self):
+        self.split_pair()
+        self.response['claims'][1]['selections'] = [1]
+        with self.assertRaisesRegex(ValueError, 'unbound primary selection'):
+            self.validation()
+        self.response['selections'].append(copy.deepcopy(self.response['selections'][0]))
+        self.response['claims'][1]['selections'] = [2]
+        with self.assertRaisesRegex(ValueError, 'primary claim does not bind site selections'):
+            self.validation()
 
     def test_no_change_context_is_readable_without_diff(self):
         # Independent source classification, never inferred from an empty diff.

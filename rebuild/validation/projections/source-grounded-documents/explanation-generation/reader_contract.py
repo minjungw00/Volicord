@@ -41,9 +41,15 @@ def validate_reading(response, spec, validation):
         require(isinstance(site['reason'], str) and site['reason'].strip(), 'primary reason absent')
         require(not seen.intersection(site['selections']), 'duplicate primary selection')
         seen.update(site['selections'])
+        covered = set()
         for claim_index in site['claims']:
-            require(set(site['selections']) <= set(response['claims'][claim_index]['selections']),
+            linked = set(site['selections']) & set(response['claims'][claim_index]['selections'])
+            require(linked,
                     'primary claim does not bind site selections')
+            covered.update(linked)
+        # Separate before/after statements can each cite their own side. Every
+        # named claim still needs a site binding, and no selected side is orphaned.
+        require(covered == set(site['selections']), 'unbound primary selection')
         errors, selected = [], []
         for index in site['selections']:
             result = selections[index]
@@ -103,5 +109,15 @@ def primary_html(response, validation, rows):
             claim = response['claims'][index]
             text = response['prose'].encode()[claim['start']:claim['end']].decode()
             body += '<p>' + escaped(claim['kind']) + '</p><pre class="bound-claim">' + preview(text) + '</pre>'
+            body += '<p class="claim-sources" data-claim-index="' + str(index) + '">'
+            links = []
+            for source_index in claim['selections']:
+                row = by_index.get(source_index)
+                if row is None:
+                    links.append('Source selection ' + str(source_index) + ' outside display; exact binding in original response')
+                else:
+                    links.append('<a data-selection-index="' + str(source_index) + '" href="#'
+                                 + row['anchor'] + '">' + escaped(row['label']) + '</a>')
+            body += ' · '.join(links) + '</p>'
         body += '</details></li>'
     return body + '</ol></nav>'
