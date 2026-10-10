@@ -208,12 +208,14 @@ def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_
     conditions = json.loads(condition_bytes)
     policy = execution_policy(conditions)
     contract = conditions.get('output_contract')
-    require(contract in {None, 'reader_oriented'}, 'unknown output contract')
+    from reader_contract import CONTRACTS, DIRECTED_CONTRACT
+    require(contract is None or contract in CONTRACTS, 'unknown output contract')
     if contract:
         require(approach == 'direct' and policy and policy.get('allocation_mode') == 'safety_only',
                 'reader condition requires one safety-only generation call')
-    instructions_path = HERE / ('reader-instructions.txt' if contract else 'instructions.txt')
-    schema_path = HERE / ('reader-response-schema.json' if contract else 'response-schema.json')
+    prefix = 'work-reader' if contract == DIRECTED_CONTRACT else 'reader'
+    instructions_path = HERE / (prefix + '-instructions.txt' if contract else 'instructions.txt')
+    schema_path = HERE / (prefix + '-response-schema.json' if contract else 'response-schema.json')
     instruction_bytes = instructions_path.read_bytes()
     instruction_binding = binding(instructions_path)
     require(digest(instruction_bytes) == instruction_binding['sha256'], 'instruction identity drift')
@@ -239,9 +241,11 @@ def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_
     if contract:
         record.update(output_contract=contract, response_schema=binding(schema_path))
         record['support'].extend(binding(HERE / name) for name in
-                                 ('reader_contract.py', 'reader-response-schema.json', 'reader-instructions.txt'))
+                                 ('reader_contract.py', schema_path.name, instructions_path.name, 'recorded_work.py'))
         (output / 'frozen-response-schema.json').write_bytes(schema_path.read_bytes())
         record['frozen_response_schema'] = binding(output / 'frozen-response-schema.json')
+        if contract == DIRECTED_CONTRACT:
+            record['support'].append(binding(HERE / 'source_reading.py'))
     record['preparation_budget_boundary'] = 'local manifest verification/freezing precedes execution; stage setup and probes share total_seconds'
     producer_sources = output / 'producer-sources'
     producer_sources.mkdir()
@@ -256,17 +260,24 @@ def attempt(manifest, approach, lane, runtime, output, *, executable=None, auth_
     if approach == 'current':
         record['blockers'].extend(current_blockers(spec))
     require(set(runtime) == {'model', 'reasoning_effort', 'destination', 'authorization'}, 'explicit runtime fields required')
+    executable = executable or shutil.which('codex')
+    if executable and contract:
+        record['executable'] = binding(executable)
     expected_scope = {'destination': runtime['destination'], 'purpose': 'explanation-generation-experiment',
                       'input_sha256': record['input']['sha256'], 'lane': lane,
                       'conditions_sha256': record['conditions']['sha256'],
                       'instructions_sha256': record['instructions']['sha256'], 'approach': approach}
+    if contract == DIRECTED_CONTRACT:
+        expected_scope.update(response_schema_sha256=record['response_schema']['sha256'],
+                              executable_sha256=record.get('executable', {}).get('sha256'),
+                              support_sha256=digest(encoded(record['support'])),
+                              model=runtime['model'], reasoning_effort=runtime['reasoning_effort'])
     authorization = runtime['authorization']
     if (not isinstance(authorization, dict) or authorization.get('scope') != expected_scope
             or not authorization.get('current_request_locator')):
         record['blockers'].append('current_destination_purpose_source_authorization_missing')
     if runtime['destination'] != DESTINATION or not runtime['model'] or not runtime['reasoning_effort']:
         record['blockers'].append('explicit_supported_runtime_missing')
-    executable = executable or shutil.which('codex')
     if not executable:
         record['blockers'].append('installed_codex_unavailable')
     elif contract:
@@ -371,6 +382,8 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                       + '\nUse only the evidence MCP tools. Choose important code and paragraph structure yourself.'
                       + ('\nReturn prose, selections[{id,start,end,sha256,state}], gaps[str],'
                          + ' claims[{start,end,kind,selections[int]}], primary_sites[{selections[int],claims[int],reason}].'
+                         + (' Each claim also needs authority (null or exact selection/record_id/revision/field coordinates).'
+                            if record.get('output_contract') == 'work_directed_reader' else '')
                          + ' Claim spans are UTF-8 prose byte offsets; all indices are zero-based.'
                          if record.get('output_contract') else
                          '\nReturn free prose and a separate strict sidecar: selections[{id,start,end,sha256,state}], gaps[str].')

@@ -11,7 +11,7 @@ import shutil
 import subprocess
 
 from approaches import DESTINATION, HERE, attempt, events
-from inputs import append_index, binding, check_binding, encoded, require, verify
+from inputs import append_index, binding, check_binding, digest, encoded, require, verify
 from render_comparison import card, document
 
 
@@ -70,7 +70,8 @@ def verify_presentation(plan):
             'identity': 'passed', 'semantic_correctness': 'pending', 'human_comprehension': 'pending'}
 
 
-def prepare(baselines, output, *, model, effort, executable=None):
+def prepare(baselines, output, *, model, effort, executable=None, conditions_path=None,
+            allow_reader_baselines=False):
     """Local only. This API cannot authorize or dispatch a model call."""
     require(baselines and model and effort, 'original attempts and explicit runtime required')
     output = Path(output).resolve()
@@ -78,7 +79,8 @@ def prepare(baselines, output, *, model, effort, executable=None):
     grouped, originals, cards, audits = {}, [], [], []
     for number, path in enumerate(baselines, 1):
         record = json.loads(Path(path).read_bytes())
-        require(not record.get('output_contract'), 'baseline must be the original output condition')
+        require(allow_reader_baselines or not record.get('output_contract'),
+                'baseline must be the original output condition')
         spec = verify(record['input']['path'])
         check_binding(record['input'])
         require(record['scope'] == spec['scope'] and record['original_outputs'], 'baseline scope/output missing')
@@ -115,7 +117,7 @@ def prepare(baselines, output, *, model, effort, executable=None):
                        'safety': record.get('diagnostic_outcome'), 'outputs': witness['outputs']})
     executable = executable or shutil.which('codex')
     require(executable, 'installed executable unavailable')
-    conditions = HERE / 'conditions-reader.json'
+    conditions = Path(conditions_path or HERE / 'conditions-reader.json')
     runtime = {'model': model, 'reasoning_effort': effort, 'destination': DESTINATION, 'authorization': None}
     runtime_path = output / 'blocked-runtime.json'; runtime_path.write_bytes(encoded(runtime))
     generations = []
@@ -129,6 +131,10 @@ def prepare(baselines, output, *, model, effort, executable=None):
             'input_sha256': manifest['sha256'], 'lane': 'archive_diagnostic', 'approach': 'direct',
             'conditions_sha256': record['conditions']['sha256'],
             'instructions_sha256': record['instructions']['sha256']}
+        if record['output_contract'] == 'work_directed_reader':
+            authorization_scope.update(response_schema_sha256=record['response_schema']['sha256'],
+                executable_sha256=record['executable']['sha256'], support_sha256=digest(encoded(record['support'])),
+                model=model, reasoning_effort=effort)
         generations.append({'scope': spec['scope'], 'input': manifest, 'attempt': binding(directory / 'attempt.json'),
             'initial_input': record['initial_input'], 'response_schema': record['response_schema'],
             'executable': record['executable'], 'authorization_scope': authorization_scope,
@@ -155,7 +161,7 @@ def prepare(baselines, output, *, model, effort, executable=None):
                           'instructions, source prioritization and output schema change together; '
                           'not a controlled single-factor model experiment',
             'originals': originals, 'original_presentation': binding(presentation), 'fresh': generations,
-            'conditions': binding(conditions), 'instructions': binding(HERE / 'reader-instructions.txt'),
+            'conditions': binding(conditions), 'instructions': record['instructions'],
             'runtime': runtime, 'budgets': json.loads(conditions.read_bytes())['budgets'],
             'model_calls': 0, 'generation_results': 'missing_current_authorization', 'automatic_retries': 0,
             'context': 'independent fresh process/home/cwd; opaque-ID MCP; independent filesystem access '
@@ -183,7 +189,10 @@ if __name__ == '__main__':
     parser.add_argument('--model', required=True)
     parser.add_argument('--reasoning-effort', required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--conditions', type=Path)
+    parser.add_argument('--allow-reader-baselines', action='store_true')
     args = parser.parse_args()
-    plan = prepare(args.baseline_attempt, args.output, model=args.model, effort=args.reasoning_effort)
+    plan = prepare(args.baseline_attempt, args.output, model=args.model, effort=args.reasoning_effort,
+                   conditions_path=args.conditions, allow_reader_baselines=args.allow_reader_baselines)
     print(json.dumps({'state': 'blocked', 'model_calls': 0, 'originals': len(plan['originals']),
                       'fresh_scopes': len(plan['fresh']), 'plan': str(args.output / 'plan.json')}))

@@ -1,0 +1,184 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "prose": {
+      "type": "string"
+    },
+    "selections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "start": {
+            "type": "integer"
+          },
+          "end": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "before",
+              "after",
+              "context"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "sha256",
+          "state"
+        ]
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "start": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "source_fact",
+              "reported_behavior",
+              "user_choice",
+              "user_rationale",
+              "model_interpretation",
+              "execution_evidence",
+              "unverified_expectation",
+              "task_instruction",
+              "recorded_next_action",
+              "agent_recommendation",
+              "generated_suggestion"
+            ]
+          },
+          "selections": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "authority": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "selection": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "record_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "field": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "selection",
+                  "record_id",
+                  "revision",
+                  "field"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "kind",
+          "selections",
+          "authority"
+        ]
+      }
+    },
+    "primary_sites": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "selections": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxItems": 2
+          },
+          "claims": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selections",
+          "claims",
+          "reason"
+        ]
+      }
+    }
+  },
+  "required": [
+    "prose",
+    "selections",
+    "gaps",
+    "claims",
+    "primary_sites"
+  ]
+}

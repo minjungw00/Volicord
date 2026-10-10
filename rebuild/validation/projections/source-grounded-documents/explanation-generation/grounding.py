@@ -1,11 +1,13 @@
 """Strict transport grounding, deliberately no prose entailment judgment."""
 from inputs import check_binding, digest, require
 from pathlib import Path
+import datetime as dt
 
 
 def validate_output(response, spec, lane, retrievals, *, contract=None):
+    from reader_contract import CONTRACTS
     fields = {'prose', 'selections', 'gaps'}
-    if contract == 'reader_oriented':
+    if contract in CONTRACTS:
         fields |= {'claims', 'primary_sites'}
     else:
         require(contract is None, 'unknown output contract')
@@ -26,6 +28,9 @@ def validate_output(response, spec, lane, retrievals, *, contract=None):
                       'after' if entry['attribution'] == 'explicit_work_patch' else 'context')
             require(selection['state'] == actual, 'wrong-state span')
             require(entry['chronology']['state'] == 'known', 'ambiguous chronology')
+            observed = dt.datetime.fromisoformat(entry['chronology']['observed_at'])
+            cutoff = dt.datetime.fromisoformat(spec['scope']['cutoff'])
+            require(observed.tzinfo is not None and observed <= cutoff, 'source after cutoff')
             require(entry['asset'] is not None, 'unavailable source')
             check_binding(entry['asset'])
             start, end = selection['start'], selection['end']
@@ -49,7 +54,7 @@ def validate_output(response, spec, lane, retrievals, *, contract=None):
                         'issues': issues})
     validation = {'selections': results, 'semantic_quality': 'not_assessed', 'unsupported_inferences': 'not_verified',
                   'gaps': response['gaps'], 'missing_selection': not bool(response['selections'])}
-    if contract == 'reader_oriented':
+    if contract in CONTRACTS:
         from reader_contract import validate_reading
-        validation['reading'] = validate_reading(response, spec, validation)
+        validation['reading'] = validate_reading(response, spec, validation, contract=contract, lane=lane)
     return validation

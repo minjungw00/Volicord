@@ -2,9 +2,63 @@
 from inputs import require
 
 CONTRACT = 'reader_oriented'
+DIRECTED_CONTRACT = 'work_directed_reader'
+CONTRACTS = {CONTRACT, DIRECTED_CONTRACT}
 MAX_SITES = 6
 KINDS = {'source_fact', 'reported_behavior', 'user_choice', 'user_rationale',
          'model_interpretation', 'execution_evidence', 'unverified_expectation'}
+DIRECTED_KINDS = KINDS | {'task_instruction', 'recorded_next_action',
+                         'agent_recommendation', 'generated_suggestion'}
+AUTHORITY_KINDS = {'task_instruction', 'recorded_next_action', 'user_choice',
+                   'user_rationale', 'agent_recommendation'}
+
+
+def validate_authority(claim, spec, selections, lane):
+    """Check declared record coordinates, not the intent of natural language."""
+    import json
+    from pathlib import Path
+    kind, authority = claim['kind'], claim['authority']
+    if kind not in AUTHORITY_KINDS:
+        require(authority is None, 'non-authority claim needs null authority')
+        return
+    require(isinstance(authority, dict) and set(authority) ==
+            {'selection', 'record_id', 'revision', 'field'}, 'exact authority coordinates required')
+    index = authority['selection']
+    require(type(index) is int and index in claim['selections'], 'authority selection not bound to claim')
+    result = selections[index]
+    require(result['reference_status'] == 'valid_reference', 'invalid authority reference')
+    entry = next(e for e in spec['entries'] if e['id'] == result['selection']['id'])
+    if entry['role'] != 'canonical_record':
+        allowed = {'task_instruction': {'task', 'user_response'},
+                   'user_choice': {'user_response'}, 'user_rationale': {'user_response'},
+                   'agent_recommendation': {'agent_report'}}
+        require(entry['role'] in allowed.get(kind, set()), 'wrong authority evidence role')
+        require(all(authority[k] is None for k in ('record_id', 'revision', 'field')),
+                'original turn has no canonical record coordinates')
+        return
+    require(entry['representation'] == 'full_file', 'authority needs complete canonical row')
+    selection = result['selection']
+    require(selection['start'] == 0 and selection['end'] == entry['asset']['bytes'],
+            'canonical authority needs the complete retrieved row')
+    value = json.loads(Path(entry['asset']['path']).read_bytes())
+    row, table = value['row'], value['table']
+    require(row.get('project_id') == spec['scope']['project'] and
+            row.get('work_item_id') == spec['scope']['work'], 'foreign canonical authority scope')
+    require(authority['record_id'] == row.get('id') and type(authority['revision']) is int
+            and authority['revision'] == row.get('revision'), 'authority record/revision mismatch')
+    allowed = {'user_choice': ('decisions', {'choice_value'}),
+               'user_rationale': ('decisions', {'user_rationale'}),
+               'agent_recommendation': ('decisions', {'recommendation_rationale'}),
+               'recorded_next_action': ('checkpoints', {'next_step'})}
+    require(kind in allowed and table == allowed[kind][0] and
+            authority['field'] in allowed[kind][1], 'wrong canonical authority field')
+    require(isinstance(row.get(authority['field']), str) and row[authority['field']].strip(),
+            'claimed authority field absent')
+    if kind == 'recorded_next_action':
+        from recorded_work import recorded_work
+        _, facts = recorded_work(spec, lane, None)
+        require(facts['checkpoint'] == row and row.get('work_state') not in {'superseded', 'abandoned'},
+                'next action is not the latest applicable same-Work Checkpoint')
 
 
 def indices(value, count, name):
@@ -13,7 +67,7 @@ def indices(value, count, name):
             len(set(value)) == len(value), 'invalid ' + name + ' indices')
 
 
-def validate_reading(response, spec, validation):
+def validate_reading(response, spec, validation, *, contract=CONTRACT, lane='archive_diagnostic'):
     """Bindings are structural. Independent semantic examination remains pending."""
     require(isinstance(response['claims'], list) and response['claims'], 'claims required')
     require(isinstance(response['primary_sites'], list) and
@@ -21,15 +75,19 @@ def validate_reading(response, spec, validation):
     prose = response['prose'].encode('utf-8')
     selections = validation['selections']
     entries = {e['id']: e for e in spec['entries']}
+    directed = contract == DIRECTED_CONTRACT
     for claim in response['claims']:
-        require(isinstance(claim, dict) and set(claim) == {'start', 'end', 'kind', 'selections'},
+        fields = {'start', 'end', 'kind', 'selections'} | ({'authority'} if directed else set())
+        require(isinstance(claim, dict) and set(claim) == fields,
                 'strict claim fields required')
         start, end = claim['start'], claim['end']
         require(type(start) is int and type(end) is int and 0 <= start < end <= len(prose),
                 'invalid prose byte span')
         prose[:start].decode('utf-8'); prose[start:end].decode('utf-8'); prose[end:].decode('utf-8')
-        require(claim['kind'] in KINDS, 'unknown claim kind')
+        require(claim['kind'] in (DIRECTED_KINDS if directed else KINDS), 'unknown claim kind')
         indices(claim['selections'], len(selections), 'claim selection')
+        if directed:
+            validate_authority(claim, spec, selections, lane)
     seen = set()
     sites, issues = [], []
     for site in response['primary_sites']:

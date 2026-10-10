@@ -896,3 +896,45 @@ DOM after reading checks, never retained HTML. Browser geometry, screen-reader
 usability, Korean font availability and human comprehension are separate claims;
 these machine controls do not attest the latter three. Feedback is exercised
 against the newly rendered pages; older displayed bytes/receipts remain immutable.
+
+## Work-directed reading condition
+
+`conditions-work-reader.json`, `work-reader-instructions.txt` and
+`work-reader-response-schema.json` freeze a separate `work_directed_reader`
+experiment. Historical reader conditions, instructions, schema, attempts and model
+responses retain their bytes. This is experimental claim vocabulary, not a Product
+ontology. `task_instruction` distinguishes conditional work requests from actual
+`user_choice` and `user_rationale`; `recorded_next_action` distinguishes the latest
+applicable same-Work Checkpoint field from `agent_recommendation` and a new
+`generated_suggestion`. Original responses can support choices/rationale after
+independent inspection; role admission and enum labels alone cannot prove intent
+or authorize Learning participation. No canonical Decision is generated.
+
+Authority claims bind a selection plus exact canonical record/revision/field, or
+null record coordinates for the original task/user response/agent report. A task
+cannot be relabeled as a selected alternative, an absent rationale cannot use the
+recommendation field, and an older/foreign/superseded Checkpoint cannot supply a
+current next action. Full retrieved canonical row bytes preserve identity, scope,
+chronology and producer alongside the claims. This is binding validation, never
+natural-language entailment. The independent evaluation must inspect actual
+conditionality, displayed alternatives, response, author and temporal context.
+
+The separately grounded Work reading always quotes the latest unique same-Work
+Checkpoint direction, even when generated prose omits it. Blank latest fields do
+not revive an older action; superseded/abandoned Works expose only historical
+course. Missing or ambiguous records remain explicit limitations. Original course,
+changes, limits and older actions stay inspectable without claiming that later
+silence or successful bounded verification resolved a previous blocker. Source
+unavailability limits current applicability; it does not erase readable canonical
+Checkpoint history. Product and archive input lanes retain their original access
+boundaries. Historical Product preparation/body gaps remain missing producers.
+
+Dispatch requires current authorization bound to exact condition, instructions,
+response schema, executable, support hashes, model/effort, input hash, lane, purpose
+and destination. A blocked local preparation has no model calls. New response and
+run artifacts use a new directory; old-output revalidation is derived reading and
+retains the old producer/attempt identity. Authored controls are registered by
+`work_reader_self_test.py` through unittest discovery/direct execution. They use
+independently authored retry-policy evidence through Source reads, byte grounding
+and the actual HTML consumer, including original prose preservation and failures.
+Run them with `rebuild/scripts/validate focused`; aggregates/gate/V11 are excluded.

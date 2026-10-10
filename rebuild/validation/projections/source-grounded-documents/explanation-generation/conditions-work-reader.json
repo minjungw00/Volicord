@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "condition_id": "work-directed-reading-20261010",
+  "purpose": "fresh original-source Work-direction and authority feasibility; exact current authorization required",
+  "language": "ko",
+  "budgets": {
+    "total_seconds": 900,
+    "reads": 2048,
+    "read_bytes": 8388608,
+    "output_bytes": 1048576,
+    "stream_bytes": 67108864,
+    "retries": 0,
+    "cleanup_seconds": 4
+  },
+  "execution": {
+    "allocation_mode": "safety_only",
+    "compact_initial_inventory": true
+  },
+  "conditions": {
+    "direct": {
+      "starting_evidence": "original permitted Work records and compact unranked source/diff inventory; no prior generated or editorial material",
+      "allowed_reads": "complete scoped opaque-ID source inventory including callers, helpers, tests and state transitions",
+      "instructions": "Explain the recorded problem, mechanism, outcome, limits and latest applicable Work direction. Distinguish task instructions, user choices/rationale, recorded action, agent recommendation, observed execution and generated interpretation. Select primary code autonomously from the original permitted inventory.",
+      "output": "unchanged prose, exact typed claim/authority coordinates, independently selected primary sites, complete secondary selections/gaps; one first response"
+    }
+  },
+  "runtime": {
+    "model": null,
+    "reasoning_effort": null,
+    "destination": null,
+    "state": "dispatch_blocked_until_explicit_runtime_and_current_authorization",
+    "sampling": "unsupported_or_unobserved",
+    "token_counts": "unobserved",
+    "price": "unobserved"
+  },
+  "output_contract": "work_directed_reader"
+}

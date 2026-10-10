@@ -1,6 +1,7 @@
 """Read frozen canonical row evidence; no Product decoder or new authority."""
 from pathlib import Path
 import json
+import datetime as dt
 
 from inputs import check_binding, encoded, require
 from source_reading import download, escaped, preview, public_receipt
@@ -8,7 +9,8 @@ from source_reading import download, escaped, preview, public_receipt
 
 def recorded_work(spec, lane, input_gap):
     facts = {'status': 'unavailable', 'problem': None, 'checkpoint': None,
-             'verification': [], 'basis': [], 'limitations': []}
+             'verification': [], 'basis': [], 'limitations': [], 'history': [],
+             'direction_status': 'unavailable'}
     if input_gap:
         facts['limitations'].append('Frozen input unavailable: ' + input_gap)
         return '', facts
@@ -16,15 +18,24 @@ def recorded_work(spec, lane, input_gap):
     for entry in spec['entries']:
         if lane == 'product' and entry['lane'] != 'product':
             continue
-        if (entry['project'] != spec['scope']['project'] or entry['work'] != spec['scope']['work']
-                or not entry['asset']):
+        if entry['project'] != spec['scope']['project'] or entry['work'] != spec['scope']['work']:
+            continue
+        if not entry['asset']:
+            if entry['role'] == 'canonical_record':
+                facts['limitations'].append('Canonical evidence unavailable; latest Work direction cannot be established')
             continue
         if entry['role'] not in {'task', 'canonical_record'} or entry['representation'] != 'full_file':
             continue
         check_binding(entry['asset'])
         raw = Path(entry['asset']['path']).read_bytes()
         basis = {'id': entry['id'], 'locator': entry['locator'], 'asset': entry['asset'],
-                 'producer': entry['producer'], 'chronology': entry['chronology']}
+                 'producer': entry['producer'], 'chronology': entry['chronology'],
+                 'project': entry['project'], 'work': entry['work']}
+        if entry['chronology']['state'] == 'known':
+            observed = dt.datetime.fromisoformat(entry['chronology']['observed_at'])
+            if observed.tzinfo is None or observed > dt.datetime.fromisoformat(spec['scope']['cutoff']):
+                facts['limitations'].append('Evidence after explanation cutoff')
+                continue
         if entry['role'] == 'task':
             if entry['chronology']['state'] == 'known':
                 tasks.append((raw.decode('utf-8'), basis))
@@ -46,9 +57,14 @@ def recorded_work(spec, lane, input_gap):
             facts['limitations'].append('Canonical row unavailable: ' + str(error))
     checkpoints = [(row, basis) for row, basis in tables.get('checkpoints', [])
                    if row.get('work_item_id') == spec['scope']['work']]
+    facts['history'] = [{'checkpoint': row, 'basis': basis} for row, basis in checkpoints]
     if checkpoints and not all(type(row.get('recorded_at')) is int and type(row.get('revision')) is int
                                for row, _ in checkpoints):
         facts['limitations'].append('Checkpoint ordering unavailable')
+    if any(type(row.get('recorded_at')) is int and row['recorded_at'] >
+           int(dt.datetime.fromisoformat(spec['scope']['cutoff']).timestamp() * 1000000)
+           for row, _ in checkpoints):
+        facts['limitations'].append('Checkpoint recorded after explanation cutoff')
     if checkpoints and not facts['limitations']:
         latest_time = max(row['recorded_at'] for row, _ in checkpoints)
         latest = [(row, basis) for row, basis in checkpoints if row['recorded_at'] == latest_time]
@@ -57,6 +73,8 @@ def recorded_work(spec, lane, input_gap):
         else:
             row, basis = latest[0]
             facts.update(status='recorded', checkpoint=row, problem=row.get('goal'))
+            facts['direction_status'] = ('superseded' if row.get('work_state') in {'superseded', 'abandoned'}
+                                         else 'recorded' if row.get('next_step') else 'absent')
             facts['basis'].append(basis)
             sources = {r['id']: (r, b) for r, b in tables.get('sources', [])}
 
@@ -103,7 +121,9 @@ def direction_html(facts):
     if row is None:
         return '<p>Recorded direction, completion, verification, user review and acceptance unavailable: no uniquely ordered same-Work Checkpoint in the permitted input.</p>'
     body = '<section class="recorded-direction"><h3>Recorded direction</h3>'
-    body += ('<pre class="direction">' + preview(row['next_step']) + '</pre>' if row.get('next_step') else
+    body += ('<p>Latest Work is superseded or abandoned; its historical action is not an applicable next step.</p>'
+             if facts['direction_status'] == 'superseded' else
+             '<pre class="direction">' + preview(row['next_step']) + '</pre>' if row.get('next_step') else
              '<p>No next meaningful action recorded in the latest Checkpoint.</p>')
     body += '<p>Quoted from the frozen same-Work Checkpoint; no new recommendation or user decision.</p>'
     body += '<p>Recorded Work state: ' + escaped(row.get('work_state', 'unavailable')) + '. '
@@ -130,6 +150,14 @@ def direction_html(facts):
             body += '<p class="gap">Recorded failed verification observations: ' + str(failed) + '; later passes do not erase their scopes.</p>'
     for limit in facts['limitations']:
         body += '<p class="gap">' + escaped(limit) + '</p>'
+    body += '<details class="recorded-course"><summary>Original same-Work course; later silence does not resolve earlier limits</summary>'
+    for member in facts['history']:
+        checkpoint = member['checkpoint']
+        body += '<p>Checkpoint ' + escaped(checkpoint['id']) + '; revision ' + escaped(checkpoint['revision']) + '</p>'
+        for field in ('state_change', 'next_step', 'known_limits'):
+            if checkpoint.get(field):
+                body += '<p>' + escaped(field) + '</p><pre>' + preview(checkpoint[field]) + '</pre>'
+    body += '</details>'
     # Complete row bytes (including opaque encoded fields) remain recoverable.
     body += '<details><summary>Exact recorded direction and state basis</summary>'
     data = encoded(public_receipt(facts))

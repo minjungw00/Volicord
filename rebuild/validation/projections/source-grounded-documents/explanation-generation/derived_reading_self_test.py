@@ -117,10 +117,11 @@ class DerivedReadingTests(unittest.TestCase):
                              ('checkpoint_verifications', {'project_id': project, 'checkpoint_id': 'cp',
                                   'source_id': 'command', 'verification_state': 'failed', 'outcome': 'Authored failure.'}),
                              ('sources', source)])
-        body, witness, _ = self.h.present()
+        body, witness, parser = self.h.present()
         self.assertEqual(witness['recorded_work']['checkpoint']['id'], 'cp')
         self.assertIn('Review the actual diff.', body)
-        self.assertNotIn('Obsolete action', body)
+        self.assertEqual(parser.values['direction'], ['Review the actual diff.'])
+        self.assertIn('Obsolete action', body)  # Historical disclosure, never current direction.
         self.assertIn('User review: not_requested. User acceptance: rejected', body)
         self.assertIn('Recorded command exit: 101', body)
         self.assertIn('Recorded failed verification observations: 1', body)
@@ -133,9 +134,10 @@ class DerivedReadingTests(unittest.TestCase):
               'revision': 1, 'recorded_at': 2, 'next_step': ''}
         self.canonical_rows([('checkpoints', dict(cp, id='old', recorded_at=1, next_step='Obsolete direction')),
                              ('checkpoints', cp)])
-        body, witness, _ = self.h.present()
+        body, witness, parser = self.h.present()
         self.assertIn('No next meaningful action recorded', body)
-        self.assertNotIn('Obsolete direction', body)
+        self.assertNotIn('direction', parser.values)
+        self.assertIn('Obsolete direction', body)  # Original course remains inspectable.
         self.canonical_rows([('checkpoints', dict(cp, id='tie', next_step='Ambiguous direction'))])
         body, witness, _ = self.h.present()
         self.assertIsNone(witness['recorded_work']['checkpoint'])
