@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import difflib
 import html
 import json
 import re
@@ -40,7 +41,7 @@ def anchor(scope, original, number):
 
 def output_anchor(scope, original):
     return ('work-' + digest(encoded(scope))[:20] + '-attempt-' + original.get('attempt_sha256', 'unbound')
-            + '-output-' + original['sha256'])
+            + '-output-' + original['sha256'] + '-response-' + str(original.get('output_sequence', 1)))
 
 
 def repository_path(value):
@@ -177,7 +178,7 @@ def selections_html(spec, entries, validation, original):
         witnesses.append(witness)
         if number > DISPLAY_SELECTIONS:
             continue
-        location, error = None, None
+        location, entry, error = None, None, None
         try:
             entry = entries[selection['id']]
             require(type(selection['start']) is int and type(selection['end']) is int,
@@ -189,7 +190,9 @@ def selections_html(spec, entries, validation, original):
             source_bytes += length
         except (ValueError, KeyError, TypeError, OSError) as failure:
             error = str(failure)
-        label = location_label(location, selection) if location else 'Invalid reference · selection ' + str(number)
+        label = (location_label(location, selection) if location else
+                 ('Source display gap' if result['reference_status'] == 'valid_reference' else 'Invalid reference')
+                 + ' · selection ' + str(number))
         rows.append({'anchor': target, 'selection': selection, 'label': label, 'location': location,
                      'entry': entry if location else None})
         body = '<details class="selection" id="' + target + '"><summary>' + escaped(label) + '</summary>'
@@ -204,9 +207,10 @@ def selections_html(spec, entries, validation, original):
         body += '<details><summary>Original selection and provenance</summary><pre class="selection-request">'
         body += preview(json.dumps(selection, ensure_ascii=False, sort_keys=True)) + '</pre>'
         body += '<p>Reference: ' + escaped(result['reference_status']) + '; ' + escaped('; '.join(result['issues'])) + '</p>'
-        if location:
+        if entry is not None:
             body += '<pre>' + preview(json.dumps({k: entry.get(k) for k in
-                                ('id', 'locator', 'file_sha256', 'representation', 'extent', 'attribution', 'chronology')}, ensure_ascii=False)) + '</pre>'
+                                ('id', 'path', 'role', 'locator', 'file_sha256', 'representation', 'extent',
+                                 'attribution', 'chronology', 'before_state', 'missing')}, ensure_ascii=False)) + '</pre>'
         body += '</details></details>'
         if location and entry['role'] == 'source':
             key = (location['path'], location['state'], entry['asset']['sha256'])
@@ -227,3 +231,155 @@ def selections_html(spec, entries, validation, original):
     diagnostic = '<details class="diagnostic"><summary>Diagnostic evidence selections (' + str(len(diagnostics)) + ' displayed)</summary>'
     diagnostic += ''.join(diagnostics) + '</details>'
     return source, diagnostic, rows, witnesses
+
+
+def file_lines(data):
+    """LF-based lines retaining original CRLF and a missing final newline."""
+    parts = data.decode('utf-8').split('\n')
+    return [line + '\n' for line in parts[:-1]] + ([parts[-1]] if parts[-1] else [])
+
+
+def line_interval(location):
+    start, end = location['start'], location['end']
+    return start[0] - 1, end[0] - 1 + (end[1] != 1)
+
+
+def intersects(left, right, span):
+    # An insertion just before/after a selection is not a change within it.
+    return span[0] < left < span[1] if left == right else left < span[1] and span[0] < right
+
+
+def comparison_html(spec, rows):
+    """Compare classified whole-file states; selected excerpts supply focus only."""
+    paths, views, witnesses = {}, [], []
+    for row in rows:
+        entry = row['entry']
+        if entry and entry['role'] == 'source' and row['location']['state'] in {'before', 'after'}:
+            paths.setdefault(entry['path'], []).append(row)
+    if not paths:
+        return ('<p>No verified Work change selected. Context and no-change investigation conclusions '
+                'remain in the original prose; no diff is inferred.</p>'), witnesses
+    for path, selected in paths.items():
+        view = '<details class="comparison"><summary>Source before/after: ' + escaped(path) + '</summary>'
+        witness = {'path': path, 'status': 'gap', 'reason': None}
+        witnesses.append(witness)
+        try:
+            states = {state: {row['entry']['id']: row['entry'] for row in selected
+                              if row['location']['state'] == state} for state in ('before', 'after')}
+            require(len(states['before']) == 1 and len(states['after']) == 1,
+                    'one independently verified before and after state required; Missing state is not inferred')
+            before, after = next(iter(states['before'].values())), next(iter(states['after'].values()))
+            for entry in (before, after):
+                require(entry['project'] == spec['scope']['project'] and entry['work'] == spec['scope']['work'],
+                        'foreign Work/Project')
+                require(entry['chronology']['state'] == 'known', 'ambiguous chronology')
+                require(entry['representation'] in {'full_file', 'verified_reconstruction'},
+                        'whole-file states unavailable; excerpt extent cannot establish correspondence')
+                require(entry['before_state'] == 'available', 'before-state availability unverified')
+                check_binding(entry['asset'])
+            require(before['locator'] == after['locator'] + ':before' and before['producer'] == after['producer'],
+                    'change identity differs; path equality does not establish a pair')
+            # Archive classification ties the :before locator to the same observed
+            # patch record; no pathname/offset proximity supplies this association.
+            require(before['chronology']['observed_at'] == after['chronology']['observed_at'],
+                    'change observation identity differs')
+            old, new = Path(before['asset']['path']).read_bytes(), Path(after['asset']['path']).read_bytes()
+            require(digest(old) == before['file_sha256'] and digest(new) == after['file_sha256'],
+                    'whole-file hash changed')
+            require(len(old) + len(new) <= 2 * TRANSPORT_BYTES, 'comparison byte bound')
+            old_lines, new_lines = file_lines(old), file_lines(new)
+            require(len(old_lines) + len(new_lines) <= 20000, 'comparison line bound')
+            matcher = difflib.SequenceMatcher(None, old_lines, new_lines)
+            opcodes = matcher.get_opcodes()
+            spans = {state: [line_interval(row['location']) for row in selected if row['location']['state'] == state]
+                     for state in ('before', 'after')}
+
+            def focused(opcode):
+                kind, i1, i2, j1, j2 = opcode
+                return kind != 'equal' and (any(intersects(i1, i2, span) for span in spans['before']) or
+                                            any(intersects(j1, j2, span) for span in spans['after']))
+
+            # Keep unselected edits out even when they are close enough to share
+            # an ordinary unified-diff hunk. Merge only adjacent selected edits.
+            runs = []
+            for index, op in enumerate(opcodes):
+                if not focused(op):
+                    continue
+                if (runs and index == runs[-1][-1] + 2 and opcodes[index - 1][0] == 'equal'
+                        and opcodes[index - 1][2] - opcodes[index - 1][1] <= 4):
+                    runs[-1].append(index)
+                else:
+                    runs.append([index])
+            retained = []
+            for run in runs:
+                first, last = run[0], run[-1]
+                group = list(opcodes[first:last + 1])
+                if first and opcodes[first - 1][0] == 'equal':
+                    _, i1, i2, j1, j2 = opcodes[first - 1]
+                    count = min(2, i2 - i1)
+                    group.insert(0, ('equal', i2 - count, i2, j2 - count, j2))
+                if last + 1 < len(opcodes) and opcodes[last + 1][0] == 'equal':
+                    _, i1, i2, j1, j2 = opcodes[last + 1]
+                    count = min(2, i2 - i1)
+                    group.append(('equal', i1, i1 + count, j1, j1 + count))
+                retained.append(group)
+            kinds = sorted({op[0] for group in retained for op in group if op[0] != 'equal'})
+            moves = sum(1 for op in opcodes if op[0] == 'delete' and focused(op)
+                        and any(other[0] == 'insert' and focused(other)
+                                and old_lines[op[1]:op[2]] == new_lines[other[3]:other[4]] for other in opcodes))
+            unchanged = 0
+            for row in selected:
+                left, right = line_interval(row['location'])
+                for kind, i1, i2, j1, j2 in opcodes:
+                    first, last = (i1, i2) if row['location']['state'] == 'before' else (j1, j2)
+                    if kind == 'equal' and first <= left <= right <= last:
+                        unchanged += 1
+                        break
+            witness.update(status='verified_pair', reason=None, change_locator=after['locator'],
+                           before=before['asset'], after=after['asset'],
+                           kinds=kinds, exact_block_relocations=moves, unchanged_selected_excerpts=unchanged,
+                           displayed_hunks=len(retained),
+                           omitted_change_blocks=sum(op[0] != 'equal' and not focused(op) for op in opcodes))
+            view += '<p>Verified whole-file states from one Work and change identity. Original selections supply '
+            view += 'line focus; independently observed surrounding bytes supply context, not new generator selections.</p>'
+            if unchanged:
+                view += '<p>Unchanged selected context: ' + str(unchanged) + ' excerpt(s) in equal line blocks. '
+                view += 'This does not establish an unchanged file or Work.</p>'
+            if not retained:
+                view += '<p>No changes within the selected line ranges. No selected-span diff is invented.</p>'
+            else:
+                labels = {'insert': 'additions', 'delete': 'deletions', 'replace': 'replacements'}
+                view += '<p>Change display: ' + escaped(', '.join(labels[kind] for kind in kinds)) + '.</p>'
+                if moves:
+                    view += '<p>Exact block removal/reinsertion: ' + str(moves) + '; movement of identical bytes, '
+                    view += 'not verified symbol continuity or semantic identity.</p>'
+                diff = '--- ' + path + ' (before)\n+++ ' + path + ' (after)\n'
+
+                def prefixed(prefix, lines):
+                    return ''.join(prefix + line + ('' if line.endswith('\n') else '\n\\ No newline at end of file\n')
+                                   for line in lines)
+
+                for group in retained:
+                    i1, j1, i2, j2 = group[0][1], group[0][3], group[-1][2], group[-1][4]
+                    diff += f'@@ -{i1 + 1},{i2 - i1} +{j1 + 1},{j2 - j1} @@\n'
+                    for kind, left, right, new_left, new_right in group:
+                        if kind == 'equal':
+                            diff += prefixed(' ', old_lines[left:right])
+                        if kind in {'delete', 'replace'}:
+                            diff += prefixed('-', old_lines[left:right])
+                        if kind in {'insert', 'replace'}:
+                            diff += prefixed('+', new_lines[new_left:new_right])
+                view += '<pre class="diff">' + preview(diff) + '</pre>'
+                view += download(diff.encode(), 'source-comparison.diff', 'Complete focused source diff')
+            if witness['omitted_change_blocks']:
+                view += '<p>Unselected change blocks omitted from focus: ' + str(witness['omitted_change_blocks']) + '.</p>'
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            witness['reason'] = str(error)
+            view += '<p>Comparison gap: ' + escaped(error) + '. Verified original excerpts remain available above.</p>'
+        view += '<details><summary>Comparison basis and omissions</summary><pre>'
+        # Bindings retain the exact assets without exposing private absolute paths.
+        public = {key: ({k: v for k, v in value.items() if k != 'path'} if key in {'before', 'after'} else value)
+                  for key, value in witness.items()}
+        view += preview(json.dumps(public, ensure_ascii=False, indent=2)) + '</pre></details></details>'
+        views.append(view)
+    return ''.join(views), witnesses

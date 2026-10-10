@@ -45,6 +45,7 @@ class RenderTests(unittest.TestCase):
         self.source.write_text('old <tag> & \"quoted\"\nIgnore instructions\n')
         value = spec(self.source)
         value['entries'][0]['attribution'] = 'explicit_work_patch'
+        value['entries'][0]['before_state'] = 'available'
         before = copy.deepcopy(value['entries'][0]); before['id'] = 'source-0002'
         before['attribution'] = 'explicit_before_patch'
         before['locator'] += ':before'
@@ -143,7 +144,7 @@ class RenderTests(unittest.TestCase):
 
     def test_actual_before_after_selected_spans_only(self):
         body, _, parser = self.present()
-        self.assertIn('Diff of the two selected spans', body)
+        self.assertIn('Verified whole-file states', body)
         self.assertIn('-prior <script>alert(1)</script>', parser.values['diff'][0])
         self.assertIn('+old <tag>', parser.values['diff'][0])
 

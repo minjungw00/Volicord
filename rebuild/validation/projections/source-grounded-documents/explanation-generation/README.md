@@ -468,11 +468,41 @@ comprehension qualification.
 creates one self-contained escaped HTML presentation, a separate approach mapping
 and integrity sidecar. Sample order is shuffled. All approaches use the same card
 layout with every original intermediate/final output, original selection identities,
-selected before/after span diffs and explicit gaps. Missing states
+verified whole-file comparison focus and explicit gaps. Missing states
 are never reconstructed or replaced with preferred code. Invalid references retain
 their requested coordinates without presenting foreign or wrong-state bytes as
 verified evidence. Run/coverage/isolation gaps remain visible. Original responses,
 including malformed responses, are neither rewritten nor silently omitted.
+
+Source comparison requires one unique selected full-file state on each side, exact
+Project/Work, known chronology and available before-state. The archive adapter's
+same change record (`after.locator` and `after.locator + ':before'`), observation and
+producer bind the correspondence; path equality alone cannot pair states. Multiple
+selections of one state are retained without blocking comparison. Excerpts,
+unrelated change records, missing/ambiguous sides and cross-path moves without a
+verified correspondence preserve their selected bytes and expose a comparison gap.
+At most 4 MiB of paired file bytes and 20,000 combined LF-based lines are compared.
+
+Whole-file matching supplies original repository hunk coordinates. Selected ranges
+determine focus; context bytes come from independently observed frozen states and
+are explicitly additional comparison context, never replacement generator selections.
+Unselected neighboring edits are excluded even when an ordinary unified diff would
+merge them into one hunk. Omitted change blocks have exact counts. Equal selected
+line blocks are reported as unchanged context without an empty diff or a claim that
+the Work/file is unchanged. Additions, deletions and replacements remain distinct.
+Exact removed/reinserted blocks disclose byte movement without claiming symbol or
+semantic continuity. Document comparisons keep their own paths; they cannot fill a
+missing code comparison. Context/no-change investigations retain original prose and
+source navigation without an inferred diff.
+
+If the bound input manifest survives but dependency/source verification fails, the
+entire frozen input gets an explicit gap and all verified source anchors are withheld.
+Original output bytes remain diagnostic. Changed attempt/input/output receipt bindings
+remain hard failures. This degradation does not relax the existing grounding validator:
+Click's four chronology-ambiguous selections remain invalid even with matching hashes.
+`ComparisonTests` exercises the actual consumer for unrelated changes, incomplete
+excerpts, unchanged selections, focused edits, CRLF, missing final newline, multiple
+selections, additions/deletions/relocation and changed/ambiguous source provenance.
 
 The presentation consumer joins completed host evidence results to the exact retained
 ledger and verifies returned source bytes against the frozen input before displaying

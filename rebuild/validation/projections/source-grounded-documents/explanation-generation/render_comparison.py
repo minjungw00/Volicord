@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import difflib
 import html
 import json
 from pathlib import Path
@@ -18,13 +17,24 @@ def escaped(value):
 
 
 def card(attempt_path, label):
-    from source_reading import (TRANSPORT_BYTES, download, output_anchor, preview, prose_html, selections_html)
+    from source_reading import (TRANSPORT_BYTES, comparison_html, download, output_anchor, preview,
+                                prose_html, selections_html)
     attempt_path = Path(attempt_path)
     record = json.loads(attempt_path.read_bytes())
     check_binding(record['input'])
-    spec = verify(record['input']['path'])
+    require(record['lane'] in {'product', 'archive_diagnostic'}, 'unknown input lane')
+    spec = json.loads(Path(record['input']['path']).read_bytes())
     require(record['scope'] == spec['scope'], 'attempt input scope changed')
-    entries = {entry['id']: entry for entry in spec['entries']}
+    input_gap = None
+    try:
+        spec = verify(record['input']['path'])
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        # The manifest/attempt binding is intact, but its dependencies are not.
+        # Keep original output diagnostics without granting any source validity.
+        input_gap = str(error)
+    entries = {entry['id']: entry for entry in spec['entries']
+               if (record['lane'] == 'archive_diagnostic' or entry['lane'] == 'product')
+               and entry['project'] == spec['scope']['project'] and entry['work'] == spec['scope']['work']}
     trace = []
     if record.get('retrievals'):
         check_binding(record['retrievals'])
@@ -45,7 +55,8 @@ def card(attempt_path, label):
                 host_calls.append(item)
                 if item.get('status') == 'failed':
                     failed_tools.append(item.get('error'))
-    audit = retrieval_audit(spec, record['lane'], host_calls, trace)
+    audit = (retrieval_audit(spec, record['lane'], host_calls, trace) if input_gap is None else
+             {'outcomes': [], 'issues': ['frozen input unavailable: ' + input_gap]})
     verified_sequences = {row['sequence'] for row in audit['outcomes']
                           if row['outcome'] == 'source_read_verified'}
     verified_trace = [row for row in trace if row['sequence'] in verified_sequences]
@@ -55,6 +66,9 @@ def card(attempt_path, label):
              '<p>Semantic quality and inference support: not assessed. Reference checks certify byte identity only.</p>']
     if record.get('blockers'):
         parts.append('<p>Gaps: ' + escaped('; '.join(record['blockers'])) + '</p>')
+    if input_gap is not None:
+        parts.append('<p>Input verification gap: ' + escaped(input_gap)
+                     + '. All source anchors withheld for this frozen input; original outputs remain diagnostic.</p>')
     final = record.get('generation_output')
     if final:
         require(final in record['original_outputs'], 'final output absent from original outputs')
@@ -68,7 +82,7 @@ def card(attempt_path, label):
         check_binding(output)
         require(output['bytes'] <= TRANSPORT_BYTES, 'response exceeds local presentation bound')
         raw = Path(output['path']).read_bytes()
-        display_original = dict(output, attempt_sha256=witnesses['attempt']['sha256'])
+        display_original = dict(output, attempt_sha256=witnesses['attempt']['sha256'], output_sequence=number)
         stage = ('Final response' if output == final else 'Intermediate response' if final
                  else 'Captured response; stage completion unverified')
         view = ['<section id="' + output_anchor(spec['scope'], display_original) + '"><h3>' + stage + ' ' + str(number) + '</h3>']
@@ -98,20 +112,8 @@ def card(attempt_path, label):
             view.append('<p>Run verification: ' + ('verified' if run_verified else 'not verified') +
                         '. Valid source bytes remain distinct from whole-run and semantic validity.</p>')
             view.append(source)
-            pairings = {}
-            for row in rows:
-                location, entry = row['location'], row['entry']
-                if location and entry['role'] == 'source' and location['state'] in {'before', 'after'}:
-                    pairings.setdefault(entry['path'], {'before': [], 'after': []})[location['state']].append(location['text'])
-            for path, states in pairings.items():
-                view.append('<details><summary>Before/after: ' + escaped(path) + '</summary>')
-                if len(states['before']) == 1 and len(states['after']) == 1:
-                    diff = ''.join(difflib.unified_diff(states['before'][0].splitlines(True), states['after'][0].splitlines(True),
-                                                      fromfile='selected before span', tofile='selected after span'))
-                    view.append('<p>Diff of the two selected spans; not a whole-file diff.</p><pre class="diff">' + preview(diff) + '</pre>')
-                else:
-                    view.append('<p>Comparison gap: one exact before and after span was not selected. Missing state is not inferred.</p>')
-                view.append('</details>')
+            comparison, witness['comparisons'] = comparison_html(spec, rows)
+            view.append(comparison)
             view.append(diagnostic)
         view.append('<details><summary>Original response transport · lossless diagnostic download</summary><pre class="original">'
                     + preview(raw.decode('utf-8', errors='backslashreplace')) + '</pre>'
@@ -154,6 +156,7 @@ def document(cards):
 def render(attempts, output):
     require(bool(attempts), 'attempts required')
     require(len({str(Path(p).resolve()) for p in attempts}) == len(attempts), 'duplicate attempt')
+    require(len({binding(p)['sha256'] for p in attempts}) == len(attempts), 'duplicate attempt content')
     output = Path(output).resolve()
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
     ordering = list(attempts)
