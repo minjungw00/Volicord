@@ -951,3 +951,14 @@ source, allow more than six independently bound sites and allow no-code gaps;
 the historical six-site contract is unchanged. Actual first subprocess output
 passes through opaque-ID Source reads, exact authorization, grounding and HTML.
 These controls remain authored transport tests, not live semantic acceptance.
+
+The Work-directed HTML consumer exposes authority classifications and exact Source
+bindings for task/action/choice/rationale/recommendation claims even when they have
+no primary code site. Before this repair, only primary-site claims were disclosed;
+a separate authored non-primary task/choice/rationale case reproduced the omission.
+The recorded Checkpoint direction now precedes generated prose in this condition,
+while model-classified claims explicitly retain pending intent/entailment status.
+Invalid authority claims have no valid claim/primary surface; original prose and
+response downloads remain diagnostic. No producer wording, original response or
+historical execution status is rewritten. No-code responses expose their primary
+gap. Withheld/incomplete canonical evidence cannot revive an older action.

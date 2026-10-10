@@ -79,6 +79,9 @@ def card(attempt_path, label):
     model_calls = [call for call in record.get('calls', []) if call['kind'] == 'model_call']
     problem, work_facts = recorded_work(spec, record['lane'], input_gap)
     parts = ['<article><h2>' + escaped(label) + '</h2>', problem]
+    directed = record.get('output_contract') == 'work_directed_reader'
+    if directed:
+        parts.append(direction_html(work_facts))
     invocation_notice = ''
     if record['status'] != 'captured':
         invocation_notice = ('<p class="gap">The original invocation did not complete successfully. '
@@ -176,8 +179,11 @@ def card(attempt_path, label):
             if issues:
                 view.append('<p class="gap">Current validation gaps: ' + escaped('; '.join(issues)) + '</p>')
             if record.get('output_contract'):
-                from reader_contract import primary_html
+                from reader_contract import authority_html, primary_html
                 witness['reading'] = validation['reading']
+                if directed:
+                    authority, witness['claim_authority'] = authority_html(response, validation, rows)
+                    view.append(authority)
                 primary_comparisons = []
                 witness['primary_comparisons'] = []
                 if validation['reading']['status'] == 'valid_binding':
@@ -217,7 +223,8 @@ def card(attempt_path, label):
     parts.extend(body for _, body in sorted(views, key=lambda item: not item[0]))
     if not views:
         parts.append(invocation_notice)
-    parts.append(direction_html(work_facts))
+    if not directed:
+        parts.append(direction_html(work_facts))
     original = encoded(public_receipt(witnesses['original_invocation']))
     parts.append('<details class="invocation"><summary>Original invocation outcome and retained response identities</summary>'
                  + '<p>Original invocation outcome: ' + escaped(record['status']) + '</p><pre>'

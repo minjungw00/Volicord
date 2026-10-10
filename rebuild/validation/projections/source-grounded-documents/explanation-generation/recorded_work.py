@@ -25,6 +25,8 @@ def recorded_work(spec, lane, input_gap):
                 facts['limitations'].append('Canonical evidence unavailable; latest Work direction cannot be established')
             continue
         if entry['role'] not in {'task', 'canonical_record'} or entry['representation'] != 'full_file':
+            if entry['role'] == 'canonical_record':
+                facts['limitations'].append('Incomplete canonical row cannot establish latest Work direction')
             continue
         check_binding(entry['asset'])
         raw = Path(entry['asset']['path']).read_bytes()
@@ -119,7 +121,12 @@ def recorded_work(spec, lane, input_gap):
 def direction_html(facts):
     row = facts['checkpoint']
     if row is None:
-        return '<p>Recorded direction, completion, verification, user review and acceptance unavailable: no uniquely ordered same-Work Checkpoint in the permitted input.</p>'
+        body = '<p>Recorded direction, completion, verification, user review and acceptance unavailable: no uniquely ordered same-Work Checkpoint in the permitted input.</p>'
+        for limit in facts['limitations']:
+            body += '<p class="gap">' + escaped(limit) + '</p>'
+        data = encoded(public_receipt(facts))
+        return body + '<details><summary>Unavailable direction and retained historical basis</summary>' + download(
+            data, 'recorded-work.json', 'Complete recorded Work basis') + '</details>'
     body = '<section class="recorded-direction"><h3>Recorded direction</h3>'
     body += ('<p>Latest Work is superseded or abandoned; its historical action is not an applicable next step.</p>'
              if facts['direction_status'] == 'superseded' else

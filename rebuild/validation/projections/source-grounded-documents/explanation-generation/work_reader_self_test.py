@@ -202,6 +202,45 @@ class WorkReaderTests(unittest.TestCase):
         self.assertIn(after.encode(), [base64.b64decode(link.split(',', 1)[1]) for link in parser.links if link.startswith('data:')])
         self.assertEqual(witness['outputs'][0]['reading']['relevance'], 'pending_independent_examination')
 
+    def test_non_primary_task_choice_and_rationale_are_visible_with_exact_bindings(self):
+        index = self.evidence('task', 'Investigate stream closure before proposing a policy.')
+        self.claim('task_instruction', index)
+        index = self.evidence('user_response', 'Use a bounded retry. I need predictable waiting.')
+        self.claim('user_choice', index); self.claim('user_rationale', index)
+        self.evidence('canonical_record', self.cp, table='checkpoints')
+        body, witness, parser = self.present()
+        self.assertEqual(parser.values['authority-claim'], ['Independent evidence-bound statement.'] * 3)
+        self.assertIn('Task instruction; model classification', body)
+        self.assertIn('User choice; model classification', body)
+        self.assertIn('User rationale; model classification', body)
+        self.assertIn('data-authority-selection="2"', body)
+        self.assertIn('data-authority-selection="3"', body)
+        self.assertLess(body.index('class="recorded-direction"'), body.index('class="prose"'))
+        self.assertLess(body.index('class="claim-authority"'), body.index('class="primary-sites"'))
+        self.assertEqual(parser.values['prose'], [self.response['prose']])
+        self.assertEqual(witness['outputs'][0]['derived_reading']['status'], 'valid_binding')
+        self.assertEqual(witness['outputs'][0]['claim_authority']['semantic_correctness'], 'pending_independent_examination')
+
+    def test_policy_withheld_canonical_bytes_do_not_revive_old_action(self):
+        self.evidence('canonical_record', self.cp, table='checkpoints')
+        self.evidence('canonical_record', dict(self.cp, id='later', recorded_at=4), table='checkpoints')
+        spec = i.verify(self.h.manifest)
+        spec['entries'][-1].update(asset=None, origin=None, file_sha256=None, representation='unavailable',
+            missing='Policy withheld canonical content.')
+        self.h.manifest.write_bytes(i.encoded(spec)); self.h.record['input'] = i.binding(self.h.manifest)
+        body, witness, parser = self.present()
+        self.assertIsNone(witness['recorded_work']['checkpoint'])
+        self.assertNotIn('direction', parser.values)
+        self.assertIn('no uniquely ordered same-Work Checkpoint', body)
+        self.assertEqual(parser.values['prose'], [self.response['prose']])
+
+    def test_product_lane_cannot_use_archive_only_direction(self):
+        self.evidence('canonical_record', self.cp, table='checkpoints')
+        self.h.record['lane'] = 'product'
+        body, witness, parser = self.present()
+        self.assertIsNone(witness['recorded_work']['checkpoint'])
+        self.assertNotIn('direction', parser.values)
+
     def test_wrong_field_partial_row_and_missing_authority_fail(self):
         index = self.evidence('canonical_record', self.cp, table='checkpoints')
         self.claim('recorded_next_action', index, self.cp, 'next_step')

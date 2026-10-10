@@ -42,6 +42,8 @@ def validate_authority(claim, spec, selections, lane):
             'canonical authority needs the complete retrieved row')
     value = json.loads(Path(entry['asset']['path']).read_bytes())
     row, table = value['row'], value['table']
+    require(isinstance(row.get('id'), str) and row['id'] and type(row.get('revision')) is int
+            and row['revision'] > 0, 'canonical authority identity absent')
     require(row.get('project_id') == spec['scope']['project'] and
             row.get('work_item_id') == spec['scope']['work'], 'foreign canonical authority scope')
     require(authority['record_id'] == row.get('id') and type(authority['revision']) is int
@@ -155,6 +157,8 @@ def primary_html(response, validation, rows, *, comparisons=()):
     if reading['status'] != 'valid_binding':
         return ('<p>Primary reading unavailable: ' + escaped('; '.join(reading['issues'])) +
                 '. Original requests remain in the response download.</p>')
+    if not response['primary_sites']:
+        return '<p>No primary code selected; inspect declared gaps and complete secondary evidence.</p>'
     body = '<nav class="primary-sites" aria-label="Generator ordered primary code sites"><ol>'
     by_index = {row['index']: row for row in rows}
     for site_number, result in enumerate(reading['sites']):
@@ -193,3 +197,36 @@ def primary_html(response, validation, rows, *, comparisons=()):
             body += ' · '.join(links) + '</p>'
         body += '</details></li>'
     return body + '</ol></nav>'
+
+
+def authority_html(response, validation, rows):
+    """Expose non-code claim meanings without rewriting or certifying model prose."""
+    from source_reading import escaped, preview
+    if validation['reading']['status'] != 'valid_binding':
+        return '', {'status': 'withheld_invalid_binding'}
+    by_index = {row['index']: row for row in rows}
+    claims = [(n, claim) for n, claim in enumerate(response['claims'])
+              if claim['kind'] in AUTHORITY_KINDS | {'generated_suggestion'}]
+    labels = {'task_instruction': 'Task instruction', 'recorded_next_action': 'Recorded next action',
+              'user_choice': 'User choice', 'user_rationale': 'User rationale',
+              'agent_recommendation': 'Recorded agent recommendation',
+              'generated_suggestion': 'New generated suggestion'}
+    body = '<section class="claim-authority"><h3>Task and action claim meanings</h3>'
+    body += '<p>Model classifications and wording; intent and entailment require independent examination. '
+    body += 'These claims grant no Decision, Learning participation or user acceptance. '
+    body += 'The separately quoted Checkpoint direction retains its own recorded basis.</p>'
+    for number, claim in claims:
+        text = response['prose'].encode('utf-8')[claim['start']:claim['end']].decode('utf-8')
+        body += '<div data-claim-index="' + str(number) + '"><p>'
+        body += labels[claim['kind']] + '; model classification</p><pre class="authority-claim">' + preview(text) + '</pre>'
+        for index in claim['selections']:
+            row = by_index.get(index)
+            body += ('<a data-authority-selection="' + str(index) + '" href="#' + row['anchor'] + '">'
+                     + escaped(row['label']) + '</a> ' if row else
+                     '<p>Selection ' + str(index) + ' outside display; exact binding remains in the original response.</p>')
+        body += '<details><summary>Exact authority coordinates</summary><pre>'
+        body += preview(__import__('json').dumps(claim['authority'], ensure_ascii=False)) + '</pre></details></div>'
+    if not claims:
+        body += '<p>No task, choice, rationale, recorded action or recommendation claim supplied by this response.</p>'
+    return body + '</section>', {'status': 'valid_binding', 'claims': [n for n, _ in claims],
+                                'semantic_correctness': 'pending_independent_examination'}
