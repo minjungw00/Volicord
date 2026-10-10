@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 import shutil
 import sys
@@ -153,10 +154,10 @@ def retrieval_audit(spec, lane, calls, retrievals):
             'unmatched_sequences': unmatched, 'issues': sorted(set(issues))}
 
 
-def evidence_configuration(configuration_path):
+def evidence_configuration(configuration_path, tool_timeout_seconds=20):
     return ('\n[mcp_servers.evidence]\ncommand = ' + json.dumps(sys.executable)
             + '\nargs = ' + json.dumps(['-B', str(HERE / 'source_tools.py'), str(configuration_path)])
-            + '\nstartup_timeout_sec = 20\ntool_timeout_sec = 20\nrequired = true\n'
+            + '\nstartup_timeout_sec = 20\ntool_timeout_sec = ' + str(tool_timeout_seconds) + '\nrequired = true\n'
             + 'enabled_tools = ["inventory", "read"]\ndefault_tools_approval_mode = "approve"\n')
 
 
@@ -164,8 +165,22 @@ def execution_policy(conditions):
     policy = conditions.get('execution')
     if policy is None:
         return None  # Historical conditions remain available, byte-identical.
+    require(isinstance(policy, dict), 'execution policy must be an object')
     require(isinstance(conditions.get('condition_id'), str) and conditions['condition_id'].strip(),
             'new execution policy requires an explicit condition identity')
+    if policy.get('allocation_mode') == 'safety_only':
+        require(set(policy) == {'allocation_mode', 'compact_initial_inventory'}
+                and type(policy['compact_initial_inventory']) is bool, 'invalid safety-only allocation')
+        budgets = conditions['budgets']
+        require(set(budgets) == {'total_seconds', 'reads', 'read_bytes', 'output_bytes',
+                                'stream_bytes', 'retries', 'cleanup_seconds'}, 'explicit safety ceilings required')
+        for key in ('total_seconds', 'cleanup_seconds'):
+            require(type(budgets[key]) in {int, float} and math.isfinite(budgets[key])
+                    and budgets[key] > 0, 'finite positive safety time required')
+        for key in ('reads', 'read_bytes', 'output_bytes', 'stream_bytes'):
+            require(type(budgets[key]) is int and budgets[key] > 0, 'positive integer safety ceiling required')
+        require(type(budgets['retries']) is int and budgets['retries'] == 0, 'diagnostic retries must be zero')
+        return dict(policy, condition_id=conditions['condition_id'])
     require(set(policy) == {'compact_initial_inventory', 'analysis_seconds', 'prose_reserve_seconds',
                             'analysis_output_bytes', 'analysis_finalization_seconds', 'prose_finalization_seconds'},
             'explicit execution allocation required')
@@ -262,6 +277,8 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
     started = time.monotonic()
     deadline = started + budgets['total_seconds']
     policy = record.get('execution')
+    safety_only = bool(policy and policy.get('allocation_mode') == 'safety_only')
+    allocated = policy if not safety_only else None
     conditions = json.loads(Path(record['frozen_conditions']['path']).read_bytes())
     record['execution_started_monotonic'] = started
     record['execution_deadline_monotonic'] = deadline
@@ -283,10 +300,10 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                 require(binding(support['path']) == support, 'support identity drift')
             check_binding(record['frozen_conditions'])
             check_binding(record['frozen_instructions'])
-            stage_deadline = (min(started + policy['analysis_seconds'], deadline - policy['prose_reserve_seconds'])
-                              if policy and stage == 'analysis' else deadline)
+            stage_deadline = (min(started + allocated['analysis_seconds'], deadline - allocated['prose_reserve_seconds'])
+                              if allocated and stage == 'analysis' else deadline)
             remaining = stage_deadline - time.monotonic()
-            if policy and stage == 'prose' and note is not None and remaining < policy['prose_reserve_seconds']:
+            if allocated and stage == 'prose' and note is not None and remaining < allocated['prose_reserve_seconds']:
                 # Cleanup/grounding between calls also consumes the shared time.
                 # Report a lost reserve rather than silently start a starved call.
                 record['status'] = 'finalization_reserve_unavailable'
@@ -305,7 +322,7 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             configuration = {'manifest': str(Path(manifest).resolve()), 'lane': record['lane'],
                              'budgets': budgets, 'trace': str(trace), 'protocol_trace': str(protocol_trace)}
             allocation = budgets['output_bytes'] - output_used
-            if policy:
+            if allocated:
                 allocation = min(allocation, policy['analysis_output_bytes']) if stage == 'analysis' else allocation
                 finalization = policy['analysis_finalization_seconds'] if stage == 'analysis' else policy['prose_finalization_seconds']
                 configuration.update(stage=stage, read_deadline_monotonic=stage_deadline - finalization,
@@ -313,12 +330,19 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                 record.setdefault('stage_allocations', []).append({'stage': stage,
                     'deadline_monotonic': stage_deadline, 'read_deadline_monotonic': stage_deadline - finalization,
                     'output_bytes': allocation, 'remaining_seconds_before_preparation': remaining})
+            elif safety_only:
+                configuration.update(stage=stage, safety_only=True,
+                                     read_deadline_monotonic=deadline, execution_deadline_monotonic=deadline)
+                record.setdefault('stage_allocations', []).append({'stage': stage,
+                    'deadline_monotonic': deadline, 'read_deadline_monotonic': deadline,
+                    'output_bytes': allocation, 'remaining_seconds_before_preparation': remaining})
             (workspace / 'reader.json').write_bytes(encoded(configuration))
             config = workspace / 'codex/config.toml'
             # Use explicit top-level -c settings. MCP stdio configuration is the
             # documented current CLI shape, checked with installed mcp list.
             with config.open('a') as stream:
-                stream.write(evidence_configuration(workspace / 'reader.json'))
+                stream.write(evidence_configuration(workspace / 'reader.json',
+                    max(1, math.ceil(remaining)) if safety_only else 20))
             stage_root = output / stage
             stage_root.mkdir()
             shutil.copyfile(config, stage_root / 'effective-config.toml')
@@ -333,7 +357,7 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                       + '\nInitial evidence inventory (bodies require reads):\n' + json.dumps(initial, ensure_ascii=False)
                       + ('\nPrior short technical analysis, revisitable and correctable:\n' + note if note else '')
                       + '\nRemaining response UTF-8 byte budget: ' + str(allocation))
-            if policy:
+            if allocated:
                 prompt += ('\nExecution allocation: ' + json.dumps({'stage': stage,
                     'stage_seconds_remaining': max(0, stage_deadline - time.monotonic()),
                     'evidence_seconds_remaining': max(0, configuration['read_deadline_monotonic'] - time.monotonic()),
@@ -342,6 +366,15 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                     + '\nTool results report remaining time/reads/bytes. Finish the complete response within this allocation.'
                     + '\nReserve finalization time; after the read deadline use inspected evidence and explicitly report unresolved material gaps.'
                     + '\nDo not treat absent evidence or unfinished analysis as a complete explanation.')
+            elif safety_only:
+                prompt += ('\nSafety-only allocation: investigation, note and prose share one outer watchdog'
+                    + ' and aggregate ceilings. Choose when to finish analysis and begin prose.'
+                    + ' There is no reserved stage time, response allowance or early read cutoff.'
+                    + '\nAll tool calls (including denials/inventory), returned evidence bytes, intermediate'
+                    + ' responses and process streams count across both stages; no retries.'
+                    + '\nRemaining safety seconds: ' + str(max(0, deadline - time.monotonic()))
+                    + '\nAggregate ceilings: ' + json.dumps(budgets)
+                    + '\nRevisit the same authorized evidence in the final stage. Report unresolved gaps.')
             settings = ['-c', 'model=' + json.dumps(record['runtime']['model']), '-c',
                         'model_reasoning_effort=' + json.dumps(record['runtime']['reasoning_effort'])]
             remaining = stage_deadline - time.monotonic()
@@ -349,8 +382,9 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
                 record['status'] = 'budget_exhausted'
                 break
             probe = capture([executable, *settings, 'debug', 'prompt-input', prompt], cwd=workspace, env=env,
-                            output=stage_root / 'context', timeout=min(15, remaining),
-                            stream_bytes=budgets['stream_bytes'] - stream_used)
+                            output=stage_root / 'context', timeout=remaining if safety_only else min(15, remaining),
+                            stream_bytes=budgets['stream_bytes'] - stream_used,
+                            **({'cleanup_seconds': budgets['cleanup_seconds']} if safety_only else {}))
             stream_used += probe['retained_stream_bytes']
             issues = context_audit(probe, Path(probe['stdout']['path']).read_bytes(), prompt, [])
             record['calls'].append({'stage': stage, 'kind': 'local_context_probe', 'process': probe})
@@ -443,7 +477,43 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
     record['output_bytes'] = output_used
     record['retained_stream_bytes'] = stream_used
     record['execution_elapsed_seconds'] = time.monotonic() - started
+    if safety_only:
+        safety_outcome(record, retrievals if 'retrievals' in locals() else [], deadline)
     record['clean_comparison'] = False  # Requires independent observed-context review.
+
+
+def safety_outcome(record, retrievals, deadline):
+    """Ceiling contact censors a diagnostic even if the host later exits zero."""
+    budgets = record['budgets']
+    ceilings = set()
+    causes = {'timeout': 'watchdog', 'stream_budget': 'stream', 'response_budget': 'response'}
+    for call in record['calls']:
+        process = call['process']
+        if process['stop_cause'] in causes:
+            ceilings.add(causes[process['stop_cause']])
+    reads = len(retrievals)
+    returned = sum(row['charged_bytes'] for row in retrievals)
+    ceilings.update(row['safety_ceiling'] for row in retrievals if row.get('safety_ceiling'))
+    for actual, limit, name in ((reads, budgets['reads'], 'read'), (returned, budgets['read_bytes'], 'byte'),
+                                 (record['output_bytes'], budgets['output_bytes'], 'response'),
+                                 (record['retained_stream_bytes'], budgets['stream_bytes'], 'stream')):
+        if actual >= limit:
+            ceilings.add(name)
+    if time.monotonic() >= deadline:
+        ceilings.add('watchdog')
+    record['resource_accounting'] = {'evidence_calls': reads, 'returned_evidence_bytes': returned,
+        'response_bytes': record['output_bytes'], 'retained_stream_bytes': record['retained_stream_bytes'],
+        'model_calls': sum(call['kind'] == 'model_call' for call in record['calls'])}
+    record['diagnostic_outcome'] = {'censored': bool(ceilings), 'ceilings': sorted(ceilings),
+                                   'state': 'censored' if ceilings else
+                                   'ordinary_completion' if record['status'] in {'captured', 'captured_without_evidence_reads'}
+                                   else 'model_failure' if any(c['kind'] == 'model_call' and c['process']['outcome'] != 'succeeded'
+                                                              for c in record['calls']) else 'not_completed',
+                                   'generation_success': 'not_assessed'}
+    if ceilings:
+        record['status_before_safety_classification'] = record['status']
+        record['status'] = 'safety_aborted'
+        record['generation_output'] = None
 
 
 def conditions_directive(approach, conditions=None):

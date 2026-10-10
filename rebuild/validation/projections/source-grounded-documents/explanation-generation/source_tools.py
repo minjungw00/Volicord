@@ -13,7 +13,7 @@ from inputs import Reader, encoded, generation_inventory, require, verify
 
 class Surface:
     def __init__(self, manifest, lane, budgets, trace, protocol_trace=None, *, stage=None,
-                 read_deadline_monotonic=None, execution_deadline_monotonic=None):
+                 read_deadline_monotonic=None, execution_deadline_monotonic=None, safety_only=False):
         self.spec = verify(manifest)
         Reader(self.spec, lane, max_reads=budgets['reads'], max_bytes=budgets['read_bytes'])
         self.lane, self.budgets, self.trace = lane, budgets, Path(trace)
@@ -23,6 +23,7 @@ class Surface:
                  and read_deadline_monotonic <= execution_deadline_monotonic), 'invalid evidence time allocation')
         self.stage, self.read_deadline = stage, read_deadline_monotonic
         self.execution_deadline = execution_deadline_monotonic
+        self.safety_only = safety_only
 
     def call(self, name, arguments, request_id=None):
         # All calls, including failed lookups and inventory pages, share a locked
@@ -74,6 +75,9 @@ class Surface:
                            else 'budget_exhausted' if message in {'read budget exhausted', 'read time budget exhausted'}
                            else 'invalid_utf8' if isinstance(error, UnicodeError) else 'policy_denied')
                 row.update(status='failed', outcome=outcome, error=message, charged_bytes=0)
+                if self.safety_only and outcome == 'budget_exhausted':
+                    row['safety_ceiling'] = ('watchdog' if message == 'read time budget exhausted'
+                                             else 'read' if reads >= self.budgets['reads'] else 'byte')
             if self.read_deadline is not None:
                 ended = time.monotonic()
                 row['execution'] = {'stage': self.stage, 'started_monotonic': started, 'ended_monotonic': ended,

@@ -434,3 +434,96 @@ and semantic quality remain unassessed. Run the focused presentation controls:
 rebuild/scripts/validate focused explanation-render-controls -- \
   python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/render_self_test.py
 ```
+
+## Resource-permissive diagnostic condition
+
+Select `--conditions .../conditions-exploratory.json` explicitly. Its identity is
+`exploratory-safety-only-explanation-20261010`; its SHA-256 is
+`0d172d3afce434e05a96845aa59a15f422167648b143c897c626f96d1f3d4b7d`.
+Existing `conditions.json` and `conditions-bounded.json` retain their exact bytes
+and allocation behavior. The new `safety_only` execution mode has no analysis/prose
+split, response reserve or early evidence finalization deadline. Both stages may
+read the same authorized manifest until the shared watchdog. A note still must
+satisfy the existing response envelope; no new evidence-handoff mechanism is added.
+The shared ledger already survives stage/process restarts. Original note bytes
+are included in the prose input and charged to the aggregate response ceiling.
+This can still consume model context capacity; relaxed limits do not prove that
+context limits, schema requirements or note quality cannot influence generation.
+
+| Aggregate safety ceiling | Value | Selection basis |
+| --- | ---: | --- |
+| Execution watchdog | 900 seconds | Five times the prior 180 seconds; bounds one approach at 15 minutes |
+| Evidence calls | 2,048 | Over 42 times the prior 48; supports complete inventory pagination and repeated reads |
+| Returned evidence bytes | 8 MiB | 64 times the prior 128 KiB, exhausted or nearly exhausted historically |
+| Response bytes | 1 MiB | 64 times the prior 16 KiB, shared across original note and final response |
+| Retained stdout/stderr | 64 MiB | 64 times the prior 1 MiB; includes local probes and both model calls |
+| Automatic retries | 0 | No repair or extra generation opportunity |
+| Process cleanup allowance | 4 seconds | Finite TERM/KILL allowance for each observed child operation |
+
+These are provisional experiment controls, not Product limits or empirically
+sufficient budgets. At selection, the shared filesystem had about 803 GiB free
+and available memory was about 74 GiB. This leaves substantial room for a single
+bounded diagnostic and its parsed streams; it does not authorize concurrent or
+unbounded campaigns. Token counts, provider throughput and price remain unobserved.
+The watchdog covers stage setup, local context probes, investigation and writing.
+Local manifest freezing precedes it; cleanup and local audit/render work are
+separately observable overhead, never additional model time. Context probes and
+MCP read-call timeouts use the remaining outer allowance in this mode rather than
+the historical 15/20-second caps. MCP startup retains the existing 20-second
+technical readiness bound; failure is a prerequisite/model transport failure,
+never unconstrained completion.
+
+Every inventory/denied/read call is in the actual locked ledger; returned source
+bytes and inventory metadata consume the same aggregate byte ceiling. Responses,
+including intermediates, and both stdout/stderr streams consume shared totals.
+`resource_accounting` records those actual totals. Any reached or denied safety
+ceiling yields `status: safety_aborted`, `diagnostic_outcome.censored: true` and
+explicit `watchdog`, `read`, `byte`, `response` or `stream` reasons, even after an
+exit-zero response. Original bytes, ledger denials, numeric exits/signals and
+cleanup stay inspectable. Stream overflow retains an explicitly incomplete prefix.
+Ordinary completion and model failure are separate transport outcomes; neither
+attests natural-language quality. Evidence ceilings close further reads; a model
+can finish reporting gaps, but its resulting diagnostic is still censored.
+
+Direct and staged approaches receive identical compact unranked metadata, the
+complete inspectable inventory, lane authority, total resources and requested
+model/runtime settings. Staged setup, calls and the note cost resources within
+those totals. A first stage may spend the whole watchdog; then no prose is
+available. That is an explicit safety-censored attempt, not a hidden stage budget.
+Reader scope/hash/range checks, Product/archive separation, authorization binding,
+strict host/ledger joins and cooperative filesystem caveats remain in force.
+Current explicit source/condition/purpose/destination authorization and an explicit
+model/reasoning choice are required before any external pilot. This editing task
+supplies neither. The cutoff-bound current Product baseline remains unavailable.
+
+```bash
+rebuild/scripts/validate focused explanation-exploratory -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/exploratory_self_test.py \
+  --long-analysis --retain rebuild/.local/explanation-generation/unique-exploratory-controls
+```
+
+The optional `--long-analysis` control uses an actual 90.2-second authored analysis
+before final-stage reads; quick checks skip that one test explicitly. Other real
+subprocess controls exceed 48 reads/128 KiB and the former response allocations,
+exercise all five safety ceilings, distinguish numeric model failure and retain
+streams, originals and cleanup. Existing input, invocation, approach, bounded
+execution, read-policy and renderer tests remain the downstream negative controls
+for foreign scope, unavailable historical bytes, altered hashes, malformed ranges,
+instruction-like source, invalid references and failed host joins. Authored
+completion is transport evidence, never a model-produced explanation or semantic
+quality finding. No aggregate, gate or official V11 is needed for these checks.
+
+Local validation on 2026-10-10 retained 11 passing quick exploratory controls,
+one separately passing real >90-second analysis/final-read control, and 63 passing
+existing consumer tests. Installed `codex-cli 0.160.0` local version/help/features/
+prompt probes passed without authentication or model dispatch; the used exec
+options are present in its help. All nine nested workspace packages and path
+dependencies remain under `rebuild/`. An initial long control rejected support
+identity drift during editing; its failure is retained and a stable rerun passed.
+The current historical audit rejected equality with old denied-call receipts;
+verification using the exact original producer's Git-bound `retrieval_audit`
+passed for all six attempts and preserved their four stopped/two incomplete-review
+states and unmatched sequences. No historical receipt was rewritten. Private
+controls and both successful/failed focused receipts are under ignored
+`rebuild/.local/explanation-generation/exploratory-*` and
+`rebuild/.local/validation/`. No external pilot or aggregate validation ran.
