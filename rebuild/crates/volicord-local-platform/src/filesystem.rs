@@ -79,11 +79,24 @@ impl RepositoryRoot {
         use rustix::fs::{open, openat, Mode, OFlags};
         let relative = normalize_relative(relative)?;
         let mut directory = open(
-            &self.canonical,
+            "/",
             OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::empty(),
         )
         .map_err(|e| RepositoryPathError(format!("repository boundary unavailable: {e}")))?;
+        // Pin the canonical root without following any ancestor symlink, even
+        // if the path hierarchy changes after RepositoryRoot::open.
+        for component in self.canonical.components() {
+            if let Component::Normal(component) = component {
+                directory = openat(
+                    &directory,
+                    component,
+                    OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+                    Mode::empty(),
+                )
+                .map_err(|e| RepositoryPathError(format!("repository boundary changed: {e}")))?;
+            }
+        }
         let mut components = relative.components().peekable();
         while let Some(Component::Normal(component)) = components.next() {
             let last = components.peek().is_none();

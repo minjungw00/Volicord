@@ -105,6 +105,9 @@ impl LocalOperations {
         drop(canonical);
         let root = RepositoryRoot::open(&binding.absolute_path)
             .map_err(|e| Error::with_source("repository unavailable", e))?;
+        if root.canonical_path() != binding.absolute_path {
+            return Err(Error::new("bound repository root was redirected; explicit binding is required before observation"));
+        }
         let bytes = root
             .read_bounded_regular_file(Path::new(&request.path), FILE_BYTES)
             .map_err(|e| Error::with_source("scoped source observation unavailable", e))?;

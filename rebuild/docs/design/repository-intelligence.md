@@ -724,3 +724,9 @@ answers. For any affected Work those are named repository/operations evidence
 blockers: exact Source metadata may survive, but required body read is unavailable.
 The canonical-only explanation plan still lacks automatic selection/incorporation
 of these bodies; this capability does not choose a generation architecture.
+
+Source body capture also refuses a bound repository root that canonicalizes to
+another path. Descriptor-relative opening pins every canonical root ancestor
+without following symlinks before opening the selected relative file. Redirected
+roots/ancestors remain denied even when their bytes match the expected hash;
+matching bytes alone cannot authorize a different repository boundary.
