@@ -45,14 +45,14 @@ use volicord_operations::{
 };
 use volicord_projections::{
     build_learning_explanation_basis, build_project_understanding, CandidateDependencyState,
-    DocumentKind, DocumentRequest, FixedLocale, GeneratorIdentity, LearningExplanationAvailability,
-    LearningExplanationBasis, LearningSelectionOutcome, NarrativePlan, NarrativeRealization,
-    NarrativeRealizationState, OutputFormat, ProjectUnderstanding, RealizedNarrativeClaim,
-    RealizedNarrativeSection, UnderstandingArchitectureSelectionBasis, UnderstandingBound,
-    UnderstandingWork,
+    DocumentKind, DocumentRequest, ExplanationRealization, ExplanationSubject, FixedLocale,
+    GeneratorIdentity, LearningExplanationAvailability, LearningExplanationBasis,
+    LearningSelectionOutcome, NarrativePlan, NarrativeRealization, NarrativeRealizationState,
+    OutputFormat, ProjectUnderstanding, RealizedNarrativeClaim, RealizedNarrativeSection,
+    UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingWork,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 22] = [
+pub const HOST_TOOL_NAMES: [&str; 23] = [
     "project_resolve",
     "project_initialize",
     "project_health",
@@ -60,6 +60,7 @@ pub const HOST_TOOL_NAMES: [&str; 22] = [
     "repository_understanding",
     "repository_analyze",
     "work_source",
+    "work_explanation",
     "engineering_choice_discovery",
     "materiality_review",
     "learning_deliberation",
@@ -78,7 +79,7 @@ pub const HOST_TOOL_NAMES: [&str; 22] = [
 ];
 
 fn server_instructions() -> String {
-    "Project work starts with project_resolve. Follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority: material outcomes need an exact current-Goal specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects scope. A Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes.".into()
+    "Project work starts with project_resolve. Follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority: material outcomes need an exact current-Goal specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects scope. A Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Explicit explanations: work_explanation generate, scoped Source reads, host-authored record. Grounding is not semantic approval.".into()
 }
 
 #[derive(Debug)]
@@ -118,6 +119,16 @@ pub struct HostAdapter {
     host_session: String,
     presented_questions: BTreeMap<String, PresentedQuestion>,
     pending_provider_operations: BTreeMap<ConfirmationRequestId, GuardedProviderPreparation>,
+    explanation_requests: BTreeMap<String, HostExplanationRequest>,
+}
+
+struct HostExplanationRequest {
+    project: ProjectId,
+    work: ContextItemId,
+    language: String,
+    fingerprint: String,
+    retrieved: BTreeSet<(String, String)>,
+    started: std::time::Instant,
 }
 
 #[derive(Clone, Debug)]
@@ -135,6 +146,7 @@ impl HostAdapter {
             host_session: new_identity_text().unwrap_or_else(|_| "unavailable-session".into()),
             presented_questions: BTreeMap::new(),
             pending_provider_operations: BTreeMap::new(),
+            explanation_requests: BTreeMap::new(),
         }
     }
 
@@ -200,6 +212,7 @@ impl HostAdapter {
                 "repository_understanding" => self.repository_understanding(&arguments),
                 "repository_analyze" => self.repository_analyze(&arguments),
                 "work_source" => self.work_source(&arguments),
+                "work_explanation" => self.work_explanation(&arguments),
                 "engineering_choice_discovery" => self.engineering_choice_discovery(&arguments),
                 "materiality_review" => self.materiality_review(&arguments),
                 "learning_deliberation" => self.learning_deliberation(&arguments),
@@ -220,6 +233,7 @@ impl HostAdapter {
             None => Err(HostError::new("unknown high-level tool")),
         };
         match result {
+            Ok(value) if name == "work_explanation" => explanation_tool_result(value),
             Ok(value)
                 if name == "recall"
                     || name == "canonical_inspect"
@@ -1534,6 +1548,124 @@ impl HostAdapter {
         })
     }
 
+    fn work_explanation(&mut self, args: &Value) -> Result<Value, HostError> {
+        self.explanation_requests
+            .retain(|_, r| r.started.elapsed() < std::time::Duration::from_secs(1800));
+        let project = project(args)?;
+        let work = parse_context_item(required_str(args, "work_item_id")?)?;
+        let subject = ExplanationSubject::Work(work);
+        match required_str(args, "action")? {
+            "prepare" | "generate" => {
+                let language = required_str(args, "language")?;
+                let plan = self
+                    .operations
+                    .prepare_explanation(project, subject, language)
+                    .map_err(operation_error)?;
+                let manifest = self
+                    .operations
+                    .explanation_source_manifest(project, work)
+                    .map_err(operation_error)?;
+                let mut result = json!({"plan":plan,"source_inventory":manifest,"generation_status":"not_requested",
+                    "read_only":true,"semantic_approval":"not_established"});
+                if args["action"] == "generate" {
+                    if self.explanation_requests.len() >= 32 {
+                        return Err(HostError::new("active explanation request capacity reached; finish a request or restart; no generation or recording completed"));
+                    }
+                    let request_id = new_identity_text()?;
+                    result["generation_status"] = json!("awaiting_host_interpretation");
+                    result["generation_id"] = json!(request_id.clone());
+                    result["host_session_correlation"] = json!(self.host_session);
+                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Discover existing Source copies in source_inventory; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Write natural prose explaining problem, mechanism, supported result and limits, with readable source citations. A no-change investigation is not a patch. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
+                    explanation_tool_result(result.clone())?;
+                    self.explanation_requests.insert(
+                        request_id,
+                        HostExplanationRequest {
+                            project,
+                            work,
+                            language: language.into(),
+                            fingerprint: plan.fingerprint.clone(),
+                            retrieved: BTreeSet::new(),
+                            started: std::time::Instant::now(),
+                        },
+                    );
+                }
+                Ok(result)
+            }
+            "read_source" => {
+                let request_id = required_str(args, "generation_id")?;
+                let request = self
+                    .explanation_requests
+                    .get_mut(request_id)
+                    .ok_or_else(|| {
+                        HostError::new(
+                            "explanation request unavailable or expired; explicitly generate again",
+                        )
+                    })?;
+                if request.project != project || request.work != work {
+                    return Err(HostError::new("explanation request Project/Work mismatch"));
+                }
+                let source = parse_source(required_str(args, "source_id")?)?;
+                let read = self
+                    .operations
+                    .read_explanation_source(project, work, source)
+                    .map_err(operation_error)?;
+                let fingerprint = required_str(&read, "observation_fingerprint")?;
+                if request.retrieved.len() >= 128 {
+                    return Err(HostError::new("explanation request retrieval capacity reached; finish or explicitly start a fresh request"));
+                }
+                request
+                    .retrieved
+                    .insert((source.to_string(), fingerprint.into()));
+                Ok(read)
+            }
+            "record" => {
+                let request_id = required_str(args, "generation_id")?;
+                let request = self.explanation_requests.get(request_id).ok_or_else(|| {
+                    HostError::new(
+                        "explanation request unavailable or expired; explicitly generate again",
+                    )
+                })?;
+                if request.project != project || request.work != work {
+                    return Err(HostError::new("explanation request Project/Work mismatch"));
+                }
+                let response: ExplanationRealization =
+                    serde_json::from_value(args["realization"].clone())
+                        .map_err(|_| HostError::new("invalid host explanation realization"))?;
+                if response.plan_fingerprint != request.fingerprint {
+                    return Err(HostError::new("explanation request preparation mismatch"));
+                }
+                for citation in response.paragraphs.iter().flat_map(|p| &p.citations) {
+                    if !request.retrieved.contains(&(
+                        citation.source_id.clone(),
+                        citation.observation_fingerprint.clone(),
+                    )) {
+                        return Err(HostError::new("citation requires exact Source retrieval in this current explanation request"));
+                    }
+                }
+                let retained = self
+                    .operations
+                    .record_explanation(project, subject, &request.language, response)
+                    .map_err(operation_error)?;
+                self.explanation_requests.remove(request_id);
+                Ok(
+                    json!({"generation_status":"recorded_host_interpretation","explanation":retained,
+                    "host_session_correlation":self.host_session,"host_session_status":"server_generated_correlation_not_authentication",
+                    "semantic_approval":"not_established"}),
+                )
+            }
+            "delete" => {
+                let deleted = self
+                    .operations
+                    .delete_explanations(project, subject)
+                    .map_err(operation_error)?;
+                self.explanation_requests
+                    .retain(|_, r| r.project != project || r.work != work);
+                Ok(json!({"deleted":deleted,"canonical_mutated":false}))
+            }
+            _ => Err(HostError::new("unsupported explanation action")),
+        }
+    }
+
     fn work_source(&self, args: &Value) -> Result<Value, HostError> {
         let project = project(args)?;
         let work = parse_context_item(required_str(args, "work_item_id")?)?;
@@ -2453,6 +2585,210 @@ pub fn run_stdio(
     Ok(())
 }
 
+fn work_explanation_schema() -> Value {
+    let scope = || {
+        vec![
+            ("project_id", identity_schema("Project identity")),
+            ("work_item_id", identity_schema("Exact Goal-backed Work")),
+        ]
+    };
+    let mut prepare = scope();
+    prepare.extend([
+        (
+            "action",
+            enum_schema(
+                "Explicit preparation or current-host generation request",
+                &["prepare", "generate"],
+            ),
+        ),
+        ("language", text_schema("Requested prose language", 1, 128)),
+    ]);
+    let mut read = scope();
+    read.extend([
+        (
+            "action",
+            enum_schema("Exact Source retrieval", &["read_source"]),
+        ),
+        (
+            "generation_id",
+            identity_schema("Current ephemeral host request"),
+        ),
+        (
+            "source_id",
+            identity_schema("Explicitly observed same-Work Source"),
+        ),
+    ]);
+    let mut record = scope();
+    record.extend([
+        (
+            "action",
+            enum_schema("Explicit local retention", &["record"]),
+        ),
+        (
+            "generation_id",
+            identity_schema("Current ephemeral host request"),
+        ),
+        ("realization", explanation_realization_schema()),
+    ]);
+    let mut delete = scope();
+    delete.push((
+        "action",
+        enum_schema("Delete subject explanation history", &["delete"]),
+    ));
+    json!({"oneOf":[object_schema(prepare,&["action","project_id","work_item_id","language"]),
+        object_schema(read,&["action","project_id","work_item_id","generation_id","source_id"]),
+        object_schema(record,&["action","project_id","work_item_id","generation_id","realization"]),
+        object_schema(delete,&["action","project_id","work_item_id"])]})
+}
+
+fn explanation_realization_schema() -> Value {
+    let integer =
+        |description: &str| json!({"type":"integer","minimum":0,"description":description});
+    let digest = |description: &str| text_schema(description, 71, 71);
+    let citation_fields = vec![
+        ("source_id", identity_schema("Exact retrieved Source")),
+        ("source_revision", integer("Source revision")),
+        (
+            "observation_fingerprint",
+            digest("Returned retrieval fingerprint"),
+        ),
+        (
+            "analysis_snapshot_id",
+            digest_identity_schema("Selected Analysis identity"),
+        ),
+        (
+            "repository_snapshot_id",
+            digest_identity_schema("Selected Repository identity"),
+        ),
+        (
+            "repository_source_id",
+            identity_schema("Canonical repository Source"),
+        ),
+        (
+            "locator",
+            text_schema("Exact file path or command label", 1, 4096),
+        ),
+        (
+            "field",
+            enum_schema("Permitted body field", &["body", "stdout", "stderr"]),
+        ),
+        ("start_line", integer("First one-based line")),
+        ("end_line", integer("Last one-based line")),
+        ("start_byte", integer("Inclusive UTF-8 evidence offset")),
+        ("end_byte", integer("Exclusive UTF-8 evidence offset")),
+        ("range_sha256", digest("Hash of exact evidence range")),
+        (
+            "claim_start_byte",
+            integer("Inclusive UTF-8 paragraph offset"),
+        ),
+        (
+            "claim_end_byte",
+            integer("Exclusive UTF-8 paragraph offset"),
+        ),
+        ("claim_sha256", digest("Hash of exact new claim wording")),
+        (
+            "use_kind",
+            enum_schema(
+                "Evidence role, never semantic approval",
+                &["current_code", "before_code", "observed_execution"],
+            ),
+        ),
+    ];
+    let citation_required: Vec<_> = citation_fields.iter().map(|(name, _)| *name).collect();
+    let paragraph = object_schema(
+        vec![
+            (
+                "question",
+                enum_schema(
+                    "Reader question",
+                    &[
+                        "purpose",
+                        "reported_change",
+                        "expected_effect",
+                        "verification",
+                        "next_step",
+                        "limits",
+                        "user_rationale",
+                        "recommendation",
+                        "consequences",
+                        "applicability",
+                    ],
+                ),
+            ),
+            ("text", text_schema("Natural prose", 1, 16384)),
+            (
+                "evidence_keys",
+                nonempty_string_array_schema("Exact prepared canonical evidence keys"),
+            ),
+            (
+                "citations",
+                json!({"type":"array","maxItems":32,"description":"Exact evidence-to-new-wording bindings; empty when only recorded facts support the paragraph","items":object_schema(citation_fields,&citation_required)}),
+            ),
+        ],
+        &["question", "text", "evidence_keys", "citations"],
+    );
+    let mut schema = object_schema(
+        vec![
+            (
+                "format_kind",
+                enum_schema("Explanation format", &["volicord_explanation"]),
+            ),
+            (
+                "format_version",
+                json!({"type":"integer","enum":[2],"description":"Exact current explanation format"}),
+            ),
+            ("plan_fingerprint", digest("Exact preparation fingerprint")),
+            ("language", text_schema("Exact requested language", 1, 128)),
+            (
+                "generator",
+                object_schema(
+                    vec![
+                        ("host", text_schema("Self-reported host", 1, 4096)),
+                        (
+                            "session",
+                            text_schema("Self-reported active session", 1, 4096),
+                        ),
+                        (
+                            "agent",
+                            json!({"description":"Self-reported agent; null when unknown","oneOf":[text_schema("Self-reported agent",1,4096),{"type":"null","description":"Unknown agent"}]}),
+                        ),
+                        (
+                            "model",
+                            json!({"description":"Self-reported model; null when unknown","oneOf":[text_schema("Self-reported model",1,4096),{"type":"null","description":"Unknown model"}]}),
+                        ),
+                    ],
+                    &["host", "session", "agent", "model"],
+                ),
+            ),
+            (
+                "paragraphs",
+                json!({"type":"array","minItems":1,"maxItems":32,"description":"Prose in reader order, retaining all required answers","items":paragraph}),
+            ),
+        ],
+        &[
+            "format_kind",
+            "format_version",
+            "plan_fingerprint",
+            "language",
+            "generator",
+            "paragraphs",
+        ],
+    );
+    schema["description"] = json!("Host-authored current explanation realization");
+    schema["properties"]["generator"]["description"] = json!("Self-reported generator provenance");
+    schema
+}
+
+fn explanation_tool_result(value: Value) -> Result<Value, HostError> {
+    // Full grounding is never shortened to fit transport. Avoid duplicating a
+    // 128 KiB plan as escaped JSON in both text and structured content.
+    let result = json!({"content":[{"type":"text","text":"Exact Product explanation result is in structuredContent."}],"structuredContent":value,"isError":false});
+    if result.to_string().len() > volicord_operations::HOST_READ_RESULT_BYTE_BUDGET {
+        return Err(HostError::new("complete explanation result exceeds MCP transport budget; inspect scoped Source metadata through canonical_inspect or use CLI preparation; no grounding was truncated"));
+    }
+    Ok(result)
+}
+
 fn tool_catalog() -> Vec<Value> {
     HOST_TOOL_NAMES
         .iter()
@@ -2715,6 +3051,11 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             object_schema(vec![("action",enum_schema("Explicit Source operation", &["delete_source_copy"])),
                 ("project_id",identity_schema("Project identity")),("work_item_id",identity_schema("Exact Work association")),
                 ("source_id",identity_schema("Exact observed Source copy to delete"))], &["action","project_id","work_item_id","source_id"])]}),
+            ToolBehavior::DestructiveClosed,
+        ),
+        "work_explanation" => (
+            "On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, authors prose-plus-grounding and records it. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
+            work_explanation_schema(),
             ToolBehavior::DestructiveClosed,
         ),
         "canonical_mutate" => (
@@ -4918,6 +5259,8 @@ fn validate_schema(schema: &Value, value: &Value, path: &str) -> Result<(), Vec<
         };
     }
     match schema.get("type").and_then(Value::as_str) {
+        Some("null") if value.is_null() => Ok(()),
+        Some("null") => Err(vec![format!("{path} must be null")]),
         Some("object") => validate_object(schema, value, path),
         Some("string") => validate_string(schema, value, path),
         Some("array") => validate_array(schema, value, path),

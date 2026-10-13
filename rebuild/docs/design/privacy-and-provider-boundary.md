@@ -97,7 +97,8 @@ Host가 제공하지 않는 권한을 Volicord가 발명하지 않는다. Curren
 ### Explicit local explanation retention
 
 The active host may explicitly prepare canonical Work or Decision evidence and submit its
-interpretation through `work explain record` or `decision explain record`. This operation expresses local
+interpretation through `work explain record`, `decision explain record`, or MCP
+`work_explanation` generate → scoped read_source → record. This operation expresses local
 retention intent for that Project/subject/language only; it grants no background
 generation or transmission consent. Preparation reads recorded Source observations,
 never an arbitrary filesystem path or credential. Read/navigation/export perform
@@ -125,7 +126,16 @@ and deletion remain available for corrupt disposable content. An
 invalid draft is rejected before ID/time allocation or SQL insertion and cannot
 replace an earlier record. The explanation producer owns its preparation reserve
 and compact realization limits in [Projection](projections-and-documents.md#explanation-byte-contract).
-No second store, privacy schema change or new remote effect is introduced.
+Source-cited explanation recording also retains exact range/claim hashes and
+Source snapshot identities, without duplicating raw file/stream bytes. Existing
+managed links cover the cited file/command and repository Sources plus explicit
+before Sources; retention expires no later than the earliest dependency body.
+Reading/publication rechecks local permitted body state so deleting a copy cannot
+leave dependent prose current. Explanation deletion still sanitizes all languages
+and history through the existing managed cleanup; failed regeneration does not
+replace a prior valid output. Generated output identities remain their distinct
+managed records, generation timestamp and exact retained realization, never a
+human acceptance. No second store, privacy schema change or new remote effect is introduced.
 
 ## 4. Background provider opt-in
 

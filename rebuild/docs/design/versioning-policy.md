@@ -150,10 +150,11 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
   meaning이 분리되거나 rendered-field omission contract가 추가되면 current writer
   metadata shape/version에서만 함께 기록한다. 이전 shape decoder, dual metadata
   representation 또는 compatibility write를 추가하지 않는다.
-- Current writer version `8`은 active-host realization의 exact requested-language attestation,
+- Current writer version `9`은 active-host realization의 exact requested-language attestation,
   all-generated-prose attestation과 realized-body fingerprint를 plan fingerprint와 함께 기록한다.
-  Version 8 adds typed Reading/Evidence section roles, exact explanation provenance and
-  current-build canonical read equality binding for publication.
+  Version 8 introduced typed Reading/Evidence section roles, exact explanation provenance and
+  current-build canonical read equality binding for publication. Version 9 includes
+  exact Source-to-prose citation bindings and recorder-owned semantic-approval limits.
   이 durable meaning이 없는 이전 metadata를 host-realized requested-language success로 읽지 않는다.
 
 ### Session Candidate store format
@@ -291,17 +292,20 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 ### Shared explanation content
 
 Retained Work/Decision explanation JSON inside the existing managed CachedSummary store
-has format kind `volicord_explanation` and exact current format version 1
+has format kind `volicord_explanation` and exact current format version 2
 in its realization header. Record/read check that header before typed domain
 decode. Non-current content is Unsupported and its prose is withheld; malformed
 current content is Corrupt. Explicit delete and preparation/generation from current
 canonical evidence provide recovery. There is no dual decoder or implicit conversion.
 The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Snapshot
-formats do not change; generated-document metadata is current version 8. A preparation fingerprint binds evidence
+formats do not change; generated-document metadata is current version 9. A preparation fingerprint binds evidence
 and language; it is neither a format version nor an authenticity certificate.
 
-Explanation size alignment does not change the realization or retained JSON shape,
-so their current version remains 1 and explanation size alignment itself does not change Privacy SQL.
+Explanation format 2 requires paragraph citations (possibly empty for canonical-only
+reports) and a recorder-owned semantic_approval_status. Multiple paragraphs per
+required question preserve reader order. The old format is Unsupported with prose
+withheld; explicit delete/regenerate is the recovery, with no alternate decoder,
+conversion or historical campaign rewrite. Privacy SQL does not change.
 The current Privacy schema is 2 as specified under Bounded Source observation copies.
 Ephemeral current preparation now includes a mandatory `retention_budget`, hashed
 with the plan's evidence/instructions/language; callers must prepare afresh. No
@@ -323,7 +327,7 @@ freshness 설명용이며 canonical schema, portable bundle 또는 generated-doc
 해석하지 않는다. Future에 snapshot ingest/adoption을 지원하려면 그때 별도 current-only
 format contract가 필요하다.
 
-Local `volicord_analysis_attempt` receipts use exact current format version 1,
+Local `volicord_analysis_attempt` receipts use exact current format version 2,
 independent of Analysis Snapshot and canonical formats. The read checks kind/version
 before typed decode and rejects non-current, malformed, oversized or identity-mismatched
 receipts as unknown attempt history. There is no migration or alternative decoder.

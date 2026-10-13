@@ -12,6 +12,7 @@ mod codex;
 mod error;
 mod evidence;
 mod explanation;
+mod explanation_sources;
 mod forgetting;
 mod guarded;
 mod layout;

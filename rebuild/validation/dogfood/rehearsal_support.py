@@ -10,13 +10,13 @@ def realization(plan):
     """Authored structural input; the Product alone supplies plan/receipt/readback."""
     import explanation_evidence as e
     questions = e.WORK_QUESTIONS if plan['subject']['kind'] == 'work' else e.DECISION_QUESTIONS
-    return {'format_kind': 'volicord_explanation', 'format_version': 1,
+    return {'format_kind': 'volicord_explanation', 'format_version': 2,
         'plan_fingerprint': plan['fingerprint'], 'language': plan['requested_language'],
         'generator': {'host': 'self_authored_test_support', 'session': 'rehearsal-script',
             'agent': None, 'model': None},
         'paragraphs': [{'question': q,
             'text': '직접 작성한 구조 검사 입력입니다.' if plan['requested_language'] == 'ko' else 'Self-authored structural support input.',
-            'evidence_keys': [v['key'] for v in plan['evidence']]} for q in sorted(questions)]}
+            'citations': [], 'evidence_keys': [v['key'] for v in plan['evidence']]} for q in sorted(questions)]}
 
 
 def product_explanation(root, binary, runtime, project, work, logs, phase):

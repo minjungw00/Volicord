@@ -54,6 +54,9 @@ impl LocalOperations {
                     "explanation changed; render again before publication",
                 ));
             }
+            if let ExplanationSubject::Work(work) = provenance.subject {
+                self.validate_explanation_sources(&canonical, work, &retained.realization)?;
+            }
         }
         Ok(())
     }
@@ -78,14 +81,25 @@ impl LocalOperations {
         let canonical = self.canonical_basis(project)?;
         let plan = prepare_explanation(&canonical, subject, language).map_err(Error::new)?;
         validate_explanation(&plan, &realization).map_err(Error::new)?;
+        let (source_dependencies, retained_until) = match subject {
+            ExplanationSubject::Work(work) => {
+                self.validate_explanation_sources(&canonical, work, &realization)?
+            }
+            ExplanationSubject::Decision(_) => (Vec::new(), None),
+        };
         let grounding =
             volicord_repository_intelligence::CanonicalGrounding::from_read_basis(&canonical)
                 .map_err(|e| Error::with_source("cannot ground explanation", e))?;
-        let sources = plan
+        let mut sources = plan
             .evidence
             .iter()
             .flat_map(|e| e.sources.iter())
             .collect::<std::collections::BTreeSet<_>>();
+        let source_dependency_text: Vec<_> = source_dependencies
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        sources.extend(source_dependency_text.iter());
         let included_sources = sources
             .iter()
             .map(|id| {
@@ -124,7 +138,7 @@ impl LocalOperations {
         privacy.record_managed_derived(ManagedDerivedDraft { project_id:project, kind:ManagedDerivedKind::CachedSummary,
             provider:None, model:retained.realization.generator.model.clone(), purpose:purpose(subject, language), analysis_snapshot:None,
             included_sources, canonical_links, content,
-            uncertainty:None, retained_until:None,
+            uncertainty:None, retained_until,
             retention_basis:"Explicit active-host explanation recording; local disposable Derived content; no provider invocation".into() })
             .map_err(|e| {
                 if e.kind() == volicord_privacy::ErrorKind::InvalidInput {
@@ -219,7 +233,14 @@ impl LocalOperations {
                                 if record.state == ManagedDerivedState::Current
                                     && retained_matches(&plan, &retained) =>
                             {
-                                (ExplanationState::Current, Some(retained), None)
+                                let validation = match subject {
+                                    ExplanationSubject::Work(work) => self.validate_explanation_sources(canonical,work,&retained.realization).map(|_|()),
+                                    ExplanationSubject::Decision(_) => Ok(()),
+                                };
+                                match validation {
+                                    Ok(()) => (ExplanationState::Current, Some(retained), None),
+                                    Err(error) => (ExplanationState::Stale,None,Some(format!("explanation Source dependency unavailable or changed: {error}; prepare and generate again"))),
+                                }
                             }
                             Ok(_) => (
                                 ExplanationState::Stale,
@@ -342,6 +363,7 @@ mod size_tests {
             conflicts: Vec::new(),
             generated_at_unix_micros: i64::MAX,
             generator_identity_status: "self_reported_not_independently_verified".into(),
+            semantic_approval_status: "not_established".into(),
         };
         for target in [147455, 147456, 147457] {
             let mut content = encode_retained_explanation(&retained)?;

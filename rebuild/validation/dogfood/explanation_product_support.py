@@ -47,11 +47,11 @@ def run(config):
                 work_keys = {'purpose': 'goal', 'reported_change': 'result' if 'result' in offered else 'goal',
                     'expected_effect': 'result' if 'result' in offered else 'goal',
                     'verification': 'verification' if 'verification' in offered else 'goal', 'next_step': 'next_step'}
-                response = {'format_kind': 'volicord_explanation', 'format_version': 1,
+                response = {'format_kind': 'volicord_explanation', 'format_version': 2,
                     'plan_fingerprint': plan['fingerprint'], 'language': p['language'],
                     'generator': {'host': 'structural-support', 'session': 'self-authored', 'agent': None, 'model': None},
                     'paragraphs': [{'question': q, 'text': '구조 검증 예제.' if p['language'] == 'ko' else 'Structural support example.',
-                        'evidence_keys': [work_keys[q] if p['subject']['kind'] == 'work' else q]} for q in sorted(
+                        'citations': [], 'evidence_keys': [work_keys[q] if p['subject']['kind'] == 'work' else q]} for q in sorted(
                             e.WORK_QUESTIONS if p['subject']['kind'] == 'work' else e.DECISION_QUESTIONS)]}
                 response_path = root / 'host-response.json'; response_path.write_bytes(c.json_bytes(response))
                 e.record(root, p['identity'], response_path)

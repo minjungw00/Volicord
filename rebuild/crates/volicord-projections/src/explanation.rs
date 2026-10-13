@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
-pub const EXPLANATION_VERSION: u32 = 1;
+pub const EXPLANATION_VERSION: u32 = 2;
 pub const EXPLANATION_BYTE_LIMIT: usize = 16_384;
 pub const EXPLANATION_PLAN_BYTE_LIMIT: usize = 131_072;
 /// Compact retained JSON: the supported plan plus the full supported response.
@@ -96,6 +96,43 @@ pub struct ExplanationParagraph {
     pub question: ExplanationQuestion,
     pub text: String,
     pub evidence_keys: Vec<String>,
+    pub citations: Vec<ExplanationCitation>,
+}
+
+/// Byte ranges are half-open UTF-8 ranges, both in evidence and in new prose.
+/// Hash equality binds wording to bytes; it does not establish entailment.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExplanationCitation {
+    pub source_id: String,
+    pub source_revision: u64,
+    pub observation_fingerprint: String,
+    pub analysis_snapshot_id: String,
+    pub repository_snapshot_id: String,
+    pub repository_source_id: String,
+    pub locator: String,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub field: String,
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub range_sha256: String,
+    pub claim_start_byte: usize,
+    pub claim_end_byte: usize,
+    pub claim_sha256: String,
+    pub use_kind: ExplanationSourceUse,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExplanationSourceUse {
+    CurrentCode,
+    BeforeCode,
+    ObservedExecution,
+}
+
+pub fn explanation_text_hash(text: &str) -> String {
+    format!("sha256:{:x}", Sha256::digest(text.as_bytes()))
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -121,6 +158,7 @@ pub struct RetainedExplanation {
     pub generated_at_unix_micros: i64,
     /// Always assigned by the recorder. Caller model strings are not attestations.
     pub generator_identity_status: String,
+    pub semantic_approval_status: String,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -415,7 +453,11 @@ fn finish_plan(
                 "snapshot":s.snapshot_basis,"availability":format!("{:?}",s.availability),
                 "freshness":format!("{:?}",s.freshness),"actor":format!("{:?}",s.source.actor),
                 "observer":format!("{:?}",s.source.observer),
-                "observation":format!("{:?}",s.source.payload),
+                "observation":match &s.source.payload {
+                    volicord_context::SourcePayload::CurrentHostUserTurn { host, session, .. } =>
+                        json!({"kind":"current_host_user_turn","host":host,"session":session,"body":"policy_withheld"}),
+                    other => json!(format!("{other:?}")),
+                },
                 "body": if matches!(s.source.payload, volicord_context::SourcePayload::CurrentHostUserTurn { .. }) {
                     "policy_withheld"
                 } else { "historical_body_not_retained" }}),
@@ -441,7 +483,7 @@ fn finish_plan(
     };
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:format!("{questions} Interpret full source prose in the requested language, not audit clutter. Cite exact evidence keys. Keep checksums when they are subject matter. State missing information, contradictions and uncertainty. Generic implementation-changed prose supports no specific feature. Reports are not independently verified success. Separate work, verification, review and acceptance; earlier checks do not cover later changes. Do not invent user rationale or runtime behavior. Return ExplanationRealization JSON, format_kind volicord_explanation, format_version 1, exact fingerprint/language, self-reported generator host/session/agent/model (null when unknown), and paragraphs question/text/evidence_keys."), retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
+        instructions:format!("{questions} Interpret full source prose in the requested language, not audit clutter. Cite exact evidence keys. Keep checksums when they are subject matter. State missing information, contradictions and uncertainty. Generic implementation-changed prose supports no specific feature. Reports are not independently verified success. Separate work, verification, review and acceptance; earlier checks do not cover later changes. Do not invent user rationale or runtime behavior. Write natural technical prose in reader order, with multiple paragraphs per question when useful. Source investigation may include relevant callers/helpers/tests within already permitted scope. Code claims need exact retrieved Source citations; current code does not supply missing before-state or execution proof. Conditional user instructions and recommendations create no Decision or Learning participation. Return ExplanationRealization JSON, format_kind volicord_explanation, format_version 2, exact fingerprint/language, self-reported generator host/session/agent/model (null when unknown), and paragraphs question/text/evidence_keys/citations. Citation ranges and claim ranges are half-open UTF-8 byte offsets with SHA-256 hashes; bind each citation to the exact new wording. Structural validation is not semantic approval."), retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
@@ -502,9 +544,9 @@ pub fn validate_explanation(
             .iter()
             .filter(|p| &p.question == question)
             .count()
-            != 1
+            == 0
         {
-            return Err("one answer for each required question is necessary".into());
+            return Err("an answer for each required question is necessary".into());
         }
     }
     if response.paragraphs.iter().any(|p| {
@@ -513,6 +555,24 @@ pub fn validate_explanation(
         return Err("answer question does not belong to prepared subject".into());
     }
     for p in &response.paragraphs {
+        for citation in &p.citations {
+            let claim = p
+                .text
+                .get(citation.claim_start_byte..citation.claim_end_byte)
+                .filter(|s| !s.trim().is_empty())
+                .ok_or("invalid citation claim range")?;
+            if explanation_text_hash(claim) != citation.claim_sha256
+                || citation.start_byte >= citation.end_byte
+                || citation.source_revision == 0
+                || citation.start_line == 0
+                || citation.end_line < citation.start_line
+            {
+                return Err("invalid citation claim binding or Source range".into());
+            }
+            if matches!(plan.subject, ExplanationSubject::Decision(_)) {
+                return Err("Work Source citations require a Work subject".into());
+            }
+        }
         if p.text.trim().is_empty()
             || p.evidence_keys.is_empty()
             || p.evidence_keys
@@ -585,6 +645,7 @@ pub fn retain_explanation(
         conflicts: plan.conflicts.clone(),
         generated_at_unix_micros,
         generator_identity_status: GENERATOR_IDENTITY_STATUS.into(),
+        semantic_approval_status: "not_established".into(),
     }
 }
 

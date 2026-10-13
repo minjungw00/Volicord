@@ -541,7 +541,9 @@ adoption success는 독립 결과다.
 Projections and Documents owns Work/Decision question selection, preparation, structural
 realization validation and read states, independently of document NarrativePlan.
 Local Operations coordinates explicit prepare/record/delete, current canonical
-grounding and the existing mutation lock. Privacy and Provider Boundary owns local
+grounding, exact permitted Source retrieval/range/claim/current-repository checks
+and the existing mutation lock. Explicit MCP generation connects the active host
+to these capabilities; read-only prepare/GET never dispatch a model. Privacy and Provider Boundary owns local
 managed Derived retention/deletion in its existing CachedSummary store, including
 canonical forgetting barriers. Host and User Adapters consume these shared APIs;
 the active host authors the requested interpretation under current interaction

@@ -628,6 +628,14 @@ fn decode_observation(
         || observation.work_revision != work_revision(basis, work)?
         || observation.source_revision != 1
         || record.analysis_snapshot != Some(observation.analysis_snapshot_id)
+        || !record
+            .included_sources
+            .iter()
+            .any(|s| s.identity() == observation.source_id)
+        || !record
+            .included_sources
+            .iter()
+            .any(|s| s.identity() == observation.repository_source_id)
     {
         return Err(Error::new(
             "Source copy identity/revision binding is incompatible",

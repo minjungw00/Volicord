@@ -677,11 +677,31 @@ pub(super) fn render_answers(
             },
             escape(&answer.text)
         ));
+        for citation in &answer.citations {
+            let anchor = format!(
+                "explanation-source-{}-{}-{}",
+                citation.source_id, citation.start_byte, citation.end_byte
+            );
+            html.push_str(&format!(
+                "<a class=\"source-citation\" href=\"#{}\">{}:{}–{}</a> ",
+                escape(&anchor),
+                escape(&citation.locator),
+                citation.start_line,
+                citation.end_line
+            ));
+        }
         if !compact {
             html.push_str("</div>");
         }
     }
     if let Some(provenance) = &answers.provenance {
+        for citation in &provenance.citations {
+            let anchor = format!(
+                "explanation-source-{}-{}-{}",
+                citation.source_id, citation.start_byte, citation.end_byte
+            );
+            html.push_str(&format!("<details id=\"{}\" class=\"source-citation-basis\"><summary>{}:{}–{} · {:?}</summary><pre>{}</pre></details>",escape(&anchor),escape(&citation.locator),citation.start_line,citation.end_line,citation.use_kind,escape(&format!("{citation:#?}"))));
+        }
         html.push_str(&format!(
             "<details class=\"explanation-grounding\"><summary>{}</summary><pre>{}</pre></details>",
             text(

@@ -371,6 +371,9 @@ state/verification/review/acceptance, historical observations, same-Work limits,
 Project Purpose, canonical contradiction/supersession relations and immutable Source
 observations. Each evidence key identifies record kind, identity, revision, field and
 Sources; Source entries preserve snapshot, availability, freshness, actor and observer.
+Current-host user-turn observation metadata contains only kind/host/session and
+policy-withheld state; raw turn text is never copied into a payload Debug string.
+Only independently selected canonical fields supply explanatory user facts.
 The preparation is bounded at 131,072 bytes and fails rather than silently truncating
 source material. Its SHA-256 fingerprints these inputs, scope, question, instructions
 and exact language. Unrelated Work/catalog insertion does not change this basis.
@@ -383,10 +386,10 @@ Inventing source-specific lexical rules would not generalize to the reordered va
 and independent export case. Deterministic selection and state explanations remain
 appropriate for structured facts; explicit host realization supplies Work prose.
 
-`ExplanationRealization` uses exact-current `volicord_explanation` version 1,
+`ExplanationRealization` uses exact-current `volicord_explanation` version 2,
 plan fingerprint, language, host/session and nullable agent/model provenance, and
-question/text/evidence-key paragraphs. Purpose, reported change, expected effect,
-verification and next step each require one answer; optional limits may be additional.
+question/text/evidence-key/citation paragraphs in reader-selected order. Purpose, reported change, expected effect,
+verification and next step each require at least one answer; optional limits may be additional.
 Recording recomputes the plan under the existing mutation lock, rejects stale/foreign
 keys or mismatched language/version, and bounds the response at 16,384 bytes. This
 validates structure and grounding references, **not** prose entailment, translation
@@ -470,7 +473,7 @@ reader, alias or second store; unsupported disposable derived content must be de
 and regenerated. Recording and Current reads verify the whole retained binding,
 not only a response hash.
 
-Document metadata version 8 and Viewer publication carry exact explanation provenance
+Document metadata version 9 and Viewer publication carry exact explanation provenance
 and a current-build canonical read equality token. Operations verifies canonical basis
 and current retained provenance immediately before atomic no-replace publication under
 the mutation lock. Correction/forget or explicit cache deletion invalidates prepared
@@ -1573,7 +1576,54 @@ A prior continuation can only return an unavailable state or reject changed
 content; it never returns a deleted suffix. Metadata/lifecycle state remains
 separate from transport completion and original representation/omitted counts.
 
-The ordinary Work/Decision explanation plan remains canonical-only. This scoped
-inspection supplies actual evidence to an authorized interactive consumer; it
-adds neither generated causal truth nor automatic explanation generation,
-Candidate inspection authority, adoption or a general evidence-selection design.
+The Work/Decision plan remains canonical-only. Explicit `work_explanation`
+preparation also offers the exact Work Source metadata manifest, separately from
+canonical facts and missing historical bodies. `generate` requests the current
+already authorized interactive host's interpretation; its initial status is
+`awaiting_host_interpretation`, never completed generated prose. The host reads
+relevant permitted Sources (including separately observed callers/helpers/tests)
+and authors `ExplanationRealization` without asking the user to assemble JSON.
+There is no server-side model dispatch, automatic retry or mandatory provider.
+
+`read_source` returns a permitted existing whole-file or bounded command envelope,
+its SHA-256 retrieval fingerprint and normalized `citation_basis`. It does not
+capture, renew retention or substitute current files for missing evidence.
+`record` checks a live same-server request, exact Project/Work/plan and that each
+cited Source fingerprint was retrieved within that request. Requests are ephemeral,
+expire after 1,800 seconds and are single-use on successful recording; failure
+preserves the prior record and permits a corrected submission. Restart drops them.
+At most 32 requests and 128 distinct Source retrievals per request are retained.
+Preparation and retrieval do not create canonical or Managed Derived records.
+MCP returns complete structured grounding with a compact text pointer, within the
+existing 256 KiB total-result bound; excess rejects, never truncates the plan.
+
+Each citation binds Source identity/revision, retrieval envelope fingerprint,
+Analysis/Repository identities and repository Source, locator, exact half-open
+UTF-8 byte range, one-based line range and range SHA-256 to an exact half-open
+paragraph claim range and its SHA-256. Uses are `current_code`, `before_code` or
+`observed_execution`. New wording (including editorial changes) needs renewed
+claim hashes/ranges. No separate editorial transformation is promoted without
+independent reading-quality evidence; explicit regeneration retains a new output
+alongside prior permitted identities through the same managed lifecycle.
+
+Operations rechecks scoped body authority/expiry/hash, Work revision, snapshots,
+locator/range and selected current repository inventory before recording and
+again at reading/publication. An explicit before citation needs its observed
+same-Work/path later file pair; changed/equal comparison is recomputed from both
+bodies and chronology. Missing before-state cannot be reconstructed from HEAD.
+Observed execution copies preserve actual exit/termination and bounded stream
+omissions and establish no execution-time repository equality. Prose uses readable
+locator/line references; Viewer links those references to local provenance details,
+and documents retain them alongside exact citation metadata (metadata version 9).
+
+Recording adds all citation Sources/repository Sources and explicit before Sources
+to existing managed canonical dependencies and limits explanation retention to the
+earliest cited body expiry. Deletion, denied read, correction, expiry, corruption
+or repository change withhold current prose; read-only canonical facts remain
+available. Publication rechecks Source dependencies in addition to canonical and
+retained-output identity. The retained recorder-owned `semantic_approval_status`
+is always `not_established`: valid ranges, readable prose or generation do not
+certify causal meaning, translation, execution success or independent user approval.
+Self-reported author/model strings remain self-reported; server session correlation
+is operational correlation only. Conditional user instructions, recommendations
+and generated explanation never create Decisions or Learning participation.

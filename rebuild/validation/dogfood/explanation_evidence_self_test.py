@@ -66,23 +66,23 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
         'conflicts': [], 'instructions': 'fixture only', 'fingerprint': 'sha256:' + 'a' * 64}
     plan['retention_budget'] = {'response_byte_limit': 16384, 'retained_byte_limit': 147456,
         'metadata_byte_reserve': e.retention_metadata_bytes(plan), 'response_byte_capacity': 16384}
-    response = {'format_kind': 'volicord_explanation', 'format_version': 1,
+    response = {'format_kind': 'volicord_explanation', 'format_version': 2,
         'plan_fingerprint': plan['fingerprint'], 'language': language,
         'generator': {'host': 'authored fixture', 'session': 'fixture-only', 'agent': None, 'model': None},
         'paragraphs': [{'question': q, 'text': '구조 검사 예제입니다.' if language == 'ko' else 'Structural example only.',
-            'evidence_keys': [evidence[0]['key']]} for q in questions]}
+            'citations': [], 'evidence_keys': [evidence[0]['key']]} for q in questions]}
     stripped = copy.deepcopy(evidence); stripped[0]['content'] = None
     statuses = [{k: v for k, v in value.items() if k != 'observation'} for value in plan['source_status']]
     retained = {'realization': response, 'project_id': project, 'subject': plan['subject'],
         'question': plan['question'], 'evidence': stripped, 'source_status': statuses, 'conflicts': [],
-        'generated_at_unix_micros': 100, 'generator_identity_status': 'self_reported_not_independently_verified'}
+        'generated_at_unix_micros': 100, 'generator_identity_status': 'self_reported_not_independently_verified', 'semantic_approval_status': 'not_established'}
     answers = {'diagnostic': None, 'explanation_state': 'current', 'facts': ([{'question':'NextStepAvailability', 'text':'No Checkpoint is recorded in this structural fixture.',
         'role':'unavailable', 'evidence_keys':[]}] if kind == 'work' else []),
         'prose': [{'question': ''.join(word.title() for word in p['question'].split('_')),
-            'text': p['text'], 'role': 'generated_interpretation', 'evidence_keys': p['evidence_keys']} for p in response['paragraphs']],
+            'text': p['text'], 'citations': p['citations'], 'role': 'generated_interpretation', 'evidence_keys': p['evidence_keys']} for p in response['paragraphs']],
         'provenance': {k: v for k, v in retained.items() if k != 'realization'} | {
             'language': language, 'fingerprint': plan['fingerprint'], 'generator': response['generator'],
-            'uncited_evidence_count': 0}}
+            'uncited_evidence_count': 0, 'citations': []}}
     readback = {'project_id': project, 'selected_work': {'work_item_id': identity, 'checkpoint_ids': [], 'answers': answers},
         'decisions': [{'identity': identity, 'answers': answers}]}
     preparation = {'kind': 'dogfood_explanation_preparation', 'schema_version': e.SCHEMA_VERSION,

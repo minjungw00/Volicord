@@ -29,6 +29,7 @@ fn fake(plan: &ExplanationPlan) -> ExplanationRealization {
         ]
         .into_iter()
         .map(|(question, key)| ExplanationParagraph {
+            citations: Vec::new(),
             question,
             text: format!("Fake unit-test paragraph for {question:?}"),
             evidence_keys: vec![key.into()],
@@ -401,6 +402,7 @@ fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_public
     ]
     .into_iter()
     .map(|(question, key)| ExplanationParagraph {
+        citations: Vec::new(),
         question,
         text: format!("Fake decision lifecycle paragraph {question:?}"),
         evidence_keys: vec![key.into()],
@@ -887,6 +889,7 @@ fn large_retained_envelopes_reach_viewer_documents_and_offline_snapshot(
             ]
             .into_iter()
             .map(|(question, key)| ExplanationParagraph {
+                citations: Vec::new(),
                 question,
                 text: format!("Authored Decision consumer control {question:?}"),
                 evidence_keys: vec![key.into()],
@@ -1184,7 +1187,7 @@ fn decision_context_is_exact_scoped_and_shared_with_documents_and_recall(
         (ExplanationQuestion::Recommendation, vec!["recommendation"], "The agent recommended a bounded local boundary."),
         (ExplanationQuestion::Consequences, vec!["consequences"], "These are expected alternative consequences; selecting local is not proof of implementation."),
         (ExplanationQuestion::Applicability, vec!["applicability"], "The choice applies to its recorded Work scope and needs review."),
-    ].into_iter().map(|(question, keys, text)| ExplanationParagraph { question,
+    ].into_iter().map(|(question, keys, text)| ExplanationParagraph { citations: Vec::new(), question,
         text:text.into(), evidence_keys:keys.into_iter().map(str::to_owned).collect() }).collect();
     f.operations
         .record_explanation(f.project, subject, "en", response)?;

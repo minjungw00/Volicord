@@ -134,6 +134,7 @@ fn response(
         paragraphs: questions
             .iter()
             .map(|(question, key)| ExplanationParagraph {
+                citations: Vec::new(),
                 question: *question,
                 text: if plan.requested_language == "ko" {
                     "구조 검증용 설명: 근거의 한계를 보존합니다. \"인용\"\\".into()

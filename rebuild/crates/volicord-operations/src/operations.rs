@@ -4036,7 +4036,7 @@ impl LocalOperations {
             })
     }
 
-    fn observe_projection_repository(
+    pub(crate) fn observe_projection_repository(
         &self,
         canonical: &CanonicalReadBasis,
         source: SourceId,

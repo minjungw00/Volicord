@@ -99,10 +99,10 @@ fn actual_work_and_decision_prepare_record_delete_readback(
                 .iter()
                 .map(|e| e["key"].clone())
                 .collect();
-            let response = json!({"format_kind":"volicord_explanation", "format_version":1,
+            let response = json!({"format_kind":"volicord_explanation", "format_version":2,
                 "plan_fingerprint":plan["fingerprint"], "language":language,
                 "generator":{"host":"cli-lifecycle-test","session":"synthetic","agent":null,"model":null},
-                "paragraphs":questions.iter().map(|q| json!({"question":q,
+                "paragraphs":questions.iter().map(|q| json!({"question":q,"citations":[],
                     "text":format!("Labeled lifecycle fixture {q}"),"evidence_keys":keys})).collect::<Vec<_>>()});
             let input = f._temporary.path().join("response.json");
             std::fs::write(&input, serde_json::to_vec(&response)?)?;

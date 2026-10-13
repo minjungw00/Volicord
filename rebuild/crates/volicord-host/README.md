@@ -345,3 +345,19 @@ execution. The transient UTF-8 JSON `[program, argv]` framing is fingerprinted a
 discarded; it must not be correlated as if it were a shell command string. Raw
 stream artifacts are removed before retained-body publication. Selected analysis
 identity is preserved, but execution-time repository equality is not asserted.
+
+For an explicitly requested Work explanation, call `work_explanation` with
+`action: generate`, exact `project_id`, `work_item_id` and `language`. The returned
+plan and scoped Source inventory are evidence, with status
+`awaiting_host_interpretation`. The current authorized host investigates relevant
+permitted files via `work_source`, retrieves selected copies with `read_source`
+and the returned `generation_id`, then authors and submits `realization` through
+`action: record`. Follow the exact `tools/list` schema and returned citation basis.
+The user does not construct JSON. Source body reads are explicit, bounded and
+subject to existing privacy/expiry; current files never supply missing before-state.
+`prepare` is read-only and requests no model work; GET/Recall/viewer navigation
+never generates. Missing host capability/authority leaves generation incomplete
+and recorded facts readable. Server session correlation is not authentication;
+model/author strings stay self-reported and structural grounding is not independent
+semantic approval. `delete` removes explanation history locally through existing
+Managed Derived sanitation and preserves canonical records.

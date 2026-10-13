@@ -69,7 +69,7 @@ artifacts but owns no filesystem publication authority.
 Shared `work_answers` and `decision_answers` provide question-specific prose and
 independently selected state/scope facts to ordinary Viewer, document, CLI and MCP
 readers. `ExplanationSubject`, `ExplanationPlan`, `ExplanationRealization` and
-`RetainedExplanation` share the current `volicord_explanation` version 1 format;
+`RetainedExplanation` share the current `volicord_explanation` version 2 format;
 Operations owns explicit prepare/record/delete and managed privacy storage. Reads
 have no generation or publication authority. See the Viewer README for generation
 entry points, evidence budgets, lifecycle and fresh active-host proof instructions.

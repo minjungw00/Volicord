@@ -84,6 +84,7 @@ fn record(
         paragraphs: questions
             .into_iter()
             .map(|question| ExplanationParagraph {
+                citations: Vec::new(),
                 question,
                 text: "Labeled structural fixture".into(),
                 evidence_keys: plan.evidence.iter().map(|e| e.key.clone()).collect(),

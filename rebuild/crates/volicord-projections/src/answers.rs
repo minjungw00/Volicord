@@ -13,6 +13,8 @@ pub struct ExplanationProvenance {
     pub generated_at_unix_micros: i64,
     pub generator: ExplanationGenerator,
     pub generator_identity_status: String,
+    pub semantic_approval_status: String,
+    pub citations: Vec<ExplanationCitation>,
     pub evidence: Vec<ExplanationEvidence>,
     /// Offered preparation evidence that the realization did not cite. The
     /// retained explanation preserves it; ordinary provenance prioritizes use.
@@ -44,6 +46,13 @@ impl From<&RetainedExplanation> for ExplanationProvenance {
             generated_at_unix_micros: e.generated_at_unix_micros,
             generator: e.realization.generator.clone(),
             generator_identity_status: e.generator_identity_status.clone(),
+            semantic_approval_status: e.semantic_approval_status.clone(),
+            citations: e
+                .realization
+                .paragraphs
+                .iter()
+                .flat_map(|p| p.citations.clone())
+                .collect(),
             evidence,
             uncited_evidence_count,
             source_status: e.source_status.clone(),
@@ -76,6 +85,7 @@ pub struct QuestionAnswer {
     pub text: String,
     pub role: AnswerRole,
     pub evidence_keys: Vec<String>,
+    pub citations: Vec<ExplanationCitation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recorded_action: Option<RecordedActionBasis>,
 }
@@ -106,7 +116,23 @@ impl QuestionAnswers {
         self.prose
             .iter()
             .chain(&self.facts)
-            .map(|a| a.text.as_str())
+            .map(|a| {
+                let references = a
+                    .citations
+                    .iter()
+                    .map(|c| {
+                        format!(
+                            "{}:{}–{} ({:?})",
+                            c.locator, c.start_line, c.end_line, c.use_kind
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                if references.is_empty() {
+                    a.text.clone()
+                } else {
+                    format!("{} [{}]", a.text, references.join("; "))
+                }
+            })
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -141,6 +167,7 @@ pub fn explanation_answers(
                 text: p.text.clone(),
                 role: AnswerRole::GeneratedInterpretation,
                 evidence_keys: p.evidence_keys.clone(),
+                citations: p.citations.clone(),
                 recorded_action: None,
             })
             .collect()
@@ -157,6 +184,7 @@ pub fn explanation_answers(
             text: fixed(locale, en, ko),
             role: AnswerRole::Unavailable,
             evidence_keys: Vec::new(),
+            citations: Vec::new(),
             recorded_action: None,
         }]
     };
@@ -178,6 +206,7 @@ fn fact(question: &str, text: String, evidence_keys: Vec<String>) -> QuestionAns
         text,
         role: AnswerRole::DeterministicFacts,
         evidence_keys,
+        citations: Vec::new(),
         recorded_action: None,
     }
 }

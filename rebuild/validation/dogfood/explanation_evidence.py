@@ -42,7 +42,7 @@ def retention_metadata_bytes(plan):
         'question': plan['question'], 'evidence': evidence,
         'source_status': [{k: v for k, v in status.items() if k != 'observation'} for status in plan['source_status']],
         'conflicts': plan['conflicts'], 'generated_at_unix_micros': -(1 << 63),
-        'generator_identity_status': 'self_reported_not_independently_verified'}
+        'generator_identity_status': 'self_reported_not_independently_verified', 'semantic_approval_status': 'not_established'}
     return len(compact_bytes(retained)) - len(b'null')
 
 
@@ -157,7 +157,7 @@ def validate_response(plan, response):
         raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; limit {RESPONSE_BYTE_LIMIT}; reduce prose or generator metadata while preserving required answers/grounding, then retry')
     if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
             'plan_fingerprint', 'language', 'generator', 'paragraphs'}
-            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 1
+            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 2
             or response['plan_fingerprint'] != plan['fingerprint']
             or response['language'] != plan['requested_language']):
         raise api().CampaignError('explanation response format/plan/language mismatch')
@@ -170,11 +170,11 @@ def validate_response(plan, response):
     paragraphs, keys = response['paragraphs'], {e['key'] for e in plan['evidence']}
     required = WORK_QUESTIONS if plan['subject']['kind'] == 'work' else DECISION_QUESTIONS
     if (not isinstance(paragraphs, list) or not required <= {p.get('question') for p in paragraphs if isinstance(p, dict)}
-            or any(not isinstance(p, dict) or set(p) != {'question', 'text', 'evidence_keys'}
+            or any(not isinstance(p, dict) or set(p) != {'question', 'text', 'evidence_keys', 'citations'}
                 or p['question'] not in required | {'limits'} or not isinstance(p['text'], str) or not p['text'].strip()
                 or not isinstance(p['evidence_keys'], list) or not p['evidence_keys']
                 or not all(isinstance(k, str) and k in keys for k in p['evidence_keys']) for p in paragraphs)
-            or len({p['question'] for p in paragraphs}) != len(paragraphs)):
+            or any(not isinstance(p.get('citations'), list) for p in paragraphs)):
         raise api().CampaignError('explanation required claims/grounding missing or malformed')
 
 
@@ -194,6 +194,7 @@ def validate_lifecycle(preparation, response, receipt, after):
             or retained.get('source_status') != statuses or retained.get('conflicts') != plan['conflicts']
             or retained.get('question') != plan['question']
             or retained.get('generator_identity_status') != 'self_reported_not_independently_verified'
+            or retained.get('semantic_approval_status') != 'not_established'
             or type(retained.get('generated_at_unix_micros')) is not int):
         raise api().CampaignError('explanation record receipt subject/revision/Source/provenance mismatch')
     if len(compact_bytes(retained)) > RETAINED_BYTE_LIMIT:
@@ -218,6 +219,8 @@ def validate_lifecycle(preparation, response, receipt, after):
         ('fingerprint', plan['fingerprint']), ('evidence', cited), ('source_status', statuses),
         ('conflicts', plan['conflicts']), ('generator', response['generator']),
         ('generator_identity_status', retained['generator_identity_status']),
+        ('semantic_approval_status', 'not_established'),
+        ('citations', [c for p in response['paragraphs'] for c in p['citations']]),
         ('generated_at_unix_micros', retained['generated_at_unix_micros'])))):
         raise api().CampaignError('explanation readback provenance differs from exact receipt')
     prose = answers.get('prose')
@@ -226,6 +229,7 @@ def validate_lifecycle(preparation, response, receipt, after):
     for paragraph, returned in zip(response['paragraphs'], prose, strict=True):
         if (not isinstance(returned, dict) or returned.get('text') != paragraph['text']
                 or returned.get('evidence_keys') != paragraph['evidence_keys']
+                or returned.get('citations') != paragraph['citations']
                 or returned.get('role') != 'generated_interpretation'
                 or returned.get('question') != ''.join(word.title() for word in paragraph['question'].split('_'))):
             raise api().CampaignError('explanation readback changed recorded claims/role')

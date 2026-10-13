@@ -2690,3 +2690,20 @@ still reject those claims. Original campaign/evaluation/review records are never
 Missing technical evidence is an unresolved evidence gap; direct human experience
 and explicit semantic conflicts retain their separate human authority. These controls
 establish no new naturalistic session, authenticated reviewer identity or Phase 9 approval.
+
+### Explicit Product host explanation support
+
+Host `work_explanation` regressions use actual Product Project/Work/analysis/Source
+producers and MCP generate/read_source/record, existing managed storage and normal
+reading. Authored controls establish structure only, never actual model success or
+semantic approval. Negative controls cover request-local retrieval, Project/Work,
+Source revision, locator/range/line/hash, snapshot, changed wording, missing before
+pairs, current repository changes and deleted copies, preserving previous records.
+Existing explanation-budget, CLI, Host consumer, Source, document and Viewer tests
+remain focused format/lifecycle checks. Current fixture producers/consumers use
+explanation format 2 and document metadata 9; historical campaign files are immutable.
+A genuine current-authorized interactive-host interpretation must separately read
+actual Product evidence and record its new output through public operations. Its
+generator identity is self-reported and its reading quality is not independent human
+approval. No workspace aggregate, gate, official V11 or external provider is invoked
+by these focused checks.

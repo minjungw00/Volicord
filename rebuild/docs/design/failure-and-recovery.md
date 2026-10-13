@@ -494,3 +494,16 @@ command Source. Raw stream cleanup failure prevents a retention receipt.
 Fresh observation is explicit and distinct from recovery of historical bytes.
 Snapshot-stale copies carry historical-only meaning; invalidated, expired,
 deleted, corrected-Work or forbidden Source content cannot supply body readback.
+
+### Explicit host explanation failure
+
+MCP generation preparation is `awaiting_host_interpretation`; missing host
+capability/authority is scoped incomplete generation, with canonical read-only facts
+usable. No fallback is labeled completed prose. Request expiry/restart or denied
+Source retrieval requires explicit new generation or corrected scope; no model retry
+is scheduled. Invalid/stale citation, Work, repository or edited-claim bindings reject
+recording before managed insertion and preserve earlier valid records. Current
+reading/publication withholds prose when any required body is expired/deleted,
+withheld, corrupted, unavailable or changed. Diagnostics name the affected dependency
+and explicit observe/prepare/generate recovery. Existing managed cleanup owns deletion
+and incomplete sanitation retry; local deletion never claims host/provider deletion.

@@ -4000,7 +4000,7 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
     assert!(instructions.contains("observed outcomes"));
     assert!(instructions.contains("execution confirmation never selects scope"));
     assert!(
-        instructions.len() < 768,
+        instructions.len() < 1024,
         "server instructions should stay compact"
     );
 
@@ -7258,7 +7258,7 @@ fn assert_schema_is_closed_and_described(schema: &Value) {
             }
         }
         Some("array") => assert_schema_is_closed_and_described(&schema["items"]),
-        Some("string" | "integer" | "boolean") => {}
+        Some("string" | "integer" | "boolean" | "null") => {}
         other => panic!("unsupported client-visible schema type: {other:?}"),
     }
 }
@@ -7360,6 +7360,48 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             shape(
                 &["action", "project_id", "work_item_id", "source_id"],
                 &["action", "project_id", "work_item_id", "source_id"],
+            ),
+        ],
+        "work_explanation" => vec![
+            shape(
+                &["action", "project_id", "work_item_id", "language"],
+                &["action", "project_id", "work_item_id", "language"],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "source_id",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "source_id",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "realization",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "realization",
+                ],
+            ),
+            shape(
+                &["action", "project_id", "work_item_id"],
+                &["action", "project_id", "work_item_id"],
             ),
         ],
         "engineering_choice_discovery" => vec![

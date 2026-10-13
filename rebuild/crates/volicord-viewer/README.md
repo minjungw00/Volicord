@@ -282,6 +282,17 @@ no external frontend source or runtime dependency was copied.
 
 ## Explicit Work and Decision explanations
 
+For an explicit user request in the active host, MCP `work_explanation` action
+`generate` prepares exact Work facts and a separate scoped Source inventory.
+The host investigates permitted relevant code, retrieves selected retained Sources
+with `read_source`, authors natural prose with exact source/claim bindings and
+uses `record`. Its initial awaiting-host status is not completed generation, and
+the user does not construct JSON. Source links show path and line range alongside
+provenance details. Before-state needs an explicit observed pair; current code
+alone does not prove a patch, execution success or user approval. Missing host
+capability/authority stays incomplete with recorded facts readable. See the
+[Host procedure](../volicord-host/README.md) and `tools/list` schema.
+
 From a bound repository, or with explicit `--runtime` and `--project`:
 
 ```text
@@ -292,10 +303,10 @@ volicord --json work explain delete --work GOAL_ID
 
 Preparation returns `{operation, plan}`. The current active agent reads the entire
 plan under its existing source-access authority and creates a response JSON using
-`format_kind: "volicord_explanation"`, `format_version: 1`, the exact
+`format_kind: "volicord_explanation"`, `format_version: 2`, the exact
 `plan_fingerprint`, `language`, `generator: {host, session, agent, model}` and
-`paragraphs: [{question, text, evidence_keys}]`. Each of `purpose`, `reported_change`,
-`expected_effect`, `verification`, `next_step` requires one paragraph. `limits` is
+`paragraphs: [{question, text, evidence_keys, citations}]`. Each of `purpose`, `reported_change`,
+`expected_effect`, `verification`, `next_step` requires at least one paragraph. `limits` is
 optional. Use prepared evidence keys; unknown agent/model is null, and unavailable
 session correlation can be explicitly self-reported as unknown. Do not claim
 independently verified identity. The plan supplies evidence and instructions, never

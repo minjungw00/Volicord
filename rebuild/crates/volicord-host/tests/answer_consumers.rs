@@ -43,6 +43,7 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
         ]
         .into_iter()
         .map(|(q, key)| ExplanationParagraph {
+            citations: Vec::new(),
             question: q,
             text: format!("Transport-only Korean-requested paragraph {q:?}"),
             evidence_keys: vec![key.into()],
@@ -274,6 +275,7 @@ fn recorded_action_is_readable_without_generated_interpretation(
         ]
         .into_iter()
         .map(|(question, key)| ExplanationParagraph {
+            citations: Vec::new(),
             question,
             text: if question == ExplanationQuestion::NextStep {
                 "Check loading feedback in a slow-response browser session.".into()
@@ -421,6 +423,7 @@ fn naturalistic_consumer_checks_product_recalls_across_correction(
         ]
         .into_iter()
         .map(|question| ExplanationParagraph {
+            citations: Vec::new(),
             question,
             text: format!("Structural support {question:?}"),
             evidence_keys: plan.evidence.iter().map(|e| e.key.clone()).collect(),
@@ -555,6 +558,7 @@ fn metadata_heavy_explanations_remain_bounded_without_replacing_recorded_action(
         ]
         .into_iter()
         .map(|(question, key)| ExplanationParagraph {
+            citations: Vec::new(),
             question,
             text: format!("구조 전송 검증: {question:?}"),
             evidence_keys: vec![key.into()],
