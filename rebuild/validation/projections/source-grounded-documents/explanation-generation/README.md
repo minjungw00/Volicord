@@ -1339,3 +1339,22 @@ remain rejected. Historical `evidence_reads` are preserved; the new observation
 reports `historical_read_audit_matches` rather than requiring an obsolete derived
 classification to equal today's independently recomputed result. Full completion
 still requires no current audit issues and every original assessment prerequisite.
+
+Selection diagnostics run independent scope, state, chronology, availability,
+range, retrieval, hash and UTF-8 checks together. Each check records `passed`,
+`failed` or `not_run` with missing prerequisites. Foreign scope and unavailable
+assets are not opened for diagnostics. A failed prerequisite never supplies an
+inferred pass, and independent successes cannot upgrade an invalid selection.
+Invalid-selection detail includes these check outcomes; valid normal displays
+retain their bounded presentation. Original selections and historical judgments
+are not rewritten.
+
+The optional retained source-inspection control pins the original Work A, Click
+and Work C receipts and responses, validates them offline, and exercises new HTML
+and pending feedback in a disposable destination. Work A selections 35–36 and
+Click selections 25–26 each retain both wrong state and ambiguous chronology;
+Work C retains its wrong-state rejection. All three original outcomes stay
+`review_incomplete_or_unverified`. Run the affected controls with
+`EXPLANATION_RETAINED_SOURCE_INSPECTIONS` pointing to the retained `reviews/`
+directory and `approach_self_test.py RetainedCitationDiagnosticsTests -v` through
+`validate focused`. These are additional diagnostics, not historical review repair.

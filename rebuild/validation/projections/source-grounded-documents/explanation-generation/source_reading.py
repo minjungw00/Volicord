@@ -219,6 +219,8 @@ def selections_html(spec, entries, validation, original, *, primary_indices=()):
         selection = result['selection']
         target = anchor(spec['scope'], original, number)
         witness = {'anchor': target, 'selection': selection, 'reference_status': result['reference_status']}
+        if result['reference_status'] == 'invalid':
+            witness['checks'] = result.get('checks', {})
         witnesses.append(witness)
         if number - 1 not in displayed:
             continue
@@ -254,6 +256,8 @@ def selections_html(spec, entries, validation, original, *, primary_indices=()):
         body += '<details><summary>Original selection and provenance</summary><pre class="selection-request">'
         body += preview(json.dumps(selection, ensure_ascii=False, sort_keys=True)) + '</pre>'
         body += '<p>Reference: ' + escaped(result['reference_status']) + '; ' + escaped('; '.join(result['issues'])) + '</p>'
+        if result.get('checks') and result['reference_status'] == 'invalid':
+            body += '<pre class="reference-checks">' + preview(json.dumps(result['checks'], sort_keys=True)) + '</pre>'
         if entry is not None:
             body += '<pre>' + preview(json.dumps({k: entry.get(k) for k in
                                 ('id', 'path', 'role', 'locator', 'file_sha256', 'representation', 'extent',

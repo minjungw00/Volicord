@@ -2,6 +2,7 @@
 import copy
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -54,6 +55,43 @@ class ApproachTests(unittest.TestCase):
         response['selections'][0]['state'] = 'before'
         result = validate_output(response, self.spec, 'archive_diagnostic', self.history())
         self.assertEqual(result['selections'][0]['issues'], ['wrong-state span'])
+
+    def test_wrong_state_does_not_mask_independent_chronology_and_hash_failures(self):
+        response = self.response()
+        response['selections'][0].update(state='before', sha256='0' * 64)
+        frozen = copy.deepcopy(self.spec)
+        frozen['entries'][0]['chronology'] = {'state': 'ambiguous', 'reason': 'No original observation time.'}
+        row = validate_output(response, frozen, 'archive_diagnostic', self.history())['selections'][0]
+        self.assertEqual(row['reference_status'], 'invalid')
+        self.assertEqual(row['issues'], ['wrong-state span', 'ambiguous chronology', 'span hash mismatch'])
+
+    def test_unavailable_and_unknown_prerequisites_are_explicit_without_success(self):
+        response = self.response()
+        frozen = copy.deepcopy(self.spec)
+        frozen['entries'][0]['asset'] = None
+        response['selections'][0]['state'] = 'before'
+        frozen['entries'][0]['chronology'] = {'state': 'ambiguous', 'reason': 'Not observed.'}
+        row = validate_output(response, frozen, 'archive_diagnostic', self.history())['selections'][0]
+        self.assertEqual(row['issues'], ['wrong-state span', 'ambiguous chronology', 'unavailable source'])
+        self.assertEqual(row['checks']['hash'], {'status': 'not_run', 'prerequisites': ['range', 'asset_integrity']})
+        self.assertEqual(row['checks']['cutoff'], {'status': 'not_run', 'prerequisites': ['chronology']})
+        self.assertEqual(row['reference_status'], 'invalid')
+        response['selections'][0]['id'] = 'absent'
+        row = validate_output(response, frozen, 'archive_diagnostic', self.history())['selections'][0]
+        self.assertEqual(row['checks']['identity']['status'], 'failed')
+        self.assertEqual(row['checks']['state'], {'status': 'not_run', 'prerequisites': ['identity']})
+        self.assertEqual(row['reference_status'], 'invalid')
+
+    def test_retrieval_hash_and_utf8_are_independently_diagnosed(self):
+        response = self.response()
+        response['selections'][0]['sha256'] = '0' * 64
+        row = validate_output(response, self.spec, 'archive_diagnostic', [])['selections'][0]
+        self.assertEqual(row['issues'], ['span not retrieved', 'span hash mismatch'])
+        self.assertEqual(row['checks']['utf8']['status'], 'passed')
+        response['selections'][0]['end'] = True
+        row = validate_output(response, self.spec, 'archive_diagnostic', [])['selections'][0]
+        self.assertEqual(row['checks']['range_syntax']['status'], 'failed')
+        self.assertEqual(row['checks']['hash']['status'], 'not_run')
 
     def test_foreign_work_untouched_source_and_hash(self):
         response = self.response()
@@ -190,6 +228,63 @@ class ApproachTests(unittest.TestCase):
         self.assertLess(timeouts[-1], conditions['budgets']['total_seconds'])
         self.assertFalse(record['clean_comparison'])
         self.assertEqual(record['corrections'], [])
+
+
+class RetainedCitationDiagnosticsTests(unittest.TestCase):
+    def test_original_source_first_rejections_gain_diagnostics_without_repair(self):
+        supplied = os.environ.get('EXPLANATION_RETAINED_SOURCE_INSPECTIONS')
+        if not supplied:
+            self.skipTest('explicit retained source-inspection root required')
+        from reading_input import verify_reading_input
+        from render_comparison import render, record_feedback
+        root = Path(supplied).resolve()
+        before = {str(p): i.digest(p.read_bytes()) for p in root.rglob('*') if p.is_file()}
+        controls = [
+            ('work-a', '44b5c13574dabe57891c1ad06edb598b96d6c44399b7d32afc28662d7103ec9f',
+             'd85f309f48501f21b11815d06a8fe7036765b67751adac7edaa8cce0604613e3', {35: 'input-000136', 36: 'input-000137'}),
+            ('click', 'af4e76af7fae861408633247561c0cb1f60e64421a8c783b4cff86c5f702b49c',
+             '2c004131487e001236c144694f0d44c97b332007cf119ba010e36609759f50ed', {25: 'input-000138', 26: 'input-000139'}),
+            ('work-c', '4457095ba0c56dea75e399d29d624850f35403d2254ba1735320fe9af2c1ca72',
+             '2e1c98c0589623707d950749b2c4b6e7386052ee51a8555fdea611ef7c1db644', {}),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory)
+            for name, receipt_hash, response_hash, expected in controls:
+                with self.subTest(work=name):
+                    retained = root / name / 'source-first'
+                    receipt = retained / 'source-inspection-receipt.json'
+                    self.assertEqual(i.digest(receipt.read_bytes()), receipt_hash)
+                    record = json.loads(receipt.read_bytes())
+                    self.assertEqual(record['status'], 'review_incomplete_or_unverified')
+                    original = record['original_review']; i.check_binding(original)
+                    self.assertEqual(original['sha256'], response_hash)
+                    frozen = verify_reading_input(record['input']['path'])
+                    trace, invalid = a.events(record['retrievals']['path']); self.assertFalse(invalid)
+                    response = json.loads(Path(original['path']).read_bytes())
+                    validation = validate_output(response, frozen, 'archive_diagnostic', trace)
+                    compound = {n: row['selection']['id'] for n, row in enumerate(validation['selections'])
+                                if 'wrong-state span' in row['issues'] and 'ambiguous chronology' in row['issues']}
+                    self.assertEqual(compound, expected)
+                    self.assertTrue(any(row['reference_status'] == 'invalid' for row in validation['selections']))
+                    entries = {e['id']: e for e in frozen['entries']}
+                    for n, identity in expected.items():
+                        # Independent original metadata oracle; no corrected response.
+                        self.assertEqual(entries[identity]['chronology']['state'], 'ambiguous')
+                        self.assertNotIn(entries[identity]['attribution'], {'explicit_before_patch', 'explicit_work_patch'})
+                        self.assertNotEqual(response['selections'][n]['state'], 'context')
+                        self.assertEqual(validation['selections'][n]['checks']['cutoff']['status'], 'not_run')
+                    attempt = destination / (name + '-attempt.json')
+                    attempt.write_bytes(i.encoded({'input': record['input'], 'scope': frozen['scope'],
+                        'retrievals': record['retrievals'], 'calls': [{'kind': 'model_call', 'process': record['process']}],
+                        'original_outputs': [original], 'generation_output': original, 'approach': 'direct',
+                        'status': 'invalid_response', 'lane': 'archive_diagnostic', 'blockers': [], 'clean_comparison': False}))
+                    display = render([attempt], destination / name)
+                    integrity = json.loads((display.parent / 'integrity.json').read_bytes())
+                    self.assertEqual(integrity['samples'][0]['outputs'][0]['derived_reading']['status'], 'invalid')
+                    feedback = record_feedback(display, None, destination / (name + '-feedback.json'))
+                    self.assertEqual(json.loads(feedback.read_bytes())['original_outputs'], [original])
+                    self.assertEqual(json.loads(feedback.read_bytes())['H1'], 'pending')
+        self.assertEqual({str(p): i.digest(p.read_bytes()) for p in root.rglob('*') if p.is_file()}, before)
 
 
 if __name__ == '__main__':

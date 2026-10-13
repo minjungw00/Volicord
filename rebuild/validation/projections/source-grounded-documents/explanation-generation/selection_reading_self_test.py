@@ -200,6 +200,22 @@ class SelectionReadingTests(unittest.TestCase):
                 self.assertNotIn('Current derived reading: valid_binding', body)
         self.manifest.write_bytes(i.encoded(self.spec))
 
+    def test_compound_reference_diagnostics_reach_html_and_feedback_without_valid_anchors(self):
+        response = copy.deepcopy(self.response)
+        response['selections'].append(copy.deepcopy(self.selections['uncertain-checkpoint']))
+        response['selections'][-1].update(state='after', sha256='0' * 64)
+        body, output, parser = self.present(response)
+        reference = output['selections'][-1]
+        self.assertTrue(reference['reference_status'].startswith('invalid'))
+        self.assertEqual(reference['checks']['state']['status'], 'failed')
+        self.assertEqual(reference['checks']['chronology']['status'], 'failed')
+        self.assertEqual(reference['checks']['hash']['status'], 'failed')
+        self.assertIn('wrong-state span; ambiguous chronology; span hash mismatch', body)
+        self.assertIn('reference-checks', body)
+        self.assertIn('not_run', body)
+        self.assertEqual(output['derived_reading']['status'], 'invalid')
+        self.assert_feedback('invalid')
+
     def test_unknown_identity_is_distinct_from_unavailable_and_ambiguous(self):
         self.response['selections'].append(dict(self.selections['secondary-source'], id='missing-identity'))
         body, output, parser = self.present()
