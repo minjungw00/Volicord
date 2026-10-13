@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
+from collections import Counter
+from html.parser import HTMLParser
 from datetime import datetime
 import json
 from pathlib import Path
@@ -93,6 +96,77 @@ def stage_timeline(process, context_path, ledger):
                              'wall timestamps must not be subtracted from monotonic durations'}
 
 
+class DisplayOriginals(HTMLParser):
+    """Inspect the maintained diagnostic display's original transports and prose.
+
+    This reads historical HTML without re-rendering it with today's producer.
+    Hidden citation text retains the original literal byte coordinates.
+    """
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.samples, self.current, self.active = [], None, None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'article':
+            require(self.current is None, 'nested displayed sample')
+            self.current = {'label': '', 'prose': [], 'originals': []}
+        if self.current is None:
+            return
+        if tag == 'h2' and not self.current['label']:
+            self.active = 'label'
+        if tag == 'pre' and attrs.get('class') == 'prose':
+            self.active = 'prose'
+            self.current['prose'].append('')
+        if tag == 'a' and attrs.get('download', '').startswith('original-response-'):
+            require(attrs['href'].startswith('data:application/octet-stream;base64,'),
+                    'unexpected original display transport')
+            self.current['originals'].append((attrs['download'], base64.b64decode(
+                attrs['href'].split(',', 1)[1], validate=True)))
+
+    def handle_data(self, data):
+        if self.current and self.active == 'label':
+            self.current['label'] += data
+        elif self.current and self.active == 'prose':
+            self.current['prose'][-1] += data
+
+    def handle_endtag(self, tag):
+        if tag in {'h2', 'pre'}:
+            self.active = None
+        if tag == 'article':
+            require(self.current is not None, 'unpaired displayed sample')
+            self.samples.append(self.current)
+            self.current, self.active = None, None
+
+
+def attest_display(integrity, attempts):
+    from source_reading import DISPLAY_BYTES
+    require(not integrity.get('editorial') and integrity.get('presentation_mode', 'diagnostic') == 'diagnostic',
+            'full assessment requires original diagnostic display')
+    parser = DisplayOriginals()
+    parser.feed(Path(integrity['presentation']['path']).read_text())
+    require(parser.current is None and len(parser.samples) == len(integrity['samples']),
+            'displayed samples incomplete or duplicated')
+    for shown, sample, attempt in zip(parser.samples, integrity['samples'], attempts):
+        require(shown['label'] == sample['label'], 'displayed sample identity changed')
+        originals = attempt['original_outputs']
+        require(len({o['path'] for o in originals}) == len(originals)
+                and [o['original'] for o in sample['outputs']] == originals,
+                'review display differs from attempt originals')
+        transports, prose = [], []
+        ordered = sorted(enumerate(originals, 1), key=lambda item: item[1] != attempt.get('generation_output'))
+        for number, original in ordered:
+            check_binding(original)
+            raw = Path(original['path']).read_bytes()
+            transports.append(('original-response-' + str(number) + '.bin', raw))
+            response = json.loads(raw)
+            text = response['prose']
+            require(len(text.encode()) <= DISPLAY_BYTES, 'full review prose exceeds display bound')
+            prose.append(text)
+        require(Counter(shown['originals']) == Counter(transports) and shown['prose'] == prose,
+                'displayed original bytes or prose changed')
+
+
 def audit_cohort(root, repository, *, receipts=None, plan_path=None):
     root, repository = Path(root).resolve(), Path(repository).resolve()
     plan_path = Path(plan_path or root / 'plan.json')
@@ -161,11 +235,14 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
                             pending_tools.discard(identity)
                 stages.append({'stage': call['stage'], **stage_timeline(
                     process, process_root.parent / 'observed-context.json', ledger)})
-        spec = verify(record['input']['path'])
+        from reading_input import verify_reading_input
+        spec = verify_reading_input(record['input']['path'])
         observed_audit = retrieval_audit(spec,
                                         record.get('lane', 'archive_diagnostic'), host_calls, ledger)
         require(observed_audit == record['evidence_reads'], 'historical read audit mismatch')
         if review and record['status'] == 'review_captured':
+            require(record.get('assessment_scope', 'full_display') == 'full_display',
+                    'partial assessment cannot certify full display')
             process = record['process']
             require(record.get('original_review') and record.get('scope') == spec['scope']
                     and process['outcome'] == 'succeeded' and process['returncode'] == 0
@@ -201,12 +278,17 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
                     and {t['label'] for t in targets} == set(displayed),
                     'review target samples incomplete or duplicated')
             generator_sessions = set()
+            displayed_attempts = []
             for target in targets:
                 sample = displayed[target['label']]
                 check_binding(sample['attempt'])
                 attempt = json.loads(Path(sample['attempt']['path']).read_bytes())
                 require(attempt['input'] == record['input'] and attempt['scope'] == spec['scope'],
                         'review target Work/input changed')
+                displayed_attempts.append(attempt)
+                require([o['original'] for o in sample['outputs']] == attempt['original_outputs']
+                        and len({o['path'] for o in attempt['original_outputs']}) == len(attempt['original_outputs']),
+                        'review display differs from attempt originals')
                 target_sessions = []
                 for call in attempt.get('calls', []):
                     if call['kind'] != 'model_call':
@@ -233,6 +315,7 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
                         body = json.loads(Path(original['original']['path']).read_bytes())
                         require(claimed['prose_sha256'] == original['prose_sha256']
                                 == digest(body['prose'].encode()), 'review target prose changed')
+            attest_display(integrity, displayed_attempts)
             require(generator_sessions == set(record['generator_sessions'])
                     and not set(sessions) & generator_sessions, 'review session separation unverified')
             raw = Path(record['original_review']['path']).read_bytes()

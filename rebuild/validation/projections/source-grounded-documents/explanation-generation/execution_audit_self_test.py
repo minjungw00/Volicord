@@ -1,5 +1,6 @@
 """Authored review receipts through the retained-evidence audit; no provider."""
 import copy
+import html
 import json
 from pathlib import Path
 import tempfile
@@ -140,6 +141,27 @@ class ReviewAuditTests(unittest.TestCase):
                        'status': 'review_captured', 'exposure_issues': [], 'distinct_generation_session': True,
                        'generator_sessions': ['authored-generation-session'], 'review_sessions': ['authored-review-session'],
                        'tokens': [], 'price': None, 'workspace_cleanup': 'complete'}
+        self.refresh_display()
+
+    def refresh_display(self):
+        from source_reading import download
+        integrity_path = Path(self.record['integrity']['path'])
+        integrity = json.loads(integrity_path.read_bytes())
+        cards = []
+        for sample in integrity['samples']:
+            attempt = json.loads(Path(sample['attempt']['path']).read_bytes())
+            outputs = sorted(enumerate(attempt['original_outputs'], 1),
+                             key=lambda item: item[1] != attempt.get('generation_output'))
+            cards.append('<article><h2>' + sample['label'] + '</h2>')
+            for number, original in outputs:
+                raw = Path(original['path']).read_bytes()
+                cards.append('<pre class="prose">' + html.escape(json.loads(raw)['prose']) + '</pre>'
+                             + download(raw, 'original-response-' + str(number) + '.bin', 'Original'))
+            cards.append('</article>')
+        path = Path(self.record['presentation']['path']); path.write_text(''.join(cards))
+        self.record['presentation'] = integrity['presentation'] = i.binding(path)
+        integrity_path.write_bytes(i.encoded(integrity))
+        self.record['integrity'] = i.binding(integrity_path)
 
     def run_audit(self, record=None):
         for name in ('work-b-independent-review', 'click-independent-review'):
@@ -170,6 +192,7 @@ class ReviewAuditTests(unittest.TestCase):
         integrity_path.write_bytes(i.encoded(integrity))
         self.record['integrity'] = i.binding(integrity_path)
         self.record['displayed_outputs'][0]['outputs'].append(i.binding(path))
+        self.refresh_display()
         self.assertTrue(self.run_audit()['attempts'][-1]['review_completion_verified'])
         for mutation in ('omit_note', 'duplicate_note', 'duplicate_target'):
             with self.subTest(mutation=mutation):
@@ -184,6 +207,21 @@ class ReviewAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'review target originals incomplete or duplicated'):
             self.run_audit(record)
 
+    def test_omission_from_both_declarations_cannot_certify_full_display(self):
+        path = self.root / 'authored-note.json'
+        path.write_bytes(i.encoded({'prose': 'Authored explanation'}))
+        attempt_path = self.root / 'work-b-direct/attempt.json'
+        attempt = json.loads(attempt_path.read_bytes())
+        attempt['original_outputs'].append(i.binding(path))
+        attempt_path.write_bytes(i.encoded(attempt))
+        integrity_path = Path(self.record['integrity']['path'])
+        integrity = json.loads(integrity_path.read_bytes())
+        integrity['samples'][0]['attempt'] = i.binding(attempt_path)
+        integrity_path.write_bytes(i.encoded(integrity))
+        self.record['integrity'] = i.binding(integrity_path)
+        with self.assertRaisesRegex(ValueError, 'attempt originals'):
+            self.run_audit()
+
     def test_every_displayed_sample_requires_a_target_even_with_shared_generation_session(self):
         # A second condition can share a generator. Session-set equality alone
         # must not make a missing displayed sample a completed review.
@@ -194,12 +232,32 @@ class ReviewAuditTests(unittest.TestCase):
         integrity['samples'].append(sample)
         integrity_path.write_bytes(i.encoded(integrity))
         self.record['integrity'] = i.binding(integrity_path)
+        self.refresh_display()
         record = copy.deepcopy(self.record)
         record['displayed_outputs'].append({'label': 'Sample 02',
                                             'outputs': copy.deepcopy(record['displayed_outputs'][0]['outputs'])})
         self.assertTrue(self.run_audit(record)['attempts'][-1]['review_completion_verified'])
         with self.assertRaisesRegex(ValueError, 'review target samples incomplete or duplicated'):
             self.run_audit()
+
+    def test_rehashed_forged_display_is_rejected(self):
+        presentation = Path(self.record['presentation']['path'])
+        presentation.write_text(presentation.read_text().replace('Authored explanation', 'Forged explanation'))
+        integrity_path = Path(self.record['integrity']['path'])
+        integrity = json.loads(integrity_path.read_bytes())
+        integrity['presentation'] = self.record['presentation'] = i.binding(presentation)
+        integrity_path.write_bytes(i.encoded(integrity))
+        self.record['integrity'] = i.binding(integrity_path)
+        with self.assertRaisesRegex(ValueError, 'displayed original bytes or prose changed'):
+            self.run_audit()
+
+    def test_explicit_partial_assessment_never_certifies_full_display(self):
+        record = copy.deepcopy(self.record)
+        record['assessment_scope'] = 'partial'
+        with self.assertRaisesRegex(ValueError, 'partial assessment'):
+            self.run_audit(record)
+        record['status'] = 'review_incomplete_or_unverified'
+        self.assertFalse(self.run_audit(record)['attempts'][-1]['review_completion_verified'])
 
     def test_changed_original_review_cannot_keep_completed_identity(self):
         self.original.write_text('tampered reviewer output')

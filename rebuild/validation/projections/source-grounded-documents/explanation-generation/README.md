@@ -1308,3 +1308,14 @@ The separate [reader presentation experiment](reader-presentation.md) compares t
 intact diagnostic baseline with unchanged-prose reader views for the exact completed
 Work B and Click outputs. It documents purposeful code navigation, output/display
 feedback checks, actual browser controls and inspected Product capability gaps.
+
+Complete assessment targets are now derived from each hash-bound attempt's entire
+ordered `original_outputs`, independently of both target declarations. Distinct
+paths retain distinct identity even with identical bytes. The diagnostic display's
+sample labels, original-response downloads and full original prose are inspected
+from retained HTML rather than regenerated with a changed producer. Missing,
+duplicated, substituted or bounded prose cannot certify a full-display assessment.
+An explicit `assessment_scope: partial` cannot use `review_captured`; partial
+observations retain `review_incomplete_or_unverified` and no completion attestation.
+Historical producer verification uses the same original-Git-object check as the
+reading consumer, with no replacement of frozen Source or runtime artifact bytes.
