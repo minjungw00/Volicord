@@ -78,6 +78,19 @@ def main():
                 else: raise RuntimeError('Viewer startup timeout')
                 config_path=output/f'config-{index}.json'; config_path.write_text(json.dumps(config))
                 run(f'live-browser-{index}',['node',Path(__file__).with_suffix('.cjs'),config_path])
+                source=Path(item['repository'])/'main.py'; original=source.read_bytes()
+                try:
+                    source.write_text('def value():\n    return 6\n')
+                    config.update(denied_state='changed_source',expected_diagnostic='Source bytes changed')
+                    config_path.write_text(json.dumps(config))
+                    run(f'changed-source-browser-{index}',['node',Path(__file__).with_suffix('.cjs'),config_path])
+                    source.unlink()
+                    config.update(denied_state='missing_source',expected_diagnostic='Source read denied or unavailable')
+                    config_path.write_text(json.dumps(config))
+                    run(f'missing-source-browser-{index}',['node',Path(__file__).with_suffix('.cjs'),config_path])
+                finally:
+                    source.write_bytes(original)
+                    config.pop('denied_state',None); config.pop('expected_diagnostic',None)
             finally:
                 process.terminate(); process.wait(timeout=10)
                 result.setdefault('viewer_exits',[]).append(process.returncode)

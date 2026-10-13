@@ -4,6 +4,10 @@ use serde_json::{json, Value};
 use std::{error::Error, fs, path::Path};
 use volicord_context::*;
 use volicord_host::HostAdapter;
+use volicord_inquiry::{
+    CandidateCollectionMode, CandidateCollectionScope, CandidateContent, CandidateDraft,
+    CandidateKind, CandidateObservationBasis, CandidateOrigin, CandidateRetention,
+};
 use volicord_operations::{
     run_cli, CliExit, FileObservationRequest, LocalOperations, RuntimeLayout,
 };
@@ -301,6 +305,18 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         assert!(page.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
         assert!(page.contains("<h3 lang=\"en\">Understand the constant return in value().</h3>"));
         assert!(page.contains(fingerprint));
+        let mut code_request = request(&f)?;
+        code_request.view = ViewerView::Code {
+            scope: volicord_viewer::CodeScope::Work(Some(work(&f)?)),
+            entity: None,
+        };
+        let code = ViewerAdapter::new(ops(&f)?)
+            .render(&code_request, "test-form-authenticity")?
+            .html;
+        assert!(code.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
+        assert!(code
+            .contains("data-question=\"ReportedChange\" lang=\"en\" data-content-language=\"en\""));
+        assert!(code.contains(fingerprint));
         let destination = temp.path().join("snapshot.html");
         ViewerAdapter::new(ops(&f)?).export_snapshot(&request(&f)?, &destination)?;
         let snapshot = fs::read_to_string(destination)?;
@@ -339,5 +355,136 @@ fn seed_grounded_reader_runtime() -> Result<(), Box<dyn Error>> {
         output.join("fixture.json"),
         serde_json::to_vec_pretty(&json!({"cases":cases}))?,
     )?;
+    Ok(())
+}
+
+#[test]
+fn deleted_interpretation_is_distinct_from_never_generated_and_reads_stay_empty(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    let missing = call(
+        &mut host,
+        "repository_understanding",
+        json!({"project_id":f["project"]}),
+    )?;
+    assert_eq!(
+        missing["work_history"][0]["answers"]["explanation_state"],
+        "missing"
+    );
+    record(&f, &mut host)?;
+    call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"delete","project_id":f["project"],"work_item_id":f["work"]}),
+    )?;
+    let data = call(
+        &mut host,
+        "repository_understanding",
+        json!({"project_id":f["project"]}),
+    )?;
+    assert_eq!(
+        data["work_history"][0]["answers"]["explanation_state"],
+        "deleted"
+    );
+    let page = get(&f)?;
+    assert!(page.contains("Explanation was explicitly deleted"));
+    assert!(!page.contains("return 5</code>"));
+    assert!(!page.contains("Understand the constant return in value()."));
+    Ok(())
+}
+
+#[test]
+fn forgetting_barrier_withholds_code_and_prose_until_cleanup_without_renewal(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    record(&f, &mut host)?;
+    let project = project(&f)?;
+    let work = work(&f)?;
+    let canonical = ops(&f)?.canonical_basis(project)?;
+    let auth = canonical
+        .context_items
+        .iter()
+        .find(|c| c.id == work)
+        .ok_or("goal")?
+        .source_basis[0];
+    let source: SourceId =
+        serde_json::from_value(json!(hex_bytes(f["after"].as_str().ok_or("source")?)?))?;
+    // A real retained SQLite reader forces incomplete sanitation after canonical commit.
+    ops(&f)?.submit_candidate(CandidateDraft {
+        project_id: project,
+        kind: CandidateKind::Observation,
+        collection_mode: CandidateCollectionMode::Automatic,
+        origin: CandidateOrigin {
+            actor: Principal {
+                kind: PrincipalKind::Agent,
+                identity: "authored-reader-control".into(),
+            },
+            subsystem: "reader-test".into(),
+            session: Some("reader".into()),
+            provenance_summary: "sanitation control".into(),
+        },
+        collection_scope: CandidateCollectionScope {
+            project_id: project,
+            session: Some("reader".into()),
+            source_operation: Some("control".into()),
+            candidate_kind: CandidateKind::Observation,
+        },
+        observation_basis: CandidateObservationBasis {
+            source_basis: vec![source],
+            ..CandidateObservationBasis::default()
+        },
+        observed_at: TimestampMicros::from_unix_micros(1),
+        retention: CandidateRetention {
+            retained_until: None,
+            basis: "test control".into(),
+        },
+        content: CandidateContent {
+            bounded_summary: "Retained Source sanitation control".into(),
+            question: None,
+            engineering_choice_discovery: None,
+            materiality_review: None,
+            learning_deliberation: None,
+        },
+    })?;
+    let blocker = rusqlite::Connection::open(ops(&f)?.layout().candidate_store())?;
+    blocker.execute_batch("BEGIN DEFERRED")?;
+    let _: String = blocker.query_row("SELECT record_json FROM candidates LIMIT 1", [], |r| {
+        r.get(0)
+    })?;
+    let outcome = ops(&f)?.forget_record(project, CanonicalRecordId::Source(source), auth)?;
+    assert!(outcome.canonical_committed);
+    assert_eq!(
+        outcome.state,
+        volicord_operations::ForgettingState::RepairRequired
+    );
+    let privacy = ops(&f)?.privacy_status(project)?;
+    assert!(!privacy.withheld_for_canonical_forgetting.is_empty());
+    let data = call(
+        &mut host,
+        "repository_understanding",
+        json!({"project_id":f["project"]}),
+    )?;
+    assert_eq!(
+        data["work_history"][0]["answers"]["explanation_state"],
+        "withheld"
+    );
+    let page = get(&f)?;
+    assert!(page.contains("withheld by the canonical forgetting read barrier"));
+    assert!(!page.contains("<code lang=\"\">def value():"));
+    assert!(!page.contains("Understand the constant return in value()."));
+    assert_eq!(privacy, ops(&f)?.privacy_status(project)?);
+    blocker.execute_batch("ROLLBACK")?;
+    drop(blocker);
+    let repaired = ops(&f)?.repair_forgetting(project, outcome.operation_id)?;
+    assert_eq!(
+        repaired.state,
+        volicord_operations::ForgettingState::Completed
+    );
+    let page = get(&f)?;
+    assert!(page.contains("Explanation was explicitly deleted"));
     Ok(())
 }

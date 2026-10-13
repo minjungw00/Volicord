@@ -265,7 +265,7 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
             &f,
             &format!("/?view=work&work={}&locale={locale}", f.goals["same_title"]),
         );
-        assert!(page.contains(label));
+        assert!(page.contains(label), "{label}: {page}");
     }
     let work = f.goals["export"];
     let plan = f
@@ -315,7 +315,9 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
         volicord_repository_intelligence::CanonicalGrounding::from_read_basis(&canonical)?;
     for (content,label) in [("broken JSON".to_owned(),"Explanation is corrupt"),
         (serde_json::json!({"realization":{"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION+1}}).to_string(),"Explanation format is unsupported")] {
-        let mut privacy=volicord_privacy::PrivacyStore::open(f.operations.layout().privacy_store())?;
+        let mut privacy=volicord_privacy::PrivacyStore::open_with(f.operations.layout().privacy_store(),
+            DeterministicIdGenerator::new([if content=="broken JSON" {[0xff;16]} else {[0x01;16]}]),
+            FixedClock::new(TimestampMicros::from_unix_micros(i64::MAX-1)))?;
         privacy.record_managed_derived(volicord_privacy::ManagedDerivedDraft {
             project_id:f.project,kind:volicord_privacy::ManagedDerivedKind::CachedSummary,
             provider:None,model:None,purpose:format!("explanation:work:{work}:en"),analysis_snapshot:None,
@@ -323,7 +325,7 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
             content,uncertainty:None,retained_until:None,retention_basis:"Unit-test corrupt cache fixture".into() })?;
         drop(privacy);
         let page = get(&f,&format!("/?view=work&work={work}"));
-        assert!(page.contains(label));
+        assert!(page.contains(label), "{label}: {page}");
         assert!(page.contains("data-question=\"RecordedNextStep\""));
         assert!(page.contains("Remove abandoned temporary files"));
         f.operations.delete_explanations(f.project,ExplanationSubject::Work(work))?;

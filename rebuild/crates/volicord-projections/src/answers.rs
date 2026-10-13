@@ -169,7 +169,7 @@ pub fn explanation_answers(
         .iter()
         .find(|e| e.language == language)
         .or_else(|| readings.iter().find(|e| e.language == "*"));
-    let state = reading.map_or(ExplanationState::Unavailable, |e| e.state);
+    let state = reading.map_or(ExplanationState::Missing, |e| e.state);
     let current = reading
         .filter(|e| e.state == ExplanationState::Current)
         .and_then(|e| e.content.as_ref());
@@ -191,6 +191,8 @@ pub fn explanation_answers(
             ExplanationState::Stale=>("Explanation is stale; prepare and generate again.","설명의 근거가 변경되었습니다. 다시 준비하고 생성하세요."),
             ExplanationState::Corrupt=>("Explanation is corrupt; delete and regenerate.","설명이 손상되었습니다. 삭제한 뒤 다시 생성하세요."),
             ExplanationState::Unsupported=>("Explanation format is unsupported; delete and regenerate.","설명 형식을 지원하지 않습니다. 삭제한 뒤 다시 생성하세요."),
+            ExplanationState::Deleted=>("Explanation was explicitly deleted; canonical facts remain readable. Generation requires a new explicit request.","설명이 명시적으로 삭제되었습니다. Canonical 사실은 계속 읽을 수 있습니다. 생성하려면 새로운 명시적 요청이 필요합니다."),
+            ExplanationState::Withheld=>("Explanation is withheld by the canonical forgetting read barrier; repair local cleanup before reading affected content.","정식 기록 삭제의 읽기 차단으로 설명이 보류되었습니다. 영향을 받은 내용을 읽기 전에 로컬 정리를 복구하세요."),
             _ if reading.is_some()=>("Explanation is unavailable; canonical facts remain readable. Inspect the diagnostic for the affected dependency.","설명을 사용할 수 없습니다. Canonical 사실은 계속 읽을 수 있습니다. 영향을 받은 의존성은 진단에서 확인하세요."),
             _=>("Interpretation has not been generated in this language. Prepare evidence and ask the active host to explain it.","이 언어의 해석이 아직 생성되지 않았습니다. 근거를 준비하고 현재 호스트에 설명을 요청하세요."),
         };

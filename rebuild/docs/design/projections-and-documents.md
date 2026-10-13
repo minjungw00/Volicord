@@ -453,14 +453,19 @@ Those aggregate bounds are not new per-explanation storage/decoder limits.
 its MCP serializer currently has no Recall-style byte ceiling. External host capture
 limits remain separately observable and cannot be inferred from local decode success.
 
-Reads select the latest retained envelope per subject/language and recompute its basis.
-`ExplanationReading` distinguishes Current, Stale, Unavailable, Unsupported and
+Reads select the latest locally inserted envelope per subject/language and recompute
+its basis; tied/rollback UTC and random IDs cannot select an older output. Publication
+uses the same selection. `ExplanationReading` distinguishes Current, Stale, Missing
+(no recording in the requested language), Deleted, Withheld (canonical forgetting
+barrier), Unavailable, Unsupported and
 Corrupt; only Current carries displayable prose. New/corrected/forgotten evidence,
 changed Source status or conflict relations hide old prose. Missing generation is
 distinct from missing result evidence and dependency failure. Privacy forgetting
 barriers and managed deletion remove linked content; explicit delete removes all
 languages/history of this Work and sanitizes local storage. Lost cache can be explicitly
 regenerated from available evidence; GET/navigation/snapshot export never generate.
+Generation/recording failures remain separate operation failures and preserve the prior
+permitted output. An awaiting-host request is neither prose nor a completed generation.
 
 `WorkReading.explanations` and `BriefDecision.explanations` use one store and decoder.
 The CLI adds `decision explain prepare/record/delete --decision ID`; Work entry points

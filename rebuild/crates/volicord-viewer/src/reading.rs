@@ -1629,9 +1629,21 @@ fn code(
     code_limit_summary(html, r, p, snapshot);
     if let Some(work) = &p.selected_work {
         html.push_str("<div class=\"code-work-meaning\">");
-        heading(html, 3, work_reading_display(&work.reading.goal, r.locale));
         let answers =
             volicord_projections::work_answers(work, &r.requested_language, r.locale.fixed());
+        html.push_str(&format!(
+            "<h3 lang=\"{}\">{}</h3>",
+            if answers.reading_title().is_some() {
+                escape(&content_language_tag(&r.requested_language))
+            } else {
+                String::new()
+            },
+            escape(
+                answers
+                    .reading_title()
+                    .unwrap_or(work_reading_display(&work.reading.goal, r.locale))
+            ),
+        ));
         for answer in answers.prose.iter().filter(|a| {
             matches!(
                 a.question.as_str(),
@@ -1644,10 +1656,41 @@ fn code(
         }) {
             heading(html, 4, answer_title(&answer.question, r.locale));
             html.push_str(&format!(
-                "<p data-question=\"{}\">{}</p>",
+                "<p data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</p>",
                 escape(&answer.question),
+                if answer.role == volicord_projections::AnswerRole::GeneratedInterpretation {
+                    escape(&content_language_tag(&r.requested_language))
+                } else {
+                    locale_key(r.locale).into()
+                },
+                if answer.role == volicord_projections::AnswerRole::GeneratedInterpretation {
+                    escape(&r.requested_language)
+                } else {
+                    locale_key(r.locale).into()
+                },
                 escape(&answer.text)
             ));
+        }
+        html.push_str("<p>");
+        link(
+            html,
+            r,
+            ViewerView::Work {
+                work: Some(work.work_item_id),
+            },
+            text(
+                r.locale,
+                "Read the complete Work explanation and grounding",
+                "전체 작업 설명과 근거 읽기",
+            ),
+            snapshot
+                .then(|| format!("work-{}", work.work_item_id))
+                .as_deref(),
+        );
+        html.push_str("</p>");
+        // Offline Work detail already owns these exact fragment targets.
+        if !snapshot {
+            render_source_excerpts(html, r, &answers);
         }
         html.push_str("</div>");
     }

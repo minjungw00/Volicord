@@ -137,6 +137,13 @@ replace a prior valid output. Generated output identities remain their distinct
 managed records, generation timestamp and exact retained realization, never a
 human acceptance. No second store, privacy schema change or new remote effect is introduced.
 
+Managed inspection preserves local committed insertion order. Explanation readers
+and publication choose the latest matching record from that same order, rather
+than breaking UTC ties with random IDs. Original timestamps remain unchanged;
+this local disposable ordering is not canonical chronology or portable identity.
+Deleted explanation metadata and pending-forgetting withheld metadata remain
+distinct from a missing recording, and neither state grants content access.
+
 ## 4. Background provider opt-in
 
 Background 또는 batch semantic-provider processing은 기본적으로 꺼져 있고 다음

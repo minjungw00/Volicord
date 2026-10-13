@@ -2719,6 +2719,17 @@ streams/numeric results support technical reading only; independent semantic rev
 native zoom, personal understanding, unseen holdout and Naturalistic qualification
 retain their separate obligations. Run with `validate focused`; final evidence
 requires `--require-clean` and exact candidate executables.
+
+Lifecycle controls additionally reproduce tied-time/random-ID latest-output
+selection and explicit deletion versus missing generation. A real SQLite retained
+reader forces post-canonical sanitation failure; MCP/Viewer must show Withheld with
+neither prose nor code, unchanged retention, and Deleted after explicit repair.
+These are local technical regressions, not simulated human feedback.
+The browser additionally changes and removes the actual recorded file, then checks
+Work and Work-scoped Code withholding and distinct diagnostics in both locales;
+the original fixture bytes are restored in a finally block. Code reading preserves
+generated language and the same excerpt basis, while offline navigation points to
+the already included Work detail without duplicate Source fragment targets.
 A genuine current-authorized interactive-host interpretation must separately read
 actual Product evidence and record its new output through public operations. Its
 generator identity is self-reported and its reading quality is not independent human

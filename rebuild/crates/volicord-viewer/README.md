@@ -303,6 +303,11 @@ selected before/after ranges rather than a synthesized diff. Identical paired
 bytes and unavailable before-state have distinct notices. An earlier dependency
 whose bytes were not cited is identified without manufacturing before code.
 
+Missing, deleted and canonical-forgetting withheld explanations have distinct
+read notices. Generation/record failures preserve the prior permitted output.
+Readers and publication select the latest local insertion even when recording
+timestamps tie; original observation times remain inspectable and unchanged.
+
 From a bound repository, or with explicit `--runtime` and `--project`:
 
 ```text

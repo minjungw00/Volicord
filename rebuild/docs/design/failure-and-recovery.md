@@ -123,7 +123,11 @@ cause와 현재 workflow/required next action을 보존하며 internal storage s
 
 Work and Decision reads distinguish no reported result, no generated interpretation in the
 requested language, stale evidence, unavailable preparation/storage, corrupt
-current-format content and unsupported format. Only Current retained content is
+current-format content and unsupported format. Missing, explicitly deleted and
+pending-forgetting withheld interpretations have distinct public states. Generation
+failure is a separate operation outcome and never overwrites a permitted output.
+Latest-output selection/publication uses committed local insertion order; equal or
+rollback UTC and random IDs cannot resurrect earlier content. Only Current retained content is
 shown; failure preserves canonical answers and explicit original evidence. A
 contradiction/supersession relation is visible even for a freshly recorded interpretation
 and is not resolved by generation. Structured state facts remain separate from prose.

@@ -36,8 +36,7 @@ impl LocalOperations {
             let record = records
                 .managed_derived
                 .iter()
-                .filter(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == target)
-                .max_by_key(|r| (r.created_at, r.id))
+                .rfind(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == target)
                 .ok_or_else(|| {
                     Error::new("explanation deleted; render again before publication")
                 })?;
@@ -192,13 +191,9 @@ impl LocalOperations {
             for record in records.managed_derived.iter().filter(|r| {
                 r.kind == ManagedDerivedKind::CachedSummary && r.purpose.starts_with("explanation:")
             }) {
-                if latest.get(record.purpose.as_str()).is_none_or(
-                    |old: &&volicord_privacy::ManagedDerivedRecord| {
-                        (old.created_at, old.id) < (record.created_at, record.id)
-                    },
-                ) {
-                    latest.insert(record.purpose.as_str(), record);
-                }
+                // Privacy preserves local insertion order. UTC ties/rollback and
+                // random IDs cannot revive an older output or deleted content.
+                latest.insert(record.purpose.as_str(), record);
             }
         }
         let mut attached = std::collections::BTreeMap::<String, Vec<ExplanationReading>>::new();
@@ -223,12 +218,17 @@ impl LocalOperations {
                 .range(prefix.as_str()..)
                 .take_while(|(purpose, _)| purpose.starts_with(&prefix))
                 .map(|(_, record)| *record)
-                .filter(|record| record.state != ManagedDerivedState::Deleted)
                 .map(|record| {
                     let language = record.purpose[prefix.len()..].to_owned();
                     let mut source_excerpts = Vec::new();
                     let mut omitted_source_excerpt_count = 0;
-                    let (state, content, diagnostic) =
+                    let withheld = records.as_ref().is_ok_and(|inspection|
+                        inspection.withheld_for_canonical_forgetting.contains(&record.id));
+                    let (state, content, diagnostic) = if withheld {
+                        (ExplanationState::Withheld,None,Some("canonical forgetting cleanup is pending; affected content is withheld".into()))
+                    } else if record.state == ManagedDerivedState::Deleted {
+                        (ExplanationState::Deleted,None,Some("explicitly deleted local explanation; no generation on read".into()))
+                    } else {
                         match decode_explanation(record.content.as_deref()) {
                             Err((state, diagnostic)) => (state, None, Some(diagnostic)),
                             Ok(retained) => {
@@ -261,7 +261,7 @@ impl LocalOperations {
                             ),
                         }
                             }
-                        };
+                        }};
                     ExplanationReading {
                         language,
                         state,

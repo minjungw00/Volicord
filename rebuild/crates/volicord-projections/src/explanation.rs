@@ -165,6 +165,9 @@ pub struct RetainedExplanation {
 pub enum ExplanationState {
     Current,
     Stale,
+    Missing,
+    Deleted,
+    Withheld,
     Unavailable,
     Unsupported,
     Corrupt,

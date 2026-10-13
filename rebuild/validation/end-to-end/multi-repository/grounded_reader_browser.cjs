@@ -41,6 +41,20 @@ async function check(page, item, language, expected, offline) {
   const page=await context.newPage();
   const observations=[];
   try {
+    if (config.denied_state) {
+      await page.setViewportSize({width:390,height:900});
+      for (const item of config.cases) for (const language of ['en','ko']) for (const view of ['work','code']) {
+        const scope = view === 'code' ? '&scope=work' : '';
+        await page.goto(`${config.url}?view=${view}${scope}&work=${item.work}&locale=${language}&language=${language}`);
+        assert.equal(await page.locator('.source-excerpt').count(),0,'unavailable dependencies supply no code excerpt');
+        const expected=config.basis[item.project][language];
+        assert.ok(!(await page.locator('main').innerText()).includes(expected.prose.find(a=>a.question==='ReportedChange').text),'stale interpretation withheld');
+        assert.ok((await page.locator('main').innerText()).includes(language==='ko'?'근거가 변경':'Explanation is stale'),'honest stale notice');
+        if (view==='work') assert.ok((await page.locator('main').textContent()).includes(config.expected_diagnostic),'distinct missing/changed dependency diagnostic');
+      }
+      process.stdout.write(JSON.stringify({status:'passed',control:config.denied_state})+'\n');
+      return;
+    }
     for (const item of config.cases) for (const language of ['en','ko']) {
       const expected=config.basis[item.project][language];
       for (const width of [390,768,1440]) {
@@ -51,6 +65,12 @@ async function check(page, item, language, expected, offline) {
         await page.goto(url); await page.evaluate(()=>document.fonts.ready);
         await check(page,item,language,expected,config.offline);
         if (!config.offline) {
+          await page.goto(`${config.url}?view=code&scope=work&work=${item.work}&locale=${language}&language=${language}`);
+          const scopedCode=page.locator(`.source-excerpt[data-source-id="${item.after}"] code`);
+          assert.equal(await scopedCode.innerText(),'def value():\n    return 5\n','Work-scoped Code page uses exact excerpt');
+          assert.equal(await page.locator('.code-work-meaning h3').getAttribute('lang'),language,'Code title preserves generated language');
+          assert.equal(await page.locator('.code-work-meaning [data-question="ReportedChange"]').getAttribute('lang'),language,'Code interpretation preserves requested language');
+          await page.goto(url);
           // Native keyboard sequence, no click/focus substitution for the link.
           for (let step=0;step<100;step++) {
             await page.keyboard.press('Tab');

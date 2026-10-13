@@ -955,10 +955,12 @@ impl PrivacyStore {
     }
 
     fn read_derived(&self, project_id: ProjectId) -> Result<Vec<ManagedDerivedRecord>, Error> {
+        // Local committed insertion order, independent of equal/rollback UTC and
+        // random IDs. The timestamp remains the original observation metadata.
         read_json_rows(
             &self.connection,
             "SELECT record_json FROM managed_derived
-             WHERE project_id = ?1 ORDER BY created_at, id",
+             WHERE project_id = ?1 ORDER BY rowid",
             project_id,
         )
     }
