@@ -1303,3 +1303,8 @@ unchanged. Local Korean-font screenshot inspection supplements these measurement
 it establishes neither screen-reader support nor real human comprehension.
 Run the same focused commands above with explicit retained/browser paths; no
 aggregate, gate, V11 or external provider execution is part of this correction.
+
+The separate [reader presentation experiment](reader-presentation.md) compares the
+intact diagnostic baseline with unchanged-prose reader views for the exact completed
+Work B and Click outputs. It documents purposeful code navigation, output/display
+feedback checks, actual browser controls and inspected Product capability gaps.

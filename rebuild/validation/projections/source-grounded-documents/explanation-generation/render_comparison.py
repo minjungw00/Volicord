@@ -19,7 +19,7 @@ def reading_receipt(record, attempt, output, *, status, issues=(), validation=No
             'status': status, 'issues': list(issues), 'attempt': attempt, 'input': record['input'],
             'output': output, 'contract': record.get('output_contract'),
             'verifier': [binding(here / name) for name in ('render_comparison.py', 'grounding.py',
-                         'reader_contract.py', 'source_reading.py', 'inputs.py', 'approaches.py', 'recorded_work.py')],
+                         'reader_contract.py', 'source_reading.py', 'inputs.py', 'approaches.py', 'recorded_work.py', 'reading_input.py')],
             'retrievals': record.get('retrievals'),
             'host_observations': [call['process']['stdout'] for call in record.get('calls', [])
                                   if call['kind'] == 'model_call'],
@@ -31,7 +31,8 @@ def escaped(value):
     return html.escape(str(value), quote=True)
 
 
-def card(attempt_path, label):
+def card(attempt_path, label, *, presentation='diagnostic'):
+    require(presentation in {'diagnostic', 'reader'}, 'unknown presentation')
     from source_reading import (TRANSPORT_BYTES, comparison_html, download, output_anchor, preview,
                                 prose_html, public_receipt, selections_html, explanation_language)
     from recorded_work import direction_html, recorded_work
@@ -44,7 +45,8 @@ def card(attempt_path, label):
     require(record['scope'] == spec['scope'], 'attempt input scope changed')
     input_gap = None
     try:
-        spec = verify(record['input']['path'])
+        from reading_input import verify_reading_input
+        spec = verify_reading_input(record['input']['path'])
     except (ValueError, KeyError, TypeError, OSError) as error:
         # The manifest/attempt binding is intact, but its dependencies are not.
         # Keep original output diagnostics without granting any source validity.
@@ -263,11 +265,17 @@ def card(attempt_path, label):
                  + '</p><pre>' + preview(json.dumps(run_audit, ensure_ascii=False, indent=2)) + '</pre>'
                  + download(encoded(run_audit), 'run-audit.json', 'Complete derived audit') + '</details></article>')
     body = ''.join(parts)
+    if presentation == 'reader':
+        from reader_presentation import present_card
+        body, witnesses['presentation'] = present_card(body, witnesses)
     require(len(body.encode()) <= 16 * 1024 * 1024, 'derived presentation exceeds local HTML bound')
     return body, witnesses
 
 
-def document(cards):
+def document(cards, *, presentation='diagnostic'):
+    if presentation == 'reader':
+        from reader_presentation import reader_document
+        return reader_document(cards)
     return ('<!doctype html><html lang="en"><meta charset="utf-8">'
                 '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
                 '<title>Explanation comparison</title><style>'
@@ -291,7 +299,8 @@ def document(cards):
                 + '</html>')
 
 
-def render(attempts, output):
+def render(attempts, output, *, presentation='diagnostic'):
+    require(presentation in {'diagnostic', 'reader'}, 'unknown presentation')
     require(bool(attempts), 'attempts required')
     require(len({str(Path(p).resolve()) for p in attempts}) == len(attempts), 'duplicate attempt')
     require(len({binding(p)['sha256'] for p in attempts}) == len(attempts), 'duplicate attempt content')
@@ -302,14 +311,15 @@ def render(attempts, output):
     cards, mapping, integrity = [], [], []
     for number, path in enumerate(ordering, 1):
         label = f'Sample {number:02d}'
-        body, witness = card(path, label)
+        body, witness = card(path, label, presentation=presentation)
         cards.append(body); integrity.append(witness)
         record = json.loads(Path(path).read_bytes())
         mapping.append({'label': label, 'attempt': binding(path), 'approach': record['approach'], 'scope': record['scope']})
-    (output / 'comparison.html').write_text(document(cards))
+    (output / 'comparison.html').write_text(document(cards, presentation=presentation))
     # Mapping and detailed private paths never appear in the presentation.
     (output / 'approach-mapping.json').write_bytes(encoded({'format_version': 1, 'mapping': mapping}))
-    (output / 'integrity.json').write_bytes(encoded({'format_version': 1, 'presentation': binding(output / 'comparison.html'), 'samples': integrity}))
+    (output / 'integrity.json').write_bytes(encoded({'format_version': 1, 'presentation': binding(output / 'comparison.html'), 'samples': integrity,
+        **({'presentation_mode': presentation} if presentation != 'diagnostic' else {})}))
     append_index(output.parent, {'input': 'verified', 'approach': 'presentation_only', 'feedback': 'not_requested'},
                  [output / name for name in ('comparison.html', 'approach-mapping.json', 'integrity.json')])
     return output / 'comparison.html'
@@ -323,19 +333,20 @@ def record_feedback(presentation, response, output, *, reviewer_kind=None):
     require(response is None or reviewer_kind is not None, 'reviewer kind required for literal response')
     integrity_path = presentation.parent / 'integrity.json'
     integrity = json.loads(integrity_path.read_bytes())
+    presentation_mode = integrity.get('presentation_mode', 'diagnostic')
     require(integrity['presentation']['path'] == str(presentation), 'feedback display path changed')
     check_binding(integrity['presentation'])
     scopes, originals, cards = [], [], []
     for sample in integrity['samples']:
         check_binding(sample['attempt'])
-        body, witness = card(sample['attempt']['path'], sample['label'])
+        body, witness = card(sample['attempt']['path'], sample['label'], presentation=presentation_mode)
         cards.append(body)
         require(witness == sample, 'feedback output/selection identity changed')
         attempt = json.loads(Path(sample['attempt']['path']).read_bytes())
         scopes.append(attempt['scope'])
         originals.extend(o['original'] for o in sample['outputs'])
     require(scopes and all(scope == scopes[0] for scope in scopes), 'feedback must concern one Work')
-    require(presentation.read_bytes() == document(cards).encode(), 'feedback displayed content changed')
+    require(presentation.read_bytes() == document(cards, presentation=presentation_mode).encode(), 'feedback displayed content changed')
     value = {'presentation': integrity['presentation'], 'integrity': binding(integrity_path),
              'scope': scopes[0], 'original_outputs': originals, 'literal_response': response,
              'reviewer_kind': reviewer_kind, 'authorship': 'declared_not_authenticated',
@@ -355,5 +366,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--attempt', type=Path, action='append', required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--presentation', choices=['diagnostic', 'reader'], default='diagnostic')
     args = parser.parse_args()
-    print(render(args.attempt, args.output))
+    print(render(args.attempt, args.output, presentation=args.presentation))
