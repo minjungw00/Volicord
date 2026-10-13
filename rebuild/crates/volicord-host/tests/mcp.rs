@@ -4528,7 +4528,7 @@ fn tool_annotations_match_the_pinned_mcp_effect_and_world_contract() {
             "{name}"
         );
     }
-    for name in ["canonical_mutate", "candidate_manage"] {
+    for name in ["canonical_mutate", "candidate_manage", "work_source"] {
         assert_eq!(
             tools[name]["annotations"],
             json!({"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":false}),
@@ -7337,6 +7337,31 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             ),
         ],
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
+        "work_source" => vec![
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "analysis_snapshot_id",
+                    "path",
+                    "before_source_id",
+                    "retain_seconds",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "analysis_snapshot_id",
+                    "path",
+                    "retain_seconds",
+                ],
+            ),
+            shape(
+                &["action", "project_id", "work_item_id", "source_id"],
+                &["action", "project_id", "work_item_id", "source_id"],
+            ),
+        ],
         "engineering_choice_discovery" => vec![
             shape(
                 &["action", "project_id", "baseline_analysis_snapshot_id"],

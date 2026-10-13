@@ -76,11 +76,168 @@ pub(crate) struct SourceObservation {
     pub(crate) detail: Value,
 }
 
+pub(crate) struct ObservationRead {
+    pub(crate) body: Option<Value>,
+    pub(crate) metadata: Value,
+    pub(crate) reason: &'static str,
+}
+
 fn purpose(work: ContextItemId, source: SourceId) -> String {
     format!("work-source:{work}:{source}")
 }
 
 impl LocalOperations {
+    pub(crate) fn source_observation_read(
+        &self,
+        basis: &CanonicalReadBasis,
+        work: ContextItemId,
+        source: SourceId,
+    ) -> Result<ObservationRead, Error> {
+        let revision = work_revision(basis, work)?;
+        let inspection = self.privacy_status(basis.project.id)?;
+        let record = inspection
+            .managed_derived
+            .iter()
+            .find(|r| {
+                r.kind == ManagedDerivedKind::SourceObservation
+                    && r.purpose == purpose(work, source)
+            })
+            .ok_or_else(|| {
+                Error::new("Source has no explicit observation association with the requested Work")
+            })?;
+        let now = now_micros()?;
+        let mut reason = if record.state == ManagedDerivedState::Deleted {
+            "source_body_deleted"
+        } else if record.state == ManagedDerivedState::Invalidated {
+            "source_body_invalidated"
+        } else if record.retained_until.is_none_or(|t| t <= now) {
+            "source_body_expired"
+        } else {
+            "source_body_unavailable"
+        };
+        let mut body = None;
+        if matches!(
+            record.state,
+            ManagedDerivedState::Current | ManagedDerivedState::Stale
+        ) && record.retained_until.is_some_and(|t| t > now)
+        {
+            let stored = PrivacyStore::open(self.layout().privacy_store())
+                .and_then(|store| store.get_derived(basis.project.id, record.id))
+                .map_err(|e| Error::with_source("exact Source copy unavailable", e))?;
+            let content = stored
+                .content
+                .as_deref()
+                .ok_or_else(|| Error::new("Source copy content unavailable"))?;
+            if content.len() > volicord_privacy::MANAGED_DERIVED_CONTENT_BYTE_LIMIT {
+                return Err(Error::new("Source copy exceeds managed content bound"));
+            }
+            let header: Value = serde_json::from_str(content)
+                .map_err(|_| Error::new("corrupt Source observation copy"))?;
+            if header["format_kind"] != KIND || header["format_version"] != VERSION {
+                return Err(Error::new("unsupported Source observation format"));
+            }
+            if header["work_revision"].as_u64().is_none() {
+                return Err(Error::new("corrupt Source Work revision"));
+            }
+            if header["work_revision"] != revision {
+                reason = "work_revision_changed";
+            } else if let Some(observation) = decode_observation(basis, work, source, &stored)? {
+                if let Some(before) = observation.detail["before_source_id"].as_str() {
+                    let permitted_before = inspection
+                        .managed_derived
+                        .iter()
+                        .find(|r| {
+                            r.kind == ManagedDerivedKind::SourceObservation
+                                && r.purpose == format!("work-source:{work}:{before}")
+                        })
+                        .is_some_and(|r| {
+                            matches!(
+                                r.state,
+                                ManagedDerivedState::Current | ManagedDerivedState::Stale
+                            ) && r.retained_until.is_some_and(|t| t > now)
+                        });
+                    if !permitted_before {
+                        return Ok(ObservationRead {
+                            body: None,
+                            reason: "before_source_body_unavailable",
+                            metadata: json!({"work_item_id":work.to_string(),"retained_state":"unavailable","evidence_use":"historical_observation_only"}),
+                        });
+                    }
+                }
+                body = Some(
+                    serde_json::to_value(observation)
+                        .map_err(|e| Error::with_source("cannot serialize Source copy", e))?,
+                );
+                reason = "available";
+            }
+        }
+        Ok(ObservationRead {
+            body,
+            reason,
+            metadata: json!({"work_item_id":work.to_string(),
+            "source_id":source.to_string(),"retained_state":reason,"managed_state":format!("{:?}",record.state).to_lowercase(),
+            "retained_until_unix_micros":record.retained_until.map(|t|t.as_unix_micros()),
+            "privacy":"explicit_work_source_copy_only","evidence_use":"historical_observation_only_no_current_filesystem_assertion"}),
+        })
+    }
+
+    /// Metadata only, exact Work association, bounded by the existing paging protocol.
+    pub(crate) fn work_source_manifest(
+        &self,
+        basis: &CanonicalReadBasis,
+        work: ContextItemId,
+    ) -> Result<Value, Error> {
+        let revision = work_revision(basis, work)?;
+        let records = self.privacy_status(basis.project.id)?;
+        let prefix = format!("work-source:{work}:");
+        let now = now_micros()?;
+        let entries = records.managed_derived.iter().filter(|r|r.kind==ManagedDerivedKind::SourceObservation)
+            .filter_map(|r|r.purpose.strip_prefix(&prefix).map(|source|(r,source)))
+            .map(|(r,source)| json!({"source_id":source,"source_revision":1,"created_at_unix_micros":r.created_at.as_unix_micros(),
+                "managed_state":format!("{:?}",r.state).to_lowercase(),"expired":r.retained_until.is_none_or(|t|t<=now),
+                "retained_until_unix_micros":r.retained_until.map(|t|t.as_unix_micros()),
+                "inspect":{"tool":"canonical_inspect","project_id":basis.project.id.to_string(),"work_item_id":work.to_string(),
+                    "record_kind":"source","record_id":source,"revision":1,"field":"body"}})).collect::<Vec<_>>();
+        Ok(
+            json!({"work_item_id":work.to_string(),"work_revision":revision,"observations":entries,
+            "scope":"explicit_recorded_associations_only","historical_body_access":"requires_exact_work_source_read"}),
+        )
+    }
+
+    pub fn delete_work_source_observation(
+        &self,
+        project: ProjectId,
+        work: ContextItemId,
+        source: SourceId,
+    ) -> Result<usize, Error> {
+        let _mutation = self.layout().acquire_mutation_lock()?;
+        work_revision(&self.canonical_basis(project)?, work)?;
+        let mut store = PrivacyStore::open(self.layout().privacy_store())
+            .map_err(|e| Error::with_source("Source deletion store unavailable", e))?;
+        let ids = store
+            .inspect_project(project)
+            .map_err(|e| Error::with_source("Source deletion inspection failed", e))?
+            .managed_derived
+            .iter()
+            .filter(|r| {
+                r.kind == ManagedDerivedKind::SourceObservation
+                    && r.purpose == purpose(work, source)
+            })
+            .map(|r| r.id)
+            .collect::<Vec<_>>();
+        if ids.is_empty() {
+            return Err(Error::new(
+                "Source has no explicit observation association with the requested Work",
+            ));
+        }
+        store
+            .delete_managed_ids(project, &ids, "Explicit Work Source copy deletion")
+            .map_err(|e| {
+                Error::with_source("Source copy cleanup incomplete; repeat exact deletion", e)
+            })?;
+        Ok(ids.len())
+    }
+
     pub fn observe_work_file(
         &self,
         request: FileObservationRequest,
@@ -239,7 +396,10 @@ impl LocalOperations {
             let detail = json!({"kind":"command","operation_id":result.operation_id.to_string(),
                 "started_at_unix_micros":result.started_at_unix_micros,"ended_at_unix_micros":result.ended_at_unix_micros,
                 "exit_code":exit_code,"termination":format!("{:?}",termination).to_lowercase(),
-                "operation_state":format!("{:?}",result.state).to_lowercase(),"stdout":stream(&outcome.stdout)?,"stderr":stream(&outcome.stderr)?,
+                "operation_state":format!("{:?}",result.state).to_lowercase(),
+                "invocation_representation":"json_program_and_argv","signal_number":match outcome.termination {ProcessTermination::Signal(number)=>Some(number),_=>None},
+                "timeout_detected":outcome.timeout_detected,"cancellation_requested":outcome.cancellation_requested,
+                "process_tree_cleanup":format!("{:?}",outcome.cleanup),"stdout":stream(&outcome.stdout)?,"stderr":stream(&outcome.stderr)?,
                 "repository_state":"selected_analysis_only_not_rechecked","comparison":"not_applicable"});
             Ok((
                 SourcePayload::CommandExecution {
@@ -485,6 +645,25 @@ fn decode_observation(
         })
     }) {
         return Ok(None);
+    }
+    let revision = basis
+        .revisions
+        .iter()
+        .find(|r| {
+            r.record_kind == volicord_context::CanonicalRecordKind::Source
+                && r.record_identity == source.to_string()
+        })
+        .and_then(|r| r.revisions.last().copied());
+    if revision != Some(observation.source_revision) {
+        return Ok(None);
+    }
+    if observation.observed_at_unix_micros <= 0
+        || observation.observed_at_unix_micros > canonical.source.recorded_at.as_unix_micros()
+        || observation.observed_at_unix_micros > record.created_at.as_unix_micros()
+    {
+        return Err(Error::new(
+            "Source observation chronology is ambiguous or incompatible",
+        ));
     }
     verify_body(&canonical.source, &observation)?;
     Ok(Some(observation))

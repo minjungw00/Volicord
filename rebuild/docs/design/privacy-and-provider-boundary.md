@@ -534,9 +534,10 @@ is guidance to the existing local operation, not Viewer-side authority to mutate
 
 Exact-field continuation on `canonical_inspect` and `candidate_inspect` is a
 local read of retained Project-scoped records under the existing inspection lock.
-It does not open filesystem/URL locators, read full user turns or historical
-stdout/stderr, trigger analysis, collect new Candidate data or invoke a background
-provider. Candidate expiry is checked at read time even when cleanup has not run;
+It does not open filesystem/URL locators, read full user turns or unretained
+historical stdout/stderr, trigger analysis, collect new Candidate data or invoke
+a background provider. Explicit Work Source copies follow the narrower scoped
+inspection boundary below. Candidate expiry is checked at read time even when cleanup has not run;
 expired, cleaned and canonical-forgetting-withheld content remains unavailable.
 Collection opt-out alone does not retrospectively erase a retained Candidate.
 
@@ -589,3 +590,15 @@ Source and any referenced before-state. A corrected Work revision cannot read
 old associated bodies as current evidence. Snapshot-stale copies may be inspected
 only as exact historical observations; they never assert current repository state.
 Deletion/expiry cannot refill a body from the filesystem or retained explanation.
+
+`work_source` is an explicit current-host request constrained by the host's
+already authorized Project/source scope, not a grant to read other repositories.
+Its file action uses exact Work/snapshot/path and explicit bounded local
+retention; its deletion action names exact Work/Source. No command-execution
+input is exposed through MCP. `canonical_inspect` body access requires the exact
+association and revalidates canonical Source availability/revision, Work revision,
+managed content format/hash, read-time expiry and forgetting state under the
+existing inspection lock. Generic Operations `privacy_status` withholds all
+SourceObservation bodies; it cannot become an unscoped body reader. Candidate
+collection opt-out remains independent because these copies are explicit local
+Source operations, not new automatic Candidate collection.

@@ -162,6 +162,7 @@ fn actual_dirty_work_records_changed_and_no_change_sources_before_any_checkpoint
         .as_str()
         .ok_or("missing operation")?;
     assert!(!ops.layout().artifacts_dir().join(operation).exists());
+    println!("Product Work evidence: project={project} work={work} before_source={} equal_source={} after_source={} command_source={} before_repository={} after_repository={} command_exit=0", first.source_id, equal.source_id, changed.source_id, result.source_id, before.repository.identity, after.repository.identity);
     let canonical = ops.canonical_basis(project)?;
     assert!(canonical.latest_checkpoint.is_none());
     assert!(canonical.active_decisions.is_empty());
@@ -305,5 +306,63 @@ fn expired_or_deleted_before_state_cannot_be_reused() -> Result<(), Box<dyn Erro
     let connection = rusqlite::Connection::open(ops.layout().privacy_store())?;
     connection.execute("UPDATE privacy_metadata SET schema_version=1", [])?;
     assert!(volicord_privacy::PrivacyStore::open(ops.layout().privacy_store()).is_err());
+    Ok(())
+}
+
+#[test]
+fn source_body_capability_is_language_independent_and_parent_links_are_refused(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().join("repo");
+    fs::create_dir(&root)?;
+    fs::create_dir(root.join("src"))?;
+    let fixtures = [
+        ("main.py", "def value():\n    return 2\n"),
+        ("main.ts", "export function value() { return 2; }\n"),
+        ("main.rs", "pub fn value() -> i32 { 2 }\n"),
+        ("main.cob", "IDENTIFICATION DIVISION.\nPROGRAM-ID. HELLO.\n"),
+    ];
+    for (path, body) in fixtures {
+        fs::write(root.join("src").join(path), body)?;
+    }
+    let ops = LocalOperations::new(RuntimeLayout::new(temp.path().join("runtime"))?);
+    let p = ops.initialize_project("polyglot", Some(&root))?.project.id;
+    let w = ops
+        .record_current_host_user_context(
+            p,
+            "codex".into(),
+            "fixture".into(),
+            "Inspect source".into(),
+            ContextItemRole::Goal,
+            "Inspect source".into(),
+        )?
+        .context_item_id;
+    let a = ops.analyze(p, vec![])?.value.ok_or("analysis")?;
+    for (path, body) in fixtures {
+        let source = ops.observe_work_file(FileObservationRequest {
+            project_id: p,
+            work_item_id: w,
+            analysis_snapshot_id: a.analysis.identity,
+            path: format!("src/{path}"),
+            before_source_id: None,
+            retain_seconds: 3600,
+        })?;
+        assert_eq!(stored(&ops, p, source.source_id)?["detail"]["body"], body);
+    }
+    #[cfg(unix)]
+    {
+        fs::rename(root.join("src"), temp.path().join("outside"))?;
+        std::os::unix::fs::symlink(temp.path().join("outside"), root.join("src"))?;
+        assert!(ops
+            .observe_work_file(FileObservationRequest {
+                project_id: p,
+                work_item_id: w,
+                analysis_snapshot_id: a.analysis.identity,
+                path: "src/main.py".into(),
+                before_source_id: None,
+                retain_seconds: 3600
+            })
+            .is_err());
+    }
     Ok(())
 }

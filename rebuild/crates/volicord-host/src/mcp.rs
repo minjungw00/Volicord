@@ -52,13 +52,14 @@ use volicord_projections::{
     UnderstandingWork,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 21] = [
+pub const HOST_TOOL_NAMES: [&str; 22] = [
     "project_resolve",
     "project_initialize",
     "project_health",
     "recall",
     "repository_understanding",
     "repository_analyze",
+    "work_source",
     "engineering_choice_discovery",
     "materiality_review",
     "learning_deliberation",
@@ -198,6 +199,7 @@ impl HostAdapter {
                 "recall" => self.recall(&arguments),
                 "repository_understanding" => self.repository_understanding(&arguments),
                 "repository_analyze" => self.repository_analyze(&arguments),
+                "work_source" => self.work_source(&arguments),
                 "engineering_choice_discovery" => self.engineering_choice_discovery(&arguments),
                 "materiality_review" => self.materiality_review(&arguments),
                 "learning_deliberation" => self.learning_deliberation(&arguments),
@@ -1532,6 +1534,48 @@ impl HostAdapter {
         })
     }
 
+    fn work_source(&self, args: &Value) -> Result<Value, HostError> {
+        let project = project(args)?;
+        let work = parse_context_item(required_str(args, "work_item_id")?)?;
+        match required_str(args, "action")? {
+            "observe_file" => {
+                let receipt = self
+                    .operations
+                    .observe_work_file(volicord_operations::FileObservationRequest {
+                        project_id: project,
+                        work_item_id: work,
+                        analysis_snapshot_id: parse_analysis_snapshot(required_str(
+                            args,
+                            "analysis_snapshot_id",
+                        )?)?,
+                        path: required_str(args, "path")?.into(),
+                        before_source_id: args
+                            .get("before_source_id")
+                            .and_then(Value::as_str)
+                            .map(parse_source)
+                            .transpose()?,
+                        retain_seconds: required_u64(args, "retain_seconds")?,
+                    })
+                    .map_err(operation_error)?;
+                Ok(
+                    json!({"project_id":project.to_string(),"work_item_id":work.to_string(),"source_id":receipt.source_id.to_string(),
+                    "revision":receipt.source_revision,"observed_at_unix_micros":receipt.observed_at_unix_micros,
+                    "retained_until_unix_micros":receipt.retained_until_unix_micros,
+                    "inspect":{"tool":"canonical_inspect","project_id":project.to_string(),"work_item_id":work.to_string(),
+                        "record_kind":"source","record_id":receipt.source_id.to_string(),"revision":receipt.source_revision,"field":"body"}}),
+                )
+            }
+            "delete_source_copy" => {
+                let source = parse_source(required_str(args, "source_id")?)?;
+                Ok(
+                    json!({"deleted":self.operations.delete_work_source_observation(project,work,source).map_err(operation_error)?,
+                    "canonical_source_deleted":false,"provider_deletion":"not_requested"}),
+                )
+            }
+            _ => Err(HostError::new("unknown Work Source action")),
+        }
+    }
+
     fn canonical_inspect(&self, args: &Value) -> Result<Value, HostError> {
         if args.get("field").is_some() {
             return self
@@ -2654,9 +2698,24 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::AdditiveClosed,
         ),
         "canonical_inspect" => (
-            "Inspect canonical memory without mutation. Supply offset=0 to page the complete record manifest. Supply record_kind, record_id, revision and field for retained exact-field detail. Join compact_json_utf8 chunks, then decode JSON; continuation requires the returned fingerprint and next_offset. Older unavailable revisions never fall back to current bodies. Source observation is metadata only; source bodies are not read.",
+            "Inspect retained evidence without mutation. Supply offset=0 to page the complete canonical manifest. Supply record_kind, record_id, revision and field for exact-field detail. A Goal context_item source_observations field lists only its explicitly recorded Work Sources. Source body requires the exact work_item_id and returns only its permitted bounded historical observation copy; full user turns and unretained bodies remain unavailable. Join compact_json_utf8 chunks, then decode JSON; continuation requires returned fingerprint and next_offset. Expiry, deletion, correction and unavailable revisions never fall back to current files. Reads do not collect, analyze, generate or transmit.",
             json!({"oneOf":[project_schema(),object_schema(vec![("project_id",identity_schema("Project identity")),("offset",json!({"type":"integer","minimum":0,"description":"Returned UTF-8 byte or manifest record offset"})),("expected_fingerprint",text_schema("Returned manifest fingerprint",64,64))], &["project_id","offset"]),evidence_detail_schema(false)]}),
             ToolBehavior::ReadOnlyClosed,
+        ),
+        "work_source" => (
+            "Explicitly observe one included repository-relative UTF-8 file (at most 16384 bytes) for an exact Project/Work and Analysis Snapshot, within the current host's already authorized source scope. The observed hash must equal the selected inventory hash. Optional before_source_id must be an available strictly earlier observation of the same Work/path; absent before-state is not reconstructed. retain_seconds explicitly permits local disposable retention for 1..604800 seconds, never background transmission. Read through the returned canonical_inspect selector. delete_source_copy removes that exact managed body while preserving canonical Source and unrelated context. This tool cannot execute commands or read URLs, arbitrary absolute paths, symlinks, excluded files or full user turns.",
+            json!({"oneOf":[object_schema(vec![
+                ("action",enum_schema("Explicit Source operation", &["observe_file"])),
+                ("project_id",identity_schema("Project identity")),("work_item_id",identity_schema("Exact retained Goal-backed Work identity")),
+                ("analysis_snapshot_id",digest_identity_schema("Exact selected Analysis Snapshot")),
+                ("path",text_schema("Included repository-relative file path",1,4096)),
+                ("before_source_id",identity_schema("Explicit earlier same-Work/path file Source")),
+                ("retain_seconds",json!({"type":"integer","minimum":1,"maximum":604800,"description":"Explicit local Source copy retention period in seconds"}))
+            ], &["action","project_id","work_item_id","analysis_snapshot_id","path","retain_seconds"]),
+            object_schema(vec![("action",enum_schema("Explicit Source operation", &["delete_source_copy"])),
+                ("project_id",identity_schema("Project identity")),("work_item_id",identity_schema("Exact Work association")),
+                ("source_id",identity_schema("Exact observed Source copy to delete"))], &["action","project_id","work_item_id","source_id"])]}),
+            ToolBehavior::DestructiveClosed,
         ),
         "canonical_mutate" => (
             "Correct, supersede, or forget canonical memory through Local Operations using an explicit current-host user turn.",

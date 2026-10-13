@@ -75,6 +75,8 @@ impl LocalOperations {
         let mut work = None;
         let mut sources = Vec::new();
         let mut fields = json!({});
+        let mut body_reason = None;
+        let mut body_metadata = None;
         match request.record_kind.as_str() {
             "context_item" => {
                 if let Some(item) = basis
@@ -87,6 +89,12 @@ impl LocalOperations {
                         (item.role == volicord_context::ContextItemRole::Goal).then_some(item.id);
                     sources = item.source_basis.clone();
                     fields = json!({"statement":item.statement,"source_basis":ids(&sources),"applicability":item.applicability});
+                    if request.field == "source_observations"
+                        && item.role == volicord_context::ContextItemRole::Goal
+                    {
+                        fields["source_observations"] =
+                            self.work_source_manifest(&basis, item.id)?;
+                    }
                 }
             }
             "checkpoint" => {
@@ -186,6 +194,30 @@ impl LocalOperations {
                     sources.push(s.source.id);
                     // Metadata only. In particular CurrentHostUserTurn.turn is not a body reader.
                     fields = json!({"observation":source_observation(s)});
+                    if request.field == "body" {
+                        if let Some(work_id) = request.work_item_id {
+                            let read =
+                                self.source_observation_read(&basis, work_id, s.source.id)?;
+                            work = Some(work_id);
+                            fields["body"] = read.body.unwrap_or(Value::Null);
+                            body_reason = Some(read.reason);
+                            body_metadata = Some(read.metadata);
+                        } else if self
+                            .privacy_status(project)?
+                            .managed_derived
+                            .iter()
+                            .any(|r| {
+                                r.kind == volicord_privacy::ManagedDerivedKind::SourceObservation
+                                    && r.canonical_links.contains(
+                                        &volicord_privacy::ManagedCanonicalLink::Source(
+                                            s.source.id,
+                                        ),
+                                    )
+                            })
+                        {
+                            body_reason = Some("source_body_requires_work_selector");
+                        }
+                    }
                 }
             }
             _ => return Err(Error::new("unsupported canonical evidence record kind")),
@@ -210,10 +242,15 @@ impl LocalOperations {
             items.extend(forgotten.iter().cloned());
         }
         fields["source_status"] = status.clone();
-        let metadata = json!({"work_item_id":work.map(|id|id.to_string()),"source_status":status,
+        let mut metadata = json!({"work_item_id":work.map(|id|id.to_string()),"source_status":status,
             "retained_state":if forgotten.is_empty(){"retained"}else{"partially_retained"},
             "forgotten_source_count":forgotten.len(),"original_source_truncation":"unobservable",
             "privacy":"retained_canonical_fields_only_no_source_body_access"});
+        if let Some(copy) = body_metadata {
+            metadata["source_copy"] = copy;
+            metadata["privacy"] = json!("explicit_work_source_copy_only");
+            metadata["retained_state"] = json!(body_reason.unwrap_or("unavailable"));
+        }
         if revision != Some(request.revision) {
             return Ok(unavailable(
                 project,
@@ -237,7 +274,9 @@ impl LocalOperations {
                 project,
                 request,
                 if request.record_kind == "source" && request.field == "body" {
-                    if fields["observation"]["payload"]["body_access"] == "policy_withheld" {
+                    if let Some(reason) = body_reason {
+                        reason
+                    } else if fields["observation"]["payload"]["body_access"] == "policy_withheld" {
                         "source_body_policy_withheld"
                     } else {
                         "historical_body_not_retained"
@@ -331,6 +370,7 @@ impl LocalOperations {
 fn canonical_fields(kind: &str) -> &'static [&'static str] {
     match kind {
         "context_item" => &[
+            "source_observations",
             "statement",
             "source_basis",
             "applicability",

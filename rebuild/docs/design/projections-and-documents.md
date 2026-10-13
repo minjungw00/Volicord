@@ -1548,3 +1548,32 @@ component descriptions. No bound, resource ceiling, Work authority, graph store 
 read-side provider/source operation is added or widened. With no eligible body, the
 existing entity detail links expose structural evidence and the unavailable/unsupported
 body limitation instead of synthesizing behavior.
+
+### Explicit Work Source copy inspection
+
+The Goal `context_item` exact-field allowlist also exposes `source_observations`,
+a complete metadata manifest of explicitly recorded Source copies for that exact
+Work. Existing 2,048-byte UTF-8 chunks and continuation fingerprints bound this
+field independently of projection/Recall list limits. The manifest is not a
+semantic relevance selection and does not collect evidence.
+
+A Source `body` read with exact Project, Source revision and `work_item_id` may
+return its permitted `volicord_source_observation` envelope. It carries Work and
+Source revisions, selected Repository/Analysis Snapshot and repository Source,
+actual observation time and explicitly bounded file/command representation.
+Without the Work selector a retained copy is unavailable as
+`source_body_requires_work_selector`; foreign associations are denied. Existing
+policy-withheld user turns and genuinely non-retained bodies keep their meanings.
+No locator is opened and no current-file or generated-answer fallback exists.
+Historical copy access asserts no current repository state. Wrong revisions,
+changed fingerprints and corrupt/unsupported/hash-incompatible copies cannot
+provide content. Work correction, canonical forgetting, invalidation, expiry,
+explicit copy deletion and unavailable before-state withhold the affected copy.
+A prior continuation can only return an unavailable state or reject changed
+content; it never returns a deleted suffix. Metadata/lifecycle state remains
+separate from transport completion and original representation/omitted counts.
+
+The ordinary Work/Decision explanation plan remains canonical-only. This scoped
+inspection supplies actual evidence to an authorized interactive consumer; it
+adds neither generated causal truth nor automatic explanation generation,
+Candidate inspection authority, adoption or a general evidence-selection design.

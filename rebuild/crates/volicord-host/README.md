@@ -314,3 +314,34 @@ reader cannot expose an old corrected revision merely because its revision numbe
 is known; it reports `revision_unavailable`. A missing command body is
 `historical_body_not_retained`; a full current-host turn body is
 `source_body_policy_withheld`. Original raw-source truncation is `unobservable`.
+
+For explicitly requested local historical evidence, `work_source` accepts
+`action: observe_file`, exact `project_id`, Goal-backed `work_item_id`,
+`analysis_snapshot_id`, an included repository-relative `path`, explicit
+`retain_seconds` (1..604800) and optional earlier same-Work/path
+`before_source_id`. It observes at most 16,384 UTF-8 bytes as a whole file and
+checks the selected inventory hash. It rejects symlinks, excluded, missing,
+changed, binary and oversized files. Observe relevant callers, helpers and tests
+separately within the current host's already authorized source scope. An equal
+pair proves equal observed file bytes; it does not prove no mutations throughout
+an entire Work. No Checkpoint is required for read-only investigation evidence.
+
+The returned `inspect` reference uses `canonical_inspect` with exact
+`record_kind: source`, `record_id`, `revision`, `field: body` and `work_item_id`.
+To discover all recorded Sources, inspect the Goal `context_item` field
+`source_observations`. Concatenate `chunk` values using `next_offset` and the
+returned `fingerprint` as `expected_fingerprint`, then decode the compact JSON.
+Bodies are bounded historical envelopes; current files, HEAD and retained
+explanations never fill missing before-state. Generic privacy inspection supplies
+no bodies. Explicit `work_source` action `delete_source_copy` requires Project,
+Work and `source_id`, preserves canonical Source/context and permits safe retry
+if local sanitation reports incomplete cleanup. Expired, deleted, corrected or
+forbidden material remains unavailable after restart and continuation.
+
+A local API caller can explicitly execute `LocalOperations::run_work_command` to
+record an actual Work-associated command Source with observed exit/termination and
+bounded stdout/stderr copies (8,192 bytes each). MCP does not expose command
+execution. The transient UTF-8 JSON `[program, argv]` framing is fingerprinted and
+discarded; it must not be correlated as if it were a shell command string. Raw
+stream artifacts are removed before retained-body publication. Selected analysis
+identity is preserved, but execution-time repository equality is not asserted.

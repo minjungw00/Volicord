@@ -1074,3 +1074,12 @@ Candidate Inspection으로 연결할 수 있다. Problem/alternatives/response/f
 terminal selection은 Session Candidate 의미로 표시하며 같은 Work의 user-owned
 Decision/Question context와 분리한다. Inspection availability나 generated prose가
 selection을 canonical Decision으로 바꾸거나 없는 user rationale를 복원하지 않는다.
+
+Explicit Work file/command observation does not classify task instructions as
+Learning participation. The current Host `context_record` preserves the supplied
+bounded role and verbatim statement; it performs no text-based automatic Learning
+classification. Conditional investigation instructions recorded as Goal remain
+Goal through scoped inspection and Recall. Genuine Learning still requires its
+separate current-user basis and existing participation/withdrawal operations.
+Command test observations supply no user choice, recommendation or Decision;
+Candidate research/learning content remains within named Candidate Inspection.
