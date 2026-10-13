@@ -484,3 +484,13 @@ content for an old revision, or returns empty success. Safe retry is a new exact
 inspection using currently retained identities and explicit state. Original Recall,
 projection excerpt and source omissions remain separate from detail transport byte
 counts, including after persistence and Host readback.
+
+Bounded Work Source capture rejects unsafe paths, unavailable inventory hashes,
+changed bytes and missing before-state before publishing a file observation.
+A body-store failure after canonical Source commit reports the exact surviving
+Source and unavailable body; it issues no retention receipt and cannot claim
+cross-store atomic success. Failed/spawnless execution supplies no fabricated
+command Source. Raw stream cleanup failure prevents a retention receipt.
+Fresh observation is explicit and distinct from recovery of historical bytes.
+Snapshot-stale copies carry historical-only meaning; invalidated, expired,
+deleted, corrected-Work or forbidden Source content cannot supply body readback.

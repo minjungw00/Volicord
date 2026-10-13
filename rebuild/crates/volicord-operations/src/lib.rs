@@ -20,6 +20,7 @@ mod operations;
 mod payload;
 mod provider;
 mod recall;
+mod source_observations;
 
 pub use analysis_storage::{
     AnalysisFileFootprint, AnalysisReachabilityReference, AnalysisSectionFootprint,
@@ -62,6 +63,9 @@ pub use provider::{
 };
 pub use recall::{
     decision_reading_json, resume_brief_json, work_learning_inspection_json, work_reading_json,
+};
+pub use source_observations::{
+    FileObservationRequest, SourceObservationReceipt, WorkCommandRequest,
 };
 pub use volicord_inquiry::{
     AuthoritySourceEvidence, AuthoritySourceRole, BehavioralContextBasis,

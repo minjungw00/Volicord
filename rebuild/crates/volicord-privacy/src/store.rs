@@ -19,7 +19,7 @@ use volicord_context::{
 };
 
 pub const PRIVACY_SCHEMA_KIND: &str = "volicord-project-privacy";
-pub const PRIVACY_SCHEMA_VERSION: u32 = 1;
+pub const PRIVACY_SCHEMA_VERSION: u32 = 2;
 
 const MAX_TEXT_BYTES: usize = 16_384;
 /// Bounded managed content bodies are distinct from short metadata fields.

@@ -566,3 +566,26 @@ retain exact answer quotes and original traces with their display/candidate/subj
 binding. These are private declarations, not authenticated person identity or proof
 of semantic truth. Pending blocks/locales stay unavailable; no response is synthesized
 or transmitted. The qualitative-review owner defines draft and publication behavior.
+
+### Explicit bounded Source copy retention
+
+Operations `observe_work_file` and local `run_work_command` express explicit local
+retention for one Project/Work/Source only. Existing repository binding plus the
+selected inventory's included path and hash constrain file collection. Copies
+use the existing Managed Derived store/lifecycle under `SourceObservation`; this
+is neither Candidate blanket body access nor ambient transcript retention.
+No URL, arbitrary absolute path, credentials, external provider or background
+semantic operation is read/invoked. Local command execution remains an explicit
+local caller capability, not a new Host remote execution authority.
+
+File bodies are whole UTF-8 files bounded to 16,384 bytes. Command streams retain
+at most 8,192 bytes each with exact omitted counts and capture completeness;
+non-text output is unavailable, not lossy-decoded. Raw argv is fingerprinted then
+discarded; temporary full operational streams are removed before a receipt.
+Every body has an explicit retention period of 1..604800 seconds. Read-time expiry
+withholds bytes even before cleanup. Existing managed deletion and canonical
+forget barriers cover Work, original Goal Source, repository Source, observed
+Source and any referenced before-state. A corrected Work revision cannot read
+old associated bodies as current evidence. Snapshot-stale copies may be inspected
+only as exact historical observations; they never assert current repository state.
+Deletion/expiry cannot refill a body from the filesystem or retained explanation.

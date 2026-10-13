@@ -68,6 +68,68 @@ pub struct RepositoryRoot {
 }
 
 impl RepositoryRoot {
+    /// Open each component relative to a pinned directory descriptor. Never follow
+    /// symlinks, including during a concurrent rename; refuse special files.
+    #[cfg(target_os = "linux")]
+    pub fn read_bounded_regular_file(
+        &self,
+        relative: &Path,
+        limit: usize,
+    ) -> Result<Vec<u8>, RepositoryPathError> {
+        use rustix::fs::{open, openat, Mode, OFlags};
+        let relative = normalize_relative(relative)?;
+        let mut directory = open(
+            &self.canonical,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|e| RepositoryPathError(format!("repository boundary unavailable: {e}")))?;
+        let mut components = relative.components().peekable();
+        while let Some(Component::Normal(component)) = components.next() {
+            let last = components.peek().is_none();
+            let flags = OFlags::RDONLY
+                | OFlags::NOFOLLOW
+                | OFlags::CLOEXEC
+                | OFlags::NONBLOCK
+                | if last {
+                    OFlags::empty()
+                } else {
+                    OFlags::DIRECTORY
+                };
+            let fd = openat(&directory, component, flags, Mode::empty())
+                .map_err(|e| RepositoryPathError(format!("scoped source unavailable: {e}")))?;
+            if last {
+                let file = File::from(fd);
+                if !file.metadata().map_err(path_error)?.is_file() {
+                    return Err(RepositoryPathError("source must be a regular file".into()));
+                }
+                let mut bytes = Vec::new();
+                file.take(limit.saturating_add(1) as u64)
+                    .read_to_end(&mut bytes)
+                    .map_err(path_error)?;
+                if bytes.len() > limit {
+                    return Err(RepositoryPathError(
+                        "source exceeds bounded observation limit".into(),
+                    ));
+                }
+                return Ok(bytes);
+            }
+            directory = fd;
+        }
+        Err(RepositoryPathError("source path is empty".into()))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn read_bounded_regular_file(
+        &self,
+        _relative: &Path,
+        _limit: usize,
+    ) -> Result<Vec<u8>, RepositoryPathError> {
+        Err(RepositoryPathError(
+            "descriptor-scoped source observation is unsupported on this platform".into(),
+        ))
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self, RepositoryPathError> {
         let canonical = fs::canonicalize(path.as_ref()).map_err(|error| {
             RepositoryPathError(format!("cannot canonicalize repository root: {error}"))

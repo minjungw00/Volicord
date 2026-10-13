@@ -675,3 +675,20 @@ analysis가 원래 text나 claim을 다시 canonical로 복원할 수 없다.
 이 owner들은 `architecture-inputs.md`의 active ownership plan을 따른다. Specialized
 문서는 이 문서의 information class, core identity, provenance, relation과 lifecycle
 meaning을 재정의하지 않고 자기 named domain만 구체화한다.
+
+### Explicit Work Source observations
+
+A bounded local observation may precede any Checkpoint. Local Operations submits
+an actual file or command observation to the existing Kernel `Source` operation;
+its body is an explicitly retained, disposable Managed Derived `SourceObservation`
+copy. The copy binds exact Project, Goal-backed Work/revision, Source/revision,
+selected Repository/Analysis Snapshot and repository Source, observation time and
+retention expiry. It is neither a new canonical entity nor a relevance judgment.
+Removing the copy makes body evidence unavailable while Source identity and
+unrelated Canonical Context remain inspectable.
+
+An explicit same-Work, same-path earlier file observation can establish changed
+or equal observed bytes. It does not establish exclusive actor attribution or
+absence of changes throughout a Work. Without that observation, before-state is
+missing; HEAD, current files, nearby Work and later Checkpoints cannot supply it.
+Command execution is an observed fact, never a user Decision or Learning response.

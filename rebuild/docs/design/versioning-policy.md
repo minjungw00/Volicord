@@ -301,7 +301,8 @@ formats do not change; generated-document metadata is current version 8. A prepa
 and language; it is neither a format version nor an authenticity certificate.
 
 Explanation size alignment does not change the realization or retained JSON shape,
-so their current version remains 1 and the enclosing Privacy SQL schema remains 1.
+so their current version remains 1 and explanation size alignment itself does not change Privacy SQL.
+The current Privacy schema is 2 as specified under Bounded Source observation copies.
 Ephemeral current preparation now includes a mandatory `retention_budget`, hashed
 with the plan's evidence/instructions/language; callers must prepare afresh. No
 old-plan conversion, alternate retained decoder or version-dependent limit exists.
@@ -328,3 +329,16 @@ before typed decode and rejects non-current, malformed, oversized or identity-mi
 receipts as unknown attempt history. There is no migration or alternative decoder.
 These local operational receipts are neither portable canonical content nor analysis
 freshness evidence; missing historical receipts imply no knowledge of earlier attempts.
+
+### Bounded Source observation copies
+
+Privacy SQL current schema is `2`, adding the managed `source_observation` kind.
+Non-current Privacy stores are rejected before domain read/write; no migration
+or implicit conversion is supplied. Canonical schema `16`, bundle `9` and analysis
+formats are unchanged because the existing Source payload and canonical meaning
+are unchanged. Source observation content has exact kind
+`volicord_source_observation`, version `1`, checked before typed decode, inside the
+existing 147,456-byte managed body limit. Unsupported/corrupt bodies are withheld;
+metadata and explicit deletion remain available. Exact local Source/Work links,
+revision, selected snapshots, observation time and bounded representation belong
+to this disposable format, not a replacement canonical schema or explanation plan.

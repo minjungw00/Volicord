@@ -2320,6 +2320,16 @@ impl LocalOperations {
         let invalidations = self.incomplete_committed_invalidations(project_id)?;
         PrivacyStore::open(self.layout.privacy_store())
             .and_then(|store| store.inspect_project_with_invalidations(project_id, &invalidations))
+            .map(|mut inspection| {
+                // Generic Project inspection does not grant Work Source body access.
+                // The exact scoped reader revalidates these copies independently.
+                for record in &mut inspection.managed_derived {
+                    if record.kind == volicord_privacy::ManagedDerivedKind::SourceObservation {
+                        record.content = None;
+                    }
+                }
+                inspection
+            })
             .map_err(|error| Error::with_source("privacy inspection failed", error))
     }
 
@@ -3870,7 +3880,7 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("cannot record verification Source", error))
     }
 
-    fn open_canonical(&self) -> Result<Store, Error> {
+    pub(crate) fn open_canonical(&self) -> Result<Store, Error> {
         let path = self.layout.canonical_store();
         let store = Store::open(&path)
             .map_err(|error| Error::with_source("cannot open canonical store", error))?;
@@ -4274,7 +4284,7 @@ impl LocalOperations {
         (result, decodes)
     }
 
-    fn load_analysis_snapshot(
+    pub(crate) fn load_analysis_snapshot(
         &self,
         project_id: ProjectId,
         analysis_id: AnalysisSnapshotId,
@@ -4950,7 +4960,7 @@ fn repository_observation_basis(root: &Path, observed_at: i64) -> Result<String,
     ))
 }
 
-fn new_operation_id() -> Result<OperationId, Error> {
+pub(crate) fn new_operation_id() -> Result<OperationId, Error> {
     let mut bytes = [0_u8; 16];
     getrandom::fill(&mut bytes)
         .map_err(|error| Error::with_source("operating-system randomness is unavailable", error))?;

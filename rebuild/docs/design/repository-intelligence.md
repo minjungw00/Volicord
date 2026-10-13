@@ -691,3 +691,36 @@ enclosing callable, with partial state and omission accounting. Compound updates
 retain the update syntax without treating the right operand as the stored result.
 The existing extension carries this evidence; adapter contract invalidation requires
 local reanalysis of prior observations, without a legacy decoder or another store.
+
+### Product evidence capability map
+
+The smallest local evidence path uses existing owners rather than an archive
+reader or a universal Source store. Times below are recorded observation times,
+not inferred ordering from titles or paths.
+
+| Required fact | Actual Product producer | Identity/revision and time | Available state/bytes and scoped read owner | Retention/deletion and remaining gap |
+|---|---|---|---|---|
+| Original bounded direction | Host `context_record` / Operations `transition_work` | Project, Goal-backed Work revision, exact user Source, record time | Canonical Context statement via exact-field inspection; full supplied turn remains policy-withheld | Kernel correction/forgetting; caller-supplied turn is not authenticated raw host capture |
+| Repository state | Operations `analyze` | Fresh repository Source, Repository and Analysis Snapshot, scan time | Inventory hashes, Git/dirty observation, capability/coverage; existing analysis reader | Disposable analysis; missing/incomplete inventory is explicit, not a reconstructed tree |
+| Observed file bytes | Operations `observe_work_file` | Exact Project/Work revision and new File Source revision 1; selected snapshot identities and actual body observation time | Explicit included inventory path, SHA-256 equality against that snapshot; whole UTF-8 file at most 16,384 bytes in privacy-owned SourceObservation copy | Explicit 1..604800 second local retention; managed deletion/forgetting/expiry. Oversized, missing, binary and excluded bodies unavailable; no reconstruction producer |
+| Before/after or no-change investigation | Repeated `observe_work_file` with explicit `before_source_id` | Same Work/path, distinct Sources, strictly earlier observed time | Comparison of two actually observed hashes; dirty before bytes preserved if observed | Earlier Source must remain permitted; missing/expired/deleted before-state cannot be reconstructed. Equality is file-byte equality, not whole-Work no-change proof |
+| Actual command/test evidence | Operations `run_work_command` executes through `run_child` | Work, Source revision 1, operation identity, argv-framed invocation fingerprint, start/end and numeric exit/termination | Real bounded stdout/stderr copies (8,192 bytes each), explicit capture completeness and omitted byte counts; selected analysis is not asserted to be execution-time state | Transient full stream artifacts removed before body publication; retained copies expire/delete through Privacy. No broad command execution Host tool; incomplete capture never proves complete output |
+| Work report/verification | `record_grounded_checkpoint` | Explicit Work, Checkpoint revision/time, exact command/repository Sources | Existing exact-field Checkpoint inspection; current-host-reported command metadata is distinct from locally executed observation | Kernel lifecycle; this producer supplies no historical raw output and no Checkpoint is required for investigation capture |
+| User choice/rationale versus recommendation | Host `decision_record` / Inquiry atomic response | Exact Question/displayed revision, user Source, Decision Work scope/revision/time | Existing Decision field inspection separates rationale and recommendation | Kernel correction/supersession/forgetting; absent rationale stays absent |
+| Candidate investigation/Learning | Discovery, Materiality, research attachment, Learning operations | Candidate revision, retained Goal and Source/snapshot basis, observation time | Existing named Candidate Inspection only; typed research/learning state and bounded authored basis | Candidate opt-out/expiry/deletion/forget barrier; not general explanation evidence or raw investigation bytes |
+
+File observation uses descriptor-relative regular-file opens with no symlink
+traversal on Linux. A missing hash, changed hash, foreign Work/Project, scope
+escape or unavailable body fails before Source/body publication. Unsupported
+structural languages retain inventory/body eligibility; no Rust-only restriction
+is introduced. A file's hash equality covers that file only; other files and the
+Git observation were recorded by the selected scan and are not rechecked by this
+bounded capture. The observed copy is historical, never a current-file fallback.
+Callers, helpers and tests require separate explicit included-path observations.
+
+No Product producer currently supplies unobserved original dirty bytes, verified
+historical reconstruction, arbitrary historical stdout or archive investigation
+answers. For any affected Work those are named repository/operations evidence
+blockers: exact Source metadata may survive, but required body read is unavailable.
+The canonical-only explanation plan still lacks automatic selection/incorporation
+of these bodies; this capability does not choose a generation architecture.

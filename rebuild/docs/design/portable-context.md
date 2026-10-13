@@ -252,3 +252,9 @@ V11은 Volicord, single-language와 polyglot repository의 another-clone journey
 container, filesystem publication, conflict UI, network synchronization과 team
 collaboration protocol을 선택하지 않는다. Legacy data decoder, migration/importer,
 historical export, compatibility alias 또는 parallel runtime path를 제공하지 않는다.
+
+Explicit Work Source observation copies remain local Managed Derived content and
+are excluded from canonical bundles. Existing File/Command Source manifests and
+Goal identity remain portable; the copy's local Work association, body, retention
+and operational command streams are not new portable canonical fields. Import or
+clone rebinding cannot synthesize unavailable bytes or a before-state association.
