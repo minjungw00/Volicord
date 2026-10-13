@@ -72,7 +72,8 @@ def anchor(scope, original, number):
 
 def output_anchor(scope, original):
     return ('work-' + digest(encoded(scope))[:20] + '-attempt-' + original.get('attempt_sha256', 'unbound')
-            + '-output-' + original['sha256'] + '-response-' + str(original.get('output_sequence', 1)))
+            + '-output-' + original['sha256'] + '-response-' + str(original.get('output_sequence', 1))
+            + ('-reading-' + original['reading_sha256'] if original.get('reading_sha256') else ''))
 
 
 def repository_path(value):

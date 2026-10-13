@@ -106,8 +106,68 @@ Work B's unchanged second paragraph explains requests and choice before paragrap
 three through five explain implementation and coverage. Presentation adds hierarchy
 but deliberately retains that interruption between problem/effect and mechanism.
 An independently identified manual paragraph-reordering view can test the sequence
-problem → mechanism → coverage → choice → checks/limits → recorded direction.
+problem → mechanism/action guidance → choice → compact coverage → checks/limits →
+recorded direction. Choice stays before its compact-coverage explanation so the
+reordering does not remove that explanatory dependency.
 This is an agent editorial hypothesis, not a measured human preference. Click already
 uses problem → mechanism → investigation → verification → direction; no editorial
 variant is currently justified for Click. Free rewriting or an extra model pass is
 not required by these observations.
+
+## Bound manual editorial view
+
+The optional `--editorial-order`, `--editor` and `--reason` arguments to
+`render_readings.py` add a third view. The caller explicitly selects a complete
+zero-based paragraph permutation. Work B's evaluated order is `0,2,3,1,4,5,6,7`.
+It is a manual editorial choice made by the current Codex repository session, not
+autonomous model output, new generation, human feedback or a producer instruction.
+Click retains the diagnostic and presentation-only views without an editorial view.
+
+`editorial_reading.py` admits only lossless reordering of complete original
+paragraphs, each exactly once; first problem and terminal direction stay in place.
+It rejects identical prose, omissions, duplicate paragraphs, new wording and
+claims crossing paragraph boundaries. This deliberately limited facility cannot
+repair every writing defect or certify that juxtaposition preserves all implied
+meaning. Its demonstrated purpose is the Work B narrative-sequence comparison.
+
+The new receipt binds editor identity (self-reported), exact original attempt and
+response, input/Project/Work/cutoff, the verified presentation-only observation and
+its stated editorial need, new prose bytes/hash, complete revised response, revised
+UTF-8 claim spans, unchanged Source/authority bindings and current verifier bytes.
+Each relocated claim must contain exactly its original bytes. The consumer rebuilds
+the transformation, revalidates the original evidence and validates the revised
+response through grounding before rendering. Every original paragraph, claim kind,
+primary site, secondary selection, gap and canonical authority remains unchanged.
+Wrong fresh hashes cannot authorize unsupported prose, Source substitution, changed
+revision/cutoff, missing warnings or old claim offsets. Original model response bytes
+and failure receipts are never overwritten. Editorial anchors include the new prose
+hash while retaining the original output identity.
+
+`verify_presentation` is the shared read-only reconstruction used by transformation
+admission and feedback. Feedback binds the editorial manifest as well as original
+output and exact display bytes. A changed editorial manifest, changed display,
+changed observation basis, or feedback pointing to an older view is rejected.
+Derived proof is downloadable; original transport and every historical disclosure
+remain independently inspectable. The browser tab and ordinary heading identify
+manual editing. Semantic assessment and human H1 remain pending.
+
+`editorial_reading_self_test.py` uses independent multilingual four-paragraph
+controls and the actual pinned Work B output. It checks newly counted UTF-8 offsets,
+unchanged claim text/Source coordinates, unsupported prose, stale offsets, Source
+replacement, warning omission, changed cutoff/revision/editor authority, invalid
+observation basis and old/rehashed display feedback. The actual Work B view preserves
+all eight paragraphs (4,432 prose bytes), seven primary sites and two real diffs;
+mouse/keyboard checks run at the four desktop/narrow geometries above. Historical
+Source checks also reexamined the compact user choice separately from recommendation
+rationale, the initial compiler failures/11 CLI test passes, final aggregate exit 101,
+later Viewer exit 0 and the latest recorded direction/`not_requested` acceptance.
+These scoped observations support preservation of the important limits, not a whole
+independent semantic certification. The original gap wording about “new test success”
+remains original and inspectable; this editor does not turn old command observations
+into fresh tests. No extra model pass is introduced.
+
+For retained artifacts set `EXPLANATION_EDITORIAL_OUTPUT` to a fresh ignored local
+directory and supply explicit retained/browser paths, then run the editorial test
+through `validate focused`. Existing reading, Work-reader, rendering and feedback
+checks remain directly runnable. The optional legacy private cohorts skipped by
+generic discovery are distinct from the actual Work B/Click checks run explicitly.

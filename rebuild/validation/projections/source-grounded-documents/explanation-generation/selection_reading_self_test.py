@@ -20,6 +20,7 @@ from input_self_test import spec
 from grounding import validate_output
 from reader_contract import DIRECTED_CONTRACT
 from render_comparison import card, render, record_feedback
+from reading_input import verify_reading_input
 import render_self_test as baseline
 from source_tools import Surface
 
@@ -297,7 +298,7 @@ class RetainedSelectionReadingTests(unittest.TestCase):
             self.assertEqual(git.returncode, 0, git.stderr.decode())
             self.assertEqual(hashlib.sha256(git.stdout).hexdigest(), source['snapshot']['sha256'])
         for output in record['original_outputs']: i.check_binding(output)
-        spec_value = i.verify(record['input']['path'])
+        spec_value = verify_reading_input(record['input']['path'])
         response = json.loads(Path(record['original_outputs'][0]['path']).read_bytes())
         trace = [json.loads(line) for line in Path(record['retrievals']['path']).read_bytes().splitlines()]
         entries = {e['id']: e for e in spec_value['entries']}

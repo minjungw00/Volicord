@@ -17,6 +17,7 @@ import inputs as i
 import source_reading_self_test as controls
 import work_reader_self_test as work_controls
 from render_comparison import card, render, record_feedback
+from reading_input import verify_reading_input
 
 
 class Targets(HTMLParser):
@@ -322,7 +323,7 @@ class ProblemReadingTests(unittest.TestCase):
             self.assertEqual(record['original_outputs'][0]['sha256'], output_hash)
             original = record['original_outputs'][0]; i.check_binding(original)
             raw = Path(original['path']).read_bytes(); response = json.loads(raw)
-            spec = i.verify(record['input']['path']); entries = {e['id']: e for e in spec['entries']}
+            spec = verify_reading_input(record['input']['path']); entries = {e['id']: e for e in spec['entries']}
             display = render([path], self.h.root / name)
             body, witness = card(path, 'Sample 01')
             self.assertEqual(witness['outputs'][0]['derived_reading']['status'], 'valid_binding')

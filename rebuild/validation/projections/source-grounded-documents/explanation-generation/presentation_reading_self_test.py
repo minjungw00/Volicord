@@ -115,6 +115,19 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(witness['outputs'][0]['derived_reading']['status'], 'unavailable_input')
         self.assertNotIn('class="primary-navigation"', body)
 
+    def test_repeated_output_bytes_keep_separate_paragraphs_and_site_purposes(self):
+        self.h.record['original_outputs'] = [i.binding(self.h.response_path), i.binding(self.h.response_path)]
+        self.h.attempt.write_bytes(i.encoded(self.h.record))
+        compare(self.h.attempt,self.h.root/'repeated')
+        display=self.h.root/'repeated/presentation/comparison.html'
+        self.assert_original(display,self.fixture.response['prose']*2)
+        body=display.read_text()
+        self.assertEqual(body.count('class="site-purpose"'),2)
+        self.assertIn('-response-1-selection-',body)
+        self.assertIn('-response-2-selection-',body)
+        feedback=record_feedback(display,None,self.h.root/'repeated-feedback.json')
+        self.assertEqual(len(json.loads(feedback.read_bytes())['original_outputs']),2)
+
     def test_actual_browser_normal_false_link_and_hierarchy_controls(self):
         compare(self.h.attempt, self.h.root / 'browser')
         display = self.h.root / 'browser/presentation/comparison.html'

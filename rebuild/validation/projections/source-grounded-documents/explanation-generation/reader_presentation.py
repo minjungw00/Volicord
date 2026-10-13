@@ -37,21 +37,25 @@ def present_card(body, witness):
     for output in witness['outputs']:
         if not output.get('prose_sha256'):
             continue
-        response = json.loads(Path(output['original']['path']).read_bytes())
+        response_basis = output.get('editorial', {}).get('response', output['original'])
+        response = json.loads(Path(response_basis['path']).read_bytes())
         records.append((output, response))
     final = witness['original_invocation'].get('generation_output')
     records.sort(key=lambda item: item[0]['original'] != final)
     first = next((r for o, r in records if o['original'] == final), records[0][1] if records else None)
     language = witness['output_language']['tag']
     ko = language.startswith('ko')
+    interface_language = 'ko' if ko else 'en'
+    editorial = witness.get('editorial') is not None
     title = ('설명 원문을 사용할 수 없습니다' if ko else 'Original explanation unavailable')
     if first:
         # An explicitly attributed quotation, not a newly authored summary.
         title = re.split(r'(?<=[.!?。])\s', first['prose'], maxsplit=1)[0]
-    header = ('<article class="reader-work"><header><p class="eyebrow">'
-                  + ('작업 설명 · 원문 그대로' if ko else 'Work explanation · unchanged original')
+    header = ('<article class="reader-work" data-reading-kind="' + ('manual_editorial' if editorial else 'presentation_only') + '"><header><p class="eyebrow" lang="' + interface_language + '">'
+                  + (('수동 편집 읽기 · 원문 문단 재배열' if ko else 'Manual editorial reading · original paragraphs reordered') if editorial else
+                     ('작업 설명 · 원문 그대로' if ko else 'Work explanation · unchanged original'))
                   + '</p><h2 lang="' + escaped(language) + '">' + escaped(title)
-                  + '</h2><p class="title-basis">'
+                  + '</h2><p class="title-basis" lang="' + interface_language + '">'
                   + ('제목은 원문 첫 문장의 인용입니다.' if ko else 'Title quotes the original first sentence.')
                   + '</p></header>')
     body = re.sub(r'<article><h2>.*?</h2>', lambda _: header, body, count=1, flags=re.S)
@@ -59,7 +63,11 @@ def present_card(body, witness):
                   r'<details class="response-stage"><summary>Original response stage</summary><p>\1</p></details>', body)
     for output, response in records:
         # Match only the verified prose surface built by the existing consumer.
-        response_start = body.index('-output-' + output['original']['sha256'] + '-response-')
+        sequence = next(n for n, candidate in enumerate(witness['outputs'], 1) if candidate is output)
+        marker = '-output-' + output['original']['sha256'] + '-response-' + str(sequence)
+        if output.get('editorial'):
+            marker += '-reading-' + output['editorial']['prose']['sha256']
+        response_start = body.index(marker + '"')
         pattern = re.compile(r'<pre class="prose" lang="[^"]*">(.*?)</pre>', re.S)
         match = pattern.search(body, response_start)
         require(match is not None, 'original prose surface missing')
@@ -71,16 +79,17 @@ def present_card(body, witness):
             require(len(html_paragraphs) == len(spans), 'HTML paragraph partition differs')
             rendered = '<section class="reader-narrative" aria-label="Original explanation">'
             for number, ((start, end, _), content) in enumerate(zip(spans, html_paragraphs)):
-                rendered += '<h4 lang="' + escaped(language) + '">' + heading(response, start, end, number, ko) + '</h4>'
-                rendered += '<pre class="prose-paragraph" lang="' + escaped(language) + '" data-original-start="'
-                rendered += str(start) + '" data-original-end="' + str(end) + '">' + content + '</pre>'
+                rendered += '<h4 lang="' + interface_language + '">' + heading(response, start, end, number, ko) + '</h4>'
+                rendered += '<pre class="prose-paragraph" lang="' + escaped(language) + '" data-reading-start="'
+                rendered += str(start) + '" data-reading-end="' + str(end) + '">' + content + '</pre>'
             rendered += '</section>'
         else:
             rendered = '<section class="reader-narrative">' + match[0] + '</section>'
         body = body[:match.start()] + rendered + body[match.end():]
         # Purpose comes from the unchanged generator-selected site's reason.
         # Exact verified path/state/coordinates remain in the existing links.
-        navigation = re.compile(r'<nav class="primary-navigation".*?</nav>', re.S).search(body, response_start)
+        navigation = re.compile(r'<nav class="primary-navigation".*?</nav>', re.S).search(
+            body, response_start, body.index(rendered, response_start))
         if navigation and output.get('reading', {}).get('status') == 'valid_binding':
             sites = response['primary_sites']
             counter = iter(sites)
@@ -88,21 +97,24 @@ def present_card(body, witness):
                 site = next(counter)
                 return '<li><p class="site-purpose" lang="' + escaped(language) + '">' + escaped(site['reason']) + '</p>' + match[1] + '</li>'
             nav = re.sub(r'<li>(.*?)</li>', purpose, navigation[0], flags=re.S)
-            nav = '<section class="reader-code-index"><h3>' + ('코드에서 확인할 내용' if ko else 'What to inspect in code') + '</h3>' + nav + '</section>'
+            nav = '<section class="reader-code-index"><h3 lang="' + interface_language + '">' + ('코드에서 확인할 내용' if ko else 'What to inspect in code') + '</h3>' + nav + '</section>'
             body = body[:navigation.start()] + body[navigation.end():]
             # Preserve response-local placement, immediately after its prose.
             position = body.index(rendered) + len(rendered)
             body = body[:position] + nav + body[position:]
-    return body, {'mode': 'presentation_only', 'wording': 'unchanged', 'paragraph_order': 'unchanged',
+    return body, {'mode': 'manual_editorial' if editorial else 'presentation_only', 'wording': 'unchanged within original paragraphs',
+                  'paragraph_order': 'manually reordered' if editorial else 'unchanged',
                   'title_basis': 'original first sentence quotation', 'heading_basis': 'original claim classifications; not semantic approval',
                   'verifier': binding(Path(__file__)), 'semantic_assessment': 'not_assessed', 'human_acceptance': 'pending',
                   'prose_hashes': [digest(r['prose'].encode()) for _, r in records]}
 
 
 def reader_document(cards):
+    title = ('Work explanation · manual editorial reading' if any('data-reading-kind="manual_editorial"' in c for c in cards)
+             else 'Work explanation · original reading')
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">'
-            '<title>Work explanation · original reading</title><style>' + STYLE + '</style>'
+            '<title>' + title + '</title><style>' + STYLE + '</style>'
             '<a class="skip-link" href="#reading">Skip to explanation</a><main id="reading">' + ''.join(cards)
             + '<p class="scope-note">Experimental presentation only. Structural binding, semantic assessment and human acceptance remain separate.</p></main></html>')
 
