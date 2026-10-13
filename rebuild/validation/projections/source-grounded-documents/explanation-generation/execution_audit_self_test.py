@@ -213,6 +213,64 @@ class ReviewAuditTests(unittest.TestCase):
         reports = self.run_audit()['attempts']
         self.assertEqual([r['status'] for r in reports[-2:]], ['review_captured'] * 2)
 
+    def test_reader_and_editorial_reviews_bind_the_assessed_response(self):
+        from editorial_reading_self_test import EditorialTests
+        fixture = EditorialTests('runTest'); fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        h = fixture.h
+        # Keep authored Source/Host results, adding independently declared session
+        # events. These controls exercise receipts, never claim a real model review.
+        calls = h.record['calls']
+        generator = Path(calls[0]['process']['stdout']['path'])
+        generator.write_bytes((json.dumps({'type': 'thread.started',
+            'thread_id': 'authored-generation-session'}) + '\n').encode() + generator.read_bytes())
+        calls[0]['process']['stdout'] = i.binding(generator)
+        h.attempt.write_bytes(i.encoded(h.record))
+        root, _, _ = fixture.comparison()
+        rows, _ = a.events(h.record['retrievals']['path'])
+        public, _ = a.events(generator)
+        hosts = [e['item'] for e in public if e.get('type') == 'item.completed'
+                 and e.get('item', {}).get('type') == 'mcp_tool_call']
+        self.response['selections'] = copy.deepcopy(fixture.response['selections'])
+        self.original.write_bytes(i.encoded(self.response))
+        stream = Path(self.process['stdout']['path'])
+        stream.write_bytes(b''.join((json.dumps(e) + '\n').encode() for e in [
+            {'type': 'thread.started', 'thread_id': 'authored-review-session'},
+            *[{'type': 'item.completed', 'item': host} for host in hosts],
+            {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': self.original.read_text()}}]))
+        self.process['stdout'] = i.binding(stream)
+        (stream.parent / 'result.json').write_bytes(i.encoded(self.process))
+        self.record.update(input=h.record['input'], scope=h.record['scope'],
+            retrievals=h.record['retrievals'], original_review=i.binding(self.original),
+            evidence_reads=a.retrieval_audit(i.verify(h.record['input']['path']), 'archive_diagnostic', hosts, rows))
+        originals = copy.deepcopy(h.record['original_outputs'])
+        for mode in ('presentation', 'editorial'):
+            display = root / mode / 'comparison.html'
+            integrity_path = display.parent / 'integrity.json'
+            integrity = json.loads(integrity_path.read_bytes())
+            assessed = audit.attest_display(integrity, [h.record])
+            self.record.update(presentation=i.binding(display), integrity=i.binding(integrity_path),
+                displayed_outputs=[{'label': 'Sample 01', 'outputs': originals,
+                                    'assessed_outputs': assessed[0]['outputs']}])
+            result = self.run_audit()['attempts'][-1]
+            self.assertTrue(result['review_completion_verified'])
+            self.assertEqual(result['assessed_targets'], assessed)
+            identity = assessed[0]['outputs'][0]
+            self.assertEqual(identity['original'], originals[0])
+            self.assertEqual(identity['response'] == originals[0], mode == 'presentation')
+            for mutation in ('missing', 'original_as_edited', 'old_prose', 'missing_editorial', 'duplicate'):
+                if mode == 'presentation' and mutation in {'original_as_edited', 'missing_editorial'}:
+                    continue
+                record = copy.deepcopy(self.record)
+                target = record['displayed_outputs'][0]
+                if mutation == 'missing': target.pop('assessed_outputs')
+                elif mutation == 'original_as_edited': target['assessed_outputs'][0]['response'] = originals[0]
+                elif mutation == 'old_prose': target['assessed_outputs'][0]['prose_sha256'] = i.digest(b'previous prose')
+                elif mutation == 'missing_editorial': target['assessed_outputs'][0]['editorial'] = None
+                elif mutation == 'duplicate': target['assessed_outputs'] *= 2
+                with self.subTest(mode=mode, mutation=mutation), self.assertRaisesRegex(ValueError, 'assessed response'):
+                    self.run_audit(record)
+
     def test_every_displayed_original_requires_exactly_one_target_binding(self):
         # A staged note is an original too. Rehash all receipts so omission,
         # rather than stale bytes, must prevent certification.

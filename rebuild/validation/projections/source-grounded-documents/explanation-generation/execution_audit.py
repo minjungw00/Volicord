@@ -218,8 +218,39 @@ class DisplayOriginals(HTMLParser):
 
 def attest_display(integrity, attempts):
     from source_reading import DISPLAY_BYTES
-    require(not integrity.get('editorial') and integrity.get('presentation_mode', 'diagnostic') == 'diagnostic',
-            'full assessment requires original diagnostic display')
+    mode = integrity.get('presentation_mode', 'diagnostic')
+    require(mode in {'diagnostic', 'reader'}, 'unknown assessment presentation')
+    if mode == 'reader':
+        # These are current, explicitly reconstructed views. Historical diagnostic
+        # HTML continues through the original byte inspection below.
+        from render_comparison import verify_presentation
+        verified, _, _ = verify_presentation(integrity['presentation']['path'])
+        require(verified == integrity, 'assessment presentation changed')
+        require(len(attempts) == len(integrity['samples']), 'assessment attempts incomplete')
+        targets = []
+        for sample, attempt in zip(integrity['samples'], attempts):
+            require(json.loads(Path(sample['attempt']['path']).read_bytes()) == attempt,
+                    'assessment attempt changed')
+            require([o['original'] for o in sample['outputs']] == attempt['original_outputs'],
+                    'assessment originals incomplete')
+            outputs = []
+            for shown in sample['outputs']:
+                original = shown['original']; check_binding(original)
+                assessed, editorial = original, None
+                if integrity.get('editorial') and original == attempt.get('generation_output'):
+                    from editorial_reading import read
+                    _, receipt = read(sample['attempt']['path'], integrity['editorial']['path'])
+                    assessed, editorial = receipt['response'], integrity['editorial']
+                check_binding(assessed)
+                prose = json.loads(Path(assessed['path']).read_bytes())['prose']
+                require(len(prose.encode()) <= DISPLAY_BYTES
+                        and shown['prose_sha256'] == digest(prose.encode()),
+                        'full assessment prose unavailable or bounded')
+                outputs.append({'original': original, 'response': assessed,
+                                'prose_sha256': digest(prose.encode()), 'editorial': editorial})
+            targets.append({'label': sample['label'], 'outputs': outputs})
+        return targets
+    require(not integrity.get('editorial'), 'editorial assessment requires reader presentation')
     parser = DisplayOriginals()
     parser.feed(Path(integrity['presentation']['path']).read_text())
     require(parser.current is None and len(parser.samples) == len(integrity['samples']),
@@ -242,6 +273,19 @@ def attest_display(integrity, attempts):
             prose.append(text)
         require(Counter(shown['originals']) == Counter(transports) and shown['prose'] == prose,
                 'displayed original bytes or prose changed')
+    return None
+
+
+def verify_assessed_targets(targets, assessed):
+    """Original transport identity never substitutes for the text being assessed."""
+    require(len(targets) == len(assessed), 'assessed target samples incomplete')
+    expected = {t['label']: t['outputs'] for t in assessed}
+    require(len(expected) == len(assessed)
+            and len({t['label'] for t in targets}) == len(targets)
+            and {t['label'] for t in targets} == set(expected), 'assessed target samples duplicated or changed')
+    for target in targets:
+        require(target.get('assessed_outputs') == expected[target['label']],
+                'assessed response/editorial identity absent or changed')
 
 
 def audit_cohort(root, repository, *, receipts=None, plan_path=None):
@@ -392,9 +436,11 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
                                     for k in ('path', 'bytes', 'sha256')), 'review target output changed')
                     if 'prose_sha256' in claimed:
                         body = json.loads(Path(original['original']['path']).read_bytes())
-                        require(claimed['prose_sha256'] == original['prose_sha256']
+                        require(claimed['prose_sha256'] == original.get('original_prose_sha256', original['prose_sha256'])
                                 == digest(body['prose'].encode()), 'review target prose changed')
-            attest_display(integrity, displayed_attempts)
+            assessed = attest_display(integrity, displayed_attempts)
+            if assessed is not None:
+                verify_assessed_targets(targets, assessed)
             require(generator_sessions == set(record['generator_sessions'])
                     and not set(sessions) & generator_sessions, 'review session separation unverified')
             raw = Path(record['original_review']['path']).read_bytes()
@@ -413,6 +459,7 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
                         'tokens': record['tokens'], 'price': record['price'],
                         'original_outputs': record.get('original_outputs', []),
                         'original_review': record.get('original_review'),
+                        'assessed_targets': assessed if review and record['status'] == 'review_captured' else None,
                         'review_completion_verified': review and record['status'] == 'review_captured',
                         'workspace_cleanup': record['workspace_cleanup']})
     return {'cohort_plan': binding(plan_path), 'attempts': reports,

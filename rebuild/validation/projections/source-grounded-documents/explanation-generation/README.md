@@ -1173,6 +1173,24 @@ recorded findings before generated output or editorial prototype exposure, and
 current scope-specific external-review authorization. Existing supplemental local
 agent findings and partial historical reviews cannot fill that gap.
 
+Current reader and manual editorial displays can also be exact assessment targets.
+The audit reconstructs these views through `verify_presentation`, including the
+editorial transformation and its relocated claim bindings. Each target must add
+`assessed_outputs`: an ordered list of objects containing `original`, `response`,
+`prose_sha256` and nullable `editorial`. The original is always the immutable
+generation transport; the response is the actual displayed response, which has
+its own binding for edited text. The editorial field binds the transformation
+manifest. Missing, stale, duplicated or original-as-edited bindings fail. The
+audit reports these separate identities as `assessed_targets`; original feedback
+and assessments cannot migrate to edited text. Historical diagnostic views retain
+their original byte inspection rather than being regenerated with today's renderer.
+This support does not establish source-first ordering, reader understanding or
+semantic approval. Those require separately retained observations and findings.
+Authored controls traverse actual generated fixture responses, Source/Host ledgers,
+reader/editorial rendering and complete-review audits; they are local controls,
+not independent model reviews. Existing feedback and browser controls cover the
+same immutable Work B/Click responses and stale-display rejection.
+
 ### Problem-first experimental reading and visible primary sources
 
 The experimental comparison reader places a compact source index in generator
