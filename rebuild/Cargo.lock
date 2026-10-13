@@ -988,6 +988,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "volicord-context",
+ "volicord-host",
  "volicord-inquiry",
  "volicord-operations",
  "volicord-privacy",

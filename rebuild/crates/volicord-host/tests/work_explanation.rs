@@ -622,3 +622,66 @@ fn redirected_current_source_root_cannot_publish_identical_bytes() -> Result<(),
         .all(|r| !r.purpose.starts_with("explanation:")));
     Ok(())
 }
+
+#[test]
+fn cited_code_is_utf8_bounded_deduplicated_and_counts_omissions() -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    let body = format!("def value():\n    return 7 # {}\n", "한".repeat(4000));
+    fs::write(f.temp.path().join("repo/main.py"), &body)?;
+    let analysis = f
+        .host
+        .operations()
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    f.source = f
+        .host
+        .operations()
+        .observe_work_file(FileObservationRequest {
+            project_id: f.project,
+            work_item_id: f.work,
+            analysis_snapshot_id: analysis,
+            path: "main.py".into(),
+            before_source_id: None,
+            retain_seconds: 3600,
+        })?
+        .source_id;
+    let generation = f.generate()?;
+    let read = f.read(&generation, f.source)?;
+    let mut realized = response(&generation, &read)?;
+    let base = realized.paragraphs[1].citations[0].clone();
+    for offset in [0, 13, 26, 28, 31, 34, 37] {
+        let mut c = base.clone();
+        c.start_byte = offset;
+        c.start_line = if offset == 0 { 1 } else { 2 };
+        c.range_sha256 = explanation_text_hash(&body[offset..]);
+        realized.paragraphs[1].citations.push(c);
+    }
+    let args = f.record_args(&generation, &realized)?;
+    success(&mut f.host, args)?;
+    let projection = f.host.operations().project_projection(f.project)?;
+    let w = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == f.work)
+        .ok_or("work")?;
+    let answers = work_answers(w, "en", FixedLocale::English);
+    assert_eq!(answers.explanation_state, ExplanationState::Current);
+    let used: usize = answers.source_excerpts.iter().map(|e| e.text.len()).sum();
+    assert!(used <= 16_384);
+    assert!(answers.omitted_source_excerpt_count > 0);
+    let mut keys = std::collections::BTreeSet::new();
+    for e in &answers.source_excerpts {
+        assert!(e.text.len() <= 4096);
+        assert_eq!(e.text, body[e.citation.start_byte..e.displayed_end_byte]);
+        assert_eq!(
+            e.omitted_utf8_bytes,
+            e.citation.end_byte - e.displayed_end_byte
+        );
+        assert!(keys.insert((e.citation.start_byte, e.citation.end_byte)));
+    }
+    assert_eq!(keys.len() + answers.omitted_source_excerpt_count, 7);
+    Ok(())
+}

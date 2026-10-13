@@ -1499,6 +1499,9 @@ fn render_field(
     let padding = "  ".repeat(indent);
     if let Some(answers) = value.get("answers") {
         write_line(stdout, format_args!("{padding}{key}:"))?;
+        if let Some(title) = value["reading_title"].as_str() {
+            write_line(stdout, format_args!("{padding}  {title}"))?;
+        }
         if answers
             .get("provenance")
             .is_some_and(|value| !value.is_null())
@@ -1530,6 +1533,55 @@ fn render_field(
                     write_line(stdout, format_args!("{padding}  {text}"))?;
                 }
             }
+        }
+        for excerpt in answers["source_excerpts"].as_array().into_iter().flatten() {
+            let c = &excerpt["citation"];
+            write_line(
+                stdout,
+                format!(
+                    "{padding}  {}:{}–{} · {} · {}",
+                    c["locator"].as_str().unwrap_or_default(),
+                    c["start_line"],
+                    c["end_line"],
+                    c["use_kind"].as_str().unwrap_or_default(),
+                    excerpt["comparison"]
+                        .as_str()
+                        .unwrap_or("historical_observation")
+                ),
+            )?;
+            if let Some(text) = excerpt["text"].as_str() {
+                write_line(stdout, text)?;
+            }
+            if excerpt["omitted_utf8_bytes"].as_u64().unwrap_or(0) > 0 {
+                write_line(
+                    stdout,
+                    format!(
+                        "{padding}  {}: {}",
+                        match locale {
+                            CliLocale::English => "Omitted UTF-8 bytes",
+                            CliLocale::Korean => "생략된 UTF-8 바이트",
+                        },
+                        excerpt["omitted_utf8_bytes"]
+                    ),
+                )?;
+            }
+        }
+        if answers["omitted_source_excerpt_count"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0
+        {
+            write_line(
+                stdout,
+                format!(
+                    "{padding}  {}: {}",
+                    match locale {
+                        CliLocale::English => "Omitted cited excerpts",
+                        CliLocale::Korean => "생략된 인용 발췌",
+                    },
+                    answers["omitted_source_excerpt_count"]
+                ),
+            )?;
         }
         return Ok(());
     }

@@ -694,11 +694,17 @@ fn render_work_card(
     work: &UnderstandingWork,
     decisions: &[volicord_projections::UnderstandingDecision],
 ) {
+    let answers = volicord_projections::work_answers(
+        work,
+        &request.requested_language,
+        request.locale.fixed(),
+    );
     html.push_str(&format!(
-        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h3>{}</h3><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
+        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h3 lang=\"{}\">{}</h3><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
         work.work_item_id,
         understanding_work_state_key(work.state),
-        escape(work_reading_display(&work.reading.goal, request.locale)),
+        if answers.reading_title().is_some() { escape(&content_language_tag(&request.requested_language)) } else { String::new() },
+        escape(answers.reading_title().unwrap_or(work_reading_display(&work.reading.goal, request.locale))),
         escape(understanding_work_state_label(work.state, request.locale))
     ));
     reading::work_explanation(html, request, work, false);

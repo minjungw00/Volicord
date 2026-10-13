@@ -10,6 +10,8 @@ pub struct ExplanationProvenance {
     pub question: String,
     pub language: String,
     pub fingerprint: String,
+    /// Binds the exact output including edited wording and claim bindings.
+    pub realization_fingerprint: String,
     pub generated_at_unix_micros: i64,
     pub generator: ExplanationGenerator,
     pub generator_identity_status: String,
@@ -43,6 +45,9 @@ impl From<&RetainedExplanation> for ExplanationProvenance {
             question: e.question.clone(),
             language: e.realization.language.clone(),
             fingerprint: e.realization.plan_fingerprint.clone(),
+            realization_fingerprint: explanation_text_hash(
+                &serde_json::to_string(&e.realization).unwrap_or_default(),
+            ),
             generated_at_unix_micros: e.generated_at_unix_micros,
             generator: e.realization.generator.clone(),
             generator_identity_status: e.generator_identity_status.clone(),
@@ -96,8 +101,18 @@ pub struct QuestionAnswers {
     pub explanation_state: ExplanationState,
     pub diagnostic: Option<String>,
     pub provenance: Option<ExplanationProvenance>,
+    pub source_excerpts: Vec<ExplanationSourceExcerpt>,
+    pub omitted_source_excerpt_count: usize,
 }
 impl QuestionAnswers {
+    /// Problem-first wording from the permitted output, with original Goal fallback
+    /// owned by the caller. This is interpretation, never a renamed canonical Work.
+    pub fn reading_title(&self) -> Option<&str> {
+        self.prose
+            .iter()
+            .find(|a| a.question == "Purpose" && a.role == AnswerRole::GeneratedInterpretation)
+            .map(|a| a.text.as_str())
+    }
     /// The sole task-direction selection rule. Generated NextStep prose is an
     /// interpretation alongside this fact; explanation repair is never an action.
     pub fn next_step_answer(&self) -> Option<&QuestionAnswer> {
@@ -194,6 +209,18 @@ pub fn explanation_answers(
         explanation_state: state,
         diagnostic: reading.and_then(|e| e.diagnostic.clone()),
         provenance: current.map(Into::into),
+        source_excerpts: if current.is_some() {
+            reading
+                .map(|r| r.source_excerpts.clone())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        },
+        omitted_source_excerpt_count: if current.is_some() {
+            reading.map_or(0, |r| r.omitted_source_excerpt_count)
+        } else {
+            0
+        },
     };
     if current.is_some_and(|e| !e.conflicts.is_empty()) {
         result.facts.push(fact("Conflicts",fixed(locale,"The evidence includes contradiction or supersession; this interpretation does not resolve it.","근거에 모순 또는 대체 관계가 있습니다. 이 해석은 해당 관계를 해결하지 않습니다."),Vec::new()));

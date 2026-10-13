@@ -4,6 +4,13 @@ use serde_json::{json, Value};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ProjectId, SourceId};
 use volicord_projections::{explanation_text_hash, ExplanationRealization, ExplanationSourceUse};
 
+pub(crate) struct ValidatedExplanationSources {
+    pub dependencies: Vec<SourceId>,
+    pub expiry: Option<volicord_context::TimestampMicros>,
+    pub excerpts: Vec<volicord_projections::ExplanationSourceExcerpt>,
+    pub omitted_excerpt_count: usize,
+}
+
 impl LocalOperations {
     pub fn explanation_source_manifest(
         &self,
@@ -58,11 +65,15 @@ impl LocalOperations {
         basis: &CanonicalReadBasis,
         work: ContextItemId,
         response: &ExplanationRealization,
-    ) -> Result<(Vec<SourceId>, Option<volicord_context::TimestampMicros>), Error> {
+    ) -> Result<ValidatedExplanationSources, Error> {
         let mut readings = std::collections::BTreeMap::new();
         let mut dependencies = std::collections::BTreeSet::new();
         let mut expiry = None;
         let mut current_snapshots = std::collections::BTreeMap::new();
+        let mut excerpts = Vec::new();
+        let mut excerpt_keys = std::collections::BTreeSet::new();
+        let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
+        let mut omitted_excerpt_count = 0;
         for citation in response.paragraphs.iter().flat_map(|p| &p.citations) {
             let source = SourceId::from_bytes(parse_identity(&citation.source_id)?);
             if let std::collections::btree_map::Entry::Vacant(entry) = readings.entry(source) {
@@ -244,6 +255,46 @@ impl LocalOperations {
                 &citation.repository_source_id,
             )?));
             bound_expiry(&mut expiry, read)?;
+            // Materialize only exact cited bytes already admitted by this reader.
+            // Repeated claims may cite the same range; retain one navigation target.
+            let key = (
+                citation.source_id.clone(),
+                citation.field.clone(),
+                citation.start_byte,
+                citation.end_byte,
+                format!("{:?}", citation.use_kind),
+            );
+            if excerpt_keys.insert(key) {
+                let mut bytes = range
+                    .len()
+                    .min(remaining)
+                    .min(volicord_projections::EXPLANATION_SOURCE_RANGE_BYTE_LIMIT);
+                while !range.is_char_boundary(bytes) {
+                    bytes -= 1;
+                }
+                if bytes == 0 {
+                    omitted_excerpt_count += 1;
+                } else {
+                    remaining -= bytes;
+                    let end = citation.start_byte + bytes;
+                    excerpts.push(volicord_projections::ExplanationSourceExcerpt {
+                        citation: citation.clone(),
+                        work_revision: observation["work_revision"].as_u64()
+                            .ok_or_else(|| Error::new("Source Work revision unavailable"))?,
+                        observed_at_unix_micros: observation["observed_at_unix_micros"].as_i64()
+                            .ok_or_else(|| Error::new("Source observation time unavailable"))?,
+                        text: range[..bytes].into(), displayed_end_byte: end,
+                        displayed_end_line: line(end - 1), omitted_utf8_bytes: range.len() - bytes,
+                        comparison: detail["comparison"].as_str().map(str::to_owned),
+                        before_source_id: detail["before_source_id"].as_str().map(str::to_owned),
+                        execution: (detail["kind"] == "command").then(|| json!({
+                            "exit_code":detail["exit_code"], "termination":detail["termination"],
+                            "stream":citation.field, "representation":detail[&citation.field]["representation"],
+                            "observed_bytes":detail[&citation.field]["observed_bytes"],
+                            "omitted_bytes":detail[&citation.field]["omitted_bytes"]})),
+                    });
+                }
+            }
         }
         for before in response
             .paragraphs
@@ -270,7 +321,12 @@ impl LocalOperations {
                 ));
             }
         }
-        Ok((dependencies.into_iter().collect(), expiry))
+        Ok(ValidatedExplanationSources {
+            dependencies: dependencies.into_iter().collect(),
+            expiry,
+            excerpts,
+            omitted_excerpt_count,
+        })
     }
 }
 

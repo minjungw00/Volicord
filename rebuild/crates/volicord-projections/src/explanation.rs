@@ -175,7 +175,28 @@ pub struct ExplanationReading {
     pub state: ExplanationState,
     pub content: Option<RetainedExplanation>,
     pub diagnostic: Option<String>,
+    /// Read-time permitted, citation-only bytes. Never stored in the realization.
+    pub source_excerpts: Vec<ExplanationSourceExcerpt>,
+    pub omitted_source_excerpt_count: usize,
 }
+
+/// Exact inspected range, bounded independently of prose and its full grounding.
+/// A comparison describes observed file bytes, never an inferred patch.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ExplanationSourceExcerpt {
+    pub citation: ExplanationCitation,
+    pub work_revision: u64,
+    pub observed_at_unix_micros: i64,
+    pub text: String,
+    pub displayed_end_byte: usize,
+    pub displayed_end_line: usize,
+    pub omitted_utf8_bytes: usize,
+    pub comparison: Option<String>,
+    pub before_source_id: Option<String>,
+    pub execution: Option<Value>,
+}
+pub const EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT: usize = 16_384;
+pub const EXPLANATION_SOURCE_RANGE_BYTE_LIMIT: usize = 4_096;
 
 pub fn prepare_explanation(
     canonical: &CanonicalReadBasis,

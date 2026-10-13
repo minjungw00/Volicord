@@ -287,11 +287,21 @@ For an explicit user request in the active host, MCP `work_explanation` action
 The host investigates permitted relevant code, retrieves selected retained Sources
 with `read_source`, authors natural prose with exact source/claim bindings and
 uses `record`. Its initial awaiting-host status is not completed generation, and
-the user does not construct JSON. Source links show path and line range alongside
-provenance details. Before-state needs an explicit observed pair; current code
+the user does not construct JSON. Source links navigate to the actual cited code
+or command output, with exact revisions and claim hashes in closed details. The
+same bounded excerpt basis serves CLI/MCP, live Viewer and offline snapshots.
+Purpose wording supplies a derived problem-first title; the original Goal remains
+inspectable. Output fingerprints distinguish different interpretations of one plan.
+Before-state needs an explicit observed pair; current code
 alone does not prove a patch, execution success or user approval. Missing host
 capability/authority stays incomplete with recorded facts readable. See the
 [Host procedure](../volicord-host/README.md) and `tools/list` schema.
+
+The shared excerpt bound is 16,384 UTF-8 bytes, at most 4,096 per cited range,
+with exact displayed bounds and omission counts. Changed observations show actual
+selected before/after ranges rather than a synthesized diff. Identical paired
+bytes and unavailable before-state have distinct notices. An earlier dependency
+whose bytes were not cited is identified without manufacturing before code.
 
 From a bound repository, or with explicit `--runtime` and `--project`:
 

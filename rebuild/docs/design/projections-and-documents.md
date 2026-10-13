@@ -473,7 +473,7 @@ reader, alias or second store; unsupported disposable derived content must be de
 and regenerated. Recording and Current reads verify the whole retained binding,
 not only a response hash.
 
-Document metadata version 9 and Viewer publication carry exact explanation provenance
+Document metadata version 10 and Viewer publication carry exact explanation provenance
 and a current-build canonical read equality token. Operations verifies canonical basis
 and current retained provenance immediately before atomic no-replace publication under
 the mutation lock. Correction/forget or explicit cache deletion invalidates prepared
@@ -1614,7 +1614,7 @@ bodies and chronology. Missing before-state cannot be reconstructed from HEAD.
 Observed execution copies preserve actual exit/termination and bounded stream
 omissions and establish no execution-time repository equality. Prose uses readable
 locator/line references; Viewer links those references to local provenance details,
-and documents retain them alongside exact citation metadata (metadata version 9).
+and documents retain them alongside exact citation metadata (metadata version 10).
 
 Recording adds all citation Sources/repository Sources and explicit before Sources
 to existing managed canonical dependencies and limits explanation retention to the
@@ -1627,3 +1627,30 @@ certify causal meaning, translation, execution success or independent user appro
 Self-reported author/model strings remain self-reported; server session correlation
 is operational correlation only. Conditional user instructions, recommendations
 and generated explanation never create Decisions or Learning participation.
+
+### Public grounded Work reading
+
+Current retained Work answers carry a read-time, citation-only `source_excerpts`
+basis from Operations. Each excerpt retains its exact Source/Work revision,
+observation time, citation/range/claim hash and observed comparison. The shared
+bound is 16,384 UTF-8 text bytes, at most 4,096 per unique cited range; clipped
+ranges report displayed byte/line ends and exact omitted bytes, while completely
+omitted ranges keep a counted navigation placeholder. No uncited Source, current
+file fallback or new Source observation is materialized. Only Current permitted
+interpretations supply excerpts. Source bytes remain disposable managed content;
+they are never copied into the retained explanation envelope.
+
+CLI/MCP, live Viewer and offline snapshot read the same answers and source basis.
+Existing MCP transport omissions remain separate from shared excerpt bounds.
+`reading_title` uses the permitted Purpose paragraph as problem-first derived
+wording; the canonical Goal remains original evidence. The exact compact
+realization fingerprint distinguishes regenerated or edited outputs on the same
+plan. It supplies output identity, not semantic approval or authenticated authorship.
+
+Viewer prose links to unique keyboard-focusable Source ranges. Actual code/output
+is ordinary reading; full revision and generator grounding stays in closed native
+disclosures. An explicit changed/equal pair describes observed file bytes and is
+not a reconstructed diff. Missing before-state stays absent; an uncited earlier
+dependency is identified without presenting invented before code. Snapshots retain
+the same admitted bytes and identities without Runtime, listener, scripts or assets.
+No read generates, transmits, adopts Learning, renews retention or changes records.

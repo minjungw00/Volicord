@@ -150,11 +150,13 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
   meaning이 분리되거나 rendered-field omission contract가 추가되면 current writer
   metadata shape/version에서만 함께 기록한다. 이전 shape decoder, dual metadata
   representation 또는 compatibility write를 추가하지 않는다.
-- Current writer version `9`은 active-host realization의 exact requested-language attestation,
+- Current writer version `10`은 active-host realization의 exact requested-language attestation,
   all-generated-prose attestation과 realized-body fingerprint를 plan fingerprint와 함께 기록한다.
   Version 8 introduced typed Reading/Evidence section roles, exact explanation provenance and
   current-build canonical read equality binding for publication. Version 9 includes
   exact Source-to-prose citation bindings and recorder-owned semantic-approval limits.
+  Version 10 adds the exact retained explanation realization fingerprint, separating
+  output identity from preparation identity when regenerated/edited wording shares a plan.
   이 durable meaning이 없는 이전 metadata를 host-realized requested-language success로 읽지 않는다.
 
 ### Session Candidate store format
@@ -298,7 +300,7 @@ decode. Non-current content is Unsupported and its prose is withheld; malformed
 current content is Corrupt. Explicit delete and preparation/generation from current
 canonical evidence provide recovery. There is no dual decoder or implicit conversion.
 The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Snapshot
-formats do not change; generated-document metadata is current version 9. A preparation fingerprint binds evidence
+formats do not change; generated-document metadata is current version 10. A preparation fingerprint binds evidence
 and language; it is neither a format version nor an authenticity certificate.
 
 Explanation format 2 requires paragraph citations (possibly empty for canonical-only

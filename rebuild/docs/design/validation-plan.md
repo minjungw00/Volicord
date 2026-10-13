@@ -2701,7 +2701,24 @@ Source revision, locator/range/line/hash, snapshot, changed wording, missing bef
 pairs, current repository changes and deleted copies, preserving previous records.
 Existing explanation-budget, CLI, Host consumer, Source, document and Viewer tests
 remain focused format/lifecycle checks. Current fixture producers/consumers use
-explanation format 2 and document metadata 9; historical campaign files are immutable.
+explanation format 2 and document metadata 10; historical campaign files are immutable.
+
+`volicord-viewer --test grounded_reader` produces actual changed, equal and
+missing-before file observations, scopes retrieval to a live Host request,
+records labeled authored structural realizations through MCP, and reads matching
+output/Source identities through CLI/MCP, Viewer GET and actual snapshot export.
+It checks exact code bytes, original authority, unchanged canonical/privacy state
+and changed-source withholding. The optional seed creates only canonical inputs
+and Source observations, never explanation prose.
+`grounded_reader_browser.py` requires separately recorded current en/ko outputs;
+it generates nothing. Chromium exercises exact citation targets with Tab/Enter,
+390/768/1440 widths, code/Work/output identity and honest comparison states, and
+controlled wrong-Source/fabricated-code negatives. Offline checks run after server
+termination with Runtime physically unavailable and networking disabled. Preserved
+streams/numeric results support technical reading only; independent semantic review,
+native zoom, personal understanding, unseen holdout and Naturalistic qualification
+retain their separate obligations. Run with `validate focused`; final evidence
+requires `--require-clean` and exact candidate executables.
 A genuine current-authorized interactive-host interpretation must separately read
 actual Product evidence and record its new output through public operations. Its
 generator identity is self-reported and its reading quality is not independent human

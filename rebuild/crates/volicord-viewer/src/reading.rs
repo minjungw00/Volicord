@@ -523,14 +523,16 @@ fn work_summary(
     snapshot: bool,
 ) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
-    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4>", w.work_item_id, understanding_work_state_key(w.state)));
+    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"{}\">", w.work_item_id, understanding_work_state_key(w.state), if answers.reading_title().is_some() {escape(&content_language_tag(&r.requested_language))} else {String::new()}));
     link(
         html,
         r,
         ViewerView::Work {
             work: Some(w.work_item_id),
         },
-        work_reading_display(&w.reading.goal, r.locale),
+        answers
+            .reading_title()
+            .unwrap_or(work_reading_display(&w.reading.goal, r.locale)),
         snapshot
             .then(|| format!("work-{}", w.work_item_id))
             .as_deref(),
@@ -645,6 +647,7 @@ pub(super) fn render_answers(
     if current {
         empty_state(html,text(r.locale,"Host interpretation; claims remain grounded reports, not independent verification.","호스트 해석입니다. 근거 있는 보고이며 독립 검증을 뜻하지 않습니다."));
     }
+    let mut previous_question = None;
     for answer in &answers.prose {
         if compact
             && !matches!(
@@ -659,9 +662,13 @@ pub(super) fn render_answers(
         {
             continue;
         }
-        if !compact {
+        if !compact && previous_question != Some(answer.question.as_str()) {
+            if previous_question.is_some() {
+                html.push_str("</div>");
+            }
             html.push_str("<div class=\"answer-section\">");
             heading(html, 4, answer_title(&answer.question, r.locale));
+            previous_question = Some(answer.question.as_str());
         }
         html.push_str(&format!(
             "<p data-question=\"{}\"{}>{}</p>",
@@ -678,10 +685,7 @@ pub(super) fn render_answers(
             escape(&answer.text)
         ));
         for citation in &answer.citations {
-            let anchor = format!(
-                "explanation-source-{}-{}-{}",
-                citation.source_id, citation.start_byte, citation.end_byte
-            );
+            let anchor = source_excerpt_anchor(answers, citation);
             html.push_str(&format!(
                 "<a class=\"source-citation\" href=\"#{}\">{}:{}–{}</a> ",
                 escape(&anchor),
@@ -690,18 +694,12 @@ pub(super) fn render_answers(
                 citation.end_line
             ));
         }
-        if !compact {
-            html.push_str("</div>");
-        }
     }
+    if previous_question.is_some() {
+        html.push_str("</div>");
+    }
+    render_source_excerpts(html, r, answers);
     if let Some(provenance) = &answers.provenance {
-        for citation in &provenance.citations {
-            let anchor = format!(
-                "explanation-source-{}-{}-{}",
-                citation.source_id, citation.start_byte, citation.end_byte
-            );
-            html.push_str(&format!("<details id=\"{}\" class=\"source-citation-basis\"><summary>{}:{}–{} · {:?}</summary><pre>{}</pre></details>",escape(&anchor),escape(&citation.locator),citation.start_line,citation.end_line,citation.use_kind,escape(&format!("{citation:#?}"))));
-        }
         html.push_str(&format!(
             "<details class=\"explanation-grounding\"><summary>{}</summary><pre>{}</pre></details>",
             text(
@@ -756,6 +754,132 @@ pub(super) fn render_answers(
         }
     }
     html.push_str("</div>");
+}
+
+fn source_excerpt_anchor(
+    answers: &volicord_projections::QuestionAnswers,
+    c: &volicord_projections::ExplanationCitation,
+) -> String {
+    format!(
+        "explanation-source-{}-{}-{}-{}-{}-{:?}",
+        answers
+            .provenance
+            .as_ref()
+            .map(|p| p.subject.key())
+            .unwrap_or_default(),
+        c.source_id,
+        c.field,
+        c.start_byte,
+        c.end_byte,
+        c.use_kind
+    )
+}
+
+fn render_source_excerpts(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+) {
+    let Some(provenance) = &answers.provenance else {
+        return;
+    };
+    if provenance.citations.is_empty() {
+        return;
+    }
+    html.push_str("<section class=\"explanation-code\" data-reading-role=\"cited-source\" data-statement-role=\"observed-fact\">");
+    heading(
+        html,
+        4,
+        text(
+            r.locale,
+            "Read the supporting code and output",
+            "근거 코드와 출력 읽기",
+        ),
+    );
+    let mut seen = std::collections::BTreeSet::new();
+    for c in &provenance.citations {
+        let anchor = source_excerpt_anchor(answers, c);
+        if !seen.insert(anchor.clone()) {
+            continue;
+        }
+        let excerpt = answers.source_excerpts.iter().find(|e| {
+            e.citation.source_id == c.source_id
+                && e.citation.field == c.field
+                && e.citation.start_byte == c.start_byte
+                && e.citation.end_byte == c.end_byte
+                && e.citation.use_kind == c.use_kind
+        });
+        html.push_str(&format!("<figure class=\"source-excerpt\" id=\"{}\" tabindex=\"-1\" data-source-id=\"{}\"><figcaption><strong>{}:{}–{}</strong> · {}</figcaption>",
+            escape(&anchor), escape(&c.source_id), escape(&c.locator), c.start_line, c.end_line,
+            match c.use_kind {
+                volicord_projections::ExplanationSourceUse::CurrentCode => text(r.locale, "Current observed code", "현재 관측 코드"),
+                volicord_projections::ExplanationSourceUse::BeforeCode => text(r.locale, "Before: historical observation", "이전: 과거 관측"),
+                volicord_projections::ExplanationSourceUse::ObservedExecution => text(r.locale, "Observed command output", "관측된 명령 출력"),
+            }));
+        if let Some(e) = excerpt {
+            if c.use_kind == volicord_projections::ExplanationSourceUse::CurrentCode {
+                let comparison = match e.comparison.as_deref() {
+                    Some("changed") => text(r.locale, "The explicit before/after file observations differ. These excerpts are selected ranges, not a diff.", "명시적 이전/이후 파일 관측이 다릅니다. 발췌는 선택된 범위이며 diff가 아닙니다."),
+                    Some("no_change") => text(r.locale, "The paired file observations have identical bytes. No change is shown.", "짝지어진 파일 관측의 바이트가 동일합니다. 변경이 표시되지 않습니다."),
+                    _ => text(r.locale, "Before-state was not retained. A before/after comparison is unavailable.", "이전 상태가 보존되지 않았습니다. 이전/이후 비교를 이용할 수 없습니다."),
+                };
+                html.push_str(&format!(
+                    "<p class=\"source-comparison\">{}</p>",
+                    comparison
+                ));
+                if e.before_source_id.as_ref().is_some_and(|id| {
+                    !answers.source_excerpts.iter().any(|before| {
+                        &before.citation.source_id == id
+                            && before.citation.use_kind
+                                == volicord_projections::ExplanationSourceUse::BeforeCode
+                    })
+                }) {
+                    html.push_str(&format!("<p>{}</p>",text(r.locale, "The earlier copy is a dependency; its code was not cited in this output.", "이전 사본은 의존 근거입니다. 이 출력에는 해당 코드가 인용되지 않았습니다.")));
+                }
+            }
+            html.push_str(&format!(
+                "<pre><code lang=\"\">{}</code></pre>",
+                escape(&e.text)
+            ));
+            if e.omitted_utf8_bytes > 0 {
+                html.push_str(&format!(
+                    "<p class=\"bound\">{}: {} · {} {}–{} · bytes {}–{}</p>",
+                    text(
+                        r.locale,
+                        "Omitted UTF-8 bytes in this cited range",
+                        "이 인용 범위에서 생략된 UTF-8 바이트"
+                    ),
+                    e.omitted_utf8_bytes,
+                    text(r.locale, "Displayed lines", "표시된 줄"),
+                    c.start_line,
+                    e.displayed_end_line,
+                    c.start_byte,
+                    e.displayed_end_byte
+                ));
+            }
+            if let Some(execution) = &e.execution {
+                html.push_str(&format!(
+                    "<p>{}: {} · {}: {}</p>",
+                    text(r.locale, "Observed exit", "관측 종료 코드"),
+                    escape(&execution["exit_code"].to_string()),
+                    text(r.locale, "Termination", "종료 상태"),
+                    escape(&execution["termination"].to_string())
+                ));
+            }
+        } else {
+            empty_state(html, text(r.locale, "This cited range was omitted by the shared code-reading bound. Inspect its exact Source through the scoped reader.", "이 인용 범위는 공통 코드 읽기 한도로 생략되었습니다. 범위가 제한된 리더에서 정확한 Source를 확인하세요."));
+        }
+        html.push_str(&format!("<details class=\"source-citation-basis\"><summary>{}</summary><pre>{}</pre></details></figure>",
+            text(r.locale,"Exact Work / Source revisions and claim grounding","정확한 Work / Source 리비전과 주장 근거"),escape(&format!("citation: {c:#?}\nWork revision: {:?}\nobserved at: {:?}\noutput: {}",excerpt.map(|e|e.work_revision),excerpt.map(|e|e.observed_at_unix_micros),provenance.realization_fingerprint))));
+    }
+    if answers.omitted_source_excerpt_count > 0 {
+        html.push_str(&format!(
+            "<p class=\"bound\">{}: {}</p>",
+            text(r.locale, "Omitted cited excerpts", "생략된 인용 발췌"),
+            answers.omitted_source_excerpt_count
+        ));
+    }
+    html.push_str("</section>");
 }
 pub(super) fn work_explanation(
     html: &mut String,

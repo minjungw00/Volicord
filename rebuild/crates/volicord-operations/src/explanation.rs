@@ -83,7 +83,9 @@ impl LocalOperations {
         validate_explanation(&plan, &realization).map_err(Error::new)?;
         let (source_dependencies, retained_until) = match subject {
             ExplanationSubject::Work(work) => {
-                self.validate_explanation_sources(&canonical, work, &realization)?
+                let validated =
+                    self.validate_explanation_sources(&canonical, work, &realization)?;
+                (validated.dependencies, validated.expiry)
             }
             ExplanationSubject::Decision(_) => (Vec::new(), None),
         };
@@ -212,6 +214,8 @@ impl LocalOperations {
                     state: ExplanationState::Unavailable,
                     content: None,
                     diagnostic: Some(format!("explanation storage unavailable: {e}")),
+                    source_excerpts: Vec::new(),
+                    omitted_source_excerpt_count: 0,
                 }];
             }
             let prefix = format!("explanation:{key}:");
@@ -222,6 +226,8 @@ impl LocalOperations {
                 .filter(|record| record.state != ManagedDerivedState::Deleted)
                 .map(|record| {
                     let language = record.purpose[prefix.len()..].to_owned();
+                    let mut source_excerpts = Vec::new();
+                    let mut omitted_source_excerpt_count = 0;
                     let (state, content, diagnostic) =
                         match decode_explanation(record.content.as_deref()) {
                             Err((state, diagnostic)) => (state, None, Some(diagnostic)),
@@ -234,7 +240,10 @@ impl LocalOperations {
                                     && retained_matches(&plan, &retained) =>
                             {
                                 let validation = match subject {
-                                    ExplanationSubject::Work(work) => self.validate_explanation_sources(canonical,work,&retained.realization).map(|_|()),
+                                    ExplanationSubject::Work(work) => self.validate_explanation_sources(canonical,work,&retained.realization).map(|validated| {
+                                        source_excerpts = validated.excerpts;
+                                        omitted_source_excerpt_count = validated.omitted_excerpt_count;
+                                    }),
                                     ExplanationSubject::Decision(_) => Ok(()),
                                 };
                                 match validation {
@@ -258,6 +267,8 @@ impl LocalOperations {
                         state,
                         content,
                         diagnostic,
+                        source_excerpts,
+                        omitted_source_excerpt_count,
                     }
                 })
                 .collect::<Vec<_>>();
