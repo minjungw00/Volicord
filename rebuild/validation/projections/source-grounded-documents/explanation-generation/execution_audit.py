@@ -7,6 +7,7 @@ from collections import Counter
 from html.parser import HTMLParser
 from datetime import datetime
 import json
+import math
 from pathlib import Path
 import subprocess
 import tomllib
@@ -95,6 +96,68 @@ def stage_timeline(process, context_path, ledger):
                              'filtered/truncated tool output can omit other reads; batch timing includes host orchestration '
                              'and does not give per-read/provider timing; '
                              'wall timestamps must not be subtracted from monotonic durations'}
+
+
+def completion_observation(process, context_path, ledger, verified_sequences, *, stage, response=None):
+    """Characterize public execution without assigning silent time to a cause.
+
+    Only independently joined Source reads supply timing. Source-server intervals
+    measure local service work, not model/provider latency or full tool round trips.
+    Wall-clock message timestamps stay separate from the monotonic read clock.
+    """
+    public, malformed = events(process['stdout']['path'])
+    context = json.loads(Path(context_path).read_bytes())
+    lower, upper = process.get('spawned_monotonic'), process.get('duration_seconds')
+    # capture's duration starts before spawn; no exact monotonic end is retained.
+    # Subtract from the recorded execution deadline only in the local ledger,
+    # never from a wall timestamp or a guessed process-end clock.
+    timed, untimed = [], []
+    for row in ledger:
+        if row.get('sequence') not in verified_sequences:
+            continue
+        execution = row.get('execution', {})
+        if execution.get('stage') not in {None, stage}:
+            continue
+        start, end = execution.get('started_monotonic'), execution.get('ended_monotonic')
+        valid = all(type(n) in {int, float} and math.isfinite(n) for n in (lower, upper, start, end))
+        if not valid or not lower <= start <= end <= lower + upper:
+            untimed.append(row['sequence'])
+            continue
+        timed.append({'sequence': row['sequence'], 'source_id': row['result']['metadata']['id'],
+                      'started_since_spawn_seconds': start - lower,
+                      'ended_since_spawn_seconds': end - lower,
+                      'service_seconds': end - start, 'bytes': row['charged_bytes'],
+                      'remaining_execution_seconds': execution.get('total_seconds_remaining')})
+    messages = [{'timestamp': row.get('timestamp'), 'channel': row['payload'].get('channel'),
+                 'utf8_bytes': sum(len(part.get('text', '').encode()) for part in
+                                   row['payload'].get('content', []) if part.get('type') == 'output_text')}
+                for row in context if row.get('type') == 'response_item'
+                and row.get('payload', {}).get('type') == 'message'
+                and row['payload'].get('role') == 'assistant']
+    host_messages = [e['item']['text'] for e in public if e.get('type') == 'item.completed'
+                     and e.get('item', {}).get('type') == 'agent_message'
+                     and isinstance(e['item'].get('text'), str)]
+    final_matches = None
+    if response is not None:
+        check_binding(response)
+        final_matches = bool(host_messages and
+                             host_messages[-1].strip() == Path(response['path']).read_text().strip())
+    return {'stdout': process['stdout'], 'context': binding(context_path),
+            'input_bytes': process['stdin']['bytes'], 'malformed_public_events': malformed,
+            'event_counts': dict(Counter(e.get('type', 'unknown') for e in public)),
+            'public_errors': [e for e in public if e.get('type') in {'error', 'turn.failed'}],
+            'assistant_messages': messages, 'host_message_utf8_bytes': [len(s.encode()) for s in host_messages],
+            'turn_completed_count': sum(e.get('type') == 'turn.completed' for e in public),
+            'response': response, 'response_matches_last_host_message': final_matches,
+            'joined_read_timings': timed, 'joined_reads_without_usable_clock': untimed,
+            'first_read_since_spawn_seconds': min((r['started_since_spawn_seconds'] for r in timed), default=None),
+            'last_read_since_spawn_seconds': max((r['ended_since_spawn_seconds'] for r in timed), default=None),
+            'local_read_service_seconds': sum(r['service_seconds'] for r in timed) if timed else None,
+            'context_compactions': sum(row.get('type') == 'compacted' for row in context),
+            'unavailable_measurements': ['provider_latency', 'hidden_processing_phases', 'token_usage_before_turn_completion',
+                                         'response_file_write_timing', 'exact_monotonic_process_end'],
+            'interpretation': 'Silent intervals are unclassified. Messages, a response file and exit zero '
+                              'separately observe output/transport; none establishes explanation correctness.'}
 
 
 def assessment_display(record):
@@ -308,7 +371,8 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
         record = json.loads(receipt.read_bytes())
         identities = []
         for key in ('input', 'initial_input', 'conditions', 'instructions', 'retrievals', 'mcp_protocol',
-                    'presentation', 'integrity', 'review_input', 'producer', 'configuration', 'executable'):
+                    'presentation', 'integrity', 'review_input', 'producer', 'configuration', 'executable',
+                    'response_schema', 'frozen_conditions', 'frozen_instructions', 'frozen_response_schema'):
             if record.get(key):
                 identities.append({'binding': record[key], 'verified_from': historical_binding(
                     record[key], plan['producer_head'], repository)})
@@ -319,6 +383,11 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
         for value in record.get('support', []) + record.get('original_outputs', []):
             identities.append({'binding': value, 'verified_from': historical_binding(
                 value, plan['producer_head'], repository)})
+        for frozen in record.get('frozen_support', []):
+            check_binding(frozen['snapshot'])
+            require(all(frozen['origin'][key] == frozen['snapshot'][key] for key in ('bytes', 'sha256')),
+                    'frozen producer snapshot differs from original identity')
+            identities.append({'binding': frozen['snapshot'], 'verified_from': 'original_path'})
         ledger, invalid = events(record['retrievals']['path'])
         require(not invalid, 'malformed historical ledger')
         if review:
@@ -361,6 +430,16 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
         display = assessment_display(record) if review else None
         observed_audit = retrieval_audit(spec,
                                         record.get('lane', 'archive_diagnostic'), host_calls, ledger, budgets=record.get('budgets'), display=display)
+        verified_sequences = {o['sequence'] for o in observed_audit['outcomes']
+                              if o['outcome'] == 'source_read_verified'}
+        for timeline in stages:
+            originals = ([record['original_review']] if review and record.get('original_review') else
+                         record.get('original_outputs', []))
+            response = next((value for value in originals if Path(value['path']).parent ==
+                             Path(timeline['context']['path']).parent), None)
+            timeline['completion_observation'] = completion_observation(
+                timeline['process'], timeline['context']['path'], ledger, verified_sequences,
+                stage=timeline['stage'], response=response)
         historical_audit_matches = observed_audit == record['evidence_reads']
         if review and record['status'] == 'review_captured':
             require(record.get('assessment_scope', 'full_display') == 'full_display',
@@ -453,6 +532,12 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
             require(not any(s['reference_status'] == 'invalid' for s in validation['selections']),
                     'completed review references invalid')
         reports.append({'name': name, 'receipt': binding(receipt), 'identities': identities,
+                        'requested_runtime': {key: record.get('runtime', {}).get(key) for key in
+                                              ('model', 'reasoning_effort', 'destination')},
+                        'budgets': record.get('budgets'), 'execution_policy': record.get('execution'),
+                        'preparation_seconds': record.get('preparation_seconds'),
+                        'resource_accounting': record.get('resource_accounting'),
+                        'diagnostic_outcome': record.get('diagnostic_outcome'),
                         'status': record['status'], 'calls': calls, 'stages': stages,
                         'evidence_reads': observed_audit, 'historical_read_audit_matches': historical_audit_matches, 'ledger_rows': len(ledger),
                         'returned_bytes': sum(r['charged_bytes'] for r in ledger),

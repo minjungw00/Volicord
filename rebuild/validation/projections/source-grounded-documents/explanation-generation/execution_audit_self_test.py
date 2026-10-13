@@ -62,6 +62,124 @@ class PublicTimelineTests(unittest.TestCase):
         self.assertEqual(audit.sequences(text), [0])
 
 
+class CompletionObservationTests(unittest.TestCase):
+    """Actual bounded producer controls; authored prose supplies no quality verdict."""
+    def setUp(self):
+        from execution_self_test import ExecutionTests
+        self.control = ExecutionTests(methodName='runTest')
+        self.control._testMethodName = self._testMethodName
+        self.control.setUp()
+        self.addCleanup(self.control.doCleanups)
+
+    def observe(self, record, output):
+        call = next(c for c in record['calls'] if c['kind'] == 'model_call')
+        process = call['process']
+        ledger, invalid = a.events(output / 'retrievals.jsonl')
+        self.assertFalse(invalid)
+        verified = {o['sequence'] for o in record.get('evidence_reads', {}).get('outcomes', [])
+                    if o['outcome'] == 'source_read_verified'}
+        response = record['original_outputs'][0] if record['original_outputs'] else None
+        return audit.completion_observation(process, output / call['stage'] / 'observed-context.json',
+                    ledger, verified, stage=call['stage'], response=response), process
+
+    def test_actual_complete_read_clock_is_visible_when_public_batch_omits_it(self):
+        record, output = self.control.run_control('complete', approach='direct')
+        observed, process = self.observe(record, output)
+        self.assertEqual(record['status'], 'captured')
+        self.assertEqual(process['exit_code'], 0)
+        self.assertEqual(len(observed['joined_read_timings']), 1)
+        read = observed['joined_read_timings'][0]
+        self.assertEqual((read['sequence'], read['source_id'], read['bytes']), (0, 'source-0001', 39))
+        self.assertGreaterEqual(read['service_seconds'], 0)
+        self.assertLess(read['ended_since_spawn_seconds'], process['duration_seconds'])
+        self.assertEqual(observed['turn_completed_count'], 1)
+        # This producer writes an original file but supplies no final Host message.
+        self.assertFalse(observed['response_matches_last_host_message'])
+        self.assertEqual(observed['joined_reads_without_usable_clock'], [])
+        legacy = audit.stage_timeline(process, output / 'prose/observed-context.json',
+                                      a.events(output / 'retrievals.jsonl')[0])
+        self.assertIsNone(legacy['last_nonempty_read_return_at'])
+
+    def test_exit_zero_missing_response_is_not_a_completed_explanation(self):
+        record, output = self.control.run_control('missing', approach='direct')
+        observed, process = self.observe(record, output)
+        self.assertEqual(process['exit_code'], 0)
+        self.assertEqual(record['status'], 'response_absent')
+        self.assertIsNone(record['generation_output'])
+        self.assertIsNone(observed['response'])
+        self.assertEqual(observed['turn_completed_count'], 0)
+        self.assertIsNone(observed['local_read_service_seconds'])
+
+    def test_actual_final_envelope_and_transport_error_remain_separate_observations(self):
+        from unittest.mock import patch
+        producer = self.control.executable
+        def public_final(mode):
+            path = producer(mode)
+            text = path.read_text().replace("print(json.dumps({'type':'turn.completed'",
+                "print(json.dumps({'type':'error','message':'Authored reconnect control'})); "
+                "print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':response.read_text()}})); "
+                "print(json.dumps({'type':'turn.completed'")
+            path.write_text(text)
+            return path
+        with patch.object(self.control, 'executable', side_effect=public_final):
+            record, output = self.control.run_control('complete', approach='direct')
+        observed, process = self.observe(record, output)
+        self.assertEqual(process['exit_code'], 0)
+        self.assertTrue(observed['response_matches_last_host_message'])
+        self.assertEqual(observed['turn_completed_count'], 1)
+        self.assertEqual(observed['public_errors'], [{'type': 'error', 'message': 'Authored reconnect control'}])
+        self.assertEqual(record['semantic_quality'], 'not_assessed')
+
+    def test_actual_timeout_retains_numeric_signal_descendant_cleanup_and_unknown_work(self):
+        record, output = self.control.run_control('stall_analysis')
+        observed, process = self.observe(record, output)
+        self.assertEqual(process['stop_cause'], 'timeout')
+        self.assertEqual(process['signal_number'], 15)
+        self.assertTrue(process['cleanup']['complete'])
+        self.assertTrue(process['streams_complete'])
+        self.assertIn(b'child_pid', Path(process['stdout']['path']).read_bytes())
+        self.assertIsNone(record['generation_output'])
+        self.assertEqual(observed['turn_completed_count'], 0)
+        self.assertEqual(observed['joined_read_timings'], [])
+        self.assertIn('provider_latency', observed['unavailable_measurements'])
+
+    def test_interrupted_host_observation_cannot_supply_joined_read_timing(self):
+        from unittest.mock import patch
+        producer = self.control.executable
+        def unfinished(mode):
+            path = producer(mode)
+            text = path.read_text().replace("'status':'completed'", "'status':'in_progress'")
+            text = text.replace('server.stdin.close(); server.wait()',
+                                'server.stdin.close(); server.wait(); time.sleep(20)')
+            path.write_text(text)
+            return path
+        with patch.object(self.control, 'executable', side_effect=unfinished):
+            record, output = self.control.run_control('complete', approach='direct')
+        observed, process = self.observe(record, output)
+        self.assertEqual(process['stop_cause'], 'timeout')
+        self.assertTrue(process['cleanup']['complete'])
+        self.assertEqual(record['evidence_reads']['unmatched_sequences'], [0])
+        self.assertEqual(record['evidence_reads']['verified_source_reads'], 0)
+        self.assertEqual(observed['joined_read_timings'], [])
+        self.assertIsNone(record['generation_output'])
+
+    def test_absent_or_foreign_clock_and_private_reasoning_are_not_reconstructed(self):
+        record, output = self.control.run_control('complete', approach='direct')
+        call = next(c for c in record['calls'] if c['kind'] == 'model_call')
+        context = output / 'prose/observed-context.json'
+        context.write_bytes(i.encoded([{'type': 'response_item', 'payload': {'type': 'reasoning',
+                                     'text': 'PRIVATE_CONTROL_MUST_NOT_APPEAR'}}]))
+        ledger = a.events(output / 'retrievals.jsonl')[0]
+        for change in ({}, {'stage': 'prose', 'started_monotonic': 0, 'ended_monotonic': 1},
+                       {'stage': 'prose', 'started_monotonic': float('inf'), 'ended_monotonic': float('inf')}):
+            mutated = copy.deepcopy(ledger)
+            mutated[0]['execution'] = change
+            observed = audit.completion_observation(call['process'], context, mutated, {0}, stage='prose')
+            self.assertEqual(observed['joined_reads_without_usable_clock'], [0])
+            self.assertEqual(observed['joined_read_timings'], [])
+            self.assertNotIn('PRIVATE_CONTROL', json.dumps(observed))
+
+
 class AssessmentDisplayTests(unittest.TestCase):
     def test_exact_display_inventory_and_body_have_no_source_authority(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -589,4 +707,13 @@ class ReviewAuditTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    import argparse
+    import sys
+    import execution_self_test
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--retain', type=Path)
+    args, remaining = parser.parse_known_args()
+    if args.retain:
+        execution_self_test.CONTROL_ARTIFACT_ROOT = args.retain.resolve()
+        execution_self_test.CONTROL_ARTIFACT_ROOT.mkdir(parents=True, mode=0o700, exist_ok=False)
+    unittest.main(argv=[sys.argv[0], *remaining])

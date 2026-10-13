@@ -297,6 +297,14 @@ explanation, Human qualification, semantic evaluation or V11 acceptance.
 
 ## Invocation capture and admission
 
+The [completion diagnosis](completion-diagnosis-report.md) characterizes retained
+Work B/tree-sitter watchdog failures separately from an earlier completed Work B.
+The public audit includes exact joined Source-server clocks, final-output and
+transport observations, and explicit unavailable timing; it assigns no silent
+interval to hidden processing. `execution_audit_self_test.py --retain <new-private-directory>`
+retains its six actual-process completion controls. No new model dispatch or
+completion fix follows from this diagnostic evidence.
+
 `invocations.capture` adds stdin, enforced combined stream byte bound and an
 isolated cwd/environment to the existing V11 Linux process-group cleanup primitive.
 Importing that primitive does not call V11, its Recorder or gate. Exact retained
