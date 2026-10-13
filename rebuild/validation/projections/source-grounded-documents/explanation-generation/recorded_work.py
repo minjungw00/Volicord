@@ -112,7 +112,7 @@ def recorded_work(spec, lane, input_gap):
         facts['basis'].append(tasks[0][1])
     body = ''
     if facts['problem']:
-        body += '<h3>Recorded Work problem</h3><pre class="work-problem">' + preview(facts['problem']) + '</pre>'
+        body += '<h3>Recorded Work problem</h3><pre class="work-problem" lang="">' + preview(facts['problem']) + '</pre>'
     else:
         body += '<p>Recorded Work problem unavailable in this frozen input.</p>'
     return body, facts
@@ -130,7 +130,7 @@ def direction_html(facts):
     body = '<section class="recorded-direction"><h3>Recorded direction</h3>'
     body += ('<p>Latest Work is superseded or abandoned; its historical action is not an applicable next step.</p>'
              if facts['direction_status'] == 'superseded' else
-             '<pre class="direction">' + preview(row['next_step']) + '</pre>' if row.get('next_step') else
+             '<pre class="direction" lang="">' + preview(row['next_step']) + '</pre>' if row.get('next_step') else
              '<p>No next meaningful action recorded in the latest Checkpoint.</p>')
     body += '<p>Quoted from the frozen same-Work Checkpoint; no new recommendation or user decision.</p>'
     body += '<p>Recorded Work state: ' + escaped(row.get('work_state', 'unavailable')) + '. '
@@ -150,7 +150,7 @@ def direction_html(facts):
             if source:
                 body += '<p>Recorded command exit: ' + escaped(source.get('exit_code'))
                 body += '; termination: ' + escaped(source.get('termination')) + '.</p>'
-            body += '<pre>' + preview(observation.get('outcome', 'Outcome unavailable')) + '</pre>'
+            body += '<pre lang="">' + preview(observation.get('outcome', 'Outcome unavailable')) + '</pre>'
         body += '</details>'
         failed = sum(f['observation'].get('verification_state') == 'failed' for f in observations)
         if failed:
@@ -168,7 +168,7 @@ def direction_html(facts):
         body += '<p>Checkpoint ' + escaped(checkpoint['id']) + '; revision ' + escaped(checkpoint['revision']) + '</p>'
         for field in ('state_change', 'next_step', 'known_limits'):
             if checkpoint.get(field):
-                body += '<p>' + escaped(field) + '</p><pre>' + preview(checkpoint[field]) + '</pre>'
+                body += '<p>' + escaped(field) + '</p><pre lang="">' + preview(checkpoint[field]) + '</pre>'
     body += '</details>'
     # Complete row bytes (including opaque encoded fields) remain recoverable.
     body += '<details><summary>Exact recorded direction and state basis</summary>'

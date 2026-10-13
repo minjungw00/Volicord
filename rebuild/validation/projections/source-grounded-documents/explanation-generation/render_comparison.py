@@ -33,10 +33,11 @@ def escaped(value):
 
 def card(attempt_path, label):
     from source_reading import (TRANSPORT_BYTES, comparison_html, download, output_anchor, preview,
-                                prose_html, public_receipt, selections_html)
+                                prose_html, public_receipt, selections_html, explanation_language)
     from recorded_work import direction_html, recorded_work
     attempt_path = Path(attempt_path)
     record = json.loads(attempt_path.read_bytes())
+    language = explanation_language(record)
     check_binding(record['input'])
     require(record['lane'] in {'product', 'archive_diagnostic'}, 'unknown input lane')
     spec = json.loads(Path(record['input']['path']).read_bytes())
@@ -100,6 +101,7 @@ def card(attempt_path, label):
     if not record['original_outputs']:
         parts.append('<p>No generated output. No code selected. Before/after comparison unavailable.</p>')
     witnesses = {'label': label, 'attempt': binding(attempt_path), 'outputs': [], 'semantic_quality': 'not_assessed',
+                 'output_language': language,
                  'recorded_work': work_facts,
                  'original_invocation': {'authority': 'immutable original attempt receipt',
                     'attempt': binding(attempt_path),
@@ -142,7 +144,7 @@ def card(attempt_path, label):
                         + status + '. Response/grounding unavailable: ' + escaped(error) + '</p>')
             view.append('<p>Unverified captured prose · diagnostic only.</p>')
             if isinstance(response, dict) and isinstance(response.get('prose'), str):
-                view.append('<pre class="prose">' + preview(response['prose']) + '</pre>')
+                view.append('<pre class="prose" lang="' + escaped(language['tag']) + '">' + preview(response['prose']) + '</pre>')
             view.append(invocation_notice)
         else:
             witness['prose_sha256'] = digest(response['prose'].encode())
@@ -178,7 +180,7 @@ def card(attempt_path, label):
             if record.get('output_contract'):
                 from reader_contract import primary_navigation_html
                 view.append(primary_navigation_html(response, validation, rows))
-            view.append(prose_html(response['prose'], rows))
+            view.append(prose_html(response['prose'], rows, language=language['tag']))
             view.append(reading_status)
             view.append(invocation_notice)
             view.append('<div id="' + direction_target + '">' + direction_html(work_facts) + '</div>')
@@ -194,7 +196,7 @@ def card(attempt_path, label):
                 from reader_contract import authority_html, primary_html
                 witness['reading'] = validation['reading']
                 if directed:
-                    authority, witness['claim_authority'] = authority_html(response, validation, rows)
+                    authority, witness['claim_authority'] = authority_html(response, validation, rows, language=language['tag'])
                     view.append('<details class="authority-details"><summary>Task and action claim meanings · original model classifications</summary>'
                                 + authority + '</details>')
                 primary_comparisons = []
@@ -205,8 +207,10 @@ def card(attempt_path, label):
                         site_html, site_witness = comparison_html(spec, site_rows, namespace='primary-' + str(site_number))
                         primary_comparisons.append(site_html)
                         witness['primary_comparisons'].append({'site': site, 'comparisons': site_witness})
-                view.append(primary_html(response, validation, rows, comparisons=primary_comparisons))
-            view.append('<p>Declared gaps: ' + preview('; '.join(response['gaps']) if response['gaps'] else 'none declared; not independently checked') + '</p>')
+                view.append(primary_html(response, validation, rows, comparisons=primary_comparisons, language=language['tag']))
+            view.append('<p>Declared gaps: ' + ('<span class="generated-gaps" lang="' + escaped(language['tag']) + '">'
+                        + preview('; '.join(response['gaps'])) + '</span>' if response['gaps'] else
+                        'none declared; not independently checked') + '</p>')
             view.append('<details><summary>Original run verification</summary><p>Run verification: '
                         + ('verified' if run_verified else 'not verified') +
                         '. Valid source bytes remain distinct from whole-run and semantic validity.</p></details>')
@@ -219,6 +223,9 @@ def card(attempt_path, label):
                 comparison = '<details class="all-comparisons"><summary>All selected file comparisons · diagnostic grouping</summary>' + comparison + '</details>'
             view.append(comparison)
             view.append(diagnostic)
+        if language['issues']:
+            view.append('<p class="language-gap">Explanation language unavailable: '
+                        + escaped('; '.join(language['issues'])) + '. Original wording retained.</p>')
         data = json.dumps(public_receipt(witness['derived_reading']), ensure_ascii=False,
                           sort_keys=True, separators=(',', ':')).encode()
         summary = {key: value for key, value in public_receipt(witness['derived_reading']).items()

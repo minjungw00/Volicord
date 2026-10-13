@@ -50,7 +50,13 @@ class ProblemReadingTests(unittest.TestCase):
             primary_sites=[{'selections': [0, 1], 'claims': [0], 'reason': 'Inspect the authored return statements.',
                             'extent_reason': 'The expression is enough; the unrelated helper is not a primary answer.'}])
         self.h.record['output_contract'] = 'work_directed_reader'
+        self.freeze_language('en')
         self.sync()
+
+    def freeze_language(self, language):
+        path = self.h.root / 'frozen-language.json'
+        path.write_bytes(i.encoded({'language': language}))
+        self.h.record.update(language=language, frozen_conditions=i.binding(path))
 
     def sync(self):
         self.h.response_path.write_bytes(i.encoded(self.response))
@@ -163,6 +169,7 @@ class ProblemReadingTests(unittest.TestCase):
                       {'index': 1, 'label': 'src/change.py · after · 2:5–2:13', 'text': 'return 2'}] if name == 'paired' else
                      [{'index': 0, 'label': 'src/change.py · after · 2:5–2:13', 'text': 'return 2'}] if name == 'missing-before' else [])
             plan.append({'name': name, 'display': str(display), 'codes': codes, 'noDiff': name != 'paired',
+                         'prose': self.response['prose'], 'language': 'en',
                          'diffs': ['--- src/change.py (before)\n+++ src/change.py (after)\n@@ -1,4 +1,4 @@\n def operation():\n-    return 1\n+    return 2\n \n def unrelated():\n'] if name == 'paired' else []})
             baseline_root = os.environ.get('EXPLANATION_READING_BASELINES')
             narrow_root = os.environ.get('EXPLANATION_NARROW_BASELINES')
@@ -191,6 +198,108 @@ class ProblemReadingTests(unittest.TestCase):
         self.assertEqual(witness['outputs'][0]['derived_reading']['status'], 'valid_binding')
         self.assertIn('primary-source', body)
         self.assertIn('User review: not_requested. User acceptance: not_requested', body)
+
+    def test_frozen_language_binding_does_not_guess_from_interface_or_sources(self):
+        original = self.h.response_path.read_bytes()
+        for tag in ['ko', 'en', 'fr-CA']:
+            self.freeze_language(tag)
+            _, witness, parser = self.h.present()
+            self.assertEqual(witness['output_language']['tag'], tag)
+            self.assertEqual(witness['output_language']['status'], 'frozen_contract')
+            self.assertEqual(parser.values['prose'], [self.response['prose']])
+            self.assertEqual(self.h.response_path.read_bytes(), original)
+        # Requested/declared metadata is not a body-realization verdict.
+        self.assertEqual(witness['output_language']['realization'], 'not_independently_assessed')
+        for case in ['absent', 'mismatch', 'missing-file', 'changed-bytes', 'invalid-tag']:
+            self.freeze_language('en')
+            if case == 'absent':
+                del self.h.record['frozen_conditions']
+            elif case == 'mismatch':
+                self.h.record['language'] = 'ko'
+            elif case == 'missing-file':
+                Path(self.h.record['frozen_conditions']['path']).unlink()
+            elif case == 'changed-bytes':
+                Path(self.h.record['frozen_conditions']['path']).write_bytes(b'changed')
+            else:
+                self.freeze_language('ko" onclick="bad')
+            body, witness, parser = self.h.present()
+            self.assertEqual(witness['output_language']['tag'], '')
+            self.assertEqual(witness['output_language']['status'], 'unavailable')
+            self.assertIn('Explanation language unavailable', body)
+            self.assertNotIn(str(self.h.root / 'frozen-language.json'), body)
+            self.assertEqual(witness['outputs'][0]['derived_reading']['status'], 'valid_binding')
+            self.assertEqual(parser.values['prose'], [self.response['prose']])
+        self.freeze_language('en')
+        # A changed mutable conditions file cannot replace the frozen contract.
+        mutable = self.h.root / 'mutable-conditions.json'; mutable.write_bytes(i.encoded({'language': 'ko'}))
+        self.h.record['conditions'] = i.binding(mutable)
+        self.assertEqual(self.h.present()[1]['output_language']['tag'], 'en')
+
+    def test_mixed_language_missing_output_and_historical_states_through_browser_feedback(self):
+        from derived_reading_self_test import DerivedReadingTests
+        scope = self.h.record['scope']
+        cp = {'id': 'independent-cp', 'revision': 1, 'recorded_at': 3, 'project_id': scope['project'],
+              'work_item_id': scope['work'], 'goal': 'Inspect the original return value.',
+              'next_step': 'Review the recorded change before extending it. 다음 행동은 별도 기록이다.',
+              'work_state': 'completed', 'user_review': 'not_requested', 'user_acceptance': 'not_requested'}
+        row = {'id': 'failure', 'project_id': scope['project'], 'checkpoint_id': cp['id'],
+               'source_id': 'missing-command-metadata', 'verification_state': 'failed', 'outcome': 'Authored historical failure.'}
+        rows = [('checkpoints', cp), ('checkpoint_source_relations',
+                {'id': 'relation', 'project_id': scope['project'], 'checkpoint_id': cp['id'], 'source_id': row['source_id']}),
+                ('checkpoint_verifications', row), ('checkpoint_verifications', dict(row, id='old-pass',
+                 verification_state='passed', outcome='Authored old Work test passed; this reader did not run it.'))]
+        harness = DerivedReadingTests('runTest'); harness.h = self.h; harness.canonical_rows(rows)
+        self.h.record['status'] = 'invalid_response'
+        english = self.response['prose']
+        korean = '이 작업의 문제는 이전 반환 값이었다. 변경 후에는 새 값을 반환한다. English identifiers remain quoted, and 검증 한계는 원래 기록 그대로다.'
+        historical = ['failed: Command Source unavailable', 'passed: Command Source unavailable',
+                      'Recorded failed verification observations: 1', 'User review: not_requested',
+                      'User acceptance: not_requested', cp['next_step'], 'latest Checkpoint relations',
+                      'this reading runs no commands', 'Checkpoint supporting Source unavailable']
+        codes = [{'index': 0, 'label': 'src/change.py · before · 2:5–2:13', 'text': 'return 1'},
+                 {'index': 1, 'label': 'src/change.py · after · 2:5–2:13', 'text': 'return 2'}]
+        diff = '--- src/change.py (before)\n+++ src/change.py (after)\n@@ -1,4 +1,4 @@\n def operation():\n-    return 1\n+    return 2\n \n def unrelated():\n'
+        plan = []
+        for name, tag, prose in [('english', 'en', english), ('mixed-korean', 'ko', korean)]:
+            self.freeze_language(tag)
+            self.response['prose'] = prose
+            self.response['claims'][0]['end'] = len(prose.encode())
+            self.response['gaps'] = ['Historical testing only.' if tag == 'en' else '새 테스트 실행 결과를 제공하지 않는다.']
+            self.response['primary_sites'][0].update(reason='Inspect the return.' if tag == 'en' else '반환 문장을 확인한다.',
+                extent_reason='Original span.' if tag == 'en' else '원래 코드 범위를 유지한다.')
+            self.sync()
+            display = render([self.h.attempt], self.h.root / name)
+            sample = {'name': name, 'display': str(display), 'prose': prose, 'language': tag,
+                      'codes': codes, 'diffs': [diff], 'historical': historical}
+            plan.append(sample)
+            feedback = record_feedback(display, 'Authored agent control.', self.h.root / (name + '-feedback.json'), reviewer_kind='agent')
+            value = json.loads(feedback.read_bytes())
+            self.assertEqual(value['H1'], 'pending')
+            self.assertEqual(value['feedback_state'], 'assessment_recorded')
+            self.assertEqual(value['original_outputs'], self.h.record['original_outputs'])
+            # Mutate real rendered bytes and rebind the display identity: feedback
+            # must still recompute output-to-display behavior and reject them.
+            before = display.read_bytes()
+            for suffix, old, new, failure in [('prose', prose.encode(), b'Unrelated authored explanation.', 'original prose differs'),
+                ('history', b'failed: Command Source unavailable', b'passed: Command Source unavailable', 'historical verification/state differs')]:
+                changed = display.parent / (suffix + '.html')
+                changed.write_bytes(before.replace(old, new, 1))
+                self.assertNotEqual(changed.read_bytes(), before)
+                plan.append(dict(sample, name=name + '-' + suffix,
+                                 display=str(changed), expectedFailure=failure))
+                integrity_path = display.parent / 'integrity.json'
+                saved = integrity_path.read_bytes(); integrity = json.loads(saved)
+                integrity['presentation'] = i.binding(changed); integrity_path.write_bytes(i.encoded(integrity))
+                with self.assertRaisesRegex(ValueError, 'displayed content changed'):
+                    record_feedback(changed, None, self.h.root / (name + '-' + suffix + '-rejected.json'))
+                integrity_path.write_bytes(saved)
+        original = self.h.response_path.read_bytes(); self.h.response_path.unlink()
+        missing = render([self.h.attempt], self.h.root / 'missing-output')
+        plan.append({'name': 'missing-output', 'display': str(missing), 'missingOutput': True, 'codes': [], 'diffs': [], 'noDiff': True})
+        feedback = record_feedback(missing, None, self.h.root / 'missing-feedback.json')
+        self.assertEqual(json.loads(feedback.read_bytes())['H1'], 'pending')
+        self.h.response_path.write_bytes(original)
+        self.browser(plan)
 
     @unittest.skipUnless(os.environ.get('EXPLANATION_RETAINED_WORK_B') and os.environ.get('EXPLANATION_RETAINED_CLICK'),
                          'explicit retained resource-permissive attempts required')
@@ -277,6 +386,9 @@ class ProblemReadingTests(unittest.TestCase):
             self.assertEqual(json.loads(feedback.read_bytes())['H1'], 'pending')
             baseline_root = os.environ.get('EXPLANATION_READING_BASELINES')
             sample = {'name': name, 'display': str(display), 'codes': codes, 'diffs': diffs, 'noDiff': name == 'click'}
+            sample.update(prose=response['prose'], language='ko')
+            self.assertEqual(witness['output_language']['tag'], 'ko')
+            self.assertEqual(witness['output_language']['basis'], record['frozen_conditions'])
             narrow_root = os.environ.get('EXPLANATION_NARROW_BASELINES')
             if narrow_root:
                 sample['narrowBaseline'] = str((Path(narrow_root) / (name + '-before/comparison.html')).resolve())

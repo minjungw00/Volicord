@@ -828,8 +828,9 @@ repaired execution receipt. `valid_binding` certifies structural bindings only;
 all readings remain diagnostic previews, never fresh Product completion, semantic
 correctness, review or acceptance. Historical `invalid_response` stays unchanged.
 
-The ordinary page starts with the recorded Work problem and original generated
-prose. Material invocation failures and current validation gaps stay visible;
+The ordinary page starts with compact code/direction navigation and original
+problem-first generated prose; original Work wording remains in its named disclosure.
+Material invocation failures and current validation gaps stay visible;
 raw statuses, transport and exact identities have named native disclosures.
 Missing output, malformed output, invalid current references and unavailable
 frozen dependencies are distinct states. Altered bound response/input receipts
@@ -1117,7 +1118,7 @@ agent findings and partial historical reviews cannot fill that gap.
 
 ### Problem-first experimental reading and visible primary sources
 
-The experimental comparison reader now places a compact source index in generator
+The experimental comparison reader places a compact source index in generator
 order and the unchanged original prose before recorded execution/history material.
 The latest recorded direction and verification scope have a visible shortcut and
 remain separately quoted after the explanation. Original Work wording and model
@@ -1142,7 +1143,7 @@ coordinates, genuine focused changes with unrelated edits kept diagnostic,
 invalid source/hash/state/range, missing before-state, Checkpoint Source gaps and
 output-bound pending feedback. The browser consumer checks the actual code's
 visibility and closed ancestors, not just a target element's rectangle. It checks
-1360×900 and 390/320px geometry, every primary link by mouse and Tab/Enter, exact
+1360×900, 390×900, 320×900 and 320×568 geometry, every primary link by mouse and Tab/Enter, exact
 selected text, visible focused diffs, absent fabricated diffs, native diagnostic
 disclosures and overflow. Existing renderer wrapping-sensitivity and remaining-hunk
 browser controls are preserved. Screen readers, Korean font fidelity, semantic
@@ -1195,3 +1196,53 @@ target. Screenshot inspection in this local browser showed missing Korean glyph
 fallback (boxes); Korean font fidelity was not validated. This environment limit
 is separate from verified original UTF-8 bytes and the observed layout/navigation
 results.
+
+### Narrow first screen and frozen explanation language
+
+At the `ea62eaae` baseline, actual retained Work B and Click prose started at
+740.53px and 711.97px in a 320×568 viewport; the independent authored control
+started at 607.41px. All three were below the first screen. The compact heading,
+notice and source index now retain ordinary problem-first prose within that
+viewport: Work B starts at 394.59px, Click at 366.84px and the authored control at
+266.34px in local Chromium 151.0.7922.34. At least 100px of reading space remains.
+The prose font size, text and bounds are unchanged. The detailed status line
+follows the prose; the direction shortcut and every generator-ordered primary
+link remain before it. Presentation-scope diagnostics follow the cards.
+
+`EXPLANATION_NARROW_BASELINES` optionally names untouched `work-b-before/`,
+`click-before/` and `authored-before/comparison.html` displays from that baseline.
+The browser checks reproduce their 320×568 failure separately from the earlier
+closed-source baseline. An independently inserted oversized prose margin must
+fail the actual first-screen assertion, then the restored candidate must pass.
+
+Generated prose, bound claims, primary-site reasons and declared gaps carry the
+language of the hash-verified frozen conditions belonging to that attempt.
+The attempt's language must agree with that contract. Missing, changed, invalid
+or contradictory contracts produce an explicit language gap and `lang=""`,
+without guessing English from the interface or changing Source/reading validity.
+The root and interface controls remain English. Code, diffs and original recorded
+problem/direction/outcome quotations use `lang=""`: their language is independent
+of the generation contract, including mixed-language source content. Derived
+language metadata is not a language-realization or semantic verdict.
+
+Independent English and mixed Korean/English fixtures traverse frozen input,
+original response, renderer, actual browser and feedback. They preserve failed
+original invocation versus valid current byte binding, historical failed/passed
+verification, unavailable Checkpoint command metadata, available code, recorded
+direction and pending review/acceptance/H1 separately. Existing Checkpoint-warning
+scope already distinguishes relation metadata from each independently verified
+code body, so its evidence semantics are unchanged. Old Work test success is
+never described as new testing by this reader. The original Work B generated
+gap about no new test success remains an unresolved semantic observation.
+
+Controls reject altered displayed prose or historical verification even after
+rebinding the display hash; missing output has no substitute prose or code;
+invalid Sources retain warnings and no primary target. Browser language controls
+reject incorrect generated language and accidental Source language inheritance.
+Feedback keeps its original output/display bindings and declared assessment kind;
+agent controls leave human H1 pending. Full diagnostic downloads, exact anchors,
+code coordinates, selections, generated response bytes and prior feedback remain
+unchanged. Local Korean-font screenshot inspection supplements these measurements;
+it establishes neither screen-reader support nor real human comprehension.
+Run the same focused commands above with explicit retained/browser paths; no
+aggregate, gate, V11 or external provider execution is part of this correction.

@@ -184,7 +184,7 @@ def primary_navigation_html(response, validation, rows):
     return body + '</ol></nav>'
 
 
-def primary_html(response, validation, rows, *, comparisons=()):
+def primary_html(response, validation, rows, *, comparisons=(), language=''):
     from source_reading import escaped, preview
     reading = validation['reading']
     if reading['status'] != 'valid_binding':
@@ -203,9 +203,9 @@ def primary_html(response, validation, rows, *, comparisons=()):
             continue
         body += '<li>' + ' / '.join('<a href="#' + row['anchor'] + '">' + escaped(row['label']) + '</a>'
                                    for row in selected)
-        body += '<p class="primary-reason">' + escaped(site['reason']) + '</p>'
+        body += '<p class="primary-reason" lang="' + escaped(language) + '">' + escaped(site['reason']) + '</p>'
         if 'extent_reason' in site:
-            body += '<p class="primary-extent">' + escaped(site['extent_reason']) + '</p>'
+            body += '<p class="primary-extent" lang="' + escaped(language) + '">' + escaped(site['extent_reason']) + '</p>'
             for row in selected:
                 location = row['location']
                 body += '<p>Exact selected region: line:column ' + ':'.join(map(str, location['start']))
@@ -218,7 +218,7 @@ def primary_html(response, validation, rows, *, comparisons=()):
         for index in site['claims']:
             claim = response['claims'][index]
             text = response['prose'].encode()[claim['start']:claim['end']].decode()
-            body += '<p>' + escaped(claim['kind']) + '</p><pre class="bound-claim">' + preview(text) + '</pre>'
+            body += '<p>' + escaped(claim['kind']) + '</p><pre class="bound-claim" lang="' + escaped(language) + '">' + preview(text) + '</pre>'
             body += '<p class="claim-sources" data-claim-index="' + str(index) + '">'
             links = []
             for source_index in claim['selections']:
@@ -233,7 +233,7 @@ def primary_html(response, validation, rows, *, comparisons=()):
     return body + '</ol></nav>'
 
 
-def authority_html(response, validation, rows):
+def authority_html(response, validation, rows, *, language=''):
     """Expose non-code claim meanings without rewriting or certifying model prose."""
     from source_reading import escaped, preview
     if validation['reading']['status'] != 'valid_binding':
@@ -252,7 +252,7 @@ def authority_html(response, validation, rows):
     for number, claim in claims:
         text = response['prose'].encode('utf-8')[claim['start']:claim['end']].decode('utf-8')
         body += '<div data-claim-index="' + str(number) + '"><p>'
-        body += labels[claim['kind']] + '; model classification</p><pre class="authority-claim">' + preview(text) + '</pre>'
+        body += labels[claim['kind']] + '; model classification</p><pre class="authority-claim" lang="' + escaped(language) + '">' + preview(text) + '</pre>'
         for index in claim['selections']:
             row = by_index.get(index)
             body += ('<a data-authority-selection="' + str(index) + '" href="#' + row['anchor'] + '">'

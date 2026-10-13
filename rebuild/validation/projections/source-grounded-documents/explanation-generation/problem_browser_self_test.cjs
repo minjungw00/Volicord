@@ -23,13 +23,50 @@ const inspect = e => {
           const open = () => page.goto(pathToFileURL(sample.display).href);
           const noOverflow = async () => requireFact(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${sample.name}: overflow at ${width}`);
           await open();
-          const prose = await page.locator('.prose').first().evaluate(inspect);
+          requireFact(await page.locator('.prose').count() === (sample.missingOutput ? 0 : 1), 'original prose availability differs');
+          const prose = sample.missingOutput ? null : await page.locator('.prose').first().evaluate(inspect);
+          const outputDisplay = async () => {
+            if (sample.prose !== undefined) requireFact((await page.locator('.prose').first().textContent()) === sample.prose, 'original prose differs');
+            if (sample.language !== undefined) {
+              requireFact(await page.locator('.prose').first().getAttribute('lang') === sample.language, 'output language mismatch');
+              requireFact(await page.locator('html').getAttribute('lang') === 'en', 'interface language mismatch');
+              for (const e of await page.locator('.primary-reason,.primary-extent,.bound-claim,.authority-claim,.generated-gaps').all()) {
+                requireFact(await e.getAttribute('lang') === sample.language, 'generated sidecar language mismatch');
+              }
+              for (const e of await page.locator('pre.code,pre.diff,pre.focused-diff,pre.full-diff,.direction,.work-problem').all()) {
+                requireFact(await e.getAttribute('lang') === '', 'Source text inherited prose/interface language');
+              }
+            }
+            if (sample.historical) {
+              const shown = await page.locator('.recorded-direction').textContent();
+              for (const expected of sample.historical) requireFact(shown.includes(expected), 'historical verification/state differs: ' + expected);
+              const status = await page.locator('.reading-status').textContent();
+              requireFact(status.includes('Original invocation: invalid_response') && status.includes('current byte binding: valid_binding')
+                          && status.includes('semantic assessment: not assessed'), 'execution/derived/assessment states merged');
+            }
+          };
+          await outputDisplay();
           const nav = page.locator('.primary-navigation a');
           const count = await nav.count();
           requireFact(count === sample.codes.length, `${sample.name}: primary navigation count/order`);
           requireFact(await page.locator('script,form,iframe').count() === 0, 'active content');
           requireFact(await page.locator('details[open]').count() === 0, 'diagnostics start closed');
+          if (sample.missingOutput) requireFact((await page.locator('article').textContent()).includes('Response availability: missing'), 'missing output substituted');
           await noOverflow();
+          if (sample.language !== undefined) {
+            await page.locator('.prose').first().evaluate(e => e.lang = 'wrong-language');
+            let rejected = false;
+            try { await outputDisplay(); } catch (error) { rejected = String(error).includes('output language mismatch'); }
+            requireFact(rejected, 'language negative control was not rejected');
+            await open(); await outputDisplay();
+            if (await page.locator('pre.code').count()) {
+              await page.locator('pre.code').first().evaluate(e => e.removeAttribute('lang'));
+              rejected = false;
+              try { await outputDisplay(); } catch (error) { rejected = String(error).includes('Source text inherited prose/interface language'); }
+              requireFact(rejected, 'mixed Source language negative control was not rejected');
+              await open(); await outputDisplay();
+            }
+          }
           const firstScreen = async () => {
             const shown = await page.locator('.prose').first().evaluate(inspect);
             requireFact(shown.visible && shown.closed === 0 && shown.top + 100 <= height,
@@ -93,8 +130,10 @@ const inspect = e => {
           if (sample.noDiff) requireFact(await page.locator('pre.diff,pre.full-diff,pre.focused-diff').count() === 0, 'invented no-change diff');
           // Diagnostics remain keyboard usable and do not overflow when expanded.
           const summary = page.locator('.reading-receipt > summary').first();
-          await summary.focus(); await page.keyboard.press('Enter');
-          requireFact(await summary.evaluate(e => e.parentElement.open), 'receipt disclosure did not open');
+          if (!sample.missingOutput) {
+            await summary.focus(); await page.keyboard.press('Enter');
+            requireFact(await summary.evaluate(e => e.parentElement.open), 'receipt disclosure did not open');
+          }
           await noOverflow();
           let baseline;
           if (height === 568 && sample.narrowBaseline) {
@@ -114,8 +153,12 @@ const inspect = e => {
             requireFact(oldCode.closed > 0 && !oldCode.visible, 'baseline failed to reproduce hidden code');
             baseline = {prose_top: oldProse.top, code_closed_ancestors: oldCode.closed, code_visible: oldCode.visible};
           }
-          report.observations.push({name: sample.name, width, height, prose_top: prose.top, primary_links: count,
+          requireFact(!sample.expectedFailure, 'negative display unexpectedly passed');
+          report.observations.push({name: sample.name, width, height, prose_top: prose && prose.top, primary_links: count,
                                     activations, visible_focused_changes: sample.diffs.length, no_overflow: true, baseline});
+        } catch (error) {
+          if (!sample.expectedFailure || !String(error).includes(sample.expectedFailure)) throw error;
+          report.observations.push({name: sample.name, width, height, rejected: true, reason: sample.expectedFailure});
         } finally { await page.close(); }
       }
     }

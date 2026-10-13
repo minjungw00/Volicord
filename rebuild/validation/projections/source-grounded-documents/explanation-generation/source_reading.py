@@ -22,6 +22,25 @@ def escaped(value):
     return html.escape(str(value), quote=True)
 
 
+def explanation_language(record):
+    """Frozen output contract only; neither Source language nor prose certification."""
+    basis = record.get('frozen_conditions')
+    try:
+        require(basis is not None, 'frozen output language contract unavailable')
+        check_binding(basis)
+        language = json.loads(Path(basis['path']).read_bytes())['language']
+        require(isinstance(language, str) and re.fullmatch(
+            r'[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*|[iIxX](?:-[A-Za-z0-9]{1,8})+', language),
+            'frozen output language tag unavailable')
+        require(record.get('language', language) == language, 'attempt language differs from frozen contract')
+        return {'tag': language, 'status': 'frozen_contract', 'basis': basis,
+                'realization': 'not_independently_assessed', 'issues': []}
+    except (ValueError, KeyError, TypeError, OSError) as error:
+        return {'tag': '', 'status': 'unavailable', 'basis': basis,
+                'realization': 'not_independently_assessed',
+                'issues': ['frozen output language contract unreadable' if isinstance(error, OSError) else str(error)]}
+
+
 def public_receipt(value):
     """Retain byte identities without disclosing private filesystem bindings."""
     if isinstance(value, dict):
@@ -38,7 +57,7 @@ def preview(text):
     if len(data) <= DISPLAY_BYTES:
         return escaped(text)
     prefix = data[:DISPLAY_BYTES].decode('utf-8', errors='ignore')
-    return escaped(prefix) + '\n[Display bound; exact complete bytes in diagnostic download]'
+    return escaped(prefix) + '\n<span lang="en">[Display bound; exact complete bytes in diagnostic download]</span>'
 
 
 def download(data, name, label):
@@ -152,7 +171,7 @@ def location_label(location, selection):
     return label
 
 
-def prose_html(prose, rows):
+def prose_html(prose, rows, *, language=''):
     # Only exact literal sidecar citations establish a navigational association.
     # The underlying text stays unedited; CSS supplies the human locator label.
     lookup = {}
@@ -170,14 +189,14 @@ def prose_html(prose, rows):
         if row is None:
             continue
         parts.append(escaped(text[cursor:match.start()]))
-        parts.append('<a class="citation" href="#' + row['anchor'] + '" aria-label="'
+        parts.append('<a class="citation" lang="en" href="#' + row['anchor'] + '" aria-label="'
                      + escaped(row['label']) + '" data-location="' + escaped(row['label']) + '">'
                      + '<span>' + escaped(match[0]) + '</span></a>')
         cursor = match.end()
     parts.append(escaped(text[cursor:]))
     if text != prose:
-        parts.append('\n[Verbatim excerpt at display bound; complete original prose in response download]')
-    return '<pre class="prose">' + ''.join(parts) + '</pre>'
+        parts.append('\n<span lang="en">[Verbatim excerpt at display bound; complete original prose in response download]</span>')
+    return '<pre class="prose" lang="' + escaped(language) + '">' + ''.join(parts) + '</pre>'
 
 
 def selections_html(spec, entries, validation, original, *, primary_indices=()):
@@ -224,7 +243,7 @@ def selections_html(spec, entries, validation, original, *, primary_indices=()):
         body = (('<section class="selection primary-source" id="' + target + '"><h5>' + escaped(label) + '</h5>')
                 if primary else '<details class="selection" id="' + target + '"><summary>' + escaped(label) + '</summary>')
         if location:
-            body += '<p>' + escaped(location['coordinate_basis']) + '</p><pre class="code">' + preview(location['text']) + '</pre>'
+            body += '<p>' + escaped(location['coordinate_basis']) + '</p><pre class="code" lang="">' + preview(location['text']) + '</pre>'
             body += download(location['bytes'], 'selection-' + str(number) + '.bin', 'Exact selected bytes')
             if location['callable']:
                 body += '<p>Enclosing declaration: ' + escaped(location['callable']) + '; relevance not assessed.</p>'
@@ -460,7 +479,7 @@ def comparison_html(spec, rows, *, compact=True, namespace='selected'):
                             'old_count': old_end - old_start, 'new_start': new_start,
                             'new_count': new_end - new_start, 'diff_sha256': digest(hunk.encode())})
                         chunk_views.append('<section class="change-hunk" id="' + hunk_id + '"><h5><a href="#'
-                            + hunk_id + '">Change hunk ' + str(number) + '</a></h5><pre class="diff">'
+                            + hunk_id + '">Change hunk ' + str(number) + '</a></h5><pre class="diff" lang="">'
                             + preview(hunk) + '</pre></section>')
                     view += '<nav aria-label="Derived change hunks">' + ' · '.join(
                         '<a href="#' + h['anchor'] + '">Hunk ' + str(n) + '</a>'
@@ -473,14 +492,14 @@ def comparison_html(spec, rows, *, compact=True, namespace='selected'):
                         view += '<p><a href="#' + target + '-remainder">Browse remaining change hunks</a></p>'
                 diff = diff_text(path, retained, old_lines, new_lines)
                 view += '<details><summary>Complete original selected-range comparison</summary>'
-                view += '<pre class="focused-diff">' + preview(diff) + '</pre>'
+                view += '<pre class="focused-diff" lang="">' + preview(diff) + '</pre>'
                 view += download(diff.encode(), 'source-comparison.diff', 'Complete focused source diff') + '</details>'
             full = list(matcher.get_grouped_opcodes(2))
             if full:
                 full_diff = diff_text(path, full, old_lines, new_lines)
                 view += '<details class="full-comparison"><summary>Complete verified whole-file comparison · includes unselected edits</summary>'
                 view += '<p>Diagnostic file comparison; unselected edits acquire no primary claim relevance.</p>'
-                view += '<pre class="full-diff">' + preview(full_diff) + '</pre>'
+                view += '<pre class="full-diff" lang="">' + preview(full_diff) + '</pre>'
                 view += download(full_diff.encode(), 'whole-file-comparison.diff', 'Complete verified whole-file diff') + '</details>'
             if witness['omitted_change_blocks']:
                 view += '<p>Unselected change blocks omitted from focus: ' + str(witness['omitted_change_blocks']) + '.</p>'
