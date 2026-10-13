@@ -170,13 +170,16 @@ def card(attempt_path, label):
                 if not run_verified:
                     selection['reference_status'] += '; run not verified'
             direction_target = output_anchor(spec['scope'], display_original) + '-direction'
-            view.append('<p class="reading-status">Original invocation: ' + escaped(record['status'])
+            reading_status = ('<p class="reading-status">Original invocation: ' + escaped(record['status'])
                         + ' · current byte binding: ' + status + ' · semantic assessment: not assessed. '
-                        '<a href="#' + direction_target + '">Recorded next action and verification scope</a></p>')
+                        '</p>')
+            view.append('<p class="reading-shortcuts"><a href="#' + direction_target
+                        + '">Recorded direction and verification</a></p>')
             if record.get('output_contract'):
                 from reader_contract import primary_navigation_html
                 view.append(primary_navigation_html(response, validation, rows))
             view.append(prose_html(response['prose'], rows))
+            view.append(reading_status)
             view.append(invocation_notice)
             view.append('<div id="' + direction_target + '">' + direction_html(work_facts) + '</div>')
             view.append(work_details)
@@ -268,12 +271,17 @@ def document(cards):
                 '.selection{border-left:3px solid #aaa;padding-left:1rem}pre.code,pre.diff{max-height:32rem;overflow:auto}'
                 '.primary-navigation ol{padding-left:1.5rem}.primary-navigation li{margin:.2rem 0}'
                 '@media(max-width:600px){body{margin:.75rem}article{padding:.75rem}pre{padding:.5rem}.selection{padding-left:.5rem}'
+                'h1{font-size:1.25rem;margin:.5rem 0}article{margin:.5rem 0}'
+                'article>h2,article>section>h3{font-size:1rem;margin:.4rem 0}'
+                '.presentation-notice,.reading-shortcuts{font-size:.875rem;margin:.5rem 0}'
+                '.primary-navigation{font-size:.875rem;line-height:1.3}.primary-navigation ol{margin:.5rem 0}'
                 '.primary-navigation .path-directory{display:none}}</style><h1>Explanation comparison</h1>'
-                '<p>Original generated explanation · diagnostic preview, not Product completion. This presentation supplies no semantic or human verdict.</p>'
+                '<p class="presentation-notice">Generated explanation · diagnostic preview, not Product completion. No semantic or human verdict.</p>'
+                + ''.join(cards) +
                 '<details class="presentation-basis"><summary>Presentation scope and original evidence</summary>'
                 '<p>Approach labels are withheld. Primary navigation preserves generator order; no ranking or semantic verdict is provided. '
                 'Original bytes remain in diagnostic downloads. Self-identifying wording and stage counts may reveal an approach.</p></details>'
-                + ''.join(cards) + '</html>')
+                + '</html>')
 
 
 def render(attempts, output):

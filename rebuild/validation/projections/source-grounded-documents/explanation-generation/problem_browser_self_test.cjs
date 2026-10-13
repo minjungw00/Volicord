@@ -17,8 +17,8 @@ const inspect = e => {
   const report = {browser: browser.version(), observations: [], screen_reader: 'unobserved', korean_fonts: 'unobserved'};
   try {
     for (const sample of JSON.parse(fs.readFileSync(process.argv[2]))) {
-      for (const width of [1360, 390, 320]) {
-        const page = await browser.newPage({viewport: {width, height: 900}});
+      for (const [width, height] of [[1360, 900], [390, 900], [320, 900], [320, 568]]) {
+        const page = await browser.newPage({viewport: {width, height}});
         try {
           const open = () => page.goto(pathToFileURL(sample.display).href);
           const noOverflow = async () => requireFact(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${sample.name}: overflow at ${width}`);
@@ -30,9 +30,23 @@ const inspect = e => {
           requireFact(await page.locator('script,form,iframe').count() === 0, 'active content');
           requireFact(await page.locator('details[open]').count() === 0, 'diagnostics start closed');
           await noOverflow();
-          if (width === 1360 && sample.codes.length) {
-            requireFact(prose.top + 60 < 900 && prose.closed === 0, `${sample.name}: substantive prose outside initial viewport`);
-            requireFact((await nav.last().boundingBox()).y < 900, `${sample.name}: primary path outside viewport`);
+          const firstScreen = async () => {
+            const shown = await page.locator('.prose').first().evaluate(inspect);
+            requireFact(shown.visible && shown.closed === 0 && shown.top + 100 <= height,
+                        `${sample.name}: substantive prose outside initial viewport`);
+            const direction = page.locator('.reading-shortcuts a').first();
+            requireFact((await direction.boundingBox()).y < height, 'recorded direction shortcut outside initial viewport');
+          };
+          if (sample.codes.length) {
+            await firstScreen();
+            if (width === 1360) requireFact((await nav.last().boundingBox()).y < height, `${sample.name}: primary path outside viewport`);
+            // An independently authored hierarchy regression must fail the same
+            // actual-page assertion, then the restored candidate must pass.
+            await page.locator('.prose').first().evaluate((e, h) => e.style.marginTop = (h + 100) + 'px', height);
+            let rejected = false;
+            try { await firstScreen(); } catch (error) { rejected = String(error).includes('substantive prose outside initial viewport'); }
+            requireFact(rejected, 'first-screen negative control was not rejected');
+            await open(); await firstScreen();
           }
           const activations = [];
           for (const mode of ['mouse', 'keyboard']) {
@@ -54,11 +68,20 @@ const inspect = e => {
               requireFact(await page.evaluate(h => location.hash === h, href), 'wrong fragment');
               const code = page.locator(`[id="${href.slice(1)}"] > pre.code`);
               const shown = await code.evaluate(inspect);
-              requireFact(shown.closed === 0 && shown.visible && shown.top < 900 && shown.bottom > 0, 'single activation left exact code hidden');
+              requireFact(shown.closed === 0 && shown.visible && shown.top < height && shown.bottom > 0, 'single activation left exact code hidden');
               requireFact(shown.text === expected.text.replace(/\r\n/g, '\n'), 'selected bytes changed in display');
               await noOverflow();
               activations.push({mode, selection: expected.index, exact_visible_code: true});
             }
+          }
+          await open();
+          if (sample.codes.length) {
+            const direction = page.locator('.reading-shortcuts a').first();
+            await direction.focus(); await page.keyboard.press('Enter');
+            const href = await direction.getAttribute('href');
+            const shown = await page.locator(`[id="${href.slice(1)}"]`).evaluate(inspect);
+            requireFact(shown.closed === 0 && shown.visible && shown.top < height && shown.bottom > 0,
+                        'recorded direction not accessible by one activation');
           }
           await open();
           const focused = page.locator('.primary-sites .change-hunk:visible pre.diff');
@@ -74,6 +97,12 @@ const inspect = e => {
           requireFact(await summary.evaluate(e => e.parentElement.open), 'receipt disclosure did not open');
           await noOverflow();
           let baseline;
+          if (height === 568 && sample.narrowBaseline) {
+            await page.goto(pathToFileURL(sample.narrowBaseline).href);
+            const old = await page.locator('.prose').first().evaluate(inspect);
+            requireFact(old.top > height, 'narrow baseline did not reproduce first-screen failure');
+            baseline = {prose_top: old.top, height, original_narrow_failure: true};
+          }
           if (width === 1360 && sample.baseline) {
             await page.goto(pathToFileURL(sample.baseline).href);
             const oldProse = await page.locator('.prose').first().evaluate(inspect);
@@ -85,7 +114,7 @@ const inspect = e => {
             requireFact(oldCode.closed > 0 && !oldCode.visible, 'baseline failed to reproduce hidden code');
             baseline = {prose_top: oldProse.top, code_closed_ancestors: oldCode.closed, code_visible: oldCode.visible};
           }
-          report.observations.push({name: sample.name, width, prose_top: prose.top, primary_links: count,
+          report.observations.push({name: sample.name, width, height, prose_top: prose.top, primary_links: count,
                                     activations, visible_focused_changes: sample.diffs.length, no_overflow: true, baseline});
         } finally { await page.close(); }
       }

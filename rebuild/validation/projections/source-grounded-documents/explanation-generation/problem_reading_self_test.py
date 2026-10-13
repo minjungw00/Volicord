@@ -165,6 +165,9 @@ class ProblemReadingTests(unittest.TestCase):
             plan.append({'name': name, 'display': str(display), 'codes': codes, 'noDiff': name != 'paired',
                          'diffs': ['--- src/change.py (before)\n+++ src/change.py (after)\n@@ -1,4 +1,4 @@\n def operation():\n-    return 1\n+    return 2\n \n def unrelated():\n'] if name == 'paired' else []})
             baseline_root = os.environ.get('EXPLANATION_READING_BASELINES')
+            narrow_root = os.environ.get('EXPLANATION_NARROW_BASELINES')
+            if name == 'paired' and narrow_root:
+                plan[-1]['narrowBaseline'] = str((Path(narrow_root) / 'authored-before/comparison.html').resolve())
             if name == 'paired' and baseline_root:
                 plan[-1]['baseline'] = str((Path(baseline_root) / 'authored-baseline/comparison.html').resolve())
             feedback = record_feedback(display, None, self.h.root / (name + '-feedback.json'))
@@ -274,6 +277,9 @@ class ProblemReadingTests(unittest.TestCase):
             self.assertEqual(json.loads(feedback.read_bytes())['H1'], 'pending')
             baseline_root = os.environ.get('EXPLANATION_READING_BASELINES')
             sample = {'name': name, 'display': str(display), 'codes': codes, 'diffs': diffs, 'noDiff': name == 'click'}
+            narrow_root = os.environ.get('EXPLANATION_NARROW_BASELINES')
+            if narrow_root:
+                sample['narrowBaseline'] = str((Path(narrow_root) / (name + '-before/comparison.html')).resolve())
             if baseline_root:
                 old = Path(baseline_root) / (name + '-baseline/comparison.html')
                 sample['baseline'] = str(old.resolve())
