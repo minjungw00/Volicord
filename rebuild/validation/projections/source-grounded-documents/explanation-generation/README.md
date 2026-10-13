@@ -207,6 +207,31 @@ permitted command and pinned repository inventory rather than a list of selected
 answer functions. Work A and other campaign slots are addressable with `--slot`;
 missing captures, canonical records or bytes fail or degrade that scope explicitly.
 
+Preparation additionally verifies every historical body it reads against the
+original `evidence-inventory.json` byte count and SHA-256 before normalization or
+reconstruction. This includes selected and earlier same-repository rollouts,
+tasks, canonical bundle, repository-state witness and later-preparation metadata.
+Selected capture session, cwd and baseline revision must match the campaign.
+All consumed artifact bindings and the inventory itself remain private frozen
+witnesses, rechecked before publication and on subsequent input verification.
+Missing/unlisted/changed evidence fails admission; a freshly computed body hash
+cannot replace its original retained inventory identity. This detects drift
+against the retained inventory, not malicious replacement of the entire archive
+and inventory together, or independent historical snapshot authenticity.
+
+`archive_self_test.py` uses an independent small Git repository, authored Work
+records and literal source changes through the actual campaign-slot preparation
+and opaque-ID reader. It checks foreign Work/session/repository, cutoff drift,
+capture/bundle/source-witness tampering, unavailable reconstructed state and
+Product-lane exclusion. Its fixtures contain no benchmark explanations, expected
+answer functions or model responses. Run this alongside the existing input,
+invocation, read-policy, execution, grounding and rendering controls:
+
+```sh
+rebuild/scripts/validate focused explanation-archive-preparation -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/archive_self_test.py -v
+```
+
 ```bash
 python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/archive.py \
   --archive /absolute/original-campaign --slot exact-work-slot \

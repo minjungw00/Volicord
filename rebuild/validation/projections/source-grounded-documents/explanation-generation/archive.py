@@ -164,20 +164,46 @@ def prepare(archive_root, slot, destination, producer_head):
     campaign = json.loads(campaign_path.read_bytes())
     work = campaign['works'][slot]
     journey = campaign['journeys'][work['journey_id']]
+    inventory_path = campaign_root / 'evidence-inventory.json'
+    require(inventory_path.is_file(), 'original historical inventory unavailable')
+    inventory_witness = binding(inventory_path)
+    inventory = json.loads(inventory_path.read_bytes())['artifacts']
+    verified_inputs = {}
+
+    def historical_bytes(path):
+        path = Path(path).resolve()
+        require(path.is_relative_to(campaign_root), 'historical artifact outside campaign')
+        name = str(path.relative_to(campaign_root))
+        expected = inventory.get(name)
+        require(isinstance(expected, dict), 'historical artifact absent from original inventory')
+        data = path.read_bytes()
+        require(len(data) == expected.get('bytes') and digest(data) == expected.get('sha256'),
+                'historical artifact changed since original inventory')
+        verified_inputs[path] = {'path': str(path), 'bytes': len(data), 'sha256': digest(data)}
+        return data
+
     repository = Path(journey['repository_path'])
     require(repository.is_relative_to(root), 'repository outside original archive')
     captures = []
     for phase in ('start', 'resume'):
         path = campaign_root / 'slots' / slot / 'evidence' / (phase + '.rollout.jsonl')
         if path.exists():
-            raw = path.read_bytes()
+            raw = historical_bytes(path)
             events = codex_events.capture_events(raw)
             captures.append((path, codex_events.parse_codex_capture(raw), events))
     require(captures, 'no original capture')
     expected_sessions = {v for k, v in work.items() if k in {'start_session_id', 'resume_session_id'} and v}
     require({c.session_id for _, c, _ in captures} == expected_sessions, 'wrong historical sessions')
+    require(all(c.cwd == repository and c.git_revision == journey['repository_revision']
+                for _, c, _ in captures), 'wrong historical repository/session binding')
     project, identity = work['project_id'], work['work_item_id']
     cut = max(e['timestamp'] for _, _, events in captures for e in events)
+    bundle_path = campaign_root / 'slots' / journey['work_slot_ids'][0] / 'context.bundle.json'
+    bundle = json.loads(historical_bytes(bundle_path))
+    state_path = campaign_root / 'journeys' / work['journey_id'] / 'evidence/repository-state.json'
+    state = json.loads(historical_bytes(state_path))
+    cutoff_micros = int(dt.datetime.fromisoformat(cut).timestamp() * 1_000_000)
+    selected = canonical_records(bundle, project, identity, cutoff_micros)
     destination.mkdir(parents=True, mode=0o700, exist_ok=False)
     source_root = destination / 'preparation'
     source_root.mkdir()
@@ -209,8 +235,9 @@ def prepare(archive_root, slot, destination, producer_head):
     archive_read = {'state': 'missing_capability', 'name': 'archive capture; historical body not retained by Product'}
     for phase, task in work['operator_task_artifacts'].items():
         path = campaign_root / task['path']
-        require(binding(path)['sha256'] == task['sha256'], 'historical task bytes changed')
-        add(path.read_bytes(), name=f'task/{phase}', role='task', producer=archive_read,
+        data = historical_bytes(path)
+        require(digest(data) == task['sha256'], 'historical task bytes changed')
+        add(data, name=f'task/{phase}', role='task', producer=archive_read,
             locator=str(path.relative_to(root)), observed_at=captures[0][2][0]['timestamp'],
             origin_witness=binding(path))
     for path, capture, events in captures:
@@ -266,10 +293,6 @@ def prepare(archive_root, slot, destination, producer_head):
                     locator=f'{path.relative_to(root)}#record={number}', observed_at=event['timestamp'],
                     origin_witness=witness)
 
-    bundle_path = campaign_root / 'slots' / journey['work_slot_ids'][0] / 'context.bundle.json'
-    bundle = json.loads(bundle_path.read_bytes())
-    cutoff_micros = int(dt.datetime.fromisoformat(cut).timestamp() * 1_000_000)
-    selected = canonical_records(bundle, project, identity, cutoff_micros)
     table_indices = {table['name']: index for index, table in enumerate(bundle['payload']['tables'])}
     for table, records in selected.items():
         for number, row in records:
@@ -294,7 +317,7 @@ def prepare(archive_root, slot, destination, producer_head):
         for phase in ('start', 'resume'):
             p = campaign_root / 'slots' / previous['work_slot_id'] / 'evidence' / (phase + '.rollout.jsonl')
             if p.exists():
-                events = codex_events.capture_events(p.read_bytes())
+                events = codex_events.capture_events(historical_bytes(p))
                 for number, call_id, patch in patch_literals(events):
                     if events[number - 1]['timestamp'] <= cut:
                         earlier.append((events[number - 1]['timestamp'], p, number, call_id, patch, previous))
@@ -320,8 +343,6 @@ def prepare(archive_root, slot, destination, producer_head):
                                  {'origin': binding(p), 'record': number, 'call_id': call_id,
                                   'patch_sha256': digest(patch.encode())}]}
 
-    state_path = campaign_root / 'journeys' / work['journey_id'] / 'evidence/repository-state.json'
-    state = json.loads(state_path.read_bytes())
     final_hashes = {row['path']: row.get('sha256') for row in state['tracked']}
     for name, data in sorted(files.items()):
         change = changes.get(name)
@@ -375,7 +396,7 @@ def prepare(archive_root, slot, destination, producer_head):
 
     preparations = []
     for p in (campaign_root / 'explanations').glob('*/preparation.json'):
-        prep = json.loads(p.read_bytes())
+        prep = json.loads(historical_bytes(p))
         if prep['subject'] == {'kind': 'work', 'identity': identity} and prep['project_id'] == project:
             preparations.append({'origin': binding(p), 'language': prep['language'],
                                  'observed_at': prep['observed_at'], 'fingerprint': prep['plan']['fingerprint'],
@@ -385,6 +406,9 @@ def prepare(archive_root, slot, destination, producer_head):
     omissions.append({'kind': 'replay_boundary', 'reason': 'Only literal Update File patches replayed. '
                       'Shell writes, formatting and unavailable original dirty bytes need independent corroboration. '
                       'Pinned context is not proof that every untouched file remained unchanged.'})
+    require(binding(inventory_path) == inventory_witness, 'historical inventory changed during preparation')
+    require(all(binding(path) == witness for path, witness in verified_inputs.items()),
+            'historical artifact changed during preparation')
     spec = {'format_version': 1, 'scope': {'project': project, 'work': identity, 'cutoff': cut},
             'contract': [binding(Path(__file__).with_name(name)) for name in
                          ('inputs.py', 'conditions.json', 'instructions.txt')],
@@ -395,7 +419,8 @@ def prepare(archive_root, slot, destination, producer_head):
             'entries': entries, 'investigation_inventory': investigation,
             'inventory_boundary': {'scope': 'all normalized commands, unnormalized execution cells in exact start/resume captures and all pinned tracked files',
                                    'raw_context_excluded': True, 'no_source_tour_selection': True,
-                                   'omissions': omissions}, 'archive_witnesses': [binding(campaign_path), binding(state_path), binding(bundle_path)]}
+                                   'omissions': omissions},
+            'archive_witnesses': [binding(campaign_path), inventory_witness, *verified_inputs.values()]}
     spec_path = destination / 'input-spec.json'
     spec_path.write_bytes(encoded(spec))
     return freeze(spec_path, destination / 'frozen', destination.parent)
