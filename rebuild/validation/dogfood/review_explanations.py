@@ -237,7 +237,8 @@ def validate(data):
         'review explanation completeness changed')
     o.review.require(set(value['before_observation']) == {'state', 'reason'}
         and value['before_observation']['state'] == value['before_state']
-        and value['before_state'] in {'current', 'unavailable', 'stale', 'corrupt', 'unsupported', 'unresolvable'},
+        and value['before_state'] in {'current', 'missing', 'deleted', 'withheld',
+            'unavailable', 'stale', 'corrupt', 'unsupported', 'unresolvable'},
         'invalid earlier explanation observation')
     locators = value['readback_subject_locators']
     pattern = (r'/decisions/[0-9]+' if context['subject']['kind'] == 'decision' else

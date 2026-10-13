@@ -174,7 +174,7 @@ fn rendered_context_preserves_absent_current_stale_regenerated_and_both_locales(
     f.operations.delete_explanations(f.project, subject)?;
     assert_eq!(
         state(&read(&f, ViewerLocale::English, view)?, &work.to_string()),
-        "unavailable"
+        "deleted"
     );
     let decision = f.decisions["project"];
     record(&f, ExplanationSubject::Decision(decision), "ko")?;

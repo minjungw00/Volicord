@@ -2725,6 +2725,9 @@ selection and explicit deletion versus missing generation. A real SQLite retaine
 reader forces post-canonical sanitation failure; MCP/Viewer must show Withheld with
 neither prose nor code, unchanged retention, and Deleted after explicit repair.
 These are local technical regressions, not simulated human feedback.
+CLI/MCP recorded-action controls and the source-independent review lifecycle
+collector preserve Missing, Deleted and Withheld before-states without flattening
+them to Unavailable; an unknown lifecycle state remains rejected.
 The browser additionally changes and removes the actual recorded file, then checks
 Work and Work-scoped Code withholding and distinct diagnostics in both locales;
 the original fixture bytes are restored in a finally block. Code reading preserves

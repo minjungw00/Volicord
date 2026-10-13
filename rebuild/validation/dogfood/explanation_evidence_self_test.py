@@ -162,6 +162,28 @@ def publish_fixture(root, *, kind='work', language='en', before_state='unavailab
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_review_preserves_missing_deleted_and_withheld_before_states(self):
+        import review_explanations as review
+        for kind in ('work', 'decision'):
+            for state in ('missing', 'deleted', 'withheld'):
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    c.write_json(c.inventory_path(root), {'kind': 'phase8_dogfood_evidence_inventory',
+                        'schema_version': 1, 'artifacts': {}})
+                    directory = publish_fixture(root, kind=kind, before_state=state)
+                    data, _ = review.project(root, directory / 'preparation.json',
+                        evidence_set_sha256='a' * 64)
+                    copied = review.validate(data)
+                    self.assertEqual(copied['before_state'], state)
+                    self.assertEqual(copied['after_state'], 'current')
+                    before = copied['stages']['before']['value']['value']
+                    row = before['selected_work'] if kind == 'work' else before['decisions'][0]
+                    self.assertEqual(row['answers']['explanation_state'], state)
+                    bad = copy.deepcopy(copied)
+                    bad['before_state'] = bad['before_observation']['state'] = 'invented'
+                    with self.assertRaisesRegex(ValueError, 'invalid earlier explanation observation'):
+                        review.validate(c.json_bytes(bad))
+
     def test_existing_consumer_accepts_question_context_and_scoped_history(self):
         for kind in ('work', 'decision'):
             p, response, _, _ = lifecycle(kind)

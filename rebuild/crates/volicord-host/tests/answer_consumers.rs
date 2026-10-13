@@ -129,7 +129,7 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
     let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
     let result=host.handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall","arguments":{"project_id":f.project.to_string(),"requested_language":"ko","fixed_locale":"ko"}}})).ok_or("MCP response")?;
     let selected = &result["result"]["structuredContent"]["selected_work"];
-    assert_eq!(selected["answers"]["explanation_state"], "unavailable");
+    assert_eq!(selected["answers"]["explanation_state"], "deleted");
     assert!(!selected["answers"].to_string().contains("감사 참고"));
     assert!(!selected["answers"].to_string().contains("Transport-only"));
     assert!(
@@ -254,7 +254,7 @@ fn recorded_action_is_readable_without_generated_interpretation(
         }
         Ok(())
     };
-    check("unavailable", expected, cp.id.to_string())?;
+    check("missing", expected, cp.id.to_string())?;
     let realize = |plan: &ExplanationPlan| ExplanationRealization {
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
@@ -348,7 +348,7 @@ fn recorded_action_is_readable_without_generated_interpretation(
     drop(store);
     check("stale", &next.next_step, next.id.to_string())?;
     f.operations.delete_explanations(f.project, subject)?;
-    check("unavailable", &next.next_step, next.id.to_string())?;
+    check("deleted", &next.next_step, next.id.to_string())?;
     let supporting_source = cp
         .source_basis
         .iter()
