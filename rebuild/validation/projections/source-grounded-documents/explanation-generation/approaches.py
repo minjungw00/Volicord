@@ -68,7 +68,8 @@ def context_audit(prompt_result, prompt_bytes, configured_prompt, calls):
     except (ValueError, TypeError):
         issues.append('configured_context_uninspectable')
     for call in calls:
-        if call.get('type') not in {'mcp_tool_call'} or call.get('server') != 'evidence':
+        if (call.get('type') != 'mcp_tool_call' or call.get('server') != 'evidence'
+                or call.get('tool') not in {'inventory', 'read'}):
             issues.append('non_scoped_tool_observed')
     return sorted(set(issues))
 
@@ -83,71 +84,137 @@ def events(path):
     return result, invalid
 
 
-def retrieval_audit(spec, lane, calls, retrievals):
+def expected_evidence_result(spec, lane, name, arguments, *, sequence=0, used=0, budgets=None):
+    """Reconstruct a result from the frozen Reader contract, never a ledger result."""
+    from inputs import Reader
+    require(name in {'inventory', 'read'}, 'unknown evidence tool')
+    require(isinstance(arguments, dict), 'tool arguments must be an object')
+    if budgets:
+        require(sequence < budgets['reads'], 'read budget exhausted')
+    if name == 'inventory':
+        require(set(arguments) <= {'offset', 'limit', 'path_contains', 'role'}, 'unexpected inventory arguments')
+        offset, limit = arguments.get('offset', 0), arguments.get('limit', 40)
+        require(type(offset) is int and offset >= 0 and type(limit) is int and 1 <= limit <= 80,
+                'invalid inventory range')
+        query, role = arguments.get('path_contains', ''), arguments.get('role')
+        require(isinstance(query, str) and (role is None or isinstance(role, str)), 'invalid inventory filter')
+        require(all(e['project'] == spec['scope']['project'] and e['work'] == spec['scope']['work']
+                    for e in spec['entries'] if lane == 'archive_diagnostic' or e['lane'] == 'product'),
+                'foreign source scope')
+        entries = generation_inventory(spec, lane)['entries']
+        entries = [e for e in entries if query in e['path'] and (role is None or e['role'] == role)]
+        result = {'entries': entries[offset:offset + limit], 'total': len(entries),
+                  'next_offset': offset + limit if offset + limit < len(entries) else None}
+        charged = len(encoded(result))
+        require(not budgets or used + charged <= budgets['read_bytes'], 'read budget exhausted')
+        return result, charged
+    require(set(arguments) <= {'id', 'offset', 'limit'}, 'unexpected read arguments')
+    require(isinstance(arguments.get('id'), str), 'read identity must be a string')
+    limit = arguments.get('limit', 2048)
+    fallback_bytes = used + (max(1, limit) if type(limit) is int else 2048)
+    reader = Reader(spec, lane, max_reads=budgets['reads'] if budgets else sequence + 1,
+                    max_bytes=budgets['read_bytes'] if budgets else fallback_bytes)
+    reader.reads, reader.bytes = sequence, used
+    entry = reader.entries.get(arguments['id'])
+    if entry:
+        require(entry['project'] == spec['scope']['project'] and entry['work'] == spec['scope']['work'],
+                'foreign source scope')
+    meta, data = reader.read(arguments['id'], arguments.get('offset', 0), arguments.get('limit', 2048))
+    return {'metadata': meta, 'text': data.decode('utf-8')}, len(data)
+
+
+def retrieval_audit(spec, lane, calls, retrievals, *, budgets=None):
     """Join actual completed host results to ledger rows and independently read bytes.
 
     Process success, inventory, an empty read and model prose are not source proof.
     This reports transport observations, never authorship or semantic quality.
     """
-    entries = {e['id']: e for e in spec['entries'] if lane == 'archive_diagnostic' or e['lane'] == 'product'}
     outcomes, matched, issues = [], set(), []
+    if any(type(r.get('sequence')) is not int or r['sequence'] != n for n, r in enumerate(retrievals)):
+        issues.append('ledger sequence order invalid')
+    reconstructed, used = [], 0
+    for number, row in enumerate(retrievals):
+        try:
+            result, charge = expected_evidence_result(spec, lane, row.get('name'), row.get('arguments'),
+                                                      sequence=number, used=used, budgets=budgets)
+            reconstructed.append((result, charge, None))
+            if row.get('status') == 'returned':
+                used += charge
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            reconstructed.append((None, None, error))
     for call in calls:
         if call.get('type') != 'mcp_tool_call' or call.get('server') != 'evidence':
             continue
         outcome = {'host_id': call.get('id'), 'tool': call.get('tool')}
         try:
+            require(call.get('tool') in {'inventory', 'read'}, 'unknown evidence tool')
+            require(call.get('status') in {'completed', 'failed'}, 'host call incomplete')
             if call.get('error'):
+                require(call['status'] == 'failed' and call.get('result') is None, 'invalid host error/result status')
                 message = call['error'].get('message', '')
                 outcome['outcome'] = 'host_denied' if 'requires approval' in message else 'host_call_failed'
                 outcomes.append(outcome)
                 continue
-            require(call.get('status') in {'completed', 'failed'}, 'host call incomplete')
             content = call['result']['content']
-            require(len(content) == 1 and content[0]['type'] == 'text', 'unexpected host tool result')
+            require(isinstance(content, list) and len(content) == 1
+                    and set(content[0]) == {'type', 'text'} and content[0]['type'] == 'text'
+                    and isinstance(content[0]['text'], str), 'unexpected host tool result')
             row = json.loads(content[0]['text'])
             sequence = row['sequence']
             require(type(sequence) is int and 0 <= sequence < len(retrievals), 'ledger sequence absent')
             require(sequence not in matched and retrievals[sequence] == row, 'host/ledger mismatch')
-            require(row['name'] == call['tool'] and row['arguments'] == call['arguments'], 'host arguments mismatch')
+            require(row['name'] == call['tool'] and json.dumps(row['arguments'], sort_keys=True, allow_nan=False)
+                        == json.dumps(call['arguments'], sort_keys=True, allow_nan=False), 'host arguments mismatch')
             # Codex reports isError Reader replies as terminal failed calls with
             # an exact result payload. Account that denial without letting a
             # failed host call attest a successful evidence return.
             require(call.get('status') != 'failed' or row['status'] == 'failed',
                     'host failure cannot attest returned evidence')
-            matched.add(sequence)
+            require(set(row) <= {'sequence', 'name', 'arguments', 'status', 'result', 'charged_bytes',
+                                  'outcome', 'error', 'execution', 'mcp_request_id', 'safety_ceiling'},
+                    'unexpected ledger schema')
+            require(type(row['charged_bytes']) is int and row['charged_bytes'] >= 0, 'invalid charged bytes')
+            require('isError' not in call['result'] or type(call['result']['isError']) is bool
+                    and call['result']['isError'] == (row['status'] == 'failed'), 'host error flag mismatch')
             outcome.update(sequence=sequence, outcome='reader_failed')
+            require(row['status'] in {'returned', 'failed'}, 'invalid ledger status')
+            expected, charge, failure = reconstructed[sequence]
             if row['status'] == 'failed':
-                require(row.get('outcome') in {None, 'policy_denied', 'source_unavailable', 'evidence_changed',
-                                               'budget_exhausted', 'invalid_utf8'}, 'invalid failed-read outcome')
+                require(row['charged_bytes'] == 0 and 'result' not in row and isinstance(row.get('error'), str),
+                        'invalid failed-read schema')
+                message = row['error']
+                expected_outcome = ('source_unavailable' if message == 'bytes unavailable' or isinstance(failure, OSError)
+                                    else 'evidence_changed' if message == 'changed bytes or stale preparation'
+                                    else 'budget_exhausted' if message in {'read budget exhausted', 'read time budget exhausted'}
+                                    else 'invalid_utf8' if isinstance(failure, UnicodeError) else 'policy_denied')
+                require(row.get('outcome', expected_outcome) == expected_outcome, 'invalid failed-read outcome')
+                if expected_outcome == 'budget_exhausted':
+                    # Original monotonic deadline may no longer be independently
+                    # available. Its denial is zero-byte evidence, never a read.
+                    require(message == 'read time budget exhausted' or budgets is None or
+                            failure is not None and str(failure) == message, 'unproven budget denial')
+                else:
+                    require(failure is not None and str(failure) == message, 'denial does not match Reader contract')
                 outcome['outcome'] = row.get('outcome', 'reader_failed')
             else:
-                require(row['status'] == 'returned', 'invalid ledger status')
-            if row['status'] == 'returned' and row['name'] == 'read':
-                meta, text = row['result']['metadata'], row['result']['text']
-                entry = entries[meta['id']]
-                require(entry['project'] == spec['scope']['project'] and entry['work'] == spec['scope']['work'], 'foreign source scope')
-                check_binding(entry['asset'])
-                start, length = meta['offset'], meta['bytes']
-                require(type(start) is int and type(length) is int and start >= 0 and length >= 0, 'invalid returned range')
-                require(meta['id'] == row['arguments']['id'] and start == row['arguments'].get('offset', 0)
-                        and length <= row['arguments'].get('limit', 2048), 'returned/requested range mismatch')
-                with Path(entry['asset']['path']).open('rb') as source:
-                    source.seek(start)
-                    data = source.read(length)
-                require(data == text.encode('utf-8') and len(data) == length
-                        and digest(data) == meta['sha256'] and row['charged_bytes'] == length, 'returned bytes mismatch')
-                require(meta['representation'] == entry['representation'], 'returned representation mismatch')
-                require(meta['role'] == 'untrusted_evidence'
-                        and meta['complete_asset'] == (start == 0 and length == entry['asset']['bytes']), 'returned metadata mismatch')
-                outcome.update(outcome='source_read_verified' if length else 'empty_read',
-                               source_id=meta['id'], offset=start, bytes=length, sha256=meta['sha256'])
-            elif row['status'] == 'returned':
-                outcome['outcome'] = 'inventory_returned'
+                require(failure is None, 'returned result violates Reader contract: ' + str(failure))
+                require('error' not in row and encoded(row['result']) == encoded(expected), 'returned result differs from frozen Reader contract')
+                require(row['charged_bytes'] == charge, 'returned charged bytes mismatch')
+                expected_outcome = ('source_returned' if row['name'] == 'read' and charge else
+                                    'empty_read' if row['name'] == 'read' else 'inventory_returned')
+                require(row.get('outcome', expected_outcome) == expected_outcome, 'invalid returned outcome')
+                if row['name'] == 'read':
+                    meta = expected['metadata']
+                    outcome.update(outcome='source_read_verified' if charge else 'empty_read',
+                                   source_id=meta['id'], offset=meta['offset'], bytes=charge, sha256=meta['sha256'])
+                else:
+                    outcome['outcome'] = 'inventory_returned'
+            matched.add(sequence)
         except (ValueError, KeyError, TypeError, OSError, AttributeError) as error:
             outcome.update(outcome='unverified', error=str(error))
             issues.append(str(error))
         outcomes.append(outcome)
-    unmatched = [r['sequence'] for r in retrievals if r['sequence'] not in matched]
+    unmatched = [r.get('sequence') for r in retrievals if r.get('sequence') not in matched]
     if unmatched:
         issues.append('ledger rows without matching host results')
     return {'outcomes': outcomes, 'verified_source_reads': sum(o['outcome'] == 'source_read_verified' for o in outcomes),
@@ -447,7 +514,7 @@ def _execute(record, spec, manifest, initial, output, executable, auth_path):
             (stage_root / 'host-tool-calls.json').write_bytes(encoded(tool_calls))
             all_tool_calls.extend(tool_calls)
             retrievals = [json.loads(line) for line in trace.read_bytes().splitlines()]
-            record['evidence_reads'] = retrieval_audit(spec, record['lane'], all_tool_calls, retrievals)
+            record['evidence_reads'] = retrieval_audit(spec, record['lane'], all_tool_calls, retrievals, budgets=record['budgets'])
             record['tokens'].extend(event.get('usage') for event in observed if event.get('type') == 'turn.completed')
             record.setdefault('exposure_issues', []).extend(context_audit(probe, Path(probe['stdout']['path']).read_bytes(), prompt, tool_calls))
             if invalid or not process['streams_complete']:

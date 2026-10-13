@@ -79,7 +79,7 @@ def card(attempt_path, label, *, presentation='diagnostic', editorial=None):
                 host_calls.append(item)
                 if item.get('status') == 'failed':
                     failed_tools.append(item.get('error'))
-    audit = (retrieval_audit(spec, record['lane'], host_calls, trace) if input_gap is None else
+    audit = (retrieval_audit(spec, record['lane'], host_calls, trace, budgets=record.get('budgets')) if input_gap is None else
              {'outcomes': [], 'issues': ['frozen input unavailable: ' + input_gap]})
     verified_sequences = {row['sequence'] for row in audit['outcomes']
                           if row['outcome'] == 'source_read_verified'}

@@ -98,7 +98,7 @@ class ReadPolicyTests(unittest.TestCase):
                       'tool': row['name'], 'arguments': row['arguments'], 'status': 'failed', 'error': None,
                       'result': {'content': [{'type': 'text', 'text': json.dumps(row)}]}}
                      for n, row in enumerate(rows)]
-            audit = a.retrieval_audit(surface.spec, 'archive_diagnostic', calls, rows)
+            audit = a.retrieval_audit(surface.spec, 'archive_diagnostic', calls, rows, budgets=surface.budgets)
             self.assertEqual(audit['issues'], [])
             self.assertEqual(audit['unmatched_sequences'], [])
             self.assertEqual(audit['verified_source_reads'], 0)
@@ -182,6 +182,97 @@ class ReadPolicyTests(unittest.TestCase):
                  'policy_denied', 'policy_denied', 'policy_denied', 'budget_exhausted'])
             wire = [json.loads(line) for line in protocol.read_bytes().splitlines()]
             self.assertTrue(any(r['request'] and r['request'].get('method') == 'notifications/initialized' for r in wire))
+            calls = [{'id': str(n), 'type': 'mcp_tool_call', 'server': 'evidence',
+                      'tool': row['name'], 'arguments': row['arguments'],
+                      'status': 'failed' if row['status'] == 'failed' else 'completed',
+                      'result': responses[n + 3]['result']} for n, row in enumerate(ledger)]
+            observed = a.retrieval_audit(i.verify(manifest), 'archive_diagnostic', calls, ledger,
+                                       budgets={'reads': 11, 'read_bytes': 4096})
+            self.assertEqual(observed['issues'], [])
+            self.assertEqual(observed['verified_source_reads'], 2)
+            self.assertEqual(observed['outcomes'][0]['outcome'], 'inventory_returned')
+            self.assertEqual(sum(r['charged_bytes'] for r in ledger[1:]), 19 + len(body))
+            self.assertEqual(ledger[0]['charged_bytes'], len(i.encoded(ledger[0]['result'])))
+
+    def test_inventory_pages_filters_lane_and_charge_have_authored_expectations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'source'; source.write_bytes(b'fixed bytes\n')
+            value = spec(source)
+            product = copy.deepcopy(value['entries'][0])
+            product.update(id='product-source', lane='product', path='src/product.py')
+            absent = copy.deepcopy(product)
+            absent.update(id='missing-before', path='src/before.py', representation='unavailable', origin=None,
+                          file_sha256=None, missing='not retained', attribution='explicit_before_patch')
+            value['entries'].extend([product, absent])
+            path = root / 'spec.json'; path.write_bytes(i.encoded(value))
+            manifest = i.freeze(path, root / 'frozen', root)
+            surface = Surface(manifest, 'product', {'reads': 8, 'read_bytes': 8192}, root / 'ledger')
+            rows = [surface.call('inventory', {'limit': 1}),
+                    surface.call('inventory', {'offset': 1, 'limit': 1}),
+                    surface.call('inventory', {'path_contains': 'product.py', 'role': 'source'}),
+                    surface.call('inventory', {'offset': 80}),
+                    surface.call('read', {'id': 'source-0001', 'limit': 1}),
+                    surface.call('read', {'id': 'missing-before', 'limit': 1})]
+            expected_entry = {'id': 'product-source', 'path': 'src/product.py', 'role': 'source', 'lane': 'product',
+                'producer': {'state': 'missing_capability', 'name': 'authored source fixture'},
+                'representation': 'full_file', 'extent': None, 'file_sha256': i.digest(b'fixed bytes\n'),
+                'chronology': {'state': 'known', 'observed_at': '2026-10-08T09:00:00+00:00'},
+                'before_state': 'unavailable', 'attribution': 'repository_context', 'missing': None}
+            self.assertEqual(rows[0]['result'], {'entries': [expected_entry], 'next_offset': 1, 'total': 2})
+            self.assertEqual(rows[0]['charged_bytes'], len(i.encoded({'entries': [expected_entry], 'next_offset': 1, 'total': 2})))
+            self.assertEqual(rows[1]['result']['entries'][0]['id'], 'missing-before')
+            self.assertEqual(rows[1]['result']['next_offset'], None)
+            self.assertEqual(rows[2]['result'], {'entries': [expected_entry], 'next_offset': None, 'total': 1})
+            self.assertEqual(rows[3]['result'], {'entries': [], 'next_offset': None, 'total': 2})
+            self.assertEqual([r['outcome'] for r in rows[4:]], ['policy_denied', 'source_unavailable'])
+            calls = [{'id': str(n), 'type': 'mcp_tool_call', 'server': 'evidence', 'tool': row['name'],
+                      'arguments': row['arguments'], 'status': 'failed' if row['status'] == 'failed' else 'completed',
+                      'result': {'content': [{'type': 'text', 'text': json.dumps(row)}],
+                                 'isError': row['status'] == 'failed'}} for n, row in enumerate(rows)]
+            observed = a.retrieval_audit(surface.spec, 'product', calls, rows, budgets=surface.budgets)
+            self.assertEqual(observed['issues'], [])
+            self.assertEqual(observed['verified_source_reads'], 0)
+            forged = copy.deepcopy(rows)
+            forged[0]['result']['entries'].append(value['entries'][0])
+            changed = copy.deepcopy(calls)
+            changed[0]['result']['content'][0]['text'] = json.dumps(forged[0])
+            self.assertTrue(a.retrieval_audit(surface.spec, 'product', changed, forged)['issues'])
+
+    def test_mutually_matching_forged_inventory_and_unknown_tools_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'source'; source.write_bytes(b'authored inventory body\n')
+            value = spec(source)
+            second = copy.deepcopy(value['entries'][0])
+            second.update(id='second-source', path='other.py')
+            value['entries'].append(second)
+            path = root / 'spec.json'; path.write_bytes(i.encoded(value))
+            manifest = i.freeze(path, root / 'frozen', root)
+            surface = Surface(manifest, 'archive_diagnostic', {'reads': 8, 'read_bytes': 8192}, root / 'ledger')
+            original = surface.call('inventory', {'limit': 1})
+            for mutation in ('unknown_tool', 'path', 'hash', 'role', 'id', 'entry', 'next_offset', 'total', 'charge',
+                             'extra_argument', 'bad_offset', 'disguised'):
+                with self.subTest(mutation=mutation):
+                    row = copy.deepcopy(original)
+                    if mutation == 'unknown_tool': row['name'] = 'unexpected_evidence_tool'
+                    if mutation in {'path', 'hash', 'role', 'id'}:
+                        key = 'file_sha256' if mutation == 'hash' else mutation
+                        row['result']['entries'][0][key] = 'forged'
+                    if mutation == 'entry': row['result']['entries'].append(copy.deepcopy(row['result']['entries'][0]))
+                    if mutation == 'next_offset': row['result']['next_offset'] = None
+                    if mutation == 'total': row['result']['total'] = 1
+                    if mutation == 'charge': row['charged_bytes'] = 0
+                    if mutation == 'extra_argument': row['arguments']['project'] = 'foreign'
+                    if mutation == 'bad_offset': row['arguments']['offset'] = True
+                    if mutation == 'disguised': row['result'] = {'metadata': {}, 'text': 'disguised read'}
+                    if mutation != 'charge': row['charged_bytes'] = len(i.encoded(row['result']))
+                    call = {'id': 'host', 'type': 'mcp_tool_call', 'server': 'evidence', 'tool': row['name'],
+                            'arguments': row['arguments'], 'status': 'completed',
+                            'result': {'content': [{'type': 'text', 'text': json.dumps(row)}]}}
+                    observed = a.retrieval_audit(surface.spec, 'archive_diagnostic', [call], [row])
+                    self.assertTrue(observed['issues'])
+                    self.assertNotIn('inventory_returned', [o['outcome'] for o in observed['outcomes']])
 
     def test_changed_evidence_empty_reads_and_invalid_scope(self):
         with tempfile.TemporaryDirectory() as directory:

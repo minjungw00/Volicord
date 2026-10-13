@@ -238,7 +238,7 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
         from reading_input import verify_reading_input
         spec = verify_reading_input(record['input']['path'])
         observed_audit = retrieval_audit(spec,
-                                        record.get('lane', 'archive_diagnostic'), host_calls, ledger)
+                                        record.get('lane', 'archive_diagnostic'), host_calls, ledger, budgets=record.get('budgets'))
         require(observed_audit == record['evidence_reads'], 'historical read audit mismatch')
         if review and record['status'] == 'review_captured':
             require(record.get('assessment_scope', 'full_display') == 'full_display',

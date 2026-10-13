@@ -269,7 +269,7 @@ class RenderTests(unittest.TestCase):
         body, _, parser = self.present()
         self.assertEqual(parser.values['prose'], [self.response['prose']])
         self.assertEqual(parser.values['code'], [rows[1]['result']['text']])
-        self.assertIn('returned bytes mismatch', body)
+        self.assertIn('returned result differs from frozen Reader contract', body)
         self.assertIn('span not retrieved', body)
 
     def test_missing_host_join_keeps_output_but_withholds_unobserved_code(self):

@@ -1319,3 +1319,13 @@ An explicit `assessment_scope: partial` cannot use `review_captured`; partial
 observations retain `review_incomplete_or_unverified` and no completion attestation.
 Historical producer verification uses the same original-Git-object check as the
 reading consumer, with no replacement of frozen Source or runtime artifact bytes.
+
+The scoped evidence audit accepts only `inventory` and `read`. Returned results
+are reconstructed from the frozen inventory and Reader, including literal filters,
+page order/count/continuation, exact requested bytes, metadata and charged bytes.
+Host completion, arguments, error flags, exact ledger correspondence and row schema
+are checked separately. Matching forged Host and ledger records confer no Source
+authority. Replayed byte accounting uses reconstructed charges when budgets are
+available. Original zero-byte denials remain distinct from Source returns; absent
+historical monotonic deadline evidence cannot certify read timing. Inventory bytes
+are transport metadata and never count as verified Source body reads.

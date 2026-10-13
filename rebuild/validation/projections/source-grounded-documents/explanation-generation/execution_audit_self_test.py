@@ -240,6 +240,37 @@ class ReviewAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'review target samples incomplete or duplicated'):
             self.run_audit()
 
+    def test_reader_inventory_through_host_ledger_and_full_review(self):
+        surface = Surface(self.manifest, 'archive_diagnostic', {'reads': 4, 'read_bytes': 8192},
+                          Path(self.record['retrievals']['path']))
+        inventory = surface.call('inventory', {})
+        source_row = json.loads(surface.trace.read_bytes().splitlines()[0])
+        original_stream = Path(self.process['stdout']['path']).read_bytes()
+        for mutation in ('normal', 'unknown_tool', 'path', 'charge'):
+            with self.subTest(mutation=mutation):
+                row = copy.deepcopy(inventory)
+                if mutation == 'unknown_tool': row['name'] = 'unexpected_evidence_tool'
+                if mutation == 'path':
+                    row['result']['entries'][0]['path'] = 'foreign.py'
+                    row['charged_bytes'] = len(i.encoded(row['result']))
+                if mutation == 'charge': row['charged_bytes'] = 0
+                host = dict(self.host, id='inventory', tool=row['name'], arguments=row['arguments'],
+                            result={'content': [{'type': 'text', 'text': json.dumps(row)}]})
+                surface.trace.write_bytes(b'\n'.join(json.dumps(r).encode() for r in (source_row, row)) + b'\n')
+                stream = Path(self.process['stdout']['path'])
+                stream.write_bytes((json.dumps({'type': 'item.completed', 'item': host}) + '\n').encode()
+                                   + original_stream)
+                self.process['stdout'] = i.binding(stream)
+                (stream.parent / 'result.json').write_bytes(i.encoded(self.process))
+                self.record['retrievals'] = i.binding(surface.trace)
+                self.record['evidence_reads'] = a.retrieval_audit(surface.spec, 'archive_diagnostic',
+                                                               [host, self.host], [source_row, row])
+                if mutation == 'normal':
+                    self.assertTrue(self.run_audit()['attempts'][-1]['review_completion_verified'])
+                else:
+                    with self.assertRaisesRegex(ValueError, 'incomplete review claimed completion'):
+                        self.run_audit()
+
     def test_rehashed_forged_display_is_rejected(self):
         presentation = Path(self.record['presentation']['path'])
         presentation.write_text(presentation.read_text().replace('Authored explanation', 'Forged explanation'))
