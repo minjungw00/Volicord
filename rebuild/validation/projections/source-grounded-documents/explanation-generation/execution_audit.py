@@ -9,6 +9,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import subprocess
+import tomllib
 
 from approaches import context_audit, events, retrieval_audit
 from grounding import validate_output
@@ -94,6 +95,82 @@ def stage_timeline(process, context_path, ledger):
                              'filtered/truncated tool output can omit other reads; batch timing includes host orchestration '
                              'and does not give per-read/provider timing; '
                              'wall timestamps must not be subtracted from monotonic durations'}
+
+
+def assessment_display(record):
+    """Only the bound review server's exact display extension qualifies."""
+    if not record.get('configuration') or not record.get('presentation'):
+        return None
+    check_binding(record['configuration'])
+    server = tomllib.loads(Path(record['configuration']['path']).read_text()).get('mcp_servers', {}).get('evidence', {})
+    tools = server.get('enabled_tools', [])
+    if not set(tools) & {'display_inventory', 'display_read'}:
+        return None
+    require(set(tools) == {'inventory', 'read', 'display_inventory', 'display_read'}
+            and len(tools) == 4, 'unsupported assessment display tools')
+    adapter = list({encoded(s): s for s in record.get('support', [])
+                    if Path(s['path']).name == 'display_transport.py'}.values())
+    require(len(adapter) == 1 and server.get('args', [])[:2] == ['-B', adapter[0]['path']],
+            'assessment display adapter unbound')
+    check_binding(adapter[0])
+    check_binding(record['presentation'])
+    return record['presentation']
+
+
+def display_index(data):
+    """Original experimental HTML index coordinates; no execution or Source authority."""
+    text = data.decode('utf-8')
+    offsets, cursor = [0], 0
+    for character in text:
+        cursor += len(character.encode())
+        offsets.append(cursor)
+    lines = [0] + [n + 1 for n, c in enumerate(text) if c == '\n']
+
+    class Index(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.stack, self.rows = [], []
+
+        def point(self):
+            line, column = self.getpos()
+            return lines[line - 1] + column
+
+        def handle_starttag(self, tag, attrs):
+            if tag in {'h1', 'h2', 'h3', 'p', 'pre', 'summary', 'blockquote', 'li', 'a'}:
+                self.stack.append((tag, self.point(), len(self.get_starttag_text()), dict(attrs)))
+
+        def handle_endtag(self, tag):
+            matches = [n for n, row in enumerate(self.stack) if row[0] == tag]
+            if matches:
+                _, start, size, attrs = self.stack.pop(matches[-1])
+                end = self.point()
+                self.rows.append({'tag': tag, 'start': offsets[start], 'end': offsets[end + len('</' + tag + '>')],
+                    'content_start': offsets[start + size], 'content_end': offsets[end],
+                    'id': attrs.get('id'), 'class': attrs.get('class'),
+                    'href': attrs.get('href') if not attrs.get('href', '').startswith('data:') else 'embedded-download',
+                    'preview': text[start + size:end][:160]})
+    parser = Index(); parser.feed(text); parser.close()
+    return [dict(row, ordinal=n) for n, row in enumerate(sorted(parser.rows, key=lambda r: r['start']))]
+
+
+def expected_display_result(display, name, arguments):
+    check_binding(display)
+    data = Path(display['path']).read_bytes()
+    require(isinstance(arguments, dict) and set(arguments) <= {'offset', 'limit'}, 'unexpected display arguments')
+    offset, limit = arguments.get('offset', 0), arguments.get('limit', 40 if name == 'display_inventory' else 2048)
+    require(type(offset) is int and offset >= 0 and type(limit) is int and limit > 0, 'invalid display range')
+    if name == 'display_inventory':
+        require(limit <= 80, 'invalid display range')
+        index = display_index(data)
+        result = {'display': display, 'elements': index[offset:offset + limit], 'total': len(index),
+                  'next_offset': offset + limit if offset + limit < len(index) else None,
+                  'boundary': 'Mechanical HTML element index only; preview is incomplete raw content. All raw display bytes available on display_read; no Source authority.'}
+        return result, len(encoded(result))
+    require('offset' in arguments, 'unexpected display arguments')
+    require(offset <= len(data), 'invalid display range')
+    selected = data[offset:offset + limit]
+    return {'display': display, 'offset': offset, 'bytes': len(selected), 'sha256': digest(selected),
+            'text': selected.decode('utf-8'), 'authority': 'untrusted generated display, not original Source'}, len(selected)
 
 
 class DisplayOriginals(HTMLParser):
@@ -237,9 +314,10 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
                     process, process_root.parent / 'observed-context.json', ledger)})
         from reading_input import verify_reading_input
         spec = verify_reading_input(record['input']['path'])
+        display = assessment_display(record) if review else None
         observed_audit = retrieval_audit(spec,
-                                        record.get('lane', 'archive_diagnostic'), host_calls, ledger, budgets=record.get('budgets'))
-        require(observed_audit == record['evidence_reads'], 'historical read audit mismatch')
+                                        record.get('lane', 'archive_diagnostic'), host_calls, ledger, budgets=record.get('budgets'), display=display)
+        historical_audit_matches = observed_audit == record['evidence_reads']
         if review and record['status'] == 'review_captured':
             require(record.get('assessment_scope', 'full_display') == 'full_display',
                     'partial assessment cannot certify full display')
@@ -256,7 +334,8 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
             # Recompute observed scope; a stored empty issue list is not proof.
             require(not pending_tools and not context_audit(record['context_probe'],
                     Path(record['context_probe']['stdout']['path']).read_bytes(),
-                    Path(record['review_input']['path']).read_text(), scope_calls),
+                    Path(record['review_input']['path']).read_text(), scope_calls,
+                    allowed_tools={'inventory', 'read', 'display_inventory', 'display_read'} if display else {'inventory', 'read'}),
                     'review context/scope unverified')
             check_binding(record['observed_context'])
             context = json.loads(Path(record['observed_context']['path']).read_bytes())
@@ -329,7 +408,7 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
                     'completed review references invalid')
         reports.append({'name': name, 'receipt': binding(receipt), 'identities': identities,
                         'status': record['status'], 'calls': calls, 'stages': stages,
-                        'evidence_reads': observed_audit, 'ledger_rows': len(ledger),
+                        'evidence_reads': observed_audit, 'historical_read_audit_matches': historical_audit_matches, 'ledger_rows': len(ledger),
                         'returned_bytes': sum(r['charged_bytes'] for r in ledger),
                         'tokens': record['tokens'], 'price': record['price'],
                         'original_outputs': record.get('original_outputs', []),

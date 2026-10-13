@@ -1320,7 +1320,7 @@ observations retain `review_incomplete_or_unverified` and no completion attestat
 Historical producer verification uses the same original-Git-object check as the
 reading consumer, with no replacement of frozen Source or runtime artifact bytes.
 
-The scoped evidence audit accepts only `inventory` and `read`. Returned results
+The generation evidence audit accepts only `inventory` and `read`. Returned results
 are reconstructed from the frozen inventory and Reader, including literal filters,
 page order/count/continuation, exact requested bytes, metadata and charged bytes.
 Host completion, arguments, error flags, exact ledger correspondence and row schema
@@ -1329,3 +1329,13 @@ authority. Replayed byte accounting uses reconstructed charges when budgets are
 available. Original zero-byte denials remain distinct from Source returns; absent
 historical monotonic deadline evidence cannot certify read timing. Inventory bytes
 are transport metadata and never count as verified Source body reads.
+
+A retained assessment may additionally use the explicitly configured, hash-bound
+`display_inventory`/`display_read` extension. The audit checks that exact server
+configuration and adapter binding, independently reconstructs the original HTML
+index and raw display ranges, and reports `display_returned`. These are generated
+display observations, never Source-body reads or inventory entries. Unknown names
+remain rejected. Historical `evidence_reads` are preserved; the new observation
+reports `historical_read_audit_matches` rather than requiring an obsolete derived
+classification to equal today's independently recomputed result. Full completion
+still requires no current audit issues and every original assessment prerequisite.

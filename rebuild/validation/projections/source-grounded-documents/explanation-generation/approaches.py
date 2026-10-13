@@ -49,7 +49,7 @@ def current_blockers(spec):
     return ['current_producer_and_disposable_runtime_execution_receipt_missing']
 
 
-def context_audit(prompt_result, prompt_bytes, configured_prompt, calls):
+def context_audit(prompt_result, prompt_bytes, configured_prompt, calls, *, allowed_tools=('inventory', 'read')):
     """Only scoped MCP calls qualify; opaque event gaps cannot certify isolation."""
     issues = []
     if prompt_result['outcome'] != 'succeeded' or not prompt_result['streams_complete']:
@@ -69,7 +69,7 @@ def context_audit(prompt_result, prompt_bytes, configured_prompt, calls):
         issues.append('configured_context_uninspectable')
     for call in calls:
         if (call.get('type') != 'mcp_tool_call' or call.get('server') != 'evidence'
-                or call.get('tool') not in {'inventory', 'read'}):
+                or call.get('tool') not in allowed_tools):
             issues.append('non_scoped_tool_observed')
     return sorted(set(issues))
 
@@ -84,13 +84,19 @@ def events(path):
     return result, invalid
 
 
-def expected_evidence_result(spec, lane, name, arguments, *, sequence=0, used=0, budgets=None):
+def expected_evidence_result(spec, lane, name, arguments, *, sequence=0, used=0, budgets=None, display=None):
     """Reconstruct a result from the frozen Reader contract, never a ledger result."""
     from inputs import Reader
-    require(name in {'inventory', 'read'}, 'unknown evidence tool')
+    require(name in ({'inventory', 'read', 'display_inventory', 'display_read'} if display else {'inventory', 'read'}),
+            'unknown evidence tool')
     require(isinstance(arguments, dict), 'tool arguments must be an object')
     if budgets:
         require(sequence < budgets['reads'], 'read budget exhausted')
+    if name in {'display_inventory', 'display_read'}:
+        from execution_audit import expected_display_result
+        result, charge = expected_display_result(display, name, arguments)
+        require(not budgets or used + charge <= budgets['read_bytes'], 'read budget exhausted')
+        return result, charge
     if name == 'inventory':
         require(set(arguments) <= {'offset', 'limit', 'path_contains', 'role'}, 'unexpected inventory arguments')
         offset, limit = arguments.get('offset', 0), arguments.get('limit', 40)
@@ -123,7 +129,7 @@ def expected_evidence_result(spec, lane, name, arguments, *, sequence=0, used=0,
     return {'metadata': meta, 'text': data.decode('utf-8')}, len(data)
 
 
-def retrieval_audit(spec, lane, calls, retrievals, *, budgets=None):
+def retrieval_audit(spec, lane, calls, retrievals, *, budgets=None, display=None):
     """Join actual completed host results to ledger rows and independently read bytes.
 
     Process success, inventory, an empty read and model prose are not source proof.
@@ -136,7 +142,7 @@ def retrieval_audit(spec, lane, calls, retrievals, *, budgets=None):
     for number, row in enumerate(retrievals):
         try:
             result, charge = expected_evidence_result(spec, lane, row.get('name'), row.get('arguments'),
-                                                      sequence=number, used=used, budgets=budgets)
+                                                      sequence=number, used=used, budgets=budgets, display=display)
             reconstructed.append((result, charge, None))
             if row.get('status') == 'returned':
                 used += charge
@@ -147,7 +153,8 @@ def retrieval_audit(spec, lane, calls, retrievals, *, budgets=None):
             continue
         outcome = {'host_id': call.get('id'), 'tool': call.get('tool')}
         try:
-            require(call.get('tool') in {'inventory', 'read'}, 'unknown evidence tool')
+            require(call.get('tool') in ({'inventory', 'read', 'display_inventory', 'display_read'} if display else {'inventory', 'read'}),
+                    'unknown evidence tool')
             require(call.get('status') in {'completed', 'failed'}, 'host call incomplete')
             if call.get('error'):
                 require(call['status'] == 'failed' and call.get('result') is None, 'invalid host error/result status')
@@ -186,7 +193,8 @@ def retrieval_audit(spec, lane, calls, retrievals, *, budgets=None):
                 expected_outcome = ('source_unavailable' if message == 'bytes unavailable' or isinstance(failure, OSError)
                                     else 'evidence_changed' if message == 'changed bytes or stale preparation'
                                     else 'budget_exhausted' if message in {'read budget exhausted', 'read time budget exhausted'}
-                                    else 'invalid_utf8' if isinstance(failure, UnicodeError) else 'policy_denied')
+                                    else 'invalid_utf8' if isinstance(failure, UnicodeError)
+                                    and not row['name'].startswith('display_') else 'policy_denied')
                 require(row.get('outcome', expected_outcome) == expected_outcome, 'invalid failed-read outcome')
                 if expected_outcome == 'budget_exhausted':
                     # Original monotonic deadline may no longer be independently
@@ -200,7 +208,8 @@ def retrieval_audit(spec, lane, calls, retrievals, *, budgets=None):
                 require(failure is None, 'returned result violates Reader contract: ' + str(failure))
                 require('error' not in row and encoded(row['result']) == encoded(expected), 'returned result differs from frozen Reader contract')
                 require(row['charged_bytes'] == charge, 'returned charged bytes mismatch')
-                expected_outcome = ('source_returned' if row['name'] == 'read' and charge else
+                expected_outcome = ('display_returned' if row['name'].startswith('display_') else
+                                    'source_returned' if row['name'] == 'read' and charge else
                                     'empty_read' if row['name'] == 'read' else 'inventory_returned')
                 require(row.get('outcome', expected_outcome) == expected_outcome, 'invalid returned outcome')
                 if row['name'] == 'read':
@@ -208,7 +217,7 @@ def retrieval_audit(spec, lane, calls, retrievals, *, budgets=None):
                     outcome.update(outcome='source_read_verified' if charge else 'empty_read',
                                    source_id=meta['id'], offset=meta['offset'], bytes=charge, sha256=meta['sha256'])
                 else:
-                    outcome['outcome'] = 'inventory_returned'
+                    outcome['outcome'] = 'display_returned' if row['name'].startswith('display_') else 'inventory_returned'
             matched.add(sequence)
         except (ValueError, KeyError, TypeError, OSError, AttributeError) as error:
             outcome.update(outcome='unverified', error=str(error))

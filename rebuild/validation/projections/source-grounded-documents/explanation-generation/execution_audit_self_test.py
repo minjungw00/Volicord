@@ -62,6 +62,46 @@ class PublicTimelineTests(unittest.TestCase):
         self.assertEqual(audit.sequences(text), [0])
 
 
+class AssessmentDisplayTests(unittest.TestCase):
+    def test_exact_display_inventory_and_body_have_no_source_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / 'comparison.html'; path.write_bytes('<p>한</p>\n'.encode())
+            display = i.binding(path)
+            index = [{'tag': 'p', 'start': 0, 'end': 10, 'content_start': 3, 'content_end': 6,
+                      'id': None, 'class': None, 'href': None, 'preview': '한', 'ordinal': 0}]
+            inventory = {'display': display, 'elements': index, 'next_offset': None, 'total': 1,
+                'boundary': 'Mechanical HTML element index only; preview is incomplete raw content. All raw display bytes available on display_read; no Source authority.'}
+            body = {'display': display, 'offset': 3, 'bytes': 3, 'sha256': i.digest('한'.encode()),
+                    'text': '한', 'authority': 'untrusted generated display, not original Source'}
+            rows = [{'sequence': n, 'name': name, 'arguments': args, 'status': 'returned',
+                     'outcome': 'display_returned', 'result': result, 'charged_bytes': charge}
+                    for n, (name, args, result, charge) in enumerate([
+                        ('display_inventory', {'limit': 1}, inventory, len(i.encoded(inventory))),
+                        ('display_read', {'offset': 3, 'limit': 3}, body, 3)])]
+            calls = [{'id': str(n), 'type': 'mcp_tool_call', 'server': 'evidence', 'tool': row['name'],
+                      'arguments': row['arguments'], 'status': 'completed',
+                      'result': {'content': [{'type': 'text', 'text': json.dumps(row)}]}}
+                     for n, row in enumerate(rows)]
+            observed = a.retrieval_audit({}, 'archive_diagnostic', calls, rows, display=display)
+            self.assertEqual(observed['issues'], [])
+            self.assertEqual(observed['verified_source_reads'], 0)
+            self.assertEqual([o['outcome'] for o in observed['outcomes']], ['display_returned'] * 2)
+            self.assertTrue(a.retrieval_audit({}, 'archive_diagnostic', calls, rows)['issues'])
+            for mutation in ('pagination', 'content', 'charge', 'identity', 'arguments'):
+                forged = copy.deepcopy(rows)
+                if mutation == 'pagination': forged[0]['result']['next_offset'] = 1
+                if mutation == 'content': forged[1]['result']['text'] = 'X'
+                if mutation == 'charge': forged[1]['charged_bytes'] = 1
+                if mutation == 'identity': forged[1]['result']['display']['sha256'] = '0' * 64
+                if mutation == 'arguments': forged[1]['arguments']['id'] = 'source-0001'
+                hosts = copy.deepcopy(calls)
+                for host, row in zip(hosts, forged):
+                    host['arguments'] = row['arguments']
+                    host['result']['content'][0]['text'] = json.dumps(row)
+                self.assertTrue(a.retrieval_audit({}, 'archive_diagnostic', hosts, forged, display=display)['issues'], mutation)
+
+
 class ReviewAuditTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
