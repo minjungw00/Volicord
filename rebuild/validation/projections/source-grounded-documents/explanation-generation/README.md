@@ -1159,6 +1159,13 @@ target input/Work/output, display and process bindings determine the checked ide
 directory names do not determine completion. The new audit is a derived observation
 and never rewrites original receipts, outputs, failures, selections or display hashes.
 
+Completion also requires exactly one target binding for every displayed sample and
+every original output, including intermediate notes. A subset or duplicated target
+cannot certify the whole display even when the declared generator session set
+matches. Original path, byte count and hash must all match. Independently authored
+positive, omitted-note, omitted-sample and duplicate controls exercise the actual
+complete-review consumer; these certify binding completeness, not semantic reading.
+
 This audit establishes transport, scope and identity only. It does not establish
 Source-first review order, complete semantic inspection, explanation correctness,
 prototype agreement or human H1. A fresh Source-first assessment needs separately

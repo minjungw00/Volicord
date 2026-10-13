@@ -151,6 +151,56 @@ class ReviewAuditTests(unittest.TestCase):
         reports = self.run_audit()['attempts']
         self.assertEqual([r['status'] for r in reports[-2:]], ['review_captured'] * 2)
 
+    def test_every_displayed_original_requires_exactly_one_target_binding(self):
+        # A staged note is an original too. Rehash all receipts so omission,
+        # rather than stale bytes, must prevent certification.
+        path = self.root / 'authored-note.json'
+        # Equal content still represents two separately captured originals.
+        path.write_bytes(i.encoded({'prose': 'Authored explanation'}))
+        attempt_path = self.root / 'work-b-direct/attempt.json'
+        attempt = json.loads(attempt_path.read_bytes())
+        attempt['original_outputs'].append(i.binding(path))
+        attempt_path.write_bytes(i.encoded(attempt))
+        integrity_path = Path(self.record['integrity']['path'])
+        integrity = json.loads(integrity_path.read_bytes())
+        sample = integrity['samples'][0]
+        sample['attempt'] = i.binding(attempt_path)
+        sample['outputs'].append({'original': i.binding(path),
+                                  'prose_sha256': i.digest(b'Authored explanation')})
+        integrity_path.write_bytes(i.encoded(integrity))
+        self.record['integrity'] = i.binding(integrity_path)
+        self.record['displayed_outputs'][0]['outputs'].append(i.binding(path))
+        self.assertTrue(self.run_audit()['attempts'][-1]['review_completion_verified'])
+        for mutation in ('omit_note', 'duplicate_note', 'duplicate_target'):
+            with self.subTest(mutation=mutation):
+                record = copy.deepcopy(self.record)
+                if mutation == 'omit_note': record['displayed_outputs'][0]['outputs'].pop()
+                if mutation == 'duplicate_note': record['displayed_outputs'][0]['outputs'].append(i.binding(path))
+                if mutation == 'duplicate_target': record['displayed_outputs'].append(copy.deepcopy(record['displayed_outputs'][0]))
+                with self.assertRaisesRegex(ValueError, 'review target .* incomplete or duplicated'):
+                    self.run_audit(record)
+        record = copy.deepcopy(self.record)
+        record['displayed_outputs'][0]['outputs'][1]['path'] = str(self.root / 'foreign-original.json')
+        with self.assertRaisesRegex(ValueError, 'review target originals incomplete or duplicated'):
+            self.run_audit(record)
+
+    def test_every_displayed_sample_requires_a_target_even_with_shared_generation_session(self):
+        # A second condition can share a generator. Session-set equality alone
+        # must not make a missing displayed sample a completed review.
+        integrity_path = Path(self.record['integrity']['path'])
+        integrity = json.loads(integrity_path.read_bytes())
+        sample = copy.deepcopy(integrity['samples'][0])
+        sample['label'] = 'Sample 02'
+        integrity['samples'].append(sample)
+        integrity_path.write_bytes(i.encoded(integrity))
+        self.record['integrity'] = i.binding(integrity_path)
+        record = copy.deepcopy(self.record)
+        record['displayed_outputs'].append({'label': 'Sample 02',
+                                            'outputs': copy.deepcopy(record['displayed_outputs'][0]['outputs'])})
+        self.assertTrue(self.run_audit(record)['attempts'][-1]['review_completion_verified'])
+        with self.assertRaisesRegex(ValueError, 'review target samples incomplete or duplicated'):
+            self.run_audit()
+
     def test_changed_original_review_cannot_keep_completed_identity(self):
         self.original.write_text('tampered reviewer output')
         with self.assertRaises(ValueError):

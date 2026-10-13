@@ -196,8 +196,12 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
             require(integrity['presentation'] == record['presentation'], 'review display identity changed')
             displayed = {s['label']: s for s in integrity['samples']}
             require(record.get('displayed_outputs'), 'review target outputs absent')
+            targets = record['displayed_outputs']
+            require(len(displayed) == len(integrity['samples']) == len(targets)
+                    and {t['label'] for t in targets} == set(displayed),
+                    'review target samples incomplete or duplicated')
             generator_sessions = set()
-            for target in record['displayed_outputs']:
+            for target in targets:
                 sample = displayed[target['label']]
                 check_binding(sample['attempt'])
                 attempt = json.loads(Path(sample['attempt']['path']).read_bytes())
@@ -214,13 +218,17 @@ def audit_cohort(root, repository, *, receipts=None, plan_path=None):
                                            if e.get('type') == 'thread.started')
                 require(target_sessions, 'generation session evidence absent')
                 generator_sessions.update(target_sessions)
-                originals = {o['original']['sha256']: o for o in sample['outputs']}
+                originals = {o['original']['path']: o for o in sample['outputs']}
                 require(target['outputs'], 'review target outputs absent')
+                require(len(originals) == len(sample['outputs']) == len(target['outputs'])
+                        and {o['path'] for o in target['outputs']} == set(originals),
+                        'review target originals incomplete or duplicated')
                 for claimed in target['outputs']:
-                    original = originals[claimed['sha256']]
+                    original = originals[claimed['path']]
                     check_binding(original['original'])
                     require(original['original'] in attempt['original_outputs']
-                            and claimed['bytes'] == original['original']['bytes'], 'review target output changed')
+                            and all(claimed[k] == original['original'][k]
+                                    for k in ('path', 'bytes', 'sha256')), 'review target output changed')
                     if 'prose_sha256' in claimed:
                         body = json.loads(Path(original['original']['path']).read_bytes())
                         require(claimed['prose_sha256'] == original['prose_sha256']
