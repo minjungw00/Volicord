@@ -133,6 +133,31 @@ statement to its own exact selections rather than implying all paired sources
 support every statement. Corrected reading is a new derived consumer artifact,
 not a rewritten historical receipt or a new generation attempt.
 
+## Cross-domain consumer controls
+
+`cross_domain_self_test.py` supplies independently authored C, TypeScript and
+test/command evidence to the actual opaque-ID reader, grounding validator and
+script-free reading HTML consumer. It checks exact UTF-8/CRLF ranges, separate
+language-boundary sites, unchanged cleanup inside a verified changed file, and
+test definitions alongside earlier failed and later passed command observations.
+Foreign Work, post-cutoff chronology, unsupported before-state, forged ranges,
+unretrieved observations and missing Host/ledger joins cannot supply valid reading
+bindings. Complete original responses and their typed claims remain unchanged.
+
+These are authored transport controls, not measured generation or proof that a
+test ran. Test definitions, invocations, observed outcomes and inferred effects
+retain separate evidence. Static C/TypeScript expressions establish no runtime
+trace; the optional callable label producer remains Python-only. Exact whole-file
+coordinates remain available without that label, and excerpt coordinates stay
+limited. Semantic adequacy, comprehension, Product feasibility and unseen-case
+qualification require their own evidence. No case-specific generation route or
+answer location is introduced.
+
+```bash
+rebuild/scripts/validate focused cross-domain-consumer-regressions -- \
+  python3 -B rebuild/validation/projections/source-grounded-documents/explanation-generation/cross_domain_self_test.py -v
+```
+
 ## Frozen input contract
 
 `inputs.freeze` verifies an explicit versioned input spec and publishes an
