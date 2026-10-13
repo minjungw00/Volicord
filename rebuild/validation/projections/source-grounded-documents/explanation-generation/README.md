@@ -1358,3 +1358,29 @@ Work C retains its wrong-state rejection. All three original outcomes stay
 `EXPLANATION_RETAINED_SOURCE_INSPECTIONS` pointing to the retained `reviews/`
 directory and `approach_self_test.py RetainedCitationDiagnosticsTests -v` through
 `validate focused`. These are additional diagnostics, not historical review repair.
+
+`verified_references.py` supplies an optional in-memory experiment adapter for new
+responses. The caller selects an exact permitted Source ID and byte range after
+reading; the adapter rechecks the frozen observation, Host/ledger join and original
+assets, then derives only state, exact range hash and identity. Issued handles are
+bound to that observation and adapter instance and resolve to the existing sidecar
+shape. There is no new tool, Source authorization, persisted evidence database,
+Product schema or automatic historical-reference rewrite. Relevance, prose, claim
+kind and primary-site selection remain caller choices. Byte-valid references still
+leave semantic quality unassessed; authority-role/revision checks remain mandatory.
+Ambiguous chronology cannot receive a handle, and unavailable, withheld, changed,
+deleted, foreign-lane or unread bytes cannot be supplied by it.
+
+`reference_reading_self_test.py` exercises a real local stdio Reader through authored
+Host envelopes, ledger audit, partial-range handles, existing sidecars, rendering
+and feedback. The independent oracle is authored original body bytes, not adapter
+output. The representative control reproduces wrong chronological state plus a
+whole-read hash incorrectly copied onto a subrange, then derives correct metadata
+for the same caller-selected Source/range. Equal bytes from a different Source
+retain distinct handles/state. Forged results, stale handles, denied/unavailable
+reads, missing chronology and unsupported user-choice authority remain rejected.
+A false sentence attached to a valid handle stays semantically unassessed. This
+establishes a reduced metadata-authoring failure surface for this experiment, not
+model quality, semantic truth, provenance of an unsupported claim or a permanent
+Explanation format. Run this focused self-test directly; it also participates in
+the existing `*reading_self_test.py` discovery.

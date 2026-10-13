@@ -4,6 +4,12 @@ from pathlib import Path
 import datetime as dt
 
 
+def source_state(entry):
+    """Frozen attribution, never a model-selected chronological interpretation."""
+    return ('before' if entry['attribution'] == 'explicit_before_patch' else
+            'after' if entry['attribution'] == 'explicit_work_patch' else 'context')
+
+
 def diagnose_selection(selection, spec, entries, retrievals):
     issues, checks, values = [], {}, {}
 
@@ -31,8 +37,7 @@ def diagnose_selection(selection, spec, entries, retrievals):
 
     def state():
         require(selection['state'] in {'before', 'after', 'context'}, 'unknown source state')
-        actual = ('before' if entry()['attribution'] == 'explicit_before_patch' else
-                  'after' if entry()['attribution'] == 'explicit_work_patch' else 'context')
+        actual = source_state(entry())
         require(selection['state'] == actual, 'wrong-state span')
     check('state', state, ('identity',))
 
