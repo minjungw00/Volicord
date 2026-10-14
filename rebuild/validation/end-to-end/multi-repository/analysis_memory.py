@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import subprocess
@@ -22,8 +23,20 @@ sys.path.insert(0, str(HERE))
 
 import harness as v11  # noqa: E402
 
+SETUP_OUTPUT: Path | None = None
+SETUP_ORDINAL = 0
+
+
+def file_digest(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
 
 def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> str:
+    started = time.monotonic_ns()
     completed = subprocess.run(
         argv,
         cwd=cwd,
@@ -33,6 +46,17 @@ def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> str:
         text=True,
         check=False,
     )
+    global SETUP_ORDINAL
+    if SETUP_OUTPUT is not None:
+        SETUP_ORDINAL += 1
+        receipt = SETUP_OUTPUT / f"{SETUP_ORDINAL:03d}"
+        receipt.mkdir(parents=True)
+        (receipt / "stdout.log").write_text(completed.stdout, encoding="utf-8")
+        (receipt / "stderr.log").write_text(completed.stderr, encoding="utf-8")
+        (receipt / "result.json").write_text(json.dumps({
+            "argv": argv, "cwd": str(cwd), "exit_code": completed.returncode,
+            "duration_ms": round((time.monotonic_ns() - started) / 1_000_000, 3),
+        }, indent=2) + "\n", encoding="utf-8")
     if completed.returncode != 0:
         raise RuntimeError(
             f"focused Analysis memory setup failed with exit {completed.returncode}"
@@ -118,6 +142,8 @@ def workload(output: Path, repository_revision: str | None) -> dict:
     if not output.is_relative_to(LOCAL_ROOT):
         raise ValueError("diagnostic output must remain under rebuild/.local/analysis-memory")
     output.mkdir(parents=True, exist_ok=False)
+    global SETUP_OUTPUT, SETUP_ORDINAL
+    SETUP_OUTPUT, SETUP_ORDINAL = output / "setup", 0
     repository = output / "repository"
     prefix = output / "prefix"
     runtime = output / "runtime"
@@ -132,6 +158,17 @@ def workload(output: Path, repository_revision: str | None) -> dict:
         "VOLICORD_RUNTIME_DIR": str(runtime),
         "PYTHONDONTWRITEBYTECODE": "1",
     })
+    build_basis = {
+        "head": run(["git", "rev-parse", "HEAD"], cwd=ROOT, env=env).strip(),
+        "worktree_status": run(["git", "status", "--porcelain"], cwd=ROOT, env=env),
+        "tracked_diff_sha256": hashlib.sha256(run(
+            ["git", "diff", "HEAD", "--binary"], cwd=ROOT, env=env
+        ).encode()).hexdigest(),
+        "profile": "release",
+        "cargo_lock_sha256": file_digest(ROOT / "rebuild/Cargo.lock"),
+        "rustc": run(["rustc", "--version"], cwd=ROOT, env=env).strip(),
+        "cargo": run(["cargo", "--version"], cwd=ROOT, env=env).strip(),
+    }
     run(
         ["git", "clone", "--local", "--no-hardlinks", str(ROOT), str(repository)],
         cwd=ROOT,
@@ -159,6 +196,12 @@ def workload(output: Path, repository_revision: str | None) -> dict:
     )
     cli = prefix / "bin/volicord"
     mcp = prefix / "bin/volicord-mcp"
+    build_basis["executables_sha256"] = {
+        "volicord": file_digest(cli), "volicord-mcp": file_digest(mcp),
+    }
+    (output / "build.json").write_text(
+        json.dumps(build_basis, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     initialized = cli_json(cli, repository, env, "init", "Analysis memory diagnostic")
     project_id = initialized.get("project_id")
     if not isinstance(project_id, str):
@@ -286,6 +329,15 @@ def workload(output: Path, repository_revision: str | None) -> dict:
         host.tool("project_health", {"project_id": project_id})
     finally:
         cleanup = host.close()
+        (output / "mcp-stderr.log").write_text(cleanup["stderr"], encoding="utf-8")
+        (output / "process.json").write_text(json.dumps({
+            key: value for key, value in cleanup.items() if key not in {"stdout", "stderr"}
+        }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        # Partial/failed calls remain inspectable even when a prerequisite raises.
+        (output / "memory-calls.json").write_text(
+            json.dumps(collector.diagnostics(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     if cleanup.get("exit_code") != 0:
         raise RuntimeError("focused MCP process did not exit cleanly")
 
@@ -304,8 +356,20 @@ def workload(output: Path, repository_revision: str | None) -> dict:
     if len(materiality_calls) != 1:
         raise RuntimeError("focused workload did not observe exactly one Materiality Review")
     summary = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "passed",
+        "build": build_basis,
+        "environment": {
+            "platform": platform.platform(), "python": platform.python_version(),
+            "cpu_count": os.cpu_count(), "page_size_bytes": os.sysconf("SC_PAGE_SIZE"),
+            "filesystem_device": output.stat().st_dev,
+            "filesystem_block_bytes": os.statvfs(output).f_frsize,
+        },
+        "limits": v11.performance_module.maintained_limits(),
+        "measurement_scope": "focused MCP lifetime; excludes clone/build/CLI setup",
+        "sampling_error_count": collector.snapshot_errors + sum(
+            call["sampling_error_count"] for call in diagnostics["calls"]
+        ),
         "repository_revision": analyzed_revision,
         "duration_ms": duration_ms,
         "process_count": len(diagnostics["processes"]),
@@ -335,8 +399,32 @@ def workload(output: Path, repository_revision: str | None) -> dict:
     return summary
 
 
+def self_check() -> None:
+    """Real failed setup output must survive; no Product or provider is invoked."""
+    global SETUP_OUTPUT, SETUP_ORDINAL
+    LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="self-check-", dir=LOCAL_ROOT) as directory:
+        SETUP_OUTPUT, SETUP_ORDINAL = Path(directory) / "setup", 0
+        try:
+            run([sys.executable, "-c",
+                 "import sys; print('partial output'); print('failure detail', file=sys.stderr); sys.exit(7)"],
+                cwd=ROOT, env=os.environ.copy())
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("failed setup accepted")
+        receipt = SETUP_OUTPUT / "001"
+        assert json.loads((receipt / "result.json").read_text())["exit_code"] == 7
+        assert (receipt / "stdout.log").read_text() == "partial output\n"
+        assert (receipt / "stderr.log").read_text() == "failure detail\n"
+        assert run([sys.executable, "-c", "print('ready')"], cwd=ROOT, env=os.environ.copy()) == "ready\n"
+        assert json.loads((SETUP_OUTPUT / "002/result.json").read_text())["exit_code"] == 0
+    SETUP_OUTPUT = None
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--output-dir")
     parser.add_argument("--repository-revision")
     return parser.parse_args()
@@ -344,6 +432,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.self_check:
+        self_check()
+        print("Analysis memory diagnostic self-check passed")
+        return 0
     LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
     output = (
         Path(args.output_dir).resolve()

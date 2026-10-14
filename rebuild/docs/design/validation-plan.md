@@ -1340,6 +1340,11 @@ round-trip을 `streamed_delta_matches_retained_raw_and_compressed_bytes`로 검�
 않는지 검증한다. 보존된 대형 Snapshot의 읽기 전용 encoding 비교는 supporting
 measurement이며 새 clean-HEAD gate의 resource qualification을 대체하지 않는다.
 
+Focused Analysis resource attribution and its normal/retained-large producer-reader
+regression are documented in [Analysis resource pressure](../../validation/end-to-end/multi-repository/analysis-resource-pressure.md).
+These supporting commands preserve exact input/output identities and failed
+observations; they do not invoke or replace gate/Final/official V11 qualification.
+
 ### Phase 8 naturalistic Dogfood qualification
 
 Phase 8 is a fresh real-session campaign for one exact clean Product candidate.

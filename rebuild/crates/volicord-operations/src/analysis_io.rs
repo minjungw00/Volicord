@@ -1044,6 +1044,144 @@ mod tests {
     use serde_json::json;
     use std::{cell::Cell, rc::Rc};
 
+    /// With no override this uses actual small polyglot Product output. A retained
+    /// large manifest can be supplied for the same read/use/write path without
+    /// rebuilding a different repository or changing its Source/snapshot identity.
+    #[test]
+    fn resource_pressure_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        fn fingerprint(value: &impl Serialize) -> Result<String, serde_json::Error> {
+            struct HashWriter(Sha256);
+            impl Write for HashWriter {
+                fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                    self.0.update(bytes);
+                    Ok(bytes.len())
+                }
+                fn flush(&mut self) -> std::io::Result<()> {
+                    Ok(())
+                }
+            }
+            let mut output = HashWriter(Sha256::new());
+            serde_json::to_writer(&mut output, value)?;
+            Ok(format!("{:x}", output.0.finalize()))
+        }
+        fn memory(stage: &str) {
+            if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+                let values = status
+                    .lines()
+                    .filter(|line| line.starts_with("VmRSS:") || line.starts_with("VmHWM:"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                eprintln!("analysis_resource stage={stage} {values}");
+            }
+        }
+        let temporary = tempfile::tempdir()?;
+        let input = match std::env::var_os("VOLICORD_ANALYSIS_RESOURCE_MANIFEST") {
+            Some(path) => PathBuf::from(path),
+            None => {
+                let repository = temporary.path().join("repository");
+                std::fs::create_dir_all(&repository)?;
+                for index in 0..16 {
+                    for (extension, body) in [
+                        ("py", format!("def value_{index}():\n    return {index}\n")),
+                        (
+                            "rs",
+                            format!("pub fn value_{index}() -> i32 {{ {index} }}\n"),
+                        ),
+                        (
+                            "ts",
+                            format!(
+                                "export function value_{index}(): number {{ return {index}; }}\n"
+                            ),
+                        ),
+                    ] {
+                        std::fs::write(
+                            repository.join(format!("module_{index}.{extension}")),
+                            body,
+                        )?;
+                    }
+                }
+                let operations = crate::LocalOperations::new(crate::RuntimeLayout::new(
+                    temporary.path().join("runtime"),
+                )?);
+                let project = operations
+                    .initialize_project("Resource roundtrip", Some(&repository))?
+                    .project
+                    .id;
+                operations
+                    .analyze(project, Vec::new())?
+                    .value
+                    .ok_or("analysis")?
+                    .stored_at
+            }
+        };
+        let input_bytes = std::fs::read(&input)?;
+        let baseline = read_analysis(&input)?;
+        let current = read_analysis(&input)?;
+        let expected = fingerprint(&baseline)?;
+        assert_eq!(fingerprint(&current)?, expected);
+        memory("baseline_and_current_loaded");
+        let base = reusable_base_values(input.parent().ok_or("input directory")?)?;
+        let encoded = encode_analysis(&current, base)?;
+        memory("encoded_with_baseline_retained");
+        // Fingerprint every produced byte, so before/after runs on the same exact
+        // retained input compare complete output, not merely counts or identity.
+        eprintln!(
+            "analysis_resource input={} manifest={} values={} metadata={} shape_count={}",
+            digest(&input_bytes),
+            digest(&encoded.manifest),
+            encoded.values_hash,
+            encoded.metadata_hash,
+            encoded.shapes.len()
+        );
+        drop((baseline, current));
+        let output = temporary.path().join("roundtrip");
+        std::fs::create_dir_all(output.join("blobs"))?;
+        let manifest: AnalysisManifest = serde_json::from_slice(&encoded.manifest)?;
+        if let Some(base) = &manifest.values_base_blob {
+            let name = format!("{base}.values");
+            std::fs::copy(
+                blob_dir(&input)?.join(&name),
+                output.join("blobs").join(&name),
+            )?;
+        }
+        for (hash, bytes) in &encoded.shapes {
+            std::fs::write(output.join("blobs").join(format!("{hash}.shape")), bytes)?;
+        }
+        std::fs::write(
+            output
+                .join("blobs")
+                .join(format!("{}.values", encoded.values_hash)),
+            &encoded.values,
+        )?;
+        std::fs::write(
+            output
+                .join("blobs")
+                .join(format!("{}.metadata", encoded.metadata_hash)),
+            &encoded.metadata,
+        )?;
+        let path = output.join(format!("{}.json", manifest.identity));
+        std::fs::write(&path, &encoded.manifest)?;
+        drop(encoded);
+        for _ in 0..3 {
+            // No read cache: each call independently reconstructs the complete
+            // durable graph, just as a fresh process with absent Derived caches.
+            assert_eq!(fingerprint(&read_analysis_durable(&path)?)?, expected);
+        }
+        memory("repeated_durable_reads");
+        let corrupt = output
+            .join("blobs")
+            .join(format!("{}.values", manifest.values_blob));
+        std::fs::write(&corrupt, b"corrupt")?;
+        assert!(read_analysis(&path).is_err());
+        assert!(read_analysis_durable(&path).is_err());
+        assert_eq!(
+            std::fs::read(&input)?,
+            input_bytes,
+            "retained input must remain immutable"
+        );
+        Ok(())
+    }
+
     #[test]
     fn packed_blobs_preserve_both_formats_and_reject_corrupt_lengths() -> Result<(), Error> {
         for input in [b"".as_slice(), b"x"] {
