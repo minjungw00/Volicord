@@ -129,7 +129,7 @@ def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any]) -> li
             and states[0].get("evidence_keys") == [f"checkpoint:{expected['checkpoint_id']}@{expected['checkpoint_revision']}:work_state"], "shared Work state basis")
     generated = question(prose, "NextStep")
     state = answers.get("explanation_state")
-    require(state in ("current", "unavailable", "stale", "corrupt", "unsupported"), "explanation state")
+    require(state in ("current", "missing", "deleted", "withheld", "unavailable", "stale", "corrupt", "unsupported"), "explanation state")
     if state == "current":
         require(len(generated) == 1, "current next-step interpretation")
         provenance = answers.get("provenance")

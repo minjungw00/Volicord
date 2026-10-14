@@ -119,11 +119,21 @@ def self_check(oracle) -> None:
                     ]})
     for positive in [recall, current]:
         assert not oracle.verify_restart(expected, positive, copy.deepcopy(positive), resolved, canonical, continued, canonical)
-    for state in ("stale", "corrupt", "unsupported"):
+    for state in ("missing", "deleted", "withheld", "stale", "corrupt", "unsupported"):
         variant = copy.deepcopy(recall)
         variant["selected_work"]["answers"]["explanation_state"] = state
         variant["selected_work"]["answers"]["prose"][0]["text"] = "Prepare and regenerate the explanation."
         assert not oracle.verify_restart(expected, variant, copy.deepcopy(variant), resolved, canonical, continued, canonical)
+        # Canonical continuation remains usable, but these lifecycle states
+        # cannot revive any generated direction or provenance.
+        for field, value in (("provenance", current["selected_work"]["answers"]["provenance"]),
+                ("prose", current["selected_work"]["answers"]["prose"])):
+            invalid = copy.deepcopy(variant)
+            invalid["selected_work"]["answers"][field] = copy.deepcopy(value)
+            assert "unusable generated direction revived" in oracle.recall_errors(expected, invalid)
+    unknown = copy.deepcopy(recall)
+    unknown["selected_work"]["answers"]["explanation_state"] = "unknown_lifecycle"
+    assert "explanation state" in oracle.recall_errors(expected, unknown)
     for text in ("Continue the bounded work in this session.", "Resume bounded work now."):
         variant = copy.deepcopy(current)
         variant["selected_work"]["answers"]["prose"][0]["text"] = text

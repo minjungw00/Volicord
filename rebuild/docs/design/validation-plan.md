@@ -2815,3 +2815,11 @@ their original language/text against immutable public CLI answers. Citation clai
 detail sections carry their own question/paragraph metadata and do not substitute
 for those reading paragraphs. Disposable wrong/missing language, changed prose and
 omitted-paragraph controls must fail, followed by restored positive readback.
+
+The V11 restart oracle accepts the same current explanation lifecycle vocabulary,
+including Missing, Deleted and Withheld. These states retain their original public
+identity and the independent canonical next action; generation absence is not a
+failed Work continuation. All non-current states still require unavailable prose,
+no generated direction/provenance, and exact Goal/Checkpoint/Source grounding.
+Unknown states remain errors. Independent restart controls exercise each added
+state through the complete restart consumer and reject revived generated content.
