@@ -570,7 +570,10 @@ Snapshot publication은 normalized JSON shape 조각, value stream, typed capabi
 마지막에 atomic/no-replace 게시하고 sync 책임을 보존한다. Metadata blob의 hash와
 Project/Analysis identity를 확인한 뒤 Recall 및 V11 capability evidence에 사용한다. 동일 shape blob과 complete value base는 snapshot 사이에서
 공유하고, 이후 value stream은 complete base에 대한 bounded delta가 더 작을 때만 delta로
-게시한다. Manifest는 exact Analysis Snapshot identity/history와 payload blob identity를
+게시한다. Publication은 shape chunk 압축 후 원본 shape allocation을 해제하고,
+value reconstruction은 packed input과 decoded delta scratch를 JSON/typed graph
+복원 전에 해제한다. Full graph와 durable wire bytes, content identity 및 corruption
+검사는 그대로 보존한다. Manifest는 exact Analysis Snapshot identity/history와 payload blob identity를
 보존한다. Reader는 blob content identity를 확인하고 원래 JSON token stream을 복원한 뒤
 exact current Analysis Snapshot schema를 검사한다. 이는 별도 old/new decoder가 아니다.
 Pretty-printing과 physical blob partition은 durable domain meaning의 일부가 아니다.

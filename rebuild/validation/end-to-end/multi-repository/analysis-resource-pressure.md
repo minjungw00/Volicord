@@ -112,6 +112,74 @@ exactly, with exit 0. Functional success is separate from its excessive
 resource observation. The release test executable SHA-256 was
 `4ecdeb6c359b8ab91e8dd2f14d83e55c30240a269653c35e5ec86bfd8c6d972a`.
 
+## Isolated allocation changes
+
+The read-side change alone bounds `packed_values` and decoded delta ownership
+inside value reconstruction, and releases packed base bytes after unpacking.
+Previously a 260,123,085-byte decoded delta remained live while the reconstructed
+JSON and typed graph were allocated. On the same cached large input, its removal
+reduced repeated-durable-read HWM by 254,148 KiB (260,247,552 bytes). The writer
+then releases normalized shape immediately after chunk compression and normalized
+values after value packing/delta selection. The 268 MiB shape capacity is not
+all resident: the observed writer HWM reduction is approximately its 139 MB
+used/touched region, not its entire reserved capacity.
+
+| Same retained delta input, KiB VmHWM | Before | Reader only | Reader and writer |
+| --- | ---: | ---: | ---: |
+| Two typed graphs loaded | 2,970,296 | 2,970,256 | 2,970,208 |
+| Encoding with live baseline | 4,038,000 | 4,037,964 | 3,901,676 |
+| After three durable reads | 4,547,612 | 4,293,464 | 4,293,516 |
+
+All runs returned exit 0 and identical input/manifest, value and metadata hashes:
+input and manifest `f9c7241509ccceaa6016736573da766bde87730d328ae60a66c1eef4456777da`,
+values `d6255cec8a919b6dcdc68fc3405ff47b35d4311dac42280465cbd72ed47fd4a9`,
+metadata `c8287936f227634dd695ffcc362d1e8332ad5a04b6962d116e7c9e861796c246`;
+4,263 shape hashes are themselves bound by the identical manifest. This also
+covers the exact 1,185,655,399-byte JSON representation and full graph meaning.
+The independent wait-time HWM agrees with final process marks in the retained
+receipts. Compiler cost in `time cargo test` is not used as Product latency.
+
+The test executables are preserved under ignored `analysis-pressure/binaries/`:
+before SHA-256 `4ecdeb6c359b8ab91e8dd2f14d83e55c30240a269653c35e5ec86bfd8c6d972a`,
+reader-only `69bd9871231deb6bb3f7e352e5dffbba468488d35b1203cb888f7523508f1930`,
+both changes `6dc376baef97b00c5a29604edf74cfa37363977564b13f9f97ad11ca5ca6adf3`.
+The source basis is `050db9aab991d61dc8697ba65db83a663b2c3203`, respectively
+plus no diff, reader diff SHA-256
+`1a6e0257cc3e201d47a488274681188e9ae4a3944515d86b6aad2f01a0939586`,
+or both-changes diff SHA-256
+`49d1492125a41556e92109ba12aa282cfc0c4c34c2e30fea21fc5b9d68a45b0a`.
+These large synthetic read/use/write processes still exceed 4 GiB: they are
+functional/integrity controls with measured resource pressure, not a V11 pass.
+
+The seven-call installed MCP workload is held at repository revision
+`792f791fcbd141891e856cd9e262d313fd9899cf` and the same host/build/filesystem.
+The second uninstrumented pre-change run measured 4,180,795,392 bytes and
+65,577.415 ms; first post-change run measured 4,041,138,176 bytes and
+71,857.990 ms. All graph/capability/diagnostic counts and contract fingerprints
+matched the original run. The post-change CLI/MCP hashes were
+`97644b30cfdae2a8d11c9135300127c244064e153c27d333445f4d914170f917` /
+`a8c4bfa748e14221c3ac03a35216fd98abc3ce2590c3d026215b4dd11327f8c9`.
+The exact dirty code diff is the both-changes diff above; after-first `build.json`
+records it independently. This observed memory reduction supports the allocation
+change. Timing worsened in this sample; no journey speedup is claimed.
+
+## Repeated requests and restart
+
+A bounded local consumer of the existing MCP/Collector performed four
+`repository_understanding`/`project_health` pairs in each of two fresh processes
+per executable, against the same retained three-snapshot Runtime. Before and
+after each comparison it checked immutable manifest byte hashes. All eight
+complete response fingerprints were equal across repetitions, restarts and
+executables; all health reads were healthy, cleanup exits were 0 and resource
+sampling errors were 0. Peaks were 2,935,345,152 / 2,886,012,928 bytes;
+durations were 81,503.940 / 86,937.726 ms (before/after). The script, every call
+and partial/final results are retained under ignored `analysis-pressure/`.
+These observations cover the actual read workload/process lifetimes only and
+do not prove absence of a leak at arbitrary request counts. They again support
+lower memory pressure, not a speedup. Normal small polyglot roundtrips,
+changed-input/restart/history/cache-corruption storage cases and downstream
+Product consumers are separately exercised by maintained Rust tests.
+
 ## Environment and interpretation limits
 
 Linux x86_64 WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`, Python 3.12.3,
@@ -128,3 +196,23 @@ CPU/I/O traces and host-load history. RSS after a call may include reusable
 allocator pages; increasing lifetime HWM alone cannot distinguish that from
 retained live graphs. No full V11 resource qualification is established here;
 it remains unverified until the authoritative gate runs on a committed candidate.
+
+## Focused validation of the change
+
+Every named check used `rebuild/scripts/validate focused`; numeric exits were 0
+and complete streams/results remain in its ignored directories. After the
+allocation change: Operations library 30 tests and storage footprint 4 tests
+passed; the selected real MCP Work/Question/Decision/readiness consumer passed;
+CLI analysis/Recall/portable I/O consumer passed; static and degraded Viewer
+snapshot consumers both passed; the seven-structural-language/three-semantic-
+ecosystem observation-order/current-binding test passed. Operations library/test
+Clippy with all features and denied warnings, nested-workspace formatting and
+metadata passed. Metadata confirms all nine packages/dependencies are within
+the replacement workspace or external dependencies, with no legacy crate path.
+Diagnostic failed/successful setup receipt checks and existing resource collector
+negative controls passed. Exact retained-large serialization/graph, corruption,
+repeat-read and process-restart controls passed as described above.
+
+Workspace-wide Clippy/tests, Final, gate and official V11 were intentionally not
+run for this focused task. No RSS/time/storage limit, collector formula, language
+capability, graph entity/relation, Source evidence or schema was changed.

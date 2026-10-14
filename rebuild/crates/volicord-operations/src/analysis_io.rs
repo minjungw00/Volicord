@@ -103,6 +103,9 @@ pub(crate) fn encode_analysis(
             Ok((digest(&packed), packed))
         })
         .collect::<Result<Vec<_>, Error>>()?;
+    // Only packed chunks are used from here. Do not retain the full shape
+    // allocation while expanding the base and building the value delta.
+    drop(normalized.shape);
     let complete_values = pack_blob(&normalized.values)?;
     let (values, values_base_blob) = if let Some(base) = base_values {
         // Normalization only needs the base symbols. Keep the full reference
@@ -122,6 +125,7 @@ pub(crate) fn encode_analysis(
     } else {
         (complete_values, None)
     };
+    drop(normalized.values);
     let values_hash = digest(&values);
     let metadata = pack_blob_at_level(
         &serde_json::to_vec(&AnalysisMetadata::from(analysis))
@@ -223,18 +227,24 @@ fn read_analysis_from_manifest(
         let packed = read_verified_blob(&blobs.join(format!("{hash}.shape")), hash)?;
         shape.extend_from_slice(&unpack_blob(&packed)?);
     }
-    let packed_values = read_verified_blob(
-        &blobs.join(format!("{}.values", manifest.values_blob)),
-        &manifest.values_blob,
-    )?;
-    let encoded_values = unpack_blob(&packed_values)?;
-    let values = if let Some(base_hash) = &manifest.values_base_blob {
-        let packed_base =
-            read_verified_blob(&blobs.join(format!("{base_hash}.values")), base_hash)?;
-        let base = unpack_blob(&packed_base)?;
-        apply_delta(&base, &encoded_values)?
-    } else {
-        encoded_values
+    // Packed input and a decoded delta are reconstruction scratch, not part
+    // of the reader. Release them before JSON and the typed graph coexist.
+    let values = {
+        let packed_values = read_verified_blob(
+            &blobs.join(format!("{}.values", manifest.values_blob)),
+            &manifest.values_blob,
+        )?;
+        let encoded_values = unpack_blob(&packed_values)?;
+        drop(packed_values);
+        if let Some(base_hash) = &manifest.values_base_blob {
+            let packed_base =
+                read_verified_blob(&blobs.join(format!("{base_hash}.values")), base_hash)?;
+            let base = unpack_blob(&packed_base)?;
+            drop(packed_base);
+            apply_delta(&base, &encoded_values)?
+        } else {
+            encoded_values
+        }
     };
     let reader = DenormalizingReader::new(shape, values, manifest.scalar_count)?;
     let snapshot: AnalysisSnapshot = decode_normalized_json(reader, manifest.logical_json_bytes)?;
