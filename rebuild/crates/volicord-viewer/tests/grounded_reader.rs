@@ -368,6 +368,205 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
     Ok(())
 }
 
+fn public_answers(f: &Value, host: &mut HostAdapter) -> Result<Value, Box<dyn Error>> {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                f["runtime"].as_str().ok_or("runtime")?,
+                "--project",
+                f["project"].as_str().ok_or("project")?,
+                "--json",
+                "status",
+            ],
+            &mut stdout,
+            &mut stderr,
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&stderr)
+    );
+    let cli: Value = serde_json::from_slice(&stdout)?;
+    let mcp = call(
+        host,
+        "repository_understanding",
+        json!({"project_id":f["project"]}),
+    )?;
+    let select = |result: &Value| -> Result<Value, Box<dyn Error>> {
+        Ok(result["work_history"]
+            .as_array()
+            .ok_or("work history")?
+            .iter()
+            .find(|w| w["work_item_id"] == f["work"])
+            .ok_or("selected work")?["answers"]
+            .clone())
+    };
+    let answers = select(&cli)?;
+    assert_eq!(answers, select(&mcp)?, "same public Work answer basis");
+    Ok(answers)
+}
+
+fn denied_public_readers(
+    f: &Value,
+    host: &mut HostAdapter,
+    state: &str,
+    label: &str,
+    output: &Path,
+) -> Result<(), Box<dyn Error>> {
+    let answers = public_answers(f, host)?;
+    assert_eq!(answers["explanation_state"], state);
+    let prose = answers["prose"].as_array().ok_or("prose")?;
+    assert_eq!(prose.len(), 1, "only the lifecycle notice remains");
+    assert_eq!(prose[0]["question"], "ExplanationAvailability");
+    assert_eq!(prose[0]["citations"], json!([]));
+    assert_eq!(answers["source_excerpts"], json!([]));
+    assert!(answers["provenance"].is_null());
+    let page = get(f)?;
+    ViewerAdapter::new(ops(f)?).export_snapshot(&request(f)?, output)?;
+    for html in [page, fs::read_to_string(output)?] {
+        assert!(html.contains(label), "missing lifecycle notice: {label}");
+        assert!(
+            html.contains("Explain why value returns 5"),
+            "canonical Goal remains readable"
+        );
+        assert!(!html.contains("The observed function returns the constant 5."));
+        assert!(!html.contains("class=\"source-excerpt\""));
+    }
+    Ok(())
+}
+
+#[test]
+fn corrupt_and_unsupported_latest_outputs_never_fall_back_across_public_readers(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    record(&f, &mut host)?;
+    let operations = ops(&f)?;
+    let project = project(&f)?;
+    let work = work(&f)?;
+    let canonical = operations.canonical_basis(project)?;
+    let grounding =
+        volicord_repository_intelligence::CanonicalGrounding::from_read_basis(&canonical)?;
+    let source = canonical
+        .context_items
+        .iter()
+        .find(|c| c.id == work)
+        .ok_or("goal")?
+        .source_basis[0];
+    let original = public_answers(&f, &mut host)?;
+    assert_eq!(original["explanation_state"], "current");
+    assert!(!original["source_excerpts"]
+        .as_array()
+        .ok_or("excerpts")?
+        .is_empty());
+    for (state, label, content) in [
+        ("corrupt", "Explanation is corrupt", "not JSON".to_owned()),
+        (
+            "unsupported",
+            "Explanation format is unsupported",
+            json!({"realization": {
+                "format_kind": EXPLANATION_KIND, "format_version": EXPLANATION_VERSION + 1
+            }})
+            .to_string(),
+        ),
+    ] {
+        // A newer disposable output must hide the older valid one. The malformed
+        // bodies are independently authored, not encoded by the explanation producer.
+        let mut privacy =
+            volicord_privacy::PrivacyStore::open(operations.layout().privacy_store())?;
+        privacy.record_managed_derived(volicord_privacy::ManagedDerivedDraft {
+            project_id: project,
+            kind: volicord_privacy::ManagedDerivedKind::CachedSummary,
+            provider: None,
+            model: None,
+            purpose: format!("explanation:work:{work}:en"),
+            analysis_snapshot: None,
+            included_sources: vec![grounding.source_reference(source)?],
+            canonical_links: vec![volicord_privacy::ManagedCanonicalLink::ContextItem(work)],
+            content,
+            uncertainty: None,
+            retained_until: None,
+            retention_basis: "Authored invalid Derived output; no model or human assessment".into(),
+        })?;
+        drop(privacy);
+        let before = operations.privacy_status(project)?;
+        denied_public_readers(
+            &f,
+            &mut host,
+            state,
+            label,
+            &temp.path().join(format!("{state}.html")),
+        )?;
+        assert_eq!(
+            before,
+            operations.privacy_status(project)?,
+            "reads cannot repair, replace or renew a bad output"
+        );
+        assert_eq!(canonical, operations.canonical_basis(project)?);
+        record(&f, &mut host)?;
+        let recovered = public_answers(&f, &mut host)?;
+        for field in ["prose", "source_excerpts", "recorded_next_step"] {
+            assert_eq!(recovered[field], original[field], "recovered {field}");
+        }
+        assert_eq!(recovered["explanation_state"], "current");
+        assert_eq!(
+            recovered["provenance"]["realization_fingerprint"],
+            original["provenance"]["realization_fingerprint"]
+        );
+        assert_eq!(
+            operations.privacy_status(project)?.managed_derived.len(),
+            before.managed_derived.len() + 1,
+            "recovery retains original attempts instead of rewriting history"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn unavailable_explanation_storage_preserves_canonical_reading_and_recovers_without_generation(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    record(&f, &mut host)?;
+    let operations = ops(&f)?;
+    let project = project(&f)?;
+    let canonical = operations.canonical_basis(project)?;
+    let privacy = operations.privacy_status(project)?;
+    let original = public_answers(&f, &mut host)?;
+    let database = operations.layout().privacy_store();
+    let hidden = temp.path().join("original-privacy.sqlite3");
+    fs::rename(&database, &hidden)?;
+    let unavailable = b"Authored unreadable SQLite fixture";
+    fs::write(&database, unavailable)?;
+    let result = denied_public_readers(
+        &f,
+        &mut host,
+        "unavailable",
+        "Explanation is unavailable",
+        &temp.path().join("unavailable.html"),
+    );
+    let retained = fs::read(&database)?;
+    fs::remove_file(&database)?;
+    fs::rename(&hidden, &database)?;
+    result?;
+    assert_eq!(
+        retained, unavailable,
+        "read failures do not replace the unavailable store"
+    );
+    assert_eq!(canonical, operations.canonical_basis(project)?);
+    assert_eq!(privacy, operations.privacy_status(project)?);
+    assert_eq!(
+        public_answers(&f, &mut host)?,
+        original,
+        "restored storage is readable without new generation"
+    );
+    Ok(())
+}
+
 #[test]
 fn long_original_explanation_is_retained_once_below_a_goal_title() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;

@@ -242,6 +242,36 @@
           "viewer",
           "rebuild/crates/volicord-viewer/tests/answer_contracts.rs",
           "selected_result_and_state_have_independent_prefix_basis"
+        ],
+        [
+          "cli",
+          "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
+          "corrupt_and_unsupported_latest_outputs_never_fall_back_across_public_readers"
+        ],
+        [
+          "mcp",
+          "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
+          "corrupt_and_unsupported_latest_outputs_never_fall_back_across_public_readers"
+        ],
+        [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
+          "corrupt_and_unsupported_latest_outputs_never_fall_back_across_public_readers"
+        ],
+        [
+          "cli",
+          "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
+          "unavailable_explanation_storage_preserves_canonical_reading_and_recovers_without_generation"
+        ],
+        [
+          "mcp",
+          "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
+          "unavailable_explanation_storage_preserves_canonical_reading_and_recovers_without_generation"
+        ],
+        [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
+          "unavailable_explanation_storage_preserves_canonical_reading_and_recovers_without_generation"
         ]
       ]
     }

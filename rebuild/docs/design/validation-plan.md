@@ -2787,3 +2787,15 @@ retention, across GET/render/export; raw dump bytes are not emitted. A genuine
 active host must still read and interpret
 the Product plan and Sources before recording; fixture support cannot supply that
 event. Neither browser checks nor current-host prose establish human comprehension.
+
+Public-reader adverse-storage controls in `grounded_reader` append independently
+authored corrupt and unsupported Derived bodies after a valid Source-cited output.
+Actual CLI status, MCP Understanding, Viewer GET and snapshot export must retain
+the distinct lifecycle notice and canonical Goal while withholding old prose,
+provenance and code excerpts. Reads leave canonical and managed records unchanged;
+explicit valid recording restores the same realization/Source basis while retaining
+earlier attempts. A separately unreadable privacy database produces Unavailable on
+the same consumers without replacing its bytes; restoring the original database
+restores the original answer without generation. The maintained contract registry
+binds both tests to exact-candidate Final execution. These controls establish local
+degradation and recovery behavior, not independent semantic or human qualification.
