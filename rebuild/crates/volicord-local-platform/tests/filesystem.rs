@@ -736,3 +736,44 @@ fn clone_repository(origin: &str, destination: &std::path::Path) {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn streaming_excerpt_checks_full_utf8_and_chunk_boundaries_with_bounded_retention(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let root = volicord_local_platform::RepositoryRoot::open(temp.path())?;
+    for padding in [8190, 8191, 8192, 8193] {
+        let file = format!("{}한\nnext\n", "x".repeat(padding));
+        std::fs::write(temp.path().join("source.custom"), &file)?;
+        let excerpt =
+            root.read_utf8_excerpt(std::path::Path::new("source.custom"), padding, padding + 3)?;
+        assert_eq!(excerpt.body, "한");
+        assert_eq!(excerpt.total_bytes, file.len());
+        assert_eq!((excerpt.start_line, excerpt.end_line), (1, 1));
+        for range in [(padding + 1, padding + 3), (padding, padding + 2)] {
+            assert!(root
+                .read_utf8_excerpt(std::path::Path::new("source.custom"), range.0, range.1)
+                .is_err());
+        }
+    }
+    // Invalid Unicode outside the permitted excerpt still invalidates the full-file basis.
+    std::fs::write(temp.path().join("source.custom"), b"valid\n\xff")?;
+    assert!(root
+        .read_utf8_excerpt(std::path::Path::new("source.custom"), 0, 5)
+        .is_err());
+    std::fs::write(temp.path().join("source.custom"), b"valid\n\xe3\x81")?;
+    assert!(root
+        .read_utf8_excerpt(std::path::Path::new("source.custom"), 0, 5)
+        .is_err());
+    std::fs::write(temp.path().join("source.custom"), "x".repeat(16_385))?;
+    assert!(root
+        .read_utf8_excerpt(std::path::Path::new("source.custom"), 0, 16_385)
+        .is_err());
+    // Verification itself is bounded, including sparse regular files.
+    let file = std::fs::File::create(temp.path().join("source.custom"))?;
+    file.set_len(16 * 1024 * 1024 + 1)?;
+    assert!(root
+        .read_utf8_excerpt(std::path::Path::new("source.custom"), 0, 1)
+        .is_err());
+    Ok(())
+}

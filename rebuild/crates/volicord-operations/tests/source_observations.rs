@@ -13,6 +13,7 @@ fn observe(
     before: Option<volicord_context::SourceId>,
 ) -> Result<volicord_operations::SourceObservationReceipt, volicord_operations::Error> {
     ops.observe_work_file(FileObservationRequest {
+        byte_range: None,
         project_id: project,
         work_item_id: work,
         analysis_snapshot_id: analysis,
@@ -233,6 +234,7 @@ fn source_capture_refuses_exclusions_scope_escape_symlinks_missing_and_oversize(
     ] {
         assert!(
             ops.observe_work_file(FileObservationRequest {
+                byte_range: None,
                 project_id: p,
                 work_item_id: w,
                 analysis_snapshot_id: a.analysis.identity,
@@ -277,6 +279,7 @@ fn expired_or_deleted_before_state_cannot_be_reused() -> Result<(), Box<dyn Erro
         .context_item_id;
     let a = ops.analyze(p, vec![])?.value.ok_or("missing analysis")?;
     let first = ops.observe_work_file(FileObservationRequest {
+        byte_range: None,
         project_id: p,
         work_item_id: w,
         analysis_snapshot_id: a.analysis.identity,
@@ -340,6 +343,7 @@ fn source_body_capability_is_language_independent_and_parent_links_are_refused(
     let a = ops.analyze(p, vec![])?.value.ok_or("analysis")?;
     for (path, body) in fixtures {
         let source = ops.observe_work_file(FileObservationRequest {
+            byte_range: None,
             project_id: p,
             work_item_id: w,
             analysis_snapshot_id: a.analysis.identity,
@@ -355,6 +359,7 @@ fn source_body_capability_is_language_independent_and_parent_links_are_refused(
         std::os::unix::fs::symlink(temp.path().join("outside"), root.join("src"))?;
         assert!(ops
             .observe_work_file(FileObservationRequest {
+                byte_range: None,
                 project_id: p,
                 work_item_id: w,
                 analysis_snapshot_id: a.analysis.identity,
@@ -364,5 +369,171 @@ fn source_body_capability_is_language_independent_and_parent_links_are_refused(
             })
             .is_err());
     }
+    Ok(())
+}
+
+#[test]
+fn excerpt_authority_rejects_invalid_scope_boundaries_bytes_and_pairs() -> Result<(), Box<dyn Error>>
+{
+    use volicord_operations::FileByteRange;
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().join("repo");
+    fs::create_dir_all(root.join("src"))?;
+    let text = format!(
+        "{}한\nvalue = 7\n{}",
+        "# context\n".repeat(2000),
+        "# tail\n".repeat(100)
+    );
+    let start = 20_000;
+    let end = start + "한\nvalue = 7\n".len();
+    fs::write(root.join("src/main.custom"), &text)?;
+    fs::write(root.join("excluded.py"), &text)?;
+    fs::write(root.join("invalid.py"), b"abc\xffdef")?;
+    let ops = LocalOperations::new(RuntimeLayout::new(temp.path().join("runtime"))?);
+    let p = ops
+        .initialize_project("excerpt controls", Some(&root))?
+        .project
+        .id;
+    let w = ops
+        .record_current_host_user_context(
+            p,
+            "test".into(),
+            "fixture".into(),
+            "Inspect value".into(),
+            ContextItemRole::Goal,
+            "Inspect value".into(),
+        )?
+        .context_item_id;
+    let a = ops
+        .analyze(p, vec!["excluded.py".into()])?
+        .value
+        .ok_or("analysis")?;
+    let mut request = FileObservationRequest {
+        project_id: p,
+        work_item_id: w,
+        analysis_snapshot_id: a.analysis.identity,
+        path: "src/main.custom".into(),
+        byte_range: Some(FileByteRange {
+            start_byte: start,
+            end_byte: end,
+        }),
+        before_source_id: None,
+        retain_seconds: 3600,
+    };
+    let baseline = ops.canonical_basis(p)?;
+    for (from, to) in [
+        (end, start),
+        (start, start),
+        (0, 16_385),
+        (start + 1, end),
+        (start, start + 2),
+        (end, text.len() + 1),
+        (0, usize::MAX),
+    ] {
+        let mut bad = request.clone();
+        bad.byte_range = Some(FileByteRange {
+            start_byte: from,
+            end_byte: to,
+        });
+        assert!(ops.observe_work_file(bad).is_err(), "{from}..{to}");
+    }
+    for path in [
+        "../excluded.py",
+        "/etc/passwd",
+        "excluded.py",
+        "absent.py",
+        "invalid.py",
+    ] {
+        let mut bad = request.clone();
+        bad.path = path.into();
+        bad.byte_range = Some(FileByteRange {
+            start_byte: 0,
+            end_byte: 3,
+        });
+        assert!(ops.observe_work_file(bad).is_err(), "{path}");
+    }
+    for retain in [0, 604801] {
+        let mut bad = request.clone();
+        bad.retain_seconds = retain;
+        assert!(ops.observe_work_file(bad).is_err());
+    }
+    assert_eq!(baseline, ops.canonical_basis(p)?);
+    assert!(ops.privacy_status(p)?.managed_derived.is_empty());
+    let first = ops.observe_work_file(request.clone())?;
+    let body = ops.read_explanation_source(p, w, first.source_id)?;
+    assert_eq!(body["observation"]["detail"]["body"], "한\nvalue = 7\n");
+    assert_eq!(body["observation"]["detail"]["region"]["start_line"], 2001);
+    assert_eq!(body["observation"]["detail"]["region"]["end_line"], 2002);
+    request.before_source_id = Some(first.source_id);
+    let equal = ops.observe_work_file(request.clone())?;
+    assert_eq!(
+        ops.read_explanation_source(p, w, equal.source_id)?["observation"]["detail"]["comparison"],
+        "no_change"
+    );
+    let mut different = request.clone();
+    different.byte_range = Some(FileByteRange {
+        start_byte: start + 4,
+        end_byte: end,
+    });
+    assert!(ops.observe_work_file(different).is_err());
+    let other = ops
+        .record_current_host_user_context(
+            p,
+            "test".into(),
+            "other".into(),
+            "Other Work".into(),
+            ContextItemRole::Goal,
+            "Other Work".into(),
+        )?
+        .context_item_id;
+    let mut foreign = request.clone();
+    foreign.work_item_id = other;
+    assert!(ops.observe_work_file(foreign).is_err());
+    assert!(ops
+        .read_explanation_source(p, other, first.source_id)
+        .is_err());
+    let foreign_project = ops.initialize_project("foreign", None)?.project.id;
+    let mut foreign = request.clone();
+    foreign.project_id = foreign_project;
+    assert!(ops.observe_work_file(foreign).is_err());
+    fs::write(
+        root.join("src/main.custom"),
+        text.replacen("value = 7", "value = 8", 1),
+    )?;
+    assert!(ops.observe_work_file(request.clone()).is_err());
+    let next = ops
+        .analyze(p, vec!["excluded.py".into()])?
+        .value
+        .ok_or("analysis")?;
+    request.analysis_snapshot_id = next.analysis.identity;
+    let changed = ops.observe_work_file(request.clone())?;
+    assert_eq!(
+        ops.read_explanation_source(p, w, changed.source_id)?["observation"]["detail"]
+            ["comparison"],
+        "changed"
+    );
+    #[cfg(unix)]
+    {
+        fs::rename(root.join("src"), temp.path().join("outside"))?;
+        std::os::unix::fs::symlink(temp.path().join("outside"), root.join("src"))?;
+        assert!(ops.observe_work_file(request.clone()).is_err());
+        fs::remove_file(root.join("src"))?;
+        fs::create_dir(root.join("src"))?;
+        std::os::unix::fs::symlink(
+            temp.path().join("outside/main.custom"),
+            root.join("src/main.custom"),
+        )?;
+        assert!(ops.observe_work_file(request.clone()).is_err());
+    }
+    ops.delete_work_source_observation(p, w, first.source_id)?;
+    assert!(ops.read_explanation_source(p, w, first.source_id).is_err());
+    assert!(ops
+        .read_explanation_source(p, w, changed.source_id)
+        .is_err());
+    assert!(ops
+        .canonical_basis(p)?
+        .context_items
+        .iter()
+        .any(|i| i.id == w));
     Ok(())
 }

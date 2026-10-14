@@ -1549,6 +1549,12 @@ fn render_field(
                         .unwrap_or("historical_observation")
                 ),
             )?;
+            if excerpt["source_representation"] == "bounded_excerpt" {
+                write_line(stdout, match locale {
+                    CliLocale::English => "Bounded file observation; surrounding code was not retained. Coordinates refer to the repository file.",
+                    CliLocale::Korean => "제한된 파일 관측이며 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준입니다.",
+                })?;
+            }
             if let Some(text) = excerpt["text"].as_str() {
                 write_line(stdout, text)?;
             }

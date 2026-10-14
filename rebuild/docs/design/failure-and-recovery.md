@@ -511,3 +511,12 @@ reading/publication withholds prose when any required body is expired/deleted,
 withheld, corrupted, unavailable or changed. Diagnostics name the affected dependency
 and explicit observe/prepare/generate recovery. Existing managed cleanup owns deletion
 and incomplete sanitation retry; local deletion never claims host/provider deletion.
+
+Bounded file excerpt capture also rejects oversized verification scope, malformed
+UTF-8 anywhere in the verified file, split character boundaries, empty/reversed
+or out-of-file byte ranges and incompatible before-state intervals. No Source is
+published for these failures. Corrupt excerpt bytes, hashes, counts or absolute
+coordinates cannot pass the canonical File Source binding on retrieval. A later
+filesystem version never repairs a historical excerpt. Expiry, deletion, corrected
+Work revisions, unavailable Sources and the canonical forgetting read barrier apply
+to excerpts and their dependent explanations through the existing lifecycle.

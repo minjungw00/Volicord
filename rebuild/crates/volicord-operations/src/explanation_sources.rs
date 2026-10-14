@@ -115,22 +115,38 @@ impl LocalOperations {
                 _ => return Err(Error::new("explanation Source field is not permitted")),
             };
             let body = body.ok_or_else(|| Error::new("explanation Source bytes unavailable"))?;
+            let file_region = (detail["kind"] == "file"
+                && detail["representation"] == "bounded_excerpt")
+                .then_some(&detail["region"]);
+            let byte_base = file_region
+                .and_then(|r| r["start_byte"].as_u64())
+                .unwrap_or(0) as usize;
+            let line_base = file_region
+                .and_then(|r| r["start_line"].as_u64())
+                .unwrap_or(1) as usize;
+            let start = citation
+                .start_byte
+                .checked_sub(byte_base)
+                .ok_or_else(|| Error::new("citation precedes observed excerpt"))?;
+            let end = citation
+                .end_byte
+                .checked_sub(byte_base)
+                .ok_or_else(|| Error::new("citation precedes observed excerpt"))?;
             let range = body
-                .get(citation.start_byte..citation.end_byte)
+                .get(start..end)
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| Error::new("invalid explanation Source range"))?;
             let line = |offset: usize| {
                 body.as_bytes()[..offset]
                     .iter()
-                    .copied()
-                    .filter(|b| *b == b'\n')
+                    .filter(|b| **b == b'\n')
                     .count()
-                    + 1
+                    + line_base
             };
             if locator != Some(citation.locator.as_str())
                 || explanation_text_hash(range) != citation.range_sha256
-                || line(citation.start_byte) != citation.start_line
-                || line(citation.end_byte - 1) != citation.end_line
+                || line(start) != citation.start_line
+                || line(end - 1) != citation.end_line
             {
                 return Err(Error::new(
                     "explanation Source locator, range or hash mismatch",
@@ -155,15 +171,29 @@ impl LocalOperations {
                     if root.canonical_path() != binding.absolute_path {
                         return Err(Error::new("explanation repository root was redirected; explicit binding is required"));
                     }
-                    let current = root
-                        .read_bounded_regular_file(std::path::Path::new(&citation.locator), 16_384)
+                    let current_hash = if file_region.is_some() {
+                        root.read_utf8_excerpt(
+                            std::path::Path::new(&citation.locator),
+                            byte_base,
+                            byte_base + body.len(),
+                        )
                         .map_err(|e| {
-                            Error::with_source(
-                                "explanation current Source read denied or unavailable",
-                                e,
+                            Error::with_source("explanation current excerpt unavailable", e)
+                        })?
+                        .sha256
+                    } else {
+                        use sha2::Digest;
+                        let current = root
+                            .read_bounded_regular_file(
+                                std::path::Path::new(&citation.locator),
+                                16_384,
                             )
-                        })?;
-                    if current != body.as_bytes() {
+                            .map_err(|e| {
+                                Error::with_source("explanation current Source unavailable", e)
+                            })?;
+                        format!("{:x}", sha2::Sha256::digest(&current))
+                    };
+                    if detail["sha256"] != current_hash {
                         return Err(Error::new(
                             "explanation Source bytes changed; observe and generate again",
                         ));
@@ -218,6 +248,10 @@ impl LocalOperations {
                             "changed"
                         };
                         if old["detail"]["path"] != detail["path"]
+                            || !crate::source_observations::compatible_file_regions(
+                                &old["detail"],
+                                detail,
+                            )
                             || old["observed_at_unix_micros"].as_i64()
                                 >= observation["observed_at_unix_micros"].as_i64()
                             || detail["comparison"] != comparison
@@ -284,9 +318,11 @@ impl LocalOperations {
                         observed_at_unix_micros: observation["observed_at_unix_micros"].as_i64()
                             .ok_or_else(|| Error::new("Source observation time unavailable"))?,
                         text: range[..bytes].into(), displayed_end_byte: end,
-                        displayed_end_line: line(end - 1), omitted_utf8_bytes: range.len() - bytes,
+                        displayed_end_line: line(end - byte_base - 1), omitted_utf8_bytes: range.len() - bytes,
                         comparison: detail["comparison"].as_str().map(str::to_owned),
                         before_source_id: detail["before_source_id"].as_str().map(str::to_owned),
+                        source_representation: detail["representation"].as_str().map(str::to_owned),
+                        observation_region: file_region.cloned(),
                         execution: (detail["kind"] == "command").then(|| json!({
                             "exit_code":detail["exit_code"], "termination":detail["termination"],
                             "stream":citation.field, "representation":detail[&citation.field]["representation"],

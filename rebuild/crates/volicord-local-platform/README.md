@@ -15,3 +15,10 @@ existing destination.
 
 The crate has no dependency on an excluded Volicord service crate and provides no legacy
 API, Runtime Home, migration, or workflow compatibility.
+
+Scoped Source reads pin each directory descriptor and refuse symlinks and special
+files. `read_utf8_excerpt` shares that opening boundary, validates UTF-8 and hashes
+the full file by streaming up to 16 MiB (plus one overflow sentinel byte), measures
+absolute byte/line coordinates, and returns only a requested nonempty region of
+at most 16,384 bytes. Local Operations owns snapshot/hash admission, Work authority,
+canonical Source binding and retention; this primitive grants none of them.

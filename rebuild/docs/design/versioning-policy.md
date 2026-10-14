@@ -343,8 +343,20 @@ Non-current Privacy stores are rejected before domain read/write; no migration
 or implicit conversion is supplied. Canonical schema `16`, bundle `9` and analysis
 formats are unchanged because the existing Source payload and canonical meaning
 are unchanged. Source observation content has exact kind
-`volicord_source_observation`, version `1`, checked before typed decode, inside the
+`volicord_source_observation`, version `2`, checked before typed decode, inside the
 existing 147,456-byte managed body limit. Unsupported/corrupt bodies are withheld;
 metadata and explicit deletion remain available. Exact local Source/Work links,
 revision, selected snapshots, observation time and bounded representation belong
 to this disposable format, not a replacement canonical schema or explanation plan.
+
+Source observation version 2 is the single current envelope for whole-file,
+bounded file excerpt and command observations. Non-current copies are unsupported
+and withheld; deletion and fresh explicit observation remain available, without
+migration or a second decoder. File excerpt metadata includes full-file identity,
+size, excerpt hash, measured absolute byte/line coordinates and an identity/time
+basis digest, bound by the
+existing canonical File Source's opaque snapshot string. This adds no canonical
+field or entity and does not change Privacy SQL, portable bundle, Analysis Snapshot
+or retained explanation formats. Read-time explanation source excerpts additionally
+expose `source_representation` and `observation_region`; they are not persisted
+copies inside retained explanation records.

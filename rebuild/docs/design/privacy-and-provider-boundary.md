@@ -596,7 +596,14 @@ No URL, arbitrary absolute path, credentials, external provider or background
 semantic operation is read/invoked. Local command execution remains an explicit
 local caller capability, not a new Host remote execution authority.
 
-File bodies are whole UTF-8 files bounded to 16,384 bytes. Command streams retain
+File bodies are whole UTF-8 files bounded to 16,384 bytes, or explicitly requested
+half-open UTF-8 byte excerpts bounded to the same retained size. Excerpt verification
+streams at most 16 MiB of full-file content (plus one overflow sentinel byte) through
+the no-follow descriptor solely for full-file hash, UTF-8 and absolute coordinate
+verification. Surrounding bytes are transient and never enter Managed Derived,
+canonical bodies, operational artifacts or an implicit larger retention grant.
+Each explicit request covers one exact included path and selected interval;
+separate ranges/files require separate explicit requests. Command streams retain
 at most 8,192 bytes each with exact omitted counts and capture completeness;
 non-text output is unavailable, not lossy-decoded. Raw argv is fingerprinted then
 discarded; temporary full operational streams are removed before a receipt.

@@ -20,13 +20,15 @@ use volicord_repository_intelligence::{
 };
 
 const KIND: &str = "volicord_source_observation";
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 const FILE_BYTES: usize = 16_384;
 const STREAM_BYTES: usize = 8_192;
 const MAX_RETENTION_SECONDS: u64 = 7 * 24 * 60 * 60;
 
 #[derive(Clone, Debug)]
 pub struct FileObservationRequest {
+    /// None observes the complete file; Some explicitly authorizes only this region.
+    pub byte_range: Option<FileByteRange>,
     pub project_id: ProjectId,
     pub work_item_id: ContextItemId,
     pub analysis_snapshot_id: AnalysisSnapshotId,
@@ -34,6 +36,13 @@ pub struct FileObservationRequest {
     /// Explicit earlier observation, never inferred from path or chronology.
     pub before_source_id: Option<SourceId>,
     pub retain_seconds: u64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileByteRange {
+    pub start_byte: usize,
+    pub end_byte: usize,
 }
 
 /// Local caller explicitly authorizes this execution. No Host/background tool
@@ -265,27 +274,43 @@ impl LocalOperations {
         if root.canonical_path() != binding.absolute_path {
             return Err(Error::new("bound repository root was redirected; explicit binding is required before observation"));
         }
-        let bytes = root
-            .read_bounded_regular_file(Path::new(&request.path), FILE_BYTES)
-            .map_err(|e| Error::with_source("scoped source observation unavailable", e))?;
-        let hash = format!("{:x}", Sha256::digest(&bytes));
+        let (body, hash, region) = if let Some(range) = request.byte_range {
+            let excerpt = root
+                .read_utf8_excerpt(Path::new(&request.path), range.start_byte, range.end_byte)
+                .map_err(|e| Error::with_source("scoped source excerpt unavailable", e))?;
+            let region = json!({"start_byte":range.start_byte,"end_byte":range.end_byte,
+                "start_line":excerpt.start_line,"end_line":excerpt.end_line,"file_utf8_bytes":excerpt.total_bytes,
+                "excerpt_sha256":format!("{:x}",Sha256::digest(excerpt.body.as_bytes()))});
+            (excerpt.body, excerpt.sha256, Some(region))
+        } else {
+            let bytes = root
+                .read_bounded_regular_file(Path::new(&request.path), FILE_BYTES)
+                .map_err(|e| Error::with_source("scoped source observation unavailable", e))?;
+            let hash = format!("{:x}", Sha256::digest(&bytes));
+            let body = String::from_utf8(bytes)
+                .map_err(|_| Error::new("binary/non-UTF-8 source body is unsupported"))?;
+            (body, hash, None)
+        };
         if &hash != entry {
             return Err(Error::new("source hash changed since the selected Analysis Snapshot; analyze and observe afresh"));
         }
-        let body = String::from_utf8(bytes)
-            .map_err(|_| Error::new("binary/non-UTF-8 source body is unsupported"))?;
         let now = now_micros()?;
         let until = retention_until(now, request.retain_seconds)?;
-        let mut detail = json!({"kind":"file","path":request.path,"sha256":hash,"representation":"whole_file",
-            "body":body,"observed_utf8_bytes":body.len(),"omitted_utf8_bytes":0,
+        let mut detail = json!({"kind":"file","path":request.path,"sha256":hash,
+            "representation":if region.is_some() {"bounded_excerpt"} else {"whole_file"},
+            "body":body,"observed_utf8_bytes":body.len(),"omitted_utf8_bytes":region.as_ref().and_then(|r|r["file_utf8_bytes"].as_u64()).unwrap_or(body.len() as u64) - body.len() as u64,
             "comparison":"missing_before_state","before_source_id":null,"current_repository_state":"not_rechecked",
             "repository_worktree":analysis.repository_worktree,"reconstruction":"not_attempted"});
+        if let Some(region) = region {
+            detail["region"] = region;
+        }
         if let Some(before) = request.before_source_id {
             let earlier = self
                 .retained_source_observation(&basis, request.work_item_id, before)?
                 .ok_or_else(|| Error::new("before-state Source body is unavailable"))?;
             if earlier.detail["kind"] != "file"
                 || earlier.detail["path"] != request.path
+                || !compatible_file_regions(&earlier.detail, &detail)
                 || earlier.observed_at_unix_micros >= now.as_unix_micros()
             {
                 return Err(Error::new(
@@ -306,7 +331,18 @@ impl LocalOperations {
             &analysis,
             SourcePayload::File {
                 locator: request.path,
-                snapshot: format!("sha256:{hash}"),
+                snapshot: file_snapshot_binding(
+                    &detail,
+                    &json!([
+                        request.project_id,
+                        request.work_item_id,
+                        work_revision,
+                        analysis.identity,
+                        analysis.repository_snapshot.to_string(),
+                        analysis.repository_source.identity(),
+                        now.as_unix_micros()
+                    ]),
+                )?,
             },
             PrincipalKind::Repository,
             now,
@@ -683,14 +719,26 @@ fn verify_body(source: &Source, observation: &SourceObservation) -> Result<(), E
             let body = observation.detail["body"]
                 .as_str()
                 .ok_or_else(|| Error::new("file body unavailable"))?;
-            let hash = format!("{:x}", Sha256::digest(body.as_bytes()));
-            if observation.detail["kind"] != "file"
-                || observation.detail["representation"] != "whole_file"
+            if body.len() > FILE_BYTES
+                || observation.detail["kind"] != "file"
                 || observation.detail["path"] != *locator
-                || observation.detail["sha256"] != hash
-                || snapshot != &format!("sha256:{hash}")
+                || snapshot
+                    != &file_snapshot_binding(
+                        &observation.detail,
+                        &json!([
+                            observation.project_id,
+                            observation.work_item_id,
+                            observation.work_revision,
+                            observation.analysis_snapshot_id,
+                            observation.repository_snapshot_id,
+                            observation.repository_source_id,
+                            observation.observed_at_unix_micros
+                        ]),
+                    )?
             {
-                return Err(Error::new("Source copy hash or locator mismatch"));
+                return Err(Error::new(
+                    "Source copy hash, coordinates or locator mismatch",
+                ));
             }
         }
         SourcePayload::CommandExecution { outcome, .. } => {
@@ -705,4 +753,75 @@ fn verify_body(source: &Source, observation: &SourceObservation) -> Result<(), E
         _ => return Err(Error::new("Source kind has no authorized retained body")),
     }
     Ok(())
+}
+
+/// Canonical File Source anchors retained excerpt bytes and measured coordinates,
+/// as well as full-file identity. Managed content cannot self-report new offsets.
+fn file_snapshot_binding(detail: &Value, identity_basis: &Value) -> Result<String, Error> {
+    let body = detail["body"]
+        .as_str()
+        .ok_or_else(|| Error::new("file body unavailable"))?;
+    let hash = detail["sha256"]
+        .as_str()
+        .filter(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+        .ok_or_else(|| Error::new("invalid full-file hash"))?;
+    let body_hash = format!("{:x}", Sha256::digest(body.as_bytes()));
+    if detail["observed_utf8_bytes"] != body.len() {
+        return Err(Error::new("invalid observed byte count"));
+    }
+    match detail["representation"].as_str() {
+        Some("whole_file")
+            if hash == body_hash
+                && detail["omitted_utf8_bytes"] == 0
+                && detail.get("region").is_none() =>
+        {
+            Ok(format!("sha256:{hash}"))
+        }
+        Some("bounded_excerpt") => {
+            let region = &detail["region"];
+            let number = |key: &str| {
+                region[key]
+                    .as_u64()
+                    .and_then(|v| usize::try_from(v).ok())
+                    .ok_or_else(|| Error::new("invalid file coordinates"))
+            };
+            let (start, end, first, last, total) = (
+                number("start_byte")?,
+                number("end_byte")?,
+                number("start_line")?,
+                number("end_line")?,
+                number("file_utf8_bytes")?,
+            );
+            if start >= end
+                || end - start != body.len()
+                || end > total
+                || total > 16 * 1024 * 1024
+                || first == 0
+                || Some(last)
+                    != first.checked_add(
+                        body.as_bytes()[..body.len() - 1]
+                            .iter()
+                            .filter(|b| **b == b'\n')
+                            .count(),
+                    )
+                || region["excerpt_sha256"] != body_hash
+                || detail["omitted_utf8_bytes"] != total - body.len()
+            {
+                return Err(Error::new("invalid retained excerpt"));
+            }
+            let identity_bytes = serde_json::to_vec(identity_basis)
+                .map_err(|e| Error::with_source("cannot encode excerpt identity basis", e))?;
+            let identity_hash = format!("{:x}", Sha256::digest(identity_bytes));
+            Ok(format!(
+                "sha256:{hash};excerpt:{start}:{end}:{first}:{last}:{total}:{body_hash};basis:{identity_hash}"
+            ))
+        }
+        _ => Err(Error::new("unsupported file representation")),
+    }
+}
+
+pub(crate) fn compatible_file_regions(before: &Value, after: &Value) -> bool {
+    before["representation"] == after["representation"]
+        && before["region"]["start_byte"] == after["region"]["start_byte"]
+        && before["region"]["end_byte"] == after["region"]["end_byte"]
 }

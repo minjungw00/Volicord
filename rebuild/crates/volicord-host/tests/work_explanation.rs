@@ -59,6 +59,7 @@ impl Fixture {
             .identity;
         let source = ops
             .observe_work_file(FileObservationRequest {
+                byte_range: None,
                 project_id: project,
                 work_item_id: work,
                 analysis_snapshot_id: analysis,
@@ -129,10 +130,22 @@ fn response(generation: &Value, read: &Value) -> Result<ExplanationRealization, 
             .into(),
         locator: "main.py".into(),
         field: "body".into(),
-        start_line: 2,
-        end_line: 2,
-        start_byte: 13,
-        end_byte: evidence.len(),
+        start_line: observation["detail"]["region"]["start_line"]
+            .as_u64()
+            .unwrap_or(1) as usize
+            + 1,
+        end_line: observation["detail"]["region"]["start_line"]
+            .as_u64()
+            .unwrap_or(1) as usize
+            + 1,
+        start_byte: observation["detail"]["region"]["start_byte"]
+            .as_u64()
+            .unwrap_or(0) as usize
+            + 13,
+        end_byte: observation["detail"]["region"]["start_byte"]
+            .as_u64()
+            .unwrap_or(0) as usize
+            + evidence.len(),
         range_sha256: explanation_text_hash(&evidence[13..]),
         claim_start_byte: 0,
         claim_end_byte: 43,
@@ -464,7 +477,47 @@ fn changed_and_deleted_sources_cannot_publish_current_prose_and_recovery_is_expl
 #[test]
 fn explicit_equal_pair_expiry_and_semantic_limit_survive_real_storage() -> Result<(), Box<dyn Error>>
 {
+    for excerpt in [false, true] {
+        explicit_pair_expiry(excerpt)?;
+    }
+    Ok(())
+}
+fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
     let mut f = Fixture::new()?;
+    let byte_range = if excerpt {
+        let prefix = "# context\n".repeat(2000);
+        let body = "def value():\n    return 7\n";
+        fs::write(
+            f.temp.path().join("repo/main.py"),
+            format!("{prefix}{body}"),
+        )?;
+        let a = f
+            .host
+            .operations()
+            .analyze(f.project, vec![])?
+            .value
+            .ok_or("analysis")?;
+        let range = volicord_operations::FileByteRange {
+            start_byte: prefix.len(),
+            end_byte: prefix.len() + body.len(),
+        };
+        f.source = f
+            .host
+            .operations()
+            .observe_work_file(FileObservationRequest {
+                project_id: f.project,
+                work_item_id: f.work,
+                analysis_snapshot_id: a.analysis.identity,
+                path: "main.py".into(),
+                byte_range: Some(range),
+                before_source_id: None,
+                retain_seconds: 3600,
+            })?
+            .source_id;
+        Some(range)
+    } else {
+        None
+    };
     let generation = f.generate()?;
     let before = f.read(&generation, f.source)?;
     let analysis = volicord_operations::AnalysisSnapshotId::from_hex(
@@ -476,6 +529,7 @@ fn explicit_equal_pair_expiry_and_semantic_limit_survive_real_storage() -> Resul
         .host
         .operations()
         .observe_work_file(FileObservationRequest {
+            byte_range,
             project_id: f.project,
             work_item_id: f.work,
             analysis_snapshot_id: analysis,
@@ -608,6 +662,7 @@ fn source_scope_and_command_failure_remain_actual_observations() -> Result<(), B
         .host
         .operations()
         .observe_work_file(FileObservationRequest {
+            byte_range: None,
             project_id: f.project,
             work_item_id: f.work,
             analysis_snapshot_id: analysis,
@@ -666,9 +721,23 @@ fn redirected_current_source_root_cannot_publish_identical_bytes() -> Result<(),
 
 #[test]
 fn cited_code_is_utf8_bounded_deduplicated_and_counts_omissions() -> Result<(), Box<dyn Error>> {
+    for excerpt in [false, true] {
+        cited_code_bounds(excerpt)?;
+    }
+    Ok(())
+}
+fn cited_code_bounds(excerpt: bool) -> Result<(), Box<dyn Error>> {
     let mut f = Fixture::new()?;
     let body = format!("def value():\n    return 7 # {}\n", "한".repeat(4000));
-    fs::write(f.temp.path().join("repo/main.py"), &body)?;
+    let prefix = if excerpt {
+        "# context\n".repeat(2000)
+    } else {
+        String::new()
+    };
+    fs::write(
+        f.temp.path().join("repo/main.py"),
+        format!("{prefix}{body}"),
+    )?;
     let analysis = f
         .host
         .operations()
@@ -681,6 +750,10 @@ fn cited_code_is_utf8_bounded_deduplicated_and_counts_omissions() -> Result<(), 
         .host
         .operations()
         .observe_work_file(FileObservationRequest {
+            byte_range: excerpt.then_some(volicord_operations::FileByteRange {
+                start_byte: prefix.len(),
+                end_byte: prefix.len() + body.len(),
+            }),
             project_id: f.project,
             work_item_id: f.work,
             analysis_snapshot_id: analysis,
@@ -695,8 +768,8 @@ fn cited_code_is_utf8_bounded_deduplicated_and_counts_omissions() -> Result<(), 
     let base = realized.paragraphs[1].citations[0].clone();
     for offset in [0, 13, 26, 28, 31, 34, 37] {
         let mut c = base.clone();
-        c.start_byte = offset;
-        c.start_line = if offset == 0 { 1 } else { 2 };
+        c.start_byte = prefix.len() + offset;
+        c.start_line = if excerpt { 2000 } else { 0 } + if offset == 0 { 1 } else { 2 };
         c.range_sha256 = explanation_text_hash(&body[offset..]);
         realized.paragraphs[1].citations.push(c);
     }
@@ -716,13 +789,180 @@ fn cited_code_is_utf8_bounded_deduplicated_and_counts_omissions() -> Result<(), 
     let mut keys = std::collections::BTreeSet::new();
     for e in &answers.source_excerpts {
         assert!(e.text.len() <= 4096);
-        assert_eq!(e.text, body[e.citation.start_byte..e.displayed_end_byte]);
+        assert_eq!(
+            e.text,
+            body[e.citation.start_byte - prefix.len()..e.displayed_end_byte - prefix.len()]
+        );
         assert_eq!(
             e.omitted_utf8_bytes,
             e.citation.end_byte - e.displayed_end_byte
         );
+        assert_eq!(e.displayed_end_line, if excerpt { 2002 } else { 2 });
         assert!(keys.insert((e.citation.start_byte, e.citation.end_byte)));
     }
     assert_eq!(keys.len() + answers.omitted_source_excerpt_count, 7);
+    Ok(())
+}
+
+#[test]
+fn large_file_excerpt_mcp_citations_use_independent_absolute_coordinates(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    // 26,000 bytes / 1,000 lines before the mechanism. Unicode crosses read chunks.
+    let prefix = "# surrounding 한 context\n".repeat(1000);
+    let mechanism = "def value():\n    return 7 # 한\n";
+    let file = format!("{prefix}{mechanism}# unobserved tail\n");
+    assert!(file.len() > 16_384);
+    let start = prefix.len();
+    let end = start + mechanism.len();
+    fs::write(f.temp.path().join("repo/main.py"), &file)?;
+    let analysis = f
+        .host
+        .operations()
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?;
+    let mut request = json!({"action":"observe_file","project_id":f.project.to_string(),
+        "work_item_id":f.work.to_string(),"analysis_snapshot_id":analysis.analysis.identity.to_string(),
+        "path":"main.py","retain_seconds":3600});
+    let source_call = |host: &mut HostAdapter, args: Value| {
+        host.handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"work_source","arguments":args}})).unwrap_or(Value::Null)
+    };
+    // Reproduce the whole-file limitation through the actual Product adapter.
+    assert_eq!(
+        source_call(&mut f.host, request.clone())["result"]["isError"],
+        true
+    );
+    let canonical_before = f.host.operations().canonical_basis(f.project)?;
+    for range in [
+        json!({"start_byte":end,"end_byte":start}),
+        json!({"start_byte":-1,"end_byte":end}),
+        json!({"start_byte":1.5,"end_byte":end}),
+        json!({"start_byte":start,"end_byte":end,"unapproved":true}),
+    ] {
+        request["byte_range"] = range;
+        assert_eq!(
+            source_call(&mut f.host, request.clone())["result"]["isError"],
+            true
+        );
+    }
+    assert_eq!(
+        canonical_before,
+        f.host.operations().canonical_basis(f.project)?
+    );
+    request["byte_range"] = json!({"start_byte":start,"end_byte":end});
+    let receipt = source_call(&mut f.host, request.clone());
+    assert_eq!(receipt["result"]["isError"], false, "{receipt}");
+    let id = format!(
+        "{:0>32}",
+        receipt["result"]["structuredContent"]["source_id"]
+            .as_str()
+            .ok_or("source")?
+    );
+    let bytes = (0..32)
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&id[i..i + 2], 16))
+        .collect::<Result<Vec<_>, _>>()?;
+    f.source = serde_json::from_value(json!(bytes))?;
+    // The supported Source reader supplies exactly the authorized region, no prefix/tail.
+    let generation = f.generate()?;
+    let before_reads = f.host.operations().privacy_status(f.project)?;
+    let read = f.read(&generation, f.source)?;
+    assert_eq!(read["observation"]["detail"]["body"], mechanism);
+    assert!(!read.to_string().contains("surrounding"));
+    assert!(!read.to_string().contains("unobserved tail"));
+    assert_eq!(
+        read["observation"]["detail"]["representation"],
+        "bounded_excerpt"
+    );
+    let region = &read["observation"]["detail"]["region"];
+    assert_eq!(region["start_byte"], 26_000);
+    assert_eq!(region["end_byte"], 26_032);
+    assert_eq!(region["start_line"], 1001);
+    assert_eq!(region["end_line"], 1002);
+    assert_eq!(region["file_utf8_bytes"], file.len());
+    assert_eq!(
+        read["observation"]["detail"]["sha256"],
+        explanation_text_hash(&file).trim_start_matches("sha256:")
+    );
+    assert_eq!(f.host.operations().privacy_status(f.project)?, before_reads);
+    let mut realized = response(&generation, &read)?;
+    let c = &mut realized.paragraphs[1].citations[0];
+    c.start_byte = start + 13;
+    c.end_byte = end;
+    c.start_line = 1002;
+    c.end_line = 1002;
+    for variant in 0..7 {
+        let mut bad = realized.clone();
+        let c = &mut bad.paragraphs[1].citations[0];
+        match variant {
+            0 => {
+                c.start_byte = 13;
+                c.end_byte = mechanism.len();
+                c.start_line = 2;
+                c.end_line = 2;
+            }
+            1 => c.start_byte = start - 1,
+            2 => c.end_byte = end + 1,
+            3 => c.start_line = 2,
+            4 => c.use_kind = ExplanationSourceUse::BeforeCode,
+            5 => c.range_sha256 = explanation_text_hash("altered excerpt"),
+            _ => c.end_byte = end - 2, // Cuts the final three-byte character.
+        }
+        let args = f.record_args(&generation, &bad)?;
+        assert_eq!(
+            call(&mut f.host, args)["result"]["isError"],
+            true,
+            "variant {variant}"
+        );
+    }
+    let args = f.record_args(&generation, &realized)?;
+    success(&mut f.host, args)?;
+    let projection = f.host.operations().project_projection(f.project)?;
+    let w = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == f.work)
+        .ok_or("work")?;
+    let answers = work_answers(w, "en", FixedLocale::English);
+    assert_eq!(answers.explanation_state, ExplanationState::Current);
+    assert_eq!(answers.source_excerpts[0].text, &mechanism[13..]);
+    assert_eq!(answers.source_excerpts[0].displayed_end_byte, end);
+    assert_eq!(answers.source_excerpts[0].displayed_end_line, 1002);
+    assert_eq!(
+        answers.source_excerpts[0].observation_region.as_ref(),
+        Some(region)
+    );
+    // Even changes outside the retained excerpt invalidate current evidence.
+    fs::write(
+        f.temp.path().join("repo/main.py"),
+        file.replacen("surrounding", "SURROUNDING", 1),
+    )?;
+    assert_eq!(source_call(&mut f.host, request)["result"]["isError"], true);
+    let projection = f.host.operations().project_projection(f.project)?;
+    let w = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == f.work)
+        .ok_or("work")?;
+    assert_eq!(
+        work_answers(w, "en", FixedLocale::English).explanation_state,
+        ExplanationState::Stale
+    );
+    // Historical retained read never substitutes the changed filesystem version.
+    assert_eq!(
+        f.host
+            .operations()
+            .read_explanation_source(f.project, f.work, f.source)?["observation"]["detail"]["body"],
+        mechanism
+    );
+    f.host
+        .operations()
+        .delete_work_source_observation(f.project, f.work, f.source)?;
+    assert!(f
+        .host
+        .operations()
+        .read_explanation_source(f.project, f.work, f.source)
+        .is_err());
     Ok(())
 }

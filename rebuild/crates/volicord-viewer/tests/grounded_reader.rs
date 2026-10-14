@@ -57,6 +57,7 @@ fn seed(root: &Path, comparison: &str) -> Result<Value, Box<dyn Error>> {
         };
         Some(
             ops.observe_work_file(FileObservationRequest {
+                byte_range: None,
                 project_id: project,
                 work_item_id: work,
                 analysis_snapshot_id: analysis,
@@ -76,6 +77,7 @@ fn seed(root: &Path, comparison: &str) -> Result<Value, Box<dyn Error>> {
         .identity;
     let after = ops
         .observe_work_file(FileObservationRequest {
+            byte_range: None,
             project_id: project,
             work_item_id: work,
             analysis_snapshot_id: analysis,
@@ -147,10 +149,11 @@ fn record(f: &Value, host: &mut HostAdapter) -> Result<(), Box<dyn Error>> {
             .ok_or("body")?;
         c["locator"] = json!("main.py");
         c["field"] = json!("body");
-        c["start_byte"] = json!(0);
-        c["end_byte"] = json!(body.len());
-        c["start_line"] = json!(1);
-        c["end_line"] = json!(2);
+        let region = &read["observation"]["detail"]["region"];
+        c["start_byte"] = json!(region["start_byte"].as_u64().unwrap_or(0));
+        c["end_byte"] = json!(region["end_byte"].as_u64().unwrap_or(body.len() as u64));
+        c["start_line"] = json!(region["start_line"].as_u64().unwrap_or(1));
+        c["end_line"] = json!(region["end_line"].as_u64().unwrap_or(2));
         c["range_sha256"] = json!(explanation_text_hash(body));
         c["claim_start_byte"] = json!(0);
         c["claim_end_byte"] = json!(43);
@@ -398,9 +401,32 @@ fn deleted_interpretation_is_distinct_from_never_generated_and_reads_stay_empty(
 #[test]
 fn forgetting_barrier_withholds_code_and_prose_until_cleanup_without_renewal(
 ) -> Result<(), Box<dyn Error>> {
+    for excerpt in [false, true] {
+        forgetting_barrier(excerpt)?;
+    }
+    Ok(())
+}
+fn forgetting_barrier(excerpt: bool) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
-    let f = seed(temp.path(), "missing_before_state")?;
+    let mut f = seed(temp.path(), "missing_before_state")?;
     let mut host = HostAdapter::new(ops(&f)?);
+    if excerpt {
+        let prefix = "# context\n".repeat(2000);
+        let body = "def value():\n    return 5\n";
+        fs::write(temp.path().join("repo/main.py"), format!("{prefix}{body}"))?;
+        let a = ops(&f)?
+            .analyze(project(&f)?, vec![])?
+            .value
+            .ok_or("analysis")?;
+        let receipt = call(
+            &mut host,
+            "work_source",
+            json!({"action":"observe_file","project_id":f["project"],"work_item_id":f["work"],"path":"main.py",
+            "analysis_snapshot_id":a.analysis.identity.to_string(),"retain_seconds":3600,
+            "byte_range":{"start_byte":prefix.len(),"end_byte":prefix.len()+body.len()}}),
+        )?;
+        f["after"] = receipt["source_id"].clone();
+    }
     record(&f, &mut host)?;
     let project = project(&f)?;
     let work = work(&f)?;
@@ -486,5 +512,109 @@ fn forgetting_barrier_withholds_code_and_prose_until_cleanup_without_renewal(
     );
     let page = get(&f)?;
     assert!(page.contains("Explanation was explicitly deleted"));
+    Ok(())
+}
+
+#[test]
+fn large_excerpt_reaches_cli_mcp_live_and_snapshot_without_surrounding_bytes(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let mut f = seed(temp.path(), "missing_before_state")?;
+    let prefix = "# unretained context\n".repeat(2000);
+    let mechanism = "def value():\n    return 5\n";
+    let full = format!("{prefix}{mechanism}# unretained suffix\n");
+    fs::write(temp.path().join("repo/main.py"), &full)?;
+    let operations = ops(&f)?;
+    let a = operations
+        .analyze(project(&f)?, vec![])?
+        .value
+        .ok_or("analysis")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    let receipt = call(
+        &mut host,
+        "work_source",
+        json!({"action":"observe_file","project_id":f["project"],"work_item_id":f["work"],
+        "path":"main.py","analysis_snapshot_id":a.analysis.identity.to_string(),"retain_seconds":3600,
+        "byte_range":{"start_byte":prefix.len(),"end_byte":prefix.len()+mechanism.len()}}),
+    )?;
+    f["after"] = receipt["source_id"].clone();
+    record(&f, &mut host)?;
+    let canonical = operations.canonical_basis(project(&f)?)?;
+    let privacy = operations.privacy_status(project(&f)?)?;
+    let mut selector = receipt["inspect"].clone();
+    selector.as_object_mut().ok_or("selector")?.remove("tool");
+    let observed = call(&mut host, "canonical_inspect", selector)?;
+    let observation: Value = serde_json::from_str(observed["chunk"].as_str().ok_or("chunk")?)?;
+    assert_eq!(observation["detail"]["body"], mechanism);
+    assert_eq!(observation["detail"]["region"]["start_line"], 2001);
+    assert_eq!(observation["detail"]["region"]["end_line"], 2002);
+    for json_mode in [false, true] {
+        let mut args = vec![
+            "--runtime",
+            f["runtime"].as_str().ok_or("runtime")?,
+            "--project",
+            f["project"].as_str().ok_or("project")?,
+            "status",
+        ];
+        if json_mode {
+            args.push("--json");
+        }
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        assert_eq!(run_cli(args, &mut stdout, &mut stderr), CliExit::SUCCESS);
+        let text = String::from_utf8(stdout)?;
+        assert!(text.contains("return 5"));
+        assert!(text.contains(if json_mode {
+            "bounded_excerpt"
+        } else {
+            "Bounded file observation"
+        }));
+        assert!(!text.contains("# unretained"));
+    }
+    let data = call(
+        &mut host,
+        "repository_understanding",
+        json!({"project_id":f["project"]}),
+    )?;
+    assert!(data.to_string().contains("bounded_excerpt"));
+    assert!(!data.to_string().contains("# unretained"));
+    let page = get(&f)?;
+    assert!(page.contains("main.py:2001–2002"));
+    assert!(page.contains("Bounded file observation: surrounding code was not retained"));
+    assert!(page.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
+    assert!(!page.contains("# unretained"));
+    let destination = temp.path().join("large.html");
+    ViewerAdapter::new(ops(&f)?).export_snapshot(&request(&f)?, &destination)?;
+    let snapshot = fs::read_to_string(destination)?;
+    assert!(snapshot.contains("main.py:2001–2002"));
+    assert!(snapshot.contains("Bounded file observation"));
+    assert!(!snapshot.contains("# unretained"));
+    assert_eq!(canonical, operations.canonical_basis(project(&f)?)?);
+    assert_eq!(privacy, operations.privacy_status(project(&f)?)?);
+    let projection = operations.project_projection(project(&f)?)?;
+    let selected = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == work(&f).unwrap())
+        .ok_or("work")?;
+    let provenance = work_answers(selected, "en", FixedLocale::English)
+        .provenance
+        .ok_or("provenance")?;
+    fs::write(
+        temp.path().join("repo/main.py"),
+        full.replacen("unretained context", "CHANGED context", 1),
+    )?;
+    let denied = temp.path().join("denied.html");
+    assert!(operations
+        .publish_viewer_snapshot(
+            &page,
+            &denied,
+            project(&f)?,
+            &projection.canonical_read_fingerprint,
+            &[provenance]
+        )
+        .is_err());
+    assert!(!denied.exists());
+    assert!(!get(&f)?.contains("<code lang=\"\">def value():"));
     Ok(())
 }

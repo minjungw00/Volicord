@@ -837,6 +837,11 @@ fn render_source_excerpts(
                     html.push_str(&format!("<p>{}</p>",text(r.locale, "The earlier copy is a dependency; its code was not cited in this output.", "이전 사본은 의존 근거입니다. 이 출력에는 해당 코드가 인용되지 않았습니다.")));
                 }
             }
+            if e.source_representation.as_deref() == Some("bounded_excerpt") {
+                html.push_str(&format!("<p class=\"bound\">{}</p>", text(r.locale,
+                    "Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.",
+                    "제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
+            }
             html.push_str(&format!(
                 "<pre><code lang=\"\">{}</code></pre>",
                 escape(&e.text)

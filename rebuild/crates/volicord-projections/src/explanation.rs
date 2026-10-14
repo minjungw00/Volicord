@@ -99,7 +99,9 @@ pub struct ExplanationParagraph {
     pub citations: Vec<ExplanationCitation>,
 }
 
-/// Byte ranges are half-open UTF-8 ranges, both in evidence and in new prose.
+/// File evidence uses absolute repository-file byte/line coordinates, including
+/// bounded observations. Command fields and paragraph claims use field-relative bytes.
+/// Byte ranges are half-open UTF-8 ranges.
 /// Hash equality binds wording to bytes; it does not establish entailment.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -196,6 +198,8 @@ pub struct ExplanationSourceExcerpt {
     pub omitted_utf8_bytes: usize,
     pub comparison: Option<String>,
     pub before_source_id: Option<String>,
+    pub source_representation: Option<String>,
+    pub observation_region: Option<Value>,
     pub execution: Option<Value>,
 }
 pub const EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT: usize = 16_384;

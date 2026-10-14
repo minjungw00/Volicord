@@ -11,7 +11,7 @@ pub use filesystem::{
     LocalRepositoryCoordinate, NoReplacePublicationEffect, NoReplacePublicationError,
     NoReplacePublicationOutcome, NoReplacePublicationPhase, RepositoryPathError,
     RepositoryPathState, RepositoryRoot, ResolvedRepositoryPath, SourceFingerprint,
-    SourceFingerprintError,
+    SourceFingerprintError, VerifiedFileExcerpt,
 };
 pub use process::{
     CancellationFlag, ProcessCompletion, ProcessObservation, ProcessRequest, ProcessStartError,

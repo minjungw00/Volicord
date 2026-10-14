@@ -32,6 +32,7 @@ fn redirected_root_and_changed_ancestor_are_denied_even_with_identical_bytes(
     fs::rename(&root, &moved)?;
     std::os::unix::fs::symlink(&moved, &root)?;
     let denied = ops.observe_work_file(FileObservationRequest {
+        byte_range: None,
         project_id: p,
         work_item_id: w,
         analysis_snapshot_id: a.analysis.identity,

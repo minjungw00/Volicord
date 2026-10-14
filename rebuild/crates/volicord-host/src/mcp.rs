@@ -1674,6 +1674,13 @@ impl HostAdapter {
                 let receipt = self
                     .operations
                     .observe_work_file(volicord_operations::FileObservationRequest {
+                        byte_range: args
+                            .get("byte_range")
+                            .map(|v| {
+                                serde_json::from_value(v.clone())
+                                    .map_err(|_| HostError::new("invalid explicit file byte range"))
+                            })
+                            .transpose()?,
                         project_id: project,
                         work_item_id: work,
                         analysis_snapshot_id: parse_analysis_snapshot(required_str(
@@ -3039,12 +3046,16 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "work_source" => (
-            "Explicitly observe one included repository-relative UTF-8 file (at most 16384 bytes) for an exact Project/Work and Analysis Snapshot, within the current host's already authorized source scope. The observed hash must equal the selected inventory hash. Optional before_source_id must be an available strictly earlier observation of the same Work/path; absent before-state is not reconstructed. retain_seconds explicitly permits local disposable retention for 1..604800 seconds, never background transmission. Read through the returned canonical_inspect selector. delete_source_copy removes that exact managed body while preserving canonical Source and unrelated context. This tool cannot execute commands or read URLs, arbitrary absolute paths, symlinks, excluded files or full user turns.",
+            "Explicitly observe one included repository-relative UTF-8 file (at most 16384 retained bytes); optional byte_range explicitly selects a half-open UTF-8 excerpt (at most 16384 bytes) from a file verified in full up to 16 MiB. Excerpts preserve absolute file byte/line coordinates and explicitly omit other context, for an exact Project/Work and Analysis Snapshot, within the current host's already authorized source scope. The observed hash must equal the selected inventory hash. Optional before_source_id must be an available strictly earlier observation of the same Work/path; absent before-state is not reconstructed. retain_seconds explicitly permits local disposable retention for 1..604800 seconds, never background transmission. Read through the returned canonical_inspect selector. delete_source_copy removes that exact managed body while preserving canonical Source and unrelated context. This tool cannot execute commands or read URLs, arbitrary absolute paths, symlinks, excluded files or full user turns.",
             json!({"oneOf":[object_schema(vec![
                 ("action",enum_schema("Explicit Source operation", &["observe_file"])),
                 ("project_id",identity_schema("Project identity")),("work_item_id",identity_schema("Exact retained Goal-backed Work identity")),
                 ("analysis_snapshot_id",digest_identity_schema("Exact selected Analysis Snapshot")),
                 ("path",text_schema("Included repository-relative file path",1,4096)),
+                ("byte_range",object_schema(vec![
+                    ("start_byte",json!({"type":"integer","minimum":0,"maximum":16777216})),
+                    ("end_byte",json!({"type":"integer","minimum":1,"maximum":16777216}))
+                ], &["start_byte","end_byte"])),
                 ("before_source_id",identity_schema("Explicit earlier same-Work/path file Source")),
                 ("retain_seconds",json!({"type":"integer","minimum":1,"maximum":604800,"description":"Explicit local Source copy retention period in seconds"}))
             ], &["action","project_id","work_item_id","analysis_snapshot_id","path","retain_seconds"]),

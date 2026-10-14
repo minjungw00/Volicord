@@ -702,7 +702,7 @@ not inferred ordering from titles or paths.
 |---|---|---|---|---|
 | Original bounded direction | Host `context_record` / Operations `transition_work` | Project, Goal-backed Work revision, exact user Source, record time | Canonical Context statement via exact-field inspection; full supplied turn remains policy-withheld | Kernel correction/forgetting; caller-supplied turn is not authenticated raw host capture |
 | Repository state | Operations `analyze` | Fresh repository Source, Repository and Analysis Snapshot, scan time | Inventory hashes, Git/dirty observation, capability/coverage; existing analysis reader | Disposable analysis; missing/incomplete inventory is explicit, not a reconstructed tree |
-| Observed file bytes | Operations `observe_work_file` | Exact Project/Work revision and new File Source revision 1; selected snapshot identities and actual body observation time | Explicit included inventory path, SHA-256 equality against that snapshot; whole UTF-8 file at most 16,384 bytes in privacy-owned SourceObservation copy | Explicit 1..604800 second local retention; managed deletion/forgetting/expiry. Oversized, missing, binary and excluded bodies unavailable; no reconstruction producer |
+| Observed file bytes | Operations `observe_work_file` | Exact Project/Work revision and new File Source revision 1; selected snapshot identities and actual body observation time | Explicit included inventory path, SHA-256 equality against that snapshot; whole UTF-8 file at most 16,384 bytes, or explicitly selected UTF-8 byte region of at most 16,384 bytes from a full-file verified basis at most 16 MiB, in privacy-owned SourceObservation copy | Explicit 1..604800 second local retention; managed deletion/forgetting/expiry. Files beyond the verification bound, missing, binary and excluded bodies unavailable; no reconstruction producer |
 | Before/after or no-change investigation | Repeated `observe_work_file` with explicit `before_source_id` | Same Work/path, distinct Sources, strictly earlier observed time | Comparison of two actually observed hashes; dirty before bytes preserved if observed | Earlier Source must remain permitted; missing/expired/deleted before-state cannot be reconstructed. Equality is file-byte equality, not whole-Work no-change proof |
 | Actual command/test evidence | Operations `run_work_command` executes through `run_child` | Work, Source revision 1, operation identity, argv-framed invocation fingerprint, start/end and numeric exit/termination | Real bounded stdout/stderr copies (8,192 bytes each), explicit capture completeness and omitted byte counts; selected analysis is not asserted to be execution-time state | Transient full stream artifacts removed before body publication; retained copies expire/delete through Privacy. No broad command execution Host tool; incomplete capture never proves complete output |
 | Work report/verification | `record_grounded_checkpoint` | Explicit Work, Checkpoint revision/time, exact command/repository Sources | Existing exact-field Checkpoint inspection; current-host-reported command metadata is distinct from locally executed observation | Kernel lifecycle; this producer supplies no historical raw output and no Checkpoint is required for investigation capture |
@@ -730,3 +730,26 @@ another path. Descriptor-relative opening pins every canonical root ancestor
 without following symlinks before opening the selected relative file. Redirected
 roots/ancestors remain denied even when their bytes match the expected hash;
 matching bytes alone cannot authorize a different repository boundary.
+
+Explicit file excerpts reuse `observe_work_file` with optional `byte_range`
+(`start_byte`, `end_byte`, half-open); absence preserves whole-file observation.
+The no-follow descriptor reader streams the entire file through SHA-256 and strict
+UTF-8 validation, retaining only that requested range. Both boundaries must be
+UTF-8 character boundaries within the file. One request authorizes one included
+path and at most 16,384 retained bytes, with full verification limited to 16 MiB
+(plus one overflow sentinel byte). A full-file hash mismatch rejects publication,
+even if the selected range is unchanged. No Git reconstruction or analyzer-language
+requirement is introduced.
+
+`bounded_excerpt` records the full-file hash/size, exact retained excerpt hash,
+absolute zero-based byte interval, measured one-based start/end lines, retained
+and omitted byte counts. Lines count LF bytes from file start; a final LF belongs
+to its preceding line. The canonical File Source's opaque snapshot basis binds
+these measurements and the excerpt hash alongside the full-file hash, and a digest
+of Project/Work revision, selected snapshots/repository Source and observation time; retained
+content cannot change its own bytes or claim different coordinates. Whole-file
+Sources retain their existing full-file hash basis. Excerpts remain incomplete
+observations: missing surrounding code is not retained or inferred. Explicit
+before/after pairs require the same representation and byte interval as well as
+the existing Work/path/time compatibility. Comparison uses full-file identity;
+changed file identity does not claim every retained line changed.

@@ -67,15 +67,21 @@ pub struct RepositoryRoot {
     canonical: PathBuf,
 }
 
+/// Coordinates are measured from the full observed file, never model supplied.
+#[derive(Debug)]
+pub struct VerifiedFileExcerpt {
+    pub body: String,
+    pub sha256: String,
+    pub total_bytes: usize,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
 impl RepositoryRoot {
     /// Open each component relative to a pinned directory descriptor. Never follow
     /// symlinks, including during a concurrent rename; refuse special files.
     #[cfg(target_os = "linux")]
-    pub fn read_bounded_regular_file(
-        &self,
-        relative: &Path,
-        limit: usize,
-    ) -> Result<Vec<u8>, RepositoryPathError> {
+    fn open_scoped_regular_file(&self, relative: &Path) -> Result<File, RepositoryPathError> {
         use rustix::fs::{open, openat, Mode, OFlags};
         let relative = normalize_relative(relative)?;
         let mut directory = open(
@@ -116,16 +122,7 @@ impl RepositoryRoot {
                 if !file.metadata().map_err(path_error)?.is_file() {
                     return Err(RepositoryPathError("source must be a regular file".into()));
                 }
-                let mut bytes = Vec::new();
-                file.take(limit.saturating_add(1) as u64)
-                    .read_to_end(&mut bytes)
-                    .map_err(path_error)?;
-                if bytes.len() > limit {
-                    return Err(RepositoryPathError(
-                        "source exceeds bounded observation limit".into(),
-                    ));
-                }
-                return Ok(bytes);
+                return Ok(file);
             }
             directory = fd;
         }
@@ -133,14 +130,116 @@ impl RepositoryRoot {
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub fn read_bounded_regular_file(
-        &self,
-        _relative: &Path,
-        _limit: usize,
-    ) -> Result<Vec<u8>, RepositoryPathError> {
+    fn open_scoped_regular_file(&self, _relative: &Path) -> Result<File, RepositoryPathError> {
         Err(RepositoryPathError(
             "descriptor-scoped source observation is unsupported on this platform".into(),
         ))
+    }
+
+    pub fn read_bounded_regular_file(
+        &self,
+        relative: &Path,
+        limit: usize,
+    ) -> Result<Vec<u8>, RepositoryPathError> {
+        let file = self.open_scoped_regular_file(relative)?;
+        let mut bytes = Vec::new();
+        file.take(limit.saturating_add(1) as u64)
+            .read_to_end(&mut bytes)
+            .map_err(path_error)?;
+        if bytes.len() > limit {
+            return Err(RepositoryPathError(
+                "source exceeds bounded observation limit".into(),
+            ));
+        }
+        Ok(bytes)
+    }
+
+    /// Verify all UTF-8 bytes through the same no-follow descriptor, retaining
+    /// only the requested half-open region. Reading stops at the verification
+    /// bound even if the file grows concurrently. No surrounding text escapes.
+    pub fn read_utf8_excerpt(
+        &self,
+        relative: &Path,
+        start: usize,
+        end: usize,
+    ) -> Result<VerifiedFileExcerpt, RepositoryPathError> {
+        const FILE_LIMIT: usize = 16 * 1024 * 1024;
+        if start >= end || end - start > 16_384 || end > FILE_LIMIT {
+            return Err(RepositoryPathError(
+                "invalid bounded source byte range".into(),
+            ));
+        }
+        let mut file = self
+            .open_scoped_regular_file(relative)?
+            .take((FILE_LIMIT + 1) as u64);
+        let mut hash = Sha256::new();
+        let mut chunk = [0; 8192];
+        let mut pending = Vec::with_capacity(8196);
+        let mut offset = 0;
+        let mut total = 0;
+        let mut body = Vec::with_capacity(end - start);
+        let mut start_line = 1;
+        let mut end_line = 1;
+        loop {
+            let count = file.read(&mut chunk).map_err(path_error)?;
+            if count == 0 {
+                break;
+            }
+            total += count;
+            if total > FILE_LIMIT {
+                return Err(RepositoryPathError(
+                    "source exceeds full-file verification bound".into(),
+                ));
+            }
+            hash.update(&chunk[..count]);
+            pending.extend_from_slice(&chunk[..count]);
+            let valid = match std::str::from_utf8(&pending) {
+                Ok(_) => pending.len(),
+                Err(e) if e.error_len().is_none() => e.valid_up_to(),
+                Err(_) => return Err(RepositoryPathError("source is not UTF-8".into())),
+            };
+            let text = std::str::from_utf8(&pending[..valid])
+                .map_err(|_| RepositoryPathError("source is not UTF-8".into()))?;
+            for boundary in [start, end] {
+                if boundary >= offset
+                    && boundary < offset + valid
+                    && !text.is_char_boundary(boundary - offset)
+                {
+                    return Err(RepositoryPathError(
+                        "source range splits a UTF-8 character".into(),
+                    ));
+                }
+            }
+            for (index, byte) in pending[..valid].iter().enumerate() {
+                let absolute = offset + index;
+                if *byte == b'\n' {
+                    if absolute < start {
+                        start_line += 1;
+                    }
+                    if absolute < end - 1 {
+                        end_line += 1;
+                    }
+                }
+            }
+            let from = start.saturating_sub(offset).min(valid);
+            let to = end.saturating_sub(offset).min(valid);
+            body.extend_from_slice(&pending[from..to]);
+            offset += valid;
+            pending.drain(..valid);
+        }
+        if !pending.is_empty() || end > total {
+            return Err(RepositoryPathError(
+                "incomplete UTF-8 source or out-of-file range".into(),
+            ));
+        }
+        Ok(VerifiedFileExcerpt {
+            body: String::from_utf8(body)
+                .map_err(|_| RepositoryPathError("source range splits a UTF-8 character".into()))?,
+            sha256: format!("{:x}", hash.finalize()),
+            total_bytes: total,
+            start_line,
+            end_line,
+        })
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self, RepositoryPathError> {

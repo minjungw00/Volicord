@@ -1590,7 +1590,7 @@ relevant permitted Sources (including separately observed callers/helpers/tests)
 and authors `ExplanationRealization` without asking the user to assemble JSON.
 There is no server-side model dispatch, automatic retry or mandatory provider.
 
-`read_source` returns a permitted existing whole-file or bounded command envelope,
+`read_source` returns a permitted existing whole-file, bounded file excerpt or command envelope,
 its SHA-256 retrieval fingerprint and normalized `citation_basis`. It does not
 capture, renew retention or substitute current files for missing evidence.
 `record` checks a live same-server request, exact Project/Work/plan and that each
@@ -1659,3 +1659,22 @@ not a reconstructed diff. Missing before-state stays absent; an uncited earlier
 dependency is identified without presenting invented before code. Snapshots retain
 the same admitted bytes and identities without Runtime, listener, scripts or assets.
 No read generates, transmits, adopts Learning, renews retention or changes records.
+
+For file Sources, citation byte and line coordinates are always absolute in the
+observed repository file, including when only a bounded excerpt was retained.
+Operations translates absolute byte intervals into retained-body offsets and checks
+measured absolute line bases; model-supplied relative offsets/lines cannot redefine
+the locator. Command field coordinates remain field-relative. Citation ranges must
+be nonempty UTF-8 ranges wholly inside the observed region; range hashes and claims
+keep their existing checks. Current-code recording, reading and publication verify
+the full current file hash through the same bounded no-follow streaming reader,
+plus the selected repository snapshot. A change outside the excerpt also makes
+current interpretation stale; historical Source reading still returns only exact
+previously retained bytes.
+
+Public `source_excerpts` carries `source_representation` and `observation_region`
+from the verified observation, separately from the smaller cited/displayed range.
+CLI and Viewer visibly label bounded file observations and missing surrounding
+context. Displayed ends retain absolute repository coordinates even when the shared
+4,096-byte per-range display bound clips a citation. Neither completed transport
+nor an unclipped citation labels the observation a complete source file.

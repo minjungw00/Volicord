@@ -255,10 +255,23 @@ fn normal_host_observation_is_exact_scoped_bounded_historical_and_deletable(
 #[test]
 fn actual_command_copy_and_source_lifecycle_have_no_choice_or_learning_side_effect(
 ) -> Result<(), Box<dyn Error>> {
+    for excerpt in [false, true] {
+        source_lifecycle(excerpt)?;
+    }
+    Ok(())
+}
+fn source_lifecycle(excerpt: bool) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let root = temp.path().join("repo");
     fs::create_dir(&root)?;
-    fs::write(root.join("main.py"), "value = 1\n")?;
+    fs::write(
+        root.join("main.py"),
+        if excerpt {
+            format!("{}value = 1\n", "# prefix\n".repeat(2000))
+        } else {
+            "value = 1\n".into()
+        },
+    )?;
     let ops = LocalOperations::new(RuntimeLayout::new(temp.path().join("runtime"))?);
     let p = ops.initialize_project("lifecycle", Some(&root))?.project.id;
     let work = ops.record_current_host_user_context(
@@ -299,7 +312,10 @@ fn actual_command_copy_and_source_lifecycle_have_no_choice_or_learning_side_effe
     assert_eq!(body["detail"]["stderr"]["body"], "failure\n");
     let ptext = p.to_string();
     let w = work.context_item_id.to_string();
-    let observe = json!({"project_id":ptext,"work_item_id":w,"action":"observe_file","path":"main.py","analysis_snapshot_id":a.analysis.identity.to_string(),"retain_seconds":1});
+    let mut observe = json!({"project_id":ptext,"work_item_id":w,"action":"observe_file","path":"main.py","analysis_snapshot_id":a.analysis.identity.to_string(),"retain_seconds":1});
+    if excerpt {
+        observe["byte_range"] = json!({"start_byte":18000,"end_byte":18010});
+    }
     let expired = rpc(&mut host, "work_source", observe.clone())?;
     std::thread::sleep(Duration::from_millis(1100));
     let mut expired_selector = expired["inspect"].clone();
@@ -392,10 +408,21 @@ fn actual_command_copy_and_source_lifecycle_have_no_choice_or_learning_side_effe
 #[test]
 fn corrupt_unsupported_or_ambiguous_observation_cannot_supply_bytes() -> Result<(), Box<dyn Error>>
 {
+    for excerpt in [false, true] {
+        corrupt_observation(excerpt)?;
+    }
+    Ok(())
+}
+fn corrupt_observation(excerpt: bool) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
     let root = temp.path().join("repo");
     fs::create_dir(&root)?;
-    fs::write(root.join("main.py"), "value = 11\n")?;
+    let file = if excerpt {
+        format!("{}value = 11\n", "# prefix\n".repeat(2000))
+    } else {
+        "value = 11\n".into()
+    };
+    fs::write(root.join("main.py"), &file)?;
     let ops = LocalOperations::new(RuntimeLayout::new(temp.path().join("runtime"))?);
     let p = ops.initialize_project("integrity", Some(&root))?.project.id;
     let work = ops.record_current_host_user_context(
@@ -408,6 +435,10 @@ fn corrupt_unsupported_or_ambiguous_observation_cannot_supply_bytes() -> Result<
     )?;
     let analysis = ops.analyze(p, vec![])?.value.ok_or("analysis")?;
     let receipt = ops.observe_work_file(volicord_operations::FileObservationRequest {
+        byte_range: excerpt.then_some(volicord_operations::FileByteRange {
+            start_byte: 18000,
+            end_byte: 18011,
+        }),
         project_id: p,
         work_item_id: work.context_item_id,
         analysis_snapshot_id: analysis.analysis.identity,
@@ -433,13 +464,45 @@ fn corrupt_unsupported_or_ambiguous_observation_cannot_supply_bytes() -> Result<
     let mut host = HostAdapter::new(ops);
     let selector = json!({"project_id":p.to_string(),"work_item_id":work.context_item_id.to_string(),"record_kind":"source",
         "record_id":receipt.source_id.to_string(),"revision":1,"field":"body"});
-    for variant in ["hash", "chronology", "unsupported", "missing_bytes"] {
+    for variant in [
+        "hash",
+        "chronology",
+        "unsupported",
+        "old_version",
+        "missing_bytes",
+        "coordinates",
+        "rehashed_body",
+        "repository_identity",
+        "observation_time",
+        "overflow_line",
+    ] {
         let mut record = original_json.clone();
         let mut body = original_body.clone();
         match variant {
             "hash" => body["detail"]["body"] = json!("forbidden replacement bytes"),
             "chronology" => body["observed_at_unix_micros"] = json!(i64::MAX),
-            "unsupported" => body["format_version"] = json!(2),
+            "unsupported" => body["format_version"] = json!(99),
+            "old_version" => body["format_version"] = json!(1),
+            "repository_identity" if excerpt => {
+                body["repository_snapshot_id"] = json!("0".repeat(64))
+            }
+            "observation_time" if excerpt => body["observed_at_unix_micros"] = json!(1),
+            "overflow_line" if excerpt => {
+                body["detail"]["region"]["start_line"] = json!(u64::MAX);
+                body["detail"]["region"]["end_line"] = json!(u64::MAX);
+            }
+            "coordinates" if excerpt => {
+                body["detail"]["region"]["start_byte"] = json!(17999);
+                body["detail"]["region"]["end_byte"] = json!(18010);
+                body["detail"]["region"]["start_line"] = json!(2000);
+                body["detail"]["region"]["end_line"] = json!(2000);
+            }
+            "rehashed_body" if excerpt => {
+                body["detail"]["body"] = json!("value = 99\n");
+                body["detail"]["region"]["excerpt_sha256"] =
+                    json!(volicord_projections::explanation_text_hash("value = 99\n")
+                        .trim_start_matches("sha256:"));
+            }
             _ => {
                 body["detail"]
                     .as_object_mut()
@@ -454,7 +517,7 @@ fn corrupt_unsupported_or_ambiguous_observation_cannot_supply_bytes() -> Result<
         )?;
         denied(&mut host, "canonical_inspect", selector.clone())?;
         // No fallback to still-present matching current file or latest Source.
-        assert_eq!(fs::read_to_string(root.join("main.py"))?, "value = 11\n");
+        assert_eq!(fs::read_to_string(root.join("main.py"))?, file);
     }
     db.execute(
         "UPDATE managed_derived SET record_json=?1 WHERE id=?2",

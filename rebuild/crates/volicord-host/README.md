@@ -319,9 +319,18 @@ For explicitly requested local historical evidence, `work_source` accepts
 `action: observe_file`, exact `project_id`, Goal-backed `work_item_id`,
 `analysis_snapshot_id`, an included repository-relative `path`, explicit
 `retain_seconds` (1..604800) and optional earlier same-Work/path
-`before_source_id`. It observes at most 16,384 UTF-8 bytes as a whole file and
-checks the selected inventory hash. It rejects symlinks, excluded, missing,
-changed, binary and oversized files. Observe relevant callers, helpers and tests
+`before_source_id`. Without `byte_range`, it observes at most 16,384 UTF-8 bytes as
+a whole file. Optional `byte_range: {"start_byte": 24000, "end_byte": 24200}`
+explicitly retains only that half-open region, up to 16,384 UTF-8 bytes from a file
+up to 16 MiB. Full-file streaming SHA-256 and strict UTF-8 validation must match
+the selected inventory hash, including bytes outside the excerpt. Both boundaries
+must be UTF-8 character boundaries. The observation labels `bounded_excerpt`,
+measured absolute repository-file byte/line coordinates, full-file size/hash,
+excerpt hash and omitted bytes; surrounding code is not retained. Explanation
+citations use those absolute file coordinates, never offsets relative to the
+retained excerpt. A before-state excerpt must cover the same byte interval and
+representation. It rejects symlinks, excluded, missing, changed, binary and
+out-of-bound files/ranges. Observe relevant callers, helpers and tests
 separately within the current host's already authorized source scope. An equal
 pair proves equal observed file bytes; it does not prove no mutations throughout
 an entire Work. No Checkpoint is required for read-only investigation evidence.
