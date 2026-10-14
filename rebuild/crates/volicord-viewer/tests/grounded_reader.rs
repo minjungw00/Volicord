@@ -691,3 +691,364 @@ fn large_excerpt_reaches_cli_mcp_live_and_snapshot_without_surrounding_bytes(
     assert!(!get(&f)?.contains("<code lang=\"\">def value():"));
     Ok(())
 }
+
+// Representative source is maintained production code, not padding around a
+// two-line function. Expectations are independently authored structural controls.
+const REPRESENTATIVE_SOURCE: &str =
+    include_str!("../../volicord-operations/src/explanation_sources.rs");
+const REPRESENTATIVE_GOAL: &str =
+    "Explain retained Source retrieval and current-code validation without claiming execution success.";
+
+fn seed_representative(root: &Path) -> Result<Value, Box<dyn Error>> {
+    let repo = root.join("repo");
+    fs::create_dir_all(repo.join("src"))?;
+    let path = "src/explanation_sources.rs";
+    fs::write(repo.join(path), REPRESENTATIVE_SOURCE)?;
+    assert!(REPRESENTATIVE_SOURCE.len() > 16_384);
+    let operations = LocalOperations::new(RuntimeLayout::new(root.join("runtime"))?);
+    let project = operations
+        .initialize_project("Read retained evidence safely", Some(&repo))?
+        .project
+        .id;
+    let work = operations
+        .record_current_host_user_context(
+            project,
+            "authored-structural-control".into(),
+            "representative-reader".into(),
+            REPRESENTATIVE_GOAL.into(),
+            ContextItemRole::Goal,
+            REPRESENTATIVE_GOAL.into(),
+        )?
+        .context_item_id;
+    let analysis = operations
+        .analyze(project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let mut expected = Vec::new();
+    for (start_marker, end_marker) in [
+        (
+            "    fn explanation_source(",
+            "    pub(crate) fn validate_explanation_sources(",
+        ),
+        (
+            "                    let current_hash =",
+            "                    // A corrupt comparison",
+        ),
+    ] {
+        let start = REPRESENTATIVE_SOURCE.find(start_marker).ok_or("start")?;
+        let end = REPRESENTATIVE_SOURCE[start..]
+            .find(end_marker)
+            .ok_or("end")?
+            + start;
+        let observe = |before_source_id| {
+            operations.observe_work_file(FileObservationRequest {
+                project_id: project,
+                work_item_id: work,
+                analysis_snapshot_id: analysis,
+                path: path.into(),
+                byte_range: Some(volicord_operations::FileByteRange {
+                    start_byte: start,
+                    end_byte: end,
+                }),
+                before_source_id,
+                retain_seconds: 3600,
+            })
+        };
+        let before = observe(None)?;
+        let after = observe(Some(before.source_id))?;
+        for (receipt, use_kind) in [(after, "current_code"), (before, "before_code")] {
+            expected.push(json!({"source_id":receipt.source_id.to_string(),"text":&REPRESENTATIVE_SOURCE[start..end],
+                "start_byte":start,"end_byte":end,
+                "start_line":REPRESENTATIVE_SOURCE[..start].bytes().filter(|b|*b==b'\n').count()+1,
+                "end_line":REPRESENTATIVE_SOURCE[..end-1].bytes().filter(|b|*b==b'\n').count()+1,
+                "use_kind":use_kind}));
+        }
+    }
+    Ok(
+        json!({"runtime":operations.layout().root(),"repository":repo,
+        "project":project.to_string(),"work":work.to_string(),"path":path,
+        "after":expected[0]["source_id"],"before":expected[1]["source_id"],
+        "comparison":"no_change","goal_title":format!("{}…",REPRESENTATIVE_GOAL.chars().take(72).collect::<String>()),
+        "expected_sources":expected,"input_provenance":"authored-structural-control","host_output":"not_generated"}),
+    )
+}
+
+#[test]
+fn representative_production_code_preserves_grounding_across_public_readers(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed_representative(temp.path())?;
+    let operations = ops(&f)?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    let generation = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"generate",
+        "project_id":f["project"],"work_item_id":f["work"],"language":"en"}),
+    )?;
+    assert_eq!(
+        generation["generation_status"],
+        "awaiting_host_interpretation"
+    );
+    let text = "Retained Source retrieval reads the scoped observation body. Current-code validation checks the full file hash and selected repository snapshot before admitting prose.";
+    let mut citations = Vec::new();
+    for expected in f["expected_sources"].as_array().ok_or("sources")? {
+        let read = call(
+            &mut host,
+            "work_explanation",
+            json!({"action":"read_source",
+            "project_id":f["project"],"work_item_id":f["work"],"generation_id":generation["generation_id"],
+            "source_id":expected["source_id"]}),
+        )?;
+        assert_eq!(read["observation"]["detail"]["body"], expected["text"]);
+        assert_eq!(
+            read["observation"]["detail"]["representation"],
+            "bounded_excerpt"
+        );
+        let mut citation = read["citation_basis"].clone();
+        for field in [
+            "start_byte",
+            "end_byte",
+            "start_line",
+            "end_line",
+            "use_kind",
+        ] {
+            citation[field] = expected[field].clone();
+        }
+        citation["locator"] = f["path"].clone();
+        citation["field"] = json!("body");
+        citation["range_sha256"] = json!(explanation_text_hash(
+            expected["text"].as_str().ok_or("text")?
+        ));
+        citation["claim_start_byte"] = json!(0);
+        citation["claim_end_byte"] = json!(text.len());
+        citation["claim_sha256"] = json!(explanation_text_hash(text));
+        citations.push(citation);
+    }
+    let paragraphs: Vec<_> = [
+        ("purpose", "Understand how retained evidence can be read safely."),
+        ("reported_change", text),
+        ("expected_effect", "Invalid or changed evidence must not supply current prose."),
+        ("verification", "This authored control supplies no execution result for the observed implementation."),
+        ("next_step", "No next action is recorded; interpretation cannot establish a user direction."),
+        ("limits", "Only two explicit file regions were retained; surrounding code and semantic approval are unavailable."),
+    ].into_iter().map(|(question,text)|json!({"question":question,"text":text,
+        "evidence_keys":[if question=="next_step" {"next_step"} else {"goal"}],
+        "citations":if question=="reported_change" {citations.clone()} else {vec![]}})).collect();
+    let realization = json!({"format_kind":"volicord_explanation","format_version":2,
+        "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
+        "generator":{"host":"authored-structural-control","session":"representative-reader","agent":null,"model":null},
+        "paragraphs":paragraphs});
+    call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"record","project_id":f["project"],
+        "work_item_id":f["work"],"generation_id":generation["generation_id"],"realization":realization.clone()}),
+    )?;
+    let canonical = operations.canonical_basis(project(&f)?)?;
+    let privacy = operations.privacy_status(project(&f)?)?;
+    let projection =
+        operations.project_projection_selected(project(&f)?, WorkSelector::ExactWork(work(&f)?))?;
+    let answers = work_answers(
+        projection.selected_work.as_ref().ok_or("Work")?,
+        "en",
+        FixedLocale::English,
+    );
+    assert_eq!(answers.explanation_state, ExplanationState::Current);
+    assert_eq!(answers.source_excerpts.len(), 4);
+    for (excerpt, expected) in answers
+        .source_excerpts
+        .iter()
+        .zip(f["expected_sources"].as_array().ok_or("sources")?)
+    {
+        assert_eq!(excerpt.text, expected["text"].as_str().ok_or("text")?);
+        assert_eq!(
+            excerpt.citation.start_byte,
+            expected["start_byte"].as_u64().ok_or("start")? as usize
+        );
+        assert_eq!(
+            excerpt.citation.start_line,
+            expected["start_line"].as_u64().ok_or("line")? as usize
+        );
+        assert_eq!(excerpt.omitted_utf8_bytes, 0);
+    }
+    let identity = &answers
+        .provenance
+        .as_ref()
+        .ok_or("identity")?
+        .realization_fingerprint;
+    let mcp = call(
+        &mut host,
+        "repository_understanding",
+        json!({"project_id":f["project"]}),
+    )?;
+    assert_eq!(
+        mcp["selected_work"]["answers"],
+        serde_json::to_value(&answers)?
+    );
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                f["runtime"].as_str().ok_or("runtime")?,
+                "--project",
+                f["project"].as_str().ok_or("project")?,
+                "status",
+                "--json"
+            ],
+            &mut stdout,
+            &mut stderr
+        ),
+        CliExit::SUCCESS
+    );
+    let cli: Value = serde_json::from_slice(&stdout)?;
+    let cli_work = cli["work_history"]
+        .as_array()
+        .ok_or("CLI Works")?
+        .iter()
+        .find(|item| item["work_item_id"] == f["work"])
+        .ok_or("CLI Work")?;
+    assert_eq!(cli_work["answers"], serde_json::to_value(&answers)?);
+    let page = get(&f)?;
+    assert!(page.contains(identity));
+    assert!(page.contains("selected repository snapshot"));
+    assert!(page.contains("identical bytes"));
+    let snapshot = temp.path().join("representative.html");
+    ViewerAdapter::new(ops(&f)?).export_snapshot(&request(&f)?, &snapshot)?;
+    let snapshot = fs::read_to_string(snapshot)?;
+    assert!(snapshot.contains(identity));
+    for expected in f["expected_sources"].as_array().ok_or("sources")? {
+        let escaped = expected["text"]
+            .as_str()
+            .ok_or("text")?
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&#39;");
+        let code = format!("<code lang=\"\">{escaped}</code>");
+        let lines = format!(
+            "{}:{}–{}",
+            f["path"].as_str().ok_or("path")?,
+            expected["start_line"],
+            expected["end_line"]
+        );
+        for output in [&page, &snapshot] {
+            assert!(output.contains(&code));
+            assert!(output.contains(&lines));
+            assert!(output.contains(expected["source_id"].as_str().ok_or("Source")?));
+        }
+    }
+    assert_eq!(canonical, operations.canonical_basis(project(&f)?)?);
+    assert_eq!(privacy, operations.privacy_status(project(&f)?)?);
+    // A wording revision needs fresh request-local retrieval and new claim
+    // coordinates; it cannot inherit the old output's publication identity.
+    let next = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"generate",
+        "project_id":f["project"],"work_item_id":f["work"],"language":"en"}),
+    )?;
+    for expected in f["expected_sources"].as_array().ok_or("sources")? {
+        call(
+            &mut host,
+            "work_explanation",
+            json!({"action":"read_source",
+            "project_id":f["project"],"work_item_id":f["work"],"generation_id":next["generation_id"],
+            "source_id":expected["source_id"]}),
+        )?;
+    }
+    let mut edited = realization;
+    let changed_claim = format!("Observed implementation: {text}");
+    edited["paragraphs"][1]["text"] = json!(changed_claim);
+    let record_args = |realization| {
+        json!({"action":"record","project_id":f["project"],
+        "work_item_id":f["work"],"generation_id":next["generation_id"],"realization":realization})
+    };
+    let rejected = host
+        .handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"work_explanation","arguments":record_args(edited.clone())}}))
+        .ok_or("response")?;
+    assert_eq!(rejected["result"]["isError"], true);
+    assert_eq!(privacy, operations.privacy_status(project(&f)?)?);
+    for citation in edited["paragraphs"][1]["citations"]
+        .as_array_mut()
+        .ok_or("citations")?
+    {
+        citation["claim_end_byte"] = json!(changed_claim.len());
+        citation["claim_sha256"] = json!(explanation_text_hash(&changed_claim));
+    }
+    call(&mut host, "work_explanation", record_args(edited))?;
+    let current =
+        operations.project_projection_selected(project(&f)?, WorkSelector::ExactWork(work(&f)?))?;
+    let revised = work_answers(
+        current.selected_work.as_ref().ok_or("Work")?,
+        "en",
+        FixedLocale::English,
+    );
+    assert_ne!(
+        revised
+            .provenance
+            .as_ref()
+            .ok_or("identity")?
+            .realization_fingerprint,
+        *identity
+    );
+    assert_eq!(
+        revised.provenance.as_ref().ok_or("identity")?.fingerprint,
+        answers.provenance.as_ref().ok_or("identity")?.fingerprint
+    );
+    assert_eq!(revised.prose[1].text, changed_claim);
+    let old_publication = temp.path().join("old-output.html");
+    assert!(operations
+        .publish_viewer_snapshot(
+            &page,
+            &old_publication,
+            project(&f)?,
+            &projection.canonical_read_fingerprint,
+            &[answers.provenance.ok_or("identity")?]
+        )
+        .is_err());
+    assert!(!old_publication.exists());
+    assert_eq!(canonical, operations.canonical_basis(project(&f)?)?);
+    let page = get(&f)?;
+    // An actual change outside either retained region invalidates publication.
+    fs::write(
+        temp.path()
+            .join("repo")
+            .join(f["path"].as_str().ok_or("path")?),
+        format!("{REPRESENTATIVE_SOURCE}\n// changed outside observations\n"),
+    )?;
+    assert!(!get(&f)?.contains("class=\"source-excerpt\""));
+    let denied = temp.path().join("denied.html");
+    assert!(operations
+        .publish_viewer_snapshot(
+            &page,
+            &denied,
+            project(&f)?,
+            &current.canonical_read_fingerprint,
+            &[revised.provenance.ok_or("identity")?]
+        )
+        .is_err());
+    assert!(!denied.exists());
+    Ok(())
+}
+
+#[test]
+fn seed_representative_reader_runtime() -> Result<(), Box<dyn Error>> {
+    let Ok(output) = std::env::var("VOLICORD_REPRESENTATIVE_READER_ROOT") else {
+        return Ok(());
+    };
+    let root = Path::new(&output);
+    fs::create_dir_all(root)?;
+    let case = seed_representative(root)?;
+    fs::write(
+        root.join("fixture.json"),
+        serde_json::to_vec_pretty(&json!({"cases":[case]}))?,
+    )?;
+    Ok(())
+}

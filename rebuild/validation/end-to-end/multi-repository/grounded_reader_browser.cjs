@@ -5,27 +5,53 @@ const {pathToFileURL} = require('node:url');
 const [configuration] = process.argv.slice(2);
 const config = JSON.parse(fs.readFileSync(configuration));
 const {chromium} = require(config.playwright);
+function expectedSources(item) {
+  return item.expected_sources || [
+    {source_id:item.after,text:'def value():\n    return 5\n'},
+    ...(item.before ? [{source_id:item.before,text:`def value():\n    return ${item.comparison==='changed'?4:5}\n`}] : [])
+  ];
+}
+async function checkSources(work, item, navigation=false) {
+  for (const expected of expectedSources(item)) {
+    const source=work.locator(`.source-excerpt[data-source-id="${expected.source_id}"]`);
+    assert.equal(await source.count(),1,'exact current Source identity');
+    assert.equal(await source.locator('code').textContent(),expected.text,'actual current code bytes');
+    if (expected.start_line) {
+      assert.ok((await source.textContent()).includes(`${item.path}:${expected.start_line}–${expected.end_line}`),'absolute observed file lines');
+      assert.ok((await source.textContent()).includes('Bounded file observation') || (await source.textContent()).includes('제한된 파일 관측'),'bounded observation notice');
+    }
+    if (expected.use_kind && navigation) {
+      const label=expected.use_kind==='before_code'
+        ? ['Before: historical observation','이전: 과거 관측']
+        : ['Current observed code','현재 관측 코드'];
+      const target=await source.getAttribute('id');
+      const links=work.locator(`a.source-citation[href="#${target}"]`);
+      assert.ok(await links.count()>0,'exact Source has a citation link');
+      assert.ok((await links.allTextContents()).every(text=>label.some(term=>text.startsWith(term))),'current and historical navigation labels distinguish evidence use');
+    }
+  }
+}
 async function check(page, item, language, expected, offline) {
   const work = page.locator(`article[data-work-id="${item.work}"]`).filter({has:page.locator('.source-excerpt')}).first();
   assert.equal(await work.count(), 1, 'selected Work has cited code');
   const source = work.locator(`.source-excerpt[data-source-id="${item.after}"]`);
   assert.equal(await source.count(), 1, 'exact current Source identity');
-  assert.equal(await source.locator('code').innerText(), 'def value():\n    return 5\n', 'actual current code bytes');
+  await checkSources(work,item,true);
   assert.ok((await work.locator('.explanation-grounding').textContent()).includes(expected.provenance.realization_fingerprint), 'matching output identity');
   const comparison = await source.locator('.source-comparison').innerText();
   const terms = language === 'ko'
     ? {changed:'다릅니다',no_change:'동일합니다',missing_before_state:'보존되지 않았습니다'}
     : {changed:'differ',no_change:'identical bytes',missing_before_state:'not retained'};
   assert.ok(comparison.includes(terms[item.comparison]), 'honest comparison state');
-  if (item.before) {
-    const prior = work.locator(`.source-excerpt[data-source-id="${item.before}"] code`);
-    assert.equal(await prior.innerText(), `def value():\n    return ${item.comparison==='changed'?4:5}\n`, 'actual before bytes');
-  }
   const heading = work.locator('h3').first();
-  assert.equal(await heading.innerText(), 'Explain why value returns 5, using observed code and any retained compar…', 'bounded original Goal heading');
+  assert.equal(await heading.innerText(), item.goal_title || 'Explain why value returns 5, using observed code and any retained compar…', 'bounded original Goal heading');
   assert.equal(await heading.getAttribute('data-title-basis'), 'goal-quotation', 'heading authority distinct from generated prose');
   assert.equal(await heading.getAttribute('lang'), '', 'original Goal language unknown');
   assert.equal(await work.locator('[data-question="Purpose"]').first().textContent(), expected.prose.find(a=>a.question==='Purpose').text, 'unchanged generated Purpose');
+  for (const question of new Set(expected.prose.map(a=>a.question))) {
+    const paragraphs=work.locator(`[data-content-language="${language}"][data-question="${question}"]`);
+    assert.deepEqual(await paragraphs.allTextContents(),expected.prose.filter(a=>a.question===question).map(a=>a.text),'complete original interpretation paragraphs in order');
+  }
   assert.equal(await source.locator('code').getAttribute('lang'), '', 'original Source language unknown');
   assert.equal(await work.locator('.explanation-grounding').getAttribute('open'), null, 'closed diagnostic material');
   const ids = await page.locator('.source-excerpt').evaluateAll(nodes=>nodes.map(n=>n.id));
@@ -69,10 +95,9 @@ async function check(page, item, language, expected, offline) {
         await page.screenshot({path:`${config.output}/${item.comparison}-${language}-${width}-reading.png`});
         if (!config.offline) {
           await page.goto(`${config.url}?view=code&scope=work&work=${item.work}&locale=${language}&language=${language}`);
-          const scopedCode=page.locator(`.source-excerpt[data-source-id="${item.after}"] code`);
-          assert.equal(await scopedCode.innerText(),'def value():\n    return 5\n','Work-scoped Code page uses exact excerpt');
+          await checkSources(page.locator('.code-work-meaning'),item);
           assert.equal(await page.locator('.code-work-meaning h3').getAttribute('data-title-basis'),'goal-quotation','Code title preserves original Goal basis');
-          assert.equal(await page.locator('.code-work-meaning [data-question="ReportedChange"]').getAttribute('lang'),language,'Code interpretation preserves requested language');
+          assert.ok(await page.locator('.code-work-meaning [data-question="ReportedChange"]').evaluateAll((nodes,language)=>nodes.length>0 && nodes.every(n=>n.getAttribute('lang')===language),language),'Code interpretation preserves requested language');
           await page.goto(url);
           // Native keyboard sequence, no click/focus substitution for the link.
           for (let step=0;step<100;step++) {
@@ -83,7 +108,7 @@ async function check(page, item, language, expected, offline) {
           await page.keyboard.press('Enter');
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-excerpt')),'Enter focuses exact code target');
           const code=page.locator(`.source-excerpt[data-source-id="${item.after}"] code`);
-          const original=await code.innerText();
+          const original=await code.textContent();
           await code.evaluate(n=>n.textContent='fabricated control');
           await assert.rejects(()=>check(page,item,language,expected,false),/actual current code bytes/,'negative: fabricated excerpt rejected');
           await code.evaluate((n,text)=>n.textContent=text,original);

@@ -1,16 +1,34 @@
 #!/usr/bin/env python3
 """Read actual host-recorded, Source-cited Work outputs; no generation or feedback."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import time
 import urllib.request
 import harness
 import viewer_browser as supporting
+
+
+def retained_state(runtime):
+    """Read-only content identities, including retention; never emit body bytes."""
+    runtime = Path(runtime)
+    state = {}
+    for database in sorted(runtime.glob('*.sqlite3')):
+        with sqlite3.connect(database.resolve().as_uri()+'?mode=ro', uri=True) as connection:
+            dump = '\n'.join(connection.iterdump()).encode()
+        state[database.name] = hashlib.sha256(dump).hexdigest()
+    for artifact in sorted((runtime/'derived').rglob('*')):
+        if artifact.is_file():
+            state[str(artifact.relative_to(runtime))] = harness.sha256(artifact)
+    if 'canonical.sqlite3' not in state or 'privacy.sqlite3' not in state:
+        raise RuntimeError('canonical and managed storage inspection required')
+    return state
 
 
 def main():
@@ -47,6 +65,7 @@ def main():
             raise RuntimeError('Korean font prerequisite unavailable')
         basis, snapshots, before = {}, {}, {}
         for index, item in enumerate(fixture['cases']):
+            stored_before = retained_state(item['runtime'])
             cli = [args.bin_dir/'volicord','--runtime',item['runtime'],'--project',item['project'],'--json']
             before[item['project']] = json.loads(run(f'privacy-before-{index}',cli+['privacy','status']))
             basis[item['project']], snapshots[item['project']] = {}, {}
@@ -78,14 +97,17 @@ def main():
                 else: raise RuntimeError('Viewer startup timeout')
                 config_path=output/f'config-{index}.json'; config_path.write_text(json.dumps(config))
                 run(f'live-browser-{index}',['node',Path(__file__).with_suffix('.cjs'),config_path])
-                source=Path(item['repository'])/'main.py'; original=source.read_bytes()
+                source=Path(item['repository'])/item.get('path','main.py'); original=source.read_bytes()
                 try:
-                    source.write_text('def value():\n    return 6\n')
+                    source.write_bytes(original + b'\n// changed outside retained observations\n'
+                                       if item.get('expected_sources') else b'def value():\n    return 6\n')
                     config.update(denied_state='changed_source',expected_diagnostic='Source bytes changed')
                     config_path.write_text(json.dumps(config))
                     run(f'changed-source-browser-{index}',['node',Path(__file__).with_suffix('.cjs'),config_path])
                     source.unlink()
-                    config.update(denied_state='missing_source',expected_diagnostic='Source read denied or unavailable')
+                    config.update(denied_state='missing_source',expected_diagnostic=(
+                        'current excerpt unavailable' if item.get('expected_sources')
+                        else 'Source read denied or unavailable'))
                     config_path.write_text(json.dumps(config))
                     run(f'missing-source-browser-{index}',['node',Path(__file__).with_suffix('.cjs'),config_path])
                 finally:
@@ -96,6 +118,11 @@ def main():
                 result.setdefault('viewer_exits',[]).append(process.returncode)
             if json.loads(run(f'privacy-after-{index}',cli+['privacy','status']))!=before[item['project']]:
                 raise RuntimeError('GET/export changed managed state or retention')
+            if retained_state(item['runtime']) != stored_before:
+                raise RuntimeError('read/render/export changed canonical, managed, provider or derived contents')
+            result.setdefault('retained_state_checks', []).append({
+                'project_id':item['project'],'unchanged':True,'before':stored_before,
+                'after':retained_state(item['runtime'])})
             # The live server is gone and retained Runtime is physically unavailable.
             runtime=Path(item['runtime']); hidden=runtime.with_name(runtime.name+'-offline-unavailable')
             runtime.rename(hidden)

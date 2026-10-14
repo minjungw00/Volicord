@@ -288,10 +288,13 @@ The host investigates permitted relevant code, retrieves selected retained Sourc
 with `read_source`, authors natural prose with exact source/claim bindings and
 uses `record`. Its initial awaiting-host status is not completed generation, and
 the user does not construct JSON. Source links navigate to the actual cited code
-or command output, with exact revisions and claim hashes in closed details. The
+or command output, with exact revisions and claim hashes in closed details. Link
+labels distinguish current code, historical before code and command output. The
 same bounded excerpt basis serves CLI/MCP, live Viewer and offline snapshots.
-Purpose wording supplies a derived problem-first title; the original Goal remains
-inspectable. Output fingerprints distinguish different interpretations of one plan.
+Viewer headings quote the bounded original Goal; generated Purpose appears once
+below it in the problem section. The optional API `reading_title` remains derived
+interpretation. Full original Goal evidence stays inspectable. Output fingerprints
+distinguish different interpretations of one plan.
 Before-state needs an explicit observed pair; current code
 alone does not prove a patch, execution success or user approval. Missing host
 capability/authority stays incomplete with recorded facts readable. See the

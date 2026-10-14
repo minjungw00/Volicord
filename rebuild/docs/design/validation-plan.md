@@ -2738,3 +2738,22 @@ actual Product evidence and record its new output through public operations. Its
 generator identity is self-reported and its reading quality is not independent human
 approval. No workspace aggregate, gate, official V11 or external provider is invoked
 by these focused checks.
+
+Representative reader support additionally observes two explicit regions of the
+maintained Operations `explanation_sources.rs`, whose full file exceeds 16 KiB.
+`grounded_reader::representative_production_code_preserves_grounding_across_public_readers`
+records labeled authored control prose, checks exact shared CLI/MCP answers and
+Viewer/snapshot code bytes, and rejects publication after a change outside either
+retained region. It also rejects edited prose with old claim hashes, admits a
+correctly rebound output with a distinct realization identity, and rejects a
+prepared snapshot carrying the old output. Its optional `seed_representative_reader_runtime` creates only
+authored canonical inputs and paired Source copies, never generated prose.
+The existing browser runner also accepts separately authored `expected_sources`,
+path and Goal-title expectations, preserves multiple paragraphs per question,
+checks absolute excerpt coordinates and Source-use navigation labels, and
+distinguishes unavailable excerpt reads from whole-file read failures. Read-only
+SQLite dump and Derived file hashes verify unchanged stored contents, including
+retention, across GET/render/export; raw dump bytes are not emitted. A genuine
+active host must still read and interpret
+the Product plan and Sources before recording; fixture support cannot supply that
+event. Neither browser checks nor current-host prose establish human comprehension.

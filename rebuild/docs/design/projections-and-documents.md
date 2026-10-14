@@ -176,8 +176,9 @@ when truncated and `goal-quotation` display metadata. They do not duplicate a
 generated Purpose paragraph as a headline or rename the canonical Work. The full
 Goal remains in retained evidence; original Goal language is not inferred from the
 requested explanation language. Generated paragraph order, text and citations
-remain unchanged. Citation links state the paragraph's explanatory purpose before
-the exact locator, and explanation-authority details remain inspectable in a native
+remain unchanged. Citation links identify current observed code, historical before
+code or observed command output before the exact locator, and explanation-authority
+details remain inspectable in a native
 disclosure. Missing Source, failure and state limitations retain their existing
 ordinary-reading treatment. The current route/CLI/snapshot contract is maintained
 in the [Viewer README](../../crates/volicord-viewer/README.md). Explanation-level
@@ -1656,8 +1657,11 @@ they are never copied into the retained explanation envelope.
 
 CLI/MCP, live Viewer and offline snapshot read the same answers and source basis.
 Existing MCP transport omissions remain separate from shared excerpt bounds.
-`reading_title` uses the permitted Purpose paragraph as problem-first derived
-wording; the canonical Goal remains original evidence. The exact compact
+The optional `reading_title` API uses the permitted Purpose paragraph as derived
+wording. Viewer headings instead quote at most 72 characters of the canonical
+Goal, with its full text in evidence; generated Purpose appears once as ordinary
+explanation prose. Section labels group adjacent paragraphs without changing
+their order or text. The exact compact
 realization fingerprint distinguishes regenerated or edited outputs on the same
 plan. It supplies output identity, not semantic approval or authenticated authorship.
 
