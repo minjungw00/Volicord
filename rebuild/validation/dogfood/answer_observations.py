@@ -558,7 +558,10 @@ def observe(work, resume, bundle, work_id):
                         else:
                             errors.append('shared prose section malformed')
                         prose = []
-                    if state not in {'current', 'unavailable', 'stale', 'corrupt', 'unsupported'}:
+                    # The maintained Product read contract distinguishes absent,
+                    # deleted and forgetting-withheld content from read failure.
+                    if state not in {'current', 'missing', 'deleted', 'withheld',
+                            'unavailable', 'stale', 'corrupt', 'unsupported'}:
                         errors.append('explanation availability state')
                     if state == 'current':
                         scope = '/selected_work/answers/provenance'

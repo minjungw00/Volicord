@@ -184,7 +184,8 @@ class MeaningTests(unittest.TestCase):
         self.assertTrue(any(p['value'].endswith('/body/value/result/revision') for p in pointers))
 
     def test_stale_and_absent_keep_the_recorded_action_through_actual_consumer(self):
-        for state in ('unavailable', 'stale'):
+        availability = copy.deepcopy(self.answer['selected_work']['answers']['prose'])
+        for state in ('missing', 'deleted', 'withheld', 'unavailable', 'stale', 'corrupt', 'unsupported'):
             self.answer['selected_work']['answers']['explanation_state'] = state
             result, fact = self.fixture.evaluate(self.answer)
             self.assertEqual(fact['status'], 'confirmed_pass')
@@ -192,6 +193,30 @@ class MeaningTests(unittest.TestCase):
             projected = a.project(self.answer, 'recall')
             self.assertTrue(projected['semantic_complete'])
             self.assertEqual(projected['value']['next_step'], self.answer['next_step'])
+            self.assertEqual(projected['value']['selected_work']['answers']['explanation_state'], state)
+            self.assertEqual(projected['value']['selected_work']['answers']['prose'], availability)
+            self.assertFalse(any(p['role'] == 'generated_interpretation' for p in availability))
+
+    def test_absent_explanation_states_reject_revival_and_unknown_state(self):
+        for state in ('missing', 'deleted', 'withheld'):
+            for mutation in ('provenance', 'direction', 'identity'):
+                value = copy.deepcopy(self.answer)
+                value['selected_work']['answers']['explanation_state'] = state
+                if mutation == 'provenance':
+                    value['selected_work']['answers']['provenance'] = {}
+                elif mutation == 'direction':
+                    value['selected_work']['answers']['prose'] = [{'question': 'NextStep',
+                        'text': 'Invented generated direction.', 'role': 'generated_interpretation'}]
+                else:
+                    value['selected_work']['work_item_id'] = 'ff' * 16
+                with self.subTest(state=state, mutation=mutation):
+                    _, fact = self.fixture.evaluate(value)
+                    self.assertEqual(fact['status'], 'confirmed_violation')
+        value = copy.deepcopy(self.answer)
+        value['selected_work']['answers']['explanation_state'] = 'invented_state'
+        _, fact = self.fixture.evaluate(value)
+        self.assertEqual(fact['status'], 'confirmed_violation')
+        self.assertIn('explanation availability state', fact['basis']['observations'][0]['errors'])
 
     def test_generated_paraphrase_is_retained_without_semantic_certification(self):
         preparation, _, _, after = lifecycle()

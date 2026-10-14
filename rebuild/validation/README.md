@@ -932,6 +932,9 @@ missing captures and unknown diagnostic counts cannot become successful empty ac
 Focused review/qualification controls in `qualification_self_test.FileBoundaryTests`
 record this draft, reject incomplete or forged dimensions and replay copied lineage
 with the original staging paths unavailable. The qualitative validator is unchanged.
+The machine Recall consumer preserves the Product's distinct Missing, Deleted and
+Withheld explanation states alongside canonical recorded actions. These states
+cannot revive generated direction or provenance and do not establish prose adequacy.
 
 The [measured campaign preparation pack](dogfood/campaign-readiness.md) keeps
 proposed targets/tasks separate from approved frozen inputs and observed outcomes.
