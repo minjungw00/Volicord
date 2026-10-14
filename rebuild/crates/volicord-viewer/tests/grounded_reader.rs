@@ -363,6 +363,92 @@ fn overview_reads_available_work_before_missing_project_context() -> Result<(), 
 }
 
 #[test]
+fn missing_checkpoint_direction_does_not_erase_goal_or_promote_advice() -> Result<(), Box<dyn Error>>
+{
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    record(&f, &mut HostAdapter::new(ops(&f)?))?;
+    let op = ops(&f)?;
+    let canonical = op.canonical_basis(project(&f)?)?;
+    let projection = op.project_projection(project(&f)?)?;
+    let selected = projection.selected_work.as_ref().ok_or("Work")?;
+    let mut realization = selected.reading.explanations[0]
+        .content
+        .as_ref()
+        .ok_or("current output")?
+        .realization
+        .clone();
+    let advice = "Consider inspecting callers; this is an agent suggestion.";
+    realization.generator.host = "authored-authority-control".into();
+    realization
+        .paragraphs
+        .iter_mut()
+        .find(|p| p.question == ExplanationQuestion::NextStep)
+        .ok_or("next step")?
+        .text = advice.into();
+    op.record_explanation(
+        project(&f)?,
+        ExplanationSubject::Work(work(&f)?),
+        "en",
+        realization,
+    )?;
+    for stale in [false, true] {
+        if stale {
+            fs::write(
+                Path::new(f["repository"].as_str().ok_or("repository")?).join("main.py"),
+                "def value():\n    return 6\n",
+            )?;
+        }
+        let projection = op.project_projection(project(&f)?)?;
+        let selected = projection.selected_work.as_ref().ok_or("Work")?;
+        let answers = work_answers(selected, "en", FixedLocale::English);
+        assert!(answers.recorded_next_action().is_none());
+        assert_eq!(
+            answers.next_step_answer().ok_or("availability")?.question,
+            "NextStepAvailability"
+        );
+        assert_eq!(answers.prose.iter().any(|a| a.text == advice), !stale);
+        for (locale, gap, heading) in [
+            (
+                ViewerLocale::English,
+                "No Checkpoint next action is recorded.",
+                "Host interpretation: next steps / uncertainty",
+            ),
+            (
+                ViewerLocale::Korean,
+                "Checkpoint에 기록된 다음 행동이 없습니다.",
+                "호스트 해석: 다음 단계 / 불확실성",
+            ),
+        ] {
+            let mut r = request(&f)?;
+            r.locale = locale;
+            let adapter = ViewerAdapter::new(ops(&f)?);
+            let detail = adapter.render(&r, "test-authenticity")?.html;
+            r.view = ViewerView::Overview;
+            let overview = adapter.render(&r, "test-authenticity")?.html;
+            let snapshot = adapter
+                .render_snapshot(&r, TimestampMicros::from_unix_micros(123))?
+                .html;
+            for page in [&overview, &snapshot] {
+                assert!(
+                    page.contains(gap),
+                    "Checkpoint gap must be scoped to recorded direction"
+                );
+                assert!(!page.contains("다음 단계 없음:"));
+                assert!(page.contains("Explain why value returns 5"));
+                assert!(!page.contains("data-question=\"RecordedNextStep\""));
+            }
+            for page in [&detail, &snapshot] {
+                assert_eq!(page.contains(advice), !stale);
+                assert_eq!(page.contains(heading), !stale);
+            }
+        }
+    }
+    assert_eq!(canonical, op.canonical_basis(project(&f)?)?);
+    Ok(())
+}
+
+#[test]
 fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result<(), Box<dyn Error>>
 {
     for comparison in ["changed", "no_change", "missing_before_state"] {

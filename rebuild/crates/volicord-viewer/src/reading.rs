@@ -509,8 +509,8 @@ fn overview(
             html,
             text(
                 request.locale,
-                "Next step unavailable: no Checkpoint records one.",
-                "다음 단계 없음: 기록한 체크포인트가 없습니다.",
+                "No Checkpoint next action is recorded. This alone does not establish whether task instructions or suggestions exist.",
+                "Checkpoint에 기록된 다음 행동이 없습니다. 작업 지시나 제안의 유무는 이 사실만으로 알 수 없습니다.",
             ),
         );
     }
@@ -676,7 +676,11 @@ fn answer_title<'a>(question: &str, locale: ViewerLocale) -> &'a str {
         "ReportedChange" => text(locale, "Change / investigation", "변경 / 조사"),
         "ExpectedEffect" => text(locale, "Result / expected effect", "결과 / 기대 효과"),
         "Verification" => text(locale, "Verification", "검증"),
-        "NextStep" => text(locale, "Next step / uncertainty", "다음 단계 / 불확실성"),
+        "NextStep" => text(
+            locale,
+            "Host interpretation: next steps / uncertainty",
+            "호스트 해석: 다음 단계 / 불확실성",
+        ),
         "UserRationale" => text(locale, "User rationale", "사용자 이유"),
         "Recommendation" => text(locale, "Agent recommendation basis", "에이전트 권고 근거"),
         "Consequences" => text(locale, "Alternatives / trade-offs", "대안 / 절충"),

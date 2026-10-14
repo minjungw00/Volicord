@@ -356,6 +356,12 @@ fixed en/ko labels do not translate it. Recall's top-level `next_step` is the ex
 Current generated `NextStep` paragraphs remain separately labeled interpretations
 with generated provenance and evidence keys. They never override the canonical
 direction. Explanation repair stays in `ExplanationAvailability`.
+Viewer next-step section headings explicitly identify host interpretation. Its empty
+Overview direction notice states only that no Checkpoint next action is recorded;
+this does not establish whether task instructions or further suggestions exist.
+An observed task-file instruction retains Source-content authority, not an inferred
+author or a fabricated Checkpoint action. No original explanation wording or binding
+is rewritten by these display labels.
 
 Blank/missing latest Checkpoint direction produces `NextStepAvailability`, without
 inheriting an older action; Goal-only Work identifies the absence of a Checkpoint.

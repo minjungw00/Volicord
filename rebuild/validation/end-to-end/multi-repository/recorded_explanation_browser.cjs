@@ -29,8 +29,8 @@ for (const excerpt of answers.source_excerpts) {
   if (excerpt.omitted_utf8_bytes === 0) assert.equal(textHash(excerpt.text), excerpt.citation.range_sha256, 'exact complete Source range hash');
 }
 const labels = {
-  en: {Purpose:'Goal / problem', ReportedChange:'Change / investigation', ExpectedEffect:'Result / expected effect', Verification:'Verification', NextStep:'Next step / uncertainty', Limits:'Remaining uncertainty'},
-  ko: {Purpose:'목표 / 문제', ReportedChange:'변경 / 조사', ExpectedEffect:'결과 / 기대 효과', Verification:'검증', NextStep:'다음 단계 / 불확실성', Limits:'남은 불확실성'},
+  en: {Purpose:'Goal / problem', ReportedChange:'Change / investigation', ExpectedEffect:'Result / expected effect', Verification:'Verification', NextStep:'Host interpretation: next steps / uncertainty', Limits:'Remaining uncertainty'},
+  ko: {Purpose:'목표 / 문제', ReportedChange:'변경 / 조사', ExpectedEffect:'결과 / 기대 효과', Verification:'검증', NextStep:'호스트 해석: 다음 단계 / 불확실성', Limits:'남은 불확실성'},
 };
 (async () => {
   const browser = await chromium.launch({executablePath:config.chromium, headless:true, args:['--no-sandbox']});
