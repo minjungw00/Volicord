@@ -291,8 +291,11 @@ the user does not construct JSON. Source links navigate to the actual cited code
 or command output, with exact revisions and claim hashes in closed details. Link
 labels lead with the cited paragraph's purpose (problem, change, effect or checks),
 then distinguish current code, historical before code and command output. Each code
-panel lists only the purposes of paragraphs citing its exact range and evidence use. The
-same bounded excerpt basis serves CLI/MCP, live Viewer and offline snapshots.
+panel lists only the purposes of paragraphs citing its exact range and evidence use.
+When paragraphs share a code range, its disclosure retains each paragraph's
+question, ordinal, generated claim quotation and exact citation rather than
+showing only the first claim. These quotations remain interpretations.
+The same bounded excerpt basis serves CLI/MCP, live Viewer and offline snapshots.
 Viewer headings quote the bounded original Goal, preferring a complete opening
 request sentence when it fits the existing 72-character bound; generated Purpose appears once
 below it in the problem section. The optional API `reading_title` remains derived

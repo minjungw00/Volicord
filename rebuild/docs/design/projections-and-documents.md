@@ -1680,7 +1680,11 @@ plan. It supplies output identity, not semantic approval or authenticated author
 
 Citation navigation leads with the bound paragraph's explanatory purpose, followed
 by current/historical/execution use and the exact locator. A code panel groups the
-purposes only of paragraphs citing that exact Source/range/use. Claim classification
+purposes only of paragraphs citing that exact Source/range/use. Its closed claim
+disclosure preserves every bound paragraph's question, ordinal, original claim
+quotation and exact citation coordinates/hash, including different claims sharing
+one code range. Generated claim quotations remain interpretations, not observed
+code facts or semantic approval. Claim classification
 and byte binding cannot supply semantic entailment or an independently supported
 effect title; broad canonical requests retain an accurate request heading.
 

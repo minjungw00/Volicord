@@ -64,6 +64,23 @@ const labels = {
         const purposes = answers.prose.filter(p => p.citations.some(x => x.source_id === c.source_id && x.field === c.field && x.start_byte === c.start_byte && x.end_byte === c.end_byte && x.use_kind === c.use_kind)).map(p => labels[display.locale][p.question]);
         assert.ok(await links.count() > 0, 'range directly reachable');
         assert.ok((await links.allTextContents()).every(text => purposes.some(p => text.startsWith(p + ' · '))), 'citation labels explain the bound purpose');
+        const bindings = source.locator('.source-claim-basis');
+        const expectedClaims = answers.prose.flatMap((p, index) => p.citations
+          .filter(x => x.source_id === c.source_id && x.field === c.field && x.start_byte === c.start_byte && x.end_byte === c.end_byte && x.use_kind === c.use_kind)
+          .map(x => ({question:p.question, paragraph:String(index + 1), start:String(x.claim_start_byte), end:String(x.claim_end_byte),
+            claim:Buffer.from(p.text).subarray(x.claim_start_byte, x.claim_end_byte).toString('utf8'), hash:x.claim_sha256})));
+        assert.equal(await bindings.count(), expectedClaims.length, 'every paragraph claim retained on shared Source card');
+        for (let index=0; index<expectedClaims.length; index++) {
+          const expected = expectedClaims[index], bound = bindings.nth(index);
+          assert.equal(await bound.getAttribute('data-question'), expected.question);
+          assert.equal(await bound.getAttribute('data-paragraph'), expected.paragraph);
+          assert.equal(await bound.getAttribute('data-claim-start'), expected.start);
+          assert.equal(await bound.getAttribute('data-claim-end'), expected.end);
+          assert.equal(await bound.getAttribute('data-statement-role'), 'generated-interpretation');
+          assert.equal(await bound.locator('.source-bound-claim').getAttribute('data-content-language'), config.body_language);
+          assert.equal(await bound.locator('.source-bound-claim').textContent(), expected.claim);
+          assert.ok((await bound.locator('pre').textContent()).includes(expected.hash), 'exact paragraph claim hash');
+        }
         await links.first().click();
         assert.equal(await page.evaluate(() => document.activeElement.id), target, 'mouse reaches exact Source');
         assert.equal(await source.locator(':scope > pre').evaluate(e => getComputedStyle(e).whiteSpace), 'pre', 'code indentation preserved');

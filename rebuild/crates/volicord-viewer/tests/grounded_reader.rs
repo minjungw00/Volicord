@@ -1078,3 +1078,204 @@ fn seed_representative_reader_runtime() -> Result<(), Box<dyn Error>> {
     )?;
     Ok(())
 }
+
+#[test]
+fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    let generation = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"generate","project_id":f["project"],
+            "work_item_id":f["work"],"language":"en"}),
+    )?;
+    let read = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"read_source","project_id":f["project"],
+            "work_item_id":f["work"],"generation_id":generation["generation_id"],
+            "source_id":f["after"]}),
+    )?;
+    let body = read["observation"]["detail"]["body"]
+        .as_str()
+        .ok_or("body")?;
+    assert_eq!(body, "def value():\n    return 5\n");
+    let cases = [
+        (
+            "reported_change",
+            "ReportedChange",
+            2,
+            "Observed: 한 The function returns 5.",
+            "The function returns 5.",
+            0,
+            body.len(),
+        ),
+        (
+            "expected_effect",
+            "ExpectedEffect",
+            3,
+            "Effect hypothesis: This proves every caller is safe.",
+            "This proves every caller is safe.",
+            0,
+            body.len(),
+        ),
+        (
+            "expected_effect",
+            "ExpectedEffect",
+            4,
+            "Limit: No execution result follows from this file.",
+            "No execution result follows from this file.",
+            0,
+            body.len(),
+        ),
+        (
+            "limits",
+            "Limits",
+            5,
+            "Other range: The definition is named value.",
+            "The definition is named value.",
+            0,
+            "def value():".len(),
+        ),
+    ];
+    let mut paragraphs = vec![
+        json!({"question":"purpose","text":"Inspect the constant-return definition.",
+        "evidence_keys":["goal"],"citations":[]}),
+    ];
+    for (question, _, _, paragraph, claim, start, end) in cases {
+        let offset = paragraph.find(claim).ok_or("claim substring")?;
+        let mut citation = read["citation_basis"].clone();
+        citation["field"] = json!("body");
+        citation["locator"] = json!("main.py");
+        citation["use_kind"] = json!("current_code");
+        citation["start_byte"] = json!(start);
+        citation["end_byte"] = json!(end);
+        citation["start_line"] = json!(1);
+        citation["end_line"] = json!(if end == body.len() { 2 } else { 1 });
+        citation["range_sha256"] = json!(explanation_text_hash(&body[start..end]));
+        citation["claim_start_byte"] = json!(offset);
+        citation["claim_end_byte"] = json!(offset + claim.len());
+        citation["claim_sha256"] = json!(explanation_text_hash(claim));
+        paragraphs.push(json!({"question":question,"text":paragraph,
+            "evidence_keys":["goal"],"citations":[citation]}));
+    }
+    paragraphs.extend([
+        json!({"question":"verification","text":"No executed verification was recorded.","evidence_keys":["goal"],"citations":[]}),
+        json!({"question":"next_step","text":"No recorded next action is supplied.","evidence_keys":["next_step"],"citations":[]}),
+    ]);
+    let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,
+        "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
+        "generator":{"host":"independent-shared-range-control","session":"authored-source-claims",
+            "agent":null,"model":null},"paragraphs":paragraphs});
+    let recorded = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"record","project_id":f["project"],"work_item_id":f["work"],
+            "generation_id":generation["generation_id"],"realization":realization}),
+    )?;
+    assert_eq!(
+        recorded["explanation"]["semantic_approval_status"],
+        "not_established"
+    );
+    let operations = ops(&f)?;
+    let canonical = operations.canonical_basis(project(&f)?)?;
+    let privacy = operations.privacy_status(project(&f)?)?;
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let mut req = request(&f)?;
+        req.locale = locale;
+        let server = ViewerServer::new(
+            ViewerAdapter::new(ops(&f)?),
+            project(&f)?,
+            locale,
+            ViewerView::Overview,
+            "en".into(),
+            "127.0.0.1:3219".parse()?,
+        )?;
+        let locale_tag = if locale == ViewerLocale::English {
+            "en"
+        } else {
+            "ko"
+        };
+        let http = format!("GET /?view=work&work={}&locale={locale_tag}&language=en HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n", f["work"].as_str().ok_or("work")?);
+        let mut live = Vec::new();
+        server.serve_connection(&mut http.as_bytes(), &mut live)?;
+        let live = String::from_utf8(live)?;
+        assert!(live.starts_with("HTTP/1.1 200"));
+        let destination = temp.path().join(format!("shared-claims-{locale_tag}.html"));
+        ViewerAdapter::new(ops(&f)?).export_snapshot(&req, &destination)?;
+        let snapshot = fs::read_to_string(destination)?;
+        for page in [&live, &snapshot] {
+            let cards: Vec<_> = page
+                .split("<figure class=\"source-excerpt\"")
+                .skip(1)
+                .map(|tail| tail.split("</figure>").next().ok_or("figure end"))
+                .collect::<Result<_, _>>()?;
+            assert_eq!(cards.len(), 2, "One figure per Source/range/use");
+            let full = cards
+                .iter()
+                .find(|card| card.contains("<code lang=\"\">def value():\n    return 5\n</code>"))
+                .ok_or("full-range card")?;
+            let other = cards
+                .iter()
+                .find(|card| card.contains("<code lang=\"\">def value():</code>"))
+                .ok_or("other-range card")?;
+            assert_eq!(
+                full.matches("class=\"source-claim-basis\"").count(),
+                3,
+                "Shared Source must retain all three distinct paragraph bindings"
+            );
+            assert_eq!(other.matches("class=\"source-claim-basis\"").count(), 1);
+            for (_, question, ordinal, paragraph, claim, _, end) in cases {
+                let target = if end == body.len() { full } else { other };
+                let excluded = if end == body.len() { other } else { full };
+                let offset = paragraph.find(claim).ok_or("claim")?;
+                let marker = format!("data-question=\"{question}\" data-paragraph=\"{ordinal}\" data-claim-start=\"{offset}\" data-claim-end=\"{}\"", offset + claim.len());
+                assert!(
+                    target.contains(&marker),
+                    "Exact question/paragraph/UTF-8 claim basis missing: {marker}"
+                );
+                assert!(target.contains(&format!(
+                    "class=\"source-bound-claim\">{claim}</blockquote>"
+                )));
+                assert!(target.contains(&explanation_text_hash(claim)));
+                let citation: ExplanationCitation = serde_json::from_value(
+                    realization["paragraphs"][ordinal - 1]["citations"][0].clone(),
+                )?;
+                let complete_citation = format!("citation: {citation:#?}")
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;")
+                    .replace('"', "&quot;")
+                    .replace('\'', "&#39;");
+                assert!(
+                    target.contains(&complete_citation),
+                    "Complete paragraph-specific citation missing"
+                );
+                assert!(
+                    !excluded.contains(&marker),
+                    "Another range inherited this claim"
+                );
+                assert!(!excluded.contains(claim));
+                assert!(!excluded.contains(&explanation_text_hash(claim)));
+            }
+            assert_eq!(full.matches("citation: ExplanationCitation").count(), 3);
+            assert_eq!(other.matches("citation: ExplanationCitation").count(), 1);
+            assert_eq!(
+                full.matches("data-statement-role=\"generated-interpretation\"")
+                    .count(),
+                3
+            );
+            assert_eq!(
+                other
+                    .matches("data-statement-role=\"generated-interpretation\"")
+                    .count(),
+                1
+            );
+        }
+    }
+    assert_eq!(canonical, operations.canonical_basis(project(&f)?)?);
+    assert_eq!(privacy, operations.privacy_status(project(&f)?)?);
+    Ok(())
+}

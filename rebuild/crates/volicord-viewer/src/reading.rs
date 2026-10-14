@@ -941,8 +941,53 @@ fn render_source_excerpts(
         } else {
             empty_state(html, text(r.locale, "This cited range was omitted by the shared code-reading bound. Inspect its exact Source through the scoped reader.", "이 인용 범위는 공통 코드 읽기 한도로 생략되었습니다. 범위가 제한된 리더에서 정확한 Source를 확인하세요."));
         }
-        html.push_str(&format!("<details class=\"source-citation-basis\"><summary>{}</summary><pre>{}</pre></details></figure>",
-            text(r.locale,"Exact Work / Source revisions and claim grounding","정확한 Work / Source 리비전과 주장 근거"),escape(&format!("citation: {c:#?}\nWork revision: {:?}\nobserved at: {:?}\noutput: {}",excerpt.map(|e|e.work_revision),excerpt.map(|e|e.observed_at_unix_micros),provenance.realization_fingerprint))));
+        html.push_str(&format!(
+            "<details class=\"source-citation-basis\"><summary>{}</summary><pre>{}</pre>",
+            text(
+                r.locale,
+                "Exact Work / Source revisions and claim grounding",
+                "정확한 Work / Source 리비전과 주장 근거"
+            ),
+            escape(&format!(
+                "Work revision: {:?}\nobserved at: {:?}\noutput: {}",
+                excerpt.map(|e| e.work_revision),
+                excerpt.map(|e| e.observed_at_unix_micros),
+                provenance.realization_fingerprint
+            ))
+        ));
+        // A shared code range is one navigation destination, but each paragraph
+        // keeps its own claim coordinates. Showing only the first citation
+        // would substitute that claim for later paragraphs using this card.
+        for (index, answer) in answers.prose.iter().enumerate() {
+            for citation in &answer.citations {
+                if source_excerpt_anchor(answers, citation) != anchor {
+                    continue;
+                }
+                html.push_str(&format!(
+                    "<section class=\"source-claim-basis\" data-statement-role=\"generated-interpretation\" data-question=\"{}\" data-paragraph=\"{}\" data-claim-start=\"{}\" data-claim-end=\"{}\"><h5>{} · {} {} · {}</h5>",
+                    escape(&answer.question), index + 1, citation.claim_start_byte,
+                    citation.claim_end_byte, answer_title(&answer.question, r.locale),
+                    text(r.locale, "Paragraph", "문단"), index + 1,
+                    text(r.locale, "Generated claim quotation", "생성된 주장 인용")
+                ));
+                if let Some(claim) = answer
+                    .text
+                    .get(citation.claim_start_byte..citation.claim_end_byte)
+                {
+                    html.push_str(&format!(
+                        "<blockquote lang=\"{}\" data-content-language=\"{}\" class=\"source-bound-claim\">{}</blockquote>",
+                        escape(&content_language_tag(&provenance.language)),
+                        escape(&provenance.language),
+                        escape(claim)
+                    ));
+                }
+                html.push_str(&format!(
+                    "<pre>{}</pre></section>",
+                    escape(&format!("citation: {citation:#?}"))
+                ));
+            }
+        }
+        html.push_str("</details></figure>");
     }
     if answers.omitted_source_excerpt_count > 0 {
         html.push_str(&format!(

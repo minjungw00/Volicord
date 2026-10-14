@@ -2740,7 +2740,13 @@ prose supplies no English model-generation result. Broad canonical Goal headings
 remain request quotations, never semantic effect approval. Independent Rust title
 controls include correctly hashed unsupported causal prose; Python presentation
 controls attack rehashed titles/coordinates, unsupported editorial changes, stale
-locations and cross-display feedback. Historical Work B/Click display replay with
+locations and cross-display feedback.
+Shared-range disclosure controls additionally preserve each citing paragraph's
+question, ordinal, claim quotation, range and hash, with no unrelated range's
+claim substituted. Authored multiple-question/same-question observations reach
+live and offline readers in both locales; the actual generated-output browser
+checks all shared claim bindings against the immutable public readback.
+Historical Work B/Click display replay with
 missing original inputs stays incomplete for Source-first assessment. These checks
 grant neither an independent reader judgment nor literal Human H1/H2/H3 acceptance.
 
