@@ -13,6 +13,50 @@ from rehearsal_test_support import passed_result
 
 
 class ContractTests(unittest.TestCase):
+    def test_copied_partial_lifecycle_preserves_facts_without_semantic_promotion(self):
+        import tempfile
+        from unittest.mock import patch
+        import explanation_evidence_self_test as fixtures
+        import review_explanations
+        actual = fixtures.lifecycle
+        def partial(*args, **kwargs):
+            preparation, response, record, after = actual(*args, **kwargs)
+            after['selected_work']['answers']['unrecognized_support_metadata'] = {'scope': 'fixture'}
+            return preparation, response, record, after
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rehearsal.c.write_json(rehearsal.c.inventory_path(root), rehearsal.c.load_inventory(root))
+            with patch.object(fixtures, 'lifecycle', side_effect=partial):
+                source = fixtures.publish_fixture(root)
+            data, _ = review_explanations.project(root, source / 'preparation.json', evidence_set_sha256='a' * 64)
+            value = review_explanations.validate(data)
+            self.assertFalse(value['semantic_complete'])
+            self.assertTrue(value['stages']['after']['value']['omissions'])
+            target = root / 'copied-lifecycle.json'; target.write_bytes(data)
+            entry = {'path': target.name}
+            goal = rehearsal.rehearsal_support.goal_evidence(value['stages']['plan']['value']['value']['plan'])
+            life = {**value['publication'], 'stages': value['private_artifacts'],
+                'goal_revision': goal['revision'], 'goal_sources': goal['sources']}
+            self.assertEqual(rehearsal.copied_lifecycle_binding(root, entry, life),
+                rehearsal.explanation_evidence.binding(data))
+            for mutation in ('classification', 'private_bytes', 'revision', 'sources'):
+                wrong = copy.deepcopy(life)
+                if mutation == 'classification': wrong['selected_identity'] = '0' * 32
+                elif mutation == 'private_bytes': wrong['stages']['after']['sha256'] = '0' * 64
+                elif mutation == 'revision': wrong['goal_revision'] += 1
+                else: wrong['goal_sources'] = ['0' * 32]
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                    rehearsal.copied_lifecycle_binding(root, entry, wrong)
+            for mutation in ('false_completeness', 'missing_locator'):
+                wrong = copy.deepcopy(value)
+                if mutation == 'false_completeness': wrong['semantic_complete'] = True
+                else: wrong['readback_subject_locators']['after'] = []
+                target.write_bytes(rehearsal.review.encoded(wrong))
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                    rehearsal.copied_lifecycle_binding(root, entry, life)
+            target.write_bytes(data)
+            self.assertFalse(review_explanations.validate(target.read_bytes())['semantic_complete'])
+
     def test_collection_support_rejects_rehashed_omission_and_false_execution(self):
         for mutation in ('missing', 'labels_only', 'not_run', 'drop_check', 'different_test', 'no_process', 'wrong_output'):
             value = passed_result()

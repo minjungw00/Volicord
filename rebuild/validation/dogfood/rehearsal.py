@@ -241,9 +241,24 @@ def temporal_controls(root, campaign_root, manifest, temporal):
     c.load_evidence_set(campaign_root)  # None of the invalid controls altered valid frozen evidence.
 
 
+def copied_lifecycle_binding(review_root, entry, life):
+    """Verify temporal facts without certifying the whole semantic projection."""
+    import review_explanations
+    path = review_root / entry['path']
+    value = review_explanations.validate(path.read_bytes())
+    require(value['publication'] == {k: life[k] for k in ('publication_role', 'selected_identity')}
+        and value['readback_subject_locators']['after'], 'copied lifecycle lost classification/locators')
+    # Unsupported or withheld unrelated fields leave the validated projection
+    # partial. Exact private bytes, classification and Goal facts still prove
+    # this structural control; they supply no independent semantic judgment.
+    require(all(value['private_artifacts'][k] == v for k, v in life['stages'].items()), 'copied historical/final bytes changed')
+    goal = rehearsal_support.goal_evidence(value['stages']['plan']['value']['value']['plan'])
+    require(goal['revision'] == life['goal_revision'] and goal['sources'] == life['goal_sources'], 'copied Goal revision/Source changed')
+    return explanation_evidence.binding(path.read_bytes())
+
+
 def copied_temporal(copied, temporal):
     """Inspect the copied consumer's safe bodies/locators, with staging unavailable."""
-    import review_explanations
     index = c.read_json(copied / 'index.json')
     review_root = copied / index['qualitative_reviews'][0]['root']
     preparation, _, _ = review.load_package(review_root)
@@ -251,14 +266,7 @@ def copied_temporal(copied, temporal):
     lifecycle_bindings = {}
     for life in temporal['regeneration']['lifecycles']:
         entry = evidence['explanation-' + life['identity']]
-        path = review_root / entry['path']
-        value = review_explanations.validate(path.read_bytes())
-        require(value['publication'] == {k: life[k] for k in ('publication_role', 'selected_identity')}
-            and value['semantic_complete'] and value['readback_subject_locators']['after'], 'copied lifecycle lost classification/locators')
-        require(all(value['private_artifacts'][k] == v for k, v in life['stages'].items()), 'copied historical/final bytes changed')
-        goal = rehearsal_support.goal_evidence(value['stages']['plan']['value']['value']['plan'])
-        require(goal['revision'] == life['goal_revision'] and goal['sources'] == life['goal_sources'], 'copied Goal revision/Source changed')
-        lifecycle_bindings[life['identity']] = explanation_evidence.binding(path.read_bytes())
+        lifecycle_bindings[life['identity']] = copied_lifecycle_binding(review_root, entry, life)
     matches = [v for v in evidence.values() if v['surface'] == 'work_capture'
         and temporal['recall']['work_slot_id'] in v['sample_ids']]
     require(len(matches) == 1, 'copied temporal capture missing')

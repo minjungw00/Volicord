@@ -935,6 +935,10 @@ with the original staging paths unavailable. The qualitative validator is unchan
 The machine Recall consumer preserves the Product's distinct Missing, Deleted and
 Withheld explanation states alongside canonical recorded actions. These states
 cannot revive generated direction or provenance and do not establish prose adequacy.
+Copied temporal controls verify exact private-stage hashes, publication classification,
+readback locators and Goal revision/Sources. A validated partial semantic projection
+keeps its omissions and `semantic_complete: false`; those structural facts do not
+require or imply a complete independent semantic review.
 
 The [measured campaign preparation pack](dogfood/campaign-readiness.md) keeps
 proposed targets/tasks separate from approved frozen inputs and observed outcomes.
