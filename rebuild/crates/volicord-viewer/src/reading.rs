@@ -96,11 +96,7 @@ pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: b
     html.push_str("</ul></nav>");
     if !snapshot {
         html.push_str("<details class=\"utility-navigation\"><summary>");
-        html.push_str(text(
-            request.locale,
-            "Evidence and memory tools",
-            "근거 및 기억 도구",
-        ));
+        html.push_str(text(request.locale, "Memory tools", "기억 도구"));
         html.push_str("</summary><nav aria-label=\"Tools\"><ul class=\"view-nav\">");
         for (tool, label) in [
             (ViewerTool::Memory, text(request.locale, "Memory", "기억")),
@@ -131,7 +127,15 @@ pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: b
         }
     }
     if snapshot {
-        html.push_str("<nav aria-label=\"Tools\"><ul class=\"view-nav\"><li>");
+        html.push_str("<details class=\"utility-navigation\"><summary>");
+        html.push_str(text(request.locale, "Evidence", "근거"));
+        html.push_str("</summary><p>");
+        html.push_str(text(
+            request.locale,
+            "This file works offline without a running Viewer or Runtime.",
+            "이 파일은 실행 중인 뷰어나 런타임 없이 오프라인으로 읽습니다.",
+        ));
+        html.push_str("</p><nav aria-label=\"Tools\"><ul class=\"view-nav\"><li>");
         link(
             html,
             request,
@@ -141,14 +145,14 @@ pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: b
             text(request.locale, "Evidence", "근거"),
             Some("diagnostics"),
         );
-        html.push_str("</li></ul></nav>");
+        html.push_str("</li></ul></nav></details>");
     }
     reading_settings(html, request, snapshot);
 }
 
 fn reading_settings(html: &mut String, r: &ViewerRequest, snapshot: bool) {
     html.push_str("<details class=\"reading-settings\"><summary>");
-    html.push_str(text(r.locale, "Reading language", "읽기 언어"));
+    html.push_str(text(r.locale, "Language", "언어"));
     html.push_str("</summary>");
     if snapshot {
         html.push_str(&format!(
@@ -346,111 +350,108 @@ fn overview(
         "overview",
         text(request.locale, "Project Understanding", "프로젝트 이해"),
     );
-    html.push_str("<div class=\"project-purpose\">");
-    heading(html, 3, text(request.locale, "Purpose", "목적"));
-    if u.project_purpose.is_empty() {
-        empty_state(
-            html,
-            text(
-                request.locale,
-                "No source-grounded Project purpose is recorded.",
-                "source-grounded 프로젝트 목적이 기록되지 않았습니다.",
-            ),
-        );
+    if !u.project_purpose.is_empty() {
+        project_purpose(html, request, u);
     }
-    for purpose in &u.project_purpose {
-        html.push_str("<p data-statement-role=\"verified-canonical\" lang=\"\">");
-        html.push_str(&escape(&purpose.statement));
-        html.push_str("</p>");
-    }
-    html.push_str("</div><nav class=\"overview-jumps\" aria-label=\"Overview sections\">");
-    for (id, label) in [
-        (
-            "overview-current",
-            text(request.locale, "Current Work", "현재 작업"),
-        ),
-        (
-            "overview-remaining",
-            text(request.locale, "Remaining Work", "남은 작업"),
-        ),
-        (
-            "overview-issues",
-            text(request.locale, "Questions and constraints", "질문 및 제약"),
-        ),
-        (
-            "overview-next",
-            text(request.locale, "Next actions", "다음 행동"),
-        ),
-    ] {
-        link(html, request, ViewerView::Overview, label, Some(id));
-    }
-    html.push_str("</nav>");
-    for (id, label, works) in [
-        (
-            "overview-current",
-            text(request.locale, "Current Work", "현재 작업"),
-            &u.work_overview.current,
-        ),
-        (
-            "overview-completed",
-            text(request.locale, "Recent outcomes", "최근 결과"),
-            &u.work_overview.completed,
-        ),
-        (
-            "overview-remaining",
-            text(request.locale, "Remaining Work", "남은 작업"),
-            &u.work_overview.remaining,
-        ),
-    ] {
-        html.push_str(&format!("<h3 id=\"{id}\">{}</h3>", escape(label)));
-        if works.items.is_empty() && works.complete {
-            empty_state(
-                html,
-                text(
-                    request.locale,
-                    "No recorded Work in this section.",
-                    "이 항목에 기록된 작업이 없습니다.",
-                ),
-            );
-        }
-        html.push_str("<details class=\"category-details\"><summary>");
-        html.push_str(text(
-            request.locale,
-            "Work counts and omissions",
-            "작업 수 및 생략",
-        ));
-        html.push_str("</summary>");
-        html.push_str(&format!(
-            "<p class=\"category-count\">{}: {} · {}: {} · {}: {}</p>",
-            text(request.locale, "Total", "전체"),
-            if works.complete {
-                works.total.to_string()
-            } else {
-                text(request.locale, "unknown", "알 수 없음").into()
-            },
-            text(request.locale, "Displayed", "표시"),
-            works.items.len(),
-            text(request.locale, "Omitted", "생략"),
-            if works.complete {
-                works.omitted.to_string()
-            } else {
-                text(request.locale, "unknown", "알 수 없음").into()
+    for populated in [true, false] {
+        if !populated {
+            if u.project_purpose.is_empty() {
+                project_purpose(html, request, u);
             }
-        ));
-        html.push_str("</details><div class=\"work-list\">");
-        for work in &works.items {
-            work_summary(html, request, p, work, snapshot);
-        }
-        html.push_str("</div>");
-        if works.omitted > 0 {
-            empty_state(
-                html,
-                text(
-                    request.locale,
-                    "Additional Works are available; open Work navigation.",
-                    "추가 작업이 있습니다. 작업 탐색을 여세요.",
+            html.push_str("<nav class=\"overview-jumps\" aria-label=\"Overview sections\">");
+            for (id, label) in [
+                (
+                    "overview-current",
+                    text(request.locale, "Current Work", "현재 작업"),
                 ),
-            );
+                (
+                    "overview-remaining",
+                    text(request.locale, "Remaining Work", "남은 작업"),
+                ),
+                (
+                    "overview-issues",
+                    text(request.locale, "Questions and constraints", "질문 및 제약"),
+                ),
+                (
+                    "overview-next",
+                    text(request.locale, "Next actions", "다음 행동"),
+                ),
+            ] {
+                link(html, request, ViewerView::Overview, label, Some(id));
+            }
+            html.push_str("</nav>");
+        }
+        for (id, label, works) in [
+            (
+                "overview-current",
+                text(request.locale, "Current Work", "현재 작업"),
+                &u.work_overview.current,
+            ),
+            (
+                "overview-completed",
+                text(request.locale, "Recent outcomes", "최근 결과"),
+                &u.work_overview.completed,
+            ),
+            (
+                "overview-remaining",
+                text(request.locale, "Remaining Work", "남은 작업"),
+                &u.work_overview.remaining,
+            ),
+        ] {
+            if works.items.is_empty() == populated {
+                continue;
+            }
+            html.push_str(&format!("<h3 id=\"{id}\">{}</h3>", escape(label)));
+            if works.items.is_empty() && works.complete {
+                empty_state(
+                    html,
+                    text(
+                        request.locale,
+                        "No recorded Work in this section.",
+                        "이 항목에 기록된 작업이 없습니다.",
+                    ),
+                );
+            }
+            html.push_str("<div class=\"work-list\">");
+            for work in &works.items {
+                work_summary(html, request, p, work, snapshot);
+            }
+            html.push_str("</div>");
+            html.push_str("<details class=\"category-details\"><summary>");
+            html.push_str(text(
+                request.locale,
+                "Work counts and omissions",
+                "작업 수 및 생략",
+            ));
+            html.push_str("</summary>");
+            html.push_str(&format!(
+                "<p class=\"category-count\">{}: {} · {}: {} · {}: {}</p>",
+                text(request.locale, "Total", "전체"),
+                if works.complete {
+                    works.total.to_string()
+                } else {
+                    text(request.locale, "unknown", "알 수 없음").into()
+                },
+                text(request.locale, "Displayed", "표시"),
+                works.items.len(),
+                text(request.locale, "Omitted", "생략"),
+                if works.complete {
+                    works.omitted.to_string()
+                } else {
+                    text(request.locale, "unknown", "알 수 없음").into()
+                }
+            ));
+            html.push_str("</details>");
+            if works.omitted > 0 {
+                empty_state(
+                    html,
+                    text(
+                        request.locale,
+                        "Additional Works are available; open Work navigation.",
+                        "추가 작업이 있습니다. 작업 탐색을 여세요.",
+                    ),
+                );
+            }
         }
     }
     html.push_str(&format!(
@@ -515,6 +516,30 @@ fn overview(
     }
     section_end(html);
 }
+fn project_purpose(html: &mut String, request: &ViewerRequest, u: &ProjectUnderstanding) {
+    html.push_str("<div class=\"project-purpose\">");
+    heading(
+        html,
+        3,
+        text(request.locale, "Project purpose", "프로젝트 목적"),
+    );
+    if u.project_purpose.is_empty() {
+        empty_state(
+            html,
+            text(
+                request.locale,
+                "No source-grounded Project purpose is recorded.",
+                "source-grounded 프로젝트 목적이 기록되지 않았습니다.",
+            ),
+        );
+    }
+    for purpose in &u.project_purpose {
+        html.push_str("<p data-statement-role=\"verified-canonical\" lang=\"\">");
+        html.push_str(&escape(&purpose.statement));
+        html.push_str("</p>");
+    }
+    html.push_str("</div>");
+}
 fn work_summary(
     html: &mut String,
     r: &ViewerRequest,
@@ -524,7 +549,8 @@ fn work_summary(
 ) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
     let (title, title_basis, title_language) = work_reading_heading(w, r);
-    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"{}\" data-title-basis=\"{}\">", w.work_item_id, understanding_work_state_key(w.state), escape(&title_language), title_basis));
+    let has_purpose = answers.prose.iter().any(|a| a.question == "Purpose");
+    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"{}\" data-title-basis=\"{}\"{}>", w.work_item_id, understanding_work_state_key(w.state), escape(&title_language), title_basis, if has_purpose { "" } else { " data-question=\"RecordedGoal\"" }));
     link(
         html,
         r,
@@ -537,10 +563,16 @@ fn work_summary(
             .as_deref(),
     );
     html.push_str("</h4>");
-    html.push_str(&format!(
-        "<p class=\"work-state\"><span class=\"badge\">{}</span></p>",
-        escape(understanding_work_state_label(w.state, r.locale))
-    ));
+    if !has_purpose {
+        html.push_str(&format!(
+            "<p class=\"muted\">{}</p>",
+            text(
+                r.locale,
+                "Recorded Work goal excerpt · open Work for the full quotation.",
+                "기록된 작업 목표 발췌 · 작업에서 전체 인용을 확인하세요."
+            )
+        ));
+    }
     for (label, question) in [
         (text(r.locale, "Problem / goal", "문제 / 목표"), "Purpose"),
         (text(r.locale, "Outcome", "결과"), "ReportedChange"),
@@ -548,9 +580,9 @@ fn work_summary(
     ] {
         if let Some(answer) = answers.prose.iter().find(|a| a.question == question) {
             html.push_str(&format!(
-                "<p data-question=\"{}\"><strong>{}:</strong> <span lang=\"{}\" data-content-language=\"{}\">{}</span></p>",
+                "<p data-question=\"{}\">{}<span lang=\"{}\" data-content-language=\"{}\">{}</span></p>",
                 question,
-                label,
+                if question == "Purpose" { String::new() } else { format!("<strong>{}:</strong> ", escape(label)) },
                 escape(&content_language_tag(&r.requested_language)),
                 escape(&r.requested_language),
                 escape(&answer.text)
@@ -559,6 +591,10 @@ fn work_summary(
             empty_state(html, text(r.locale, "Outcome explanation is not available. Open Work for recorded facts and evidence.", "결과 설명이 없습니다. 작업을 열어 기록된 사실과 근거를 확인하세요."));
         }
     }
+    html.push_str(&format!(
+        "<p class=\"work-state\"><span class=\"badge\">{}</span></p>",
+        escape(understanding_work_state_label(w.state, r.locale))
+    ));
     // Verification failure/historical coverage and actual direction are ordinary facts,
     // even when an interpretation is absent or offers a different next step.
     for fact in answers.facts.iter().filter(|a| {

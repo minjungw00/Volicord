@@ -420,7 +420,18 @@ impl ViewerAdapter {
                 "snapshot"
             }
         ));
-        html.push_str(&format!("<a class=\"skip-link\" href=\"#viewer-content\">{}</a><header class=\"viewer-header\"><p class=\"brand\">VOLICORD</p>", text(request.locale, "Skip to content", "본문으로 건너뛰기")));
+        html.push_str(&format!("<a class=\"skip-link\" href=\"#viewer-content\">{}</a><header class=\"viewer-header\"><p class=\"brand\">VOLICORD", text(request.locale, "Skip to content", "본문으로 건너뛰기")));
+        if snapshot {
+            html.push_str(&format!(
+                "<span class=\"snapshot-mode\">{}</span>",
+                text(
+                    request.locale,
+                    "Read-only static snapshot",
+                    "읽기 전용 정적 스냅샷"
+                )
+            ));
+        }
+        html.push_str("</p>");
         heading(&mut html, 1, &projection.overview.project_name);
         html.push_str("</header><div class=\"viewer-shell\"><aside class=\"viewer-navigation\">");
         let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
@@ -428,14 +439,6 @@ impl ViewerAdapter {
         html.push_str("</aside><main id=\"viewer-content\" tabindex=\"-1\">");
         reading::runtime_blockers(&mut html, request, &health);
         if snapshot {
-            empty_state(
-                &mut html,
-                text(
-                    request.locale,
-                    "Read-only static snapshot. This file requires no running Viewer or Runtime.",
-                    "읽기 전용 정적 스냅샷. 이 파일은 실행 중인 뷰어나 런타임이 필요하지 않습니다.",
-                ),
-            );
             reading::snapshot(&mut html, request, &projection, &understanding);
             if let Some(documents) = &documents {
                 render_documents(&mut html, request, documents, None);

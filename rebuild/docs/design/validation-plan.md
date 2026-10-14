@@ -2708,6 +2708,22 @@ establish no new naturalistic session, authenticated reviewer identity or Phase 
 
 ### Explicit Product host explanation support
 
+Focused `grounded_reader::overview_reads_available_work_before_missing_project_context`
+compares actual HTTP and snapshot consumers with independent no-Purpose/no-Checkpoint
+inputs, both before and after explicit authored explanation recording. It retains Open
+Work and exact detail links without inventing current/completed state. Optional absolute
+`VOLICORD_OVERVIEW_CAPTURE` creates disposable fixtures and HTML under an ignored path.
+`project_overview_browser.cjs` consumes those fixture paths plus an explicit configuration
+(`fixtures`, `bin`, `chromium`, `playwright`, `output`, optional `before_viewer`). It reads
+actual loopback pages and exported snapshots at desktop, narrow and 320×568 geometry,
+checks first-screen Work meaning, keyboard Work/Source navigation, missing before-state,
+closed grounding and overflow. An unchanged older Viewer executable can reproduce the
+original order on the same inputs. Fixture `language` selects retained content separately
+from both interface locales; missing/stale content acquires no replacement prose.
+These are focused technical observations, not a fresh generator assessment or human
+comprehension. Run through `validate focused`; browser/font prerequisites and local
+loopback permission must be supplied explicitly. Preserve failures as separate runs.
+
 Host `work_explanation` regressions use actual Product Project/Work/analysis/Source
 producers and MCP generate/read_source/record, existing managed storage and normal
 reading. Authored controls establish structure only, never actual model success or

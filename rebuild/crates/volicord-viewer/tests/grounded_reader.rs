@@ -249,6 +249,120 @@ fn get(f: &Value) -> Result<String, Box<dyn Error>> {
 }
 
 #[test]
+fn overview_reads_available_work_before_missing_project_context() -> Result<(), Box<dyn Error>> {
+    for recorded in [false, true] {
+        let temp = tempfile::tempdir()?;
+        let capture = std::env::var_os("VOLICORD_OVERVIEW_CAPTURE").map(std::path::PathBuf::from);
+        let root = capture
+            .as_ref()
+            .map(|root| root.join(if recorded { "recorded" } else { "goal-only" }));
+        if let Some(root) = &root {
+            assert!(
+                root.is_absolute(),
+                "capture requires an absolute ignored destination"
+            );
+        }
+        let mut f = seed(
+            root.as_deref().unwrap_or(temp.path()),
+            "missing_before_state",
+        )?;
+        if recorded {
+            record(&f, &mut HostAdapter::new(ops(&f)?))?;
+            f["host_output"] = json!("authored-control-recorded");
+        }
+        if let Some(root) = &root {
+            fs::write(root.join("fixture.json"), serde_json::to_vec_pretty(&f)?)?;
+        }
+        let before = ops(&f)?.canonical_basis(project(&f)?)?;
+        assert!(before.checkpoint_history.is_empty());
+        for (locale, key, missing_purpose) in [
+            (
+                ViewerLocale::English,
+                "en",
+                "No source-grounded Project purpose is recorded.",
+            ),
+            (
+                ViewerLocale::Korean,
+                "ko",
+                "source-grounded 프로젝트 목적이 기록되지 않았습니다.",
+            ),
+        ] {
+            let r = ViewerRequest {
+                locale,
+                view: ViewerView::Overview,
+                ..request(&f)?
+            };
+            let adapter = ViewerAdapter::new(ops(&f)?);
+            let server = ViewerServer::new(
+                adapter,
+                project(&f)?,
+                locale,
+                ViewerView::Overview,
+                "en".into(),
+                "127.0.0.1:3219".parse()?,
+            )?;
+            let http = format!("GET /?view=overview&locale={key}&language=en HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n");
+            let mut bytes = Vec::new();
+            server.serve_connection(&mut http.as_bytes(), &mut bytes)?;
+            let live = String::from_utf8(bytes)?;
+            assert!(live.starts_with("HTTP/1.1 200"));
+            let snapshot = ViewerAdapter::new(ops(&f)?)
+                .render_snapshot(&r, TimestampMicros::from_unix_micros(123))?
+                .html;
+            for (mode, page) in [("live", &live), ("snapshot", &snapshot)] {
+                let overview = page
+                    .split("id=\"overview\"")
+                    .nth(1)
+                    .ok_or("overview")?
+                    .split("id=\"overview-issues\"")
+                    .next()
+                    .ok_or("overview end")?;
+                let card = overview.find("data-work-id=").ok_or("available Work")?;
+                assert!(
+                    card < overview.find(missing_purpose).ok_or("missing Purpose")?,
+                    "{mode}/{key}: empty Project Purpose precedes recorded Work"
+                );
+                assert!(
+                    card < overview
+                        .find("id=\"overview-current\"")
+                        .ok_or("empty current")?
+                );
+                assert!(
+                    card < overview
+                        .find("id=\"overview-completed\"")
+                        .ok_or("empty outcomes")?
+                );
+                assert!(overview.contains("data-work-state=\"open\""));
+                assert!(!overview.contains("data-work-state=\"completed\""));
+                assert!(overview.contains(if recorded {
+                    "Understand the constant return in value()."
+                } else {
+                    "RecordedGoal"
+                }));
+                assert!(page.contains(if mode == "live" {
+                    "view=work&amp;work="
+                } else {
+                    "href=\"#work-"
+                }));
+                if let Some(root) = std::env::var_os("VOLICORD_OVERVIEW_CAPTURE") {
+                    let root = std::path::PathBuf::from(root);
+                    fs::create_dir_all(&root)?;
+                    fs::write(
+                        root.join(format!(
+                            "{}-{key}-{mode}.html",
+                            if recorded { "recorded" } else { "goal-only" }
+                        )),
+                        page,
+                    )?;
+                }
+            }
+        }
+        assert_eq!(before, ops(&f)?.canonical_basis(project(&f)?)?);
+    }
+    Ok(())
+}
+
+#[test]
 fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result<(), Box<dyn Error>>
 {
     for comparison in ["changed", "no_change", "missing_before_state"] {

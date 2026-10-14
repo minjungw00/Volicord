@@ -171,6 +171,16 @@ genuinely absent information are distinct outcomes.
 The server-rendered Viewer reading hierarchy is **Overview → Work → Code
 Understanding / Decisions → evidence**, with mutation, export and diagnostic tools
 separate from ordinary reading.
+Overview preserves a present Project Purpose first. Populated Work categories precede
+an absent-Purpose notice and empty Work categories; counts follow ordinary cards.
+This is presentation ordering over the existing classification, not selection of a
+new current Work or promotion of a Goal to Purpose. Goal-only Work remains Open in
+Remaining Work. Without permitted explanation prose, the card explicitly identifies
+its bounded Goal heading as a quotation excerpt and links to full Work detail.
+The absence of Purpose, category totals/omissions, unresolved grouping and Checkpoint
+availability remain inspectable. Narrow live/offline layouts share these components;
+snapshot Evidence navigation uses a closed native disclosure and the read-only notice
+remains visible. No output wording, binding, canonical state or generation changes.
 Work headings in the Viewer quote a bounded canonical Goal prefix, with ellipsis
 when truncated and `goal-quotation` display metadata. They do not duplicate a
 generated Purpose paragraph as a headline or rename the canonical Work. The full

@@ -47,7 +47,12 @@ Live reads use purpose-oriented views (default `overview`):
 Top-level navigation is Overview, Work, Code Understanding, Decisions, Analysis,
 and Documents. Analysis reuses `/?view=tools&tool=status`; Documents reuses
 `/?view=tools&tool=documents`. Evidence and Memory are in a native Tools disclosure. The active navigation item has `aria-current="page"`.
-Overview begins with Project Purpose and distinct Work cards. Cards show lifecycle,
+Overview begins with a recorded Project Purpose when available, then populated Work
+categories. When Purpose is absent, available Work appears before that explicit gap
+and empty categories. This order preserves classification: a Goal-only Work stays
+open in Remaining Work, never Project Purpose, Current Work or a recent outcome.
+Category counts follow the cards; every empty section and omission remains inspectable.
+Cards show lifecycle,
 result availability, verification and the recorded next action; selecting one opens
 its explanation sections before closed evidence/history disclosures. Decisions have
 separate choice, alternatives, explanation, applicability and original-evidence areas.
@@ -56,6 +61,11 @@ retain historical verification coverage alongside the actual recorded direction.
 Overview also keeps current open questions, canonical risks and unresolved Work
 association visible before next actions. There is no universal Material limitations
 section; unrelated capability failures do not precede ordinary Work meaning.
+Without a current interpretation, a card labels its Goal heading as an excerpt and
+links to the complete Work quotation. It supplies no invented problem or outcome.
+On narrow screens, compact language/tools disclosures keep ordinary Work reading
+reachable. Offline snapshots retain a visible read-only notice and put their Evidence
+navigation in the same native disclosure hierarchy.
 
 Code identifies the selected Work, repository or exact-entity read basis and keeps
 a concise reliability summary beside the ordinary explanation. The summary counts

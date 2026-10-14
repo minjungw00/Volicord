@@ -46,6 +46,8 @@ section section { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid
 .project-purpose { background: #eef4ff; border: 1px solid #b3c9e8; border-radius: var(--radius); padding: 1.2rem; margin-bottom: 1.5rem; }
 .project-purpose h3 { margin-top: 0; color: #194476; }
 .project-purpose p { font-size: 1.08rem; }
+#overview > h3:first-of-type { margin-top: .5rem; }
+#overview > h2 { margin-bottom: .5rem; }
 .item, details, .state, .aggregate-card, .understanding-card { padding: .85rem 1rem; margin: .65rem 0; border: 1px solid var(--line); border-radius: .6rem; background: var(--soft); }
 summary { cursor: pointer; overflow-wrap: anywhere; color: #334962; font-weight: 600; }
 details[open] > summary { margin-bottom: .75rem; }
@@ -148,7 +150,17 @@ button { width: max-content; min-height: 2.75rem; cursor: pointer; }
   .fact-states, .metrics, .preview-meta { grid-template-columns: 1fr; }
   .work-summary { padding: .85rem; }
   .button-row button { width: 100%; }
+  .viewer-navigation { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .viewer-navigation > nav { width: 100%; }
+  .viewer-navigation > details { flex: 1 1 8rem; margin: 0; }
+  .viewer-navigation .view-nav a { padding: .4rem .5rem; font-size: .9rem; }
+  #overview > .work-list { margin-top: .5rem; }
+  .viewer-header { padding: .75rem; }
+  .viewer-header h1 { font-size: 1.25rem; }
+  .work-summary h4 { font-size: 1rem; margin-bottom: .4rem; }
+  .work-summary p[data-question=RecordedGoal], .work-summary p[data-question=Purpose] { margin-top: .4rem; }
 }
+.snapshot-mode { margin-left: .75rem; color: var(--muted); font-size: .75rem; font-weight: 400; letter-spacing: normal; }
 
 .overview-jumps { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0 1.5rem; }
 .overview-jumps a { padding: .4rem .6rem; border: 1px solid var(--line); border-radius: .4rem; font-size: .9rem; }
@@ -158,7 +170,7 @@ button { width: max-content; min-height: 2.75rem; cursor: pointer; }
 @media (max-width: 30rem) {
   main > section, main > article { padding: .85rem; }
   .selected-code, .code-work-meaning, [data-code-behavior] { padding: .6rem; }
-  .viewer-navigation > details { margin: .35rem 0; }
+  .viewer-navigation > details { margin: 0; }
   h2 { font-size: 1.25rem; }
 }
 @media print {
