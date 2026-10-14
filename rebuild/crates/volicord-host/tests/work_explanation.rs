@@ -310,6 +310,57 @@ fn explicit_generation_retrieval_record_read_and_delete_are_separate() -> Result
 }
 
 #[test]
+fn citation_metadata_uses_response_headroom_without_expanding_source_authority(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    let canonical = f.host.operations().canonical_basis(f.project)?;
+    let provider_before = f.host.operations().privacy_status(f.project)?;
+    let generation = f.generate()?;
+    let read = f.read(&generation, f.source)?;
+    let mut realization = response(&generation, &read)?;
+    let citation = realization.paragraphs[1].citations[0].clone();
+    // Authored size control: repeated valid bindings reproduce citation overhead,
+    // not additional facts, independently approved meaning, or live generation.
+    realization.paragraphs[1].citations = vec![citation; 24];
+    let bytes = serde_json::to_vec(&realization)?.len();
+    assert!(bytes > 16_384 && bytes <= 32_768);
+    assert_eq!(
+        generation["plan"]["retention_budget"]["retained_byte_limit"],
+        147_456
+    );
+    let args = f.record_args(&generation, &realization)?;
+    let retained = success(&mut f.host, args)?;
+    assert_eq!(
+        retained["explanation"]["realization"],
+        serde_json::to_value(&realization)?
+    );
+    let projection = f.host.operations().project_projection(f.project)?;
+    let work = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == f.work)
+        .ok_or("Work")?;
+    let answers = work_answers(work, "en", FixedLocale::English);
+    assert_eq!(answers.explanation_state, ExplanationState::Current);
+    assert_eq!(answers.source_excerpts.len(), 1);
+    let before_rejection = f.host.operations().privacy_status(f.project)?;
+    let next = f.generate()?;
+    f.read(&next, f.source)?;
+    realization.paragraphs[1].citations[0].claim_sha256 = explanation_text_hash("forged claim");
+    let args = f.record_args(&next, &realization)?;
+    assert_eq!(call(&mut f.host, args)["result"]["isError"], true);
+    assert_eq!(
+        before_rejection,
+        f.host.operations().privacy_status(f.project)?
+    );
+    assert_eq!(canonical, f.host.operations().canonical_basis(f.project)?);
+    let privacy = f.host.operations().privacy_status(f.project)?;
+    assert_eq!(privacy.current_opt_in, provider_before.current_opt_in);
+    assert_eq!(privacy.requests, provider_before.requests);
+    Ok(())
+}
+
+#[test]
 fn wrong_scopes_ranges_hashes_bindings_and_denied_retrieval_preserve_previous_record(
 ) -> Result<(), Box<dyn Error>> {
     let mut f = Fixture::new()?;

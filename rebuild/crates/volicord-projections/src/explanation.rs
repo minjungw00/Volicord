@@ -8,11 +8,13 @@ use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, Decis
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
 pub const EXPLANATION_VERSION: u32 = 2;
-pub const EXPLANATION_BYTE_LIMIT: usize = 16_384;
+pub const EXPLANATION_BYTE_LIMIT: usize = 32_768;
+/// Preserve the response space guaranteed before citation metadata grew.
+pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
+pub const EXPLANATION_PARAGRAPH_CHARACTER_LIMIT: usize = 16_384;
 pub const EXPLANATION_PLAN_BYTE_LIMIT: usize = 131_072;
-/// Compact retained JSON: the supported plan plus the full supported response.
-pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize =
-    EXPLANATION_PLAN_BYTE_LIMIT + EXPLANATION_BYTE_LIMIT;
+/// Independent bound for the complete compact retained envelope.
+pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize = 147_456;
 /// File transport allows formatting; compact realization admission is independent.
 pub const EXPLANATION_INPUT_BYTE_LIMIT: usize = 65_536;
 const GENERATOR_IDENTITY_STATUS: &str = "self_reported_not_independently_verified";
@@ -551,6 +553,9 @@ pub fn validate_explanation(
             "explanation retention budget does not match its evidence basis; prepare again".into(),
         );
     }
+    if response_bytes > budget.response_byte_capacity {
+        return Err(format!("explanation compact realization JSON is {response_bytes} bytes; prepared response capacity {}; retained limit {}; preserve grounding and seek Product support for this evidence shape", budget.response_byte_capacity, budget.retained_byte_limit));
+    }
     let required_questions: &[ExplanationQuestion] = match plan.subject {
         ExplanationSubject::Work(_) => &[
             ExplanationQuestion::Purpose,
@@ -600,6 +605,9 @@ pub fn validate_explanation(
             if matches!(plan.subject, ExplanationSubject::Decision(_)) {
                 return Err("Work Source citations require a Work subject".into());
             }
+        }
+        if p.text.chars().count() > EXPLANATION_PARAGRAPH_CHARACTER_LIMIT {
+            return Err(format!("explanation paragraph exceeds {EXPLANATION_PARAGRAPH_CHARACTER_LIMIT} characters; split the prose while preserving question and grounding"));
         }
         if p.text.trim().is_empty()
             || p.evidence_keys.is_empty()
@@ -701,15 +709,16 @@ fn explanation_retention_budget(
         .map_err(|e| e.to_string())?
         .len()
         - response_bytes;
-    let required = metadata_byte_reserve + EXPLANATION_BYTE_LIMIT;
+    let required = metadata_byte_reserve + EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY;
     if required > EXPLANATION_RETAINED_BYTE_LIMIT {
-        return Err(format!("explanation retained envelope needs {required} bytes ({metadata_byte_reserve} metadata plus {EXPLANATION_BYTE_LIMIT} supported response); limit {EXPLANATION_RETAINED_BYTE_LIMIT}; this evidence shape cannot support generation; seek Product support, do not drop grounding or repeatedly shorten the answer"));
+        return Err(format!("explanation retained envelope needs {required} bytes ({metadata_byte_reserve} metadata plus {EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY} guaranteed response); limit {EXPLANATION_RETAINED_BYTE_LIMIT}; this evidence shape cannot support generation; seek Product support, do not drop grounding or repeatedly shorten the answer"));
     }
     Ok(ExplanationRetentionBudget {
         response_byte_limit: EXPLANATION_BYTE_LIMIT,
         retained_byte_limit: EXPLANATION_RETAINED_BYTE_LIMIT,
         metadata_byte_reserve,
-        response_byte_capacity: EXPLANATION_BYTE_LIMIT,
+        response_byte_capacity: EXPLANATION_BYTE_LIMIT
+            .min(EXPLANATION_RETAINED_BYTE_LIMIT - metadata_byte_reserve),
     })
 }
 

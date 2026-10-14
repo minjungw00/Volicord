@@ -2742,7 +2742,14 @@ fn explanation_realization_schema() -> Value {
                     ],
                 ),
             ),
-            ("text", text_schema("Natural prose", 1, 16384)),
+            (
+                "text",
+                text_schema(
+                    "Natural prose",
+                    1,
+                    volicord_projections::EXPLANATION_PARAGRAPH_CHARACTER_LIMIT,
+                ),
+            ),
             (
                 "evidence_keys",
                 nonempty_string_array_schema("Exact prepared canonical evidence keys"),

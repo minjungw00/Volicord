@@ -401,7 +401,8 @@ plan fingerprint, language, host/session and nullable agent/model provenance, an
 question/text/evidence-key/citation paragraphs in reader-selected order. Purpose, reported change, expected effect,
 verification and next step each require at least one answer; optional limits may be additional.
 Recording recomputes the plan under the existing mutation lock, rejects stale/foreign
-keys or mismatched language/version, and bounds the response at 16,384 bytes. This
+keys or mismatched language/version, and bounds the response at its prepared capacity,
+at most 32,768 bytes. This
 validates structure and grounding references, **not** prose entailment, translation
 quality, model identity, authorship or implementation success. All generator identity
 is `self_reported_not_independently_verified`; unknown model stays null.
@@ -421,13 +422,15 @@ raw-file length and compact realization length are different measurements.
 | Boundary | Inclusive limit | Measurement / action |
 | --- | ---: | --- |
 | Preparation | 131,072 | Complete compact `ExplanationPlan`, including its final fingerprint and retention budget; reject unrepresentable evidence before generation |
-| Response | 16,384 | Compact `ExplanationRealization`, including host/session/agent/model and evidence keys; preserve required paragraphs/grounding when reducing prose or metadata |
+| Response | 32,768 maximum | Complete compact `ExplanationRealization`, including every Source/claim citation; actual admission uses the plan's `response_byte_capacity` |
 | CLI / Dogfood input file | 65,536 | Raw JSON bytes, including formatting; compact-response validation still applies after parsing; remove whitespace for transport excess |
 | Retained content / decoder | 147,456 | Complete compact `RetainedExplanation` in managed Derived `content`; same limit at record, Privacy body admission and explanation decoding; inspection preserves accepted bodies |
 | Privacy short fields | 16,384 | Purpose, retention basis and unrelated existing short metadata retain their independent bounds |
 
-The retained bound is the supported 128 KiB plan plus the full 16 KiB response,
-not an arbitrary expansion of every Privacy field. Preparation publishes mandatory
+The retained bound remains 147,456 bytes independently of the response ceiling;
+neither Privacy short fields nor Source body bounds expand. Citation metadata can
+use available envelope space instead of displacing a short grounded explanation.
+Preparation publishes mandatory
 `retention_budget` with `response_byte_limit`, `retained_byte_limit`,
 `metadata_byte_reserve` and `response_byte_capacity`. The reserve is measured by
 serializing the same retained representation used for recording, subtracting the
@@ -437,15 +440,24 @@ field/Source lists, Source status, conflicts, JSON keys/escaping and recorder-as
 identity limitation. Only original evidence bodies and Source `observation` are
 excluded, as already required by retention; grounding is never pruned.
 
-An admitted plan reserves the **full** 16,384-byte response. Capacity is not a
-request to shrink a supported response to leftover storage. If required metadata
-plus that supported response cannot fit, preparation rejects the evidence shape
+An admitted plan still guarantees the **full** 16,384-byte response. Its exact
+capacity is `min(32,768, 147,456 - metadata_byte_reserve)`, so previously supported
+metadata-heavy plans retain at least their guaranteed capacity without pruning
+grounding. If required metadata plus the guaranteed response cannot fit,
+preparation rejects the evidence shape
 with measured/reserved and allowed sizes before requesting host generation. Metadata
 alone exceeding the envelope is the same pre-generation insufficiency. Seek Product
 support for an unrepresentable basis; repeated shorten-and-retry cannot repair it.
 Record recomputes the current plan and budget under the mutation lock, validates the
 exact fingerprint/language/grounding, then measures the actual complete envelope
 before opening/writing storage. Size fit never admits a changed/stale plan.
+Individual paragraphs keep the MCP limit of 16,384 characters on both CLI and MCP.
+The budget is part of the preparation fingerprint: a resource-policy change makes
+older cached interpretations stale without deleting them or changing canonical
+records. Re-recording requires an explicit fresh preparation. A caller preserving
+an actual host output must retain its original request, prose, Source selections
+and failure, and disclose any purely mechanical fingerprint rebinding; that
+rebinding is not another model invocation or semantic approval.
 
 Shared answers and Viewer use the same decoder. CLI `status`/`decisions` and local
 Operations inspection expose full retained provenance. Existing bounded CLI/MCP Recall

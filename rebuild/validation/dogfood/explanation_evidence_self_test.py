@@ -64,8 +64,9 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
         'evidence': evidence, 'source_status': [{'identity': source, 'availability': 'Available',
             'freshness': 'Current', 'snapshot': 'a' * 40, 'observation': 'fixture'}],
         'conflicts': [], 'instructions': 'fixture only', 'fingerprint': 'sha256:' + 'a' * 64}
-    plan['retention_budget'] = {'response_byte_limit': 16384, 'retained_byte_limit': 147456,
-        'metadata_byte_reserve': e.retention_metadata_bytes(plan), 'response_byte_capacity': 16384}
+    reserve = e.retention_metadata_bytes(plan)
+    plan['retention_budget'] = {'response_byte_limit': e.RESPONSE_BYTE_LIMIT, 'retained_byte_limit': e.RETAINED_BYTE_LIMIT,
+        'metadata_byte_reserve': reserve, 'response_byte_capacity': min(e.RESPONSE_BYTE_LIMIT, e.RETAINED_BYTE_LIMIT - reserve)}
     response = {'format_kind': 'volicord_explanation', 'format_version': 2,
         'plan_fingerprint': plan['fingerprint'], 'language': language,
         'generator': {'host': 'authored fixture', 'session': 'fixture-only', 'agent': None, 'model': None},
@@ -210,18 +211,28 @@ class LifecycleTests(unittest.TestCase):
         for kind in ('work', 'decision'):
             for language in ('en', 'ko'):
                 p, original, _, _ = lifecycle(kind, language)
-                for target in (16383, 16384, 16385):
+                capacity = p['plan']['retention_budget']['response_byte_capacity']
+                for target in (capacity - 1, capacity, capacity + 1):
                     response = copy.deepcopy(original)
                     response['generator']['model'] = '모델 "model"\\' * 100
                     response['paragraphs'][0]['text'] += '한글 "quoted"\\\n'
-                    response['paragraphs'][0]['text'] += 'x' * (target - len(e.compact_bytes(response)))
+                    remaining = target - len(e.compact_bytes(response))
+                    for paragraph in response['paragraphs']:
+                        padding = min(remaining, e.PARAGRAPH_CHARACTER_LIMIT - len(paragraph['text']))
+                        paragraph['text'] += 'x' * padding
+                        remaining -= padding
+                    self.assertEqual(remaining, 0)
                     self.assertEqual(len(e.compact_bytes(response)), target)
                     self.assertGreater(len(json.dumps(response, ensure_ascii=False, indent=2).encode()), 16384)
-                    if target <= 16384:
+                    if target <= capacity:
                         e.validate_response(p['plan'], response)
                     else:
-                        with self.assertRaisesRegex(c.CampaignError, 'compact realization JSON is 16385 bytes; limit 16384'):
+                        with self.assertRaisesRegex(c.CampaignError, f'compact realization JSON is {capacity + 1} bytes; prepared response capacity {capacity}'):
                             e.validate_response(p['plan'], response)
+                oversized = copy.deepcopy(original)
+                oversized['paragraphs'][0]['text'] = 'x' * (e.PARAGRAPH_CHARACTER_LIMIT + 1)
+                with self.assertRaisesRegex(c.CampaignError, 'claims/grounding missing or malformed'):
+                    e.validate_response(p['plan'], oversized)
                 bad = copy.deepcopy(p['plan']); bad['retention_budget']['metadata_byte_reserve'] += 1
                 with self.assertRaisesRegex(c.CampaignError, 'budget mismatch'):
                     e.validate_plan(bad, p['project_id'], p['subject'], language)

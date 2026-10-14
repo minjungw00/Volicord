@@ -365,8 +365,10 @@ correction/forget/deletion. Already exported offline copies cannot be retracted.
 
 Explanation preparation is limited to 131,072 compact JSON bytes, including the
 fingerprint and mandatory `retention_budget`. It reserves required retained metadata
-(including the longest recording timestamp) plus the full supported 16,384-byte
-compact realization. The complete retained body and its shared decoder admit at most
+(including the longest recording timestamp) plus a guaranteed 16,384-byte response.
+Compact realizations may use up to 32,768 bytes when the preparation's exact
+`response_byte_capacity` permits it; individual paragraphs remain limited to
+16,384 characters. The complete retained body and its shared decoder admit at most
 147,456 bytes. JSON escaping and generator metadata count; UTF-8 characters are not
 single bytes. A CLI/Dogfood response file may contain 65,536 raw bytes so formatting
 need not reduce semantic capacity. Purpose and retention basis remain short fields

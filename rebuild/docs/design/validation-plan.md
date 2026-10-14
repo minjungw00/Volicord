@@ -2702,6 +2702,16 @@ pairs, current repository changes and deleted copies, preserving previous record
 Existing explanation-budget, CLI, Host consumer, Source, document and Viewer tests
 remain focused format/lifecycle checks. Current fixture producers/consumers use
 explanation format 2 and document metadata 10; historical campaign files are immutable.
+Source-citation metadata may use the prepared response capacity up to 32,768 bytes
+while retaining the 147,456-byte complete envelope and the guaranteed 16,384-byte
+capacity for metadata-heavy plans. Host controls exercise a citation-heavy response
+above 16 KiB, exact read binding, rejection without replacing its valid record and
+unchanged canonical/provider state. Budget controls check the exact prepared
+capacity and unchanged raw input, retained envelope and paragraph boundaries.
+These authored controls do not stand in for an actual host output. A privately
+preserved real output re-recorded after a budget fix retains its original model
+request and prose/Source/claim bindings; any new preparation fingerprint and
+recording producer identity remain separately inspectable.
 
 `volicord-viewer --test grounded_reader` produces actual changed, equal and
 missing-before file observations, scopes retrieval to a live Host request,

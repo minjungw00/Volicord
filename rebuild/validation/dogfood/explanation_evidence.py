@@ -21,7 +21,9 @@ import codex_events
 import document_realization
 
 SCHEMA_VERSION = 2
-RESPONSE_BYTE_LIMIT = 16384
+RESPONSE_BYTE_LIMIT = 32768
+MIN_RESPONSE_BYTE_CAPACITY = 16384
+PARAGRAPH_CHARACTER_LIMIT = 16384
 PLAN_BYTE_LIMIT = 131072
 RETAINED_BYTE_LIMIT = 147456
 INPUT_BYTE_LIMIT = 65536
@@ -138,8 +140,8 @@ def validate_plan(plan, project, subject, language):
         raise require('Product explanation plan subject/language/basis mismatch')
     reserve = retention_metadata_bytes(plan)
     expected_budget = {'response_byte_limit': RESPONSE_BYTE_LIMIT, 'retained_byte_limit': RETAINED_BYTE_LIMIT,
-        'metadata_byte_reserve': reserve, 'response_byte_capacity': RESPONSE_BYTE_LIMIT}
-    if (plan.get('retention_budget') != expected_budget or reserve + RESPONSE_BYTE_LIMIT > RETAINED_BYTE_LIMIT
+        'metadata_byte_reserve': reserve, 'response_byte_capacity': min(RESPONSE_BYTE_LIMIT, RETAINED_BYTE_LIMIT - reserve)}
+    if (plan.get('retention_budget') != expected_budget or reserve + MIN_RESPONSE_BYTE_CAPACITY > RETAINED_BYTE_LIMIT
             or len(compact_bytes(plan)) > PLAN_BYTE_LIMIT):
         raise require('Product explanation plan retention/serialization budget mismatch; prepare current evidence before generation')
     evidence = plan['evidence']
@@ -153,8 +155,9 @@ def validate_plan(plan, project, subject, language):
 
 def validate_response(plan, response):
     size = len(compact_bytes(response))
-    if size > RESPONSE_BYTE_LIMIT:
-        raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; limit {RESPONSE_BYTE_LIMIT}; reduce prose or generator metadata while preserving required answers/grounding, then retry')
+    capacity = plan['retention_budget']['response_byte_capacity']
+    if size > capacity:
+        raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; prepared response capacity {capacity}; preserve grounding and seek Product support for this evidence shape')
     if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
             'plan_fingerprint', 'language', 'generator', 'paragraphs'}
             or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 2
@@ -172,6 +175,7 @@ def validate_response(plan, response):
     if (not isinstance(paragraphs, list) or not required <= {p.get('question') for p in paragraphs if isinstance(p, dict)}
             or any(not isinstance(p, dict) or set(p) != {'question', 'text', 'evidence_keys', 'citations'}
                 or p['question'] not in required | {'limits'} or not isinstance(p['text'], str) or not p['text'].strip()
+                or len(p['text']) > PARAGRAPH_CHARACTER_LIMIT
                 or not isinstance(p['evidence_keys'], list) or not p['evidence_keys']
                 or not all(isinstance(k, str) and k in keys for k in p['evidence_keys']) for p in paragraphs)
             or any(not isinstance(p.get('citations'), list) for p in paragraphs)):

@@ -147,7 +147,14 @@ fn response(
     };
     let size = serde_json::to_vec(&r)?.len();
     assert!(size <= target);
-    r.paragraphs[0].text.push_str(&"x".repeat(target - size));
+    let mut remaining = target - size;
+    for paragraph in &mut r.paragraphs {
+        let padding =
+            remaining.min(EXPLANATION_PARAGRAPH_CHARACTER_LIMIT - paragraph.text.chars().count());
+        paragraph.text.push_str(&"x".repeat(padding));
+        remaining -= padding;
+    }
+    assert_eq!(remaining, 0);
     assert_eq!(serde_json::to_vec(&r)?.len(), target);
     Ok(r)
 }
@@ -331,7 +338,11 @@ fn compact_response_and_raw_input_boundaries_are_atomic() -> Result<(), Box<dyn 
                 let plan = f
                     .operations
                     .prepare_explanation(f.project, subject, language)?;
-                assert_eq!(plan.retention_budget.response_byte_capacity, 16384);
+                let capacity = plan.retention_budget.response_byte_capacity;
+                assert!(
+                    (EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY..=EXPLANATION_BYTE_LIMIT)
+                        .contains(&capacity)
+                );
                 let path = f._temporary.path().join("response.json");
                 let record = |bytes: &[u8]| -> Result<Output, Box<dyn std::error::Error>> {
                     std::fs::write(&path, bytes)?;
@@ -350,7 +361,7 @@ fn compact_response_and_raw_input_boundaries_are_atomic() -> Result<(), Box<dyn 
                         ],
                     )
                 };
-                for size in [16383, 16384] {
+                for size in [capacity - 1, capacity] {
                     let mut r = response(&plan, size)?;
                     // Move capacity into varying self-reported generator metadata.
                     let text = &mut r.paragraphs[0].text;
@@ -365,16 +376,26 @@ fn compact_response_and_raw_input_boundaries_are_atomic() -> Result<(), Box<dyn 
                     assert!(serde_json::to_vec(&retained)?.len() <= 147456);
                     let privacy = f.operations.privacy_status(f.project)?;
                     rejected(
-                        record(&serde_json::to_vec(&response(&plan, 16385)?)?)?,
+                        record(&serde_json::to_vec(&response(&plan, capacity + 1)?)?)?,
                         "compact realization JSON",
-                        "16385",
-                        "16384",
+                        &(capacity + 1).to_string(),
+                        &capacity.to_string(),
                     );
                     assert_eq!(privacy, f.operations.privacy_status(f.project)?);
                     // A structurally valid retry succeeds after the rejected request.
                     value(record(&compact)?)?;
                 }
                 let r = response(&plan, 3181)?;
+                let mut oversized_paragraph = r.clone();
+                oversized_paragraph.paragraphs[0].text =
+                    "x".repeat(EXPLANATION_PARAGRAPH_CHARACTER_LIMIT + 1);
+                let before = f.operations.privacy_status(f.project)?;
+                let rejection = record(&serde_json::to_vec(&oversized_paragraph)?)?;
+                assert_eq!(rejection.status.code(), Some(1));
+                assert!(rejection.stdout.is_empty());
+                assert!(String::from_utf8_lossy(&rejection.stderr)
+                    .contains("paragraph exceeds 16384 characters"));
+                assert_eq!(before, f.operations.privacy_status(f.project)?);
                 for size in [65535, 65536, 65537] {
                     let mut bytes = serde_json::to_vec(&r)?;
                     bytes.resize(size, b' '); // formatting does not change realization size
@@ -516,7 +537,32 @@ fn envelopes_above_the_old_read_bound_round_trip_through_actual_cli(
             assert!(size > 131072 && size <= 147456);
             let budget = &plan.retention_budget;
             assert!(size <= budget.metadata_byte_reserve + 16384);
+            assert!(budget.response_byte_capacity >= EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY);
+            assert!(budget.response_byte_capacity < EXPLANATION_BYTE_LIMIT);
             assert_eq!(retained.realization, r);
+            let privacy_before = f.operations.privacy_status(f.project)?;
+            let too_large = response(&plan, budget.response_byte_capacity + 1)?;
+            std::fs::write(&path, serde_json::to_vec(&too_large)?)?;
+            rejected(
+                invoke(
+                    &f,
+                    &[
+                        kind,
+                        "explain",
+                        "record",
+                        selector,
+                        &id,
+                        "--language",
+                        language,
+                        "--input",
+                        path.to_str().ok_or("path")?,
+                    ],
+                )?,
+                "prepared response capacity",
+                &(budget.response_byte_capacity + 1).to_string(),
+                &budget.response_byte_capacity.to_string(),
+            );
+            assert_eq!(privacy_before, f.operations.privacy_status(f.project)?);
             let readback = value(invoke(&f, &[read, "--language", language])?)?;
             assert!(readback.to_string().contains(&plan.fingerprint));
         }
