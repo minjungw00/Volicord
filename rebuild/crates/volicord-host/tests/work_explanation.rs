@@ -205,6 +205,25 @@ fn explicit_generation_retrieval_record_read_and_delete_are_separate() -> Result
     assert!(!prepared.to_string().contains("PRIVATE_TURN_SENTINEL"));
     assert_eq!(prepared["generation_status"], "not_requested");
     assert_eq!(prepared["read_only"], true);
+    assert!(prepared.get("generation_id").is_none());
+    let mut unrequested = f.args("read_source");
+    unrequested["generation_id"] = json!("prepare-is-not-generation");
+    unrequested["source_id"] = json!(f.source.to_string());
+    assert_eq!(call(&mut f.host, unrequested)["result"]["isError"], true);
+    // Reading a missing explanation stays missing; it cannot manufacture prose.
+    let projection = f.host.operations().project_projection(f.project)?;
+    let work = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == f.work)
+        .ok_or("Work reading")?;
+    assert_eq!(
+        work_answers(work, "en", FixedLocale::English).explanation_state,
+        ExplanationState::Missing
+    );
+    let privacy_before = f.host.operations().privacy_status(f.project)?;
+    assert!(privacy_before.current_opt_in.is_none());
+    assert!(privacy_before.requests.is_empty());
     let generation = f.generate()?;
     assert!(!generation.to_string().contains("PRIVATE_TURN_SENTINEL"));
     assert_eq!(
@@ -220,6 +239,11 @@ fn explicit_generation_retrieval_record_read_and_delete_are_separate() -> Result
             .managed_derived
     );
     let read = f.read(&generation, f.source)?;
+    // An explicit explanation request does not supply background transmission consent.
+    assert_eq!(
+        privacy_before,
+        f.host.operations().privacy_status(f.project)?
+    );
     let realization = response(&generation, &read)?;
     let record = f.record_args(&generation, &realization)?;
     let recorded = success(&mut f.host, record.clone())?;
@@ -287,6 +311,23 @@ fn wrong_scopes_ranges_hashes_bindings_and_denied_retrieval_preserve_previous_re
         .privacy_status(f.project)?
         .managed_derived;
     let next = f.generate()?;
+    // Neither another runtime nor a fresh server can inherit a live request.
+    for runtime in ["foreign-runtime", "runtime"] {
+        let ops = LocalOperations::new(RuntimeLayout::new(f.temp.path().join(runtime))?);
+        let mut foreign_host = HostAdapter::new(ops);
+        let mut prepare = f.args("prepare");
+        prepare["language"] = json!("en");
+        assert_eq!(
+            call(&mut foreign_host, prepare)["result"]["isError"],
+            runtime == "foreign-runtime"
+        );
+        let mut read = f.args("read_source");
+        read["generation_id"] = next["generation_id"].clone();
+        read["source_id"] = json!(f.source.to_string());
+        assert_eq!(call(&mut foreign_host, read)["result"]["isError"], true);
+        let record = f.record_args(&next, &valid)?;
+        assert_eq!(call(&mut foreign_host, record)["result"]["isError"], true);
+    }
     // A known valid fingerprint from a previous request is not retrieval here.
     let args = f.record_args(&next, &valid)?;
     assert_eq!(call(&mut f.host, args)["result"]["isError"], true);

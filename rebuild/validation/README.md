@@ -26,6 +26,15 @@ explanation operations or host generation. The separate
 reports/commit identities only and supplies no current Product result.
 Authenticated `codex_probe.py` remains a separate authorized external check.
 
+`rebuild/scripts/validate focused sessionstart -- python3 -B
+rebuild/validation/dogfood/activation_fixture.py` checks the real CLI hook in a
+disposable authorized repository, including all four activation sources, exact
+UTF-8 accounting excluding the CLI route, wrong repository and absent Runtime
+access. Dogfood assertions run these controls before their production-hook
+consumers. The scoped Rust `volicord-host --test work_explanation` target checks
+explicit generation/retrieval/record, read-only preparation, unavailable Sources,
+foreign Runtime/server requests and unchanged provider authorization/request state.
+
 Campaign launch uses the existing [Linux/Codex integration readiness owner](../docs/linux-codex-setup.md):
 inspect actual generated integration before hook approval, satisfy only missing exact
 Runtime permission/trust, and reuse hash-bound successful readiness for unchanged actual

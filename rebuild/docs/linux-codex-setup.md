@@ -246,3 +246,12 @@ provenance; setup success establishes no new user authority or measured onboardi
 `project_resolve` and `recall` in activation guidance are MCP tools. Use their host
 MCP interface; CLI commands retain their own command groups (such as `status`,
 `recall`, and `work explain`). The installed prefix applies to CLI commands only.
+
+For an explicit Work explanation, use MCP `work_explanation` with `generate`,
+discover relevant permitted Sources through `work_source`, read them with
+`work_explanation` `read_source`, and submit host-authored prose with `record`
+and the exact request/evidence bindings. Missing host access or interpretation
+authority remains a blocker. Prepare, read and GET do not generate or transmit;
+there is no automatic generation or server-side model dispatch. Background
+transmission still requires separate exact authorization. SessionStart guidance
+must remain strictly below 4,096 UTF-8 bytes after excluding the CLI route line.

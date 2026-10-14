@@ -30,6 +30,8 @@ EXPECTED_TOOLS = [
     "recall",
     "repository_understanding",
     "repository_analyze",
+    "work_source",
+    "work_explanation",
     "engineering_choice_discovery",
     "materiality_review",
     "learning_deliberation",
@@ -213,7 +215,7 @@ def assert_concrete_schema_node(
         return
     kind = schema.get("type")
     require(
-        kind in {"string", "integer", "boolean", "array", "object"},
+        kind in {"string", "integer", "boolean", "array", "object", "null"},
         f"{name} uses an unsupported client-visible type",
     )
     if kind == "array":
@@ -257,6 +259,8 @@ def schema_error(schema: dict[str, Any], value: Any, path: str = "arguments") ->
         matches = [variant for variant in variants if schema_error(variant, value, path) is None]
         return None if len(matches) == 1 else f"{path} must match exactly one shape"
     kind = schema.get("type")
+    if kind == "null":
+        return None if value is None else f"{path} must be null"
     if kind == "object":
         if not isinstance(value, dict):
             return f"{path} must be an object"
@@ -315,6 +319,8 @@ def value_from_schema(schema: dict[str, Any], context: dict[str, Any]) -> Any:
         return value_from_schema(variants[0], context)
     kind = schema.get("type")
     description = str(schema.get("description", "")).lower()
+    if kind == "null":
+        return None
     if kind == "string":
         if "enum" in schema:
             return schema["enum"][0]
@@ -1355,13 +1361,21 @@ def main() -> int:
             require(len("\n".join(line for line in context.splitlines() if not line.startswith("CLI route:")).encode()) < 4096, "installed SessionStart context exceeded its bound")
             require("CLI route: " + shlex.join([str(cli), "--runtime", str(runtime), "--repository", str(repository)]) in context or ("CLI route:" in context and str(cli) in context and str(runtime) in context and str(repository) in context), "installed CLI route missing")
             for rule in (
-                "No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation",
-                "No-write research/prototype conclusions using execution need a completed bounded scratch experiment",
-                "exact invocation and actual numeric exit/termination from that execution",
+                "MCP work_explanation generate",
+                "work_source for permitted relevant Sources",
+                "work_explanation read_source",
+                "then author and record with exact bindings",
+                "Prepare/read/GET never generate or transmit",
+                "no automatic generation, server-side model dispatch or generation quota",
+                "Missing host access/authority is a blocker",
+                "transmit sources without separate exact provider authorization",
+                "Read-only, explanation-only or no-write continuation needs no post-mutation verification",
+                "No-write research/prototype execution needs a completed bounded scratch experiment",
+                "exact invocation and actual numeric exit/termination",
                 "Diagnostics may precede it",
-                "afterward normally only read-only inspection/reporting that preserves its evidence basis before Checkpoint",
-                "After later substantive executable diagnostics, establish a later bounded experiment with observed numeric completion",
-                "Checkpoint records no repository changed paths and the terminal experiment evidence, not an earlier superseded run",
+                "then preserve its basis with read-only inspection/reporting before Checkpoint",
+                "Later substantive diagnostics require a later bounded experiment with numeric completion",
+                "Checkpoint records no changed paths and terminal experiment evidence, never a superseded run",
                 "Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation",
             ):
                 require(rule in context, f"installed SessionStart exploratory guidance missing: {rule}")

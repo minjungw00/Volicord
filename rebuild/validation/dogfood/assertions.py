@@ -66,6 +66,7 @@ def check_review_capture_contract():
 
 def main() -> int:
     """Assert the one active Naturalistic contract and retained support engine."""
+    from activation_fixture import check_activation_regressions
     import campaign
     import workload_intents
     import harness
@@ -74,6 +75,7 @@ def main() -> int:
     import qualification_policy
     import review_operations
 
+    check_activation_regressions()
     check_review_capture_contract()
     definition = harness.load_definition()
     report = Path(__file__).with_name("report.md").read_text(encoding="utf-8")

@@ -44,7 +44,7 @@ fn activation_context(
         shell_quote(runtime),
         shell_quote(repository)
     );
-    format!("{identity}\nCLI route: {route}. Use this prefix for CLI operations; bare-name PATH is not candidate identity.\nStart project work with project_resolve using the MCP tool; follow workflow.required_next_action until blocks_ordinary_work is false. Recall is not completion. Task direction is RecordedNextStep; repair is separate. Host-authorized prose: CLI work explain prepare/record --work ID or decision explain prepare/record --decision ID; --language, --input FILE for record. For explicit Work explanations use MCP work_explanation generate, investigate permitted relevant Sources with work_source/read_source, then author and record prose with exact bindings. Prepare/GET do not dispatch generation. No generation quota. Run explicitly requested tests/build/lint/verification to termination before completion; report blockers. Prior Checkpoint or inspection cannot substitute. Inspect/explain-only requests need no execution. {continuation} Explicit learning/explanation participation in this bounded Goal stays active with its exact current-host Source/verbatim statement even if all dimensions are routine. Per-dimension learning value is separate: routine detail requires no Learning Deliberation, Question, or Decision. Otherwise default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation. After inquiry_frontier clear answers, call decision_record promptly: existing valid presentation_receipt_id, exact revision, exact current user_turn. No repeat confirmation of unchanged Questions. Explanation is not a Decision; clarify ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Use caller-supplied current-host response; never infer a Decision from recommendation or silence. Stronger confirmation is only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Never infer user authority from agent recommendation or transmit sources without separate exact provider authorization. For verified completion/pause, rerun relevant bounded verification after the final meaningful mutation. Pre-mutation success, inspection, prior Checkpoint or prose cannot certify later changes. Use standalone bounded verification for unambiguous terminal evidence; compound diagnostics may be useful but mixed/ambiguous commands cannot be sole terminal evidence. Keep exact transient invocation and numeric exit/termination observable for the same execution through polling. Record only observed outcomes; retain no raw arguments. No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation. No-write research/prototype conclusions using execution need a completed bounded scratch experiment: exact invocation and actual numeric exit/termination from that execution. Diagnostics may precede it; afterward normally only read-only inspection/reporting that preserves its evidence basis before Checkpoint. After later substantive executable diagnostics, establish a later bounded experiment with observed numeric completion. Checkpoint records no repository changed paths and the terminal experiment evidence, not an earlier superseded run. Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation. Behavior-preserving/refactor completion requires compatibility surfaces linked to focused verification; inspect overrides/default propagation where relevant. No ceremony off-project.")
+    format!("{identity}\nCLI route: {route}. Use this prefix for CLI operations; bare-name PATH is not candidate identity.\nStart project work with project_resolve using the MCP tool; follow workflow.required_next_action until blocks_ordinary_work is false. Recall is not completion. Task direction: RecordedNextStep; repair is separate. Explicit Work explanation: MCP work_explanation generate, work_source for permitted relevant Sources, work_explanation read_source, then author and record with exact bindings. CLI work explain prepare/record --work ID; decision explain prepare/record --decision ID; --language, --input FILE for record. Prepare/read/GET never generate or transmit; no automatic generation, server-side model dispatch or generation quota. Missing host access/authority is a blocker. Complete requested tests/build/lint/verification to termination before completion; report blockers. Inspect/explain-only requests need no execution. {continuation} Explicit learning/explanation participation stays active for this bounded Goal with exact current-host Source/verbatim statement, even for routine dimensions. Routine learning value requires no Learning Deliberation, Question, or Decision. Otherwise default inactive; generic coding, agent explanation or ungrounded keywords cannot activate participation. After clear inquiry_frontier answers, call decision_record promptly: existing valid presentation_receipt_id, exact revision, exact current user_turn (caller-supplied current-host response). No repeat confirmation of unchanged Questions. Explanation is not a Decision; clarify ambiguous answers. Changed revisions or stale/invalid receipts require current presentation. Never infer a Decision from recommendation or silence; stronger confirmation only for existing high-risk effects. Research/prototype: read-only or scratch only; keep original Goal/Discovery/baseline; no repository writes or rebasing blocked work. Never infer user authority from agent recommendation or transmit sources without separate exact provider authorization. Verified completion/pause: rerun relevant bounded verification after the final meaningful mutation. Pre-mutation success, inspection, prior Checkpoint or prose cannot certify later changes. Use standalone bounded verification for terminal evidence; mixed/ambiguous compound diagnostics cannot be sole terminal evidence. Keep exact transient invocation and numeric exit/termination observable for the same execution through polling. Record only observed outcomes; retain no raw arguments. Read-only, explanation-only or no-write continuation needs no post-mutation verification. No-write research/prototype execution needs a completed bounded scratch experiment: exact invocation and actual numeric exit/termination. Diagnostics may precede it; then preserve its basis with read-only inspection/reporting before Checkpoint. Later substantive diagnostics require a later bounded experiment with numeric completion. Checkpoint records no changed paths and terminal experiment evidence, never a superseded run. Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation. Behavior-preserving/refactor completion: compatibility surfaces linked to focused verification; inspect relevant overrides/default propagation. Off-project: no ceremony.")
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -934,13 +934,15 @@ mod tests {
             assert!(context.contains("workflow.required_next_action"));
             assert!(context.contains("blocks_ordinary_work is false"));
             assert!(context.contains(
-                "Explicit learning/explanation participation in this bounded Goal stays active"
+                "Explicit learning/explanation participation stays active for this bounded Goal"
             ));
             assert!(context.contains(
-                "exact current-host Source/verbatim statement even if all dimensions are routine"
+                "exact current-host Source/verbatim statement, even for routine dimensions"
             ));
-            assert!(context.contains("Per-dimension learning value is separate: routine detail requires no Learning Deliberation, Question, or Decision"));
-            assert!(context.contains("default inactive; generic coding, agent explanation, or ungrounded keywords cannot activate participation"));
+            assert!(context.contains(
+                "Routine learning value requires no Learning Deliberation, Question, or Decision"
+            ));
+            assert!(context.contains("default inactive; generic coding, agent explanation or ungrounded keywords cannot activate participation"));
             assert!(context.contains("call decision_record promptly"));
             assert!(context.contains("existing valid presentation_receipt_id"));
             assert!(context.contains("exact revision, exact current user_turn"));
@@ -950,35 +952,45 @@ mod tests {
                 "Changed revisions or stale/invalid receipts require current presentation"
             ));
             assert!(context.contains("caller-supplied current-host response"));
-            assert!(context.contains("never infer a Decision from recommendation or silence"));
-            assert!(
-                context.contains("Stronger confirmation is only for existing high-risk effects")
-            );
+            assert!(context.contains("Never infer a Decision from recommendation or silence"));
+            assert!(context.contains("stronger confirmation only for existing high-risk effects"));
             assert!(context.contains("Never infer user authority from agent recommendation"));
             assert!(context.contains("separate exact provider authorization"));
             assert!(context.contains("Recall is not completion"));
             assert!(context.contains("work explain prepare/record --work ID"));
             assert!(context.contains("decision explain prepare/record --decision ID"));
-            assert!(context.contains("No Work MCP tool or generation quota"));
-            assert!(context.contains("Run explicitly requested tests/build/lint/verification to termination before completion; report blockers"));
-            assert!(context.contains("Prior Checkpoint or inspection cannot substitute"));
+            for rule in [
+                "MCP work_explanation generate",
+                "work_source for permitted relevant Sources",
+                "work_explanation read_source",
+                "then author and record with exact bindings",
+                "Prepare/read/GET never generate or transmit",
+                "no automatic generation, server-side model dispatch or generation quota",
+                "Missing host access/authority is a blocker",
+            ] {
+                assert!(
+                    context.contains(rule),
+                    "missing explanation boundary: {rule}"
+                );
+            }
+            assert!(context.contains("Complete requested tests/build/lint/verification to termination before completion; report blockers"));
             assert!(context.contains("Inspect/explain-only requests need no execution"));
             assert!(context.contains("no repository writes or rebasing blocked work"));
-            assert!(context.contains("For verified completion/pause, rerun relevant bounded verification after the final meaningful mutation"));
+            assert!(context.contains("Verified completion/pause: rerun relevant bounded verification after the final meaningful mutation"));
             assert!(context.contains("Pre-mutation success, inspection, prior Checkpoint or prose cannot certify later changes"));
+            assert!(context.contains("Use standalone bounded verification for terminal evidence"));
             assert!(context
-                .contains("Use standalone bounded verification for unambiguous terminal evidence"));
-            assert!(context.contains("compound diagnostics may be useful but mixed/ambiguous commands cannot be sole terminal evidence"));
+                .contains("mixed/ambiguous compound diagnostics cannot be sole terminal evidence"));
             assert!(context.contains("exact transient invocation and numeric exit/termination observable for the same execution through polling"));
             assert!(context.contains("Record only observed outcomes; retain no raw arguments"));
-            assert!(context.contains("No post-mutation requirement for read-only, explanation-only or no-write exploratory continuation"));
+            assert!(context.contains("Read-only, explanation-only or no-write continuation needs no post-mutation verification"));
             for rule in [
-                "No-write research/prototype conclusions using execution need a completed bounded scratch experiment",
-                "exact invocation and actual numeric exit/termination from that execution",
+                "No-write research/prototype execution needs a completed bounded scratch experiment",
+                "exact invocation and actual numeric exit/termination",
                 "Diagnostics may precede it",
-                "afterward normally only read-only inspection/reporting that preserves its evidence basis before Checkpoint",
-                "After later substantive executable diagnostics, establish a later bounded experiment with observed numeric completion",
-                "Checkpoint records no repository changed paths and the terminal experiment evidence, not an earlier superseded run",
+                "then preserve its basis with read-only inspection/reporting before Checkpoint",
+                "Later substantive diagnostics require a later bounded experiment with numeric completion",
+                "Checkpoint records no changed paths and terminal experiment evidence, never a superseded run",
                 "Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation",
             ] {
                 assert!(context.contains(rule), "missing exploratory guidance: {rule}");
@@ -1000,8 +1012,9 @@ mod tests {
                 context
                     .lines()
                     .filter(|line| !line.starts_with("CLI route:"))
-                    .map(|line| line.len() + 1)
-                    .sum::<usize>()
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    .len()
                     < 4096,
                 "activation guidance should stay compact independently of installed path lengths"
             );
