@@ -1,10 +1,14 @@
 // Actual output-to-reader observations; independent expectations supplied by tests.
 const fs = require('fs');
 const {pathToFileURL} = require('url');
+const {execFileSync} = require('node:child_process');
 const {chromium} = require(process.argv[4]);
 const plan = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 function check(ok, message) { if (!ok) throw Error(message); }
 (async () => {
+  if (plan.some(sample => sample.language.startsWith('ko'))) {
+    check(execFileSync('fc-list', ['--format', '%{file}\n', ':lang=ko'], {encoding:'utf8'}).trim(), 'Korean font prerequisite unavailable');
+  }
   const browser = await chromium.launch({executablePath: process.argv[3], headless:true, args:['--no-sandbox']});
   const observations = [];
   try {

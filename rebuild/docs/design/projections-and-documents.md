@@ -1671,11 +1671,18 @@ CLI/MCP, live Viewer and offline snapshot read the same answers and source basis
 Existing MCP transport omissions remain separate from shared excerpt bounds.
 The optional `reading_title` API uses the permitted Purpose paragraph as derived
 wording. Viewer headings instead quote at most 72 characters of the canonical
-Goal, with its full text in evidence; generated Purpose appears once as ordinary
+Goal, preferring a complete opening request sentence within that bound, with its
+full text in evidence; generated Purpose appears once as ordinary
 explanation prose. Section labels group adjacent paragraphs without changing
 their order or text. The exact compact
 realization fingerprint distinguishes regenerated or edited outputs on the same
 plan. It supplies output identity, not semantic approval or authenticated authorship.
+
+Citation navigation leads with the bound paragraph's explanatory purpose, followed
+by current/historical/execution use and the exact locator. A code panel groups the
+purposes only of paragraphs citing that exact Source/range/use. Claim classification
+and byte binding cannot supply semantic entailment or an independently supported
+effect title; broad canonical requests retain an accurate request heading.
 
 Viewer prose links to unique keyboard-focusable Source ranges. Actual code/output
 is ordinary reading; full revision and generator grounding stays in closed native

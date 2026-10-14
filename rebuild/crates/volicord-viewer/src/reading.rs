@@ -523,14 +523,15 @@ fn work_summary(
     snapshot: bool,
 ) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
-    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"\" data-title-basis=\"goal-quotation\">", w.work_item_id, understanding_work_state_key(w.state)));
+    let (title, title_basis, title_language) = work_reading_heading(w, r);
+    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"{}\" data-title-basis=\"{}\">", w.work_item_id, understanding_work_state_key(w.state), escape(&title_language), title_basis));
     link(
         html,
         r,
         ViewerView::Work {
             work: Some(w.work_item_id),
         },
-        &work_reading_title(w, r.locale),
+        &title,
         snapshot
             .then(|| format!("work-{}", w.work_item_id))
             .as_deref(),
@@ -609,14 +610,28 @@ fn work_summary(
 }
 /// A bounded quotation of the canonical Goal, never the generated Purpose
 /// paragraph duplicated as a headline. Full Goal evidence remains inspectable.
-pub(super) fn work_reading_title(w: &UnderstandingWork, locale: ViewerLocale) -> String {
-    let goal = work_reading_display(&w.reading.goal, locale);
+pub(super) fn work_reading_heading(
+    w: &UnderstandingWork,
+    r: &ViewerRequest,
+) -> (String, &'static str, String) {
+    // Claim classifications and byte hashes are not an entailment oracle.
+    // A generated causal sentence must not override the recorded request.
+    let goal = work_reading_display(&w.reading.goal, r.locale);
+    if let Some((end, punctuation)) = goal.char_indices().find(|(offset, c)| {
+        matches!(c, '.' | '?' | '!' | '。')
+            && goal[offset + c.len_utf8()..].starts_with(char::is_whitespace)
+    }) {
+        let sentence = &goal[..end + punctuation.len_utf8()];
+        if sentence.chars().count() <= 72 {
+            return (sentence.to_owned(), "goal-quotation", String::new());
+        }
+    }
     let mut chars = goal.chars();
     let excerpt: String = chars.by_ref().take(72).collect();
     if chars.next().is_some() {
-        format!("{excerpt}…")
+        (format!("{excerpt}…"), "goal-quotation", String::new())
     } else {
-        excerpt
+        (excerpt, "goal-quotation", String::new())
     }
 }
 fn answer_title<'a>(question: &str, locale: ViewerLocale) -> &'a str {
@@ -696,7 +711,11 @@ pub(super) fn render_answers(
             html.push_str(&format!(
                 "<a class=\"source-citation\" href=\"#{}\">{} · {}:{}–{}</a> ",
                 escape(&anchor),
-                escape(citation_use_label(r.locale, citation.use_kind)),
+                escape(&format!(
+                    "{} · {}",
+                    answer_title(&answer.question, r.locale),
+                    citation_use_label(r.locale, citation.use_kind)
+                )),
                 escape(&citation.locator),
                 citation.start_line,
                 citation.end_line
@@ -842,6 +861,28 @@ fn render_source_excerpts(
         html.push_str(&format!("<figure class=\"source-excerpt\" id=\"{}\" tabindex=\"-1\" data-source-id=\"{}\"><figcaption><strong>{}:{}–{}</strong> · {}</figcaption>",
             escape(&anchor), escape(&c.source_id), escape(&c.locator), c.start_line, c.end_line,
             citation_use_label(r.locale, c.use_kind)));
+        // Purpose labels come only from paragraphs that actually cite this
+        // exact range/use. A path or nearby function cannot supply relevance.
+        let mut purposes = Vec::new();
+        for answer in &answers.prose {
+            if answer
+                .citations
+                .iter()
+                .any(|citation| source_excerpt_anchor(answers, citation) == anchor)
+            {
+                let purpose = answer_title(&answer.question, r.locale);
+                if !purposes.contains(&purpose) {
+                    purposes.push(purpose);
+                }
+            }
+        }
+        if !purposes.is_empty() {
+            html.push_str(&format!(
+                "<p class=\"source-purpose\">{}: {}</p>",
+                text(r.locale, "Supports", "뒷받침하는 내용"),
+                escape(&purposes.join(" / "))
+            ));
+        }
         if let Some(e) = excerpt {
             if c.use_kind == volicord_projections::ExplanationSourceUse::CurrentCode {
                 let comparison = match e.comparison.as_deref() {
@@ -1662,9 +1703,12 @@ fn code(
         html.push_str("<div class=\"code-work-meaning\">");
         let answers =
             volicord_projections::work_answers(work, &r.requested_language, r.locale.fixed());
+        let (title, basis, language) = work_reading_heading(work, r);
         html.push_str(&format!(
-            "<h3 lang=\"\" data-title-basis=\"goal-quotation\">{}</h3>",
-            escape(&work_reading_title(work, r.locale)),
+            "<h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3>",
+            escape(&language),
+            basis,
+            escape(&title),
         ));
         let mut previous_question = None;
         for answer in answers.prose.iter().filter(|a| {

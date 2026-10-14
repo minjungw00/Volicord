@@ -7,10 +7,13 @@ site order, extent reasons, gaps, recorded Work and lossless downloads are prese
 Use a fresh ignored local directory for every run. This is experimental support,
 not a replacement Product Viewer or a new generation condition.
 
-The reader uses a short original inline code expression as its subject title, with
-exact UTF-8 coordinates and a hash in the title disclosure. With no short expression,
-it uses a derived Work label; it never duplicates the opening sentence as a headline.
-Paragraph headings use original claim classifications and bound primary-site purposes,
+The reader prefers a complete recorded Work request sentence when verified
+same-Work/cutoff facts supply one within the visual bound. Its disclosure binds the
+exact quote and retained Work basis; it does not turn a request into an achieved
+effect. With no eligible request, a short original code expression or neutral Work
+label remains the fallback. It never duplicates the prose opening as a headline.
+Mechanism headings prioritize bound primary-site purposes; request, choice,
+direction and check sections retain original claim classifications,
 not independently certified meaning. Adjacent paragraphs with the same purpose share
 a heading; repeated original sentences remain intact. Transport stage details follow
 the narrative. Code and diff panels preserve indentation with bounded local scrolling. All paragraph text, including separators, remains byte-identical. Code
@@ -19,6 +22,17 @@ verified paths, states and coordinates. Native disclosures preserve complete aud
 material; primary code and genuine selected-range comparisons stay directly reachable
 by mouse and keyboard. No-change context sites and missing-before sites receive no
 fabricated comparison. The HTML requires no scripts, network, provider or new access.
+
+Byte/transport status stays in closed inspection sections after the prose. Actual
+input gaps, failed invocations, historical verification and missing user rationale
+remain visible. A historical replay's title basis is explicitly unverified historical
+metadata; retained excerpt bytes do not restore missing original Source inputs.
+
+`presentation_negative_self_test.py` independently attacks rehashed effect titles,
+claim coordinates, stale code locations, unsupported editorial wording and feedback
+transferred to another view. Product `reading_title_tests.rs` separately rejects
+promoting even correctly hashed unsupported causal prose into a heading. These
+controls establish preservation/rejection behavior, not human understanding.
 
 `presentation_mode` in the local integrity receipt selects the exact reconstruction
 used by feedback. Display bytes, verifier bytes, original output and Source dependencies

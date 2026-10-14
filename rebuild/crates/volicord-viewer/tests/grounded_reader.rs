@@ -316,6 +316,8 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             1
         );
         assert!(page.contains("Current observed code · main.py:1–2</a>"));
+        assert!(page.contains("Change / investigation · Current observed code · main.py:1–2</a>"));
+        assert!(page.contains("<p class=\"source-purpose\">Supports: Change / investigation</p>"));
         assert_eq!(
             page.contains("Before: historical observation · main.py:1–2</a>"),
             comparison != "missing_before_state"
@@ -326,6 +328,8 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             .render(&korean_request, "test-form-authenticity")?
             .html;
         assert!(korean.contains("현재 관측 코드 · main.py:1–2</a>"));
+        assert!(korean.contains("변경 / 조사 · 현재 관측 코드 · main.py:1–2</a>"));
+        assert!(korean.contains("<p class=\"source-purpose\">뒷받침하는 내용: 변경 / 조사</p>"));
         assert_eq!(
             korean.contains("이전: 과거 관측 · main.py:1–2</a>"),
             comparison != "missing_before_state"

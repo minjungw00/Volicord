@@ -178,8 +178,10 @@ class PresentationTests(unittest.TestCase):
         """Layout observation when original attempts are absent; no Source revalidation."""
         plans = []
         root = Path(os.environ.get('EXPLANATION_READER_OUTPUT', self.h.root))
-        expected = {'work-b': ('1d25357823a4407d5600e5414ca7d48ba327d388fa684b1f8429619f8e2f3522', 'status 작업 설명'),
-                    'click': ('67c42f8fc0ac6f566e9fbe7ec0d4e88a57444fe56542d593c7626b24a2e008dc', 'File(lazy=True) 작업 설명')}
+        expected = {'work-b': ('1d25357823a4407d5600e5414ca7d48ba327d388fa684b1f8429619f8e2f3522',
+                             '저장소 분석이 없거나 일부만 가능한 상황에서 사용자가 현재 상태와 다음 행동을 이해할 수 있도록 Volicord의 CLI 안내를 개선해 주세요.'),
+                    'click': ('67c42f8fc0ac6f566e9fbe7ec0d4e88a57444fe56542d593c7626b24a2e008dc',
+                              'Click에서 상대 경로를 click.File(lazy=True)로 받았을 때, 인자 처리 후 실제 파일을 열기 전에 작업 디렉토리가 바뀌면 어떤 일이 생기는지 조사해 주세요.')}
         for name, env in [('work-b', 'EXPLANATION_PRESERVED_WORK_B'), ('click', 'EXPLANATION_PRESERVED_CLICK')]:
             old = Path(os.environ[env]).resolve()
             integrity = json.loads((old.parent / 'integrity.json').read_bytes())
@@ -207,7 +209,8 @@ class PresentationTests(unittest.TestCase):
             body, presentation = present_card(old.read_text().split('<body>', 1)[-1], witness)
             # Diagnostic documents omit <body>; extract the actual article only.
             body = body[body.index('<article'):body.rindex('</article>') + len('</article>')]
-            notice = '<p class="gap">Historical replay · Source unavailable; not revalidated.</p>'
+            notice = '<p class="gap">과거 기록 · 원래 입력 없어 현재 Source 검증 미완료. 코드는 보존 발췌입니다.</p>'
+            presentation['title_basis']['validation'] = 'historical_recorded_basis_not_revalidated'
             body = body.replace('current byte binding:', 'historically recorded byte binding:')
             body = body.replace('Current derived reading:', 'Historically recorded reading:')
             body = body.replace('Current local verifier checks exact response/Source bindings;',
@@ -237,6 +240,20 @@ class PresentationTests(unittest.TestCase):
                           'diffCount': 2 if name == 'work-b' else 0})
             self.assertEqual(target.read_bytes(), raw)
         self.browser(plans)
+
+    def test_recorded_goal_title_is_an_exact_request_not_an_invented_effect(self):
+        goal = 'Help readers distinguish a failed attempt from usable earlier analysis. Preserve the detailed audit.'
+        work = {'status': 'recorded', 'problem': goal, 'checkpoint': {'goal': goal},
+                'basis': [{'work': 'independent-work', 'revision': 3}]}
+        response = {'prose': 'The first sentence is deliberately unrelated to the request.'}
+        title, basis = reading_title(response, False, work)
+        self.assertEqual(title, 'Help readers distinguish a failed attempt from usable earlier analysis.')
+        self.assertEqual(goal.encode()[basis['start']:basis['end']], title.encode())
+        self.assertEqual(basis['sha256'], i.digest(title.encode()))
+        self.assertEqual(basis['basis'], work['basis'][0])
+        for invalid in [dict(work, status='unavailable'), dict(work, basis=[]), dict(work, checkpoint={'goal': 'Other request.'}),
+                        dict(work, problem='overlong ' * 100)]:
+            self.assertEqual(reading_title(response, False, invalid)[0], 'Work explanation')
 
     def test_actual_browser_normal_false_link_and_hierarchy_controls(self):
         compare(self.h.attempt, self.h.root / 'browser')

@@ -74,7 +74,9 @@ details details { background: var(--paper); }
 .answer-section h4 { color: var(--accent); font-size: 1rem; line-height: 1.5; margin: 0 0 .6rem; }
 .answer-section p { margin: .65rem 0; line-height: 1.75; white-space: pre-line; }
 .work-explanation { max-width: 72ch; }
-.source-citation { display: inline-block; padding: .25rem .4rem; font-size: .9rem; }
+.source-citation { display: inline-block; padding: .45rem .4rem; margin: .15rem 0; font-size: .9rem; line-height: 1.6; border-left: 2px solid var(--line); }
+.source-purpose { font-weight: 650; color: var(--accent); }
+.source-excerpt figcaption { font-size: .9rem; color: var(--muted); }
 .explanation-code { max-width: 100%; }
 .source-excerpt { margin: 1rem 0; padding: 1rem; border: 1px solid var(--line); border-radius: .6rem; background: var(--paper); }
 .source-excerpt:target { outline: .2rem solid var(--accent); outline-offset: .15rem; }

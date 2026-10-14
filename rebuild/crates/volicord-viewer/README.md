@@ -289,12 +289,18 @@ with `read_source`, authors natural prose with exact source/claim bindings and
 uses `record`. Its initial awaiting-host status is not completed generation, and
 the user does not construct JSON. Source links navigate to the actual cited code
 or command output, with exact revisions and claim hashes in closed details. Link
-labels distinguish current code, historical before code and command output. The
+labels lead with the cited paragraph's purpose (problem, change, effect or checks),
+then distinguish current code, historical before code and command output. Each code
+panel lists only the purposes of paragraphs citing its exact range and evidence use. The
 same bounded excerpt basis serves CLI/MCP, live Viewer and offline snapshots.
-Viewer headings quote the bounded original Goal; generated Purpose appears once
+Viewer headings quote the bounded original Goal, preferring a complete opening
+request sentence when it fits the existing 72-character bound; generated Purpose appears once
 below it in the problem section. The optional API `reading_title` remains derived
 interpretation. Full original Goal evidence stays inspectable. Output fingerprints
 distinguish different interpretations of one plan.
+Claim classifications and matching hashes cannot certify causal meaning and do
+not authorize an invented effect heading. A broad recorded Goal remains a broad
+request title; a more specific effect title requires separate semantic evidence.
 Before-state needs an explicit observed pair; current code
 alone does not prove a patch, execution success or user approval. Missing host
 capability/authority stays incomplete with recorded facts readable. See the

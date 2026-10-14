@@ -2730,6 +2730,20 @@ native zoom, personal understanding, unseen holdout and Naturalistic qualificati
 retain their separate obligations. Run with `validate focused`; final evidence
 requires `--require-clean` and exact candidate executables.
 
+Focused `recorded_explanation_browser.cjs` also accepts actual generated Product
+snapshots and an immutable public CLI readback. It checks Source-range/claim hashes
+before launching Chromium, then preserves paragraph order, output identity, exact
+Source text/locators, purpose labels, keyboard/mouse targets, closed audit priority
+and code indentation at 1440/768/390/320 widths. Interface locales and original body
+language are separate observations; an English interface around Korean original
+prose supplies no English model-generation result. Broad canonical Goal headings
+remain request quotations, never semantic effect approval. Independent Rust title
+controls include correctly hashed unsupported causal prose; Python presentation
+controls attack rehashed titles/coordinates, unsupported editorial changes, stale
+locations and cross-display feedback. Historical Work B/Click display replay with
+missing original inputs stays incomplete for Source-first assessment. These checks
+grant neither an independent reader judgment nor literal Human H1/H2/H3 acceptance.
+
 Lifecycle controls additionally reproduce tied-time/random-ID latest-output
 selection and explicit deletion versus missing generation. A real SQLite retained
 reader forces post-canonical sanitation failure; MCP/Viewer must show Withheld with

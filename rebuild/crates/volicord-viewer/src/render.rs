@@ -694,11 +694,12 @@ fn render_work_card(
     work: &UnderstandingWork,
     decisions: &[volicord_projections::UnderstandingDecision],
 ) {
+    let (title, basis, language) = reading::work_reading_heading(work, request);
     html.push_str(&format!(
-        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h3 lang=\"\" data-title-basis=\"goal-quotation\">{}</h3><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
+        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
         work.work_item_id,
         understanding_work_state_key(work.state),
-        escape(&reading::work_reading_title(work, request.locale)),
+        escape(&language), basis, escape(&title),
         escape(understanding_work_state_label(work.state, request.locale))
     ));
     reading::work_explanation(html, request, work, false);

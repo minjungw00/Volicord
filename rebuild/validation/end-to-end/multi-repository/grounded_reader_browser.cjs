@@ -27,7 +27,7 @@ async function checkSources(work, item, navigation=false) {
       const target=await source.getAttribute('id');
       const links=work.locator(`a.source-citation[href="#${target}"]`);
       assert.ok(await links.count()>0,'exact Source has a citation link');
-      assert.ok((await links.allTextContents()).every(text=>label.some(term=>text.startsWith(term))),'current and historical navigation labels distinguish evidence use');
+      assert.ok((await links.allTextContents()).every(text=>label.some(term=>text.includes(` · ${term} · `))),'purpose and current/historical evidence use remain distinct');
     }
   }
 }

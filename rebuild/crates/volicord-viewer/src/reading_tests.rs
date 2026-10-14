@@ -1,8 +1,12 @@
 use super::*;
+
 #[cfg(test)]
 #[path = "../../volicord-operations/tests/support/reading_fixture.rs"]
 #[allow(dead_code)]
 mod reading_fixture;
+#[cfg(test)]
+#[path = "reading_title_tests.rs"]
+mod reading_title_tests;
 
 #[cfg(test)]
 mod learning_tests {
