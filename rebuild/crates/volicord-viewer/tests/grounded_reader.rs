@@ -315,7 +315,21 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
                 .count(),
             1
         );
-        assert!(page.contains("Change / investigation · main.py:1–2</a>"));
+        assert!(page.contains("Current observed code · main.py:1–2</a>"));
+        assert_eq!(
+            page.contains("Before: historical observation · main.py:1–2</a>"),
+            comparison != "missing_before_state"
+        );
+        let mut korean_request = request(&f)?;
+        korean_request.locale = ViewerLocale::Korean;
+        let korean = ViewerAdapter::new(ops(&f)?)
+            .render(&korean_request, "test-form-authenticity")?
+            .html;
+        assert!(korean.contains("현재 관측 코드 · main.py:1–2</a>"));
+        assert_eq!(
+            korean.contains("이전: 과거 관측 · main.py:1–2</a>"),
+            comparison != "missing_before_state"
+        );
         assert!(page.contains(fingerprint));
         let mut code_request = request(&f)?;
         code_request.view = ViewerView::Code {

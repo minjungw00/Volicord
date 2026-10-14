@@ -696,7 +696,7 @@ pub(super) fn render_answers(
             html.push_str(&format!(
                 "<a class=\"source-citation\" href=\"#{}\">{} · {}:{}–{}</a> ",
                 escape(&anchor),
-                escape(answer_title(&answer.question, r.locale)),
+                escape(citation_use_label(r.locale, citation.use_kind)),
                 escape(&citation.locator),
                 citation.start_line,
                 citation.end_line
@@ -788,6 +788,23 @@ fn source_excerpt_anchor(
     )
 }
 
+fn citation_use_label(
+    locale: ViewerLocale,
+    use_kind: volicord_projections::ExplanationSourceUse,
+) -> &'static str {
+    match use_kind {
+        volicord_projections::ExplanationSourceUse::CurrentCode => {
+            text(locale, "Current observed code", "현재 관측 코드")
+        }
+        volicord_projections::ExplanationSourceUse::BeforeCode => {
+            text(locale, "Before: historical observation", "이전: 과거 관측")
+        }
+        volicord_projections::ExplanationSourceUse::ObservedExecution => {
+            text(locale, "Observed command output", "관측된 명령 출력")
+        }
+    }
+}
+
 fn render_source_excerpts(
     html: &mut String,
     r: &ViewerRequest,
@@ -824,11 +841,7 @@ fn render_source_excerpts(
         });
         html.push_str(&format!("<figure class=\"source-excerpt\" id=\"{}\" tabindex=\"-1\" data-source-id=\"{}\"><figcaption><strong>{}:{}–{}</strong> · {}</figcaption>",
             escape(&anchor), escape(&c.source_id), escape(&c.locator), c.start_line, c.end_line,
-            match c.use_kind {
-                volicord_projections::ExplanationSourceUse::CurrentCode => text(r.locale, "Current observed code", "현재 관측 코드"),
-                volicord_projections::ExplanationSourceUse::BeforeCode => text(r.locale, "Before: historical observation", "이전: 과거 관측"),
-                volicord_projections::ExplanationSourceUse::ObservedExecution => text(r.locale, "Observed command output", "관측된 명령 출력"),
-            }));
+            citation_use_label(r.locale, c.use_kind)));
         if let Some(e) = excerpt {
             if c.use_kind == volicord_projections::ExplanationSourceUse::CurrentCode {
                 let comparison = match e.comparison.as_deref() {
