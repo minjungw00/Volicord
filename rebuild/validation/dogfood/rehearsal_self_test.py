@@ -13,6 +13,26 @@ from rehearsal_test_support import passed_result
 
 
 class ContractTests(unittest.TestCase):
+    def test_temporal_receipt_accepts_missing_before_recording_without_reviving_old_content(self):
+        value = passed_result()
+        temporal = value['pipeline']['temporal_evidence']
+        for life in temporal['regeneration']['lifecycles']:
+            if life['publication_role'] == 'historical':
+                life['before_state'] = 'missing'
+        outcome = temporal['outcomes']['historical_explanation_regeneration']
+        outcome['basis_sha256'] = contract.digest({'lifecycles': temporal['regeneration']['lifecycles']})
+        contract.validate_temporal(temporal, value['processes'])
+        for mutation in ('unknown_before', 'missing_after', 'missing_final_before'):
+            wrong = copy.deepcopy(temporal)
+            lives = wrong['regeneration']['lifecycles']
+            if mutation == 'unknown_before': lives[0]['before_state'] = 'invented'
+            elif mutation == 'missing_after': lives[0]['after_state'] = 'missing'
+            else:
+                next(life for life in lives if life['publication_role'] == 'final')['before_state'] = 'missing'
+            wrong['outcomes']['historical_explanation_regeneration']['basis_sha256'] = contract.digest({'lifecycles': lives})
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                contract.validate_temporal(wrong, value['processes'])
+
     def test_copied_partial_lifecycle_preserves_facts_without_semantic_promotion(self):
         import tempfile
         from unittest.mock import patch

@@ -939,6 +939,8 @@ Copied temporal controls verify exact private-stage hashes, publication classifi
 readback locators and Goal revision/Sources. A validated partial semantic projection
 keeps its omissions and `semantic_complete: false`; those structural facts do not
 require or imply a complete independent semantic review.
+The temporal receipt accepts the documented Missing state before initial recording;
+it still requires Current after recording and Stale before corrected regeneration.
 
 The [measured campaign preparation pack](dogfood/campaign-readiness.md) keeps
 proposed targets/tasks separate from approved frozen inputs and observed outcomes.

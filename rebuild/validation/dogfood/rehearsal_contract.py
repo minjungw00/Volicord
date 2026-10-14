@@ -367,7 +367,7 @@ def validate_temporal(value, processes):
             'goal_sources', 'before_state', 'after_state', 'plan_fingerprint', 'stages'}, 'unexpected lifecycle summary')
         identity(life['identity']); identity(life['selected_identity'])
         require(re.fullmatch(r'sha256:[0-9a-f]{64}', life['plan_fingerprint'])
-            and life['after_state'] == 'current' and life['before_state'] in {'unavailable', 'stale', 'current'}
+            and life['after_state'] == 'current' and life['before_state'] in {'missing', 'unavailable', 'stale', 'current'}
             and life['goal_sources'] and regeneration['authorization_source_id'] not in life['goal_sources'],
             'lifecycle lacks current-at-recording or distinct Source basis')
         for source in life['goal_sources']: identity(source)
