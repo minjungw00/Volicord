@@ -923,6 +923,16 @@ Collection uses existing explanation/document preparation and recording,
 `qualify`, and publish/verify result-lineage owners. Rehearsal evidence cannot supply
 measured campaign use, human observations or Phase 9 approval.
 
+The authored coverage draft follows the prepared rubric's current dimension order.
+It cites inspected frozen intent labels, projected interaction records and factual
+machine counts as bounded support. Independent semantic review, Source/authority
+adequacy, Question/Learning assessability and Product-failure classification remain
+explicitly unobserved, without citations. Coverage remains `insufficient_evidence`;
+missing captures and unknown diagnostic counts cannot become successful empty activity.
+Focused review/qualification controls in `qualification_self_test.FileBoundaryTests`
+record this draft, reject incomplete or forged dimensions and replay copied lineage
+with the original staging paths unavailable. The qualitative validator is unchanged.
+
 The [measured campaign preparation pack](dogfood/campaign-readiness.md) keeps
 proposed targets/tasks separate from approved frozen inputs and observed outcomes.
 It maps required Learning, semantic understanding, Work/Decision comprehension,

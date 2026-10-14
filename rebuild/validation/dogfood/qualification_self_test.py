@@ -1109,6 +1109,154 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
 
 class FileBoundaryTests(unittest.TestCase):
+    def test_authored_rehearsal_dimensions_record_qualify_and_replay_without_staging(self):
+        import rehearsal
+        import campaign
+        import review_operations as ops
+        import result_lineage
+        from review_operations_self_test import snapshot
+        original = snapshot(self.root)
+        baseline = policy.qualify(self.root, self.evaluation, None,
+            candidate=json.loads(self.evaluation.read_bytes())['candidate_head'], review_roots=[])
+        # This shared negative campaign fixture has historical hard findings;
+        # the coverage correction must neither clear nor replace those failures.
+        self.assertTrue(baseline['machine_summary']['hard_findings'])
+        for include_raw in (True, False):
+            with self.subTest(include_raw=include_raw):
+                prefix = self.parent / ('authored-observations-' + str(include_raw))
+                target = prefix / 'review'
+                ops.prepare(self.root, target, reviewer_kind='agent', session_id='authored-support-review',
+                    evaluation_path=self.evaluation, include_raw=include_raw)
+                path = rehearsal.author_review(target)
+                prep, sha, _ = ops.load_package(target)
+                draft = json.loads(path.read_bytes())
+                a = next(a for a in draft['assessments'] if a['criterion_id'] == policy.COVERAGE_CRITERION)
+                self.assertEqual([o['dimension'] for o in a['criterion_observations']],
+                    prep['rubric']['criterion_observations']['interaction_coverage_adequacy'])
+                observed = {o['dimension'] for o in a['criterion_observations'] if o['state'] == 'observed_support'}
+                self.assertEqual(observed, {'planned_workload_intents', 'machine_diagnostic_facts'}
+                    | ({'actual_projected_interactions'} if include_raw else set()))
+                expected_surfaces = {'planned_workload_intents': {'task_selection'},
+                    'machine_diagnostic_facts': {'interaction_diagnostics'},
+                    'actual_projected_interactions': {'work_capture', 'resume_capture'}}
+                used = set()
+                for o in a['criterion_observations']:
+                    self.assertTrue(o['reasoning'])
+                    if o['state'] == 'unobserved':
+                        self.assertEqual(o['evidence_indexes'], [])
+                    else:
+                        self.assertTrue(o['evidence_indexes'])
+                        for n in o['evidence_indexes']:
+                            ref = a['evidence'][n]
+                            entry = prep['index']['evidence'][ref['evidence_id']]
+                            self.assertIn(entry['surface'], expected_surfaces[o['dimension']])
+                            self.assertIn(ref['locator'], entry['locators'])
+                            self.assertEqual(ref['criterion_id'], policy.COVERAGE_CRITERION)
+                            self.assertIn(ref['evidence_id'], a['inspected_evidence'])
+                            used.add(n)
+                self.assertEqual(used, set(range(len(a['evidence']))))
+                if not include_raw:
+                    diagnostics = next(e for e in prep['index']['evidence'].values()
+                        if e['surface'] == 'interaction_diagnostics')
+                    # Excluding review projections does not erase the separately
+                    # observed machine facts or turn them into semantic review.
+                    counts = json.loads((target / diagnostics['path']).read_bytes())['counts']
+                    self.assertEqual(counts, json.loads(self.evaluation.read_bytes())['interaction_diagnostics']['counts'])
+                self.assertEqual(a['assessment'], 'insufficient_evidence')
+                self.assertIsNone(a['human_answer_trace'])
+                self.assertTrue(all(other['assessment'] == 'not_reviewed'
+                    for other in draft['assessments'] if other is not a))
+                preflight = ops.validate(target, path)
+                self.assertEqual(preflight['counts']['insufficient_evidence'], 1)
+                self.assertIn(policy.COVERAGE_CRITERION,
+                    preflight['completion_preflight']['targeted_escalations']['evidence_gap_criterion_ids'])
+                ops.record(target, path)
+                result = policy.qualify(self.root, self.evaluation, prefix / 'qualification',
+                    candidate=prep['binding']['candidate_head'], review_roots=[target])
+                self.assertIn(policy.COVERAGE_CRITERION, result['qualitative_review']['unresolved_criteria'])
+                self.assertNotIn(policy.COVERAGE_CRITERION, result['qualitative_review']['human_escalations'])
+                self.assertTrue(result['qualitative_review']['human_escalations'])
+                self.assertTrue(all(policy.human_required(spec) for spec in review.criterion_specs(prep['index'], prep['rubric'])
+                    if spec['criterion_id'] in result['qualitative_review']['human_escalations']))
+                self.assertEqual(result['technical_gate'], {'state': 'not_provided'})
+                self.assertEqual(result['replacement_qualification'], baseline['replacement_qualification'])
+                self.assertEqual(result['machine_summary']['hard_findings'], baseline['machine_summary']['hard_findings'])
+                self.assertEqual(result['operator_approval'], {'state': 'not_provided'})
+                self.assertFalse(result['replacement_pass_candidate'])
+                self.assertFalse(result['phase_9_ready'])
+                result_lineage.publish(self.root, self.evaluation, [target],
+                    prefix / 'qualification/qualification.json', output=prefix / 'lineage')
+                copied = prefix / 'copied'
+                shutil.copytree(prefix / 'lineage', copied)
+                # Both Campaign (including evaluation) and original publication roots
+                # are physically absent under their bound names during copied replay.
+                roots = [self.root, target, prefix / 'qualification', prefix / 'lineage']
+                moved = []
+                try:
+                    for root in roots:
+                        hidden = root.with_name(root.name + '-unavailable')
+                        root.rename(hidden); moved.append((root, hidden))
+                    verified = result_lineage.verify(copied)
+                    self.assertEqual(verified['state'], 'verified')
+                    self.assertFalse(verified['external_staging_paths_used'])
+                    index = json.loads((copied / 'index.json').read_bytes())
+                    recorded = json.loads((copied / index['qualitative_reviews'][0]['root'] / 'recorded/review.json').read_bytes())
+                    self.assertEqual(next(o for o in recorded['assessments']
+                        if o['criterion_id'] == policy.COVERAGE_CRITERION), a)
+                    forged = json.loads((copied / 'qualification/qualification.json').read_bytes())
+                    forged['qualitative_review']['unresolved_criteria'].remove(policy.COVERAGE_CRITERION)
+                    forged['qualitative_review']['resolved_criteria'].append(policy.COVERAGE_CRITERION)
+                    forged['qualitative_review']['resolved_criteria'].sort()
+                    rehash_lineage_qualification(copied, forged)
+                    with self.assertRaises(ValueError):
+                        result_lineage.verify(copied)
+                finally:
+                    for root, hidden in reversed(moved):
+                        hidden.rename(root)
+                print(json.dumps({'authored_review': {'include_raw': include_raw,
+                    'review_run_id': prep['reviewer']['run_id'], 'qualification_run_id': result['run_id'],
+                    'copied_lineage_id': verified['lineage_id'], 'replacement_qualification': result['replacement_qualification']}}))
+        self.assertEqual(snapshot(self.root), original)
+
+    def test_authored_rehearsal_record_rejects_incomplete_or_forged_dimensions(self):
+        import rehearsal
+        import review_operations as ops
+        target = self.parent / self._testMethodName
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='authored-support-review',
+            evaluation_path=self.evaluation, include_raw=True)
+        path = rehearsal.author_review(target)
+        original = json.loads(path.read_bytes())
+        for mutation, message in (
+            ('missing', 'semantic dimensions'), ('duplicated', 'dimension observation'),
+            ('reordered', 'dimension observation'), ('wrong_scope', 'dimension observation'),
+            ('wrong_criterion_reference', 'criterion-specific relevance'),
+            ('invalid_index', 'indexes must resolve'), ('unobserved_reference', 'unobserved dimension'),
+            ('observed_without_reference', 'observed dimension requires'),
+            ('false_satisfaction', 'every required dimension'), ('fabricated_human', 'human answer trace')):
+            value = copy.deepcopy(original)
+            a = next(a for a in value['assessments'] if a['criterion_id'] == policy.COVERAGE_CRITERION)
+            observations = a['criterion_observations']
+            if mutation == 'missing': observations.pop()
+            elif mutation == 'duplicated': observations[-1] = copy.deepcopy(observations[0])
+            elif mutation == 'reordered': observations.reverse()
+            elif mutation == 'wrong_scope': observations[0]['dimension'] = 'concrete_behavior'
+            elif mutation == 'wrong_criterion_reference': a['evidence'][0]['criterion_id'] = 'journey-volicord/viewer_snapshot/code_behavior'
+            elif mutation == 'invalid_index': observations[0]['evidence_indexes'] = [len(a['evidence'])]
+            elif mutation == 'unobserved_reference': observations[-1]['evidence_indexes'] = [0]
+            elif mutation == 'observed_without_reference': observations[0]['evidence_indexes'] = []
+            elif mutation == 'fabricated_human': a['human_answer_trace'] = [{'prompt': 'Invented prompt', 'answer': 'Invented experience'}]
+            else:
+                a['assessment'] = 'satisfied'
+                a['counterevidence']['state'] = 'none_found'
+            path.write_bytes(ops.encoded(value))
+            with self.subTest(mutation=mutation):
+                for consumer in (ops.validate, ops.record):
+                    with self.assertRaisesRegex(ValueError, message):
+                        consumer(target, path)
+                self.assertFalse((target / 'recorded').exists())
+        path.write_bytes(ops.encoded(original))
+        ops.record(target, path)
+
     def test_one_work_locale_partial_human_mapping_survives_copied_lineage(self):
         import campaign
         import human_review

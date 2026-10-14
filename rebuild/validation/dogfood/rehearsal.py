@@ -711,6 +711,64 @@ def boundary_controls(root, binary, logs):
     return {'retention':retention, 'launch':launch, 'resource':resource}
 
 
+def author_review(review_root):
+    """Retain bounded fixture observations, without independent semantic judgment."""
+    preparation, sha, _, files = review.verified_package_bytes(review_root)
+    require(preparation['reviewer']['kind'] == 'agent', 'authored support requires agent review')
+    draft = qualitative_review.template(preparation, sha)
+    number = next(i + 1 for i, a in enumerate(draft['assessments'])
+        if a['criterion_id'] == qualification_policy.COVERAGE_CRITERION)
+    # The maintained presentation supplies the current dimensions, never a verdict.
+    inspection = review.inspect_agent_criterion(review_root, number)
+    coverage = draft['assessments'][number - 1]
+    observations = {}
+    selections = {
+        'planned_workload_intents': ({'task_selection'}, 'workload_intent',
+            'Inspected frozen workload intent labels; planned tasks do not establish executed behavior.'),
+        'actual_projected_interactions': ({'work_capture', 'resume_capture'}, 'records',
+            'Inspected retained projected interaction records from authored transport; these are bounded support, not Naturalistic host use.'),
+        'machine_diagnostic_facts': ({'interaction_diagnostics'}, 'counts',
+            'Inspected factual interaction counts, retaining null/unknown values; diagnostics do not establish semantic adequacy.'),
+    }
+    for dimension in inspection['required_semantic_dimensions']:
+        indexes = []
+        if dimension in selections:
+            surfaces, field, reasoning = selections[dimension]
+            for evidence in inspection['evidence']:
+                locator = {'kind': 'json_pointer', 'value': '/' + field}
+                if evidence['surface'] not in surfaces or locator not in evidence['json_locators']:
+                    continue
+                value = json.loads(files[evidence['path']])
+                require(field in value, 'authored observation location is unavailable')
+                indexes.append(len(coverage['evidence']))
+                coverage['evidence'].append({'evidence_id': evidence['evidence_id'],
+                    'locator': locator, 'criterion_id': coverage['criterion_id'], 'relevance': reasoning})
+                coverage['inspected_evidence'].append(evidence['evidence_id'])
+            if indexes:
+                observations[dimension] = {'dimension': dimension, 'state': 'observed_support',
+                    'reasoning': reasoning, 'evidence_indexes': indexes}
+    gaps = {
+        'source_and_authority': 'No independent assessment of retained Sources, user authority or implementation commitments is supplied by authored support.',
+        'independent_agent_semantic_review': 'This draft is authored by the support producer; a distinct session label does not supply independent semantic review.',
+        'question_and_learning_assessability': 'Planned intents and authored operation records cannot establish meaningful Question/Learning behavior or correct noninterruption.',
+        'product_failure_vs_evidence_gap': 'No independent Product behavior judgment is supplied; the coverage evidence gap is not an observed Product violation.',
+    }
+    coverage.update(assessment='insufficient_evidence',
+        reasoning='Authored support construction cannot establish ordinary-user interaction coverage.',
+        uncertainty='No measured Naturalistic interaction or independent qualitative judgment is supplied.',
+        criterion_observations=[observations.get(dimension, {'dimension': dimension, 'state': 'unobserved',
+            'reasoning': gaps.get(dimension, 'No substantive inspection of this dimension is supplied by authored support.'),
+            'evidence_indexes': []}) for dimension in inspection['required_semantic_dimensions']],
+        counterevidence={'state': 'not_observable',
+            'reasoning': 'Support construction establishes neither positive nor contrary human experience.', 'evidence': []})
+    draft['observation_scope']['inspected_evidence'] = list(coverage['inspected_evidence'])
+    draft['observation_scope']['limits'] = ['Self-authored support payload; no model quality or human judgment.']
+    draft_path = review_root / 'draft.json'
+    c.write_json(draft_path, draft)
+    review.validate(review_root, draft_path)
+    return draft_path
+
+
 def pipeline(root, candidate, binary, logs):
     collection_support = {'result': json.loads(logs.run([
         sys.executable, '-B', Path(__file__).with_name('collection_support.py')]))}
@@ -731,16 +789,7 @@ def pipeline(root, candidate, binary, logs):
     review_root = root / "review"
     review.prepare(campaign_root, review_root, reviewer_kind="agent", session_id="authored-support-review",
         evaluation_path=evaluation_path, include_raw=True, cli_observation_root=cli_root)
-    draft_path = review_root / "draft.json"
-    draft = c.read_json(draft_path)
-    draft["observation_scope"]["limits"] = ["Self-authored support payload; no model quality or human judgment."]
-    coverage = next(a for a in draft["assessments"]
-        if a["criterion_id"] == qualification_policy.COVERAGE_CRITERION)
-    coverage.update(assessment="insufficient_evidence",
-        reasoning="Authored support construction cannot establish ordinary-user interaction coverage.",
-        uncertainty="No measured Naturalistic interaction or independent qualitative judgment is supplied.",
-        counterevidence={"state": "not_observable", "reasoning": "Support construction establishes neither positive nor contrary human experience.", "evidence": []})
-    c.write_json(draft_path, draft)
+    draft_path = author_review(review_root)
     review.record(review_root, draft_path)
     qualified = qualification_policy.qualify(campaign_root, evaluation_path, root / "qualification",
         candidate=candidate, review_roots=[review_root])
