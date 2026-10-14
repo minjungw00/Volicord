@@ -12,6 +12,36 @@ import rehearsal  # Import the actual runner and its bounded workflow builders.
 from rehearsal_test_support import passed_result
 
 
+class ByteOversizeTests(unittest.TestCase):
+    def test_byte_control_exceeds_current_capacity_without_exceeding_characters(self):
+        import retention_support
+        response = {'generator': {'host': 'Authored support', 'model': None},
+            'paragraphs': [{'question': question, 'text': '직접 작성한 한도 검사',
+                'evidence_keys': ['goal'], 'citations': []}
+                for question in ('purpose', 'reported_change', 'expected_effect', 'verification', 'next_step')]}
+        original = copy.deepcopy(response)
+        for capacity in (16384, 25000, 32768):
+            with self.subTest(capacity=capacity):
+                plan = {'retention_budget': {'response_byte_capacity': capacity}}
+                oversized = retention_support.byte_oversize_response(plan, response)
+                # Independent UTF-8/JSON arithmetic, including the exact excess.
+                encoded = json.dumps(oversized, ensure_ascii=False, separators=(',', ':')).encode()
+                self.assertEqual(len(encoded), capacity + 1)
+                self.assertTrue(all(len(p['text']) <= 16384 for p in oversized['paragraphs']))
+                self.assertEqual(oversized['paragraphs'][1:], original['paragraphs'][1:])
+                self.assertEqual(oversized['paragraphs'][0]['evidence_keys'], ['goal'])
+                self.assertEqual(oversized['generator'], original['generator'])
+                self.assertEqual(response, original)
+
+    def test_byte_control_rejects_a_fixture_that_cannot_isolate_the_byte_boundary(self):
+        import retention_support
+        for text, capacity in [('already beyond capacity', 10), ('x' * 16384, 32768)]:
+            with self.subTest(capacity=capacity), self.assertRaises(ValueError):
+                retention_support.byte_oversize_response(
+                    {'retention_budget': {'response_byte_capacity': capacity}},
+                    {'paragraphs': [{'text': text}]})
+
+
 class ContractTests(unittest.TestCase):
     def test_temporal_receipt_accepts_missing_before_recording_without_reviving_old_content(self):
         value = passed_result()

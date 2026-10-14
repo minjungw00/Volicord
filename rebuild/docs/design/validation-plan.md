@@ -2554,6 +2554,16 @@ is introduced. Actual-host tool-shell readiness remains separately required and 
 supplied by these local shell controls. Gate ordering, transmission scopes, resource
 ceilings, topology and expected unresolved inner qualification remain unchanged.
 
+The retention byte-oversize input measures the actual prepared response capacity
+and exceeds it by exactly one compact UTF-8 JSON byte. Its paragraphs remain within
+the independent 16,384-character bound, using multibyte padding to isolate the byte
+failure at the current 32,768-byte ceiling. The Product must report the actual byte
+capacity and preserve the previously recorded output. The existing
+`explanation_budgets` regression separately exercises paragraph-character rejection;
+that diagnostic cannot substitute for the byte-oversize control. Rehearsal self-tests
+check the minimum, metadata-constrained and maximum capacities with independent
+JSON arithmetic and reject inputs that also exceed the paragraph boundary.
+
 The partial-sampling control mutates an actual retained two-instance observation,
 removing one instance's sample and sampled reference while keeping both running
 facts and recalculating derived measurements. It must fail for the running-instance

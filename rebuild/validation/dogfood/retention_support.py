@@ -17,6 +17,22 @@ import rehearsal_support
 import review_explanations as review
 
 
+def byte_oversize_response(plan, accepted):
+    """Exceed the prepared byte capacity without exceeding a paragraph's characters."""
+    response = copy.deepcopy(accepted)
+    capacity = plan['retention_budget']['response_byte_capacity']
+    extra = capacity + 1 - len(e.compact_bytes(response))
+    if extra <= 0:
+        raise ValueError('byte control requires an admitted response below capacity')
+    # Three-byte UTF-8 padding isolates the JSON byte boundary from the separate
+    # 16,384-character paragraph guard, even at the 32,768-byte response ceiling.
+    response['paragraphs'][0]['text'] += '가' * (extra // 3) + 'x' * (extra % 3)
+    if (len(e.compact_bytes(response)) != capacity + 1
+            or any(len(p['text']) > e.PARAGRAPH_CHARACTER_LIMIT for p in response['paragraphs'])):
+        raise ValueError('byte control also exceeded a paragraph boundary')
+    return response
+
+
 def run(binary, fixture, root):
     root.mkdir(parents=True, exist_ok=False)
     runtime, repository = Path(fixture['runtime']), Path(fixture['repository'])
@@ -70,13 +86,14 @@ def run(binary, fixture, root):
         selected=next(item for item in prepared['explanations'] if item['subject']['kind']=='work' and item['language']=='en')
         directory=e.entry_path(root,selected['identity']); preparation=json.loads(e.bound(root,directory/'preparation.json'))
         accepted=json.loads(e.bound(root,directory/'response.json')); recorded=json.loads(e.bound(root,directory/'record.json'))
-        oversized=copy.deepcopy(accepted); oversized['paragraphs'][0]['text']='x'*16385
+        oversized=byte_oversize_response(preparation['plan'],accepted)
+        capacity=preparation['plan']['retention_budget']['response_byte_capacity']
         path=root/'disposable-oversize.json';path.write_bytes(e.compact_bytes(oversized))
         began=time.monotonic_ns()
         result=subprocess.run([str(binary),'--runtime',str(runtime),'--project',project,'--json','work','explain','record',
             '--work',work,'--language','en','--input',str(path)],capture_output=True,timeout=30)
         (root/'oversize.stdout').write_bytes(result.stdout); (root/'oversize.stderr').write_bytes(result.stderr)
-        assert result.returncode>0 and b'16384' in result.stderr and (b'bytes' in result.stderr or b'byte' in result.stderr)
+        assert result.returncode>0 and str(capacity).encode() in result.stderr and b'bytes' in result.stderr
         after,process=e.read(binary,runtime,project,preparation['subject'],'en')
         e.validate_lifecycle(preparation,accepted,recorded,after)
         for name,data in process.items(): (root/('oversize-readback-'+name)).write_bytes(data)
