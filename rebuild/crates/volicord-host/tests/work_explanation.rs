@@ -670,6 +670,21 @@ fn source_scope_and_command_failure_remain_actual_observations() -> Result<(), B
         .source_id;
     let observed = f.read(&generation, command)?;
     assert_eq!(observed["observation"]["detail"]["exit_code"], 3);
+    // Resolve the command locator through the same public, Work-scoped read
+    // available to the generating host, rather than copying the producer input.
+    let metadata = f
+        .host
+        .handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"canonical_inspect","arguments":{"project_id":f.project.to_string(),
+        "work_item_id":f.work.to_string(),"record_kind":"source","record_id":command.to_string(),
+        "revision":1,"field":"observation"}}}))
+        .ok_or("metadata response")?;
+    assert_eq!(metadata["result"]["isError"], false, "{metadata}");
+    let observation: Value = serde_json::from_str(
+        metadata["result"]["structuredContent"]["chunk"]
+            .as_str()
+            .ok_or("metadata chunk")?,
+    )?;
     let mut realized = response(&generation, &read)?;
     let mut citation = realized.paragraphs[1].citations[0].clone();
     let basis = &observed["citation_basis"];
@@ -690,7 +705,10 @@ fn source_scope_and_command_failure_remain_actual_observations() -> Result<(), B
         .as_str()
         .ok_or("repository Source")?
         .into();
-    citation.locator = "observed failed experiment".into();
+    citation.locator = observation["payload"]["command_label"]
+        .as_str()
+        .ok_or("command locator")?
+        .into();
     citation.field = "stdout".into();
     citation.use_kind = ExplanationSourceUse::ObservedExecution;
     let output = observed["observation"]["detail"]["stdout"]["body"]
@@ -708,6 +726,31 @@ fn source_scope_and_command_failure_remain_actual_observations() -> Result<(), B
     realized.paragraphs[3].citations = vec![citation];
     let args = f.record_args(&generation, &realized)?;
     success(&mut f.host, args)?;
+    let previous = f
+        .host
+        .operations()
+        .privacy_status(f.project)?
+        .managed_derived;
+    let negative = f.generate()?;
+    f.read(&negative, f.source)?;
+    f.read(&negative, command)?;
+    for wrong_role in [false, true] {
+        let mut invalid = realized.clone();
+        if wrong_role {
+            invalid.paragraphs[3].citations[0].use_kind = ExplanationSourceUse::CurrentCode;
+        } else {
+            invalid.paragraphs[3].citations[0].locator = "unobserved command label".into();
+        }
+        let args = f.record_args(&negative, &invalid)?;
+        assert_eq!(call(&mut f.host, args)["result"]["isError"], true);
+        assert_eq!(
+            previous,
+            f.host
+                .operations()
+                .privacy_status(f.project)?
+                .managed_derived
+        );
+    }
     // Separate unsupported-language callers are permitted without a parser.
     let custom = f
         .host

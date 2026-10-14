@@ -56,6 +56,144 @@ fn identity(value: &str) -> Result<[u8; 16], Box<dyn Error>> {
 }
 
 #[test]
+fn scoped_source_metadata_keeps_explicit_work_binding_without_reading_copies(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().join("repo");
+    fs::create_dir(&root)?;
+    fs::write(root.join("main.custom"), "private file bytes\n")?;
+    let ops = LocalOperations::new(RuntimeLayout::new(temp.path().join("runtime"))?);
+    let project = ops
+        .initialize_project("source metadata", Some(&root))?
+        .project
+        .id;
+    let foreign = ops.initialize_project("foreign", None)?.project.id;
+    let mut host = HostAdapter::new(ops);
+    let mut works = Vec::new();
+    for turn in ["Inspect command metadata", "Inspect another Work"] {
+        works.push(rpc(
+            &mut host,
+            "context_record",
+            json!({"project_id":project.to_string(),"role":"goal","work_transition":"start_new","user_turn":turn,"statement":turn}),
+        )?);
+    }
+    let work = works[0]["context_item_id"].as_str().ok_or("Work")?;
+    let analysis = host
+        .operations()
+        .analyze(project, vec![])?
+        .value
+        .ok_or("analysis")?;
+    let source = host.operations().run_work_command(WorkCommandRequest {
+        project_id: project,
+        work_item_id: volicord_context::ContextItemId::from_bytes(identity(work)?),
+        analysis_snapshot_id: analysis.analysis.identity,
+        command_label: "Observed verification command".into(),
+        program: "python3".into(),
+        arguments: vec!["-c".into(), "print('private command output')".into()],
+        timeout: Duration::from_secs(5),
+        retain_seconds: 3600,
+    })?;
+    let selector = json!({"project_id":project.to_string(),"work_item_id":work,
+        "record_kind":"source","record_id":source.source_id.to_string(),"revision":1,"field":"observation"});
+    let before = host.operations().privacy_status(project)?.managed_derived;
+    let metadata = complete(&mut host, selector.clone())?;
+    assert_eq!(
+        metadata["payload"]["command_label"],
+        "Observed verification command"
+    );
+    assert_eq!(metadata["payload"]["exit_code"], 0);
+    assert!(!metadata.to_string().contains("private command output"));
+    let mut unscoped = selector.clone();
+    unscoped
+        .as_object_mut()
+        .ok_or("selector")?
+        .remove("work_item_id");
+    assert_eq!(metadata, complete(&mut host, unscoped)?);
+    let mut status = selector.clone();
+    status["field"] = json!("source_status");
+    assert_eq!(
+        complete(&mut host, status)?[0]["source_id"],
+        source.source_id.to_string()
+    );
+    assert_eq!(
+        before,
+        host.operations().privacy_status(project)?.managed_derived
+    );
+
+    let mut wrong = selector.clone();
+    wrong["work_item_id"] = works[1]["context_item_id"].clone();
+    denied(&mut host, "canonical_inspect", wrong)?;
+    let mut foreign_source = selector.clone();
+    foreign_source["project_id"] = json!(foreign.to_string());
+    assert_eq!(
+        rpc(&mut host, "canonical_inspect", foreign_source)?["reason"],
+        "record_unavailable"
+    );
+    let mut changed_revision = selector.clone();
+    changed_revision["revision"] = json!(2);
+    assert_eq!(
+        rpc(&mut host, "canonical_inspect", changed_revision)?["reason"],
+        "revision_unavailable"
+    );
+    let unrelated = host.operations().record_user_source(
+        project,
+        "codex".into(),
+        "fixture".into(),
+        "Unassociated Source".into(),
+    )?;
+    let mut unrelated_selector = selector.clone();
+    unrelated_selector["record_id"] = json!(unrelated.identity);
+    denied(&mut host, "canonical_inspect", unrelated_selector)?;
+
+    // Inventory eligibility and metadata scope do not require a supported analyzer.
+    let file = rpc(
+        &mut host,
+        "work_source",
+        json!({"action":"observe_file","project_id":project.to_string(),"work_item_id":work,
+            "analysis_snapshot_id":analysis.analysis.identity.to_string(),"path":"main.custom","retain_seconds":1}),
+    )?;
+    let mut file_metadata = selector.clone();
+    file_metadata["record_id"] = file["source_id"].clone();
+    let file_observation = complete(&mut host, file_metadata.clone())?;
+    assert_eq!(file_observation["payload"]["kind"], "source_reference");
+    assert!(!file_observation.to_string().contains("private file bytes"));
+    std::thread::sleep(Duration::from_millis(1100));
+    let expired = host.operations().privacy_status(project)?.managed_derived;
+    assert_eq!(
+        file_observation,
+        complete(&mut host, file_metadata.clone())?
+    );
+    file_metadata["field"] = json!("body");
+    assert_eq!(
+        rpc(&mut host, "canonical_inspect", file_metadata)?["reason"],
+        "source_body_expired"
+    );
+    assert_eq!(
+        expired,
+        host.operations().privacy_status(project)?.managed_derived
+    );
+
+    rpc(
+        &mut host,
+        "work_source",
+        json!({"action":"delete_source_copy","project_id":project.to_string(),"work_item_id":work,"source_id":source.source_id.to_string()}),
+    )?;
+    let deleted = host.operations().privacy_status(project)?.managed_derived;
+    assert_eq!(metadata, complete(&mut host, selector.clone())?);
+    let mut body = selector;
+    body["field"] = json!("body");
+    assert_eq!(
+        rpc(&mut host, "canonical_inspect", body)?["reason"],
+        "source_body_deleted"
+    );
+    assert_eq!(
+        deleted,
+        host.operations().privacy_status(project)?.managed_derived
+    );
+    Ok(())
+}
+
+#[test]
 fn normal_host_observation_is_exact_scoped_bounded_historical_and_deletable(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;

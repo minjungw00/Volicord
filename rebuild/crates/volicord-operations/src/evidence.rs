@@ -217,6 +217,15 @@ impl LocalOperations {
                         {
                             body_reason = Some("source_body_requires_work_selector");
                         }
+                    } else if let Some(work_id) = request.work_item_id {
+                        // The same explicit observation association bounds metadata
+                        // reads, without reading, renewing or restoring a body copy.
+                        let manifest = self.work_source_manifest(&basis, work_id)?;
+                        if manifest["observations"].as_array().is_some_and(|entries| {
+                            entries.iter().any(|entry| entry["source_id"] == *identity)
+                        }) {
+                            work = Some(work_id);
+                        }
                     }
                 }
             }
