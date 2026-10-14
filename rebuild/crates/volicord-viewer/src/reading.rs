@@ -523,16 +523,14 @@ fn work_summary(
     snapshot: bool,
 ) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
-    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"{}\">", w.work_item_id, understanding_work_state_key(w.state), if answers.reading_title().is_some() {escape(&content_language_tag(&r.requested_language))} else {String::new()}));
+    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"\" data-title-basis=\"goal-quotation\">", w.work_item_id, understanding_work_state_key(w.state)));
     link(
         html,
         r,
         ViewerView::Work {
             work: Some(w.work_item_id),
         },
-        answers
-            .reading_title()
-            .unwrap_or(work_reading_display(&w.reading.goal, r.locale)),
+        &work_reading_title(w, r.locale),
         snapshot
             .then(|| format!("work-{}", w.work_item_id))
             .as_deref(),
@@ -609,6 +607,18 @@ fn work_summary(
     }
     html.push_str("</article>");
 }
+/// A bounded quotation of the canonical Goal, never the generated Purpose
+/// paragraph duplicated as a headline. Full Goal evidence remains inspectable.
+pub(super) fn work_reading_title(w: &UnderstandingWork, locale: ViewerLocale) -> String {
+    let goal = work_reading_display(&w.reading.goal, locale);
+    let mut chars = goal.chars();
+    let excerpt: String = chars.by_ref().take(72).collect();
+    if chars.next().is_some() {
+        format!("{excerpt}…")
+    } else {
+        excerpt
+    }
+}
 fn answer_title<'a>(question: &str, locale: ViewerLocale) -> &'a str {
     match question {
         "Purpose" => text(locale, "Goal / problem", "목표 / 문제"),
@@ -644,9 +654,6 @@ pub(super) fn render_answers(
             "deterministic-derived"
         }
     ));
-    if current {
-        empty_state(html,text(r.locale,"Host interpretation; claims remain grounded reports, not independent verification.","호스트 해석입니다. 근거 있는 보고이며 독립 검증을 뜻하지 않습니다."));
-    }
     let mut previous_question = None;
     for answer in &answers.prose {
         if compact
@@ -687,8 +694,9 @@ pub(super) fn render_answers(
         for citation in &answer.citations {
             let anchor = source_excerpt_anchor(answers, citation);
             html.push_str(&format!(
-                "<a class=\"source-citation\" href=\"#{}\">{}:{}–{}</a> ",
+                "<a class=\"source-citation\" href=\"#{}\">{} · {}:{}–{}</a> ",
                 escape(&anchor),
+                escape(answer_title(&answer.question, r.locale)),
                 escape(&citation.locator),
                 citation.start_line,
                 citation.end_line
@@ -700,6 +708,11 @@ pub(super) fn render_answers(
     }
     render_source_excerpts(html, r, answers);
     if let Some(provenance) = &answers.provenance {
+        html.push_str("<details class=\"explanation-authority\"><summary>");
+        html.push_str(text(r.locale, "About this explanation", "이 설명의 성격"));
+        html.push_str("</summary>");
+        empty_state(html,text(r.locale,"Host interpretation; claims remain grounded reports, not independent verification.","호스트 해석입니다. 근거 있는 보고이며 독립 검증을 뜻하지 않습니다."));
+        html.push_str("</details>");
         html.push_str(&format!(
             "<details class=\"explanation-grounding\"><summary>{}</summary><pre>{}</pre></details>",
             text(
@@ -1637,17 +1650,8 @@ fn code(
         let answers =
             volicord_projections::work_answers(work, &r.requested_language, r.locale.fixed());
         html.push_str(&format!(
-            "<h3 lang=\"{}\">{}</h3>",
-            if answers.reading_title().is_some() {
-                escape(&content_language_tag(&r.requested_language))
-            } else {
-                String::new()
-            },
-            escape(
-                answers
-                    .reading_title()
-                    .unwrap_or(work_reading_display(&work.reading.goal, r.locale))
-            ),
+            "<h3 lang=\"\" data-title-basis=\"goal-quotation\">{}</h3>",
+            escape(&work_reading_title(work, r.locale)),
         ));
         for answer in answers.prose.iter().filter(|a| {
             matches!(

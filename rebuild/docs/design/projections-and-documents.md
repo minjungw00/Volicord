@@ -170,7 +170,16 @@ genuinely absent information are distinct outcomes.
 
 The server-rendered Viewer reading hierarchy is **Overview → Work → Code
 Understanding / Decisions → evidence**, with mutation, export and diagnostic tools
-separate from ordinary reading. The current route/CLI/snapshot contract is maintained
+separate from ordinary reading.
+Work headings in the Viewer quote a bounded canonical Goal prefix, with ellipsis
+when truncated and `goal-quotation` display metadata. They do not duplicate a
+generated Purpose paragraph as a headline or rename the canonical Work. The full
+Goal remains in retained evidence; original Goal language is not inferred from the
+requested explanation language. Generated paragraph order, text and citations
+remain unchanged. Citation links state the paragraph's explanatory purpose before
+the exact locator, and explanation-authority details remain inspectable in a native
+disclosure. Missing Source, failure and state limitations retain their existing
+ordinary-reading treatment. The current route/CLI/snapshot contract is maintained
 in the [Viewer README](../../crates/volicord-viewer/README.md). Explanation-level
 selection is removed; whole-snapshot export has no view selector.
 

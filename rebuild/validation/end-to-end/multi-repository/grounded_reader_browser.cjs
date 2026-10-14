@@ -22,8 +22,10 @@ async function check(page, item, language, expected, offline) {
     assert.equal(await prior.innerText(), `def value():\n    return ${item.comparison==='changed'?4:5}\n`, 'actual before bytes');
   }
   const heading = work.locator('h3').first();
-  assert.equal(await heading.innerText(), expected.prose.find(a=>a.question==='Purpose').text, 'problem-first output heading');
-  assert.equal(await heading.getAttribute('lang'), language, 'generated language distinct from source language');
+  assert.equal(await heading.innerText(), 'Explain why value returns 5, using observed code and any retained compar…', 'bounded original Goal heading');
+  assert.equal(await heading.getAttribute('data-title-basis'), 'goal-quotation', 'heading authority distinct from generated prose');
+  assert.equal(await heading.getAttribute('lang'), '', 'original Goal language unknown');
+  assert.equal(await work.locator('[data-question="Purpose"]').first().textContent(), expected.prose.find(a=>a.question==='Purpose').text, 'unchanged generated Purpose');
   assert.equal(await source.locator('code').getAttribute('lang'), '', 'original Source language unknown');
   assert.equal(await work.locator('.explanation-grounding').getAttribute('open'), null, 'closed diagnostic material');
   const ids = await page.locator('.source-excerpt').evaluateAll(nodes=>nodes.map(n=>n.id));
@@ -55,7 +57,7 @@ async function check(page, item, language, expected, offline) {
       process.stdout.write(JSON.stringify({status:'passed',control:config.denied_state})+'\n');
       return;
     }
-    for (const item of config.cases) for (const language of ['en','ko']) {
+    for (const item of config.cases) for (const language of (config.languages || ['en','ko'])) {
       const expected=config.basis[item.project][language];
       for (const width of [390,768,1440]) {
         await page.setViewportSize({width,height:900});
@@ -64,11 +66,12 @@ async function check(page, item, language, expected, offline) {
         if (config.offline) await context.setOffline(true);
         await page.goto(url); await page.evaluate(()=>document.fonts.ready);
         await check(page,item,language,expected,config.offline);
+        await page.screenshot({path:`${config.output}/${item.comparison}-${language}-${width}-reading.png`});
         if (!config.offline) {
           await page.goto(`${config.url}?view=code&scope=work&work=${item.work}&locale=${language}&language=${language}`);
           const scopedCode=page.locator(`.source-excerpt[data-source-id="${item.after}"] code`);
           assert.equal(await scopedCode.innerText(),'def value():\n    return 5\n','Work-scoped Code page uses exact excerpt');
-          assert.equal(await page.locator('.code-work-meaning h3').getAttribute('lang'),language,'Code title preserves generated language');
+          assert.equal(await page.locator('.code-work-meaning h3').getAttribute('data-title-basis'),'goal-quotation','Code title preserves original Goal basis');
           assert.equal(await page.locator('.code-work-meaning [data-question="ReportedChange"]').getAttribute('lang'),language,'Code interpretation preserves requested language');
           await page.goto(url);
           // Native keyboard sequence, no click/focus substitution for the link.
@@ -90,6 +93,21 @@ async function check(page, item, language, expected, offline) {
           await assert.rejects(()=>check(page,item,language,expected,false),/exact current Source identity/,'negative: wrong Source rejected');
           await page.locator('[data-source-id="foreign-source"]').evaluate((n,id)=>n.dataset.sourceId=id,item.after);
           await check(page,item,language,expected,false);
+        }
+        if (config.offline) {
+          for (let step=0;step<100;step++) {
+            await page.keyboard.press('Tab');
+            if (await page.evaluate(()=>document.activeElement.classList.contains('source-citation'))) break;
+          }
+          assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-citation')),'offline citation reachable with Tab');
+          await page.keyboard.press('Enter');
+          assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-excerpt')),'offline Enter focuses exact code target');
+          const source=page.locator(`.source-excerpt[data-source-id="${item.after}"] code`);
+          const original=await source.textContent();
+          await source.evaluate(n=>n.textContent='fabricated control');
+          await assert.rejects(()=>check(page,item,language,expected,true),/actual current code bytes/,'offline fabricated excerpt rejected');
+          await source.evaluate((n,text)=>n.textContent=text,original);
+          await check(page,item,language,expected,true);
         }
         await page.screenshot({path:`${config.output}/${item.comparison}-${language}-${width}-${config.offline?'offline':'live'}.png`});
         observations.push({comparison:item.comparison,language,width,mode:config.offline?'offline':'live',status:'passed'});

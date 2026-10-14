@@ -125,6 +125,13 @@ fn call(host: &mut HostAdapter, tool: &str, args: Value) -> Result<Value, Box<dy
     Ok(result["result"]["structuredContent"].clone())
 }
 fn record(f: &Value, host: &mut HostAdapter) -> Result<(), Box<dyn Error>> {
+    record_with_purpose(f, host, "Understand the constant return in value().")
+}
+fn record_with_purpose(
+    f: &Value,
+    host: &mut HostAdapter,
+    purpose: &str,
+) -> Result<(), Box<dyn Error>> {
     let base = json!({"project_id":f["project"],"work_item_id":f["work"],"language":"en","action":"generate"});
     let generation = call(host, "work_explanation", base.clone())?;
     let plan: ExplanationPlan = serde_json::from_value(generation["plan"].clone())?;
@@ -173,11 +180,7 @@ fn record(f: &Value, host: &mut HostAdapter) -> Result<(), Box<dyn Error>> {
             model: None,
         },
         paragraphs: [
-            (
-                ExplanationQuestion::Purpose,
-                "goal",
-                "Understand the constant return in value().",
-            ),
+            (ExplanationQuestion::Purpose, "goal", purpose),
             (ExplanationQuestion::ReportedChange, "goal", text),
             (
                 ExplanationQuestion::ExpectedEffect,
@@ -306,7 +309,13 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         assert!(mcp.to_string().contains("return 5"));
         let page = get(&f)?;
         assert!(page.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
-        assert!(page.contains("<h3 lang=\"en\">Understand the constant return in value().</h3>"));
+        assert!(page.contains("data-title-basis=\"goal-quotation\">Explain why value returns 5, using observed code and any retained compar…</h3>"));
+        assert_eq!(
+            page.matches("Understand the constant return in value().")
+                .count(),
+            1
+        );
+        assert!(page.contains("Change / investigation · main.py:1–2</a>"));
         assert!(page.contains(fingerprint));
         let mut code_request = request(&f)?;
         code_request.view = ViewerView::Code {
@@ -337,6 +346,56 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         let stale = get(&f)?;
         assert!(!stale.contains("<code lang=\"\">def value():"));
         assert!(stale.contains("Explanation is stale"));
+    }
+    Ok(())
+}
+
+#[test]
+fn long_original_explanation_is_retained_once_below_a_goal_title() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    // Independently authored long prose checks retention and hierarchy only.
+    // Its repeated paragraphs deliberately must not be silently deduplicated.
+    let purpose = format!(
+        "{}\n\n{}\n\nNo execution or user rationale is supplied.",
+        "Authored explanation of the observed return and its limits. ".repeat(18),
+        "Authored explanation of the observed return and its limits. ".repeat(18)
+    );
+    record_with_purpose(&f, &mut host, &purpose)?;
+    let before = ops(&f)?.canonical_basis(project(&f)?)?;
+    let page = get(&f)?;
+    assert_eq!(page.matches(&purpose).count(), 1);
+    assert!(!page.contains(&format!("{purpose}</h3>")));
+    assert!(page.contains("data-title-basis=\"goal-quotation\""));
+    assert!(page.contains("class=\"explanation-authority\"><summary>About this explanation"));
+    let projection =
+        ops(&f)?.project_projection_selected(project(&f)?, WorkSelector::ExactWork(work(&f)?))?;
+    let answers = work_answers(
+        projection.selected_work.as_ref().ok_or("selected Work")?,
+        "en",
+        FixedLocale::English,
+    );
+    assert_eq!(answers.prose[0].text, purpose);
+    assert_eq!(
+        answers.source_excerpts[0].text,
+        "def value():\n    return 5\n"
+    );
+    assert_eq!(before, ops(&f)?.canonical_basis(project(&f)?)?);
+    if let Ok(output) = std::env::var("VOLICORD_LONG_READER_OUTPUT") {
+        let output = Path::new(&output);
+        fs::create_dir_all(output)?;
+        let snapshot = output.join("long-explanation.html");
+        ViewerAdapter::new(ops(&f)?).export_snapshot(&request(&f)?, &snapshot)?;
+        fs::write(
+            output.join("browser-config.json"),
+            serde_json::to_vec_pretty(&json!({
+                "cases": [f], "languages": ["en"], "basis": {f["project"].as_str().ok_or("project")?: {"en": answers}},
+                "snapshots": {f["project"].as_str().ok_or("project")?: {"en": snapshot}},
+                "output": output, "offline": true,
+                "fixture_authority": "authored structural support; no model or human assessment"
+            }))?,
+        )?;
     }
     Ok(())
 }

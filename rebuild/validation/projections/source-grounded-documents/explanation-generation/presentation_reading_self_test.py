@@ -1,5 +1,6 @@
 """Output-bound presentation controls, separate from semantic/human assessment."""
 import copy
+import base64
 from html.parser import HTMLParser
 import json
 import os
@@ -13,6 +14,7 @@ import problem_reading_self_test as problem_controls
 from reading_input import verify_reading_input
 from render_comparison import card, record_feedback
 from render_readings import compare
+from reader_presentation import reading_title, present_card, reader_document
 
 
 class Paragraphs(HTMLParser):
@@ -20,7 +22,7 @@ class Paragraphs(HTMLParser):
         super().__init__(); self.active = False; self.prose = []
 
     def handle_starttag(self, tag, attrs):
-        if tag == 'pre' and dict(attrs).get('class') == 'prose-paragraph':
+        if tag == 'pre' and dict(attrs).get('class') in {'prose-paragraph', 'prose'}:
             self.active = True; self.prose.append('')
 
     def handle_data(self, data):
@@ -30,6 +32,18 @@ class Paragraphs(HTMLParser):
     def handle_endtag(self, tag):
         if tag == 'pre':
             self.active = False
+
+
+class Downloads(HTMLParser):
+    def __init__(self):
+        super().__init__(); self.downloads = {}; self.links = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == 'a' and 'download' in attrs:
+            self.downloads[attrs['download']] = base64.b64decode(attrs['href'].split(',', 1)[1])
+        if tag == 'a' and attrs.get('href', '').startswith('#') and 'aria-label' in attrs:
+            self.links[attrs['href'][1:]] = attrs['aria-label']
 
 
 class PresentationTests(unittest.TestCase):
@@ -47,12 +61,12 @@ class PresentationTests(unittest.TestCase):
         parser = Paragraphs(); parser.feed(display.read_text())
         self.assertEqual(''.join(parser.prose), prose)
 
-    def sample(self, display, response, name='authored', *, missing_before=False):
+    def sample(self, display, response, name='authored', *, missing_before=False, title='작업 설명'):
         codes = ([{'label': 'src/change.py · before · 2:5–2:13', 'text': 'return 1'},
                   {'label': 'src/change.py · after · 2:5–2:13', 'text': 'return 2'}] if not missing_before else
                  [{'label': 'src/change.py · after · 2:5–2:13', 'text': 'return 2'}])
         return {'name': name, 'display': str(display), 'prose': response['prose'],
-                'title': response['prose'].split('. ')[0] + '.',
+                'title': title,
                 'purposes': [s['reason'] for s in response['primary_sites']], 'codes': codes,
                 'diffCount': 0 if missing_before else 1, 'missingBefore': missing_before, 'language': 'ko'}
 
@@ -128,6 +142,102 @@ class PresentationTests(unittest.TestCase):
         feedback=record_feedback(display,None,self.h.root/'repeated-feedback.json')
         self.assertEqual(len(json.loads(feedback.read_bytes())['original_outputs']),2)
 
+    def test_long_opening_repetition_and_title_coordinates(self):
+        prose = '긴 문제 설명 ' * 120 + '`query.resolve()` 동작을 조사했다.\n\n같은 문장.\n\n같은 문장.'
+        response = copy.deepcopy(self.fixture.response)
+        response['prose'] = prose
+        response['claims'][0]['end'] = len(prose.encode())
+        self.fixture.response = response; self.fixture.sync()
+        compare(self.h.attempt, self.h.root / 'long')
+        display = self.h.root / 'long/presentation/comparison.html'
+        self.assert_original(display, prose)
+        self.assertIn('query.resolve() 작업 설명</h2>', display.read_text())
+        self.assertNotIn('<h2 lang="ko">긴 문제 설명', display.read_text())
+        title, basis = reading_title(response, True)
+        self.assertEqual(title, 'query.resolve() 작업 설명')
+        selected = prose.encode()[basis['start']:basis['end']]
+        self.assertEqual(selected, b'query.resolve()')
+        self.assertEqual(i.digest(selected), basis['sha256'])
+        # Identical original paragraphs remain distinct byte ranges, under one
+        # adjacent section rather than repeated generic subheadings.
+        self.assertEqual(display.read_text().count('>동작과 구현</h4>'), 1)
+        self.browser([self.sample(display, response, 'long-opening', title='query.resolve() 작업 설명')])
+
+    def test_invalid_claim_offsets_withhold_purpose_headings_and_navigation(self):
+        self.fixture.response['claims'][0]['start'] = 1  # inside a UTF-8 character
+        self.fixture.sync()
+        body, witness = card(self.h.attempt, 'invalid', presentation='reader')
+        self.assertNotEqual(witness['outputs'][0]['derived_reading']['status'], 'valid_binding')
+        self.assertNotIn('class="site-purpose"', body)
+        parser = Paragraphs(); parser.feed(body)
+        self.assertEqual(''.join(parser.prose), self.fixture.response['prose'])
+
+    @unittest.skipUnless(os.environ.get('EXPLANATION_PRESERVED_WORK_B') and os.environ.get('EXPLANATION_PRESERVED_CLICK'),
+                         'explicit preserved diagnostic displays required')
+    def test_preserved_work_b_and_click_display_replay(self):
+        """Layout observation when original attempts are absent; no Source revalidation."""
+        plans = []
+        root = Path(os.environ.get('EXPLANATION_READER_OUTPUT', self.h.root))
+        expected = {'work-b': ('1d25357823a4407d5600e5414ca7d48ba327d388fa684b1f8429619f8e2f3522', 'status 작업 설명'),
+                    'click': ('67c42f8fc0ac6f566e9fbe7ec0d4e88a57444fe56542d593c7626b24a2e008dc', 'File(lazy=True) 작업 설명')}
+        for name, env in [('work-b', 'EXPLANATION_PRESERVED_WORK_B'), ('click', 'EXPLANATION_PRESERVED_CLICK')]:
+            old = Path(os.environ[env]).resolve()
+            integrity = json.loads((old.parent / 'integrity.json').read_bytes())
+            self.assertEqual(integrity['presentation'], i.binding(old))
+            self.assertEqual(integrity.get('presentation_mode', 'diagnostic'), 'diagnostic')
+            self.assertEqual(len(integrity['samples']), 1)
+            witness = copy.deepcopy(integrity['samples'][0])
+            self.assertEqual(len(witness['outputs']), 1)
+            mapping_path = old.parent / 'approach-mapping.json'
+            mapping = json.loads(mapping_path.read_bytes())['mapping'][0]
+            self.assertEqual(mapping['attempt'], witness['attempt'])
+            output = witness['outputs'][0]
+            parser = Downloads(); parser.feed(old.read_text())
+            raw = parser.downloads['original-response-1.bin']
+            response = json.loads(raw)
+            self.assertEqual(i.digest(raw), expected[name][0])
+            self.assertEqual(i.digest(raw), output['original']['sha256'])
+            # Restore only exact original response bytes from their lossless
+            # download. Do not invent a missing original attempt/input/ledger.
+            target = Path(output['original']['path'])
+            self.assertTrue(target.resolve().is_relative_to(Path(__file__).resolve().parents[4] / '.local'))
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(raw)
+            i.check_binding(output['original'])
+            body, presentation = present_card(old.read_text().split('<body>', 1)[-1], witness)
+            # Diagnostic documents omit <body>; extract the actual article only.
+            body = body[body.index('<article'):body.rindex('</article>') + len('</article>')]
+            notice = '<p class="gap">Historical replay · Source unavailable; not revalidated.</p>'
+            body = body.replace('current byte binding:', 'historically recorded byte binding:')
+            body = body.replace('Current derived reading:', 'Historically recorded reading:')
+            body = body.replace('Current local verifier checks exact response/Source bindings;',
+                                'The historical verifier reported response/Source byte checks;')
+            body = body.replace('Current derived validation authority and exact identities',
+                                'Historical derived validation authority and exact identities')
+            output_dir = root / (name + '-preserved'); output_dir.mkdir(parents=True, exist_ok=False)
+            display = output_dir / 'comparison.html'; display.write_text(reader_document([notice + body]))
+            self.assert_original(display, response['prose'])
+            codes = []
+            for site in response['primary_sites']:
+                for n in site['selections']:
+                    selection = response['selections'][n]
+                    source = parser.downloads[f'selection-{n+1}.bin']
+                    self.assertEqual(i.digest(source), selection['sha256'])
+                    anchor = output['selections'][n]['anchor']
+                    codes.append({'label': parser.links[anchor], 'text': source.decode()})
+            (output_dir / 'replay.json').write_bytes(i.encoded({
+                'historical_display': i.binding(old), 'historical_integrity': i.binding(old.parent / 'integrity.json'),
+                'original_response': output['original'], 'display': i.binding(display),
+                'historical_scope_mapping': i.binding(mapping_path), 'declared_scope': mapping['scope'],
+                'input': output['derived_reading']['input'], 'presentation': presentation,
+                'source_validation': 'not_revalidated_missing_original_inputs', 'semantic_assessment': 'not_assessed', 'H1': 'pending'}))
+            plans.append({'name': name, 'display': str(display), 'prose': response['prose'],
+                          'title': expected[name][1], 'language': 'ko',
+                          'purposes': [s['reason'] for s in response['primary_sites']], 'codes': codes,
+                          'diffCount': 2 if name == 'work-b' else 0})
+            self.assertEqual(target.read_bytes(), raw)
+        self.browser(plans)
+
     def test_actual_browser_normal_false_link_and_hierarchy_controls(self):
         compare(self.h.attempt, self.h.root / 'browser')
         display = self.h.root / 'browser/presentation/comparison.html'
@@ -189,7 +299,7 @@ class PresentationTests(unittest.TestCase):
             feedback = record_feedback(display,None,root / name / 'pending-feedback.json')
             self.assertEqual(json.loads(feedback.read_bytes())['H1'],'pending')
             plans.append({'name':name,'display':str(display),'prose':response['prose'],
-                'title':response['prose'].split('. ')[0]+'.','language':'ko',
+                'title':('status 작업 설명' if name == 'work-b' else 'File(lazy=True) 작업 설명'),'language':'ko',
                 'purposes':[s['reason'] for s in response['primary_sites']], 'codes':codes,'diffCount':2 if name=='work-b' else 0})
             self.assertEqual(Path(attempt['original_outputs'][0]['path']).read_bytes(),raw)
         self.browser(plans)

@@ -7,9 +7,13 @@ site order, extent reasons, gaps, recorded Work and lossless downloads are prese
 Use a fresh ignored local directory for every run. This is experimental support,
 not a replacement Product Viewer or a new generation condition.
 
-The reader quotes the first original sentence as its problem heading. Paragraph
-headings describe original model claim classifications, not independently certified
-meaning. All paragraph text, including separators, remains byte-identical. Code
+The reader uses a short original inline code expression as its subject title, with
+exact UTF-8 coordinates and a hash in the title disclosure. With no short expression,
+it uses a derived Work label; it never duplicates the opening sentence as a headline.
+Paragraph headings use original claim classifications and bound primary-site purposes,
+not independently certified meaning. Adjacent paragraphs with the same purpose share
+a heading; repeated original sentences remain intact. Transport stage details follow
+the narrative. Code and diff panels preserve indentation with bounded local scrolling. All paragraph text, including separators, remains byte-identical. Code
 navigation leads with each original site's reading purpose, followed by independently
 verified paths, states and coordinates. Native disclosures preserve complete audit
 material; primary code and genuine selected-range comparisons stay directly reachable
@@ -171,3 +175,57 @@ directory and supply explicit retained/browser paths, then run the editorial tes
 through `validate focused`. Existing reading, Work-reader, rendering and feedback
 checks remain directly runnable. The optional legacy private cohorts skipped by
 generic discovery are distinct from the actual Work B/Click checks run explicitly.
+
+## Preserved display replay when input files are missing
+
+`EXPLANATION_PRESERVED_WORK_B` and `EXPLANATION_PRESERVED_CLICK` select original
+single-output diagnostic HTML, with its original `integrity.json` and
+`approach-mapping.json`. The optional presentation test checks the display hash,
+pinned complete original response hash, lossless response download and every
+primary selected-source download hash. It restores only missing exact response
+bytes under the ignored local directory, then applies the presentation layer to
+the preserved article. It never synthesizes an original attempt, Source manifest,
+Host/ledger history or a completed technical review.
+
+The replay has a visible missing-Source notice and a separate `replay.json`,
+binding original display/integrity, original response, declared historical scope,
+current display and presentation coordinates. Scope mapping is retained historical
+metadata, not independently reverified cutoff evidence. Existing byte-binding
+labels identify their historical status. Current Source validation and semantic
+assessment remain incomplete; H1 stays pending. These pages are ineligible for
+`record_feedback`, which still requires the complete current reconstruction from
+original inputs. This replay is a layout comparison, not a fallback around those
+requirements.
+
+On 2026-10-14, the specified original attempts were absent from both local state
+and the user-specified campaign directory. The preserved Work B and Click diagnostic
+views therefore supplied only display replay. Original response bytes recovered
+from their downloads match the previously pinned hashes. Current presentation
+keeps eight Work B paragraphs/seven sites/two selected-range diffs and six Click
+paragraphs/four sites/no diff. Titles quote `status` and `File(lazy=True)`;
+mechanism headings use generator-selected site purposes, requests retain their
+separate scope and choices, and adjacent historical-check paragraphs share one
+heading. Code indentation remains intact inside scrollable code panels. Desktop
+and narrow browser observations check original text, every primary source by
+mouse and Tab/Enter, code bytes, diff counts, typography and page overflow.
+
+These observations do not provide a new Source-first assessment, verified factual
+accuracy or evidence that rearranging or rewriting prose improves comprehension.
+Existing manual reordering remains separately identified and unchanged. A new
+substantive editing producer is not justified by a layout observation alone.
+Review transport controls still distinguish complete, partial, failed and missing
+reviews, separately binding original and edited responses. No new review consumer
+defect was established by the focused controls.
+
+The existing short Product host outputs were read without regeneration. Current
+Source observation decoding rejects their old format and reports stale output;
+those original records were not upgraded or rebound. A separate authored long
+Product response traverses current Source observation, Host recording, Viewer HTTP
+and snapshot export in `grounded_reader.rs`. Set `VOLICORD_LONG_READER_OUTPUT` for
+its retained snapshot/browser configuration and supply local browser paths before
+running `grounded_reader_browser.cjs`. Its repeated text is deliberate structural
+support, not naturally generated Work prose or a comprehension verdict. Current
+Product headings quote a bounded original Goal, retain its unknown language and
+keep generated Purpose prose once in the body. Citations explain their question
+purpose before the exact source locator. Longer natural Work explanation equivalence
+and fresh independent/human observations remain unestablished.

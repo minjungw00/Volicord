@@ -54,6 +54,13 @@ function check(ok, message) { if (!ok) throw Error(message); }
         const langs=await page.locator('.prose-paragraph').evaluateAll(es=>es.map(e=>e.lang));
         check(langs.every(l=>l===sample.language),'Korean/generated language differs');
         await page.screenshot({path:screenshot+'.code.png',fullPage:false});
+        if (diffs.length) {
+          const diff = page.locator('pre.diff').first();
+          await diff.scrollIntoViewIfNeeded();
+          check(await diff.evaluate(e=>getComputedStyle(e).whiteSpace==='pre'), 'diff indentation layout changed');
+          check(await diff.evaluate(e=>e.clientWidth<=innerWidth), 'diff panel exceeds viewport');
+          await page.screenshot({path:screenshot+'.diff.png',fullPage:false});
+        }
         observations.push({name:sample.name,width,height,proseY:start.y,keyboard:true,code:true,diffCount:diffs.length,language:sample.language,screenshot});
         await page.close();
       }
