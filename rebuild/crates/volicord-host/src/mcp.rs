@@ -2648,6 +2648,26 @@ fn work_explanation_schema() -> Value {
         object_schema(delete,&["action","project_id","work_item_id"])]})
 }
 
+fn file_byte_range_schema() -> Value {
+    let mut schema = object_schema(
+        vec![
+            (
+                "start_byte",
+                json!({"type":"integer","minimum":0,"maximum":16777216,
+            "description":"Inclusive absolute UTF-8 byte offset in the observed repository file"}),
+            ),
+            (
+                "end_byte",
+                json!({"type":"integer","minimum":1,"maximum":16777216,
+            "description":"Exclusive absolute UTF-8 byte offset in the observed repository file"}),
+            ),
+        ],
+        &["start_byte", "end_byte"],
+    );
+    schema["description"] = json!("Explicit half-open file byte interval; at most 16384 bytes are retained, with surrounding context unobserved");
+    schema
+}
+
 fn explanation_realization_schema() -> Value {
     let integer =
         |description: &str| json!({"type":"integer","minimum":0,"description":description});
@@ -3052,10 +3072,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ("project_id",identity_schema("Project identity")),("work_item_id",identity_schema("Exact retained Goal-backed Work identity")),
                 ("analysis_snapshot_id",digest_identity_schema("Exact selected Analysis Snapshot")),
                 ("path",text_schema("Included repository-relative file path",1,4096)),
-                ("byte_range",object_schema(vec![
-                    ("start_byte",json!({"type":"integer","minimum":0,"maximum":16777216})),
-                    ("end_byte",json!({"type":"integer","minimum":1,"maximum":16777216}))
-                ], &["start_byte","end_byte"])),
+                ("byte_range",file_byte_range_schema()),
                 ("before_source_id",identity_schema("Explicit earlier same-Work/path file Source")),
                 ("retain_seconds",json!({"type":"integer","minimum":1,"maximum":604800,"description":"Explicit local Source copy retention period in seconds"}))
             ], &["action","project_id","work_item_id","analysis_snapshot_id","path","retain_seconds"]),

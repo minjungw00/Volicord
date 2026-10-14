@@ -7252,8 +7252,11 @@ fn assert_schema_is_closed_and_described(schema: &Value) {
             assert_eq!(schema["additionalProperties"], false);
             let properties = schema["properties"].as_object().expect("properties");
             assert!(!properties.is_empty());
-            for property in properties.values() {
-                assert!(property["description"].as_str().is_some());
+            for (name, property) in properties {
+                assert!(
+                    property["description"].as_str().is_some(),
+                    "client-visible schema property {name} has no description"
+                );
                 assert_schema_is_closed_and_described(property);
             }
         }
@@ -7345,6 +7348,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "work_item_id",
                     "analysis_snapshot_id",
                     "path",
+                    "byte_range",
                     "before_source_id",
                     "retain_seconds",
                 ],
