@@ -2799,3 +2799,9 @@ the same consumers without replacing its bytes; restoring the original database
 restores the original answer without generation. The maintained contract registry
 binds both tests to exact-candidate Final execution. These controls establish local
 degradation and recovery behavior, not independent semantic or human qualification.
+
+Grounded-reader browser Code checks compare the ordered ordinary paragraphs and
+their original language/text against immutable public CLI answers. Citation claim
+detail sections carry their own question/paragraph metadata and do not substitute
+for those reading paragraphs. Disposable wrong/missing language, changed prose and
+omitted-paragraph controls must fail, followed by restored positive readback.

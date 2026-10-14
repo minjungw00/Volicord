@@ -31,6 +31,21 @@ async function checkSources(work, item, navigation=false) {
     }
   }
 }
+async function checkCodeMeaning(page, language, expected) {
+  const questions = new Set(['Purpose','ReportedChange','ExpectedEffect','Limits']);
+  const original = expected.prose.filter(answer=>questions.has(answer.question));
+  // Citation details also carry data-question, on an enclosing section whose
+  // claim quotation has its own language. Inspect the ordinary reading paragraphs.
+  const paragraphs = page.locator('.code-work-meaning > p[data-question]');
+  assert.deepEqual(await paragraphs.evaluateAll(nodes=>nodes.map(n=>n.dataset.question)),
+    original.map(answer=>answer.question),'Code preserves every reading paragraph in order');
+  assert.deepEqual(await paragraphs.allTextContents(),original.map(answer=>answer.text),
+    'Code preserves complete original interpretation');
+  assert.ok(await paragraphs.evaluateAll((nodes,language)=>nodes.length>0 && nodes.every(n=>
+    n.getAttribute('lang')===language && n.getAttribute('data-content-language')===language),language),
+    'Code interpretation preserves requested language');
+  return paragraphs;
+}
 async function check(page, item, language, expected, offline) {
   const work = page.locator(`article[data-work-id="${item.work}"]`).filter({has:page.locator('.source-excerpt')}).first();
   assert.equal(await work.count(), 1, 'selected Work has cited code');
@@ -97,7 +112,7 @@ async function check(page, item, language, expected, offline) {
           await page.goto(`${config.url}?view=code&scope=work&work=${item.work}&locale=${language}&language=${language}`);
           await checkSources(page.locator('.code-work-meaning'),item);
           assert.equal(await page.locator('.code-work-meaning h3').getAttribute('data-title-basis'),'goal-quotation','Code title preserves original Goal basis');
-          assert.ok(await page.locator('.code-work-meaning [data-question="ReportedChange"]').evaluateAll((nodes,language)=>nodes.length>0 && nodes.every(n=>n.getAttribute('lang')===language),language),'Code interpretation preserves requested language');
+          const codeParagraphs=await checkCodeMeaning(page,language,expected);
           const questionLabels=language==='ko'
             ? {Purpose:'목표 / 문제',ReportedChange:'변경 / 조사',ExpectedEffect:'결과 / 기대 효과',Limits:'남은 불확실성'}
             : {Purpose:'Goal / problem',ReportedChange:'Change / investigation',ExpectedEffect:'Result / expected effect',Limits:'Remaining uncertainty'};
@@ -106,6 +121,26 @@ async function check(page, item, language, expected, offline) {
           const headings=(await page.locator('.code-work-meaning h4').allTextContents()).filter(label=>Object.values(questionLabels).includes(label));
           assert.deepEqual(headings,sections,'Code groups adjacent paragraphs under one section label');
           await page.screenshot({path:`${config.output}/${item.comparison}-${language}-${width}-code-reading.png`});
+          const first=codeParagraphs.first();
+          await first.evaluate(n=>n.setAttribute('lang','foreign-language'));
+          await assert.rejects(()=>checkCodeMeaning(page,language,expected),/requested language/,
+            'negative: wrong original prose language rejected');
+          await first.evaluate((n,language)=>n.setAttribute('lang',language),language);
+          await first.evaluate(n=>n.removeAttribute('data-content-language'));
+          await assert.rejects(()=>checkCodeMeaning(page,language,expected),/requested language/,
+            'negative: missing original prose language rejected');
+          await first.evaluate((n,language)=>n.setAttribute('data-content-language',language),language);
+          const originalText=await first.textContent();
+          await first.evaluate(n=>n.textContent='fabricated explanation control');
+          await assert.rejects(()=>checkCodeMeaning(page,language,expected),/complete original interpretation/,
+            'negative: changed original prose rejected');
+          await first.evaluate((n,text)=>n.textContent=text,originalText);
+          const lastHtml=await codeParagraphs.last().evaluate(n=>n.outerHTML);
+          await codeParagraphs.last().evaluate(n=>n.remove());
+          await assert.rejects(()=>checkCodeMeaning(page,language,expected),/every reading paragraph/,
+            'negative: omitted original paragraph rejected');
+          await page.locator('.code-work-meaning').evaluate((n,html)=>n.insertAdjacentHTML('beforeend',html),lastHtml);
+          await checkCodeMeaning(page,language,expected);
           await page.goto(url);
           // Native keyboard sequence, no click/focus substitution for the link.
           for (let step=0;step<100;step++) {
