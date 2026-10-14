@@ -1666,6 +1666,7 @@ fn code(
             "<h3 lang=\"\" data-title-basis=\"goal-quotation\">{}</h3>",
             escape(&work_reading_title(work, r.locale)),
         ));
+        let mut previous_question = None;
         for answer in answers.prose.iter().filter(|a| {
             matches!(
                 a.question.as_str(),
@@ -1676,7 +1677,10 @@ fn code(
                     | "Limits"
             )
         }) {
-            heading(html, 4, answer_title(&answer.question, r.locale));
+            if previous_question != Some(answer.question.as_str()) {
+                heading(html, 4, answer_title(&answer.question, r.locale));
+                previous_question = Some(answer.question.as_str());
+            }
             html.push_str(&format!(
                 "<p data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</p>",
                 escape(&answer.question),

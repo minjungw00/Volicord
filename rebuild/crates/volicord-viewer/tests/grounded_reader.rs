@@ -830,13 +830,18 @@ fn representative_production_code_preserves_grounding_across_public_readers(
     let paragraphs: Vec<_> = [
         ("purpose", "Understand how retained evidence can be read safely."),
         ("reported_change", text),
+        ("reported_change", "Both pairs are retained observations of identical file bytes; the investigation does not establish an implementation change."),
         ("expected_effect", "Invalid or changed evidence must not supply current prose."),
         ("verification", "This authored control supplies no execution result for the observed implementation."),
         ("next_step", "No next action is recorded; interpretation cannot establish a user direction."),
         ("limits", "Only two explicit file regions were retained; surrounding code and semantic approval are unavailable."),
     ].into_iter().map(|(question,text)|json!({"question":question,"text":text,
         "evidence_keys":[if question=="next_step" {"next_step"} else {"goal"}],
-        "citations":if question=="reported_change" {citations.clone()} else {vec![]}})).collect();
+        "citations":if question=="reported_change" {citations.iter().cloned().map(|mut citation| {
+            citation["claim_end_byte"] = json!(text.len());
+            citation["claim_sha256"] = json!(explanation_text_hash(text));
+            citation
+        }).collect::<Vec<_>>()} else {vec![]}})).collect();
     let realization = json!({"format_kind":"volicord_explanation","format_version":2,
         "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
         "generator":{"host":"authored-structural-control","session":"representative-reader","agent":null,"model":null},
@@ -917,6 +922,23 @@ fn representative_production_code_preserves_grounding_across_public_readers(
     assert!(page.contains(identity));
     assert!(page.contains("selected repository snapshot"));
     assert!(page.contains("identical bytes"));
+    for (locale, title) in [
+        (ViewerLocale::English, "Change / investigation"),
+        (ViewerLocale::Korean, "변경 / 조사"),
+    ] {
+        let mut code_request = request(&f)?;
+        code_request.locale = locale;
+        code_request.view = ViewerView::Code {
+            scope: volicord_viewer::CodeScope::Work(Some(work(&f)?)),
+            entity: None,
+        };
+        let code = ViewerAdapter::new(ops(&f)?)
+            .render(&code_request, "test-form-authenticity")?
+            .html;
+        assert_eq!(code.matches(&format!("<h4>{title}</h4>")).count(), 1);
+        assert!(code.contains(text));
+        assert!(code.contains("Both pairs are retained observations"));
+    }
     let snapshot = temp.path().join("representative.html");
     ViewerAdapter::new(ops(&f)?).export_snapshot(&request(&f)?, &snapshot)?;
     let snapshot = fs::read_to_string(snapshot)?;

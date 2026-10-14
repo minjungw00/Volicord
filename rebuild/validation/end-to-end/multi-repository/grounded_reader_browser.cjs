@@ -98,6 +98,14 @@ async function check(page, item, language, expected, offline) {
           await checkSources(page.locator('.code-work-meaning'),item);
           assert.equal(await page.locator('.code-work-meaning h3').getAttribute('data-title-basis'),'goal-quotation','Code title preserves original Goal basis');
           assert.ok(await page.locator('.code-work-meaning [data-question="ReportedChange"]').evaluateAll((nodes,language)=>nodes.length>0 && nodes.every(n=>n.getAttribute('lang')===language),language),'Code interpretation preserves requested language');
+          const questionLabels=language==='ko'
+            ? {Purpose:'목표 / 문제',ReportedChange:'변경 / 조사',ExpectedEffect:'결과 / 기대 효과',Limits:'남은 불확실성'}
+            : {Purpose:'Goal / problem',ReportedChange:'Change / investigation',ExpectedEffect:'Result / expected effect',Limits:'Remaining uncertainty'};
+          const questions=expected.prose.map(a=>a.question).filter(q=>questionLabels[q]);
+          const sections=questions.filter((q,index)=>index===0 || q!==questions[index-1]).map(q=>questionLabels[q]);
+          const headings=(await page.locator('.code-work-meaning h4').allTextContents()).filter(label=>Object.values(questionLabels).includes(label));
+          assert.deepEqual(headings,sections,'Code groups adjacent paragraphs under one section label');
+          await page.screenshot({path:`${config.output}/${item.comparison}-${language}-${width}-code-reading.png`});
           await page.goto(url);
           // Native keyboard sequence, no click/focus substitution for the link.
           for (let step=0;step<100;step++) {
