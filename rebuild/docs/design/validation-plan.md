@@ -2755,7 +2755,12 @@ and Source observations, never explanation prose.
 it generates nothing. Chromium exercises exact citation targets with Tab/Enter,
 390/768/1440 widths, code/Work/output identity and honest comparison states, and
 controlled wrong-Source/fabricated-code negatives. Offline checks run after server
-termination with Runtime physically unavailable and networking disabled. Preserved
+termination with Runtime physically unavailable and networking disabled. The
+missing-file checks require the current whole-file or excerpt unavailability
+diagnostic; changed bytes require their separate change diagnostic. Replacing the
+actual cause with the opposite cause must fail in each Work locale, even while
+stale prose and code remain correctly withheld. These are browser-oracle controls,
+not a change to Source authority or Product failure states. Preserved
 streams/numeric results support technical reading only; independent semantic review,
 native zoom, personal understanding, unseen holdout and Naturalistic qualification
 retain their separate obligations. Run with `validate focused`; final evidence

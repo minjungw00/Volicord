@@ -11,6 +11,9 @@ function expectedSources(item) {
     ...(item.before ? [{source_id:item.before,text:`def value():\n    return ${item.comparison==='changed'?4:5}\n`}] : [])
   ];
 }
+function checkDependencyDiagnostic(text, expected) {
+  assert.ok(text.includes(expected),'distinct missing/changed dependency diagnostic');
+}
 async function checkSources(work, item, navigation=false) {
   for (const expected of expectedSources(item)) {
     const source=work.locator(`.source-excerpt[data-source-id="${expected.source_id}"]`);
@@ -85,6 +88,7 @@ async function check(page, item, language, expected, offline) {
   const observations=[];
   try {
     if (config.denied_state) {
+      let diagnosticControls = 0;
       await page.setViewportSize({width:390,height:900});
       for (const item of config.cases) for (const language of ['en','ko']) for (const view of ['work','code']) {
         const scope = view === 'code' ? '&scope=work' : '';
@@ -93,9 +97,21 @@ async function check(page, item, language, expected, offline) {
         const expected=config.basis[item.project][language];
         assert.ok(!(await page.locator('main').innerText()).includes(expected.prose.find(a=>a.question==='ReportedChange').text),'stale interpretation withheld');
         assert.ok((await page.locator('main').innerText()).includes(language==='ko'?'근거가 변경':'Explanation is stale'),'honest stale notice');
-        if (view==='work') assert.ok((await page.locator('main').textContent()).includes(config.expected_diagnostic),'distinct missing/changed dependency diagnostic');
+        if (view==='work') {
+          const text = await page.locator('main').textContent();
+          checkDependencyDiagnostic(text,config.expected_diagnostic);
+          const otherCause = config.denied_state==='changed_source'
+            ? 'current Source unavailable' : 'Source bytes changed';
+          assert.throws(()=>checkDependencyDiagnostic(
+            text.replaceAll(config.expected_diagnostic,otherCause),config.expected_diagnostic),
+            /distinct missing\/changed dependency diagnostic/,
+            'negative: opposite dependency failure cannot satisfy the actual cause');
+          checkDependencyDiagnostic(text,config.expected_diagnostic);
+          diagnosticControls++;
+        }
       }
-      process.stdout.write(JSON.stringify({status:'passed',control:config.denied_state})+'\n');
+      assert.equal(diagnosticControls,config.cases.length*2,'each Work locale checks the actual failure cause');
+      process.stdout.write(JSON.stringify({status:'passed',control:config.denied_state,diagnostic_controls:diagnosticControls})+'\n');
       return;
     }
     for (const item of config.cases) for (const language of (config.languages || ['en','ko'])) {

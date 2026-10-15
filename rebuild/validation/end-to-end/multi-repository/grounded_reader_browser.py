@@ -107,7 +107,7 @@ def main():
                     source.unlink()
                     config.update(denied_state='missing_source',expected_diagnostic=(
                         'current excerpt unavailable' if item.get('expected_sources')
-                        else 'Source read denied or unavailable'))
+                        else 'current Source unavailable'))
                     config_path.write_text(json.dumps(config))
                     run(f'missing-source-browser-{index}',['node',Path(__file__).with_suffix('.cjs'),config_path])
                 finally:
