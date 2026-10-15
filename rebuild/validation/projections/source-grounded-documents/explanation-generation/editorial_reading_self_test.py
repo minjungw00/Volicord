@@ -108,8 +108,11 @@ class EditorialTests(unittest.TestCase):
         _, path, display=self.comparison()
         revised,_=read(self.h.attempt,path)
         sample=self.control.sample(display,revised,'authored-editorial')
-        sample['title']='이전 값은 1이다.'
+        # This prose supplies no recorded Goal or quoted code subject, so the
+        # display keeps the neutral Work label rather than promoting a sentence.
         self.control.browser([sample])
+        self.control.browser([dict(sample,title=self.parts[0].strip())],
+            failure='problem title differs')
 
     @unittest.skipUnless(os.environ.get('EXPLANATION_RETAINED_WORK_B'), 'explicit retained Work B required')
     def test_actual_work_b_editorial_keeps_all_original_facts_sites_limits_and_feedback(self):
