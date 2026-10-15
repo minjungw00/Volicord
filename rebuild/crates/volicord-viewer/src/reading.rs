@@ -565,6 +565,14 @@ fn work_summary(
     let has_purpose = answers.prose.iter().any(|a| a.question == "Purpose");
     if !has_purpose {
         work_goal_opening(html, r, w);
+        for answer in &answers.prose {
+            html.push_str(&format!(
+                "<p class=\"explanation-availability\" data-question=\"{}\">{}</p>",
+                escape(&answer.question),
+                escape(&answer.text)
+            ));
+        }
+        explanation_diagnostic(html, r, &answers);
     }
     for (label, question) in [
         (
@@ -796,7 +804,6 @@ pub(super) fn render_answers(
     if previous_question.is_some() {
         html.push_str("</div>");
     }
-    render_source_excerpts(html, r, answers);
     if let Some(provenance) = &answers.provenance {
         html.push_str("<details class=\"explanation-authority\"><summary>");
         html.push_str(text(r.locale, "About this explanation", "이 설명의 성격"));
@@ -813,13 +820,7 @@ pub(super) fn render_answers(
             escape(&format!("{provenance:?}"))
         ));
     }
-    if answers.diagnostic.is_some() {
-        html.push_str(&format!(
-            "<details><summary>{}</summary><p>{}</p></details>",
-            text(r.locale, "Explanation diagnostic", "설명 진단"),
-            escape(answers.diagnostic.as_deref().unwrap_or_default())
-        ));
-    }
+    explanation_diagnostic(html, r, answers);
     html.push_str(
         "</div><div class=\"fact-states\" data-statement-role=\"deterministic-derived\">",
     );
@@ -861,6 +862,34 @@ pub(super) fn render_answers(
         }
     }
     html.push_str("</div>");
+    render_source_excerpts(html, r, answers);
+}
+
+fn explanation_diagnostic(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+) {
+    if let Some(diagnostic) = &answers.diagnostic {
+        // Diagnostics remain exact in detail. The ordinary notice names only a
+        // reason explicitly supplied by the dependency, never infers a cause.
+        let reason = if diagnostic.contains("source_body_expired") {
+            text(r.locale, "The retained Source body has expired; the interpretation cannot be shown as current.", "보존된 Source 본문의 보존 기간이 끝났습니다. 이 해석을 현재 유효한 설명으로 표시할 수 없습니다.")
+        } else if diagnostic.contains("Source bytes changed") {
+            text(r.locale, "Observed file bytes have changed; the interpretation cannot be shown as current.", "관측한 파일의 바이트가 변경되었습니다. 이 해석을 현재 유효한 설명으로 표시할 수 없습니다.")
+        } else if diagnostic.contains("current Source unavailable")
+            || diagnostic.contains("current excerpt unavailable")
+        {
+            text(r.locale, "A cited Source is no longer readable; the interpretation cannot be shown as current.", "인용된 Source를 더 이상 읽을 수 없습니다. 이 해석을 현재 유효한 설명으로 표시할 수 없습니다.")
+        } else {
+            text(r.locale, "The interpretation has an unavailable dependency or invalid content. Recorded facts remain readable; inspect the diagnostic for its exact cause.", "설명의 의존 근거를 이용할 수 없거나 내용이 유효하지 않습니다. 기록된 사실은 계속 읽을 수 있습니다. 정확한 원인은 진단에서 확인하세요.")
+        };
+        html.push_str(&format!(
+            "<div class=\"contextual-limits explanation-diagnostic\"><p class=\"dependency-reason\"><strong>{}:</strong> {}</p><details><summary>{}</summary><p>{}</p></details></div>",
+            text(r.locale, "Explanation limitation", "설명 한계"), reason,
+            text(r.locale, "Exact dependency diagnostic", "정확한 의존 근거 진단"), escape(diagnostic)
+        ));
+    }
 }
 
 fn source_excerpt_anchor(
@@ -954,8 +983,28 @@ fn render_source_excerpts(
         if !purposes.is_empty() {
             html.push_str(&format!(
                 "<p class=\"source-purpose\">{}: {}</p>",
-                text(r.locale, "Supports", "뒷받침하는 내용"),
+                text(r.locale, "Cited in interpretation", "해석에서 인용한 내용"),
                 escape(&purposes.join(" / "))
+            ));
+        }
+        // Quote the exact model-bound behavior claim, never invent a path-based
+        // purpose or present byte validation as semantic endorsement. Remaining
+        // claims and all their distinct offsets stay in the disclosure below.
+        if let Some(claim) = answers.prose.iter().find_map(|answer| {
+            answer.citations.iter().find_map(|citation| {
+                (source_excerpt_anchor(answers, citation) == anchor)
+                    .then(|| {
+                        answer
+                            .text
+                            .get(citation.claim_start_byte..citation.claim_end_byte)
+                    })
+                    .flatten()
+            })
+        }) {
+            html.push_str(&format!(
+                "<div class=\"source-meaning\" data-statement-role=\"generated-interpretation\"><p class=\"record-meta\">{}</p><blockquote class=\"source-purpose-claim\" lang=\"{}\">{}</blockquote></div>",
+                text(r.locale, "Host claim illustrated here · interpretation", "이 위치로 설명하는 호스트 주장 · 해석"),
+                escape(&content_language_tag(&provenance.language)), escape(claim)
             ));
         }
         if let Some(e) = excerpt {
@@ -969,6 +1018,23 @@ fn render_source_excerpts(
                     "<p class=\"source-comparison\">{}</p>",
                     comparison
                 ));
+                if let Some(before) = e.before_source_id.as_ref().and_then(|id| {
+                    answers.source_excerpts.iter().find(|before| {
+                        &before.citation.source_id == id
+                            && before.citation.use_kind
+                                == volicord_projections::ExplanationSourceUse::BeforeCode
+                    })
+                }) {
+                    html.push_str(&format!(
+                        "<p class=\"comparison-navigation\"><a href=\"#{}\">{}</a></p>",
+                        escape(&source_excerpt_anchor(answers, &before.citation)),
+                        text(
+                            r.locale,
+                            "Read the retained before observation",
+                            "보존된 이전 관측 읽기"
+                        )
+                    ));
+                }
                 if e.before_source_id.as_ref().is_some_and(|id| {
                     !answers.source_excerpts.iter().any(|before| {
                         &before.citation.source_id == id
@@ -985,8 +1051,8 @@ fn render_source_excerpts(
                     "제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
             }
             html.push_str(&format!(
-                "<pre><code lang=\"\">{}</code></pre>",
-                escape(&e.text)
+                "<pre tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><code lang=\"\">{}</code></pre>",
+                text(r.locale, "Original Source", "Source 원문"), escape(&c.locator), c.start_line, c.end_line, escape(&e.text)
             ));
             if e.omitted_utf8_bytes > 0 {
                 html.push_str(&format!(
@@ -1831,6 +1897,13 @@ fn code(
             escape(&title),
         ));
         work_goal_opening(html, r, work);
+        if answers.provenance.is_some() {
+            html.push_str(&format!(
+                "<p class=\"interpretation-label\">{}</p>",
+                text(r.locale, "Host interpretation", "호스트 해석")
+            ));
+        }
+        explanation_diagnostic(html, r, &answers);
         let mut previous_question = None;
         for answer in answers.prose.iter().filter(|a| {
             matches!(

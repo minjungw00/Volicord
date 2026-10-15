@@ -1725,8 +1725,10 @@ plan. It supplies output identity, not semantic approval or authenticated author
 
 Citation navigation leads with the bound paragraph's explanatory purpose, followed
 by current/historical/execution use and the exact locator. A code panel groups the
-purposes only of paragraphs citing that exact Source/range/use. Its closed claim
-disclosure preserves every bound paragraph's question, ordinal, original claim
+purposes only of paragraphs citing that exact Source/range/use and ordinarily
+quotes the first exact bound claim as host interpretation. “Cited in interpretation”
+describes the reference; it does not certify that the code entails the claim.
+Its closed claim disclosure preserves every bound paragraph's question, ordinal, original claim
 quotation and exact citation coordinates/hash, including different claims sharing
 one code range. Generated claim quotations remain interpretations, not observed
 code facts or semantic approval. Claim classification
@@ -1734,8 +1736,14 @@ and byte binding cannot supply semantic entailment or an independently supported
 effect title; broad canonical requests retain their complete original quotation beside the neutral label.
 
 Viewer prose links to unique keyboard-focusable Source ranges. Actual code/output
-is ordinary reading; full revision and generator grounding stays in closed native
-disclosures. An explicit changed/equal pair describes observed file bytes and is
+is ordinary reading after recorded verification/direction facts; full revision and
+generator grounding stays in closed native disclosures. Dependency diagnostics,
+including expired/denied/changed Sources, have readable ordinary notices in Overview, Work
+and Work-scoped Code; exact raw diagnostics remain in a separate disclosure. Current unavailability cannot look like a missing initial
+generation merely because its canonical Goal remains readable. Code scroll regions
+are keyboard reachable, preserve indentation and do not widen ordinary prose.
+Explicit paired observations offer exact-fragment navigation to the retained before
+range when cited; an uncited or absent before body remains unavailable. An explicit changed/equal pair describes observed file bytes and is
 not a reconstructed diff. Missing before-state stays absent; an uncited earlier
 dependency is identified without presenting invented before code. Snapshots retain
 the same admitted bytes and identities without Runtime, listener, scripts or assets.

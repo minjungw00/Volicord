@@ -19,6 +19,10 @@ async function checkSources(work, item, navigation=false) {
     const source=work.locator(`.source-excerpt[data-source-id="${expected.source_id}"]`);
     assert.equal(await source.count(),1,'exact current Source identity');
     assert.equal(await source.locator('code').textContent(),expected.text,'actual current code bytes');
+    assert.equal(await source.locator('.source-meaning').getAttribute('data-statement-role'), 'generated-interpretation', 'purpose remains a host claim');
+    assert.equal(await source.locator('pre[role=region]').getAttribute('tabindex'), '0', 'keyboard can enter code scroll region');
+    assert.equal(await source.locator('code').evaluate(n=>getComputedStyle(n).whiteSpace), 'pre', 'code lines preserve indentation without breaking identifiers');
+    assert.equal(await source.locator('code').evaluate(n=>getComputedStyle(n).overflowWrap), 'normal', 'code identifiers do not inherit prose wrapping');
     if (expected.start_line) {
       assert.ok((await source.textContent()).includes(`${item.path}:${expected.start_line}–${expected.end_line}`),'absolute observed file lines');
       assert.ok((await source.textContent()).includes('Bounded file observation') || (await source.textContent()).includes('제한된 파일 관측'),'bounded observation notice');
@@ -72,6 +76,14 @@ async function check(page, item, language, expected, offline) {
   }
   assert.equal(await source.locator('code').getAttribute('lang'), '', 'original Source language unknown');
   assert.equal(await work.locator('.explanation-grounding').getAttribute('open'), null, 'closed diagnostic material');
+  assert.ok(await work.locator('.fact-states').evaluate(n => !!(n.compareDocumentPosition(n.parentElement.querySelector('.explanation-code')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'verification and direction precede code');
+  const boundClaim = expected.prose.flatMap(p=>p.citations.map(c=>Buffer.from(p.text).subarray(c.claim_start_byte,c.claim_end_byte).toString('utf8')))[0];
+  assert.equal(await source.locator('.source-purpose-claim').textContent(), boundClaim, 'exact bound behavior claim explains code purpose');
+  if (item.before) {
+    const beforeLink = source.locator('.comparison-navigation a');
+    assert.equal(await beforeLink.count(), 1, 'explicit retained comparison navigation');
+    assert.ok((await beforeLink.getAttribute('href')).includes(item.before));
+  }
   const ids = await page.locator('.source-excerpt').evaluateAll(nodes=>nodes.map(n=>n.id));
   assert.equal(ids.length,new Set(ids).size,'unique exact navigation targets');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1), 'ordinary responsive page');
@@ -98,6 +110,15 @@ async function check(page, item, language, expected, offline) {
         assert.ok(!(await page.locator('main').innerText()).includes(expected.prose.find(a=>a.question==='ReportedChange').text),'stale interpretation withheld');
         assert.ok((await page.locator('main').innerText()).includes(language==='ko'?'근거가 변경':'Explanation is stale'),'honest stale notice');
         if (view==='work') {
+          const limitation = page.locator('.explanation-diagnostic');
+          assert.ok(await limitation.isVisible(), 'dependency failure is ordinary reading');
+          assert.equal(await limitation.locator('xpath=ancestor::details').count(), 0, 'genuine limitation is not collapsed');
+          assert.ok(await limitation.locator('.dependency-reason').isVisible(), 'readable failure reason remains visible');
+          const readableReason = await limitation.locator('.dependency-reason').innerText();
+          const reasonTerm = config.denied_state === 'changed_source'
+            ? (language === 'ko' ? '바이트가 변경' : 'bytes have changed')
+            : (language === 'ko' ? '더 이상 읽을 수 없습니다' : 'no longer readable');
+          assert.ok(readableReason.includes(reasonTerm), 'ordinary reason distinguishes changed and missing Source');
           const text = await page.locator('main').textContent();
           checkDependencyDiagnostic(text,config.expected_diagnostic);
           const otherCause = config.denied_state==='changed_source'
@@ -166,6 +187,18 @@ async function check(page, item, language, expected, offline) {
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-citation')),'citation reachable with Tab');
           await page.keyboard.press('Enter');
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-excerpt')),'Enter focuses exact code target');
+          for (let step=0;step<12;step++) {
+            await page.keyboard.press('Tab');
+            if (await page.evaluate(()=>document.activeElement.matches('.source-excerpt pre[role=region]'))) break;
+          }
+          assert.ok(await page.evaluate(()=>document.activeElement.matches('.source-excerpt pre[role=region]')), 'Tab reaches code scrolling region');
+          const scrolling = await page.evaluate(()=>{const n=document.activeElement;return {width:n.clientWidth,full:n.scrollWidth};});
+          if (scrolling.full > scrolling.width + 1) {
+            await page.keyboard.press('End');
+            await page.keyboard.press('ArrowRight');
+            await page.waitForTimeout(200);
+            assert.ok(await page.evaluate(()=>document.activeElement.scrollLeft > 0), 'keyboard scrolls long code without widening prose');
+          }
           const code=page.locator(`.source-excerpt[data-source-id="${item.after}"] code`);
           const original=await code.textContent();
           await code.evaluate(n=>n.textContent='fabricated control');

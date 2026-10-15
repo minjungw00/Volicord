@@ -2886,3 +2886,27 @@ retains the disposable fixture for that driver. Original host-recorded output mu
 also be checked separately; authored fixture success is not generator quality or
 human comprehension. All checks use focused validation; no aggregate/gate/V11 or
 external model invocation is required by this presentation change.
+
+
+The coupled explanation hierarchy support uses the same live/offline components.
+`VOLICORD_AUTHORED_READER_ROOT=/absolute/ignored/destination cargo test
+--manifest-path rebuild/Cargo.toml -p volicord-viewer --test grounded_reader
+seed_authored_reading_browser_runtime -- --exact` prepares explicitly authored
+en/ko control prose through actual MCP prepare/read/record, for changed/equal/
+missing-before two-line files and two observed regions of maintained production
+Source-reading code. It makes no model call. Run `grounded_reader_browser.py`
+with that `fixtures.json`, candidate `--bin-dir`, existing `--chromium` and
+`--playwright-module` via `validate focused`. The driver checks exact original
+paragraph/Source bytes, output identity, attributed behavior claims, verification
+before code, keyboard code regions and retained-before navigation. Changed/missing
+Sources must withhold prose and expose the actual dependency diagnostic outside
+any disclosure. Offline reads run with the Runtime unavailable and browser network
+disabled. Six serial plus eighteen concurrent actual HTTP reads per case cover
+Overview/Work/Code in both locales; streams, request status/errors, numeric process
+exits and explicit cleanup are retained. An unreproduced crash supplies no race
+proof and warrants no speculative synchronization change. The original host Work
+may have expired Sources: observe its Stale display and retained original identity
+without extending retention or claiming a current generated reading. Browser,
+authored prose, original historical output and human comprehension remain separate
+kinds of evidence. No substantive edited output or automatic editorial adoption is
+introduced by these presentation changes.

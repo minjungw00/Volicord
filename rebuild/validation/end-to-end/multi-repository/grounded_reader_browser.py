@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read actual host-recorded, Source-cited Work outputs; no generation or feedback."""
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -96,6 +97,29 @@ def main():
                     except OSError: time.sleep(.05)
                 else: raise RuntimeError('Viewer startup timeout')
                 config_path=output/f'config-{index}.json'; config_path.write_text(json.dumps(config))
+                # Exercise changed read paths serially and concurrently through the
+                # actual listener. A transport failure retains its exception; it is
+                # not reclassified as a confirmed Product synchronization defect.
+                routes = [f'?view={view}&locale={language}&language={language}'
+                          + (f'&work={item["work"]}' if view != 'overview' else '')
+                          + ('&scope=work' if view == 'code' else '')
+                          for language in ['en', 'ko'] for view in ['overview', 'work', 'code']]
+                def fetch(route):
+                    try:
+                        with urllib.request.urlopen(config['url']+route, timeout=30) as response:
+                            body = response.read()
+                            return {'route': route, 'http_status': response.status,
+                                    'sha256': hashlib.sha256(body).hexdigest(), 'bytes': len(body)}
+                    except Exception as error:
+                        return {'route': route, 'error': repr(error)}
+                serial = [fetch(route) for route in routes]
+                with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+                    concurrent_reads = list(pool.map(fetch, routes * 3))
+                reads = {'serial': serial, 'concurrent': concurrent_reads, 'process_exit_after_reads': process.poll()}
+                (output/f'http-rendering-{index}.json').write_text(json.dumps(reads, indent=2)+'\n')
+                result.setdefault('http_rendering', []).append(reads)
+                if process.poll() is not None or any(r.get('http_status') != 200 for r in serial+concurrent_reads):
+                    raise RuntimeError('serial/concurrent Viewer read failure; inspect preserved HTTP and process evidence')
                 run(f'live-browser-{index}',['node',Path(__file__).with_suffix('.cjs'),config_path])
                 source=Path(item['repository'])/item.get('path','main.py'); original=source.read_bytes()
                 try:

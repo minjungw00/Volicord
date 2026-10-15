@@ -59,6 +59,11 @@ async function inspect(page, fixture, locale, source, baseline) {
     assert.equal(await card.locator('.work-goal').getAttribute('open'), null, 'original Goal accessible beside interpretation');
     assert.equal(await card.locator('[data-question=Purpose]').count(), 1, 'Purpose is not a duplicate headline');
   }
+  if (fixture.expected_state === 'stale') {
+    assert.ok((await card.locator('.explanation-availability').textContent()).includes(locale === 'en' ? 'Explanation is stale' : '근거가 변경'));
+    assert.ok(await card.locator('.explanation-diagnostic').isVisible(), 'actual expired dependency is ordinary reading');
+    assert.ok((await card.locator('.dependency-reason').textContent()).includes(locale === 'en' ? 'expired' : '보존 기간이 끝났습니다'), 'expiry reason is readable without opening diagnostics');
+  }
   const first = await meaning.boundingBox();
   assert.ok(first.y >= 0 && first.y < page.viewportSize().height - 24, `ordinary meaning in first screen: ${first.y}`);
   assert.ok((await page.locator('.project-purpose').first().innerText()).includes(locale === 'en' ? 'No source-grounded Project purpose is recorded.' : 'source-grounded 프로젝트 목적이 기록되지 않았습니다.'));
@@ -98,7 +103,7 @@ async function inspect(page, fixture, locale, source, baseline) {
           run(path.join(config.bin, 'volicord-viewer'), ['--runtime',fixture.runtime,'--project',fixture.project,'--locale',locale,'--language',fixture.language || 'en','--snapshot',snapshot]);
           const before = path.join(config.output, `${label}-${locale}-before.html`);
           if (config.before_viewer) run(config.before_viewer, ['--runtime',fixture.runtime,'--project',fixture.project,'--locale',locale,'--language',fixture.language || 'en','--snapshot',before]);
-          for (const viewport of [{width:1440,height:900}, {width:390,height:900}, {width:320,height:568}]) {
+          for (const viewport of (config.viewports || [{width:1440,height:900}, {width:390,height:900}, {width:320,height:568}])) {
             const page = await browser.newPage({viewport});
             for (const [mode, url] of [['live',`${live.address}?locale=${locale}&language=${fixture.language || 'en'}`], ['snapshot',pathToFileURL(snapshot).href]]) {
               const reading = await inspect(page, fixture, locale, url, false);

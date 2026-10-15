@@ -194,3 +194,14 @@ button { width: max-content; min-height: 2.75rem; cursor: pointer; }
 .work-goal { max-width: 72ch; }
 .work-goal blockquote { margin: .65rem 0; padding-left: 1rem; border-left: 3px solid var(--line); white-space: pre-wrap; line-height: 1.75; }
 .interpretation-label { color: #634181; font-size: .9rem; border-left: 3px solid #a98bc3; padding-left: .75rem; }
+
+.source-meaning { max-width: 65ch; border-left: 3px solid #a98bc3; padding-left: .75rem; }
+.source-purpose-claim { margin: .5rem 0 1rem; line-height: 1.75; white-space: pre-wrap; }
+.explanation-code { max-width: 80ch; }
+.source-excerpt pre:focus-visible { outline-offset: -.2rem; }
+.comparison-navigation { font-size: .9rem; }
+.explanation-diagnostic { max-width: 72ch; }
+/* Code must inherit the preformatted region instead of the global prose-style
+   pre-wrap on code; scrolling preserves both indentation and complete lines. */
+.source-excerpt pre { overflow-wrap: normal; }
+.source-excerpt pre code { white-space: inherit; overflow-wrap: normal; font-size: inherit; }

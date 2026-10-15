@@ -134,11 +134,24 @@ fn record_with_purpose(
     host: &mut HostAdapter,
     purpose: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let base = json!({"project_id":f["project"],"work_item_id":f["work"],"language":"en","action":"generate"});
+    record_in_language(f, host, purpose, "en")
+}
+fn record_in_language(
+    f: &Value,
+    host: &mut HostAdapter,
+    purpose: &str,
+    language: &str,
+) -> Result<(), Box<dyn Error>> {
+    let base = json!({"project_id":f["project"],"work_item_id":f["work"],"language":language,"action":"generate"});
     let generation = call(host, "work_explanation", base.clone())?;
     let plan: ExplanationPlan = serde_json::from_value(generation["plan"].clone())?;
     let mut citations = Vec::new();
-    let text="The observed function returns the constant 5. Execution and user acceptance are not established.";
+    let text = if language == "ko" {
+        "관측된 함수는 상수 5를 반환합니다. 실행과 사용자 수락은 확인되지 않았습니다."
+    } else {
+        "The observed function returns the constant 5. Execution and user acceptance are not established."
+    };
+    let claim_end = text.find('.').ok_or("first claim")? + 1;
     for (source, use_kind) in [
         (f["after"].clone(), ExplanationSourceUse::CurrentCode),
         (f["before"].clone(), ExplanationSourceUse::BeforeCode),
@@ -165,8 +178,8 @@ fn record_with_purpose(
         c["end_line"] = json!(region["end_line"].as_u64().unwrap_or(2));
         c["range_sha256"] = json!(explanation_text_hash(body));
         c["claim_start_byte"] = json!(0);
-        c["claim_end_byte"] = json!(43);
-        c["claim_sha256"] = json!(explanation_text_hash(&text[..43]));
+        c["claim_end_byte"] = json!(claim_end);
+        c["claim_sha256"] = json!(explanation_text_hash(&text[..claim_end]));
         c["use_kind"] = serde_json::to_value(use_kind)?;
         citations.push(serde_json::from_value(c)?);
     }
@@ -174,7 +187,7 @@ fn record_with_purpose(
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint,
-        language: "en".into(),
+        language: language.into(),
         generator: ExplanationGenerator {
             host: "authored-structural-control".into(),
             session: "reader-test".into(),
@@ -187,17 +200,29 @@ fn record_with_purpose(
             (
                 ExplanationQuestion::ExpectedEffect,
                 "goal",
-                "No runtime effect has been verified.",
+                if language == "ko" {
+                    "실행 중 효과는 검증되지 않았습니다."
+                } else {
+                    "No runtime effect has been verified."
+                },
             ),
             (
                 ExplanationQuestion::Verification,
                 "goal",
-                "No execution verification was recorded.",
+                if language == "ko" {
+                    "실행 검증은 기록되지 않았습니다."
+                } else {
+                    "No execution verification was recorded."
+                },
             ),
             (
                 ExplanationQuestion::NextStep,
                 "next_step",
-                "No next action has been recorded.",
+                if language == "ko" {
+                    "다음 행동은 기록되지 않았습니다."
+                } else {
+                    "No next action has been recorded."
+                },
             ),
         ]
         .into_iter()
@@ -523,7 +548,9 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         );
         assert!(page.contains("Current observed code · main.py:1–2</a>"));
         assert!(page.contains("Change / investigation · Current observed code · main.py:1–2</a>"));
-        assert!(page.contains("<p class=\"source-purpose\">Supports: Change / investigation</p>"));
+        assert!(page.contains(
+            "<p class=\"source-purpose\">Cited in interpretation: Change / investigation</p>"
+        ));
         assert_eq!(
             page.contains("Before: historical observation · main.py:1–2</a>"),
             comparison != "missing_before_state"
@@ -535,9 +562,26 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             .html;
         assert!(korean.contains("현재 관측 코드 · main.py:1–2</a>"));
         assert!(korean.contains("변경 / 조사 · 현재 관측 코드 · main.py:1–2</a>"));
-        assert!(korean.contains("<p class=\"source-purpose\">뒷받침하는 내용: 변경 / 조사</p>"));
+        assert!(
+            korean.contains("<p class=\"source-purpose\">해석에서 인용한 내용: 변경 / 조사</p>")
+        );
         assert_eq!(
             korean.contains("이전: 과거 관측 · main.py:1–2</a>"),
+            comparison != "missing_before_state"
+        );
+        assert!(
+            page.find("class=\"fact-states\"").ok_or("facts")?
+                < page
+                    .find("class=\"explanation-code\"")
+                    .ok_or("cited code")?,
+            "verification and direction precede code-reading burden"
+        );
+        assert!(page.contains("class=\"source-purpose-claim\" lang=\"en\">The observed function returns the constant 5.</blockquote>"));
+        assert!(page.contains(
+            "<pre tabindex=\"0\" role=\"region\" aria-label=\"Original Source: main.py:1–2\">"
+        ));
+        assert_eq!(
+            page.contains("Read the retained before observation"),
             comparison != "missing_before_state"
         );
         assert!(page.contains(fingerprint));
@@ -1670,17 +1714,110 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
             assert_eq!(
                 full.matches("data-statement-role=\"generated-interpretation\"")
                     .count(),
-                3
+                4 // Three exact bindings and the ordinary attributed claim.
             );
             assert_eq!(
                 other
                     .matches("data-statement-role=\"generated-interpretation\"")
                     .count(),
-                1
+                2 // One exact binding and the ordinary attributed claim.
             );
         }
     }
     assert_eq!(canonical, operations.canonical_basis(project(&f)?)?);
     assert_eq!(privacy, operations.privacy_status(project(&f)?)?);
+    Ok(())
+}
+
+/// Disposable current prose for live/offline browser support. All wording is an
+/// explicitly authored structural control; it supplies no model-quality evidence.
+#[test]
+fn seed_authored_reading_browser_runtime() -> Result<(), Box<dyn Error>> {
+    let Some(root) = std::env::var_os("VOLICORD_AUTHORED_READER_ROOT") else {
+        return Ok(());
+    };
+    let root = Path::new(&root);
+    assert!(root.is_absolute());
+    let mut cases = Vec::new();
+    for comparison in ["changed", "no_change", "missing_before_state"] {
+        let mut f = seed(&root.join(comparison), comparison)?;
+        let mut host = HostAdapter::new(ops(&f)?);
+        record_in_language(
+            &f,
+            &mut host,
+            "Understand the constant return in value().",
+            "en",
+        )?;
+        record_in_language(
+            &f,
+            &mut host,
+            "value()의 상수 반환과 관측의 한계를 이해합니다.",
+            "ko",
+        )?;
+        f["host_output"] = json!("authored-structural-control; not model-generated");
+        cases.push(f);
+    }
+    let mut f = seed_representative(&root.join("representative"))?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    for language in ["en", "ko"] {
+        let generation = call(
+            &mut host,
+            "work_explanation",
+            json!({"action":"generate", "project_id":f["project"], "work_item_id":f["work"], "language":language}),
+        )?;
+        let text = if language == "ko" {
+            "관측된 코드는 보존된 Source를 읽고 현재 파일의 해시를 확인합니다. 두 관측은 동일한 파일 바이트를 보존하며 실행 성공은 입증하지 않습니다."
+        } else {
+            "The observed code reads retained Sources and checks the current file hash. Both observations retain identical file bytes and establish no execution success."
+        };
+        let mut citations = Vec::new();
+        for expected in f["expected_sources"].as_array().ok_or("Sources")? {
+            let read = call(
+                &mut host,
+                "work_explanation",
+                json!({"action":"read_source", "project_id":f["project"], "work_item_id":f["work"], "generation_id":generation["generation_id"], "source_id":expected["source_id"]}),
+            )?;
+            assert_eq!(read["observation"]["detail"]["body"], expected["text"]);
+            let mut citation = read["citation_basis"].clone();
+            for field in [
+                "start_byte",
+                "end_byte",
+                "start_line",
+                "end_line",
+                "use_kind",
+            ] {
+                citation[field] = expected[field].clone();
+            }
+            citation["locator"] = f["path"].clone();
+            citation["field"] = json!("body");
+            citation["range_sha256"] = json!(explanation_text_hash(
+                expected["text"].as_str().ok_or("Source bytes")?
+            ));
+            citation["claim_start_byte"] = json!(0);
+            citation["claim_end_byte"] = json!(text.len());
+            citation["claim_sha256"] = json!(explanation_text_hash(text));
+            citations.push(citation);
+        }
+        let paragraphs: Vec<_> = [
+            ("purpose", if language == "ko" { "보존된 근거의 조회와 현재 코드 검증을 이해합니다." } else { "Understand retained evidence lookup and current-code validation." }),
+            ("reported_change", text),
+            ("expected_effect", if language == "ko" { "실행 중 효과는 검증되지 않았습니다." } else { "No runtime effect is verified." }),
+            ("verification", if language == "ko" { "이 테스트 문구는 실행 결과를 제공하지 않습니다." } else { "This authored control supplies no execution result." }),
+            ("next_step", if language == "ko" { "다음 행동은 기록되지 않았습니다." } else { "No next action is recorded." }),
+            ("limits", if language == "ko" { "두 파일 구간만 관측했습니다. 주변 코드와 의미적 승인은 확인되지 않았습니다." } else { "Only two file regions were observed. Surrounding code and semantic approval remain unavailable." }),
+        ].into_iter().map(|(question, text)| json!({"question":question,"text":text,"evidence_keys":[if question == "next_step" { "next_step" } else { "goal" }], "citations":if question == "reported_change" { citations.clone() } else { vec![] }})).collect();
+        let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"plan_fingerprint":generation["plan"]["fingerprint"],"language":language,"generator":{"host":"authored-structural-control","session":"representative-browser","agent":null,"model":null},"paragraphs":paragraphs});
+        call(
+            &mut host,
+            "work_explanation",
+            json!({"action":"record","project_id":f["project"],"work_item_id":f["work"],"generation_id":generation["generation_id"],"realization":realization}),
+        )?;
+    }
+    f["host_output"] = json!("authored-structural-control; not model-generated");
+    cases.push(f);
+    fs::write(
+        root.join("fixtures.json"),
+        serde_json::to_vec_pretty(&json!({"cases":cases}))?,
+    )?;
     Ok(())
 }
