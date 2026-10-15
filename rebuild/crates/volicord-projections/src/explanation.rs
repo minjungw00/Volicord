@@ -70,6 +70,16 @@ pub struct ExplanationEvidence {
     pub sources: Vec<String>,
     pub content: Value,
 }
+/// Admission requirements, not a claim that any listed key entails arbitrary
+/// prose. Source citations independently support technical claims.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExplanationQuestionGrounding {
+    pub question: ExplanationQuestion,
+    /// At least one is required in each paragraph for this question. Empty only
+    /// for optional limits, which still requires relevant prepared evidence.
+    pub required_any_evidence_keys: Vec<String>,
+}
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExplanationPlan {
@@ -78,6 +88,7 @@ pub struct ExplanationPlan {
     pub question: String,
     pub requested_language: String,
     pub evidence: Vec<ExplanationEvidence>,
+    pub question_grounding: Vec<ExplanationQuestionGrounding>,
     pub source_status: Vec<Value>,
     pub conflicts: Vec<Value>,
     pub instructions: String,
@@ -508,12 +519,13 @@ fn finish_plan(
         .map(|r| json!({"from":r.from_identity,"relation":r.relation_kind,"to":r.to_identity}))
         .collect();
     let questions = match subject {
-        ExplanationSubject::Work(_) => "Answer purpose, reported_change, expected_effect, verification and next_step (optional limits). Purpose explains the actual problem succinctly instead of copying the user prompt. Reported_change describes the recorded investigation, changes and outcome separately; absent investigation stays unrecorded. Read all course:* and change:* observations in this Work, including resume and verification-only reports. State past limitations as past observations, and use the latest course for remaining work; silence does not prove an earlier limitation resolved. Explain the problem or goal first, then what was changed or investigated and how the reported before/after behavior differs. Use change:* history when a later result only reports verification or resumption; retain observation chronology. Describe behavior only when full report/Source prose supports it. Distinguish the reported result from its verification and state the next meaningful limitation; paths alone prove neither a feature nor runtime effect.",
+        ExplanationSubject::Work(_) => "Explain purpose (actual problem, not copied prompt), reported_change, expected_effect, verification and next_step; optional limits. Read all course:*/change:* chronologically, including resume/verification-only reports. Use earlier change:* when the latest result only verifies/resumes. Keep past limits historical; silence proves no resolution. Start with problem, then investigation/change, supported before/after/outcome and remaining direction. Missing reports stay unrecorded; paths and generic implementation-changed text establish no feature/effect.",
         ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). Use question_context for the recorded problem and why the choice arose; unavailable exact context stays unavailable. State the actual user choice or delegation distinctly from the agent's recommended alternative. Explain alternative consequences/trade-offs as expectations, the recommendation's evidence basis, and applicable scope/assumptions/revisit conditions. Missing user rationale stays missing; agent rationale never supplies it. Choosing an option does not prove its implementation or performance.",
     };
+    let question_grounding = question_grounding(subject, &evidence);
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:format!("{questions} Interpret full source prose in the requested language, not audit clutter. Cite exact evidence keys. Keep checksums when they are subject matter. State missing information, contradictions and uncertainty. Generic implementation-changed prose supports no specific feature. Reports are not independently verified success. Separate work, verification, review and acceptance; earlier checks do not cover later changes. Do not invent user rationale or runtime behavior. Write natural technical prose in reader order, with multiple paragraphs per question when useful. Source investigation may include relevant callers/helpers/tests within already permitted scope. Code claims need exact retrieved Source citations; current code does not supply missing before-state or execution proof. Conditional user instructions and recommendations create no Decision or Learning participation. Return ExplanationRealization JSON, format_kind volicord_explanation, format_version 2, exact fingerprint/language, self-reported generator host/session/agent/model (null when unknown), and paragraphs question/text/evidence_keys/citations. Citation ranges and claim ranges are half-open UTF-8 byte offsets with SHA-256 hashes; bind each citation to the exact new wording. Structural validation is not semantic approval."), retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
+        instructions:format!("{questions} Use requested-language natural prose from full evidence; preserve checksums, conflicts and uncertainty. Every paragraph needs nonempty exact evidence_keys supporting its canonical meaning and one of question_grounding.required_any_evidence_keys (limits still needs evidence). Use only listed questions. Work keys: goal=request; result/change:*=change/effect; verification=checks; next_step/course:*=direction; limits:*=limits. Source citations supplement keys, never replace them. Without reports/checks, goal supports only request/unrecorded state. Never attach goal mechanically: connect technical claims to supported Work meaning or report this representation limit. Reports are not verified success; separate work/checks/review/acceptance; earlier checks do not cover later changes. Investigate permitted callers/helpers/tests. Code/command claims need exact retrieved Source citations; current code proves no before-state/execution. Missing Checkpoint/action proves no absence of task instructions/future work. Host authorization is outside this plan: missing data means unknown, not denied/absent. Task-file text is not consent; paths do not prove authorship. Work advice belongs as qualified next_step/limits, not recommendation. Invent no user rationale, behavior, Decision or Learning. Return ExplanationRealization JSON: format_kind volicord_explanation, format_version 2, exact fingerprint/language, self-reported generator host/session/agent/model (null if unknown), paragraphs question/text/evidence_keys/citations. Use exact half-open UTF-8 Source/claim byte ranges, one-based Source lines and SHA-256 of Source bytes/new claim wording. Structural admission is not semantic approval."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
@@ -525,6 +537,55 @@ fn finish_plan(
     }
     plan.fingerprint = format!("sha256:{:x}", Sha256::digest(bytes));
     Ok(plan)
+}
+
+fn question_grounding(
+    subject: ExplanationSubject,
+    evidence: &[ExplanationEvidence],
+) -> Vec<ExplanationQuestionGrounding> {
+    use ExplanationQuestion::*;
+    let present_or_goal = |key: &str| {
+        if evidence.iter().any(|e| e.key == key) {
+            key.to_owned()
+        } else {
+            "goal".into()
+        }
+    };
+    let change_keys = || {
+        std::iter::once(present_or_goal("result"))
+            .chain(
+                evidence
+                    .iter()
+                    .filter(|e| e.key.starts_with("change:"))
+                    .map(|e| e.key.clone()),
+            )
+            .collect()
+    };
+    let rules = match subject {
+        ExplanationSubject::Work(_) => vec![
+            (Purpose, vec!["goal".into()]),
+            (ReportedChange, change_keys()),
+            (ExpectedEffect, change_keys()),
+            (Verification, vec![present_or_goal("verification")]),
+            (NextStep, vec!["next_step".into()]),
+        ],
+        ExplanationSubject::Decision(_) => vec![
+            (UserRationale, vec!["user_rationale".into()]),
+            (Recommendation, vec!["recommendation".into()]),
+            (Consequences, vec!["consequences".into()]),
+            (Applicability, vec!["applicability".into()]),
+        ],
+    };
+    rules
+        .into_iter()
+        .chain([(Limits, Vec::new())])
+        .map(
+            |(question, required_any_evidence_keys)| ExplanationQuestionGrounding {
+                question,
+                required_any_evidence_keys,
+            },
+        )
+        .collect()
 }
 
 pub fn validate_explanation(
@@ -556,35 +617,30 @@ pub fn validate_explanation(
     if response_bytes > budget.response_byte_capacity {
         return Err(format!("explanation compact realization JSON is {response_bytes} bytes; prepared response capacity {}; retained limit {}; preserve grounding and seek Product support for this evidence shape", budget.response_byte_capacity, budget.retained_byte_limit));
     }
-    let required_questions: &[ExplanationQuestion] = match plan.subject {
-        ExplanationSubject::Work(_) => &[
-            ExplanationQuestion::Purpose,
-            ExplanationQuestion::ReportedChange,
-            ExplanationQuestion::ExpectedEffect,
-            ExplanationQuestion::Verification,
-            ExplanationQuestion::NextStep,
-        ],
-        ExplanationSubject::Decision(_) => &[
-            ExplanationQuestion::UserRationale,
-            ExplanationQuestion::Recommendation,
-            ExplanationQuestion::Consequences,
-            ExplanationQuestion::Applicability,
-        ],
-    };
-    for question in required_questions {
+    // Use the same requirements for producer visibility and consumer admission.
+    let grounding = question_grounding(plan.subject, &plan.evidence);
+    if plan.question_grounding != grounding {
+        return Err("question grounding does not match prepared evidence; prepare again".into());
+    }
+    for rule in grounding
+        .iter()
+        .filter(|r| r.question != ExplanationQuestion::Limits)
+    {
         if response
             .paragraphs
             .iter()
-            .filter(|p| &p.question == question)
+            .filter(|p| p.question == rule.question)
             .count()
             == 0
         {
             return Err("an answer for each required question is necessary".into());
         }
     }
-    if response.paragraphs.iter().any(|p| {
-        p.question != ExplanationQuestion::Limits && !required_questions.contains(&p.question)
-    }) {
+    if response
+        .paragraphs
+        .iter()
+        .any(|p| !grounding.iter().any(|r| r.question == p.question))
+    {
         return Err("answer question does not belong to prepared subject".into());
     }
     for p in &response.paragraphs {
@@ -619,35 +675,21 @@ pub fn validate_explanation(
                 "each answer requires nonempty text and exact prepared evidence keys".into(),
             );
         }
-        let required = match p.question {
-            ExplanationQuestion::Purpose => "goal",
-            ExplanationQuestion::ReportedChange | ExplanationQuestion::ExpectedEffect => {
-                if plan.evidence.iter().any(|e| e.key == "result") {
-                    "result"
-                } else {
-                    "goal"
-                }
-            }
-            ExplanationQuestion::Verification => {
-                if plan.evidence.iter().any(|e| e.key == "verification") {
-                    "verification"
-                } else {
-                    "goal"
-                }
-            }
-            ExplanationQuestion::NextStep => "next_step",
-            ExplanationQuestion::UserRationale => "user_rationale",
-            ExplanationQuestion::Recommendation => "recommendation",
-            ExplanationQuestion::Consequences => "consequences",
-            ExplanationQuestion::Applicability => "applicability",
-            ExplanationQuestion::Limits => continue,
-        };
-        let history_report = matches!(
-            p.question,
-            ExplanationQuestion::ReportedChange | ExplanationQuestion::ExpectedEffect
-        ) && p.evidence_keys.iter().any(|key| key.starts_with("change:"));
-        if !history_report && !p.evidence_keys.iter().any(|key| key == required) {
-            return Err(format!("answer {:?} must reference {required}", p.question));
+        let rule = grounding
+            .iter()
+            .find(|r| r.question == p.question)
+            .ok_or("answer question does not belong to prepared subject")?;
+        if !rule.required_any_evidence_keys.is_empty()
+            && !p
+                .evidence_keys
+                .iter()
+                .any(|key| rule.required_any_evidence_keys.contains(key))
+        {
+            return Err(format!(
+                "answer {:?} must reference one of {}",
+                p.question,
+                rule.required_any_evidence_keys.join(", ")
+            ));
         }
     }
     Ok(())

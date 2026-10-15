@@ -2741,6 +2741,19 @@ pairs, current repository changes and deleted copies, preserving previous record
 Existing explanation-budget, CLI, Host consumer, Source, document and Viewer tests
 remain focused format/lifecycle checks. Current fixture producers/consumers use
 explanation format 2 and document metadata 10; historical campaign files are immutable.
+
+Focused Host `work_explanation` coverage independently reproduces empty canonical
+keys with a valid retrieved Source citation through public MCP recording, retaining
+the first rejection separately from a later opportunity. A changed Python Work
+captures actual before/after Sources and command output, supplies an explicitly
+authored canonical Checkpoint through the public Kernel producer, and records the
+correct question-specific keys and Source/claim bindings on its first submission.
+Wrong-question, missing, unknown and subject-disallowed keys/questions reject
+without replacing earlier Managed Derived content; existing Source adversarial
+controls continue to cover denied, foreign, stale, hash/range and unavailable-before
+cases. These authored controls prove structure and readback, not model reliability,
+semantic approval or user comprehension. Fresh external generation, if separately
+authorized, preserves original model/tool/first-record receipts without repair or retry.
 Source-citation metadata may use the prepared response capacity up to 32,768 bytes
 while retaining the 147,456-byte complete envelope and the guaranteed 16,384-byte
 capacity for metadata-heavy plans. Host controls exercise a citation-heavy response

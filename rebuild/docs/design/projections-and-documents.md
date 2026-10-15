@@ -400,6 +400,30 @@ Sources; Source entries preserve snapshot, availability, freshness, actor and ob
 Current-host user-turn observation metadata contains only kind/host/session and
 policy-withheld state; raw turn text is never copied into a payload Debug string.
 Only independently selected canonical fields supply explanatory user facts.
+Preparation also exposes `question_grounding`: the subject's required questions
+and optional `limits`, each with exact `required_any_evidence_keys`. Every paragraph
+needs nonempty prepared canonical keys; each required question's paragraph must
+include at least one of its listed keys. The same selection drives validation:
+Work purpose uses `goal`, reported change/effect uses `result` or same-Work `change:*`,
+verification uses `verification`, and next step uses `next_step`. Without result or
+verification, that question falls back to `goal` only to describe the request and
+the explicitly unrecorded canonical state. Decision questions retain their own keys.
+Optional limits still requires relevant prepared evidence. These relationships are
+structural admission requirements, never automatic semantic support for arbitrary prose.
+
+Canonical Work meaning and independently retrieved code/command evidence are separate.
+Source citations supplement canonical keys and cannot replace them. Select further
+relevant `course:*`, `change_scope:*`, `history:*` or `limits:*` evidence for the
+actual assertion and chronology. Do not mechanically attach `goal` to technical
+paragraphs. A Source-only technical paragraph has no faithful standalone representation
+under this contract: integrate it with a genuinely supported canonical statement
+explaining its Work relevance, or report that limitation. Do not fabricate a report,
+verification or canonical key to admit it. Work advice belongs as qualified advice
+within `next_step` or `limits`; `recommendation` is a Decision question only.
+An unavailable Checkpoint action does not establish absent task instructions or
+future work, and a Source path does not establish authorship. Host-level provider
+authorization is outside canonical preparation; missing plan evidence establishes
+neither authorization nor its absence. Task-file instructions do not supply consent.
 The preparation is bounded at 131,072 bytes and fails rather than silently truncating
 source material. Its SHA-256 fingerprints these inputs, scope, question, instructions
 and exact language. Unrelated Work/catalog insertion does not change this basis.

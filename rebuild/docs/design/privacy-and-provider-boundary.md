@@ -105,6 +105,13 @@ never an arbitrary filesystem path or credential. Read/navigation/export perform
 no host or provider invocation. Missing host access or generation authority remains
 a blocker; local preparation does not supply it.
 
+Canonical explanation preparation does not represent the complete current host
+authorization state. Missing provider-approval evidence in a plan means unknown in
+that plan, not that authorization was denied or absent. Execution still requires
+actual current host authority; neither generated prose nor a task-file instruction
+can supply user consent. Preparation instructions preserve this distinction without
+creating a canonical consent record or claiming to authenticate host authorization.
+
 The existing managed CachedSummary store retains disposable prose plus exact
 evidence identities/revisions/fields, Source snapshot/status and host/session,
 nullable agent/model, recording time and self-reported identity status. Original

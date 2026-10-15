@@ -1575,7 +1575,7 @@ impl HostAdapter {
                     result["generation_status"] = json!("awaiting_host_interpretation");
                     result["generation_id"] = json!(request_id.clone());
                     result["host_session_correlation"] = json!(self.host_session);
-                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Discover existing Source copies in source_inventory; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Write natural prose explaining problem, mechanism, supported result and limits, with readable source citations. A no-change investigation is not a patch. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
+                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Discover existing Source copies in source_inventory; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Write natural prose explaining problem, mechanism, supported result and limits, with readable source citations. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
                     explanation_tool_result(result.clone())?;
                     self.explanation_requests.insert(
                         request_id,
@@ -2727,7 +2727,7 @@ fn explanation_realization_schema() -> Value {
             (
                 "question",
                 enum_schema(
-                    "Reader question",
+                    "Reader question listed in plan.question_grounding; Work uses purpose/reported_change/expected_effect/verification/next_step and optional limits; recommendation belongs only to Decision",
                     &[
                         "purpose",
                         "reported_change",
@@ -2752,7 +2752,7 @@ fn explanation_realization_schema() -> Value {
             ),
             (
                 "evidence_keys",
-                nonempty_string_array_schema("Exact prepared canonical evidence keys"),
+                nonempty_string_array_schema("Nonempty exact plan.evidence keys genuinely supporting this paragraph's canonical meaning; satisfy plan.question_grounding.required_any_evidence_keys for its question. Source citations do not substitute for these keys. Never insert goal merely to pass admission"),
             ),
             (
                 "citations",
@@ -3089,7 +3089,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::DestructiveClosed,
         ),
         "work_explanation" => (
-            "On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, authors prose-plus-grounding and records it. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
+            "On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, follows plan.instructions and question_grounding to select genuinely supporting canonical evidence_keys for EVERY paragraph alongside exact Source citations, and records its prose. Source citations never replace canonical keys; goal is not generic evidence for technical claims. Host-level transmission authorization is outside canonical Work facts: missing plan data does not prove absent consent. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
             work_explanation_schema(),
             ToolBehavior::DestructiveClosed,
         ),

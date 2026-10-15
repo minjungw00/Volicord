@@ -26,6 +26,9 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Result<Self, Box<dyn Error>> {
+        Self::with_goal("Explain value; investigate before recommending a change.")
+    }
+    fn with_goal(goal: &str) -> Result<Self, Box<dyn Error>> {
         let temp = tempfile::tempdir()?;
         let root = temp.path().join("repo");
         fs::create_dir(&root)?;
@@ -46,9 +49,9 @@ impl Fixture {
                 project,
                 "fixture".into(),
                 "structural-control".into(),
-                "Explain value; investigate before recommending a change. Unrelated private turn content: PRIVATE_TURN_SENTINEL.".into(),
+                format!("{goal} Unrelated private turn content: PRIVATE_TURN_SENTINEL."),
                 ContextItemRole::Goal,
-                "Explain value; investigate before recommending a change.".into(),
+                goal.into(),
             )?
             .context_item_id;
         let analysis = ops
@@ -200,6 +203,444 @@ fn response(generation: &Value, read: &Value) -> Result<ExplanationRealization, 
         },
         paragraphs,
     })
+}
+
+#[test]
+fn retrieved_source_cannot_replace_required_canonical_grounding() -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    let generation = f.generate()?;
+    assert_eq!(
+        generation["plan"]["question_grounding"],
+        json!([
+            {"question":"purpose","required_any_evidence_keys":["goal"]},
+            {"question":"reported_change","required_any_evidence_keys":["goal"]},
+            {"question":"expected_effect","required_any_evidence_keys":["goal"]},
+            {"question":"verification","required_any_evidence_keys":["goal"]},
+            {"question":"next_step","required_any_evidence_keys":["next_step"]},
+            {"question":"limits","required_any_evidence_keys":[]}
+        ])
+    );
+    assert_eq!(generation["plan"]["evidence"][1]["content"], Value::Null);
+    let read = f.read(&generation, f.source)?;
+    let valid = response(&generation, &read)?;
+    let mut original = valid.clone();
+    original.paragraphs[1].evidence_keys.clear();
+    let args = f.record_args(&generation, &original)?;
+    let rejected = call(&mut f.host, args);
+    assert_eq!(rejected["result"]["isError"], true);
+    assert!(
+        rejected["result"]["structuredContent"]["details"]["problems"]
+            .as_array()
+            .ok_or("schema problems")?
+            .iter()
+            .any(|p| {
+                p.as_str().is_some_and(|p| {
+                    p.contains("paragraphs[1].evidence_keys must contain at least 1")
+                })
+            })
+    );
+    println!("First submission rejected despite exact retrieved Source citation: {rejected}");
+    let projection = f.host.operations().project_projection(f.project)?;
+    let work = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == f.work)
+        .ok_or("Work")?;
+    assert_eq!(
+        work_answers(work, "en", FixedLocale::English).explanation_state,
+        ExplanationState::Missing
+    );
+
+    // This explicitly separate opportunity does not rewrite the first failure.
+    let next = f.generate()?;
+    f.read(&next, f.source)?;
+    let args = f.record_args(&next, &valid)?;
+    success(&mut f.host, args)?;
+    let previous = f
+        .host
+        .operations()
+        .privacy_status(f.project)?
+        .managed_derived;
+    for variant in 0..5 {
+        let attempt = f.generate()?;
+        f.read(&attempt, f.source)?;
+        let mut invalid = valid.clone();
+        match variant {
+            0 => invalid.paragraphs[1].evidence_keys.clear(),
+            1 => invalid.paragraphs[1].evidence_keys = vec!["fabricated".into()],
+            2 => invalid.paragraphs[0].evidence_keys = vec!["next_step".into()],
+            3 => invalid.paragraphs.push(ExplanationParagraph {
+                question: ExplanationQuestion::Recommendation,
+                text: "Host advice is not a Work question.".into(),
+                evidence_keys: vec!["goal".into()],
+                citations: vec![],
+            }),
+            _ => {
+                let mut malformed = f.record_args(&attempt, &valid)?;
+                malformed["realization"]["paragraphs"][1]
+                    .as_object_mut()
+                    .ok_or("paragraph")?
+                    .remove("evidence_keys");
+                assert_eq!(call(&mut f.host, malformed)["result"]["isError"], true);
+                assert_eq!(
+                    previous,
+                    f.host
+                        .operations()
+                        .privacy_status(f.project)?
+                        .managed_derived
+                );
+                continue;
+            }
+        }
+        let args = f.record_args(&attempt, &invalid)?;
+        assert_eq!(
+            call(&mut f.host, args)["result"]["isError"],
+            true,
+            "variant {variant}"
+        );
+        assert_eq!(
+            previous,
+            f.host
+                .operations()
+                .privacy_status(f.project)?
+                .managed_derived
+        );
+    }
+    Ok(())
+}
+
+fn citation_for(
+    read: &Value,
+    field: &str,
+    selected: &str,
+    paragraph: &str,
+    claim: &str,
+    use_kind: ExplanationSourceUse,
+) -> Result<ExplanationCitation, Box<dyn Error>> {
+    let observation = &read["observation"];
+    let detail = &observation["detail"];
+    let body = if field == "body" {
+        &detail["body"]
+    } else {
+        &detail[field]["body"]
+    }
+    .as_str()
+    .ok_or("body")?;
+    let start = body.find(selected).ok_or("selected bytes")?;
+    let claim_start = paragraph.find(claim).ok_or("claim bytes")?;
+    let locator = if field == "body" {
+        "main.py"
+    } else {
+        "Check changed value"
+    };
+    Ok(ExplanationCitation {
+        source_id: read["citation_basis"]["source_id"]
+            .as_str()
+            .ok_or("source")?
+            .into(),
+        source_revision: 1,
+        observation_fingerprint: read["observation_fingerprint"]
+            .as_str()
+            .ok_or("fingerprint")?
+            .into(),
+        analysis_snapshot_id: observation["analysis_snapshot_id"]
+            .as_str()
+            .ok_or("analysis")?
+            .into(),
+        repository_snapshot_id: observation["repository_snapshot_id"]
+            .as_str()
+            .ok_or("repository")?
+            .into(),
+        repository_source_id: read["citation_basis"]["repository_source_id"]
+            .as_str()
+            .ok_or("repository source")?
+            .into(),
+        locator: locator.into(),
+        field: field.into(),
+        start_byte: start,
+        end_byte: start + selected.len(),
+        start_line: 1 + body[..start].bytes().filter(|b| *b == b'\n').count(),
+        end_line: 1 + body[..start + selected.len() - 1]
+            .bytes()
+            .filter(|b| *b == b'\n')
+            .count(),
+        range_sha256: explanation_text_hash(selected),
+        claim_start_byte: claim_start,
+        claim_end_byte: claim_start + claim.len(),
+        claim_sha256: explanation_text_hash(claim),
+        use_kind,
+    })
+}
+
+#[test]
+fn changed_work_preparation_exposes_actual_question_grounding_for_first_record(
+) -> Result<(), Box<dyn Error>> {
+    use std::time::Duration;
+    use volicord_context::*;
+    use volicord_operations::WorkCommandRequest;
+    let mut f = Fixture::with_goal("Change the returned value from 7 to 9 and check it.")?;
+    let before_source = f.source;
+    fs::write(
+        f.temp.path().join("repo/main.py"),
+        "def value():\n    return 9\n",
+    )?;
+    let analysis = f
+        .host
+        .operations()
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    f.source = f
+        .host
+        .operations()
+        .observe_work_file(FileObservationRequest {
+            byte_range: None,
+            project_id: f.project,
+            work_item_id: f.work,
+            analysis_snapshot_id: analysis,
+            path: "main.py".into(),
+            before_source_id: Some(before_source),
+            retain_seconds: 3600,
+        })?
+        .source_id;
+    let execution = f
+        .host
+        .operations()
+        .run_work_command(WorkCommandRequest {
+            project_id: f.project,
+            work_item_id: f.work,
+            analysis_snapshot_id: analysis,
+            command_label: "Check changed value".into(),
+            program: "python3".into(),
+            arguments: vec![
+                "-c".into(),
+                "from main import value; assert value() == 9; print('값: 9')".into(),
+            ],
+            timeout: Duration::from_secs(5),
+            retain_seconds: 3600,
+        })?
+        .source_id;
+    // Explicit authored canonical report through the Kernel's public producer;
+    // actual observed before/after bytes and execution remain separate Sources.
+    let canonical = f.host.operations().canonical_basis(f.project)?;
+    let mut store = Store::open(f.host.operations().layout().canonical_store())?;
+    let checkpoint = store
+        .record_checkpoint(
+            OperationId::from_bytes([0xa7; 16]),
+            f.project,
+            CheckpointDraft {
+                expected_project_revision: canonical.project.revision,
+                work_item_id: Some(f.work),
+                kind: CheckpointKind::Handoff,
+                goal: "Change the returned value from 7 to 9 and check it.".into(),
+                work_state: WorkState::Paused,
+                state_change: Some(
+                    "Changed value from 7 to 9; callers receive the new constant.".into(),
+                ),
+                source_basis: vec![f.source, before_source, execution],
+                changed_source_basis: vec![f.source],
+                changed_paths: vec!["main.py".into()],
+                applied_decisions: vec![],
+                verification: vec![VerificationFact {
+                    state: VerificationState::Passed,
+                    source_id: Some(execution),
+                    outcome: Some("Value assertion passed; stdout reports 값: 9.".into()),
+                }],
+                user_review: UserReviewFact {
+                    state: UserReviewState::NotRequested,
+                    source_id: None,
+                },
+                user_acceptance: UserAcceptanceFact {
+                    state: UserAcceptanceState::NotRequested,
+                    source_id: None,
+                },
+                known_limits: vec!["Caller integration was not executed.".into()],
+                non_goals: vec![],
+                open_questions: vec![],
+                next_step: "Check caller integration.".into(),
+                handoff_to: Some("caller integration follow-up".into()),
+            },
+        )?
+        .value;
+    drop(store);
+    let canonical = f.host.operations().canonical_basis(f.project)?;
+    let privacy = f.host.operations().privacy_status(f.project)?;
+    let generation = f.generate()?;
+    let rules = &generation["plan"]["question_grounding"];
+    let change_key = format!("change:{}", checkpoint.id);
+    assert_eq!(
+        rules,
+        &json!([
+            {"question":"purpose","required_any_evidence_keys":["goal"]},
+            {"question":"reported_change","required_any_evidence_keys":["result",change_key]},
+            {"question":"expected_effect","required_any_evidence_keys":["result",change_key]},
+            {"question":"verification","required_any_evidence_keys":["verification"]},
+            {"question":"next_step","required_any_evidence_keys":["next_step"]},
+            {"question":"limits","required_any_evidence_keys":[]}
+        ])
+    );
+    let current = f.read(&generation, f.source)?;
+    let before = f.read(&generation, before_source)?;
+    let command = f.read(&generation, execution)?;
+    assert_eq!(canonical, f.host.operations().canonical_basis(f.project)?);
+    assert_eq!(privacy, f.host.operations().privacy_status(f.project)?);
+    let mut realization = response(&generation, &current)?;
+    realization.paragraphs[0].text =
+        "The requested Work raises the returned value from 7 to 9.".into();
+    let changed =
+        "The Work reports changing the constant: previously it returned 7; now it returns 9.";
+    realization.paragraphs[1] = ExplanationParagraph {
+        question: ExplanationQuestion::ReportedChange,
+        text: changed.into(),
+        evidence_keys: vec!["result".into()],
+        citations: vec![
+            citation_for(
+                &before,
+                "body",
+                "return 7",
+                changed,
+                "previously it returned 7",
+                ExplanationSourceUse::BeforeCode,
+            )?,
+            citation_for(
+                &current,
+                "body",
+                "return 9",
+                changed,
+                "now it returns 9",
+                ExplanationSourceUse::CurrentCode,
+            )?,
+        ],
+    };
+    let effect = "The reported update changes the expected caller value to 9; the current function returns 9.";
+    realization.paragraphs[2] = ExplanationParagraph {
+        question: ExplanationQuestion::ExpectedEffect,
+        text: effect.into(),
+        evidence_keys: vec![change_key],
+        citations: vec![citation_for(
+            &current,
+            "body",
+            "return 9",
+            effect,
+            "the current function returns 9",
+            ExplanationSourceUse::CurrentCode,
+        )?],
+    };
+    let verified = "기록된 검증은 값 검사를 통과했다. 관측 stdout은 값: 9이다. Caller integration remains unverified.";
+    realization.paragraphs[3] = ExplanationParagraph {
+        question: ExplanationQuestion::Verification,
+        text: verified.into(),
+        evidence_keys: vec!["verification".into(), format!("limits:{}", checkpoint.id)],
+        citations: vec![citation_for(
+            &command,
+            "stdout",
+            "값: 9",
+            verified,
+            "관측 stdout은 값: 9",
+            ExplanationSourceUse::ObservedExecution,
+        )?],
+    };
+    realization.paragraphs[4].text =
+        "The recorded next action is to check caller integration.".into();
+    let first = f.record_args(&generation, &realization)?;
+    let retained = success(&mut f.host, first)?;
+    assert_eq!(
+        retained["explanation"]["realization"],
+        serde_json::to_value(&realization)?
+    );
+    assert_eq!(
+        retained["explanation"]["semantic_approval_status"],
+        "not_established"
+    );
+    let projection = f.host.operations().project_projection(f.project)?;
+    let work = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == f.work)
+        .ok_or("Work")?;
+    let answers = work_answers(work, "en", FixedLocale::English);
+    assert_eq!(answers.explanation_state, ExplanationState::Current);
+    assert!(answers.text().contains("관측 stdout은 값: 9"));
+    assert_eq!(canonical, f.host.operations().canonical_basis(f.project)?);
+
+    let previous = f
+        .host
+        .operations()
+        .privacy_status(f.project)?
+        .managed_derived;
+    let other = f
+        .host
+        .operations()
+        .record_current_host_user_context(
+            f.project,
+            "fixture".into(),
+            "foreign-work".into(),
+            "Inspect unrelated work.".into(),
+            ContextItemRole::Goal,
+            "Inspect unrelated work.".into(),
+        )?
+        .context_item_id;
+    let mut store = Store::open(f.host.operations().layout().canonical_store())?;
+    let foreign_checkpoint = store
+        .record_checkpoint(
+            OperationId::from_bytes([0xa8; 16]),
+            f.project,
+            CheckpointDraft {
+                expected_project_revision: canonical.project.revision,
+                work_item_id: Some(other),
+                kind: checkpoint.kind,
+                goal: "Inspect unrelated work.".into(),
+                work_state: checkpoint.work_state,
+                state_change: Some("Unrelated report with overlapping paths.".into()),
+                source_basis: checkpoint.source_basis.clone(),
+                changed_source_basis: checkpoint.changed_source_basis.clone(),
+                changed_paths: checkpoint.changed_paths.clone(),
+                applied_decisions: vec![],
+                verification: checkpoint.verification.clone(),
+                user_review: checkpoint.user_review.clone(),
+                user_acceptance: checkpoint.user_acceptance.clone(),
+                known_limits: vec![],
+                non_goals: vec![],
+                open_questions: vec![],
+                next_step: "Continue unrelated work.".into(),
+                handoff_to: Some("unrelated".into()),
+            },
+        )?
+        .value;
+    drop(store);
+    for question in 0..7 {
+        let attempt = f.generate()?;
+        for source in [f.source, before_source, execution] {
+            f.read(&attempt, source)?;
+        }
+        let mut wrong = realization.clone();
+        if question < 5 {
+            wrong.paragraphs[question].evidence_keys =
+                vec![if question == 0 { "result" } else { "goal" }.into()];
+        } else {
+            wrong.paragraphs[1].evidence_keys = vec![if question == 5 {
+                "latest_state".into()
+            } else {
+                format!("change:{}", foreign_checkpoint.id)
+            }];
+        }
+        let args = f.record_args(&attempt, &wrong)?;
+        assert_eq!(
+            call(&mut f.host, args)["result"]["isError"],
+            true,
+            "question {question}"
+        );
+        assert_eq!(
+            previous,
+            f.host
+                .operations()
+                .privacy_status(f.project)?
+                .managed_derived
+        );
+    }
+    Ok(())
 }
 
 #[test]

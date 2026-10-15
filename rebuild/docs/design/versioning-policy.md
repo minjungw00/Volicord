@@ -314,6 +314,11 @@ with the plan's evidence/instructions/language; callers must prepare afresh. No
 old-plan conversion, alternate retained decoder or version-dependent limit exists.
 Historical campaign bytes must not be rewritten to supply current preparation fields;
 fresh validation uses fresh disposable inputs, distinct from original observations.
+Current ephemeral preparation additionally requires `question_grounding`, derived
+from the subject and actual evidence by the same rule used at admission. This and
+the clarified instructions change preparation fingerprints, so earlier retained
+interpretations may read Stale; they are not rewritten, deleted or rebound. No
+realization, retained-content, canonical or Privacy schema version changes.
 
 ## 14. Non-goals
 
