@@ -82,7 +82,7 @@ async function inspect(page, fixture, locale, source, baseline) {
     await citation.focus(); await page.keyboard.press('Enter');
     const id = await citation.getAttribute('href');
     assert.equal(await page.evaluate(() => '#' + document.activeElement.id), id, 'keyboard reaches exact Source');
-    const source = page.locator(`[id=${JSON.stringify(id.slice(1))}]`);
+    const source = page.locator(`[id=${JSON.stringify(id.slice(1))}]`).locator('xpath=ancestor::figure');
     assert.equal(await source.locator('code').textContent(), 'def value():\n    return 5\n');
     assert.ok((await source.innerText()).includes(locale === 'en' ? 'Before-state was not retained.' : '이전 상태가 보존되지 않았습니다.'));
     assert.equal(await detail.locator('.explanation-grounding').getAttribute('open'), null, 'audit secondary');

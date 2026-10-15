@@ -205,3 +205,81 @@ button { width: max-content; min-height: 2.75rem; cursor: pointer; }
    pre-wrap on code; scrolling preserves both indentation and complete lines. */
 .source-excerpt pre { overflow-wrap: normal; }
 .source-excerpt pre code { white-space: inherit; overflow-wrap: normal; font-size: inherit; }
+
+/* Reader documents: a quiet page, concise Work rows and a wider Source margin. */
+:root { --accent: #245d51; --ink: #1d302b; --muted: #586761; --line: #d8dfda; --soft: #f5f7f4; background: #f5f5f1; color: #263831; }
+.viewer-header { padding-top: 1.2rem; padding-bottom: 1.25rem; }
+.viewer-header h1 { font-size: 1rem; font-weight: 550; color: var(--muted); margin-top: .5rem; letter-spacing: 0; }
+.brand { letter-spacing: .12em; }
+main > section { border-radius: .35rem; border-color: #e1e5df; padding: clamp(1.1rem, 3vw, 2.75rem); }
+.work-list { display: block; margin: .25rem 0 1.5rem; }
+.work-summary { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 1.5rem 0; background: transparent; }
+.work-summary h4 { font-size: clamp(1.2rem, 2vw, 1.55rem); line-height: 1.5; margin: 0 0 .3rem; max-width: 40ch; }
+.work-summary h4 a { text-decoration-thickness: 1px; text-decoration-color: #9eb7ab; }
+.work-summary .work-synopsis { max-width: 68ch; font-size: 1.05rem; line-height: 1.85; margin: .8rem 0; }
+.work-summary .work-identity { font-size: .75rem; letter-spacing: .01em; }
+.work-summary .summary-status { font-size: .82rem; color: var(--muted); margin: .4rem 0; }
+.work-summary .reader-limit { max-width: 68ch; border-left: 2px solid #b18a45; padding-left: .85rem; font-size: .9rem; color: #6a542e; }
+.summary-records { border: 0; background: transparent; padding: .35rem 0; font-size: .85rem; }
+.work-item:not(.work-summary) { border: 0; border-radius: 0; background: transparent; padding: 0; }
+.work-item:not(.work-summary) > h3, .code-work-meaning > h3 { font-size: clamp(1.6rem, 2.6vw, 2.35rem); line-height: 1.4; letter-spacing: -.035em; margin: .9rem 0 .65rem; max-width: 35ch; }
+.work-item > .work-state { margin: .5rem 0; }
+.work-goal { max-width: 72ch; background: transparent; padding: .5rem .7rem; font-size: .82rem; }
+.work-goal blockquote { font-size: .95rem; line-height: 1.85; margin: 1rem .25rem; white-space: pre-line; }
+.work-explanation { max-width: none; }
+.interpretation-label { color: var(--muted); font-size: .8rem; margin-top: 1rem; }
+.reader-lead { max-width: 62ch; font-size: 1.18rem; line-height: 1.85; color: #3e5d50; margin: 1rem 0; }
+.reader-status { display: flex; flex-wrap: wrap; gap: .2rem 1.25rem; max-width: 74ch; padding: .75rem 0; margin: .5rem 0; border-top: 1px solid var(--line); color: var(--muted); font-size: .8rem; }
+.reader-status p { margin: .2rem 0; }
+.reader-status [data-question=VerificationCoverage], .reader-status [data-question=HistoricalAdversity], .reader-status [data-question=RecordedLimits], .reader-status [data-question=SourceEvidenceGap] { flex-basis: 100%; color: #785629; }
+.answer-section { max-width: 70ch; padding: 1.65rem 0; border-bottom: 0; }
+.answer-section h4 { font-size: .92rem; margin: 0 0 .65rem; letter-spacing: .01em; }
+.answer-section p { line-height: 1.9; font-size: 1.02rem; }
+.answer-section[data-section=Limits] { border-left: 3px solid #b18a45; background: #fcfaf3; padding: 1rem 1.15rem; margin: 1.1rem 0; }
+.answer-section[data-section=Comparison] > p { padding: .8rem 0; margin: 0; border-top: 1px solid var(--line); }
+.source-citation { padding: .3rem 0; border: 0; color: #4d7061; font-size: .8rem; margin: .1rem .7rem .2rem 0; max-width: 100%; }
+.explanation-code { margin-top: 2rem; padding-top: 1.75rem; border-top: 1px solid var(--line); }
+.source-excerpt { border-radius: .25rem; border: 1px solid var(--line); padding: 1.2rem; margin: 1.5rem 0; }
+.source-excerpt figcaption { padding-bottom: .75rem; border-bottom: 1px solid var(--line); }
+.source-reading-point { background: #f1f6f0; border-left: 3px solid #719a7e; padding: .8rem 1rem; margin: 1rem 0; }
+.source-reading-point blockquote { margin: .3rem 0 .75rem; font-size: .95rem; line-height: 1.8; }
+.source-reading-point .record-meta { margin: 0; font-size: .75rem; }
+.return-to-claim { display: inline-block; font-size: .85rem; padding: .3rem 0; }
+.source-reading-point:target, [id^=reader-]:target { outline: 2px solid #507d63; outline-offset: .3rem; scroll-margin-top: 1.5rem; }
+.source-excerpt pre { font-size: .86rem; line-height: 1.8; background: #f5f7f4; border-radius: 0; padding: 1rem; overscroll-behavior: contain; }
+.source-citation-basis { font-size: .78rem; background: transparent; border: 0; padding: .5rem 0; }
+.source-citation-basis pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.fact-states { font-size: .85rem; border-top: 1px solid var(--line); margin-top: 1.5rem; }
+.fact-states p { background: transparent; padding: .4rem 0; }
+.code-work-meaning { border: 0; background: transparent; padding: 0; }
+@supports selector(:has(*)) {
+  .source-reading-point { display: none; }
+  .source-reading-point:target, .source-excerpt:not(:has(.source-reading-point:target)) .source-reading-point:first-of-type { display: block; }
+}
+@media (max-width: 40rem) {
+  .viewer-shell { padding: 0 .6rem 1.5rem; }
+  .viewer-header { padding: .8rem 1rem; }
+  .viewer-header h1 { font-size: .85rem; }
+  main > section { padding: 1.1rem; }
+  .work-summary { padding: 1.25rem 0; }
+  .work-summary h4 { font-size: 1.22rem; }
+  .reader-lead { font-size: 1.08rem; line-height: 1.9; }
+  .reader-status { display: block; }
+  .answer-section { padding: 1.3rem 0; }
+  .answer-section p { font-size: .98rem; }
+  .source-excerpt { padding: .8rem; margin: 1.25rem -.35rem; }
+  .source-excerpt pre { padding: .75rem; font-size: .8rem; max-height: 27rem; }
+  .source-reading-point { padding: .7rem; }
+}
+.lead-citations { max-width: 70ch; background: transparent; border: 0; padding: .15rem 0; margin: .3rem 0; font-size: .75rem; }
+.lead-citations summary { font-weight: 500; color: var(--muted); }
+.source-excerpt pre > code { white-space: pre; overflow-wrap: normal; }
+section[id^=work-] > h2 { color: var(--muted); font-size: .85rem; font-weight: 600; margin-bottom: .75rem; }
+.subject-navigation { font-size: .85rem; margin: .25rem 0 1rem; }
+.work-identity { border: 0; background: transparent; padding: .25rem 0; margin: .25rem 0; font-size: .8rem; color: var(--muted); }
+.work-identity summary { font-weight: 500; }
+section[id^=work-] > h2 { display: inline-block; margin-right: 1.25rem; }
+.subject-navigation { display: inline-block; }
+@media (max-width: 40rem) {
+  .viewer-navigation > details { padding: .35rem .5rem; font-size: .8rem; }
+}

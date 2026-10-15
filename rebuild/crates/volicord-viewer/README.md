@@ -61,12 +61,14 @@ retain historical verification coverage alongside the actual recorded direction.
 Overview also keeps current open questions, canonical risks and unresolved Work
 association visible before next actions. There is no universal Material limitations
 section; unrelated capability failures do not precede ordinary Work meaning.
-Work uses a neutral localized “Recorded Work” heading because the read model has
-no authored short title. With current prose, an explicitly labeled host interpretation
-provides the ordinary problem paragraph and a native opening disclosure keeps the
-complete Goal quotation and Source basis. Without prose, the original Goal is ordinary
-reading beneath that label. Task instructions are never clipped into a title; Purpose
-is not duplicated as a headline. No problem, outcome or translation is invented.
+Work rows use an authored derived heading and synopsis when available. Detail is a
+reader document: lead, critical limits, supported narrative, observations/comparisons
+and claim-linked code guidance. Recorded state/check/review/acceptance facts retain
+their own authority and chronology. Missing heading or explanation keeps the full
+original Goal and exact distinguishing Work/revision metadata; no Goal clipping or
+first-paragraph result is synthesized. Original-language quotations remain accessible
+at the opening. Titles and leads are visibly host interpretation, never canonical
+renames or independently approved achievements.
 On narrow screens, compact language/tools disclosures keep ordinary Work reading
 reachable. Offline snapshots retain a visible read-only notice and put their Evidence
 navigation in the same native disclosure hierarchy.
@@ -316,14 +318,14 @@ When paragraphs share a code range, its disclosure retains each paragraph's
 question, ordinal, generated claim quotation and exact citation rather than
 showing only the first claim. These quotations remain interpretations.
 The same bounded excerpt basis serves CLI/MCP, live Viewer and offline snapshots.
-Viewer headings use the localized neutral “Recorded Work” label. The complete
-original Goal stays accessible at the opening; generated Purpose appears once as
-attributed ordinary explanation. The optional API `reading_title` remains derived
-interpretation, not an authored or semantically certified short title. Output fingerprints
-distinguish different interpretations of one plan.
-Claim classifications and matching hashes cannot certify causal meaning and do
-not authorize an invented effect heading. A broad recorded Goal remains a broad
-request quotation beside the neutral label; generated wording cannot supply title authority.
+Viewer headings and the optional API `reading_title` select only the authored Heading
+unit; synopsis has its own role. They are grounded derived wording, not canonical
+short-title authority. The complete Goal stays accessible at the opening. Every
+citation selects its own visible claim beside the exact Source range, with a native
+return link to that unit. Shared code ranges retain separate claims/return points;
+realization-bound fragments and browser history preserve context. Current Work and
+Code use the same prose renderer, including observations/comparisons and guidance.
+Self-contained snapshots share that document and retain exact internal destinations.
 Before-state needs an explicit observed pair; current code
 alone does not prove a patch, execution success or user approval. Missing host
 capability/authority stays incomplete with recorded facts readable. See the

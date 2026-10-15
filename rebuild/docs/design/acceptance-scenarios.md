@@ -1011,6 +1011,18 @@ and total/displayed/omitted meaning. Automated
 fixtures and disposable prototypes do not establish human-observed comprehension,
 V11 qualification, a naturalistic campaign or Phase 9 readiness.
 
+Reader-document acceptance additionally follows two distinct preserved-source Works:
+identify each by its useful derived heading/synopsis, read its problem and mechanism,
+inspect conditions/observations and critical limits, open the exact claim-linked code,
+and return to that same unit using native controls/history. Change, test-only and
+no-change work need no invented achievement or filler answers. Heading, synopsis,
+comparison and reading guidance share all grounding/language/lifecycle checks. Missing
+or unusable text preserves original Goal, exact identity and accurate availability.
+Desktop and 390/320 px code/prose must be deliberately readable. An authored B/Click
+review control and browser checks supply concrete technical review material; they
+never establish autonomous generation, new historical authority or actual human
+acceptance. User assessment remains pending until received.
+
 ## O. Degraded analysis, provider failure와 crash recovery
 
 ### 시작 상태

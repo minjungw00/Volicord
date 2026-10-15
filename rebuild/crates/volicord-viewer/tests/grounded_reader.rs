@@ -361,6 +361,10 @@ fn overview_reads_available_work_before_missing_project_context() -> Result<(), 
                         .ok_or("empty outcomes")?
                 );
                 assert!(overview.contains("data-title-basis=\"neutral-label\""));
+                assert!(
+                    !overview.contains("data-question=\"Synopsis\""),
+                    "Purpose-only controls cannot acquire a synthesized synopsis"
+                );
                 assert!(overview.contains(f["goal"].as_str().ok_or("original Goal")?));
                 assert!(overview.contains("lang=\"\" data-statement-role=\"verified-canonical\""));
                 assert!(overview.contains("data-work-state=\"open\""));
@@ -546,8 +550,10 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
                 .count(),
             1
         );
-        assert!(page.contains("Current observed code · main.py:1–2</a>"));
-        assert!(page.contains("Change / investigation · Current observed code · main.py:1–2</a>"));
+        assert!(page.contains("Observed file in selected snapshot · main.py:1–2</a>"));
+        assert!(page.contains(
+            "Change / investigation · Observed file in selected snapshot · main.py:1–2</a>"
+        ));
         assert!(page.contains(
             "<p class=\"source-purpose\">Cited in interpretation: Change / investigation</p>"
         ));
@@ -560,8 +566,8 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         let korean = ViewerAdapter::new(ops(&f)?)
             .render(&korean_request, "test-form-authenticity")?
             .html;
-        assert!(korean.contains("현재 관측 코드 · main.py:1–2</a>"));
-        assert!(korean.contains("변경 / 조사 · 현재 관측 코드 · main.py:1–2</a>"));
+        assert!(korean.contains("선택 스냅샷에서 관측한 파일 · main.py:1–2</a>"));
+        assert!(korean.contains("변경 / 조사 · 선택 스냅샷에서 관측한 파일 · main.py:1–2</a>"));
         assert!(
             korean.contains("<p class=\"source-purpose\">해석에서 인용한 내용: 변경 / 조사</p>")
         );
@@ -1711,10 +1717,12 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
             }
             assert_eq!(full.matches("citation: ExplanationCitation").count(), 3);
             assert_eq!(other.matches("citation: ExplanationCitation").count(), 1);
+            assert_eq!(full.matches("class=\"return-to-claim\"").count(), 3);
+            assert_eq!(other.matches("class=\"return-to-claim\"").count(), 1);
             assert_eq!(
                 full.matches("data-statement-role=\"generated-interpretation\"")
                     .count(),
-                4 // Three exact bindings and the ordinary attributed claim.
+                6 // Three exact bindings and three separately selectable attributed claims.
             );
             assert_eq!(
                 other
@@ -1946,5 +1954,97 @@ fn command_observation_is_independent_of_checkpoint_verification_on_public_reade
             .iter()
             .all(|a| a["question"] != "SourceExecutionObservation"));
     }
+    Ok(())
+}
+
+#[test]
+fn authored_heading_synopsis_and_reading_points_share_public_lifecycle(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    record(&f, &mut host)?;
+    let records = ops(&f)?.privacy_status(project(&f)?)?.managed_derived;
+    let mut retained: RetainedExplanation = serde_json::from_str(
+        records
+            .iter()
+            .find_map(|r| r.content.as_deref())
+            .ok_or("retained output")?,
+    )?;
+    let template = retained.realization.paragraphs[1].clone();
+    let cases = [
+        (ExplanationQuestion::Heading, "A constant return, examined"),
+        (ExplanationQuestion::Synopsis, "The observed definition returns 5. This investigation establishes no execution or patch."),
+        (ExplanationQuestion::Purpose, "Inspect the observed return value before recommending a change."),
+        (ExplanationQuestion::ReadingPoint, "Read the return expression to see the constant 5."),
+        (ExplanationQuestion::Comparison, "The file observation has no retained before-state; there is no patch comparison."),
+        (ExplanationQuestion::Limits, "Execution and downstream effects remain unverified."),
+    ];
+    retained.realization.paragraphs = cases
+        .into_iter()
+        .map(|(question, text)| {
+            let mut p = template.clone();
+            p.question = question;
+            p.text = text.into();
+            for c in &mut p.citations {
+                c.claim_start_byte = 0;
+                c.claim_end_byte = text.len();
+                c.claim_sha256 = explanation_text_hash(text);
+            }
+            p
+        })
+        .collect();
+    let generation = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"generate","project_id":f["project"],"work_item_id":f["work"],"language":"en"}),
+    )?;
+    call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"read_source","project_id":f["project"],"work_item_id":f["work"],"generation_id":generation["generation_id"],"source_id":f["after"]}),
+    )?;
+    call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"record","project_id":f["project"],"work_item_id":f["work"],"generation_id":generation["generation_id"],"realization":retained.realization}),
+    )?;
+    let answers = public_answers(&f, &mut host)?;
+    assert_eq!(answers["prose"][0]["question"], "Heading");
+    assert_ne!(
+        answers["provenance"]["realization_fingerprint"],
+        explanation_text_hash("")
+    );
+    for page in [
+        get(&f)?,
+        ViewerAdapter::new(ops(&f)?)
+            .render_snapshot(&request(&f)?, TimestampMicros::from_unix_micros(1))?
+            .html,
+    ] {
+        assert!(page.contains("data-title-basis=\"generated-interpretation\""));
+        assert!(page.contains("data-question=\"Heading\" data-content-language=\"en\">A constant return, examined</h3>"));
+        assert!(page.contains("class=\"reader-lead\""));
+        assert!(
+            page.find("data-section=\"Limits\"").ok_or("limit")?
+                < page.find("data-section=\"Purpose\"").ok_or("problem")?
+        );
+        assert!(page.contains("class=\"return-to-claim\""));
+        assert!(page.contains(f["goal"].as_str().ok_or("original Goal")?));
+    }
+    ops(&f)?.delete_work_source_observation(
+        project(&f)?,
+        work(&f)?,
+        SourceId::from_bytes(
+            hex_bytes(f["after"].as_str().ok_or("Source")?)?
+                .try_into()
+                .map_err(|_| "Source bytes")?,
+        ),
+    )?;
+    let answers = public_answers(&f, &mut host)?;
+    assert!(answers["provenance"].is_null());
+    let page = get(&f)?;
+    assert!(!page.contains("A constant return, examined"));
+    assert!(!page.contains("data-question=\"Synopsis\""));
+    assert!(page.contains(f["goal"].as_str().ok_or("Goal")?));
     Ok(())
 }

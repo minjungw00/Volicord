@@ -2876,7 +2876,7 @@ state through the complete restart consumer and reject revived generated content
 
 Actual `grounded_reader::overview_reads_available_work_before_missing_project_context`
 seeds a long mixed-language Goal, no Project Purpose and no Checkpoint, with and
-without a labeled authored interpretation. Independent assertions require neutral
+without a labeled authored interpretation. Without an authored Heading unit, independent assertions require neutral
 localized headings, the exact full Goal quotation and its original-language boundary,
 Open Work and unchanged canonical basis in actual HTTP and snapshot readers.
 `project_overview_browser.cjs` exercises these actual Runtime fixtures at desktop
@@ -2928,3 +2928,26 @@ Actual CLI/MCP shared answers, HTTP response and offline snapshot distinguish th
 observations from missing Checkpoint verification, Open Work and absent acceptance.
 Explicit Source deletion removes the dependent observation. Existing contradictory
 Work-history and later-change controls verify independent chronology and coverage.
+
+### Source-derived reader-document review
+
+The maintained `seed_reader_document_review.py` consumes an explicit external authored
+input (wording, evidence keys, exact original file hashes and ranges), creates only
+fresh labeled test controls under an ignored directory, and uses actual MCP
+initialize/context/analyze/observe/prepare/read/record. It is not a Product store,
+historical import, autonomous generator or unvalidated recording route. Original
+assets/feedback are read-only. Historical Work identity is retained as control
+provenance separately from fresh Product identity; historical state, checks and
+acceptance are never renewed.
+
+`reader_document_review.cjs` drives actual Overview-to-Work entry links, Code, native
+citation/return/history, local snapshots, desktop/390/320 widths and code focus/scroll.
+Expectations come from the frozen authored input and original Source bytes, not
+renderer-generated snapshots. It compares logical SQLite dumps and derived identities
+before/after navigation/export, binds binaries and retains complete child streams,
+numeric exits/termination and result files. Offline reads disable network and keep
+script/form-free internal navigation. Native zoom, real screen-reader use and human
+comprehension are separate unavailable/pending observations, not inferred from viewport
+or DOM assertions. `grounded_reader::authored_heading_synopsis_and_reading_points_share_public_lifecycle`
+covers actual CLI/MCP answers, HTTP and snapshots, and dependency deletion removing
+headings, leads and code together. The existing negative/range/lifecycle controls remain.

@@ -246,6 +246,11 @@
         [
           "viewer",
           "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
+          "authored_heading_synopsis_and_reading_points_share_public_lifecycle"
+        ],
+        [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
           "command_observation_is_independent_of_checkpoint_verification_on_public_readers"
         ],
         [

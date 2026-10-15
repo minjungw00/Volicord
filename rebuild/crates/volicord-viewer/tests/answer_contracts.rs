@@ -105,13 +105,17 @@ fn korean_visible_state_answers_are_localized() -> Result<(), Box<dyn std::error
         &server(&f),
         &format!("/?view=work&work={}&locale=ko", f.goals["older"]),
     );
-    let states = page
-        .split("class=\"fact-states\"")
-        .nth(1)
-        .ok_or("states")?
-        .split("</div>")
-        .next()
-        .ok_or("state end")?;
+    // Independent dimensions now appear at the opening and in the remaining
+    // facts panel. Inspect only those ordinary panels, not raw audit wire values.
+    let states = ["reader-status", "fact-states"]
+        .into_iter()
+        .map(|class| {
+            page.split(&format!("class=\"{class}\""))
+                .nth(1)
+                .and_then(|s| s.split("</div>").next())
+                .unwrap_or("")
+        })
+        .collect::<String>();
     for expected in ["완료", "실행하지 않음", "요청하지 않음", "거부됨"] {
         assert!(states.contains(expected), "missing {expected}: {states}");
     }

@@ -43,13 +43,15 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
         for key in ["change", "verification_only", "later_change"] {
             assert!(page.contains(&fixture.checkpoints[key].to_string()));
         }
-        let states = page
-            .split("class=\"fact-states\"")
-            .nth(1)
-            .ok_or("states")?
-            .split("</dl>")
-            .next()
-            .ok_or("end")?;
+        let states = ["reader-status", "fact-states"]
+            .into_iter()
+            .map(|class| {
+                page.split(&format!("class=\"{class}\""))
+                    .nth(1)
+                    .and_then(|s| s.split("</div>").next())
+                    .unwrap_or("")
+            })
+            .collect::<String>();
         for expected in if locale == "en" {
             ["completed", "not run", "not requested", "rejected"]
         } else {

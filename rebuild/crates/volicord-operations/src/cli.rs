@@ -1529,6 +1529,9 @@ fn render_field(
                 )?;
             }
             for a in answers[section].as_array().into_iter().flatten() {
+                if !facts && a["question"] == "Heading" && value["reading_title"].is_string() {
+                    continue; // This authored heading was already printed above.
+                }
                 if let Some(text) = a["text"].as_str() {
                     write_line(stdout, format_args!("{padding}  {text}"))?;
                 }

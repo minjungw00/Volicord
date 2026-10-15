@@ -1602,6 +1602,12 @@ fn every_reader_unit_is_grounded_atomic_and_invalidated_through_mcp() -> Result<
         assert_eq!(answers.source_excerpts[0].text, "return 7");
         if role == Heading {
             assert_eq!(answers.reading_title(), Some(text));
+        } else {
+            assert_eq!(
+                answers.reading_title(),
+                None,
+                "another unit is not an authored heading"
+            );
         }
         f.host
             .operations()

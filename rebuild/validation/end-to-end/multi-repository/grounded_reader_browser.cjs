@@ -19,7 +19,7 @@ async function checkSources(work, item, navigation=false) {
     const source=work.locator(`.source-excerpt[data-source-id="${expected.source_id}"]`);
     assert.equal(await source.count(),1,'exact current Source identity');
     assert.equal(await source.locator('code').textContent(),expected.text,'actual current code bytes');
-    assert.equal(await source.locator('.source-meaning').getAttribute('data-statement-role'), 'generated-interpretation', 'purpose remains a host claim');
+    assert.equal(await source.locator('.source-reading-point').first().getAttribute('data-statement-role'), 'generated-interpretation', 'purpose remains a host claim');
     assert.equal(await source.locator('pre[role=region]').getAttribute('tabindex'), '0', 'keyboard can enter code scroll region');
     assert.equal(await source.locator('code').evaluate(n=>getComputedStyle(n).whiteSpace), 'pre', 'code lines preserve indentation without breaking identifiers');
     assert.equal(await source.locator('code').evaluate(n=>getComputedStyle(n).overflowWrap), 'normal', 'code identifiers do not inherit prose wrapping');
@@ -30,20 +30,19 @@ async function checkSources(work, item, navigation=false) {
     if (expected.use_kind && navigation) {
       const label=expected.use_kind==='before_code'
         ? ['Before: historical observation','이전: 과거 관측']
-        : ['Current observed code','현재 관측 코드'];
-      const target=await source.getAttribute('id');
-      const links=work.locator(`a.source-citation[href="#${target}"]`);
-      assert.ok(await links.count()>0,'exact Source has a citation link');
-      assert.ok((await links.allTextContents()).every(text=>label.some(term=>text.includes(` · ${term} · `))),'purpose and current/historical evidence use remain distinct');
+        : ['Observed file in selected snapshot','선택 스냅샷에서 관측한 파일'];
+      const targets=await source.locator('.source-reading-point[id]').evaluateAll(nodes=>nodes.map(n=>'#'+n.id));
+      const links=await work.locator('a.source-citation').evaluateAll((nodes,targets)=>nodes.filter(n=>targets.includes(n.getAttribute('href'))).map(n=>n.textContent),targets);
+      assert.ok(links.length>0,'exact Source has a claim-specific citation link');
+      assert.ok(links.every(text=>label.some(term=>text.includes(` · ${term} · `))),'purpose and current/historical evidence use remain distinct');
     }
   }
 }
 async function checkCodeMeaning(page, language, expected) {
-  const questions = new Set(['Purpose','ReportedChange','ExpectedEffect','Limits']);
-  const original = expected.prose.filter(answer=>questions.has(answer.question));
+  const original = ['Synopsis','Limits'].flatMap(role=>expected.prose.filter(a=>a.question===role)).concat(expected.prose.filter(a=>!['Heading','Synopsis','Limits'].includes(a.question)));
   // Citation details also carry data-question, on an enclosing section whose
   // claim quotation has its own language. Inspect the ordinary reading paragraphs.
-  const paragraphs = page.locator('.code-work-meaning > p[data-question]');
+  const paragraphs = page.locator('.code-work-meaning .answer-section > p[data-question], .code-work-meaning > p[data-question]');
   assert.deepEqual(await paragraphs.evaluateAll(nodes=>nodes.map(n=>n.dataset.question)),
     original.map(answer=>answer.question),'Code preserves every reading paragraph in order');
   assert.deepEqual(await paragraphs.allTextContents(),original.map(answer=>answer.text),
@@ -78,7 +77,7 @@ async function check(page, item, language, expected, offline) {
   assert.equal(await work.locator('.explanation-grounding').getAttribute('open'), null, 'closed diagnostic material');
   assert.ok(await work.locator('.fact-states').evaluate(n => !!(n.compareDocumentPosition(n.parentElement.querySelector('.explanation-code')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'verification and direction precede code');
   const boundClaim = expected.prose.flatMap(p=>p.citations.map(c=>Buffer.from(p.text).subarray(c.claim_start_byte,c.claim_end_byte).toString('utf8')))[0];
-  assert.equal(await source.locator('.source-purpose-claim').textContent(), boundClaim, 'exact bound behavior claim explains code purpose');
+  assert.equal(await source.locator('.source-purpose-claim').first().textContent(), boundClaim, 'exact bound behavior claim explains code purpose');
   if (item.before) {
     const beforeLink = source.locator('.comparison-navigation a');
     assert.equal(await beforeLink.count(), 1, 'explicit retained comparison navigation');
@@ -151,8 +150,8 @@ async function check(page, item, language, expected, offline) {
           assert.equal(await page.locator('.code-work-meaning h3').getAttribute('data-title-basis'),'neutral-label','Code title preserves original Goal basis');
           const codeParagraphs=await checkCodeMeaning(page,language,expected);
           const questionLabels=language==='ko'
-            ? {Purpose:'목표 / 문제',ReportedChange:'변경 / 조사',ExpectedEffect:'결과 / 기대 효과',Limits:'남은 불확실성'}
-            : {Purpose:'Goal / problem',ReportedChange:'Change / investigation',ExpectedEffect:'Result / expected effect',Limits:'Remaining uncertainty'};
+            ? {Purpose:'문제',ReportedChange:'변경 / 조사',ExpectedEffect:'결과 / 기대 효과',Limits:'남은 불확실성'}
+            : {Purpose:'Problem',ReportedChange:'Change / investigation',ExpectedEffect:'Result / expected effect',Limits:'Remaining uncertainty'};
           const questions=expected.prose.map(a=>a.question).filter(q=>questionLabels[q]);
           const sections=questions.filter((q,index)=>index===0 || q!==questions[index-1]).map(q=>questionLabels[q]);
           const headings=(await page.locator('.code-work-meaning h4').allTextContents()).filter(label=>Object.values(questionLabels).includes(label));
@@ -186,7 +185,7 @@ async function check(page, item, language, expected, offline) {
           }
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-citation')),'citation reachable with Tab');
           await page.keyboard.press('Enter');
-          assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-excerpt')),'Enter focuses exact code target');
+          assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-reading-point')),'Enter focuses the exact claim beside its code');
           for (let step=0;step<12;step++) {
             await page.keyboard.press('Tab');
             if (await page.evaluate(()=>document.activeElement.matches('.source-excerpt pre[role=region]'))) break;
@@ -218,7 +217,7 @@ async function check(page, item, language, expected, offline) {
           }
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-citation')),'offline citation reachable with Tab');
           await page.keyboard.press('Enter');
-          assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-excerpt')),'offline Enter focuses exact code target');
+          assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-reading-point')),'offline Enter focuses the exact claim beside its code');
           const source=page.locator(`.source-excerpt[data-source-id="${item.after}"] code`);
           const original=await source.textContent();
           await source.evaluate(n=>n.textContent='fabricated control');

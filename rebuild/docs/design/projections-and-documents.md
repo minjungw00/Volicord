@@ -181,23 +181,23 @@ The absence of Purpose, category totals/omissions, unresolved grouping and Check
 availability remain inspectable. Narrow live/offline layouts share these components;
 snapshot Evidence navigation uses a closed native disclosure and the read-only notice
 remains visible. No output wording, binding, canonical state or generation changes.
-There is no separately authored short Work title in the current read model.
-Viewer headings therefore use the localized neutral `Recorded Work` label with
-`neutral-label` metadata. A task prefix or unassessed generated Purpose cannot
-supply title authority. The opening retains the complete original Goal and its
-identity/revision/Source basis: as ordinary quotation when interpretation is absent,
-or a native disclosure beside the generated problem paragraph when present.
-No sentence extraction, translation, arbitrary character clipping, canonical rename
-or new title store is introduced. Original Goal language is not inferred from the
-requested explanation language. Host interpretation is visibly labeled in ordinary
-reading, including the lack of independent semantic approval. Generated paragraph order, text and citations
-remain unchanged. Citation links identify current observed code, historical before
-code or observed command output before the exact locator, and explanation-authority
-details remain inspectable in a native
-disclosure. Missing Source, failure and state limitations retain their existing
-ordinary-reading treatment. The current route/CLI/snapshot contract is maintained
-in the [Viewer README](../../crates/volicord-viewer/README.md). Explanation-level
-selection is removed; whole-snapshot export has no view selector.
+A permitted authored `heading` supplies derived reader wording, with an independently
+authored `synopsis` as its lead. Neither is a canonical Work rename or a certified
+achievement. Missing heading/synopsis never triggers clipping, sentence extraction
+or first-body-paragraph selection. The complete original Goal and exact Work/revision
+metadata remain readable, ordinarily when interpretation is unavailable and through
+an opening native disclosure when present. The full category classification, counts,
+omissions and Purpose remain intact. Host interpretation is attributed independently
+of the UI locale and keeps its original requested language.
+
+Ordinary Work selection uses concise rows, with document-style detail and code reading.
+Critical generated limits and independent recorded check/review/acceptance facts stay
+at the opening. Full original evidence, provenance and history remain inspectable.
+Narrative order within each role is preserved; heading, synopsis and critical limits
+have explicit placement rather than inheriting the first paragraph's role. All screens
+use the same current reader envelope and maintained live/offline components. The
+current route/CLI/snapshot contract is maintained in the
+[Viewer README](../../crates/volicord-viewer/README.md).
 
 Shared projection selection has three meanings: `LatestWork` resolves the actual
 Goal identity associated with the latest Checkpoint, or the newest Goal when no
@@ -1714,26 +1714,22 @@ they are never copied into the retained explanation envelope.
 
 CLI/MCP, live Viewer and offline snapshot read the same answers and source basis.
 Existing MCP transport omissions remain separate from shared excerpt bounds.
-The optional `reading_title` API uses the permitted Purpose paragraph as derived
-wording, not a certified short-title authority. Viewer headings instead use a
-neutral localized label and keep the complete original Goal accessible at the
-opening. Generated Purpose appears once as explicitly attributed ordinary
-explanation prose. Section labels group adjacent paragraphs without changing
-their order or text. The exact compact
-realization fingerprint distinguishes regenerated or edited outputs on the same
-plan. It supplies output identity, not semantic approval or authenticated authorship.
+The optional `reading_title` API uses only a permitted authored Heading unit.
+Synopsis selection likewise uses its own role, never Purpose or a first paragraph as
+result. Both remain interpretation with the common exact realization fingerprint.
+No heading can survive a failed dependency or current-language mismatch. Canonical
+Goal, Source and Work identities remain independent of reader wording.
 
-Citation navigation leads with the bound paragraph's explanatory purpose, followed
-by current/historical/execution use and the exact locator. A code panel groups the
-purposes only of paragraphs citing that exact Source/range/use and ordinarily
-quotes the first exact bound claim as host interpretation. “Cited in interpretation”
-describes the reference; it does not certify that the code entails the claim.
-Its closed claim disclosure preserves every bound paragraph's question, ordinal, original claim
-quotation and exact citation coordinates/hash, including different claims sharing
-one code range. Generated claim quotations remain interpretations, not observed
-code facts or semantic approval. Claim classification
-and byte binding cannot supply semantic entailment or an independently supported
-effect title; broad canonical requests retain their complete original quotation beside the neutral label.
+Citation navigation leads with the bound unit's explanatory role, evidence use and
+exact locator. Each link selects its own keyboard-focusable reading point, quoting
+that exact claim immediately beside the shared Source range. Each point links back
+to its own original heading, synopsis or paragraph. Shared ranges never substitute
+the first claim for another. Native fragments and browser history retain exact
+Project/Work/realization/unit/citation identity, with no script, GET generation or
+new Source access. Critical limits appear before narrative; the original unit indices
+remain stable for grounding and return navigation. A code panel's closed disclosure
+preserves all exact claims, ranges, hashes and revisions. Matching bytes establish
+binding, not entailment, semantic approval or authenticated authorship.
 
 Viewer prose links to unique keyboard-focusable Source ranges. Actual code/output
 is ordinary reading after recorded verification/direction facts; full revision and
@@ -1805,3 +1801,11 @@ copy removes its observation-derived reading while preserving canonical remainde
 Existing independent result/state/check/review/acceptance/next-action chronology and
 complete category selection remain the common rule; no new completion inference is
 introduced.
+
+File citation labels describe an observed file in the selected snapshot, including
+preserved archival reports; they do not claim the file is current Product code or
+that a report is a new execution. Original historical identity/time remains in the
+control provenance. An absent authored synopsis may show a separately labeled
+problem paragraph or original Goal, never relabel that paragraph as a synopsis.
+Recorded next actions and recorded limits stay ordinary in Work rows; absent
+next-action metadata remains separate from original instructions and suggestions.

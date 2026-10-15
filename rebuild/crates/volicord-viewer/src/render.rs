@@ -698,15 +698,18 @@ fn render_work_card(
     decisions: &[volicord_projections::UnderstandingDecision],
 ) {
     let (title, basis, language) = reading::work_reading_heading(work, request);
+    let answers = volicord_projections::work_answers(
+        work,
+        &request.requested_language,
+        request.locale.fixed(),
+    );
     html.push_str(&format!(
-        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3><p class=\"work-state\"><span class=\"badge\">{}</span></p>",
+        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h3 lang=\"{}\" data-title-basis=\"{}\"{}>{}</h3>",
         work.work_item_id,
         understanding_work_state_key(work.state),
-        escape(&language), basis, escape(&title),
-        escape(understanding_work_state_label(work.state, request.locale))
+        escape(&language), basis, reading::reader_heading_attributes(&answers), escape(&title),
     ));
-    reading::work_goal_opening(html, request, work);
-    reading::work_explanation(html, request, work, false);
+    reading::work_explanation(html, request, work);
     html.push_str(&format!(
         "<details><summary>{}</summary><p>{}</p></details>",
         text(
@@ -770,7 +773,7 @@ fn render_work_card(
                 decision.decision.decision_id
             ));
             let answers = reading::decision_answers(request, &decision.decision);
-            reading::render_answers(html, request, &answers, false);
+            reading::render_answers(html, request, &answers, None);
             html.push_str("</li>");
         }
         html.push_str("</ul></div>");
