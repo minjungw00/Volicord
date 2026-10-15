@@ -1821,3 +1821,130 @@ fn seed_authored_reading_browser_runtime() -> Result<(), Box<dyn Error>> {
     )?;
     Ok(())
 }
+
+#[test]
+fn command_observation_is_independent_of_checkpoint_verification_on_public_readers(
+) -> Result<(), Box<dyn Error>> {
+    for exit_code in [0, 3] {
+        let temp = tempfile::tempdir()?;
+        let f = seed(temp.path(), "missing_before_state")?;
+        let operations = ops(&f)?;
+        let analysis = operations
+            .analyze(project(&f)?, vec![])?
+            .value
+            .ok_or("analysis")?
+            .analysis
+            .identity;
+        let command = operations
+            .run_work_command(volicord_operations::WorkCommandRequest {
+                project_id: project(&f)?,
+                work_item_id: work(&f)?,
+                analysis_snapshot_id: analysis,
+                command_label: "bounded observation".into(),
+                program: "python3".into(),
+                arguments: vec![
+                    "-c".into(),
+                    format!("import sys; print('observation only'); sys.exit({exit_code})"),
+                ],
+                timeout: std::time::Duration::from_secs(5),
+                retain_seconds: 3600,
+            })?
+            .source_id;
+        let before = operations.canonical_basis(project(&f)?)?;
+        assert!(before.checkpoint_history.is_empty());
+        let mut host = HostAdapter::new(ops(&f)?);
+        let base = json!({"project_id":f["project"],"work_item_id":f["work"],"language":"en"});
+        let mut args = base.clone();
+        args["action"] = json!("generate");
+        let generation = call(&mut host, "work_explanation", args)?;
+        let mut args = base.clone();
+        args["action"] = json!("read_source");
+        args.as_object_mut().ok_or("args")?.remove("language");
+        args["generation_id"] = generation["generation_id"].clone();
+        args["source_id"] = json!(command.to_string());
+        let read = call(&mut host, "work_explanation", args)?;
+        let output = read["observation"]["detail"]["stdout"]["body"]
+            .as_str()
+            .ok_or("output")?;
+        assert_eq!(output, "observation only\n");
+        assert_eq!(read["observation"]["detail"]["exit_code"], exit_code);
+        let text = "The command emitted an observation; no test assertions are reported.";
+        let mut citation = read["citation_basis"].clone();
+        let object = citation.as_object_mut().ok_or("citation basis")?;
+        object.retain(|key, _| {
+            [
+                "source_id",
+                "source_revision",
+                "observation_fingerprint",
+                "analysis_snapshot_id",
+                "repository_snapshot_id",
+                "repository_source_id",
+            ]
+            .contains(&key.as_str())
+        });
+        object.extend(json!({"locator":"bounded observation","field":"stdout","start_byte":0,"end_byte":output.len(),
+            "start_line":1,"end_line":1,"range_sha256":explanation_text_hash(output),"claim_start_byte":0,
+            "claim_end_byte":text.len(),"claim_sha256":explanation_text_hash(text),"use_kind":"observed_execution"}).as_object().ok_or("fields")?.clone());
+        let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,
+            "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
+            "generator":{"host":"authored-control","session":"scope-test","agent":null,"model":null},
+            "paragraphs":[{"question":"observation","text":text,"evidence_keys":["goal"],"citations":[citation]}]});
+        let mut args = base.clone();
+        args["action"] = json!("record");
+        args.as_object_mut().ok_or("args")?.remove("language");
+        args["generation_id"] = generation["generation_id"].clone();
+        args["realization"] = realization;
+        call(&mut host, "work_explanation", args)?;
+        let answers = public_answers(&f, &mut host)?;
+        let facts = answers["facts"].as_array().ok_or("facts")?;
+        let observation = facts
+            .iter()
+            .find(|a| a["question"] == "SourceExecutionObservation")
+            .ok_or("command fact")?;
+        assert!(observation["text"]
+            .as_str()
+            .ok_or("text")?
+            .contains(&format!("exit {exit_code}")));
+        assert!(observation["evidence_keys"][0]
+            .as_str()
+            .ok_or("key")?
+            .contains(&command.to_string()));
+        let verification = facts
+            .iter()
+            .find(|a| a["question"] == "VerificationState")
+            .ok_or("verification")?;
+        assert_eq!(
+            verification["text"],
+            "Checkpoint verification: No verification recorded in a Checkpoint"
+        );
+        assert!(facts
+            .iter()
+            .find(|a| a["question"] == "WorkState")
+            .ok_or("state")?["text"]
+            .as_str()
+            .ok_or("state text")?
+            .contains("Goal-only Work is open"));
+        for page in [
+            get(&f)?,
+            ViewerAdapter::new(ops(&f)?)
+                .render_snapshot(&request(&f)?, TimestampMicros::from_unix_micros(1))?
+                .html,
+        ] {
+            assert!(page.contains("data-question=\"SourceExecutionObservation\""));
+            assert!(
+                page.contains("Checkpoint verification: No verification recorded in a Checkpoint")
+            );
+            assert!(page.contains("exit status alone establishes no test assertions"));
+            assert!(!page.contains("User acceptance: accepted"));
+        }
+        assert_eq!(before, ops(&f)?.canonical_basis(project(&f)?)?);
+        operations.delete_work_source_observation(project(&f)?, work(&f)?, command)?;
+        let unavailable = public_answers(&f, &mut host)?;
+        assert!(unavailable["facts"]
+            .as_array()
+            .ok_or("facts")?
+            .iter()
+            .all(|a| a["question"] != "SourceExecutionObservation"));
+    }
+    Ok(())
+}

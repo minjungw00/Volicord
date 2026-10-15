@@ -260,7 +260,10 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
     let mut input = reading_fixture::rich_scenario()?;
     input["works"][1]["checkpoints"][0]["verification"] = serde_json::Value::Null;
     let f = reading_fixture::fixture_scenario(input)?;
-    for (locale, label) in [("en", "No verification record"), ("ko", "검증 기록 없음")] {
+    for (locale, label) in [
+        ("en", "No verification recorded in a Checkpoint"),
+        ("ko", "Checkpoint에 기록된 검증 없음"),
+    ] {
         let page = get(
             &f,
             &format!("/?view=work&work={}&locale={locale}", f.goals["same_title"]),

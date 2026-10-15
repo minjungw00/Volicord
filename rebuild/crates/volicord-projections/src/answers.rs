@@ -273,6 +273,27 @@ pub fn work_answers(
     locale: FixedLocale,
 ) -> QuestionAnswers {
     let mut result = explanation_answers(&work.reading.explanations, language, locale);
+    // A permitted command excerpt is an execution observation even before any
+    // Checkpoint. Exit status says nothing about unreported test assertions.
+    let mut executions = std::collections::BTreeSet::new();
+    for excerpt in &result.source_excerpts {
+        let Some(execution) = &excerpt.execution else {
+            continue;
+        };
+        if !executions.insert(excerpt.citation.source_id.clone()) {
+            continue;
+        }
+        result.facts.push(fact(
+            "SourceExecutionObservation",
+            format!("{}: {} · exit {} · termination {}. {}",
+                fixed(locale, "Observed command", "관측한 명령"),
+                excerpt.citation.locator, execution["exit_code"], execution["termination"],
+                fixed(locale,
+                    "Scoped Source observation; exit status alone establishes no test assertions, Checkpoint verification or user acceptance.",
+                    "범위가 지정된 Source 관측입니다. 종료 코드만으로 테스트 assertion, Checkpoint 검증이나 사용자 수락을 확정하지 않습니다.")),
+            vec![format!("source:{}@{}:execution", excerpt.citation.source_id, excerpt.citation.source_revision)],
+        ));
+    }
     let direction = &work.reading.next_step;
     if let (ReadingRecord::Checkpoint(checkpoint_id), Some(recorded)) = (
         &direction.basis.record,
@@ -456,7 +477,13 @@ pub fn work_answers(
         ),
     ));
     let verification = answers.verification.as_ref().map_or_else(
-        || fixed(locale, "No verification record", "검증 기록 없음"),
+        || {
+            fixed(
+                locale,
+                "No verification recorded in a Checkpoint",
+                "Checkpoint에 기록된 검증 없음",
+            )
+        },
         |s| {
             s.verification
                 .iter()
@@ -469,7 +496,7 @@ pub fn work_answers(
         "VerificationState",
         format!(
             "{}: {verification}",
-            fixed(locale, "Automated verification", "자동 검증")
+            fixed(locale, "Checkpoint verification", "Checkpoint 검증")
         ),
         answers
             .verification

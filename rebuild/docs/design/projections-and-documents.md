@@ -1794,3 +1794,14 @@ budgets; no limit is widened and no read generates or writes.
 The format disposition is Unsupported for non-current content, with canonical facts
 readable; explicit current preparation/recording is recovery. Historical assets and
 feedback are preserved controls, never refreshed retention, new generation or acceptance.
+
+Scoped execution and Checkpoint verification remain independent. Permitted cited
+command observations supply `SourceExecutionObservation` facts with exact Source
+revision, label, exit/termination and the explicit limit that exit status establishes
+no test assertions, Checkpoint verification or acceptance. Multiple stream citations
+of one execution produce one observation fact. No Checkpoint verification is labeled
+as such; it cannot imply no execution occurred. Deleting/withholding the supporting
+copy removes its observation-derived reading while preserving canonical remainder.
+Existing independent result/state/check/review/acceptance/next-action chronology and
+complete category selection remain the common rule; no new completion inference is
+introduced.

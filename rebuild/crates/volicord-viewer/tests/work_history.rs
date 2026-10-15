@@ -188,32 +188,32 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
             // Expected states are independent fixture facts, not helper-generated expectations.
             let expected = match (case, language) {
                 ("retained", "en") => (
-                    "Automated verification: not run",
+                    "Checkpoint verification: not run",
                     "User review: not requested",
                     "User acceptance: rejected",
                 ),
                 ("retained", _) => (
-                    "자동 검증: 실행하지 않음",
+                    "Checkpoint 검증: 실행하지 않음",
                     "사용자 검토: 요청하지 않음",
                     "사용자 수락: 거부됨",
                 ),
                 ("recovered", "en") => (
-                    "Automated verification: passed",
+                    "Checkpoint verification: passed",
                     "User review: reviewed",
                     "User acceptance: accepted",
                 ),
                 ("recovered", _) => (
-                    "자동 검증: 통과",
+                    "Checkpoint 검증: 통과",
                     "사용자 검토: 검토됨",
                     "사용자 수락: 수락됨",
                 ),
                 (_, "en") => (
-                    "Automated verification: failed",
+                    "Checkpoint verification: failed",
                     "User review: reviewed",
                     "User acceptance: rejected",
                 ),
                 (_, _) => (
-                    "자동 검증: 실패",
+                    "Checkpoint 검증: 실패",
                     "사용자 검토: 검토됨",
                     "사용자 수락: 거부됨",
                 ),
@@ -332,9 +332,9 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                 );
                 if case == "recovered" {
                     assert!(!ordinary_text(selected).contains(if language == "en" {
-                        "Automated verification: failed"
+                        "Checkpoint verification: failed"
                     } else {
-                        "자동 검증: 실패"
+                        "Checkpoint 검증: 실패"
                     }));
                 }
                 // Sensitivity controls challenge semantic placement, retention and duplication.
@@ -385,9 +385,9 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     let old_current = selected.replace(
                         expected.0,
                         if language == "en" {
-                            "Automated verification: failed"
+                            "Checkpoint verification: failed"
                         } else {
-                            "자동 검증: 실패"
+                            "Checkpoint 검증: 실패"
                         },
                     );
                     assert_eq!(

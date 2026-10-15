@@ -245,6 +245,11 @@
         ],
         [
           "viewer",
+          "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
+          "command_observation_is_independent_of_checkpoint_verification_on_public_readers"
+        ],
+        [
+          "viewer",
           "rebuild/crates/volicord-viewer/tests/answer_contracts.rs",
           "selected_result_and_state_have_independent_prefix_basis"
         ],

@@ -2921,3 +2921,10 @@ cited only by a heading or comparison is withheld after explicit Source-copy del
 Partial documents require no invented answers. Existing CLI/Operations budget and
 shared-answer consumers remain direct regression checks. This structural support is
 separate from the source-derived B/Click layout trial, human review and semantic quality.
+
+The direct Viewer `grounded_reader` command-observation control executes real
+bounded commands with numeric exits 0 and 3, without a Checkpoint or test assertions.
+Actual CLI/MCP shared answers, HTTP response and offline snapshot distinguish these
+observations from missing Checkpoint verification, Open Work and absent acceptance.
+Explicit Source deletion removes the dependent observation. Existing contradictory
+Work-history and later-change controls verify independent chronology and coverage.
