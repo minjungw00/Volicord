@@ -62,8 +62,31 @@ This contributor rule does not activate a Product conversation protocol.
 
 ## Coding, Tests, And Documentation
 
-- Start with the smallest responsibility boundary that demonstrates the
-  relevant acceptance scenario; do not pre-create a large crate taxonomy.
+- Start with the smallest coherent responsibility boundary that satisfies the
+  relevant acceptance criteria, not the smallest code diff. Substantial
+  replacement of affected implementation is permitted when needed; preserve
+  accepted contracts and invariants rather than obsolete structure. Do not
+  expand into unrelated refactoring or pre-create a large crate taxonomy.
+- Treat actual Git HEAD and current evidence as the execution baseline. Separate
+  reproduced defects from hypotheses, earlier-candidate results, existing
+  unrelated failures, environment blockers, and already-satisfied behavior.
+  Verify uncertain premises before changing code; do not force unnecessary
+  implementation or commits.
+- Verify changed behavior through relevant positive and negative cases and
+  actual downstream consumers. A passing helper, schema check, or output copied
+  from the implementation is not sufficient proof of end-to-end correctness.
+- Make responsibility-scoped atomic Conventional Commits (`type: description`).
+  Do not hide production changes in `test:` or `docs:` commits; directly coupled
+  tests, fixtures, schema, snapshots, maintained generated contract artifacts,
+  and owner documents
+  may accompany the implementation. Stage only task-owned changes.
+- After each commit, run its directly relevant checks and inspect their results
+  before proceeding. Fix newly introduced defects with appropriately typed
+  atomic commits and recheck. Do not amend, squash, or rewrite existing commits
+  unless explicitly requested. Leave no task-owned source changes uncommitted.
+- Follow the active versioning owner. Do not invent compatibility-only numeric
+  branches, legacy decoders, or parallel old/new production read/write paths;
+  remove superseded implementations when replacing a current contract.
 - Prefer deterministic behavior and explicit typed states over implicit prompt
   conventions. Do not use `panic!`, `unwrap`, or `expect` to enforce durable
   domain-state transitions.
@@ -105,10 +128,13 @@ This contributor rule does not activate a Product conversation protocol.
   handoff. Use `rebuild/scripts/verify-validation-archive` for independent
   candidate-bound archive verification. Ignored Final/V11 artifacts support the
   current gate process only; later documentation sessions must not require them.
-- Apply the root nested-workspace checks and handling of unavailable tools.
+- Select the applicable root nested-workspace checks for the task and
+  validation stage. Do not repeat every workspace-wide command as a prerequisite
+  to a focused check, or duplicate ordered Final/V11 suites outside the gate.
   Run legacy validation only for intentionally changed legacy paths. Report
   changed files, checks, numeric outcomes, skipped checks, and remaining risks
-  in the conversation.
+  in the conversation. Keep technical validation, independent qualitative
+  assessment, and actual user acceptance as separate results.
 
 ## Generated-State Hygiene
 
@@ -119,3 +145,6 @@ This contributor rule does not activate a Product conversation protocol.
   model output under ignored paths such as `rebuild/.local/`.
 - Keep test runtime homes and derived analysis data disposable. Do not commit
   task logs, chat transcripts, or temporary research output as design documents.
+- Do not rewrite preserved original sources, evaluations, failed attempts, or
+  user feedback. Historical evidence may support diagnosis and regression but
+  must not be represented as a new candidate's execution or user approval.

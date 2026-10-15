@@ -157,8 +157,11 @@ requirement.
 
 ## Validation
 
-For reconstruction work, run validation against the nested workspace rather
-than the legacy root workspace:
+For reconstruction work, validate against the nested workspace rather than
+the legacy root workspace. The commands below are workspace-wide checks;
+choose the necessary checks and timing using `rebuild/AGENTS.md` and the
+applicable validation owners. A focused change does not require running all of
+them individually:
 
 ```bash
 cargo metadata --manifest-path rebuild/Cargo.toml --no-deps --format-version 1
