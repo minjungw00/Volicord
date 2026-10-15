@@ -549,8 +549,7 @@ fn work_summary(
 ) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
     let (title, title_basis, title_language) = work_reading_heading(w, r);
-    let has_purpose = answers.prose.iter().any(|a| a.question == "Purpose");
-    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"{}\" data-title-basis=\"{}\"{}>", w.work_item_id, understanding_work_state_key(w.state), escape(&title_language), title_basis, if has_purpose { "" } else { " data-question=\"RecordedGoal\"" }));
+    html.push_str(&format!("<article class=\"understanding-card work-item work-summary\" data-work-id=\"{}\" data-work-state=\"{}\"><h4 lang=\"{}\" data-title-basis=\"{}\">", w.work_item_id, understanding_work_state_key(w.state), escape(&title_language), title_basis));
     link(
         html,
         r,
@@ -563,18 +562,15 @@ fn work_summary(
             .as_deref(),
     );
     html.push_str("</h4>");
+    let has_purpose = answers.prose.iter().any(|a| a.question == "Purpose");
     if !has_purpose {
-        html.push_str(&format!(
-            "<p class=\"muted\">{}</p>",
-            text(
-                r.locale,
-                "Recorded Work goal excerpt · open Work for the full quotation.",
-                "기록된 작업 목표 발췌 · 작업에서 전체 인용을 확인하세요."
-            )
-        ));
+        work_goal_opening(html, r, w);
     }
     for (label, question) in [
-        (text(r.locale, "Problem / goal", "문제 / 목표"), "Purpose"),
+        (
+            text(r.locale, "Host interpretation", "호스트 해석"),
+            "Purpose",
+        ),
         (text(r.locale, "Outcome", "결과"), "ReportedChange"),
         (text(r.locale, "Verification", "검증"), "Verification"),
     ] {
@@ -582,11 +578,14 @@ fn work_summary(
             html.push_str(&format!(
                 "<p data-question=\"{}\">{}<span lang=\"{}\" data-content-language=\"{}\">{}</span></p>",
                 question,
-                if question == "Purpose" { String::new() } else { format!("<strong>{}:</strong> ", escape(label)) },
+                format!("<strong>{}:</strong> ", escape(label)),
                 escape(&content_language_tag(&r.requested_language)),
                 escape(&r.requested_language),
                 escape(&answer.text)
             ));
+            if question == "Purpose" {
+                work_goal_opening(html, r, w);
+            }
         } else if question == "ReportedChange" {
             empty_state(html, text(r.locale, "Outcome explanation is not available. Open Work for recorded facts and evidence.", "결과 설명이 없습니다. 작업을 열어 기록된 사실과 근거를 확인하세요."));
         }
@@ -644,31 +643,53 @@ fn work_summary(
     }
     html.push_str("</article>");
 }
-/// A bounded quotation of the canonical Goal, never the generated Purpose
-/// paragraph duplicated as a headline. Full Goal evidence remains inspectable.
+/// There is no authored short-title field. Neither clipping the task nor a
+/// generated Purpose (whose entailment is unassessed) supplies that authority.
 pub(super) fn work_reading_heading(
-    w: &UnderstandingWork,
+    _w: &UnderstandingWork,
     r: &ViewerRequest,
 ) -> (String, &'static str, String) {
-    // Claim classifications and byte hashes are not an entailment oracle.
-    // A generated causal sentence must not override the recorded request.
-    let goal = work_reading_display(&w.reading.goal, r.locale);
-    if let Some((end, punctuation)) = goal.char_indices().find(|(offset, c)| {
-        matches!(c, '.' | '?' | '!' | '。')
-            && goal[offset + c.len_utf8()..].starts_with(char::is_whitespace)
-    }) {
-        let sentence = &goal[..end + punctuation.len_utf8()];
-        if sentence.chars().count() <= 72 {
-            return (sentence.to_owned(), "goal-quotation", String::new());
-        }
-    }
-    let mut chars = goal.chars();
-    let excerpt: String = chars.by_ref().take(72).collect();
-    if chars.next().is_some() {
-        (format!("{excerpt}…"), "goal-quotation", String::new())
+    (
+        text(r.locale, "Recorded Work", "작업 기록").into(),
+        "neutral-label",
+        locale_key(r.locale).into(),
+    )
+}
+
+/// Keep the complete original Goal accessible at the opening. With a current
+/// interpretation it is a disclosure beside the ordinary problem paragraph;
+/// without one the quotation itself is ordinary reading, never a fabricated title
+/// or summary. UI locale cannot establish the original quotation's language.
+pub(super) fn work_goal_opening(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork) {
+    let interpreted =
+        volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed())
+            .provenance
+            .is_some();
+    html.push_str(if interpreted {
+        "<details class=\"work-goal\"><summary>"
     } else {
-        (excerpt, "goal-quotation", String::new())
-    }
+        "<div class=\"work-goal\"><p class=\"record-meta\">"
+    });
+    html.push_str(text(
+        r.locale,
+        "Recorded Goal · original quotation",
+        "기록된 목표 · 원문 인용",
+    ));
+    html.push_str(if interpreted { "</summary>" } else { "</p>" });
+    html.push_str(&format!(
+        "<blockquote lang=\"\" data-statement-role=\"verified-canonical\" data-question=\"RecordedGoal\">{}</blockquote>",
+        escape(w.reading.goal.original_text.as_deref().unwrap_or(""))
+    ));
+    html.push_str(&format!(
+        "<details class=\"goal-basis\"><summary>{}</summary><pre>{}</pre></details>",
+        text(
+            r.locale,
+            "Goal identity and Sources",
+            "목표 식별자 및 Source"
+        ),
+        escape(&format!("{:?}", w.reading.goal.basis))
+    ));
+    html.push_str(if interpreted { "</details>" } else { "</div>" });
 }
 fn answer_title<'a>(question: &str, locale: ViewerLocale) -> &'a str {
     match question {
@@ -709,6 +730,16 @@ pub(super) fn render_answers(
             "deterministic-derived"
         }
     ));
+    if current {
+        html.push_str(&format!(
+            "<p class=\"interpretation-label\">{}</p>",
+            text(
+                r.locale,
+                "Host interpretation · semantic accuracy has not been independently established.",
+                "호스트 해석 · 의미 정확성은 독립적으로 확인되지 않았습니다."
+            )
+        ));
+    }
     let mut previous_question = None;
     for answer in &answers.prose {
         if compact
@@ -793,6 +824,10 @@ pub(super) fn render_answers(
         "</div><div class=\"fact-states\" data-statement-role=\"deterministic-derived\">",
     );
     for fact in &answers.facts {
+        // Work's opening already preserves the complete quotation and basis.
+        if fact.question == "RecordedGoal" {
+            continue;
+        }
         if matches!(
             fact.question.as_str(),
             "UserRationale" | "RecommendedChoice" | "DeclaredScope" | "ReviewBasis"
@@ -1795,6 +1830,7 @@ fn code(
             basis,
             escape(&title),
         ));
+        work_goal_opening(html, r, work);
         let mut previous_question = None;
         for answer in answers.prose.iter().filter(|a| {
             matches!(

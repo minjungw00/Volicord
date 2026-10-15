@@ -175,17 +175,22 @@ Overview preserves a present Project Purpose first. Populated Work categories pr
 an absent-Purpose notice and empty Work categories; counts follow ordinary cards.
 This is presentation ordering over the existing classification, not selection of a
 new current Work or promotion of a Goal to Purpose. Goal-only Work remains Open in
-Remaining Work. Without permitted explanation prose, the card explicitly identifies
-its bounded Goal heading as a quotation excerpt and links to full Work detail.
+Remaining Work. Without permitted explanation prose, the card presents the complete
+original Goal as a quotation beneath a neutral Work label and links to full detail.
 The absence of Purpose, category totals/omissions, unresolved grouping and Checkpoint
 availability remain inspectable. Narrow live/offline layouts share these components;
 snapshot Evidence navigation uses a closed native disclosure and the read-only notice
 remains visible. No output wording, binding, canonical state or generation changes.
-Work headings in the Viewer quote a bounded canonical Goal prefix, with ellipsis
-when truncated and `goal-quotation` display metadata. They do not duplicate a
-generated Purpose paragraph as a headline or rename the canonical Work. The full
-Goal remains in retained evidence; original Goal language is not inferred from the
-requested explanation language. Generated paragraph order, text and citations
+There is no separately authored short Work title in the current read model.
+Viewer headings therefore use the localized neutral `Recorded Work` label with
+`neutral-label` metadata. A task prefix or unassessed generated Purpose cannot
+supply title authority. The opening retains the complete original Goal and its
+identity/revision/Source basis: as ordinary quotation when interpretation is absent,
+or a native disclosure beside the generated problem paragraph when present.
+No sentence extraction, translation, arbitrary character clipping, canonical rename
+or new title store is introduced. Original Goal language is not inferred from the
+requested explanation language. Host interpretation is visibly labeled in ordinary
+reading, including the lack of independent semantic approval. Generated paragraph order, text and citations
 remain unchanged. Citation links identify current observed code, historical before
 code or observed command output before the exact locator, and explanation-authority
 details remain inspectable in a native
@@ -1710,9 +1715,9 @@ they are never copied into the retained explanation envelope.
 CLI/MCP, live Viewer and offline snapshot read the same answers and source basis.
 Existing MCP transport omissions remain separate from shared excerpt bounds.
 The optional `reading_title` API uses the permitted Purpose paragraph as derived
-wording. Viewer headings instead quote at most 72 characters of the canonical
-Goal, preferring a complete opening request sentence within that bound, with its
-full text in evidence; generated Purpose appears once as ordinary
+wording, not a certified short-title authority. Viewer headings instead use a
+neutral localized label and keep the complete original Goal accessible at the
+opening. Generated Purpose appears once as explicitly attributed ordinary
 explanation prose. Section labels group adjacent paragraphs without changing
 their order or text. The exact compact
 realization fingerprint distinguishes regenerated or edited outputs on the same
@@ -1726,7 +1731,7 @@ quotation and exact citation coordinates/hash, including different claims sharin
 one code range. Generated claim quotations remain interpretations, not observed
 code facts or semantic approval. Claim classification
 and byte binding cannot supply semantic entailment or an independently supported
-effect title; broad canonical requests retain an accurate request heading.
+effect title; broad canonical requests retain their complete original quotation beside the neutral label.
 
 Viewer prose links to unique keyboard-focusable Source ranges. Actual code/output
 is ordinary reading; full revision and generator grounding stays in closed native

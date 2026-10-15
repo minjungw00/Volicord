@@ -705,6 +705,7 @@ fn render_work_card(
         escape(&language), basis, escape(&title),
         escape(understanding_work_state_label(work.state, request.locale))
     ));
+    reading::work_goal_opening(html, request, work);
     reading::work_explanation(html, request, work, false);
     html.push_str(&format!(
         "<details><summary>{}</summary><p>{}</p></details>",
@@ -3853,10 +3854,3 @@ fn _projection_health_is_explicit(value: ProjectionHealth) -> &'static str {
 #[cfg(test)]
 #[path = "render_tests.rs"]
 mod tests;
-
-fn work_reading_display(text: &volicord_projections::ReadingText, locale: ViewerLocale) -> &str {
-    match locale {
-        ViewerLocale::English => &text.display_english,
-        ViewerLocale::Korean => &text.display_korean,
-    }
-}

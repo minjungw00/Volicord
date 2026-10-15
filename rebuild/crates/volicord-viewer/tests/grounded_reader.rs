@@ -15,6 +15,9 @@ use volicord_projections::*;
 use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer, ViewerView};
 
 fn seed(root: &Path, comparison: &str) -> Result<Value, Box<dyn Error>> {
+    seed_with_goal(root, comparison, "Explain why value returns 5, using observed code and any retained comparison. Do not infer execution success.")
+}
+fn seed_with_goal(root: &Path, comparison: &str, goal: &str) -> Result<Value, Box<dyn Error>> {
     let repo = root.join("repo");
     fs::create_dir_all(&repo)?;
     fs::write(repo.join("main.py"), "def value():\n    return 4\n")?;
@@ -23,7 +26,6 @@ fn seed(root: &Path, comparison: &str) -> Result<Value, Box<dyn Error>> {
         .initialize_project("Understand a constant return", Some(&repo))?
         .project
         .id;
-    let goal = "Explain why value returns 5, using observed code and any retained comparison. Do not infer execution success.";
     let work = ops
         .record_current_host_user_context(
             project,
@@ -88,7 +90,7 @@ fn seed(root: &Path, comparison: &str) -> Result<Value, Box<dyn Error>> {
         .source_id;
     Ok(
         json!({"runtime":ops.layout().root(),"repository":repo,"project":project.to_string(),
-        "work":work.to_string(),"before":before.map(|id|id.to_string()),"after":after.to_string(),
+        "work":work.to_string(),"goal":goal,"before":before.map(|id|id.to_string()),"after":after.to_string(),
         "comparison":comparison,"input_provenance":"authored-test-support","host_output":"not_generated"}),
     )
 }
@@ -262,9 +264,10 @@ fn overview_reads_available_work_before_missing_project_context() -> Result<(), 
                 "capture requires an absolute ignored destination"
             );
         }
-        let mut f = seed(
+        let mut f = seed_with_goal(
             root.as_deref().unwrap_or(temp.path()),
             "missing_before_state",
+            "Inspect the actual observed return value and its callers before explaining what changed, without assuming successful execution. 긴 목표도 원문 그대로 읽을 수 있어야 합니다.\n\nKeep missing verification and Checkpoint direction explicit.",
         )?;
         if recorded {
             record(&f, &mut HostAdapter::new(ops(&f)?))?;
@@ -332,6 +335,9 @@ fn overview_reads_available_work_before_missing_project_context() -> Result<(), 
                         .find("id=\"overview-completed\"")
                         .ok_or("empty outcomes")?
                 );
+                assert!(overview.contains("data-title-basis=\"neutral-label\""));
+                assert!(overview.contains(f["goal"].as_str().ok_or("original Goal")?));
+                assert!(overview.contains("lang=\"\" data-statement-role=\"verified-canonical\""));
                 assert!(overview.contains("data-work-state=\"open\""));
                 assert!(!overview.contains("data-work-state=\"completed\""));
                 assert!(overview.contains(if recorded {
@@ -509,7 +515,7 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         assert!(mcp.to_string().contains("return 5"));
         let page = get(&f)?;
         assert!(page.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
-        assert!(page.contains("data-title-basis=\"goal-quotation\">Explain why value returns 5, using observed code and any retained compar…</h3>"));
+        assert!(page.contains("data-title-basis=\"neutral-label\">Recorded Work</h3>"));
         assert_eq!(
             page.matches("Understand the constant return in value().")
                 .count(),
@@ -784,7 +790,7 @@ fn long_original_explanation_is_retained_once_below_a_goal_title() -> Result<(),
     let page = get(&f)?;
     assert_eq!(page.matches(&purpose).count(), 1);
     assert!(!page.contains(&format!("{purpose}</h3>")));
-    assert!(page.contains("data-title-basis=\"goal-quotation\""));
+    assert!(page.contains("data-title-basis=\"neutral-label\""));
     assert!(page.contains("class=\"explanation-authority\"><summary>About this explanation"));
     let projection =
         ops(&f)?.project_projection_selected(project(&f)?, WorkSelector::ExactWork(work(&f)?))?;
@@ -1173,7 +1179,7 @@ fn seed_representative(root: &Path) -> Result<Value, Box<dyn Error>> {
         json!({"runtime":operations.layout().root(),"repository":repo,
         "project":project.to_string(),"work":work.to_string(),"path":path,
         "after":expected[0]["source_id"],"before":expected[1]["source_id"],
-        "comparison":"no_change","goal_title":format!("{}…",REPRESENTATIVE_GOAL.chars().take(72).collect::<String>()),
+        "comparison":"no_change","goal":REPRESENTATIVE_GOAL,
         "expected_sources":expected,"input_provenance":"authored-structural-control","host_output":"not_generated"}),
     )
 }

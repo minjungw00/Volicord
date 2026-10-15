@@ -62,9 +62,9 @@ async function check(page, item, language, expected, offline) {
     : {changed:'differ',no_change:'identical bytes',missing_before_state:'not retained'};
   assert.ok(comparison.includes(terms[item.comparison]), 'honest comparison state');
   const heading = work.locator('h3').first();
-  assert.equal(await heading.innerText(), item.goal_title || 'Explain why value returns 5, using observed code and any retained compar…', 'bounded original Goal heading');
-  assert.equal(await heading.getAttribute('data-title-basis'), 'goal-quotation', 'heading authority distinct from generated prose');
-  assert.equal(await heading.getAttribute('lang'), '', 'original Goal language unknown');
+  assert.equal(await heading.innerText(), language === 'ko' ? '작업 기록' : 'Recorded Work', 'neutral label does not invent a title');
+  assert.equal(await heading.getAttribute('data-title-basis'), 'neutral-label', 'heading authority distinct from generated prose');
+  assert.equal(await heading.getAttribute('lang'), language, 'fixed heading language');
   assert.equal(await work.locator('[data-question="Purpose"]').first().textContent(), expected.prose.find(a=>a.question==='Purpose').text, 'unchanged generated Purpose');
   for (const question of new Set(expected.prose.map(a=>a.question))) {
     const paragraphs=work.locator(`[data-content-language="${language}"][data-question="${question}"]`);
@@ -127,7 +127,7 @@ async function check(page, item, language, expected, offline) {
         if (!config.offline) {
           await page.goto(`${config.url}?view=code&scope=work&work=${item.work}&locale=${language}&language=${language}`);
           await checkSources(page.locator('.code-work-meaning'),item);
-          assert.equal(await page.locator('.code-work-meaning h3').getAttribute('data-title-basis'),'goal-quotation','Code title preserves original Goal basis');
+          assert.equal(await page.locator('.code-work-meaning h3').getAttribute('data-title-basis'),'neutral-label','Code title preserves original Goal basis');
           const codeParagraphs=await checkCodeMeaning(page,language,expected);
           const questionLabels=language==='ko'
             ? {Purpose:'목표 / 문제',ReportedChange:'변경 / 조사',ExpectedEffect:'결과 / 기대 효과',Limits:'남은 불확실성'}

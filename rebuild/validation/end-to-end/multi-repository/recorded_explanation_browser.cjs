@@ -38,13 +38,16 @@ const labels = {
   try {
     for (const display of config.displays) for (const width of [1440, 768, 390, 320]) {
       const page = await browser.newPage({viewport:{width, height:900}});
-      await page.context().setOffline(true);
-      await page.goto(pathToFileURL(display.path).href + '#work-' + work.work_item_id);
+      await page.context().setOffline(!display.url);
+      const workUrl = display.url || pathToFileURL(display.path).href + '#work-' + work.work_item_id;
+      await page.goto(workUrl);
       await page.evaluate(() => document.fonts.ready);
       const article = page.locator(`article[data-work-id="${work.work_item_id}"]`).filter({has:page.locator('.answer-section')}).first();
       assert.equal(await article.count(), 1, 'actual detailed Work available');
-      assert.equal(await article.locator('h3').first().textContent(), config.goal_title, 'canonical request title');
-      assert.equal(await article.locator('h3').first().getAttribute('data-title-basis'), 'goal-quotation');
+      assert.equal(await article.locator('h3').first().textContent(), display.locale === 'ko' ? '작업 기록' : 'Recorded Work', 'neutral Work label');
+      assert.equal(await article.locator('h3').first().getAttribute('data-title-basis'), 'neutral-label');
+      assert.equal(await article.locator('.work-goal blockquote').textContent(), work.evidence.goal.original_text, 'complete original Goal');
+      assert.equal(await article.locator('.work-goal blockquote').getAttribute('lang'), '', 'Goal original language is not inferred');
       const prose = article.locator('.work-explanation > .answer-section > p[data-question]');
       assert.deepEqual(await prose.allTextContents(), answers.prose.map(p => p.text), 'byte-equivalent paragraph wording and order');
       assert.ok((await article.locator('.explanation-grounding').textContent()).includes(answers.provenance.realization_fingerprint), 'exact output identity');
@@ -85,7 +88,7 @@ const labels = {
         assert.equal(await page.evaluate(() => document.activeElement.id), target, 'mouse reaches exact Source');
         assert.equal(await source.locator(':scope > pre').evaluate(e => getComputedStyle(e).whiteSpace), 'pre', 'code indentation preserved');
       }
-      await page.goto(pathToFileURL(display.path).href + '#work-' + work.work_item_id);
+      await page.goto(workUrl);
       for (let step=0; step<500; step++) {
         await page.keyboard.press('Tab');
         if (await page.evaluate(() => document.activeElement.classList.contains('source-citation'))) break;
@@ -95,12 +98,28 @@ const labels = {
       await page.keyboard.press('Enter');
       assert.equal(await page.evaluate(() => document.activeElement.id), keyboardTarget, 'Enter reaches exact range');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'page remains within viewport');
-      await page.goto(pathToFileURL(display.path).href + '#work-' + work.work_item_id);
+      await page.goto(workUrl);
       const first = await prose.first().boundingBox();
       assert.ok(first.y >= 0 && first.y < 700, 'problem appears before detailed code and audit');
       assert.ok(await prose.first().evaluate(e => parseFloat(getComputedStyle(e).lineHeight) >= 24), 'readable prose leading');
       await page.screenshot({path:`${config.output}/${display.locale}-${width}.png`});
-      observations.push({locale:display.locale, body_language:config.body_language, width, display_sha256:digest(display.path), status:'passed'});
+      if (display.url) {
+        const overview = new URL(display.url); overview.searchParams.set('view', 'overview'); overview.searchParams.delete('work');
+        await page.goto(overview.href);
+        const card = page.locator(`#overview article[data-work-id="${work.work_item_id}"]`).first();
+        assert.equal(await card.locator('h4 a').textContent(), display.locale === 'ko' ? '작업 기록' : 'Recorded Work');
+        assert.equal(await card.locator('[data-question=Purpose]').count(), 1, 'one ordinary Purpose paragraph');
+        assert.ok((await card.locator('[data-question=Purpose]').textContent()).includes(answers.prose.find(p => p.question === 'Purpose').text));
+        await page.screenshot({path:`${config.output}/${display.locale}-${width}-overview.png`});
+        const codeUrl = new URL(display.url); codeUrl.searchParams.set('view', 'code'); codeUrl.searchParams.set('scope', 'work');
+        await page.goto(codeUrl.href);
+        const code = page.locator('.code-work-meaning');
+        const selected = answers.prose.filter(p => ['Purpose','ReportedChange','ExpectedEffect','Limits'].includes(p.question));
+        assert.deepEqual(await code.locator(':scope > p[data-question]').allTextContents(), selected.map(p => p.text), 'Code preserves original interpretation');
+        assert.equal(await code.locator('h3').first().getAttribute('data-title-basis'), 'neutral-label');
+        await page.screenshot({path:`${config.output}/${display.locale}-${width}-code.png`});
+      }
+      observations.push({locale:display.locale, body_language:config.body_language, width, mode:display.url ? 'live' : 'offline', display_sha256:display.path ? digest(display.path) : null, status:'passed'});
       await page.close();
     }
   } finally { await browser.close(); }

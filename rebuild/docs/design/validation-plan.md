@@ -2793,8 +2793,8 @@ before launching Chromium, then preserves paragraph order, output identity, exac
 Source text/locators, purpose labels, keyboard/mouse targets, closed audit priority
 and code indentation at 1440/768/390/320 widths. Interface locales and original body
 language are separate observations; an English interface around Korean original
-prose supplies no English model-generation result. Broad canonical Goal headings
-remain request quotations, never semantic effect approval. Independent Rust title
+prose supplies no English model-generation result. Neutral Work headings keep the
+complete original Goal at the opening, never semantic effect approval. Independent Rust title
 controls include correctly hashed unsupported causal prose; Python presentation
 controls attack rehashed titles/coordinates, unsupported editorial changes, stale
 locations and cross-display feedback.
@@ -2870,3 +2870,19 @@ failed Work continuation. All non-current states still require unavailable prose
 no generated direction/provenance, and exact Goal/Checkpoint/Source grounding.
 Unknown states remain errors. Independent restart controls exercise each added
 state through the complete restart consumer and reject revived generated content.
+
+
+### Work heading presentation support
+
+Actual `grounded_reader::overview_reads_available_work_before_missing_project_context`
+seeds a long mixed-language Goal, no Project Purpose and no Checkpoint, with and
+without a labeled authored interpretation. Independent assertions require neutral
+localized headings, the exact full Goal quotation and its original-language boundary,
+Open Work and unchanged canonical basis in actual HTTP and snapshot readers.
+`project_overview_browser.cjs` exercises these actual Runtime fixtures at desktop
+and narrow widths in en/ko, including first-screen meaning, exact Work keyboard
+navigation, missing direction and Source navigation. `VOLICORD_OVERVIEW_CAPTURE`
+retains the disposable fixture for that driver. Original host-recorded output must
+also be checked separately; authored fixture success is not generator quality or
+human comprehension. All checks use focused validation; no aggregate/gate/V11 or
+external model invocation is required by this presentation change.

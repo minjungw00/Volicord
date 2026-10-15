@@ -43,13 +43,22 @@ async function inspect(page, fixture, locale, source, baseline) {
   const overview = page.locator('#overview');
   const card = overview.locator(`article[data-work-id="${fixture.work}"]`).first();
   assert.equal(await card.getAttribute('data-work-state'), 'open');
-  const meaning = card.locator('[data-question=Purpose], [data-question=RecordedGoal]').first();
+  const meaning = card.locator(fixture.host_output === 'authored-control-recorded' ? '[data-question=Purpose]' : '[data-question=RecordedGoal]').first();
   if (baseline) {
-    assert.ok(await page.locator('.project-purpose').first().evaluate((e, id) => !!(e.compareDocumentPosition(document.querySelector(`article[data-work-id="${id}"]`)) & Node.DOCUMENT_POSITION_FOLLOWING), fixture.work));
+    assert.equal(await card.locator('h4').getAttribute('data-title-basis'), 'goal-quotation', 'baseline reproduces clipped task heading');
+    assert.ok((await card.locator('h4').textContent()).endsWith('…'), 'baseline long Goal truncation reproduced');
     return {first_meaning_y: (await (await meaning.count() ? meaning : card.locator('h4')).boundingBox()).y};
   }
   assert.equal(await meaning.count(), 1, 'recorded problem or explicitly quoted Goal');
   assert.ok(await card.evaluate(e => !!(e.compareDocumentPosition(document.querySelector('.project-purpose')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'Work precedes absent Project Purpose');
+  assert.equal(await card.locator('h4').getAttribute('data-title-basis'), 'neutral-label');
+  assert.equal(await card.locator('h4 a').textContent(), locale === 'en' ? 'Recorded Work' : '작업 기록');
+  assert.equal(await card.locator('.work-goal blockquote').textContent(), fixture.goal, 'complete original Goal, including mixed languages');
+  assert.equal(await card.locator('.work-goal blockquote').getAttribute('lang'), '', 'quotation is not translated');
+  if (fixture.host_output === 'authored-control-recorded') {
+    assert.equal(await card.locator('.work-goal').getAttribute('open'), null, 'original Goal accessible beside interpretation');
+    assert.equal(await card.locator('[data-question=Purpose]').count(), 1, 'Purpose is not a duplicate headline');
+  }
   const first = await meaning.boundingBox();
   assert.ok(first.y >= 0 && first.y < page.viewportSize().height - 24, `ordinary meaning in first screen: ${first.y}`);
   assert.ok((await page.locator('.project-purpose').first().innerText()).includes(locale === 'en' ? 'No source-grounded Project purpose is recorded.' : 'source-grounded 프로젝트 목적이 기록되지 않았습니다.'));
@@ -60,6 +69,9 @@ async function inspect(page, fixture, locale, source, baseline) {
   const detail = page.locator(`#work-${fixture.work}`);
   await detail.waitFor();
   assert.equal(await detail.count(), 1, 'keyboard opens exact Work detail');
+  assert.equal(await detail.locator('.work-goal blockquote').textContent(), fixture.goal);
+  assert.equal(await detail.locator('article h3').first().textContent(), locale === 'en' ? 'Recorded Work' : '작업 기록');
+  assert.equal(await detail.locator('[data-question=RecordedNextStep]').count(), 0, 'no manufactured Checkpoint action');
   if (fixture.host_output === 'authored-control-recorded') {
     const citation = detail.locator('a.source-citation').first();
     await citation.focus(); await page.keyboard.press('Enter');

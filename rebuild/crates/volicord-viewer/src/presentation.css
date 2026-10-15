@@ -189,3 +189,8 @@ button { width: max-content; min-height: 2.75rem; cursor: pointer; }
   .work-summary .next-action { padding: .5rem; }
   .selected-code, .code-work-meaning, [data-code-behavior] { padding: .4rem; }
 }
+
+/* Original task wording reflows as a quotation, independently of derived prose. */
+.work-goal { max-width: 72ch; }
+.work-goal blockquote { margin: .65rem 0; padding-left: 1rem; border-left: 3px solid var(--line); white-space: pre-wrap; line-height: 1.75; }
+.interpretation-label { color: #634181; font-size: .9rem; border-left: 3px solid #a98bc3; padding-left: .75rem; }

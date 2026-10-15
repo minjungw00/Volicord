@@ -61,8 +61,12 @@ retain historical verification coverage alongside the actual recorded direction.
 Overview also keeps current open questions, canonical risks and unresolved Work
 association visible before next actions. There is no universal Material limitations
 section; unrelated capability failures do not precede ordinary Work meaning.
-Without a current interpretation, a card labels its Goal heading as an excerpt and
-links to the complete Work quotation. It supplies no invented problem or outcome.
+Work uses a neutral localized “Recorded Work” heading because the read model has
+no authored short title. With current prose, an explicitly labeled host interpretation
+provides the ordinary problem paragraph and a native opening disclosure keeps the
+complete Goal quotation and Source basis. Without prose, the original Goal is ordinary
+reading beneath that label. Task instructions are never clipped into a title; Purpose
+is not duplicated as a headline. No problem, outcome or translation is invented.
 On narrow screens, compact language/tools disclosures keep ordinary Work reading
 reachable. Offline snapshots retain a visible read-only notice and put their Evidence
 navigation in the same native disclosure hierarchy.

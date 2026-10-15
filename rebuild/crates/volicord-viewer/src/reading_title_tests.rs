@@ -102,9 +102,16 @@ fn reading(w: &UnderstandingWork, r: &ViewerRequest, claim: &str) -> Explanation
 
 fn assert_goal(w: &UnderstandingWork, r: &ViewerRequest) {
     let (title, basis, language) = work_reading_heading(w, r);
-    assert_eq!(title, GOAL);
-    assert_eq!(basis, "goal-quotation");
-    assert!(language.is_empty(), "Goal language must not be inferred");
+    assert_eq!(title, "Recorded Work");
+    assert_eq!(basis, "neutral-label");
+    assert_eq!(
+        language, "en",
+        "fixed label language is independent of Goal"
+    );
+    let mut html = String::new();
+    work_goal_opening(&mut html, r, w);
+    assert!(html.contains(GOAL));
+    assert!(html.contains("lang=\"\" data-statement-role=\"verified-canonical\""));
 }
 
 #[test]
@@ -233,5 +240,18 @@ fn mislabeled_causal_effect_with_matching_hashes_is_not_supported_by_return_two(
     );
     w.reading.explanations = vec![e];
     assert_goal(&w, &r);
+    Ok(())
+}
+
+#[test]
+fn purpose_classification_does_not_certify_an_invented_short_title(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (mut w, r) = fixture()?;
+    let mut e = reading(&w, &r, INVENTED_EFFECT);
+    e.content.as_mut().ok_or("content")?.realization.paragraphs[0].question =
+        ExplanationQuestion::Purpose;
+    w.reading.explanations = vec![e];
+    assert_goal(&w, &r);
+    assert_eq!(w.reading.goal.original_text.as_deref(), Some(GOAL));
     Ok(())
 }
