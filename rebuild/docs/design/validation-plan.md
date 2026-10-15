@@ -1344,6 +1344,14 @@ Focused Analysis resource attribution and its normal/retained-large producer-rea
 regression are documented in [Analysis resource pressure](../../validation/end-to-end/multi-repository/analysis-resource-pressure.md).
 These supporting commands preserve exact input/output identities and failed
 observations; they do not invoke or replace gate/Final/official V11 qualification.
+The resource roundtrip's `VOLICORD_ANALYSIS_RESOURCE_PAIRED_READER=1` mode retains
+one complete baseline while repeatedly reading a cache-absent current publication.
+It checks the same complete graph/serialized-byte fingerprints and corrupt-blob
+rejection as the durable-inspection mode. A separate streaming-consumption control
+requires typed values before the complete JSON payload has been read; exact length,
+schema, trailing data and overflow controls apply to both decoders. Normal requests
+stream their fallback decode, while explicit health/repair retain bulk per-snapshot
+inspection. Neither mode changes the V11 collector, graph scope or resource limits.
 
 ### Phase 8 naturalistic Dogfood qualification
 

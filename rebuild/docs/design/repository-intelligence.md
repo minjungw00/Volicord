@@ -562,6 +562,12 @@ store 진단은 다른 책임이며, 최신 payload 실패를 과거 graph의 cu
 있다. 이 cache는 newest snapshot과 earliest retained baseline의 bounded 두 항목에만
 유지되고 canonical/Analysis history나
 corruption 판정의 근거가 아니며, 없거나 invalid하면 durable payload를 decode한다.
+Normal request의 cache miss는 normalized JSON을 bounded buffered stream으로
+역직렬화한다. Work baseline과 current graph가 함께 살아 있는 동안 전체 JSON 복사본을
+추가로 보유하지 않으며 manifest의 exact length/EOF, blob identity와 typed payload
+binding을 계속 검사한다. 전체 이력을 한 snapshot씩 검사하는 explicit health/repair는
+bulk JSON decoding을 유지한다. 두 read mode는 같은 wire format과 complete graph를
+검증하며 별도 schema 또는 historical compatibility 경로가 아니다.
 Cache의 streamed MessagePack을 낮은 압축 수준과 bounded 64 MiB 긴 거리 매칭으로
 무손실 압축하여 section 사이의 먼 반복도 재사용한다. Cache header/schema, exact
 snapshot 검증과 두 항목 retention은 바뀌지 않는다.

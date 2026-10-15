@@ -216,3 +216,40 @@ repeat-read and process-restart controls passed as described above.
 Workspace-wide Clippy/tests, Final, gate and official V11 were intentionally not
 run for this focused task. No RSS/time/storage limit, collector formula, language
 capability, graph entity/relation, Source evidence or schema was changed.
+
+## Integrated retained-baseline reader regression
+
+The later clean candidate `ab6b364fa4929513afb04b579d4ceb7b1254a617` was processed
+through the authoritative gate. Its 55 functional leaves, Final, rehearsal,
+provider, preflight and credential audit passed; V11 qualification failed solely
+for 4,386,426,880-byte MCP RSS against 4,294,967,296. Duration was 850,746.920 ms,
+post-warmup growth 525,526,343 bytes, and sampling errors zero. The preserved
+candidate-bound archive independently verified with its original failure intact.
+The first 4 GiB crossing was `mcp-011` call 27, `materiality_review`; the maximum
+was call 30, `checkpoint_record`. These are process high-water observations,
+not isolated allocation attribution or a leak diagnosis.
+
+The ordinary cache-miss reader reconstructed an entire JSON allocation before
+typed decoding. Reading a current graph while retaining a baseline reproduced
+the pressure independently. `resource_pressure_roundtrip` now offers explicit
+`VOLICORD_ANALYSIS_RESOURCE_PAIRED_READER=1` support: the copied publication has no
+cache, three normal reads must preserve the full graph fingerprint, and both
+normal/durable readers must reject corrupt content without changing the input.
+The default mode still checks three complete durable history reads.
+
+On the same retained input, the paired-reader process peak fell from 4,479,024
+to 3,886,124 KiB VmHWM; test-body durations were 39.51 and 41.74 seconds. Compiler
+time is excluded. Both runs returned 0 and retained identical input, manifest,
+values, metadata and all 4,270 shape identities. Input SHA-256 is
+`35558ed24dcf542f41ff17a9e8331c2c197dcdc5f161eaf23a58ff6e6a4a11fe`;
+manifest SHA-256 is `4323908c98c979072222630d387f6eafc9d8ea6d148f9cfe623fccbf619c7400`.
+Complete streams and the pre-change executable/diff are retained under ignored
+`grounded-review/` and the focused `analysis-paired-reader-before/after` receipts.
+
+Normal cache misses now decode the existing normalized representation through a
+bounded buffered stream with an exact-length overflow sentinel and EOF/schema
+checks. Explicit per-snapshot history inspection retains bulk decoding, preserving
+the health/repair cost boundary. Cache policy, complete graph content, durable
+bytes, identities and corruption checks remain the same. The observed reduction
+qualifies this focused correction only; the changed clean candidate must still
+pass the authoritative gate, including its original RSS and duration ceilings.

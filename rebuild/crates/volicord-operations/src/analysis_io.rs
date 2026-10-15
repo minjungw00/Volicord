@@ -205,17 +205,23 @@ pub(crate) fn read_analysis(path: &Path) -> Result<AnalysisSnapshot, Error> {
     if let Some(snapshot) = read_cached_analysis(path, &manifest) {
         return Ok(snapshot);
     }
-    read_analysis_from_manifest(path, manifest)
+    read_analysis_from_manifest(path, manifest, AnalysisReadMode::Normal)
 }
 
 pub(crate) fn read_analysis_durable(path: &Path) -> Result<AnalysisSnapshot, Error> {
     let manifest = read_manifest(path)?;
-    read_analysis_from_manifest(path, manifest)
+    read_analysis_from_manifest(path, manifest, AnalysisReadMode::Inspection)
+}
+
+enum AnalysisReadMode {
+    Normal,
+    Inspection,
 }
 
 fn read_analysis_from_manifest(
     path: &Path,
     manifest: AnalysisManifest,
+    mode: AnalysisReadMode,
 ) -> Result<AnalysisSnapshot, Error> {
     read_metadata(path, &manifest)?;
     let blobs = blob_dir(path)?;
@@ -247,7 +253,19 @@ fn read_analysis_from_manifest(
         }
     };
     let reader = DenormalizingReader::new(shape, values, manifest.scalar_count)?;
-    let snapshot: AnalysisSnapshot = decode_normalized_json(reader, manifest.logical_json_bytes)?;
+    let snapshot: AnalysisSnapshot = match mode {
+        // Work readers may already retain a full baseline graph. Avoid a second
+        // complete JSON allocation while constructing the requested graph.
+        AnalysisReadMode::Normal => {
+            decode_normalized_json_streamed(reader, manifest.logical_json_bytes)?
+        }
+        // Explicit history inspection processes snapshots individually. Keep its
+        // bulk string decoding instead of adding byte-wise parsing to every
+        // historical snapshot in health and repair.
+        AnalysisReadMode::Inspection => {
+            decode_normalized_json(reader, manifest.logical_json_bytes)?
+        }
+    };
     if snapshot.identity != manifest.identity
         || snapshot.project != manifest.project
         || snapshot.generated_at_unix_micros != manifest.generated_at_unix_micros
@@ -255,6 +273,25 @@ fn read_analysis_from_manifest(
         return Err(Error::new("Analysis manifest and payload bindings differ"));
     }
     Ok(snapshot)
+}
+
+fn decode_normalized_json_streamed<T: serde::de::DeserializeOwned>(
+    reader: impl Read,
+    logical_bytes: u64,
+) -> Result<T, Error> {
+    let limit = logical_bytes
+        .checked_add(1)
+        .ok_or_else(|| Error::new("Analysis JSON length is unsupported"))?;
+    let mut input = reader.take(limit);
+    let value = serde_json::from_reader(BufReader::with_capacity(1024 * 1024, &mut input))
+        .map_err(|error| Error::with_source("normalized Analysis Snapshot is corrupt", error))?;
+    // from_reader validates EOF, including trailing JSON. The sentinel also
+    // rejects a valid value with too few bytes or extra whitespace beyond the
+    // exact declared length, without reading an unbounded malformed payload.
+    if input.limit() != 1 {
+        return Err(Error::new("Analysis JSON length differs from manifest"));
+    }
+    Ok(value)
 }
 
 fn decode_normalized_json<T: serde::de::DeserializeOwned>(
@@ -1172,12 +1209,24 @@ mod tests {
         let path = output.join(format!("{}.json", manifest.identity));
         std::fs::write(&path, &encoded.manifest)?;
         drop(encoded);
-        for _ in 0..3 {
-            // No read cache: each call independently reconstructs the complete
-            // durable graph, just as a fresh process with absent Derived caches.
-            assert_eq!(fingerprint(&read_analysis_durable(&path)?)?, expected);
+        if std::env::var_os("VOLICORD_ANALYSIS_RESOURCE_PAIRED_READER").is_some() {
+            // Normal Work consumers retain a baseline while reading the current
+            // graph. The copied publication has no read cache, so this exercises
+            // the actual fallback without changing either input or graph scope.
+            let baseline = read_analysis(&input)?;
+            for _ in 0..3 {
+                assert_eq!(fingerprint(&read_analysis(&path)?)?, expected);
+            }
+            assert_eq!(fingerprint(&baseline)?, expected);
+            memory("retained_baseline_and_normal_reads");
+        } else {
+            for _ in 0..3 {
+                // No read cache: each call independently reconstructs the complete
+                // durable graph, just as a fresh process with absent Derived caches.
+                assert_eq!(fingerprint(&read_analysis_durable(&path)?)?, expected);
+            }
+            memory("repeated_durable_reads");
         }
-        memory("repeated_durable_reads");
         let corrupt = output
             .join("blobs")
             .join(format!("{}.values", manifest.values_blob));
@@ -1495,10 +1544,66 @@ mod tests {
         let encoded = br#"["a","b"]"#;
         for length in [encoded.len() as u64 - 1, encoded.len() as u64 + 1] {
             assert!(decode_normalized_json::<Vec<String>>(encoded.as_slice(), length).is_err());
+            assert!(
+                decode_normalized_json_streamed::<Vec<String>>(encoded.as_slice(), length).is_err()
+            );
         }
         for corrupt in [br#"["a",2]"#.as_slice(), br#"["a"]true"#.as_slice()] {
             assert!(decode_normalized_json::<Vec<String>>(corrupt, corrupt.len() as u64).is_err());
+            assert!(
+                decode_normalized_json_streamed::<Vec<String>>(corrupt, corrupt.len() as u64)
+                    .is_err()
+            );
         }
+        assert!(decode_normalized_json_streamed::<Vec<String>>(b"[] ".as_slice(), 2).is_err());
+        assert!(
+            decode_normalized_json_streamed::<Vec<String>>(encoded.as_slice(), u64::MAX).is_err()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn normalized_stream_delivers_values_before_reading_the_whole_payload(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use std::cell::Cell;
+        thread_local! {
+            static PROGRESS: Cell<(usize, Option<usize>)> = const { Cell::new((0, None)) };
+        }
+        struct ObservedRead<'a>(&'a [u8]);
+        impl Read for ObservedRead<'_> {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                let count = self.0.read(output)?;
+                PROGRESS.with(|p| {
+                    let (n, first) = p.get();
+                    p.set((n + count, first));
+                });
+                Ok(count)
+            }
+        }
+        #[derive(Debug, PartialEq)]
+        struct Item(String);
+        impl<'de> Deserialize<'de> for Item {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let value = String::deserialize(deserializer)?;
+                PROGRESS.with(|p| {
+                    let (n, first) = p.get();
+                    p.set((n, first.or(Some(n))));
+                });
+                Ok(Self(value))
+            }
+        }
+        let values = vec!["first".to_owned(), "tail 한글".repeat(512 * 1024)];
+        let encoded = serde_json::to_vec(&values)?;
+        PROGRESS.with(|p| p.set((0, None)));
+        let decoded: Vec<Item> =
+            decode_normalized_json_streamed(ObservedRead(&encoded), encoded.len() as u64)?;
+        assert_eq!(decoded, values.into_iter().map(Item).collect::<Vec<_>>());
+        let (total, first) = PROGRESS.with(Cell::get);
+        assert_eq!(total, encoded.len());
+        assert!(
+            first.is_some_and(|n| n > 0 && n < total),
+            "typed values must be delivered before the entire payload is buffered"
+        );
         Ok(())
     }
 
