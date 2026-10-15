@@ -1295,7 +1295,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             citation["claim_sha256"] = json!(explanation_text_hash(text));
             citation
         }).collect::<Vec<_>>()} else {vec![]}})).collect();
-    let realization = json!({"format_kind":"volicord_explanation","format_version":2,
+    let realization = json!({"format_kind":"volicord_explanation","format_version":volicord_projections::EXPLANATION_VERSION,
         "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
         "generator":{"host":"authored-structural-control","session":"representative-reader","agent":null,"model":null},
         "paragraphs":paragraphs});

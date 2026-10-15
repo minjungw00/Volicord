@@ -2910,3 +2910,14 @@ without extending retention or claiming a current generated reading. Browser,
 authored prose, original historical output and human comprehension remain separate
 kinds of evidence. No substantive edited output or automatic editorial adoption is
 introduced by these presentation changes.
+
+### Reader-document representation support
+
+Focused `volicord-host --test work_explanation` exercises each reader role through
+actual MCP generation request, scoped Source retrieval and recording. Forged keys,
+changed claim wording, wrong Source revision, language, non-current formats, foreign
+Source and multibyte over-budget attempts preserve the prior record. A dependency
+cited only by a heading or comparison is withheld after explicit Source-copy deletion.
+Partial documents require no invented answers. Existing CLI/Operations budget and
+shared-answer consumers remain direct regression checks. This structural support is
+separate from the source-derived B/Click layout trial, human review and semantic quality.

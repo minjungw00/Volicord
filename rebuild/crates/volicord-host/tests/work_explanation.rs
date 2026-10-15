@@ -217,7 +217,12 @@ fn retrieved_source_cannot_replace_required_canonical_grounding() -> Result<(), 
             {"question":"expected_effect","required_any_evidence_keys":["goal"]},
             {"question":"verification","required_any_evidence_keys":["goal"]},
             {"question":"next_step","required_any_evidence_keys":["next_step"]},
-            {"question":"limits","required_any_evidence_keys":[]}
+            {"question":"limits","required_any_evidence_keys":[]},
+            {"question":"heading","required_any_evidence_keys":[]},
+            {"question":"synopsis","required_any_evidence_keys":[]},
+            {"question":"observation","required_any_evidence_keys":[]},
+            {"question":"comparison","required_any_evidence_keys":[]},
+            {"question":"reading_point","required_any_evidence_keys":[]}
         ])
     );
     assert_eq!(generation["plan"]["evidence"][1]["content"], Value::Null);
@@ -478,7 +483,12 @@ fn changed_work_preparation_exposes_actual_question_grounding_for_first_record(
             {"question":"expected_effect","required_any_evidence_keys":["result",change_key]},
             {"question":"verification","required_any_evidence_keys":["verification"]},
             {"question":"next_step","required_any_evidence_keys":["next_step"]},
-            {"question":"limits","required_any_evidence_keys":[]}
+            {"question":"limits","required_any_evidence_keys":[]},
+            {"question":"heading","required_any_evidence_keys":[]},
+            {"question":"synopsis","required_any_evidence_keys":[]},
+            {"question":"observation","required_any_evidence_keys":[]},
+            {"question":"comparison","required_any_evidence_keys":[]},
+            {"question":"reading_point","required_any_evidence_keys":[]}
         ])
     );
     let current = f.read(&generation, f.source)?;
@@ -1499,5 +1509,113 @@ fn large_file_excerpt_mcp_citations_use_independent_absolute_coordinates(
         .operations()
         .read_explanation_source(f.project, f.work, f.source)
         .is_err());
+    Ok(())
+}
+
+/// Each display role must traverse the actual request, grounding and dependency
+/// lifecycle. In particular a title-only dependency cannot survive deletion.
+#[test]
+fn every_reader_unit_is_grounded_atomic_and_invalidated_through_mcp() -> Result<(), Box<dyn Error>>
+{
+    use ExplanationQuestion::*;
+    for role in [
+        Heading,
+        Synopsis,
+        Purpose,
+        Observation,
+        Comparison,
+        ReadingPoint,
+        Limits,
+    ] {
+        let mut f = Fixture::new()?;
+        let generation = f.generate()?;
+        let read = f.read(&generation, f.source)?;
+        let mut valid = response(&generation, &read)?;
+        let text = "The observed function returns 7.";
+        let citation = citation_for(
+            &read,
+            "body",
+            "return 7",
+            text,
+            text,
+            ExplanationSourceUse::CurrentCode,
+        )?;
+        valid.paragraphs = vec![ExplanationParagraph {
+            question: role,
+            text: text.into(),
+            evidence_keys: vec!["goal".into()],
+            citations: vec![citation],
+        }];
+        // Partial documents need no invented answers to absent questions.
+        let args = f.record_args(&generation, &valid)?;
+        success(&mut f.host, args)?;
+        let previous = f
+            .host
+            .operations()
+            .privacy_status(f.project)?
+            .managed_derived;
+        for variant in 0..9 {
+            let attempt = f.generate()?;
+            f.read(&attempt, f.source)?;
+            let mut invalid = valid.clone();
+            match variant {
+                0 => invalid.paragraphs[0].evidence_keys = vec!["foreign-work-key".into()],
+                1 => invalid.paragraphs[0].text.push_str(" changed"), // old claim hash/range no longer binds changed suffix? bind whole below
+                2 => invalid.paragraphs[0].citations[0].source_revision += 1,
+                3 => invalid.language = "fr".into(),
+                4 => invalid.format_version = EXPLANATION_VERSION - 1,
+                5 => invalid.format_version = EXPLANATION_VERSION + 1,
+                6 => invalid.paragraphs[0].citations[0].source_id = "01".repeat(16),
+                7 => {
+                    invalid.paragraphs[0].text =
+                        "한".repeat(EXPLANATION_PARAGRAPH_CHARACTER_LIMIT + 1)
+                }
+                _ => invalid.paragraphs[0].evidence_keys.clear(),
+            }
+            if variant == 1 {
+                invalid.paragraphs[0].citations[0].claim_end_byte =
+                    invalid.paragraphs[0].text.len();
+            }
+            let args = f.record_args(&attempt, &invalid)?;
+            assert_eq!(
+                call(&mut f.host, args)["result"]["isError"],
+                true,
+                "{role:?}/{variant}"
+            );
+            assert_eq!(
+                previous,
+                f.host
+                    .operations()
+                    .privacy_status(f.project)?
+                    .managed_derived
+            );
+        }
+        let projection = f.host.operations().project_projection(f.project)?;
+        let w = projection
+            .work_history
+            .iter()
+            .find(|w| w.work_item_id == f.work)
+            .ok_or("work")?;
+        let answers = work_answers(w, "en", FixedLocale::English);
+        assert_eq!(answers.prose.len(), 1);
+        assert_eq!(answers.prose[0].question, format!("{role:?}"));
+        assert_eq!(answers.source_excerpts[0].text, "return 7");
+        if role == Heading {
+            assert_eq!(answers.reading_title(), Some(text));
+        }
+        f.host
+            .operations()
+            .delete_work_source_observation(f.project, f.work, f.source)?;
+        let projection = f.host.operations().project_projection(f.project)?;
+        let w = projection
+            .work_history
+            .iter()
+            .find(|w| w.work_item_id == f.work)
+            .ok_or("work")?;
+        let answers = work_answers(w, "en", FixedLocale::English);
+        assert_eq!(answers.explanation_state, ExplanationState::Stale);
+        assert!(answers.provenance.is_none() && answers.source_excerpts.is_empty());
+        assert!(answers.reading_title().is_none() && answers.synopsis().is_none());
+    }
     Ok(())
 }

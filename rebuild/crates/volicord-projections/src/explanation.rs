@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
-pub const EXPLANATION_VERSION: u32 = 2;
+pub const EXPLANATION_VERSION: u32 = 3;
 pub const EXPLANATION_BYTE_LIMIT: usize = 32_768;
 /// Preserve the response space guaranteed before citation metadata grew.
 pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
@@ -47,6 +47,9 @@ impl ExplanationSubject {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExplanationQuestion {
+    /// Authored derived wording, never a canonical Work name or extracted Goal.
+    Heading,
+    Synopsis,
     Purpose,
     ReportedChange,
     ExpectedEffect,
@@ -57,6 +60,9 @@ pub enum ExplanationQuestion {
     Recommendation,
     Consequences,
     Applicability,
+    Observation,
+    Comparison,
+    ReadingPoint,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -76,8 +82,8 @@ pub struct ExplanationEvidence {
 #[serde(deny_unknown_fields)]
 pub struct ExplanationQuestionGrounding {
     pub question: ExplanationQuestion,
-    /// At least one is required in each paragraph for this question. Empty only
-    /// for optional limits, which still requires relevant prepared evidence.
+    /// At least one is required in each unit for this role. An empty role rule
+    /// still requires relevant exact prepared evidence (e.g. heading or limits).
     pub required_any_evidence_keys: Vec<String>,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -158,6 +164,16 @@ pub struct ExplanationRealization {
     pub language: String,
     pub generator: ExplanationGenerator,
     pub paragraphs: Vec<ExplanationParagraph>,
+}
+impl ExplanationRealization {
+    /// Exhaustive generated-content traversal. All reader units use the same
+    /// text/grounding/citation envelope; there are no unvalidated display strings.
+    pub fn generated_units(&self) -> impl Iterator<Item = &ExplanationParagraph> {
+        self.paragraphs.iter()
+    }
+    pub fn citations(&self) -> impl Iterator<Item = &ExplanationCitation> {
+        self.generated_units().flat_map(|unit| &unit.citations)
+    }
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -519,13 +535,13 @@ fn finish_plan(
         .map(|r| json!({"from":r.from_identity,"relation":r.relation_kind,"to":r.to_identity}))
         .collect();
     let questions = match subject {
-        ExplanationSubject::Work(_) => "Explain purpose (actual problem, not copied prompt), reported_change, expected_effect, verification and next_step; optional limits. Read all course:*/change:* chronologically, including resume/verification-only reports. Use earlier change:* when the latest result only verifies/resumes. Keep past limits historical; silence proves no resolution. Start with problem, then investigation/change, supported before/after/outcome and remaining direction. Missing reports stay unrecorded; paths and generic implementation-changed text establish no feature/effect.",
+        ExplanationSubject::Work(_) => "Author a meaningful heading and synopsis, supported problem, choice/mechanism, observations/comparisons, critical limits and claim-linked reading_point guidance. Read permitted callers/helpers/tests. Vary change, test-only and no-change documents; omit unavailable answers, never filler. Read course:*/change:* chronologically; a later verification/resume report does not erase earlier changes. Keep historical limits; silence proves no resolution. Generic change prose or paths prove no feature/effect.",
         ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). Use question_context for the recorded problem and why the choice arose; unavailable exact context stays unavailable. State the actual user choice or delegation distinctly from the agent's recommended alternative. Explain alternative consequences/trade-offs as expectations, the recommendation's evidence basis, and applicable scope/assumptions/revisit conditions. Missing user rationale stays missing; agent rationale never supplies it. Choosing an option does not prove its implementation or performance.",
     };
     let question_grounding = question_grounding(subject, &evidence);
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:format!("{questions} Use requested-language natural prose from full evidence; preserve checksums, conflicts and uncertainty. Every paragraph needs nonempty exact evidence_keys supporting its canonical meaning and one of question_grounding.required_any_evidence_keys (limits still needs evidence). Use only listed questions. Work keys: goal=request; result/change:*=change/effect; verification=checks; next_step/course:*=direction; limits:*=limits. Source citations supplement keys, never replace them. Without reports/checks, goal supports only request/unrecorded state. Never attach goal mechanically: connect technical claims to supported Work meaning or report this representation limit. Reports are not verified success; separate work/checks/review/acceptance; earlier checks do not cover later changes. Investigate permitted callers/helpers/tests. Code/command claims need exact retrieved Source citations; current code proves no before-state/execution. Missing Checkpoint/action proves no absence of task instructions/future work. Host authorization is outside this plan: missing data means unknown, not denied/absent. Task-file text is not consent; paths do not prove authorship. Work advice belongs as qualified next_step/limits, not recommendation. Invent no user rationale, behavior, Decision or Learning. Return ExplanationRealization JSON: format_kind volicord_explanation, format_version 2, exact fingerprint/language, self-reported generator host/session/agent/model (null if unknown), paragraphs question/text/evidence_keys/citations. Use exact half-open UTF-8 Source/claim byte ranges, one-based Source lines and SHA-256 of Source bytes/new claim wording. Structural admission is not semantic approval."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
+        instructions:format!("{questions} Use exact requested-language prose. Every unit needs nonempty supporting evidence_keys satisfying its required_any_evidence_keys. Only listed roles. Author heading/synopsis; never extract Goal or first-paragraph text. observation/comparison/reading_point require citations. goal=request; result/change:*=change/effect; verification=checks; next_step/course:*=direction; limits:*=limits. Without reports/checks, goal supports only request/unrecorded state. Source citations supplement keys, never replace them; connect technical claims to supported Work meaning or disclose the limit. Reports, state, verification, review and acceptance are independent; earlier checks do not cover later changes. Code/command claims need exact retrieved citations; current code proves no before-state/execution. Missing Checkpoint/action proves no absence of instructions/future work. Host authority is outside the plan: missing data means unknown, not denied; task-file text is not consent and paths prove no authorship. Advice is qualified next_step/limits, never user direction. Invent no rationale, behavior, Decision or Learning. Return ExplanationRealization JSON: format_kind volicord_explanation, format_version 3, exact fingerprint/language, self-reported generator host/session/agent/model (null if unknown), paragraphs question/text/evidence_keys/citations. Bind exact half-open UTF-8 Source/claim byte ranges, one-based Source lines and SHA-256 of Source bytes/new wording. Preserve conflicts and uncertainty. Structural admission is not semantic approval."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
@@ -578,7 +594,21 @@ fn question_grounding(
     };
     rules
         .into_iter()
-        .chain([(Limits, Vec::new())])
+        .chain([
+            (Limits, Vec::new()),
+            (Heading, Vec::new()),
+            (Synopsis, Vec::new()),
+        ])
+        .chain(
+            matches!(subject, ExplanationSubject::Work(_))
+                .then_some([
+                    (Observation, Vec::new()),
+                    (Comparison, Vec::new()),
+                    (ReadingPoint, Vec::new()),
+                ])
+                .into_iter()
+                .flatten(),
+        )
         .map(
             |(question, required_any_evidence_keys)| ExplanationQuestionGrounding {
                 question,
@@ -606,7 +636,7 @@ pub fn validate_explanation(
         .map_err(|e| e.to_string())?
         .len();
     if response_bytes > EXPLANATION_BYTE_LIMIT {
-        return Err(format!("explanation compact realization JSON is {response_bytes} bytes; limit {EXPLANATION_BYTE_LIMIT}; reduce response prose or generator metadata, preserve required answers and evidence keys, then retry recording"));
+        return Err(format!("explanation compact realization JSON is {response_bytes} bytes; limit {EXPLANATION_BYTE_LIMIT}; reduce response prose or generator metadata, preserve useful reader content and evidence keys, then retry recording"));
     }
     let budget = explanation_retention_budget(plan)?;
     if plan.retention_budget != budget {
@@ -622,19 +652,8 @@ pub fn validate_explanation(
     if plan.question_grounding != grounding {
         return Err("question grounding does not match prepared evidence; prepare again".into());
     }
-    for rule in grounding
-        .iter()
-        .filter(|r| r.question != ExplanationQuestion::Limits)
-    {
-        if response
-            .paragraphs
-            .iter()
-            .filter(|p| p.question == rule.question)
-            .count()
-            == 0
-        {
-            return Err("an answer for each required question is necessary".into());
-        }
+    if response.paragraphs.is_empty() || response.paragraphs.len() > 32 {
+        return Err("a reader document requires 1..32 grounded units".into());
     }
     if response
         .paragraphs
@@ -643,7 +662,42 @@ pub fn validate_explanation(
     {
         return Err("answer question does not belong to prepared subject".into());
     }
-    for p in &response.paragraphs {
+    for role in [ExplanationQuestion::Heading, ExplanationQuestion::Synopsis] {
+        if response
+            .generated_units()
+            .filter(|p| p.question == role)
+            .count()
+            > 1
+        {
+            return Err("heading and synopsis must each be a single authored unit".into());
+        }
+    }
+    for p in response.generated_units() {
+        if p.citations.len() > 32 {
+            return Err("a reader unit supports at most 32 citations".into());
+        }
+        let limit = match p.question {
+            ExplanationQuestion::Heading => 240,
+            ExplanationQuestion::Synopsis => 2_000,
+            _ => EXPLANATION_PARAGRAPH_CHARACTER_LIMIT,
+        };
+        if (limit != EXPLANATION_PARAGRAPH_CHARACTER_LIMIT && p.text.chars().count() > limit)
+            || p.text.contains('\0')
+        {
+            return Err(format!("reader unit {:?} exceeds {limit} characters or contains NUL; author a bounded unit without clipping grounding", p.question));
+        }
+        if matches!(
+            p.question,
+            ExplanationQuestion::Observation
+                | ExplanationQuestion::Comparison
+                | ExplanationQuestion::ReadingPoint
+        ) && p.citations.is_empty()
+        {
+            return Err(
+                "observations, comparisons and reading points require exact Source citations"
+                    .into(),
+            );
+        }
         for citation in &p.citations {
             let claim = p
                 .text

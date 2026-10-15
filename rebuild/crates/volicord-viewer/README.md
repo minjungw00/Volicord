@@ -350,11 +350,14 @@ volicord --json work explain delete --work GOAL_ID
 
 Preparation returns `{operation, plan}`. The current active agent reads the entire
 plan under its existing source-access authority and creates a response JSON using
-`format_kind: "volicord_explanation"`, `format_version: 2`, the exact
+`format_kind: "volicord_explanation"`, `format_version: 3`, the exact
 `plan_fingerprint`, `language`, `generator: {host, session, agent, model}` and
-`paragraphs: [{question, text, evidence_keys, citations}]`. Each of `purpose`, `reported_change`,
-`expected_effect`, `verification`, `next_step` requires at least one paragraph. `limits` is
-optional. Use prepared evidence keys; unknown agent/model is null, and unavailable
+`paragraphs: [{question, text, evidence_keys, citations}]`. The small reader vocabulary adds authored `heading` and `synopsis`, `observation`,
+`comparison`, `limits` and claim-linked `reading_point` to the supported narrative
+roles. Omit unavailable answers instead of filler. All units share grounding and
+lifecycle validation; observations/comparisons/reading points require citations.
+Heading and synopsis are optional singletons; consumers never synthesize them from
+the first paragraph. Use prepared evidence keys; unknown agent/model is null, and unavailable
 session correlation can be explicitly self-reported as unknown. Do not claim
 independently verified identity. The plan supplies evidence and instructions, never
 a prewritten answer. Record validates references and current basis, not prose truth.

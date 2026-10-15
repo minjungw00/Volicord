@@ -74,7 +74,7 @@ impl LocalOperations {
         let mut excerpt_keys = std::collections::BTreeSet::new();
         let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
         let mut omitted_excerpt_count = 0;
-        for citation in response.paragraphs.iter().flat_map(|p| &p.citations) {
+        for citation in response.citations() {
             let source = SourceId::from_bytes(parse_identity(&citation.source_id)?);
             if let std::collections::btree_map::Entry::Vacant(entry) = readings.entry(source) {
                 entry.insert(self.explanation_source(basis, work, source)?);
@@ -333,15 +333,11 @@ impl LocalOperations {
             }
         }
         for before in response
-            .paragraphs
-            .iter()
-            .flat_map(|p| &p.citations)
+            .citations()
             .filter(|c| c.use_kind == ExplanationSourceUse::BeforeCode)
         {
             let paired = response
-                .paragraphs
-                .iter()
-                .flat_map(|p| &p.citations)
+                .citations()
                 .filter(|c| c.use_kind == ExplanationSourceUse::CurrentCode)
                 .any(|after| {
                     parse_identity(&after.source_id)

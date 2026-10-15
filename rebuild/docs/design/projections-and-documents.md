@@ -1767,3 +1767,30 @@ CLI and Viewer visibly label bounded file observations and missing surrounding
 context. Displayed ends retain absolute repository coordinates even when the shared
 4,096-byte per-range display bound clips a citation. Neither completed transport
 nor an unclipped citation labels the observation a complete source file.
+
+### Grounded reader documents
+
+The current retained explanation is one managed reader document, not a checklist of
+mandatory answers. The same `ExplanationParagraph` envelope represents authored
+`heading`/`synopsis`, grounded narrative (`purpose`, `reported_change`,
+`expected_effect`), `observation`, `comparison`, `limits`, `reading_point`, and
+qualified `next_step`. Unsupported sections are omitted rather than filled with
+absence prose. Canonical state, result, verification, review, acceptance, original
+Goal and recorded direction remain separate facts with their actual scope/chronology.
+A no-change investigation may explain conditions and observations without pretending
+there was a patch or a before-state.
+
+`generated_units()` and `citations()` are the common exhaustive traversal for admission,
+MCP retrieval checks, Operations Source revalidation, dependencies, expiry, public
+provenance and read-time excerpts. Every unit requires exact prepared canonical keys;
+technical claims also require scoped Source bindings. Observation/comparison/reading
+point units require citations. Heading (240 characters) and synopsis (2,000) are
+optional singleton authored interpretation, never clipped Goal text, a first body
+paragraph or canonical title authority. They share exact language, plan and realization
+identity and cannot survive a title-only dependency's deletion or invalidation. Original
+quotations retain their own language. All unit JSON participates in the existing byte
+budgets; no limit is widened and no read generates or writes.
+
+The format disposition is Unsupported for non-current content, with canonical facts
+readable; explicit current preparation/recording is recovery. Historical assets and
+feedback are preserved controls, never refreshed retention, new generation or acceptance.

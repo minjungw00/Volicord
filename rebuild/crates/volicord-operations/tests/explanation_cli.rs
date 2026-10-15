@@ -99,7 +99,7 @@ fn actual_work_and_decision_prepare_record_delete_readback(
                 .iter()
                 .map(|e| e["key"].clone())
                 .collect();
-            let response = json!({"format_kind":"volicord_explanation", "format_version":2,
+            let response = json!({"format_kind":"volicord_explanation", "format_version":volicord_projections::EXPLANATION_VERSION,
                 "plan_fingerprint":plan["fingerprint"], "language":language,
                 "generator":{"host":"cli-lifecycle-test","session":"synthetic","agent":null,"model":null},
                 "paragraphs":questions.iter().map(|q| json!({"question":q,"citations":[],

@@ -28,8 +28,7 @@ impl From<&RetainedExplanation> for ExplanationProvenance {
     fn from(e: &RetainedExplanation) -> Self {
         let cited: std::collections::BTreeSet<_> = e
             .realization
-            .paragraphs
-            .iter()
+            .generated_units()
             .flat_map(|p| p.evidence_keys.iter())
             .collect();
         let evidence: Vec<_> = e
@@ -54,8 +53,7 @@ impl From<&RetainedExplanation> for ExplanationProvenance {
             semantic_approval_status: e.semantic_approval_status.clone(),
             citations: e
                 .realization
-                .paragraphs
-                .iter()
+                .generated_units()
                 .flat_map(|p| p.citations.clone())
                 .collect(),
             evidence,
@@ -105,13 +103,18 @@ pub struct QuestionAnswers {
     pub omitted_source_excerpt_count: usize,
 }
 impl QuestionAnswers {
-    /// Problem-first wording from the permitted output, with original Goal fallback
+    /// Authored derived heading from the permitted output, with original Goal fallback
     /// owned by the caller. This is interpretation, never a renamed canonical Work.
     pub fn reading_title(&self) -> Option<&str> {
         self.prose
             .iter()
-            .find(|a| a.question == "Purpose" && a.role == AnswerRole::GeneratedInterpretation)
+            .find(|a| a.question == "Heading" && a.role == AnswerRole::GeneratedInterpretation)
             .map(|a| a.text.as_str())
+    }
+    pub fn synopsis(&self) -> Option<&QuestionAnswer> {
+        self.prose
+            .iter()
+            .find(|a| a.question == "Synopsis" && a.role == AnswerRole::GeneratedInterpretation)
     }
     /// The sole task-direction selection rule. Generated NextStep prose is an
     /// interpretation alongside this fact; explanation repair is never an action.

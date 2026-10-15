@@ -160,7 +160,7 @@ def validate_response(plan, response):
         raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; prepared response capacity {capacity}; preserve grounding and seek Product support for this evidence shape')
     if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
             'plan_fingerprint', 'language', 'generator', 'paragraphs'}
-            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 2
+            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 3
             or response['plan_fingerprint'] != plan['fingerprint']
             or response['language'] != plan['requested_language']):
         raise api().CampaignError('explanation response format/plan/language mismatch')
@@ -171,10 +171,10 @@ def validate_response(plan, response):
                 for k in ('agent', 'model'))):
         raise api().CampaignError('invalid self-reported explanation generator')
     paragraphs, keys = response['paragraphs'], {e['key'] for e in plan['evidence']}
-    required = WORK_QUESTIONS if plan['subject']['kind'] == 'work' else DECISION_QUESTIONS
-    if (not isinstance(paragraphs, list) or not required <= {p.get('question') for p in paragraphs if isinstance(p, dict)}
+    allowed = ((WORK_QUESTIONS | {'observation', 'comparison', 'reading_point'}) if plan['subject']['kind'] == 'work' else DECISION_QUESTIONS) | {'heading', 'synopsis', 'limits'}
+    if (not isinstance(paragraphs, list) or not paragraphs
             or any(not isinstance(p, dict) or set(p) != {'question', 'text', 'evidence_keys', 'citations'}
-                or p['question'] not in required | {'limits'} or not isinstance(p['text'], str) or not p['text'].strip()
+                or p['question'] not in allowed or not isinstance(p['text'], str) or not p['text'].strip()
                 or len(p['text']) > PARAGRAPH_CHARACTER_LIMIT
                 or not isinstance(p['evidence_keys'], list) or not p['evidence_keys']
                 or not all(isinstance(k, str) and k in keys for k in p['evidence_keys']) for p in paragraphs)

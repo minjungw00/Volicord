@@ -1634,7 +1634,7 @@ impl HostAdapter {
                 if response.plan_fingerprint != request.fingerprint {
                     return Err(HostError::new("explanation request preparation mismatch"));
                 }
-                for citation in response.paragraphs.iter().flat_map(|p| &p.citations) {
+                for citation in response.citations() {
                     if !request.retrieved.contains(&(
                         citation.source_id.clone(),
                         citation.observation_fingerprint.clone(),
@@ -2727,8 +2727,13 @@ fn explanation_realization_schema() -> Value {
             (
                 "question",
                 enum_schema(
-                    "Reader question listed in plan.question_grounding; Work uses purpose/reported_change/expected_effect/verification/next_step and optional limits; recommendation belongs only to Decision",
+                    "Reader-unit role listed in plan.question_grounding; author supported sections without filler. Heading/synopsis are derived wording; observation/comparison/reading_point need exact citations; recommendation belongs only to Decision",
                     &[
+                        "heading",
+                        "synopsis",
+                        "observation",
+                        "comparison",
+                        "reading_point",
                         "purpose",
                         "reported_change",
                         "expected_effect",
@@ -2769,7 +2774,7 @@ fn explanation_realization_schema() -> Value {
             ),
             (
                 "format_version",
-                json!({"type":"integer","enum":[2],"description":"Exact current explanation format"}),
+                json!({"type":"integer","enum":[volicord_projections::EXPLANATION_VERSION],"description":"Exact current explanation format"}),
             ),
             ("plan_fingerprint", digest("Exact preparation fingerprint")),
             ("language", text_schema("Exact requested language", 1, 128)),
@@ -2796,7 +2801,7 @@ fn explanation_realization_schema() -> Value {
             ),
             (
                 "paragraphs",
-                json!({"type":"array","minItems":1,"maxItems":32,"description":"Prose in reader order, retaining all required answers","items":paragraph}),
+                json!({"type":"array","minItems":1,"maxItems":32,"description":"Grounded units in reader order; omit unsupported sections rather than inventing answers","items":paragraph}),
             ),
         ],
         &[

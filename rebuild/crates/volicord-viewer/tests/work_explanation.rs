@@ -677,10 +677,10 @@ fn unrelated_work_pagination_and_failed_generation_preserve_exact_answers(
         let mut response = fake(&plan);
         match mutation {
             0 => {
-                response.paragraphs.pop();
+                response.paragraphs.clear();
             }
             1 => response.paragraphs[0].text.clear(),
-            _ => response.paragraphs[1].question = ExplanationQuestion::Purpose,
+            _ => response.paragraphs[1].evidence_keys = vec!["unprepared-key".into()],
         }
         assert!(f
             .operations

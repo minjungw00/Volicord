@@ -239,6 +239,11 @@
           "mcp_consumers_preserve_question_answers_and_separate_original_evidence"
         ],
         [
+          "mcp",
+          "rebuild/crates/volicord-host/tests/work_explanation.rs",
+          "every_reader_unit_is_grounded_atomic_and_invalidated_through_mcp"
+        ],
+        [
           "viewer",
           "rebuild/crates/volicord-viewer/tests/answer_contracts.rs",
           "selected_result_and_state_have_independent_prefix_basis"

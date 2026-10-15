@@ -294,7 +294,7 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 ### Shared explanation content
 
 Retained Work/Decision explanation JSON inside the existing managed CachedSummary store
-has format kind `volicord_explanation` and exact current format version 2
+has format kind `volicord_explanation` and exact current format version 3
 in its realization header. Record/read check that header before typed domain
 decode. Non-current content is Unsupported and its prose is withheld; malformed
 current content is Corrupt. Explicit delete and preparation/generation from current
@@ -303,9 +303,17 @@ The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Sn
 formats do not change; generated-document metadata is current version 10. A preparation fingerprint binds evidence
 and language; it is neither a format version nor an authenticity certificate.
 
-Explanation format 2 requires paragraph citations (possibly empty for canonical-only
-reports) and a recorder-owned semantic_approval_status. Multiple paragraphs per
-required question preserve reader order. The old format is Unsupported with prose
+Explanation format 3 uses one reader-unit envelope (`question`, `text`,
+`evidence_keys`, `citations`) for authored heading, synopsis, narrative, observation,
+comparison, critical limits and reading-point guidance. All units share exhaustive
+validation, retrieval/dependency traversal, retention, budgeting and output identity.
+There is no alternate title, table-cell, relation-label or guidance store. The current
+vocabulary has no nested generated fields; adding any requires extending this common
+traversal. Partial documents omit unavailable sections without filler. Heading and
+synopsis are each optional singleton authored units; without them consumers preserve
+original facts rather than extracting a title/result from another paragraph.
+Observation, comparison and reading-point units require exact citations. The recorder
+owns semantic_approval_status. Multiple narrative units preserve reader order. The old format is Unsupported with prose
 withheld; explicit delete/regenerate is the recovery, with no alternate decoder,
 conversion or historical campaign rewrite. Privacy SQL does not change.
 The current Privacy schema is 2 as specified under Bounded Source observation copies.
@@ -317,8 +325,8 @@ fresh validation uses fresh disposable inputs, distinct from original observatio
 Current ephemeral preparation additionally requires `question_grounding`, derived
 from the subject and actual evidence by the same rule used at admission. This and
 the clarified instructions change preparation fingerprints, so earlier retained
-interpretations may read Stale; they are not rewritten, deleted or rebound. No
-realization, retained-content, canonical or Privacy schema version changes.
+interpretations may read Stale; they are not rewritten, deleted or rebound. This earlier preparation-only change did not change realization or storage formats;
+the current reader vocabulary above independently replaces the explanation format.
 
 ## 14. Non-goals
 
