@@ -3,21 +3,25 @@
 Disposable local reading design; production migration, framework choice and human
 acceptance are pending. This support generates no explanation and invokes no
 provider. The exact artifact, source-first outcomes, measured benefits/regressions
-and feedback audit are in [journey-review.md](journey-review.md). The provisional
+and latest feedback are in [responsive-review.md](responsive-review.md); the earlier
+[journey review](journey-review.md) is retained unchanged. The provisional
 [experience requirements](experience-requirements.md) do not replace Product owners.
 Earlier [card](card-details-review.md), [palette](blue-gray-review.md) and
 [initial](report.md) reviews remain unchanged.
 
-The delivered private package starts at
-`rebuild/.local/viewer-journeys/review/index.html`; answer-free comparison tasks are
-in `journeys.html`, measurements in `journey-observations.html`. The movable
-`rebuild/.local/viewer-journeys/viewer-review.zip` contains the same package.
-Extract it anywhere. Open the entry directly, or run
-`python3 serve.py` **from that package directory** and open the printed loopback
-URL. Stop with Ctrl-C. Python 3 is the only preview runtime. All review links,
-Source files, scripts, baseline snapshots and observations are package-local.
-The script-free documents need neither Python nor JavaScript. Do not publish the
-private retained material.
+The Viewer starts at `rebuild/.local/viewer-responsive/review/viewer/index.html`.
+The standalone `rebuild/.local/viewer-responsive/viewer.zip` contains only Viewer
+pages and their required sources/scripts: extract it and open `viewer/index.html`.
+No review navigation, badges, footer, measurements or comparison links are part of
+that Viewer. Original Goal/Source quotations retain their exact fixture wording.
+
+The separate review entry is `rebuild/.local/viewer-responsive/review/index.html`;
+answer-free comparison tasks are in `journeys.html`, measurements in
+`journey-observations.html`. Run `python3 serve.py` from the full package directory:
+the printed root URL opens the Viewer; `/index.html` opens review material.
+Stop with Ctrl-C. Python 3 is the only preview runtime. Both the full package and
+Viewer-only subtree can move outside the checkout. Offline files need no server.
+All material remains private; no publication is part of this workflow.
 
 ## Matched journey inputs
 
@@ -93,7 +97,8 @@ Korean font configuration. A private JSON configuration supplies absolute paths:
   "playwright": "/existing/playwright-core/module",
   "chromium": "/existing/chromium/executable",
   "fontconfig": "/existing/korean-fonts.conf",
-  "refined": true
+  "refined": true,
+  "previous_build": "/optional/previous/private/package"
 }
 ```
 
@@ -168,10 +173,12 @@ boxed original instructions/full evidence, explicit button and disclosure states
 and build-time Rust/Python lexical coloring. The source-owned production Viewer
 and its existing opening-limit contract are unchanged. Earlier user layout
 instructions explain the palette/cards; approval of the new exact target is pending.
-The revised scoped Code uses a wide focused dialog with the original claim,
-contained keyboard focus and exact return. Conditional results have a source-quoted
-table, and the full limit section has an opening shortcut. These are provisional
-design choices; Product adoption remains a separate decision.
+Scoped Code uses a nonmodal desktop sidebar beside the original document and a
+focused mobile screen. Code is 15px on desktop, 13px at intermediate widths and
+12px on mobile; focus containment applies only to the mobile dialog. Exact claim,
+Source and return remain. Conditional results have a source-quoted table, and
+the full limit section has an opening shortcut. These changes follow the user's
+specific layout feedback; overall acceptance and Product adoption remain pending.
 
 Card navigation is limited to the reading button; titles are plain text. Creation
 time comes only from the first Goal revision, completion from a completed
