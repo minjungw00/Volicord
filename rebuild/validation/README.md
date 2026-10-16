@@ -1090,3 +1090,17 @@ inspection alongside count/hash/complete-coverage preparation within existing by
 bounds. Purpose and forgetting controls preserve the canonical Purpose record;
 missing analysis, explicit rebinding and unreadable storage retain truthful read
 states and never gain ambient Source access.
+
+## Bounded citation reading
+
+Run `validate focused citation-reading -- cargo test --manifest-path
+rebuild/Cargo.toml -p volicord-viewer --test citation_reading --test grounded_reader`
+for real retained-source/live/offline reading controls. An absolute
+`VOLICORD_CITATION_REVIEW_ROOT` with the exact `seed_citation_browser_runtime`
+test retains independent authored input and script-free export privately.
+`end-to-end/multi-repository/citation_reading_browser.cjs CONFIG` expects absolute
+`fixture`, `output`, `viewer`, `cli`, `playwright`, `chromium` and `fontconfig`
+paths, runs local browser navigation/deletion/offline checks and retains exact
+candidate hashes, numeric child outcomes, sizes, timings and screenshots.
+Each attempt uses a fresh fixture/output; failure artifacts are preserved.
+These are technical observations, not human comprehension or semantic approval.

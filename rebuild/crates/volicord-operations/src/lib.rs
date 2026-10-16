@@ -13,6 +13,7 @@ mod error;
 mod evidence;
 mod explanation;
 mod explanation_sources;
+pub use explanation::ExplanationCitationSelection;
 mod forgetting;
 mod guarded;
 mod layout;

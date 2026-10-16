@@ -1069,6 +1069,29 @@ fn large_excerpt_reaches_cli_mcp_live_and_snapshot_without_surrounding_bytes(
     assert_eq!(observation["detail"]["body"], mechanism);
     assert_eq!(observation["detail"]["region"]["start_line"], 2001);
     assert_eq!(observation["detail"]["region"]["end_line"], 2002);
+    let public = public_answers(&f, &mut host)?;
+    let inspected = operations.read_explanation_citation(
+        project(&f)?,
+        ExplanationSubject::Work(work(&f)?),
+        "en",
+        &volicord_operations::ExplanationCitationSelection {
+            realization_fingerprint: public["provenance"]["realization_fingerprint"]
+                .as_str()
+                .ok_or("output")?
+                .into(),
+            unit_index: 1,
+            citation_index: 0,
+            offset: 0,
+        },
+    )?;
+    assert_eq!(inspected["chunk"]["text"], mechanism);
+    assert_eq!(inspected["chunk"]["displayed_start_byte"], prefix.len());
+    assert_eq!(
+        inspected["chunk"]["displayed_end_byte"],
+        prefix.len() + mechanism.len()
+    );
+    assert_eq!(inspected["chunk"]["displayed_start_line"], 2001);
+    assert_eq!(inspected["chunk"]["displayed_end_line"], 2002);
     for json_mode in [false, true] {
         let mut args = vec![
             "--runtime",
@@ -1872,6 +1895,23 @@ fn command_observation_is_independent_of_checkpoint_verification_on_public_reade
         args["realization"] = realization;
         call(&mut host, "work_explanation", args)?;
         let answers = public_answers(&f, &mut host)?;
+        let citation = operations.read_explanation_citation(
+            project(&f)?,
+            ExplanationSubject::Work(work(&f)?),
+            "en",
+            &volicord_operations::ExplanationCitationSelection {
+                realization_fingerprint: answers["provenance"]["realization_fingerprint"]
+                    .as_str()
+                    .ok_or("output")?
+                    .into(),
+                unit_index: 0,
+                citation_index: 0,
+                offset: 0,
+            },
+        )?;
+        assert_eq!(citation["chunk"]["text"], "observation only\n");
+        assert_eq!(citation["chunk"]["execution"]["exit_code"], exit_code);
+        assert_eq!(citation["semantic_approval"], "not_established");
         let facts = answers["facts"].as_array().ok_or("facts")?;
         let observation = facts
             .iter()
@@ -2018,5 +2058,82 @@ fn authored_heading_synopsis_and_reading_points_share_public_lifecycle(
     assert!(!page.contains("A constant return, examined"));
     assert!(!page.contains("data-question=\"Synopsis\""));
     assert!(page.contains(f["goal"].as_str().ok_or("Goal")?));
+    Ok(())
+}
+
+#[test]
+fn work_selected_citations_keep_observed_pairs_and_missing_before_distinct(
+) -> Result<(), Box<dyn Error>> {
+    for comparison in ["changed", "no_change", "missing_before_state"] {
+        let temp = tempfile::tempdir()?;
+        let f = seed(temp.path(), comparison)?;
+        let mut host = HostAdapter::new(ops(&f)?);
+        record(&f, &mut host)?;
+        let operations = ops(&f)?;
+        let answers = public_answers(&f, &mut host)?;
+        let unit = answers["prose"]
+            .as_array()
+            .ok_or("prose")?
+            .iter()
+            .position(|p| p["question"] == "ReportedChange")
+            .ok_or("change")?;
+        let before = operations.canonical_basis(project(&f)?)?;
+        let privacy = operations.privacy_status(project(&f)?)?;
+        let count = if comparison == "missing_before_state" {
+            1
+        } else {
+            2
+        };
+        for index in 0..count {
+            let selected = volicord_operations::ExplanationCitationSelection {
+                realization_fingerprint: answers["provenance"]["realization_fingerprint"]
+                    .as_str()
+                    .ok_or("output")?
+                    .into(),
+                unit_index: unit,
+                citation_index: index,
+                offset: 0,
+            };
+            let result = operations.read_explanation_citation(
+                project(&f)?,
+                ExplanationSubject::Work(work(&f)?),
+                "en",
+                &selected,
+            )?;
+            let server = ViewerServer::new(
+                ViewerAdapter::new(ops(&f)?),
+                project(&f)?,
+                ViewerLocale::English,
+                ViewerView::Overview,
+                "en".into(),
+                "127.0.0.1:3219".parse()?,
+            )?;
+            let target=format!("/citation?subject=work:{}&language=en&realization={}&unit={unit}&citation={index}&offset=0",work(&f)?,selected.realization_fingerprint);
+            let mut response = Vec::new();
+            server.serve_connection(
+                &mut format!("GET {target} HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n").as_bytes(),
+                &mut response,
+            )?;
+            let response = String::from_utf8(response)?;
+            assert!(response.starts_with("HTTP/1.1 200"));
+            assert_eq!(
+                serde_json::from_str::<Value>(response.split_once("\r\n\r\n").ok_or("body")?.1)?,
+                result
+            );
+            assert_eq!(
+                result["chunk"]["text"],
+                if index == 1 && comparison == "changed" {
+                    "def value():\n    return 4\n"
+                } else {
+                    "def value():\n    return 5\n"
+                }
+            );
+            if index == 0 {
+                assert_eq!(result["chunk"]["comparison"], comparison);
+            }
+        }
+        assert_eq!(before, operations.canonical_basis(project(&f)?)?);
+        assert_eq!(privacy, operations.privacy_status(project(&f)?)?);
+    }
     Ok(())
 }

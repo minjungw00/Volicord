@@ -35,3 +35,5 @@
 
 @media(max-width:900px){.code-region{font-size:13px;line-height:1.65}}
 @media(max-width:600px){.code-region{font-size:12px;line-height:1.65}.number{width:3.25em;padding-right:.6em}}
+
+[hidden]{display:none!important}.citation-inspection{margin-top:16px}.citation-read{font:inherit;max-width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--accent);cursor:pointer}.citation-read:disabled{cursor:wait;opacity:.7}

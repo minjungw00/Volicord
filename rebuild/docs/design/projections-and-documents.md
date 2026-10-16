@@ -1739,8 +1739,9 @@ exact locator. Each link selects its own keyboard-focusable reading point, quoti
 that exact claim immediately beside the shared Source range. Each point links back
 to its own original heading, synopsis or paragraph. Shared ranges never substitute
 the first claim for another. Native fragments and browser history retain exact
-Project/Work/realization/unit/citation identity, with no script, GET generation or
-new Source access. Critical limits appear before narrative; the original unit indices
+Project/subject/realization/unit/citation identity. The script-free document uses
+only embedded ranges; live selected inspection follows the exact read boundary below.
+Neither navigation generates nor grants new Source access. Critical limits appear before narrative; the original unit indices
 remain stable for grounding and return navigation. A code panel's closed disclosure
 preserves all exact claims, ranges, hashes and revisions. Matching bytes establish
 binding, not entailment, semantic approval or authenticated authorship.
@@ -1859,3 +1860,42 @@ MCP `repository_understanding` accepts optional `reading_focus` (`overview` or
 without unrelated topology/Work catalogs, using existing complete explanation
 transport bounds and read-only lifecycle. This is selection, not a new retained
 format, Source grant, summary store or generation operation.
+
+### Exact selected citation inspection
+
+Live Viewer may read one selected citation from the latest Current permitted
+Work/repository realization. Operations takes exact Project, subject, language,
+realization fingerprint, original unit/citation indices and a UTF-8 offset relative
+to that citation. The retained citation supplies Source/revision, envelope hash,
+Analysis/Repository Snapshot, repository Source, field, locator, range and claim
+hashes; no caller path, Source-ID-only request or new observation can replace it.
+The existing inspection lock, latest-record ordering, current preparation and full
+Source dependency revalidation apply before bytes leave Operations. Changed
+realizations reject old selections rather than reinterpreting their indices.
+
+Each selected response contains at most 4,096 original UTF-8 text bytes and 32,768
+serialized JSON bytes. It preserves the complete authored claim span and original
+citation plus actual displayed byte/line starts/ends, omitted before/after bytes,
+next citation-relative offset, observation scope and execution/comparison facts.
+Pages replace the displayed chunk; they do not accumulate a hidden full-file copy.
+A complete citation page does not imply a whole file was observed or that the claim
+is entailed. Before/after pairing, absent before-state, non-retained surrounding
+context and observed command exit/termination retain their existing meanings.
+
+`GET /citation` is bound to the live listener's exact Project and Host. Present
+Origin and Fetch Metadata must be same-origin; no CORS grant or redirect exists.
+Its only selectors are subject/language/realization/unit/citation/offset. Responses
+are no-store JSON under existing HTTP bounds and CSP; only same-origin connections
+are enabled. Opening a citation checks its current permitted bytes in the existing
+desktop evidence pane/narrow focused view. Failure removes displayed code from
+that reading point and names current unavailability with its original return target.
+Reading, retry and pagination acquire no Source, renew no retention, perform no
+canonical/Derived write and invoke no host/provider. Current filesystem identity
+checks verify retained dependencies using existing bounded readers; they never
+observe/persist new Sources or substitute current bytes for missing retained bodies.
+
+Offline export includes only the shared bounded initial selection, with precise
+clipping/omission and identity. It includes no selected-read controls, endpoint or
+script and cannot retrieve omitted evidence. Initial unique text bytes, per-range
+limits and additional selected-read byte limits are visible in their own context;
+HTML transfer size includes markup, repeated claim panels and escaped text separately.

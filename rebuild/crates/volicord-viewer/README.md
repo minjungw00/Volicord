@@ -68,10 +68,16 @@ Each citation opens its exact bound claim and observed Source in a side panel on
 wide screens and a full viewport panel on narrow screens. Original Source bytes
 and observed line coordinates remain unchanged; no diff or execution is inferred.
 The return link restores the exact cited paragraph. Native URL fragments power
-both live and script-free offline journeys. The live presentation script adds
+both live and script-free offline journeys. Live selection checks current retained
+bytes through `/citation`, bound to exact subject/realization/unit/citation identity.
+It displays at most 4,096 UTF-8 bytes per page, within a 32,768-byte JSON response,
+and offers the next portion of that same cited range. Unavailability clears the
+point's code and preserves its return link. Offline documents include no such
+endpoint or controls and explicitly disclose excluded evidence. The live presentation script adds
 Escape, scroll/focus restoration, linked disclosure opening and narrow-panel
 keyboard containment with inert background. HTTP grants only its exact SHA-256
-script digest. No requests, generation, persistence or Runtime mutation occur.
+script digest. Only exact same-origin selected-citation reads are requested; generation, persistence
+and Runtime mutation do not occur.
 Snapshots select one screen at a time through local fragments, keeping the same
 Overview, index and document components. Original/evidence records are open in
 snapshot documents so they remain reachable without scripts; all retained support

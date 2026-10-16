@@ -11,6 +11,7 @@ pub(crate) struct ValidatedExplanationSources {
     pub expiry: Option<volicord_context::TimestampMicros>,
     pub excerpts: Vec<volicord_projections::ExplanationSourceExcerpt>,
     pub omitted_excerpt_count: usize,
+    pub selected: Option<Value>,
 }
 
 impl LocalOperations {
@@ -68,6 +69,17 @@ impl LocalOperations {
         subject: ExplanationSubject,
         response: &ExplanationRealization,
     ) -> Result<ValidatedExplanationSources, Error> {
+        self.validate_subject_sources_selected(basis, subject, response, None)
+    }
+
+    pub(crate) fn validate_subject_sources_selected(
+        &self,
+        basis: &CanonicalReadBasis,
+        subject: ExplanationSubject,
+        response: &ExplanationRealization,
+        selection: Option<(&volicord_projections::ExplanationCitation, usize)>,
+    ) -> Result<ValidatedExplanationSources, Error> {
+        let mut selected = None;
         let read_source = |source| match subject {
             ExplanationSubject::Work(work) => self.explanation_source(basis, work, source),
             ExplanationSubject::Repository(analysis) => {
@@ -305,6 +317,39 @@ impl LocalOperations {
                 &citation.repository_source_id,
             )?));
             bound_expiry(&mut expiry, read)?;
+            if let Some((target, offset)) = selection.filter(|(target, _)| *target == citation) {
+                let suffix = range
+                    .get(offset..)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| Error::new("invalid selected citation UTF-8 offset"))?;
+                let mut size = suffix
+                    .len()
+                    .min(volicord_projections::EXPLANATION_SOURCE_RANGE_BYTE_LIMIT);
+                while !suffix.is_char_boundary(size) {
+                    size -= 1;
+                }
+                selected = Some(json!({
+                    "citation":target, "text":&suffix[..size],
+                    "displayed_start_byte":citation.start_byte + offset,
+                    "displayed_end_byte":citation.start_byte + offset + size,
+                    "displayed_start_line":line(start + offset),
+                    "displayed_end_line":line(start + offset + size - 1),
+                    "omitted_before_utf8_bytes":offset,
+                    "omitted_after_utf8_bytes":range.len() - offset - size,
+                    "next_offset":(offset + size < range.len()).then_some(offset + size),
+                    "source_representation":detail["representation"],
+                    "observation_region":file_region,
+                    "comparison":detail["comparison"],
+                    "before_source_id":detail["before_source_id"],
+                    "observed_at_unix_micros":observation["observed_at_unix_micros"],
+                    "work_revision":observation["work_revision"],
+                    "execution":(detail["kind"] == "command").then(|| json!({
+                        "exit_code":detail["exit_code"],"termination":detail["termination"],
+                        "stream":citation.field,"representation":detail[&citation.field]["representation"],
+                        "observed_bytes":detail[&citation.field]["observed_bytes"],
+                        "omitted_bytes":detail[&citation.field]["omitted_bytes"]}))
+                }));
+            }
             // Materialize only exact cited bytes already admitted by this reader.
             // Repeated claims may cite the same range; retain one navigation target.
             let key = (
@@ -314,7 +359,7 @@ impl LocalOperations {
                 citation.end_byte,
                 format!("{:?}", citation.use_kind),
             );
-            if excerpt_keys.insert(key) {
+            if selection.is_none() && excerpt_keys.insert(key) {
                 let mut bytes = range
                     .len()
                     .min(volicord_projections::EXPLANATION_SOURCE_RANGE_BYTE_LIMIT);
@@ -373,6 +418,7 @@ impl LocalOperations {
             expiry,
             excerpts,
             omitted_excerpt_count,
+            selected,
         })
     }
 }

@@ -1330,7 +1330,12 @@ fn cited_code_bounds(excerpt: bool) -> Result<(), Box<dyn Error>> {
     assert_eq!(answers.explanation_state, ExplanationState::Current);
     let used: usize = answers.source_excerpts.iter().map(|e| e.text.len()).sum();
     assert!(used <= 16_384);
-    assert!(answers.omitted_source_excerpt_count > 0);
+    assert_eq!(answers.omitted_source_excerpt_count, 0);
+    assert_eq!(answers.source_excerpts.len(), 7);
+    assert!(
+        used >= 16_360,
+        "unused capacity is returned to other unique ranges"
+    );
     let mut keys = std::collections::BTreeSet::new();
     for e in &answers.source_excerpts {
         assert!(e.text.len() <= 4096);

@@ -11,6 +11,16 @@ use volicord_privacy::{
 };
 use volicord_projections::*;
 
+/// Exact realization/unit/citation selection; offset is relative to that cited
+/// range, never an arbitrary file interval. Each read returns at most 4096 bytes.
+#[derive(Clone, Debug)]
+pub struct ExplanationCitationSelection {
+    pub realization_fingerprint: String,
+    pub unit_index: usize,
+    pub citation_index: usize,
+    pub offset: usize,
+}
+
 fn purpose(subject: ExplanationSubject, language: &str) -> String {
     format!("explanation:{}:{language}", subject.key())
 }
@@ -215,6 +225,84 @@ impl LocalOperations {
             FixedLocale::English,
         ))
     }
+    /// Inspect one exact citation in the latest current permitted realization.
+    /// This is not a Source-ID or path reader. All dependencies are revalidated
+    /// under the existing inspection lock; no observation or retention write occurs.
+    pub fn read_explanation_citation(
+        &self,
+        project: ProjectId,
+        subject: ExplanationSubject,
+        language: &str,
+        selection: &ExplanationCitationSelection,
+    ) -> Result<serde_json::Value, Error> {
+        let _inspection = self.layout().acquire_health_lock()?;
+        let canonical = self.canonical_basis(project)?;
+        let records = self.privacy_status(project)?;
+        let target = purpose(subject, language);
+        let record = records
+            .managed_derived
+            .iter()
+            .rev()
+            .find(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == target)
+            .ok_or_else(|| Error::new("selected citation unavailable; explanation missing"))?;
+        if record.state != ManagedDerivedState::Current
+            || records
+                .withheld_for_canonical_forgetting
+                .contains(&record.id)
+        {
+            return Err(Error::new(
+                "selected citation unavailable; explanation is not current or permitted",
+            ));
+        }
+        let retained = decode_explanation(record.content.as_deref())
+            .map_err(|(_, reason)| Error::new(reason))?;
+        let provenance = ExplanationProvenance::from(&retained);
+        if provenance.realization_fingerprint != selection.realization_fingerprint {
+            return Err(Error::new(
+                "selected citation realization changed; reopen the current explanation",
+            ));
+        }
+        let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
+        if !retained_matches(&plan, &retained) {
+            return Err(Error::new(
+                "selected citation evidence changed; reopen the current explanation",
+            ));
+        }
+        let unit = retained
+            .realization
+            .generated_units()
+            .nth(selection.unit_index)
+            .ok_or_else(|| Error::new("selected citation unit unavailable"))?;
+        let citation = unit
+            .citations
+            .get(selection.citation_index)
+            .ok_or_else(|| Error::new("selected citation unavailable"))?;
+        let validated = self.validate_subject_sources_selected(
+            &canonical,
+            subject,
+            &retained.realization,
+            Some((citation, selection.offset)),
+        )?;
+        let chunk = validated
+            .selected
+            .ok_or_else(|| Error::new("selected citation bytes unavailable"))?;
+        let claim = unit
+            .text
+            .get(citation.claim_start_byte..citation.claim_end_byte)
+            .ok_or_else(|| Error::new("selected citation claim unavailable"))?;
+        let result = serde_json::json!({"project_id":project.to_string(),"subject":subject,
+            "language":language,"realization_fingerprint":selection.realization_fingerprint,
+            "unit_index":selection.unit_index,"citation_index":selection.citation_index,
+            "claim":claim,"chunk":chunk,"read_only":true,"semantic_approval":"not_established",
+            "text_byte_limit":EXPLANATION_SOURCE_RANGE_BYTE_LIMIT,"response_byte_limit":32_768});
+        let bytes = serde_json::to_vec(&result)
+            .map_err(|e| Error::with_source("citation encoding failed", e))?;
+        if bytes.len() > 32_768 {
+            return Err(Error::new("selected citation response exceeds 32768 bytes"));
+        }
+        Ok(result)
+    }
+
     pub(crate) fn attach_explanations(
         &self,
         canonical: &CanonicalReadBasis,

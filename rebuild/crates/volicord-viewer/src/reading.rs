@@ -646,7 +646,7 @@ fn render_document(
     }
     html.push_str(records);
     html.push_str("</details></div></article>");
-    render_source_excerpts(html, r, answers);
+    render_source_excerpts(html, r, answers, snapshot);
 }
 
 fn explanation_diagnostic(
@@ -685,7 +685,11 @@ fn source_excerpt_anchor(
         answers
             .provenance
             .as_ref()
-            .map(|p| p.subject.key())
+            .map(|p| fragment_identity(&format!(
+                "{}-{}",
+                p.subject.key(),
+                p.realization_fingerprint
+            )))
             .unwrap_or_default(),
         c.source_id,
         c.field,
@@ -718,6 +722,7 @@ fn render_source_excerpts(
     html: &mut String,
     r: &ViewerRequest,
     answers: &volicord_projections::QuestionAnswers,
+    snapshot: bool,
 ) {
     let Some(provenance) = &answers.provenance else {
         return;
@@ -731,6 +736,20 @@ fn render_source_excerpts(
         2,
         text(r.locale, "Sources for this document", "이 문서의 Source"),
     );
+    html.push_str(&format!(
+        "<p class=\"source-note\">{}: {} / 16,384 UTF-8 bytes · 4,096 / {}</p>",
+        text(
+            r.locale,
+            "Included unique cited text",
+            "포함된 고유 인용 텍스트"
+        ),
+        answers
+            .source_excerpts
+            .iter()
+            .map(|e| e.text.len())
+            .sum::<usize>(),
+        text(r.locale, "range maximum", "범위별 최대")
+    ));
     let mut seen = std::collections::BTreeSet::new();
     for (index, answer) in answers.prose.iter().enumerate() {
         for (n, c) in answer.citations.iter().enumerate() {
@@ -760,16 +779,16 @@ fn render_source_excerpts(
                         _=>text(r.locale,"Before-state was not retained. A before/after comparison is unavailable.","이전 상태가 보존되지 않았습니다. 이전/이후 비교를 이용할 수 없습니다."),
                     };
                     html.push_str(&format!("<p class=\"source-note\">{}</p>", comparison));
-                    if let Some(before) = e.before_source_id.as_ref().and_then(|id| {
-                        answers.source_excerpts.iter().find(|b| {
-                            &b.citation.source_id == id
-                                && b.citation.use_kind
+                    if let Some(before_index) = e.before_source_id.as_ref().and_then(|id| {
+                        answer.citations.iter().position(|b| {
+                            &b.source_id == id
+                                && b.use_kind
                                     == volicord_projections::ExplanationSourceUse::BeforeCode
                         })
                     }) {
                         html.push_str(&format!(
                             "<p><a href=\"#{}\">{}</a></p>",
-                            escape(&source_excerpt_anchor(answers, &before.citation)),
+                            source_point_anchor(answers, index, before_index),
                             text(
                                 r.locale,
                                 "Read the retained before observation",
@@ -781,10 +800,10 @@ fn render_source_excerpts(
                 if e.source_representation.as_deref() == Some("bounded_excerpt") {
                     html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.","제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
                 }
-                html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,c.end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),escape(&e.text)));
+                html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,e.displayed_end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),escape(&e.text)));
                 if e.omitted_utf8_bytes > 0 {
                     html.push_str(&format!(
-                        "<p class=\"source-note\">{}: {} · {}–{} · bytes {}–{}</p>",
+                        "<p class=\"source-note initial-range-omission\">{}: {} · {}–{} · bytes {}–{}</p>",
                         text(
                             r.locale,
                             "Omitted UTF-8 bytes in this cited range",
@@ -815,6 +834,26 @@ fn render_source_excerpts(
                         "이 인용 범위는 공통 코드 읽기 한도로 생략되었습니다.",
                     ),
                 );
+            }
+            html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,
+                "This is the author's cited claim span. Range binding does not verify that each statement follows from this code.",
+                "이것은 작성자가 인용한 주장 범위입니다. 범위 연결만으로 각 문장이 이 코드에서 성립하는지 검증되지는 않습니다.")));
+            if !snapshot {
+                let endpoint = format!(
+                    "/citation?subject={}&language={}&realization={}&unit={}&citation={}&offset=0",
+                    percent_encode(&provenance.subject.key()),
+                    percent_encode(&provenance.language),
+                    percent_encode(&provenance.realization_fingerprint),
+                    index,
+                    n
+                );
+                html.push_str(&format!("<div class=\"citation-inspection\" data-citation-url=\"{}\" data-realization=\"{}\" data-unit=\"{}\" data-citation=\"{}\"><p class=\"source-note citation-status\" role=\"status\"></p><button type=\"button\" class=\"citation-read\">{}</button></div>",
+                    escape(&endpoint),escape(&provenance.realization_fingerprint),index,n,
+                    text(r.locale,"Read permitted cited bytes (up to 4,096)","허용된 인용 바이트 읽기 (최대 4,096)")));
+            } else {
+                html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,
+                    "Offline: only the displayed bytes are included. Additional omitted evidence cannot be retrieved from this document.",
+                    "오프라인: 표시된 바이트만 포함됩니다. 이 문서에서는 추가 생략 근거를 가져올 수 없습니다.")));
             }
             html.push_str("<nav class=\"point-others\">");
             for (other, other_c) in answer

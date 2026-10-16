@@ -2956,3 +2956,35 @@ comprehension are separate unavailable/pending observations, not inferred from v
 or DOM assertions. `grounded_reader::authored_heading_synopsis_and_reading_points_share_public_lifecycle`
 covers actual CLI/MCP answers, HTTP and snapshots, and dependency deletion removing
 headings, leads and code together. The existing negative/range/lifecycle controls remain.
+
+### Bounded claim-to-Source reading support
+
+`volicord-viewer --test citation_reading` uses a fresh independent polyglot control:
+eight large unrelated leading ranges precede one three-Source mechanism, with a
+second claim sharing one range. Real Product composition/retention, Operations,
+HTTP and script-free snapshot consumers check original bytes, fair unique-range
+allocation, order independence, exact claims/snapshots/revisions/range hashes,
+UTF-8/page bounds, no writes, cross-origin/subject rejection, changed realization,
+deletion, expiry, corruption, unsupported copy format, changed/redirected files and
+forgetting. Host's bounded Source test independently requires all seven ranges
+with precise clipping; Work controls preserve changed/equal/missing-before pairs
+and observed command output with no inferred test success.
+
+Optional absolute `VOLICORD_CITATION_REVIEW_ROOT` retains a disposable authored
+fixture via `seed_citation_browser_runtime`. The maintained
+`end-to-end/multi-repository/citation_reading_browser.cjs CONFIG` consumes exact
+fixture, executable, Playwright, Chromium/fontconfig and private output paths.
+The browser fixture copies exact current candidate Operations source files and
+explicitly observes three function regions, with separately authored claims; its
+prose is not imported from historical feedback or a design prototype. The independent
+polyglot regression remains separate. It exercises actual loopback HTTP, en/ko at
+1440/390px, keyboard selection,
+desktop pane/narrow focus, direct fragment/refresh/history/return, shared claims,
+pagination, real Product deletion and unavailable-code removal. Its offline pass
+has scripting/network disabled, listener stopped and Runtime physically unavailable.
+Original fixture bytes are independent expectations. Private results bind HEAD,
+worktree diff, executable/fixture hashes, response sizes/timing, SQL row-state
+hashes and screenshots. Navigation-aborted body measurements remain explicitly
+unavailable rather than zero or success. This is technical browser review; human
+comprehension, semantic entailment and design acceptance remain pending. No new
+campaign, provider invocation, aggregate gate or historical-artifact rewrite occurs.

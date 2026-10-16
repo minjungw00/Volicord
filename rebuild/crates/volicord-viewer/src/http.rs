@@ -81,6 +81,7 @@ impl ViewerServer {
         }
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/") => self.render(request.query, None),
+            ("GET", "/citation") => self.read_citation(request),
             ("POST", "/memory/context/correct") => {
                 let form = request.form()?;
                 form.require_only(&[
@@ -311,6 +312,64 @@ impl ViewerServer {
             ("GET", _) | ("POST", _) => Err(HttpFailure::not_found()),
             _ => Err(HttpFailure::method_not_allowed("GET, POST")),
         }
+    }
+
+    fn read_citation(&self, request: HttpRequest) -> Result<HttpResponse, HttpFailure> {
+        // Host was checked before routing. This read allows no cross-origin fetch,
+        // redirect, mutation token, Source ID, path or general browsing selector.
+        if request.origin.as_deref().is_some_and(|s| s != self.origin)
+            || request
+                .fetch_site
+                .as_deref()
+                .is_some_and(|s| s != "same-origin")
+        {
+            return Err(HttpFailure::forbidden());
+        }
+        let q = request.query;
+        q.require_only(&[
+            "subject",
+            "language",
+            "realization",
+            "unit",
+            "citation",
+            "offset",
+        ])?;
+        let subject = match q.required("subject")?.split_once(':') {
+            Some(("work", id)) => volicord_projections::ExplanationSubject::Work(
+                ContextItemId::from_bytes(identity(id)?),
+            ),
+            Some(("repository", id)) => volicord_projections::ExplanationSubject::Repository(
+                volicord_repository_intelligence::AnalysisSnapshotId::from_hex(id)
+                    .map_err(HttpFailure::bad_request)?,
+            ),
+            _ => {
+                return Err(HttpFailure::bad_request(
+                    "citation requires an exact Work or repository subject",
+                ))
+            }
+        };
+        let integer = |name| {
+            usize::try_from(q.u64(name)?)
+                .map_err(|_| HttpFailure::bad_request("citation selector is too large"))
+        };
+        let selection = volicord_operations::ExplanationCitationSelection {
+            realization_fingerprint: q.required("realization")?.into(),
+            unit_index: integer("unit")?,
+            citation_index: integer("citation")?,
+            offset: integer("offset")?,
+        };
+        let result = self.adapter.operations().read_explanation_citation(self.project_id,
+            subject,q.required("language")?,&selection).map_err(|_|
+                HttpFailure::new(409,"Conflict","This exact citation is unavailable or changed. Return to the explanation and reopen its current permitted version."))?;
+        let body = serde_json::to_vec(&result)
+            .map_err(|_| HttpFailure::bad_request("citation encoding failed"))?;
+        Ok(HttpResponse {
+            status: 200,
+            reason: "OK",
+            content_type: "application/json; charset=utf-8",
+            body,
+            location: None,
+        })
     }
 
     fn validate_authority(&self, request: &HttpRequest) -> Result<(), HttpFailure> {
@@ -693,7 +752,7 @@ impl HttpResponse {
     }
 
     fn write(self, writer: &mut impl Write) -> io::Result<()> {
-        write!(writer, "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src {}; form-action 'self'; frame-ancestors 'none'\r\n", self.status, self.reason, self.content_type, self.body.len(), crate::interaction::csp_source())?;
+        write!(writer, "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src {}; form-action 'self'; frame-ancestors 'none'\r\n", self.status, self.reason, self.content_type, self.body.len(), crate::interaction::csp_source())?;
         if let Some(location) = self.location {
             write!(writer, "Location: {location}\r\n")?;
         }

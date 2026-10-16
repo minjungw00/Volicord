@@ -532,3 +532,12 @@ earlier valid content unchanged. Source capture may publish a canonical identity
 before a body-store failure; that failure reports the surviving identity and body
 unavailability without a success receipt. Model generation, retained recording,
 structural validation and user comprehension remain separate observations.
+
+Selected live citation reads fail closed when the latest realization, claim/citation
+selection or any current dependency is unavailable/changed, including a split UTF-8
+offset. The HTTP response contains no Source bytes; the evidence pane removes its
+previously displayed code and keeps the exact claim/return target with an unavailable
+notice. Reopening a current permitted explanation is read recovery, never automatic
+observation, retention renewal, generation or a fallback to another realization.
+Offline clipping remains an explicit inclusion limit rather than a promise of live
+retrieval. Source/claim hashes continue to establish binding rather than entailment.

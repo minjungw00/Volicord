@@ -654,3 +654,13 @@ Repository copy retention expiry and complete observed metadata are bound into
 the File Source fingerprint. Managed expiry edits cannot extend the original grant.
 Exact Source reads use verified snapshot metadata/inventory; this authorizes no
 uncited body access or assumption that a structural/semantic graph is complete.
+
+Exact live citation inspection is a narrower retained-copy read: current Project,
+subject, language, realization, unit/citation and citation-relative UTF-8 offset
+are required. Current canonical/managed authority and all citation dependencies
+are rechecked under the existing inspection lock. Same-origin loopback HTTP returns
+at most 4,096 retained text bytes (32,768 serialized JSON bytes), without capture,
+retention renewal, canonical/Derived mutation, host/provider invocation or external
+transmission. Deleted/expired/forgotten/withheld/corrupt/stale dependencies disclose
+no bytes; a locator or Source identity alone grants no access. Offline documents
+carry only embedded bounded evidence and cannot call this capability.
