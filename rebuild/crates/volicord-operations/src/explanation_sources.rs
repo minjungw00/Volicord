@@ -83,8 +83,6 @@ impl LocalOperations {
         let mut current_snapshots = std::collections::BTreeMap::new();
         let mut excerpts = Vec::new();
         let mut excerpt_keys = std::collections::BTreeSet::new();
-        let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
-        let mut omitted_excerpt_count = 0;
         for citation in response.citations() {
             if let ExplanationSubject::Repository(analysis) = subject {
                 if citation.analysis_snapshot_id != analysis.to_string()
@@ -319,15 +317,11 @@ impl LocalOperations {
             if excerpt_keys.insert(key) {
                 let mut bytes = range
                     .len()
-                    .min(remaining)
                     .min(volicord_projections::EXPLANATION_SOURCE_RANGE_BYTE_LIMIT);
                 while !range.is_char_boundary(bytes) {
                     bytes -= 1;
                 }
-                if bytes == 0 {
-                    omitted_excerpt_count += 1;
-                } else {
-                    remaining -= bytes;
+                if bytes > 0 {
                     let end = citation.start_byte + bytes;
                     excerpts.push(volicord_projections::ExplanationSourceExcerpt {
                         citation: citation.clone(),
@@ -373,6 +367,7 @@ impl LocalOperations {
                 ));
             }
         }
+        let omitted_excerpt_count = bound_excerpts(&mut excerpts);
         Ok(ValidatedExplanationSources {
             dependencies: dependencies.into_iter().collect(),
             expiry,
@@ -392,4 +387,54 @@ fn bound_expiry(
     let until = volicord_context::TimestampMicros::from_unix_micros(until);
     *expiry = Some(expiry.map_or(until, |old| old.min(until)));
     Ok(())
+}
+
+/// Max-min character allocation over unique verified ranges. Stable identity order
+/// makes reordered citations and repeated claims unable to consume another range's
+/// share. Short ranges release unused capacity to the rest; no byte limit changes.
+fn bound_excerpts(excerpts: &mut Vec<volicord_projections::ExplanationSourceExcerpt>) -> usize {
+    let mut order: Vec<_> = (0..excerpts.len()).collect();
+    order.sort_by_key(|&i| {
+        let c = &excerpts[i].citation;
+        (
+            c.source_id.clone(),
+            c.field.clone(),
+            c.start_byte,
+            c.end_byte,
+            format!("{:?}", c.use_kind),
+        )
+    });
+    let mut ends = vec![0; excerpts.len()];
+    let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
+    loop {
+        let mut advanced = false;
+        for &i in &order {
+            if let Some(ch) = excerpts[i].text[ends[i]..].chars().next() {
+                if ch.len_utf8() <= remaining {
+                    ends[i] += ch.len_utf8();
+                    remaining -= ch.len_utf8();
+                    advanced = true;
+                }
+            }
+        }
+        if !advanced {
+            break;
+        }
+    }
+    for (e, end) in excerpts.iter_mut().zip(ends) {
+        e.omitted_utf8_bytes += e.text.len() - end;
+        e.text.truncate(end);
+        e.displayed_end_byte = e.citation.start_byte + end;
+        e.displayed_end_line = e.citation.start_line
+            + e.text
+                .as_bytes()
+                .get(..end.saturating_sub(1))
+                .unwrap_or_default()
+                .iter()
+                .filter(|b| **b == b'\n')
+                .count();
+    }
+    let omitted = excerpts.iter().filter(|e| e.text.is_empty()).count();
+    excerpts.retain(|e| !e.text.is_empty());
+    omitted
 }

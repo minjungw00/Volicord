@@ -1717,7 +1717,11 @@ basis from Operations. Each excerpt retains its exact Source/Work revision,
 observation time, citation/range/claim hash and observed comparison. The shared
 bound is 16,384 UTF-8 text bytes, at most 4,096 per unique cited range; clipped
 ranges report displayed byte/line ends and exact omitted bytes, while completely
-omitted ranges keep a counted navigation placeholder. No uncited Source, current
+omitted ranges keep a counted navigation placeholder. Initial selection shares capacity
+progressively across unique verified ranges, in stable range-identity order, returning
+unused short-range capacity to the rest. Duplicate/shared claims consume one share;
+reordering citations cannot starve a later mechanism. This selection makes no claim
+about semantic importance or entailment. No uncited Source, current
 file fallback or new Source observation is materialized. Only Current permitted
 interpretations supply excerpts. Source bytes remain disposable managed content;
 they are never copied into the retained explanation envelope.
