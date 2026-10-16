@@ -110,6 +110,8 @@ module.exports=async function journeys({browser,url,build,out,refined=false,prev
     if(layout==='target'&&refined){
      await activate(page,page.locator('.audit-links a[href="#limits"]'),steps,'inspect verification limits');
      await page.waitForFunction(()=>location.hash==='#limits');
+     // Fragment identity can update before Chromium completes the native scroll.
+     await page.waitForFunction(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.top<innerHeight&&r.bottom>0;},await p.limits.elementHandle());
      assert((await geometry(p.limits)).visible,'limits reached directly');
     }else await p.limits.scrollIntoViewIfNeeded();
     row.limits_reachable=await p.limits.isVisible();
