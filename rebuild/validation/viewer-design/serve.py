@@ -46,7 +46,7 @@ class Connection(socketserver.BaseRequestHandler):
                 if raw.endswith(b'\r\n\r\n'):
                     status,path=parse(raw,self.server.authority)
             if status==200:
-                name='index.html' if path=='/' else path[1:]
+                name=self.server.entry if path=='/' else path[1:]
                 if name not in self.server.routes:status=404
                 else:body=(ROOT/name).read_bytes();kind=TYPES.get(Path(name).suffix,'text/plain')
             if status!=200:body=f'Review request rejected: {status}'.encode();kind='text/plain'
@@ -68,6 +68,7 @@ def main():
     with socketserver.TCPServer(('127.0.0.1',0),Connection) as server:
         server.authority=f'127.0.0.1:{server.server_address[1]}'
         server.routes=set(manifest['files'])|{'manifest.json'}
+        server.entry=manifest.get('viewer_entry','index.html')
         print(f'http://{server.authority}/',flush=True)
         try:server.serve_forever(poll_interval=.1)
         except KeyboardInterrupt:pass

@@ -15,16 +15,16 @@ async function stop(){if(!proc)return;if(proc.exitCode!==null||proc.signalCode!=
  browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox','--disable-background-networking'],env:{...process.env,FONTCONFIG_FILE:c.fontconfig}});
  for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:900}});page.on('request',r=>result.requests.push(r.url()));
-  for(const file of ['index.html','journeys.html','journey-observations.html','observations.html','initial/journeys.html','overview.html','works.html','missing.html']){
+  for(const file of ['index.html','journeys.html','journey-observations.html','observations.html','initial/journeys.html','viewer/index.html','viewer/overview.html','viewer/works.html','viewer/missing.html']){
    assert.equal((await page.goto(url+file)).status(),200,file);
    await page.evaluate(()=>document.fonts.ready);
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'relocated page overflow '+file);
   }
-  await page.goto(url+'click.html');await page.locator('.condition-table').scrollIntoViewIfNeeded();
+  await page.goto(url+'viewer/click.html');await page.locator('.condition-table').scrollIntoViewIfNeeded();
   await page.screenshot({path:path.join(c.output,`comparison-${width}.png`)});
-  await page.goto(url+'b.html#original');assert(await page.locator('#original').evaluate(n=>n.open));
-  await page.goto(url+'b.html#point-5-0');await page.locator('.source-point.active').waitFor({state:'visible'});
-  assert.equal(await page.locator('.appendix').getAttribute('aria-modal'),'true');
+  await page.goto(url+'viewer/b.html#original');assert(await page.locator('#original').evaluate(n=>n.open));
+  await page.goto(url+'viewer/b.html#point-5-0');await page.locator('.source-point.active').waitFor({state:'visible'});
+  assert.equal(await page.locator('.appendix').getAttribute('aria-modal'),width<=900?'true':null);
   await page.locator('.source-point.active .return').focus();await page.keyboard.press('Escape');
   await page.waitForFunction(()=>document.activeElement.id==='claim-5');
   result.checks.push({width,preview:'relocated Python launch; entry, initial, measurements, catalog, missing explanation, conditions, direct disclosure/Source and return'});
@@ -32,10 +32,20 @@ async function stop(){if(!proc)return;if(proc.exitCode!==null||proc.signalCode!=
  }
  assert(result.requests.every(u=>new URL(u).origin===new URL(url).origin),'remote request');
  await stop();
+ const standalone=path.join(temp,'viewer-only');fs.cpSync(path.join(root,'viewer'),standalone,{recursive:true});
+ for(const width of [1440,390]){
+  const local=await browser.newPage({viewport:{width,height:900}});await local.context().setOffline(true);
+  await local.goto(pathToFileURL(path.join(standalone,'b.html')).href+'#point-5-0');
+  await local.locator('.source-point.active').waitFor({state:'visible'});
+  assert.equal(await local.locator('.doc').isVisible(),width>900,'Viewer works without review files');
+  await local.keyboard.press('Escape');await local.waitForFunction(()=>document.activeElement.id==='claim-5');
+  await local.close();
+ }
+ result.checks.push({standalone_viewer:'only viewer/ copied; scripts/Source selection/return work offline with no review files at 1440/390'});
  const context=await browser.newContext({javaScriptEnabled:false,viewport:{width:320,height:900}});await context.setOffline(true);
  const page=await context.newPage();
  for(const key of ['b','click']){
-  await page.goto(pathToFileURL(path.join(root,key+'-offline.html')).href);
+  await page.goto(pathToFileURL(path.join(standalone,key+'-offline.html')).href);
   assert.equal(await page.locator('script,form').count(),0);
   assert(await page.locator('.goal').isVisible(),'script-free original Goal visible');
   const link=page.locator('[data-origin="claim-5"].evidence-link').first();await link.focus();await page.keyboard.press('Enter');

@@ -22,12 +22,14 @@
 
 .work-summary,.work-card-footer{grid-column:1/-1}.work-card-footer{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:16px}.work-dates{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:.75rem;line-height:1.7;color:var(--muted)}.work-date{white-space:nowrap}.work-date>span{font-weight:600;margin-right:6px}.work-dates .time-zone{flex-basis:100%;font-size:.68rem}.work-card h3{padding:0}.limits-section .guard{margin:0}.limits-section{border-top:1px solid var(--line)}
 
-/* A focused Source dialog keeps one exact claim, rather than a second document pane. */
-body.code-open{overflow:hidden}body.code-open::before{content:"";position:fixed;inset:0;background:#11182499;z-index:9}
+/* Desktop evidence stays beside the reading document; narrow screens focus code. */
 #main{scroll-margin-top:100px}
-.enhanced.code-open .doc{display:none}.enhanced.code-open .appendix{inset:92px 24px 24px;width:auto;max-width:1200px;margin:0 auto;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:10px;z-index:10;overscroll-behavior:contain}
+.enhanced.code-open main.shell{max-width:none;padding-inline:28px}.enhanced.code-open .doc{display:block;width:44%;max-width:none;margin:0}.enhanced.code-open .appendix{inset:76px 0 0 auto;width:52%;max-width:none;margin:0;padding:24px;background:var(--surface);border:0;border-left:1px solid var(--line);border-radius:0;z-index:5;overscroll-behavior:contain}
 .enhanced.code-open .source-point{border:0;padding:0}.code-open .claim-quote{max-height:20vh;font-size:1rem;line-height:1.8}.code-open .code-region{max-height:48vh}.point-bar{position:sticky;top:-24px;background:var(--surface);z-index:2;padding-block:8px;border-bottom:1px solid var(--line)}
 .reading-section,.unit,[id^=claim-],#original,#audit{scroll-margin-top:100px}.record-strip{margin-top:18px}
 .condition-table{width:100%;border-collapse:collapse;background:var(--surface);margin-bottom:24px;font-size:.95rem}.condition-table caption{text-align:left;font-size:.8rem;color:var(--muted);padding-bottom:12px}.condition-table th,.condition-table td{padding:12px;text-align:left;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.condition-table th{font-weight:600}.condition-table a{display:inline-flex;align-items:center;min-height:44px;padding:4px 8px}.condition-table td code{font-weight:700}
-@media(max-width:900px){.enhanced.code-open .appendix{inset:0;max-width:none;padding:16px;border:0;border-radius:0}.point-bar{top:-16px}.code-open .claim-quote{max-height:17vh;font-size:.9rem}.code-open .code-region{max-height:52vh}}
+@media(max-width:900px){body.code-open{overflow:hidden}.enhanced.code-open .doc{display:none}.enhanced.code-open .appendix{inset:0;width:auto;max-width:none;padding:16px;border:0;border-radius:0}.point-bar{top:-16px}.code-open .claim-quote{max-height:17vh;font-size:.9rem}.code-open .code-region{max-height:52vh}}
 @media(max-width:600px){.enhanced.code-open .appendix{padding:12px}.point-bar{top:-12px}.condition-table th,.condition-table td{padding:8px 5px}.condition-table{font-size:.85rem}}
+
+@media(max-width:900px){.code-region{font-size:13px;line-height:1.65}}
+@media(max-width:600px){.code-region{font-size:12px;line-height:1.65}.number{width:3.25em;padding-right:.6em}}

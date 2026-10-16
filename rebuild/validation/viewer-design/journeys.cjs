@@ -1,7 +1,7 @@
 // Bounded actual navigation measurements. No automated comprehension rating.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 
-module.exports=async function journeys({browser,url,build,out,refined=false}) {
+module.exports=async function journeys({browser,url,build,out,refined=false,previousBuild}) {
  const input=JSON.parse(fs.readFileSync(path.join(build,'inputs/journeys.json')));
  const authored=JSON.parse(fs.readFileSync(path.join(build,'inputs/review-input-final.json')));
  const rows=[];
@@ -72,7 +72,17 @@ module.exports=async function journeys({browser,url,build,out,refined=false}) {
     const text=original.subarray(source.citation.start_byte,source.citation.end_byte).toString();
     const actual=layout==='baseline'?await excerpt.textContent():(await excerpt.locator('.code-text').allTextContents()).join('\n')+'\n';
     assert.equal(actual,text,'purposeful exact Source range');
-    row.code={...await geometry(excerpt),selected:source.citation,range_exact:true,horizontal_scroll:await excerpt.evaluate(n=>n.scrollWidth>n.clientWidth)};
+    row.code={...await geometry(excerpt),selected:source.citation,range_exact:true,scroll_width:await excerpt.evaluate(n=>n.scrollWidth),horizontal_scroll:await excerpt.evaluate(n=>n.scrollWidth>n.clientWidth)};
+    if(layout==='target'&&width<=600&&previousBuild){
+     const {pathToFileURL}=require('node:url');
+     const prior=await context.newPage();await prior.goto(pathToFileURL(path.join(previousBuild,work.key+'.html')).href+'#point-'+p.index+'-0');
+     const oldCode=prior.locator('.source-point.active .code-region');await oldCode.waitFor({state:'visible'});
+     assert.deepEqual(await oldCode.locator('.code-text').allTextContents(),await excerpt.locator('.code-text').allTextContents(),'same previous code bytes');
+     row.previous_code={...await geometry(oldCode),scroll_width:await oldCode.evaluate(n=>n.scrollWidth)};
+     assert(parseFloat(row.code.font)<parseFloat(row.previous_code.font),'mobile font reduced');
+     assert(row.code.scroll_width<row.previous_code.scroll_width,'less horizontal code overflow on same range');
+     await prior.close();
+    }
     await excerpt.focus();await page.keyboard.press('ArrowRight');
     row.return_origin=origin;
     const back=layout==='baseline'?point.locator(`a.return-to-claim[href="#${origin}"]`).first():point.locator('.return');
@@ -105,19 +115,19 @@ module.exports=async function journeys({browser,url,build,out,refined=false}) {
     row.limits_reachable=await p.limits.isVisible();
     // Reproduction of defects is explicit, with positive and adverse controls.
     if(layout==='target'){
-     await page.goto(url+work.key+'.html#original');await page.evaluate(()=>document.fonts.ready);
+     await page.goto(url+'viewer/'+work.key+'.html#original');await page.evaluate(()=>document.fonts.ready);
      row.fragment_disclosure_open=await page.locator('#original').evaluate(n=>n.open);
-     await page.goto(url+work.key+'.html');
+     await page.goto(url+'viewer/'+work.key+'.html');
      await page.locator(`[data-origin="claim-${p.index}"].evidence-link`).first().click();
      const active=page.locator('.source-point.active');await active.waitFor({state:'visible'});
      await active.locator('.return').focus();await page.keyboard.press('Shift+Tab');
      row.code_focus_contained=await page.evaluate(()=>!!document.activeElement.closest('.appendix'));
-     if(refined){assert(row.fragment_disclosure_open,'direct disclosure must open');assert(row.code_focus_contained,'modal keyboard focus contained');}
+     if(refined){assert(row.fragment_disclosure_open,'direct disclosure must open');assert(row.code_focus_contained === (width<=900),'focus is contained only in the mobile dialog');}
      if(refined){
-      assert.equal(await page.locator('.doc').evaluate(n=>n.inert),true,'background excluded');
-      await page.goto(url+work.key+'.html#point-'+p.index+'-0');
+      assert.equal(await page.locator('.doc').evaluate(n=>n.inert),width<=900,'background interactive on desktop');
+      await page.goto(url+'viewer/'+work.key+'.html#point-'+p.index+'-0');
       await page.locator('.source-point.active').waitFor({state:'visible'});
-      assert.equal(await page.locator('.appendix').getAttribute('role'),'dialog','direct Source selection');
+      assert.equal(await page.locator('.appendix').getAttribute('role'),width<=900?'dialog':null,'responsive direct Source selection');
      }
      await page.keyboard.press('Escape');
      if(refined){assert.equal(await page.locator('#original').evaluate(n=>n.open),false,'unrelated disclosure remains closed');}
@@ -132,27 +142,41 @@ module.exports=async function journeys({browser,url,build,out,refined=false}) {
  // Content negatives use disposable rendered copies. Identity/range admission has
  // separate original-source controls; these challenge the human-readable consumer.
  const page=await browser.newPage();
- await page.goto(url+'b.html');
+ await page.setViewportSize({width:1440,height:900});
+ await page.goto(url+'viewer/b.html#point-5-0');await page.locator('.source-point.active').waitFor({state:'visible'});
+ assert(await page.locator('.doc').isVisible(),'desktop document remains visible');
+ await page.locator('[data-origin="claim-7"].evidence-link').first().click();
+ await page.locator('#point-7-0.active').waitFor({state:'visible'});
+ for(const width of [390,1024]){
+  await page.setViewportSize({width,height:900});
+  await page.waitForFunction(mobile=>document.querySelector('.doc').inert===mobile,width<=900);
+  assert.equal(await page.locator('.appendix').getAttribute('aria-modal'),width<=900?'true':null);
+  assert(await page.locator('#point-7-0.active').isVisible(),'same Source retained across responsive mode');
+ }
+ await page.keyboard.press('Escape');await page.waitForFunction(()=>document.activeElement.id==='claim-7');
+ assert((await geometry(page.locator('#claim-7'))).visible,'new origin restored after desktop source switch and resize');
+ await page.goto(url+'viewer/b.html');
  const clause=authored.works.find(w=>w.key==='b').units.find(u=>u.role==='limits').text;
  async function limitsCheck(){assert.equal(await page.locator('.guard .unit-text').textContent(),clause,'adverse outcome retained');}
  await limitsCheck();await page.locator('.guard .unit-text').evaluate(n=>n.textContent='All checks passed.');
  await assert.rejects(limitsCheck,/adverse outcome retained/);
- await page.goto(url+'b.html');await limitsCheck();
+ await page.goto(url+'viewer/b.html');await limitsCheck();
  await page.locator('[data-origin="claim-5"].evidence-link').first().evaluate(n=>n.href='#point-7-0');
  await page.locator('[data-origin="claim-5"].evidence-link').first().click();
  assert(!(await page.locator('.source-point.active .source-path').textContent()).includes('archive/cli.rs:1423'),'wrong-purpose selection detected');
- await page.goto(url+'b.html');await page.locator('[data-origin="claim-5"].evidence-link').first().click();
+ await page.goto(url+'viewer/b.html');await page.locator('[data-origin="claim-5"].evidence-link').first().click();
  assert((await page.locator('.source-point.active .source-path').textContent()).includes('archive/cli.rs:1423'),'restored purpose selection passes');
  if(refined){
+  await page.setViewportSize({width:390,height:900});await page.waitForFunction(()=>document.querySelector('.appendix').getAttribute('aria-modal')==='true');
   await page.evaluate(()=>document.addEventListener('keydown',e=>{if(e.key==='Tab')e.stopImmediatePropagation()},true));
   await page.locator('.doc').evaluate(n=>n.inert=false);await page.locator('.masthead').evaluate(n=>n.inert=false);
   await page.locator('.source-point.active .return').focus();await page.keyboard.press('Shift+Tab');
   assert.equal(await page.evaluate(()=>!!document.activeElement.closest('.appendix')),false,'removing focus containment reproduces failure');
-  await page.goto(url+'b.html#point-5-0');await page.reload();await page.locator('.source-point.active .return').focus();await page.keyboard.press('Shift+Tab');
+  await page.goto(url+'viewer/b.html#point-5-0');await page.reload();await page.locator('.source-point.active .return').focus();await page.keyboard.press('Shift+Tab');
   assert(await page.evaluate(()=>!!document.activeElement.closest('.appendix')),'restored focus containment passes');
  }
  await page.close();
  const receipt={kind:'browser measurements and scripted tasks; no human or independent model comprehension verdict',refined,rows,negative_controls:['deleted adverse outcome rejected; restored positive passes','wrong-purpose Source differs from independent expected range; restored positive passes',...(refined?['removed focus containment reproduces failure; restored positive passes']:[])],human_acceptance:'pending'};
  fs.writeFileSync(path.join(out,'journeys.json'),JSON.stringify(receipt,null,2));
- return {journeys:rows.length,refined,defects:{closed_fragment:rows.filter(r=>r.fragment_disclosure_open===false).length,focus_escape:rows.filter(r=>r.code_focus_contained===false).length},human_acceptance:'pending'};
+ return {journeys:rows.length,refined,responsive_source_switch:'passed',defects:{closed_fragment:rows.filter(r=>r.fragment_disclosure_open===false).length,focus_escape:rows.filter(r=>r.width<=900&&r.code_focus_contained===false).length},human_acceptance:'pending'};
 };

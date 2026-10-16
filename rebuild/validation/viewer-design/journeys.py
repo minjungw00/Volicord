@@ -119,7 +119,7 @@ def attach(out, missing_root, works, frame):
     for f in missing['answers']['prose'] + missing['answers']['facts']:
         body += f'<p class="unit-text" data-fact="{f["question"]}">{escape(f["text"])}</p>'
     body += '<p>Work에 연결된 코드 근거가 없어 목적에 맞는 코드를 선택할 수 없습니다. 저장소 파일의 존재만으로 이 Work의 코드라고 추측하지 않습니다.</p>'
-    body += '<details class="record-box"><summary>전체 근거 · 누락된 설명</summary><pre class="full-audit">' + escape(json.dumps(missing, ensure_ascii=False, indent=2)) + '</pre><a href="inputs/missing-status.json">Product readback</a><a href="baseline-missing.html#code">기존 Repository Map (Work 근거와 별개)</a></details></article>'
+    body += '<details class="record-box"><summary>전체 근거 · 누락된 설명</summary><pre class="full-audit">' + escape(json.dumps(missing, ensure_ascii=False, indent=2)) + '</pre><a href="inputs/missing-status.json">Product readback</a></details></article>'
     (out / 'missing.html').write_text(frame('Goal-only Work', body))
     cases = []
     for w in works:
@@ -128,7 +128,7 @@ def attach(out, missing_root, works, frame):
         # The historical A/B/C catalog remains separately reviewable, not an oracle.
         title = next(u['text'] for u in w['authored']['units'] if u['role'] == 'heading')
         intro = f'<h1>Work · {key.upper()}</h1><p class="source-note">같은 단일 Work 후보 집합의 탐색 비교 · 과거 A/B/C 목록과 별개</p><article class="work-card" data-work-id="{selected["work_item_id"]}"><h2>{escape(title)}</h2><p>상태: {escape(selected["state"])}</p><a class="button" href="{key}.html">작업 읽기 →</a></article>'
-        (out / f'find-{key}.html').write_text(frame('Work 찾기', intro))
+        (out / f'find-{key}.html').write_text(frame('Work 찾기', intro, active='index'))
         cases.append(dict(key=key, work=selected['work_item_id'], baseline=f'baseline-{key}.html#overview', target=f'find-{key}.html#main', mechanism_ref='next' if key == 'b' else 'open'))
     cases.append(dict(key='missing', work=spec['work'], baseline='baseline-missing.html#overview', target='missing.html', code_task='unavailable; no Work-bound Source', explanation='missing'))
     tasks = [

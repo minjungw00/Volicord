@@ -57,8 +57,9 @@ async function trip(page,work,truth,width,offline=false){
    if(await regionBox.evaluate(n=>n.scrollWidth>n.clientWidth+2))await page.waitForFunction(n=>n.scrollLeft>0,await regionBox.elementHandle());
    if(!offline){
      const box=await regionBox.boundingBox();assert(box.y>=0&&box.y<700,'code starts in viewport');
-     assert.equal(await page.locator('.doc').isVisible(),false,'focused code with exact origin quotation');
-     assert.equal(await page.locator('.appendix').getAttribute('aria-modal'),'true');
+     assert.equal(await page.locator('.doc').isVisible(),width>900,'desktop document and evidence stay visible together');
+     assert.equal(await page.locator('.appendix').getAttribute('aria-modal'),width<=900?'true':null);
+     if(width>900)assert.equal(await page.locator('#claim-'+i).evaluate(n=>{const r=n.getBoundingClientRect();return r.top>=76&&r.top<innerHeight}),true,'original paragraph visible beside evidence');
    }
    if(u.role==='reading_point'&&j===0&&trips<20)await page.screenshot({path:path.join(out,`${work.key}-${width}-${offline?'offline':'live'}-point-${i}.png`)});
    if(!offline&&trips%2===0){await page.keyboard.press('Escape');}
@@ -79,16 +80,22 @@ async function trip(page,work,truth,width,offline=false){
   identity();server=await start();
   browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox','--disable-background-networking'],env:{...process.env,FONTCONFIG_FILE:c.fontconfig}});
   result.chromium=browser.version();
+  const entry=await browser.newPage();await entry.goto(server.url);
+  assert.equal(await entry.locator('html').getAttribute('data-surface'),'viewer','preview starts at Viewer');
+  assert.equal(await entry.locator('h1').textContent(),'Volicord');
+  assert.deepEqual(await entry.locator('.masthead nav a').allTextContents(),['개요','작업']);
+  assert.equal(await entry.locator('footer').count(),0,'no review footer');await entry.close();
+  result.checks.push({viewer_review_separation:'closed viewer/ subtree; default preview opens Viewer; review entry separate'});
   for(const width of [1440,768,390,320]){
    const context=await browser.newContext({viewport:{width,height:900}});const page=await context.newPage();
    page.on('request',r=>result.requests.push(r.url()));page.on('pageerror',e=>{throw e;});
-   await page.goto(server.url);await paint(page);assert.equal(await page.locator('h1').textContent(),'작업을 이해하는새로운 읽기 공간.');
+   await page.goto(server.url+'index.html');await paint(page);assert.equal(await page.locator('h1').textContent(),'작업을 이해하는새로운 읽기 공간.');
    await page.screenshot({path:path.join(out,`entry-${width}.png`)});
-   await page.goto(server.url+'works.html');await paint(page);
+   await page.goto(server.url+'viewer/works.html');await paint(page);
    assert.equal(await page.locator('[data-work]').count(),catalog.works.length);
    assert.equal(await page.locator('.index-intro').textContent(),'작업의 내용과 진행 현황을 확인합니다.');
    for(const file of ['overview.html','works.html']){
-    await page.goto(server.url+file);await paint(page);
+    await page.goto(server.url+'viewer/'+file);await paint(page);
     if(file==='overview.html')assert.equal(await page.locator('.project-purpose').textContent(),catalog.purpose.text);
     assert.equal(await page.locator('.work-card').count(),3);
     const ordered=[...catalog.works].sort((a,b)=>rows('checkpoints').find(r=>r.id===b.checkpoint).recorded_at-rows('checkpoints').find(r=>r.id===a.checkpoint).recorded_at).map(w=>w.key);
@@ -113,17 +120,17 @@ async function trip(page,work,truth,width,offline=false){
     await page.screenshot({path:path.join(out,`${file==='overview.html'?'overview':'discovery'}-${width}.png`)});
    }
    for(const item of catalog.works.filter(w=>!authored.works.some(a=>a.key===w.key))){
-    await page.goto(server.url+'works.html');await page.locator(`[data-work=${item.key}]`).focus();await page.keyboard.press('Enter');await page.waitForURL('**/'+item.key+'.html');
+    await page.goto(server.url+'viewer/works.html');await page.locator(`[data-work=${item.key}]`).focus();await page.keyboard.press('Enter');await page.waitForURL('**/'+item.key+'.html');
     assert.equal(await page.locator('h1').textContent(),item.title);
     assert.equal(await page.locator('.goal').textContent(),rows('context_items').find(r=>r.id===item.work).statement);
     await page.locator('#original summary').click();assert(await page.locator('.goal').isVisible());await page.screenshot({path:path.join(out,`${item.key}-${width}-record.png`)});
    }
-   await page.goto(server.url+'works.html');
+   await page.goto(server.url+'viewer/works.html');
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
    await page.screenshot({path:path.join(out,`discovery-${width}.png`)});
    for(const work of authored.works){
-    if(catalog.works.some(i=>i.key===work.key)){await page.goto(server.url+'works.html');await page.locator(`[data-work=${work.key}]`).focus();await page.keyboard.press('Enter');}
-    else await page.goto(server.url+work.key+'.html');
+    if(catalog.works.some(i=>i.key===work.key)){await page.goto(server.url+'viewer/works.html');await page.locator(`[data-work=${work.key}]`).focus();await page.keyboard.press('Enter');}
+    else await page.goto(server.url+'viewer/'+work.key+'.html');
     await page.waitForURL('**/'+work.key+'.html');await paint(page);
     const truth=await content(page,work);
     assert(await page.locator('#reading').evaluate(n=>!!(n.compareDocumentPosition(document.querySelector('.guard'))&Node.DOCUMENT_POSITION_FOLLOWING)),'limits follow the explanation');
@@ -138,7 +145,7 @@ async function trip(page,work,truth,width,offline=false){
     await page.screenshot({path:path.join(out,`${work.key}-${width}-reading.png`)});
     if(await page.locator('.comparisons').count()){await page.locator('.comparisons').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${work.key}-${width}-comparisons.png`)});}
     const trips=await trip(page,work,truth,width);
-    await page.goto(server.url+work.key+'-unavailable.html');await paint(page);
+    await page.goto(server.url+'viewer/'+work.key+'-unavailable.html');await paint(page);
     await content(page,work);await page.locator('.reading-section .evidence-link').first().click();
     await page.locator('.source-point.active .unavailable').waitFor({state:'visible'});assert.equal(await page.locator('.source-point.active .code-region').count(),0);
     await page.screenshot({path:path.join(out,`${work.key}-${width}-unavailable.png`)});
@@ -156,7 +163,7 @@ async function trip(page,work,truth,width,offline=false){
   }
   for(const work of authored.works){
    const context=await browser.newContext({javaScriptEnabled:false,viewport:{width:320,height:900}});await context.setOffline(true);const page=await context.newPage();
-   await page.goto(pathToFileURL(path.join(build,work.key+'-offline.html')).href);await paint(page);
+   await page.goto(pathToFileURL(path.join(build,'viewer',work.key+'-offline.html')).href);await paint(page);
    const truth=await content(page,work);assert.equal(await page.locator('script,form').count(),0);
    // One native exact origin round-trip per script-free document (all bytes checked above).
    const i=work.units.findIndex(u=>u.role==='reading_point');const link=page.locator(`[data-origin="claim-${i}"]`).first();await link.focus();await page.keyboard.press('Enter');
@@ -180,7 +187,7 @@ async function trip(page,work,truth,width,offline=false){
   if(manifest.journeys){
    result.journey_driver_sha256=hash(fs.readFileSync(path.join(__dirname,'journeys.cjs')));
    assert.equal(result.journey_driver_sha256,manifest.files['support/journeys.cjs'].sha256,'exact journey support');
-   result.checks.push(await require('./journeys.cjs')({browser,url:server.url,build,out,refined:!!c.refined}));
+   result.checks.push(await require('./journeys.cjs')({browser,url:server.url,build,out,refined:!!c.refined,previousBuild:c.previous_build}));
   }
   assert(result.requests.every(url=>new URL(url).origin===new URL(server.url).origin),'no remote request');
   // Deliberate missing route cannot silently select a different Work.

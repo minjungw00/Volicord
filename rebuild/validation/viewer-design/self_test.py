@@ -167,6 +167,22 @@ class ReviewTests(unittest.TestCase):
             parser=Links();parser.base=p.parent;parser.document=p.resolve();parser.feed(p.read_text())
         self.assertFalse(any(p.suffix=='.html' for p in (root/'inputs').rglob('*')), 'executable historical prototype must not be delivered')
 
+    def test_viewer_pages_are_separate_from_review(self):
+        if not ARGS.build:self.skipTest('no package supplied')
+        root=(ARGS.build/'viewer').resolve()
+        class ViewerLinks(design.HTMLParser):
+            def handle_starttag(inner,tag,attrs):
+                for key,value in attrs:
+                    if key not in {'href','src'} or not value or value.startswith('#'):continue
+                    self.assertTrue((root/value.split('#')[0]).resolve().is_relative_to(root),'review route leaked into Viewer')
+        for p in root.glob('*.html'):
+            html=p.read_text();self.assertIn('data-surface="viewer"',html)
+            self.assertNotIn('디자인 검토</a>',html);self.assertNotIn('<footer>',html)
+            ViewerLinks().feed(html)
+        self.assertTrue((root/'index.html').is_file())
+        with self.assertRaisesRegex(AssertionError,'review route'):
+            ViewerLinks().feed('<a href="../index.html">디자인 검토</a>')
+
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--retained',type=Path,required=True);p.add_argument('--build',type=Path);p.add_argument('--stress',type=Path);p.add_argument('--missing-case',type=Path);ARGS=p.parse_args()

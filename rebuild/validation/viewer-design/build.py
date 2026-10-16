@@ -118,8 +118,40 @@ def admit(root):
 
 def frame(title, body, scripted=False, active="works"):
     css = (HERE / 'design.css').read_text()
-    navigation = ''.join(f'<a class="nav-link" href="{key}.html"'+(' aria-current="page"' if key == active else '')+f'>{label}</a>' for key,label in [('overview','개요'),('works','작업'),('index','디자인 검토')])
-    return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(title)} · Volicord design review</title><style>{css}</style></head><body><a class="skip" href="#main">본문으로</a><header class="masthead"><div class="shell"><a class="brand" href="overview.html">Volicord<span>Work reader</span></a><nav aria-label="주요 탐색">{navigation}</nav><span class="trial">읽기 전용 · 디자인 검토</span></div></header><main class="shell" id="main">{body}<footer>보존된 읽기 자료 · 새 생성·실행·수락 아님 · 디자인 trial · <a href="index.html">검토 안내</a></footer></main>{'<script src="design.js" defer></script>' if scripted else ''}</body></html>'''
+    review = active == 'index'
+    destinations = [('index','디자인 검토')] if review else [('overview','개요'),('works','작업')]
+    navigation = ''.join(f'<a class="nav-link" href="{key}.html"'+(' aria-current="page"' if key == active else '')+f'>{label}</a>' for key,label in destinations)
+    brand = 'index.html' if review else 'overview.html'
+    notice = '디자인 검토 자료 · 사용자 승인 대기' if review else '읽기 전용'
+    footer = '<footer>디자인 검토 자료 · <a href="index.html">검토 안내</a></footer>' if review else ''
+    return f'''<!doctype html><html lang="ko" data-surface="{'review' if review else 'viewer'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(title)} · Volicord</title><style>{css}</style></head><body><a class="skip" href="#main">본문으로</a><header class="masthead"><div class="shell"><a class="brand" href="{brand}">Volicord</a><nav aria-label="주요 탐색">{navigation}</nav><span class="trial">{notice}</span></div></header><main class="shell" id="main">{body}{footer}</main>{'<script src="design.js" defer></script>' if scripted else ''}</body></html>'''
+
+
+def separate_viewer(output, manifest):
+    """Deliver a closed Viewer subtree; review navigation never enters its chrome."""
+    viewer = output / 'viewer'; viewer.mkdir(); (viewer / 'sources').mkdir()
+    pages = [p for p in output.glob('*.html') if 'data-surface="viewer"' in p.read_text()]
+    names = {p.name for p in pages}
+    allowed = re.compile(r'(?:[a-z]+-source-[a-z]+\.txt|[a-z]+-status\.json|catalog-bundle\.json|project-charter\.md)$')
+    for p in pages:
+        html = p.read_text()
+        for source in re.findall(r'href="inputs/([^"#]+)"', html):
+            if not allowed.fullmatch(source):
+                raise ValueError('review-only input reached Viewer: ' + source)
+            shutil.copyfile(output / 'inputs' / source, viewer / 'sources' / source)
+        (viewer / p.name).write_text(html.replace('href="inputs/', 'href="sources/'))
+        p.unlink()
+    shutil.copyfile(viewer / 'overview.html', viewer / 'index.html')
+    shutil.move(output / 'design.js', viewer / 'design.js')
+    for p in output.glob('*.html'):
+        html = re.sub(r'href="([^"#]+)(#[^"]*)?"', lambda m: 'href="'+('viewer/' if m[1] in names else '')+m[1]+(m[2] or '')+'"', p.read_text())
+        p.write_text(html)
+    if manifest.get('journeys'):
+        for case in manifest['journeys']['cases']:
+            if case['target'].split('#')[0] in names: case['target'] = 'viewer/' + case['target']
+        (output/'inputs/journeys.json').write_text(json.dumps(manifest['journeys'],ensure_ascii=False,indent=2))
+    manifest['viewer_entry'] = 'viewer/index.html'
+    manifest['review_entry'] = 'index.html'
 
 
 def links(work, index):
@@ -147,13 +179,13 @@ def work_page(work, scripted=True, failure=False, catalog_item=None):
             body += f'<div id="claim-{i}" tabindex="-1"><h1 data-unit="{i}">{esc(u["text"])}</h1></div>'
         elif u['role'] == 'synopsis':
             body += f'<div id="claim-{i}" tabindex="-1"><p class="lead" data-unit="{i}">{esc(u["text"])}</p></div>'
-    body += '<p class="record-strip" data-control-state="'+selected['state']+'"><span>현재 control: '+STATE_LABELS[selected['state']]+'</span>'
+    body += '<p class="record-strip" data-control-state="'+selected['state']+'"><span>기록된 상태: '+STATE_LABELS[selected['state']]+'</span>'
     if catalog_item:
-        body += '<span>과거 원래 Work: '+STATE_LABELS[catalog_item['checkpoint']['work_state']]+'</span>'
+        body += '<span>참조한 과거 작업: '+STATE_LABELS[catalog_item['checkpoint']['work_state']]+'</span>'
     body += '</p>'
-    body += '<p class="interpretation">Source에서 작성한 검토용 해석 · 의미 정확성·사용자 수락은 별도 검토</p></header>'
+    body += '<p class="interpretation">Source에 근거한 해석 · 검증·검토·수락 상태는 원래 기록을 따릅니다</p></header>'
     if failure:
-        body += '<p class="unavailable" role="status">검토용 Source 이용 불가 상태입니다. 아래 원문은 숨겨집니다. 보존된 설명과 identity는 과거 readback이며 현재 근거 이용 가능성을 뜻하지 않습니다.</p>'
+        body += '<p class="unavailable" role="status">Source를 이용할 수 없습니다. 아래 원문은 숨겨집니다. 보존된 설명과 identity는 과거 readback이며 현재 근거 이용 가능성을 뜻하지 않습니다.</p>'
     facts = selected['answers']['facts']
     body += '<nav class="audit-links" aria-label="본문과 기록"><a class="button primary" href="#reading">설명 읽기 ↓</a><a class="button secondary" href="#limits">결과·검증 한계 ↓</a><a class="button secondary" href="#original">원래 지시</a><a class="button secondary" href="#audit">전체 근거</a></nav><div id="reading">'
     narrative = [i for i,u in enumerate(units) if u['role'] not in {'heading','synopsis','limits'}]
@@ -192,12 +224,12 @@ def work_page(work, scripted=True, failure=False, catalog_item=None):
     native_open = '' if scripted else ' open'
     body += '<div class="audit"><details class="record-box" id="original"'+native_open+'><summary>원래 지시 · 전체 Goal</summary><blockquote class="goal">' + esc(a['goal']) + '</blockquote></details>'
     body += '<details class="record-box" id="audit"'+native_open+'><summary>전체 근거 · 상태 · 출력 identity</summary><p>Captured Current는 과거 readback의 상태입니다. 현재 Source freshness나 새 검증을 뜻하지 않습니다.</p>'
-    body += f'<p>현재 control Work: {esc(selected["work_item_id"])} · 과거 Work: {esc(a["historical_work"])}</p>'
+    body += f'<p>선택한 Work: {esc(selected["work_item_id"])} · 과거 Work: {esc(a["historical_work"])}</p>'
     for f in facts:
         body += f'<p data-fact="{esc(f["question"])}">{esc(f["text"])}</p>'
     body += '<p>제목·요약의 근거</p>' + ''.join(links(work,i) for i,u in enumerate(units) if u['role'] in {'heading','synopsis'})
     body += '<p>연결된 Decision: ' + (', '.join(map(esc,selected['decision_ids'])) or '없음 · 사용자 rationale을 추측하지 않음') + '</p>'
-    body += f'<pre class="full-audit">{esc(json.dumps(selected,ensure_ascii=False,indent=2))}</pre><p><a href="inputs/{key}-status.json">원래 Product readback</a> · <a href="manifest.json">입력·후보 identity</a> · <a href="baseline-{key}.html#decision-reading">현재 Viewer의 Decisions</a> · <a href="baseline-{key}.html#health">현재 Viewer의 진단</a></p></details></div></article>'
+    body += f'<pre class="full-audit">{esc(json.dumps(selected,ensure_ascii=False,indent=2))}</pre><p><a href="inputs/{key}-status.json">원래 Product readback</a></p></details></div></article>'
     body += '<aside class="appendix" aria-label="'+esc(key.upper())+' · 선택한 설명의 Source"><h2>Work '+esc(key.upper())+' · '+esc(title)+'</h2>'
     for i,u in enumerate(units):
         for j, ref in enumerate(u['refs']):
@@ -252,7 +284,7 @@ def record_page(item):
     body+='<section class="reading-section"><h2>기록된 작업 내용</h2><p class="unit-text">'+esc(cp['state_change'])+'</p></section><section class="reading-section"><h2>기록된 다음 단계</h2><p class="unit-text">'+esc(cp['next_step'])+'</p></section>'
     body+='<section class="reading-section limits-section"><aside class="guard"><h2>결과와 한계</h2><p>보존된 완료 기록입니다. 현재 테스트 성공이나 사용자 인수 승인을 뜻하지 않습니다.</p>'
     for limit in item['limits']:body+='<p>'+esc(limit)+'</p>'
-    body+='</aside></section><div class="audit"><details class="record-box" id="original"><summary>원래 지시</summary><blockquote class="goal">'+esc(item['goal']['statement'])+'</blockquote></details><details class="record-box" id="audit"><summary>전체 근거와 기록</summary><p>제목과 요약은 원본 기록을 바탕으로 작성한 디자인 검토용 해석입니다. 이 작업의 정밀 코드 읽기 문서는 새로 생성하지 않았습니다.</p><pre>'+esc(json.dumps(dict(goal=item['goal'],checkpoint=cp),ensure_ascii=False,indent=2))+'</pre><a href="inputs/catalog-bundle.json">보존된 원본 기록 열기</a></details></div></article>'
+    body+='</aside></section><div class="audit"><details class="record-box" id="original"><summary>원래 지시</summary><blockquote class="goal">'+esc(item['goal']['statement'])+'</blockquote></details><details class="record-box" id="audit"><summary>전체 근거와 기록</summary><p>제목과 요약은 원본 기록에 근거한 해석입니다. 이 작업의 정밀 코드 읽기 문서는 새로 생성하지 않았습니다.</p><pre>'+esc(json.dumps(dict(goal=item['goal'],checkpoint=cp),ensure_ascii=False,indent=2))+'</pre><a href="inputs/catalog-bundle.json">보존된 원본 기록 열기</a></details></div></article>'
     return frame(a['title'],body)
 
 
@@ -327,12 +359,13 @@ def build(args):
         key=w['authored']['key']; cards+=f'<a href="{key}-offline.html">{esc(key.upper())} · script-free 문서와 원문</a><a href="{key}-unavailable.html">{esc(key.upper())} · Source 이용 불가 control</a>'
     cards+='</section></div>'
     intro='''<p class="eyebrow">Volicord / disposable design trial</p><h1>작업을 이해하는<br>새로운 읽기 공간.</h1><p class="intro">현재 Viewer와 제안한 디자인을 같은 보존 자료로 비교합니다. 원래 지시, 해석, 결과, 중요한 한계와 전체 근거를 두 디자인 모두에서 확인할 수 있습니다.</p>'''
-    instructions='''<div class="instructions"><h2>살펴볼 순서</h2><ol><li>현재 Viewer와 새 목록에서 B를 찾고, 작동 원리와 중요한 실패를 설명할 수 있는지 비교하세요.</li><li>작동 원리의 근거 링크를 열어 정확한 원문을 읽고, 같은 설명으로 돌아오세요.</li><li>Click의 조건별 관측을 비교하세요. 패치 없음, 과거 실행, 미검증 범위와 수정 전 원문 없음을 구별할 수 있는지 보세요.</li></ol><h2>키보드와 마우스</h2><p>Tab / Shift+Tab으로 링크와 코드 영역에 이동하고 Enter로 선택합니다. 코드는 줄바꿈 없이 가로 스크롤합니다. 코드에서 “설명으로 돌아가기” 또는 Escape로 원래 문단과 스크롤 위치로 돌아옵니다. 브라우저 뒤로/앞으로도 사용할 수 있습니다. 코드는 원래 설명을 인용한 집중 화면에서 열립니다. 좁은 화면에서는 전체 화면을 사용합니다. Script-free 문서는 native fragment와 반환 링크를 사용합니다.</p><h2>정확한 입력과 실행</h2><p>이 폴더에서 <code>python3 serve.py</code>를 실행하고 출력된 loopback URL을 여세요. 종료는 Ctrl-C입니다. Node, Runtime, provider나 외부 asset은 필요 없습니다. 이 페이지와 script-free 문서는 파일로 직접 열 수도 있습니다.</p><p><a href="manifest.json">후보·입력·전체 파일 SHA-256</a> · <a href="inputs/identities.json">원래 readback identities</a> · <a href="support/build.py">재현 지원 소스</a></p><h2>검토의 범위</h2><p>해석 문구는 이전에 독립 Source에서 작성하고 Product를 통해 기록·읽은 control입니다. 새 자율 생성이 아닙니다. Prototype은 시각·상호작용 참고로만 사용했습니다. Baseline은 historical content capture이며 현재 Runtime freshness나 새 테스트 성공을 뜻하지 않습니다. 전체 campaign ZIP은 재검증하지 않았습니다. 기술 검사는 사람의 이해·선호·수락을 증명하지 않습니다. 새 frontend framework나 production migration은 선택하지 않았습니다. 이 패키지는 private local review용입니다.</p></div>'''
+    instructions='''<div class="instructions"><h2>살펴볼 순서</h2><ol><li>현재 Viewer와 새 목록에서 B를 찾고, 작동 원리와 중요한 실패를 설명할 수 있는지 비교하세요.</li><li>작동 원리의 근거 링크를 열어 정확한 원문을 읽고, 같은 설명으로 돌아오세요.</li><li>Click의 조건별 관측을 비교하세요. 패치 없음, 과거 실행, 미검증 범위와 수정 전 원문 없음을 구별할 수 있는지 보세요.</li></ol><h2>키보드와 마우스</h2><p>Tab / Shift+Tab으로 링크와 코드 영역에 이동하고 Enter로 선택합니다. 코드는 줄바꿈 없이 가로 스크롤합니다. 코드에서 “설명으로 돌아가기” 또는 Escape로 원래 문단과 스크롤 위치로 돌아옵니다. 브라우저 뒤로/앞으로도 사용할 수 있습니다. 데스크톱에서는 본문 옆 패널에 근거를 엽니다. 900 px 이하에서는 전체 화면을 사용하고 모바일 코드 글자를 줄입니다. Script-free 문서는 native fragment와 반환 링크를 사용합니다.</p><h2>정확한 입력과 실행</h2><p>이 폴더에서 <code>python3 serve.py</code>를 실행하고 출력된 loopback URL을 여세요. 종료는 Ctrl-C입니다. Node, Runtime, provider나 외부 asset은 필요 없습니다. 이 페이지와 script-free 문서는 파일로 직접 열 수도 있습니다.</p><p><a href="manifest.json">후보·입력·전체 파일 SHA-256</a> · <a href="inputs/identities.json">원래 readback identities</a> · <a href="support/build.py">재현 지원 소스</a></p><h2>검토의 범위</h2><p>해석 문구는 이전에 독립 Source에서 작성하고 Product를 통해 기록·읽은 control입니다. 새 자율 생성이 아닙니다. Prototype은 시각·상호작용 참고로만 사용했습니다. Baseline은 historical content capture이며 현재 Runtime freshness나 새 테스트 성공을 뜻하지 않습니다. 전체 campaign ZIP은 재검증하지 않았습니다. 기술 검사는 사람의 이해·선호·수락을 증명하지 않습니다. 새 frontend framework나 production migration은 선택하지 않았습니다. 이 패키지는 private local review용입니다.</p></div>'''
     (output/'index.html').write_text(frame('디자인 비교',intro+cards+instructions,active='index'))
     if args.missing_case:
         entry = (output/'index.html').read_text().replace('<h2>살펴볼 순서</h2>', '<p><a class="button" href="journeys.html">동일 Work 여정 비교와 답안 없는 검토 과제 →</a></p><h2>살펴볼 순서</h2>')
         (output/'index.html').write_text(entry)
-    (output/'README.txt').write_text('Open index.html directly, or run: python3 serve.py\nStop with Ctrl-C. All review links are package-relative. Private local material; do not publish.\n')
+    (output/'README.txt').write_text('Open viewer/index.html for the Viewer; index.html for separate review material. Or run: python3 serve.py\nStop with Ctrl-C. All review links are package-relative. Private local material; do not publish.\n')
+    separate_viewer(output, manifest)
     manifest['files']={str(p.relative_to(output)):dict(sha256=sha(p.read_bytes()),bytes=p.stat().st_size) for p in sorted(output.rglob('*')) if p.is_file()}
     (output/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
     print(json.dumps(dict(output=str(output),cases=manifest['cases'],status='built'),ensure_ascii=False))
