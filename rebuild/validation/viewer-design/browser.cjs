@@ -1,0 +1,140 @@
+// Browser controls compare frozen public answers and original bytes, never DOM-derived truth.
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {spawn,execFileSync}=require('node:child_process');
+const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
+const c=JSON.parse(fs.readFileSync(process.argv[2]));
+const {chromium}=require(c.playwright),build=path.resolve(c.build),out=path.resolve(c.output);
+fs.mkdirSync(out,{recursive:false});
+const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
+const manifest=JSON.parse(fs.readFileSync(path.join(build,'manifest.json')));
+const authored=JSON.parse(fs.readFileSync(path.join(build,'inputs/review-input-final.json')));
+const fixture=JSON.parse(fs.readFileSync(path.join(build,'inputs/fixtures.json')));
+const result={status:'running',head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),driver_sha256:hash(fs.readFileSync(__filename)),manifest_sha256:hash(fs.readFileSync(path.join(build,'manifest.json'))),checks:[],requests:[],processes:[],human_acceptance:'pending'};
+function identity(){for(const [f,d] of Object.entries(manifest.files))assert.equal(hash(fs.readFileSync(path.join(build,f))),d.sha256,'package identity '+f);}
+async function start(){
+ const proc=spawn('python3',['-B',path.join(build,'serve.py')]);let stdout='',stderr='';
+ const url=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('startup deadline')),10000);proc.stdout.on('data',b=>{stdout+=b;const m=stdout.match(/http:\/\/127\.0\.0\.1:\d+\//);if(m){clearTimeout(timer);resolve(m[0]);}});proc.stderr.on('data',b=>stderr+=b);proc.once('error',reject);proc.once('exit',code=>{clearTimeout(timer);reject(Error('startup exit '+code+stderr));});});
+ return {url,proc,async stop(){await new Promise(resolve=>{proc.once('exit',(code,signal)=>{result.processes.push({pid:proc.pid,code,signal,termination:'explicit SIGTERM cleanup',stdout,stderr});resolve();});proc.kill('SIGTERM');});}};
+}
+async function paint(page){await page.evaluate(()=>document.fonts.ready);}
+function expected(work){const control=fixture.cases.find(f=>f.key===work.key);const status=JSON.parse(fs.readFileSync(path.join(build,`inputs/${work.key}-status.json`)));return status.work_history.find(w=>w.work_item_id===control.work);}
+async function content(page,work){
+ const truth=expected(work);
+ for(const [i,u] of work.units.entries())assert.equal(await page.locator(`[data-unit="${i}"]`).textContent(),u.text,'exact prose '+i);
+ assert.equal(await page.locator('.goal').textContent(),work.goal,'full original Goal');
+ for(const f of truth.answers.facts)assert.equal(await page.locator(`[data-fact="${f.question}"]`).textContent(),f.text,'fact '+f.question);
+ assert.equal(await page.locator('.full-audit').textContent(),JSON.stringify(truth,null,2),'complete original audit');
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no ordinary page overflow');
+ const ids=await page.locator('[id]').evaluateAll(ns=>ns.map(n=>n.id));assert.equal(ids.length,new Set(ids).size,'unique anchors');
+ return truth;
+}
+async function trip(page,work,truth,width,offline=false){
+ let trips=0;
+ // Heading and synopsis citations are in a closed audit; exercise them too.
+ await page.locator('#audit').evaluate(n=>n.open=true);
+ for(const [i,u] of work.units.entries())for(const [j,ref] of u.refs.entries()){
+   const link=page.locator(`a.evidence-link[data-origin="claim-${i}"][href="#point-${i}-${j}"]`).first();
+   const file=work.files.find(f=>f.regions.some(r=>r.key===ref));const region=file.regions.find(r=>r.key===ref);
+   const source=truth.answers.source_excerpts.find(s=>s.citation.locator===file.path&&s.citation.start_line===region.start_line&&s.citation.end_line===region.end_line);
+   assert(source,'public Source association');
+   // Full source file is independently retained; check exact absolute byte and line coordinates.
+   const raw=fs.readFileSync(path.join(build,`inputs/${work.key}-source-${ref}.txt`));
+   assert.equal(hash(raw),file.sha256.replace('sha256:',''));
+   assert.equal(raw.subarray(source.citation.start_byte,source.citation.end_byte).toString(),source.text,'original Source byte coordinates');
+   assert.equal(source.text,raw.toString().split(/(?<=\n)/).slice(region.start_line-1,region.end_line).join(''),'original Source line coordinates');
+   await link.focus();const original=await page.evaluate(()=>scrollY);await page.keyboard.press('Enter');
+   const point=page.locator(`#point-${i}-${j}`);await point.waitFor({state:'visible'});
+   assert.equal(await page.evaluate(()=>document.activeElement.id),`point-${i}-${j}`);
+   assert.equal(await point.locator('.claim-quote').textContent(),u.text,'correct origin, even shared Source');
+   const lines=await point.locator('.code-text').allTextContents();assert.deepEqual(lines,source.text.replace(/\n$/,'').split('\n'));
+   assert.deepEqual(await point.locator('.number').allTextContents(),lines.map((_,n)=>String(region.start_line+n)));
+   const regionBox=point.locator('.code-region');await regionBox.focus();await page.keyboard.press('ArrowRight');
+   if(await regionBox.evaluate(n=>n.scrollWidth>n.clientWidth+2))await page.waitForFunction(n=>n.scrollLeft>0,await regionBox.elementHandle());
+   if(!offline){
+     const box=await regionBox.boundingBox();assert(box.y>=0&&box.y<700,'code starts in viewport');
+     if(width<=900)assert.equal(await page.locator('.doc').isVisible(),false,'purposeful mobile full-screen code');
+     else assert.equal(await page.locator('.doc').isVisible(),true,'desktop explanation remains visible');
+   }
+   if(u.role==='reading_point'&&j===0&&trips<20)await page.screenshot({path:path.join(out,`${work.key}-${width}-${offline?'offline':'live'}-point-${i}.png`)});
+   if(!offline&&trips%2===0){await page.keyboard.press('Escape');}
+   else{await point.locator('.return').focus();await page.keyboard.press('Enter');}
+   await page.waitForFunction(id=>document.activeElement.id===id && !document.body.classList.contains('code-open'),`claim-${i}`);
+   await paint(page);
+   if(!offline)assert(Math.abs((await page.evaluate(()=>scrollY))-original)<2,`exact scroll return ${i}/${j}: expected ${original}, got ${await page.evaluate(()=>scrollY)}`);
+   if(!offline&&trips===0){
+     await page.goBack();await point.waitFor({state:'visible'});
+     await page.goForward();await page.waitForFunction(id=>document.activeElement.id===id,`claim-${i}`);
+   }
+   trips++;
+ }
+ return trips;
+}
+(async()=>{let server,browser;
+ try{
+  identity();server=await start();
+  browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox','--disable-background-networking'],env:{...process.env,FONTCONFIG_FILE:c.fontconfig}});
+  result.chromium=browser.version();
+  for(const width of [1440,768,390,320]){
+   const context=await browser.newContext({viewport:{width,height:900}});const page=await context.newPage();
+   page.on('request',r=>result.requests.push(r.url()));page.on('pageerror',e=>{throw e;});
+   await page.goto(server.url);await paint(page);assert.equal(await page.locator('h1').textContent(),'작업을 이해하는새로운 읽기 공간.');
+   await page.screenshot({path:path.join(out,`entry-${width}.png`)});
+   await page.goto(server.url+'works.html');await paint(page);
+   assert.equal(await page.locator('[data-work]').count(),authored.works.length);
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+   await page.screenshot({path:path.join(out,`discovery-${width}.png`)});
+   for(const work of authored.works){
+    await page.goto(server.url+'works.html');await page.locator(`[data-work=${work.key}]`).focus();await page.keyboard.press('Enter');
+    await page.waitForURL('**/'+work.key+'.html');await paint(page);
+    const truth=await content(page,work);
+    assert((await page.locator('.guard').boundingBox()).y<850,'critical limit present at opening');
+    assert.equal(await page.locator('.source-point.active').count(),0,'no arbitrary initial source selection');
+    await page.screenshot({path:path.join(out,`${work.key}-${width}-reading.png`)});
+    if(await page.locator('.comparisons').count()){await page.locator('.comparisons').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${work.key}-${width}-comparisons.png`)});}
+    const trips=await trip(page,work,truth,width);
+    await page.goto(server.url+work.key+'-unavailable.html');await paint(page);
+    await content(page,work);await page.locator('.reading-section .evidence-link').first().click();
+    await page.locator('.source-point.active .unavailable').waitFor({state:'visible'});assert.equal(await page.locator('.source-point.active .code-region').count(),0);
+    await page.screenshot({path:path.join(out,`${work.key}-${width}-unavailable.png`)});
+    // Accurate unchanged baseline, whole snapshot: Work/Code/Decision/diagnostic routes remain inspectable.
+    await page.goto(server.url+'baseline-'+work.key+'.html#overview');await paint(page);
+    const control=fixture.cases.find(f=>f.key===work.key);
+    await page.locator(`#overview [data-work-id="${control.work}"] h4 a`).first().click();
+    const article=page.locator(`#work-${control.work}`).first();
+    for(const u of work.units)assert((await article.textContent()).includes(u.text),'baseline substantive parity');
+    await page.screenshot({path:path.join(out,`${work.key}-${width}-baseline.png`)});
+    assert(await page.locator('#decision-reading').count());assert(await page.locator('#health').count());assert(await page.locator('#code').count());
+    result.checks.push({width,work:work.key,prose:'exact',facts:'exact',sources:'original bytes/coordinates',trips,keyboard_return:'passed',baseline:'same content; unchanged Product source'});
+   }
+   await context.close();
+  }
+  for(const work of authored.works){
+   const context=await browser.newContext({javaScriptEnabled:false,viewport:{width:320,height:900}});await context.setOffline(true);const page=await context.newPage();
+   await page.goto(pathToFileURL(path.join(build,work.key+'-offline.html')).href);await paint(page);
+   const truth=await content(page,work);assert.equal(await page.locator('script,form').count(),0);
+   // One native exact origin round-trip per script-free document (all bytes checked above).
+   const i=work.units.findIndex(u=>u.role==='reading_point');const link=page.locator(`[data-origin="claim-${i}"]`).first();await link.focus();await page.keyboard.press('Enter');
+   const point=page.locator(`#point-${i}-0`);assert.equal(await point.locator('.claim-quote').textContent(),work.units[i].text);
+   await point.locator('.return').focus();await page.keyboard.press('Enter');assert.equal(await page.evaluate(()=>document.activeElement.id),'claim-'+i);
+   await page.screenshot({path:path.join(out,`${work.key}-320-script-free.png`)});
+   result.checks.push({work:work.key,script_free:'native citation and return; offline; exact content'});await context.close();
+  }
+  // Authored stress controls are generated separately by self_test.py, not admitted Product facts.
+  if(c.stress){
+   for(const width of [1440,768,390,320]){
+    const page=await browser.newPage({viewport:{width,height:900}});const traffic=[];page.on('request',r=>traffic.push(r.url()));
+    await page.goto(pathToFileURL(c.stress).href);await paint(page);
+    assert.equal(await page.locator('img,script').count(),0);assert.equal(await page.evaluate(()=>window.__attack),undefined);
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'hostile mixed-language text does not overflow');
+    await page.locator('#original').evaluate(n=>n.open=true);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:path.join(out,`stress-${width}.png`)});await page.close();
+   }
+   result.checks.push({stress:'long mixed language; hostile Goal, heading, prose, Source and audit; all widths; no injection'});
+  }
+  assert(result.requests.every(url=>new URL(url).origin===new URL(server.url).origin),'no remote request');
+  // Deliberate missing route cannot silently select a different Work.
+  const bad=await browser.newPage();assert.equal((await bad.goto(server.url+'unknown-work.html')).status(),404);await bad.close();
+  result.checks.push({wrong_work:'404',remote_requests:0});result.status='passed';
+ }catch(error){result.status='failed';result.error=error.stack;process.exitCode=1;}
+ finally{if(browser)await browser.close();if(server)await server.stop();fs.writeFileSync(path.join(out,'result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({status:result.status,checks:result.checks.length,trips:result.checks.reduce((n,c)=>n+(c.trips||0),0),error:result.error||null}));}
+})();
