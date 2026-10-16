@@ -405,10 +405,10 @@ Sources; Source entries preserve snapshot, availability, freshness, actor and ob
 Current-host user-turn observation metadata contains only kind/host/session and
 policy-withheld state; raw turn text is never copied into a payload Debug string.
 Only independently selected canonical fields supply explanatory user facts.
-Preparation also exposes `question_grounding`: the subject's required questions
-and optional `limits`, each with exact `required_any_evidence_keys`. Every paragraph
-needs nonempty prepared canonical keys; each required question's paragraph must
-include at least one of its listed keys. The same selection drives validation:
+Preparation also exposes `question_grounding`: the subject's permitted reader roles, each with exact
+`required_any_evidence_keys`. Every authored unit needs nonempty prepared canonical
+keys; a role with listed keys must include at least one of them. Roles are optional;
+unsupported sections are omitted rather than filled with absence prose. The same selection drives validation:
 Work purpose uses `goal`, reported change/effect uses `result` or same-Work `change:*`,
 verification uses `verification`, and next step uses `next_step`. Without result or
 verification, that question falls back to `goal` only to describe the request and
@@ -441,10 +441,13 @@ Inventing source-specific lexical rules would not generalize to the reordered va
 and independent export case. Deterministic selection and state explanations remain
 appropriate for structured facts; explicit host realization supplies Work prose.
 
-`ExplanationRealization` uses exact-current `volicord_explanation` version 2,
+`ExplanationRealization` uses exact-current `volicord_explanation` version 3,
 plan fingerprint, language, host/session and nullable agent/model provenance, and
-question/text/evidence-key/citation paragraphs in reader-selected order. Purpose, reported change, expected effect,
-verification and next step each require at least one answer; optional limits may be additional.
+question/text/evidence-key/citation units in reader-selected order. A document has
+1..32 grounded units; heading and synopsis are optional singletons. Purpose,
+reported change, expected effect, verification, next step and limits are optional
+roles subject to their prepared grounding rules. Observation, comparison and
+reading-point units require exact Source citations.
 Recording recomputes the plan under the existing mutation lock, rejects stale/foreign
 keys or mismatched language/version, and bounds the response at its prepared capacity,
 at most 32,768 bytes. This

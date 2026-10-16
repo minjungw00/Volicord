@@ -350,7 +350,7 @@ def require_markers(
 def markdown_files(root: Path, tracked: Iterable[str]) -> list[Path]:
     selected: list[Path] = []
     for relative in tracked:
-        if relative in {"AGENTS.md", "rebuild/AGENTS.md"} or (
+        if relative in {"AGENTS.md", "rebuild/AGENTS.md", "rebuild/crates/volicord-projections/src/explanation.rs"} or (
             relative.endswith(".md")
             and (
                 relative.startswith("rebuild/docs/design/")
@@ -1096,12 +1096,27 @@ def check_paths_and_prohibitions(root: Path, tracked: list[str]) -> list[str]:
     return errors
 
 
+def check_explanation_ownership(root: Path) -> list[str]:
+    """Compare current ownership to the sole writer, without freezing prose."""
+    source = (root / "rebuild/crates/volicord-projections/src/explanation.rs").read_text()
+    version = re.search(r"EXPLANATION_VERSION: u32 = (\d+)", source).group(1)
+    errors = []
+    for name in ("projections-and-documents.md", "versioning-policy.md"):
+        text = (root / DESIGN_DIRECTORY / name).read_text()
+        if f"exact current format version {version}" not in text and f"exact-current `volicord_explanation` version {version}" not in text:
+            errors.append(f"{name}: current explanation format disagrees with writer")
+        if "each require at least one answer" in text or "subject's required questions" in text:
+            errors.append(f"{name}: obsolete mandatory explanation roles")
+    return errors
+
+
 def check_repository(root: Path, known_tracked: list[str] | None = None) -> list[str]:
     tracked = tracked_paths(root) if known_tracked is None else known_tracked
     errors: list[str] = []
     errors.extend(check_documents(root))
     errors.extend(check_links(root, markdown_files(root, tracked)))
     errors.extend(check_owner_routing(root))
+    errors.extend(check_explanation_ownership(root))
     errors.extend(check_traceability(root))
     errors.extend(check_relation_direction_contract(root))
     errors.extend(check_candidate_contract(root))
@@ -1115,7 +1130,7 @@ def check_repository(root: Path, known_tracked: list[str] | None = None) -> list
 def copy_self_test_fixture(destination: Path, tracked: list[str]) -> list[str]:
     selected: list[str] = []
     for relative in tracked:
-        if relative in {"AGENTS.md", "rebuild/AGENTS.md"} or (
+        if relative in {"AGENTS.md", "rebuild/AGENTS.md", "rebuild/crates/volicord-projections/src/explanation.rs"} or (
             relative.endswith(".md")
             and (
                 relative.startswith("rebuild/docs/design/")
@@ -1457,6 +1472,18 @@ def self_test() -> int:
             ),
         )
 
+        cases += (
+            ("explanation-format-drift", lambda root, _: replace_once(
+                root / DESIGN_DIRECTORY / "projections-and-documents.md",
+                "exact-current `volicord_explanation` version 3",
+                "exact-current `volicord_explanation` version 0"),
+             "current explanation format disagrees with writer"),
+            ("mandatory-explanation-roles", lambda root, _: (
+                (root / DESIGN_DIRECTORY / "projections-and-documents.md").write_text(
+                    (root / DESIGN_DIRECTORY / "projections-and-documents.md").read_text()
+                    + "\nRoles each require at least one answer.\n")),
+             "obsolete mandatory explanation roles"),
+        )
         for name, mutate, expected_error in cases:
             case_root = temporary_root / name
             shutil.copytree(base, case_root)
