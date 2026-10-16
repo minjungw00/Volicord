@@ -350,6 +350,9 @@ fn overview(
         "overview",
         text(request.locale, "Project Understanding", "프로젝트 이해"),
     );
+    if p.work_count == 0 {
+        repository_explanation(html, request, p);
+    }
     if !u.project_purpose.is_empty() {
         project_purpose(html, request, u);
     }
@@ -828,6 +831,7 @@ fn render_reader_prose(
             matches!(
                 p.subject,
                 volicord_projections::ExplanationSubject::Decision(_)
+                    | volicord_projections::ExplanationSubject::Repository(_)
             )
         }) {
             html.push_str(&format!(
@@ -1245,8 +1249,8 @@ fn render_source_excerpts(
             "<details class=\"source-citation-basis\"><summary>{}</summary><pre>{}</pre>",
             text(
                 r.locale,
-                "Exact Work / Source revisions and claim grounding",
-                "정확한 Work / Source 리비전과 주장 근거"
+                "Exact subject / Source revisions and claim grounding",
+                "정확한 설명 대상 / Source 리비전과 주장 근거"
             ),
             escape(&format!(
                 "Work revision: {:?}\nobserved at: {:?}\noutput: {}",
@@ -2014,6 +2018,25 @@ fn code_limit_details(html: &mut String, r: &ViewerRequest, p: &ProjectProjectio
     html.push_str("</p></details>");
 }
 
+fn repository_explanation(html: &mut String, r: &ViewerRequest, p: &ProjectProjection) {
+    html.push_str("<section id=\"repository-explanation\" aria-label=\"Repository explanation\">");
+    heading(
+        html,
+        3,
+        text(r.locale, "Understand this repository", "이 저장소 이해하기"),
+    );
+    html.push_str("<p class=\"record-meta\">");
+    html.push_str(text(r.locale,"Source-grounded repository interpretation. The original user-recorded Project Purpose is separate.","Source에 근거한 저장소 해석입니다. 사용자가 기록한 Project Purpose는 별도 기록입니다."));
+    html.push_str("</p>");
+    let answers = volicord_projections::explanation_answers(
+        &p.repository_explanations,
+        &r.requested_language,
+        r.locale.fixed(),
+    );
+    render_answers(html, r, &answers, None);
+    html.push_str("</section>");
+}
+
 fn code(
     html: &mut String,
     r: &ViewerRequest,
@@ -2036,6 +2059,25 @@ fn code(
             _ => text(r.locale, "Repository context", "저장소 범위"),
         },
     );
+    if !matches!(
+        r.view,
+        ViewerView::Code {
+            scope: CodeScope::Work(_),
+            ..
+        }
+    ) {
+        if snapshot && p.work_count == 0 {
+            html.push_str("<p><a href=\"#repository-explanation\">");
+            html.push_str(text(
+                r.locale,
+                "Read the repository explanation",
+                "저장소 설명 읽기",
+            ));
+            html.push_str("</a></p>");
+        } else {
+            repository_explanation(html, r, p);
+        }
+    }
     code_limit_summary(html, r, p, snapshot);
     if let Some(work) = &p.selected_work {
         html.push_str("<div class=\"code-work-meaning\">");

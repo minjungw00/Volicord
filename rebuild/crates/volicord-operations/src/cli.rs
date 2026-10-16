@@ -77,7 +77,10 @@ where
             return exit;
         }
     };
-    let explanation_operation = matches!(matches.subcommand_name(), Some("work" | "decision"));
+    let explanation_operation = matches!(
+        matches.subcommand_name(),
+        Some("work" | "decision" | "repository")
+    );
     match execute(matches, input, stdout) {
         Ok(()) => CliExit::SUCCESS,
         Err(error) => {
@@ -179,6 +182,7 @@ fn command() -> Command {
         .subcommand(Command::new("decisions").arg(reading_language()).about("Inspect current and historical Decisions"))
         .subcommand(explanation_command("work"))
         .subcommand(explanation_command("decision"))
+        .subcommand(repository_command())
         .subcommand(document_command())
         .subcommand(viewer_command())
         .subcommand(context_command())
@@ -224,10 +228,18 @@ fn repeat_arg(id: &'static str, value: &'static str, help: &'static str) -> Arg 
 
 fn explanation_command(kind: &'static str) -> Command {
     let subject = || {
-        Arg::new(kind)
-            .long(kind)
-            .required(true)
-            .value_name("SUBJECT_ID")
+        Arg::new(if kind == "repository" {
+            "analysis"
+        } else {
+            kind
+        })
+        .long(if kind == "repository" {
+            "analysis"
+        } else {
+            kind
+        })
+        .required(true)
+        .value_name("SUBJECT_ID")
     };
     let language = || {
         Arg::new("language")
@@ -266,6 +278,120 @@ fn explanation_command(kind: &'static str) -> Command {
                         .arg(subject()),
                 ),
         )
+}
+
+fn repository_command() -> Command {
+    let mut command = explanation_command("repository");
+    // Keep one explanation shape; add only repository-specific investigation.
+    command = command.mut_subcommand("explain", |explain| explain
+        .subcommand(Command::new("read").about("Read the latest retained repository explanation; never generates").arg(reading_language()))
+        .subcommand(Command::new("evidence").about("Inspect full exact-snapshot metadata and diagnostics; no Source bodies").arg(Arg::new("analysis").long("analysis").required(true)))
+        .subcommand(Command::new("compose").about("Derive exact citations from host-authored units and selected Source ranges; does not retain")
+            .arg(Arg::new("analysis").long("analysis").required(true))
+            .arg(path_arg("input", "input", "Host-authored draft JSON").required(true))));
+    let analysis = || Arg::new("analysis").long("analysis").required(true);
+    let source = || Arg::new("source").long("source").required(true);
+    command.subcommand(
+        Command::new("source")
+            .about("Explicit bounded repository Source observations")
+            .subcommand_required(true)
+            .subcommand(
+                Command::new("observe")
+                    .arg(analysis())
+                    .arg(Arg::new("path").long("path").required(true))
+                    .arg(
+                        Arg::new("retain-seconds")
+                            .long("retain-seconds")
+                            .required(true)
+                            .value_parser(clap::value_parser!(u64)),
+                    )
+                    .arg(
+                        Arg::new("start-byte")
+                            .long("start-byte")
+                            .requires("end-byte")
+                            .value_parser(clap::value_parser!(usize)),
+                    )
+                    .arg(
+                        Arg::new("end-byte")
+                            .long("end-byte")
+                            .requires("start-byte")
+                            .value_parser(clap::value_parser!(usize)),
+                    ),
+            )
+            .subcommand(Command::new("read").arg(analysis()).arg(source()))
+            .subcommand(Command::new("delete").arg(analysis()).arg(source())),
+    )
+}
+fn read_explanation_input(args: &ArgMatches) -> Result<Value, Error> {
+    let file = std::fs::File::open(required_path(args, "input")?)
+        .map_err(|e| Error::with_source("cannot open host input", e))?;
+    let mut bytes = Vec::new();
+    file.take(volicord_projections::EXPLANATION_INPUT_BYTE_LIMIT as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| Error::with_source("cannot read host input", e))?;
+    if bytes.len() > volicord_projections::EXPLANATION_INPUT_BYTE_LIMIT {
+        return Err(Error::new(
+            "host input exceeds 65536 UTF-8 bytes; reduce the draft and preserve grounding",
+        ));
+    }
+    serde_json::from_slice(&bytes).map_err(|_| Error::new("invalid host input JSON"))
+}
+fn dispatch_repository(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    args: &ArgMatches,
+) -> Result<Value, Error> {
+    let project = resolve_project(operations, selection)?;
+    let (action, args) = args
+        .subcommand()
+        .ok_or_else(|| Error::new("repository action required"))?;
+    if action == "explain" {
+        let (action, params) = args
+            .subcommand()
+            .ok_or_else(|| Error::new("explain action required"))?;
+        if action == "read" {
+            return Ok(
+                json!({"operation":"repository_explanation_read","answers":operations.read_repository_explanation(project,required(params,"language")?)?}),
+            );
+        }
+        if action == "evidence" {
+            let analysis = crate::AnalysisSnapshotId::from_hex(required(params, "analysis")?)
+                .map_err(Error::new)?;
+            return operations.repository_explanation_evidence(project, analysis);
+        }
+        if action == "compose" {
+            let analysis = crate::AnalysisSnapshotId::from_hex(required(params, "analysis")?)
+                .map_err(Error::new)?;
+            let draft = serde_json::from_value(read_explanation_input(params)?)
+                .map_err(|_| Error::new("invalid repository reader draft"))?;
+            return Ok(
+                json!({"operation":"repository_explanation_compose","realization":operations.compose_repository_explanation(project,analysis,draft)?}),
+            );
+        }
+        return dispatch_explanation_action(operations, selection, "repository", args);
+    }
+    let (action, params) = args
+        .subcommand()
+        .ok_or_else(|| Error::new("Source action required"))?;
+    let analysis =
+        crate::AnalysisSnapshotId::from_hex(required(params, "analysis")?).map_err(Error::new)?;
+    match action {
+        "observe" => Ok(
+            json!({"operation":"repository_source_observe","observation":operations.observe_repository_file(crate::RepositoryFileObservationRequest {
+            project_id:project,analysis_snapshot_id:analysis,path:required(params,"path")?.into(),retain_seconds:*params.get_one::<u64>("retain-seconds").ok_or_else(||Error::new("retention required"))?,
+            byte_range:params.get_one::<usize>("start-byte").map(|start|crate::FileByteRange{start_byte:*start,end_byte:*params.get_one::<usize>("end-byte").unwrap_or(start)})
+        })?}),
+        ),
+        "read" => Ok(operations.read_repository_explanation_source(
+            project,
+            analysis,
+            SourceId::from_bytes(parse_identity(required(params, "source")?)?),
+        )?),
+        "delete" => Ok(
+            json!({"deleted":operations.delete_repository_source_observation(project,analysis,SourceId::from_bytes(parse_identity(required(params,"source")?)?))?}),
+        ),
+        _ => Err(Error::new("unsupported repository Source action")),
+    }
 }
 
 fn document_command() -> Command {
@@ -705,6 +831,7 @@ fn dispatch(
                 locale,
             )?
         }
+        "repository" => dispatch_repository(operations, selection, matches)?,
         "work" | "decision" => dispatch_explanation(operations, selection, name, matches)?,
         "document" => dispatch_document(operations, selection, matches)?,
         "viewer" => return dispatch_viewer(runtime, operations, selection, matches),
@@ -736,17 +863,27 @@ fn dispatch_explanation(
     let (_, actions) = matches
         .subcommand()
         .ok_or_else(|| Error::new("explain is required"))?;
+    dispatch_explanation_action(operations, selection, kind, actions)
+}
+fn dispatch_explanation_action(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    kind: &str,
+    actions: &ArgMatches,
+) -> Result<Value, Error> {
     let (action, args) = actions
         .subcommand()
         .ok_or_else(|| Error::new("an explanation action is required"))?;
     let project = resolve_project(operations, selection)?;
-    let identity = parse_identity(required(args, kind)?)?;
     let subject = match kind {
-        "work" => {
-            volicord_projections::ExplanationSubject::Work(ContextItemId::from_bytes(identity))
-        }
+        "repository" => volicord_projections::ExplanationSubject::Repository(
+            crate::AnalysisSnapshotId::from_hex(required(args, "analysis")?).map_err(Error::new)?,
+        ),
+        "work" => volicord_projections::ExplanationSubject::Work(ContextItemId::from_bytes(
+            parse_identity(required(args, kind)?)?,
+        )),
         _ => volicord_projections::ExplanationSubject::Decision(
-            volicord_context::DecisionId::from_bytes(identity),
+            volicord_context::DecisionId::from_bytes(parse_identity(required(args, kind)?)?),
         ),
     };
     match action {
@@ -1087,6 +1224,7 @@ fn status(
     };
     Ok(json!({
         "operation":"project_status",
+        "repository_explanation":volicord_projections::explanation_answers(&projection.repository_explanations,language,locale),
         "candidate_inspection":crate::work_learning_inspection_json(&projection),
         "repository_analysis":understanding.repository_analysis,
         "project_id":understanding.project_id.to_string(),
@@ -1230,10 +1368,14 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
     if matches!(operation, "analyze" | "analysis_rebuild") {
         return render_analysis_summary(value, mode.locale, stdout);
     }
+    if operation == "repository_explanation_read" {
+        return render_repository_answer(stdout, &value["answers"], mode.locale);
+    }
     // Explicit ordinary-reading fields; exact binding/audit stays in --json.
     // Question/result/state selection is owned by the shared answer projection.
     let reading_fields: Option<&[&str]> = match operation {
         "project_status" => Some(&[
+            "repository_explanation",
             "project_name",
             "repository_analysis",
             "health",
@@ -1272,6 +1414,10 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
     if let Some(fields) = reading_fields {
         for key in fields {
             if let Some(field) = value.get(key) {
+                if *key == "repository_explanation" {
+                    render_repository_answer(stdout, field, mode.locale)?;
+                    continue;
+                }
                 if [
                     "project_purpose",
                     "open_questions",
@@ -1320,6 +1466,42 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
                 render_field(stdout, key, field, 0, mode.locale)?;
             }
         }
+    }
+    Ok(())
+}
+
+fn render_repository_answer(
+    stdout: &mut dyn Write,
+    answers: &Value,
+    locale: CliLocale,
+) -> Result<(), Error> {
+    write_line(
+        stdout,
+        match locale {
+            CliLocale::English => "Repository explanation · host interpretation",
+            CliLocale::Korean => "저장소 설명 · 호스트 해석",
+        },
+    )?;
+    if let Some(units) = answers["prose"].as_array() {
+        for unit in units {
+            write_line(stdout, unit["text"].as_str().unwrap_or(""))?;
+            if let Some(citations) = unit["citations"].as_array() {
+                for c in citations {
+                    write_line(
+                        stdout,
+                        format!(
+                            "  {}:{}–{}",
+                            c["locator"].as_str().unwrap_or(""),
+                            c["start_line"],
+                            c["end_line"]
+                        ),
+                    )?;
+                }
+            }
+        }
+    }
+    if let Some(diagnostic) = answers["diagnostic"].as_str() {
+        write_line(stdout, diagnostic)?;
     }
     Ok(())
 }

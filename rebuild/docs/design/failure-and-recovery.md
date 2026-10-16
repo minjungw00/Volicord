@@ -149,7 +149,7 @@ observed lower bound), a valid recovery action and no submitted Source/prose/cre
 content. Explanation CLI Product rejection exits 1 with no success receipt and no
 misleading usage hint; parser/command-shape errors remain usage exit 2. Compact
 response excess can be retried with reduced prose/generator metadata and intact
-required answers/keys. File excess can first remove formatting whitespace. Retained
+authored units/keys. File excess can first remove formatting whitespace. Retained
 metadata insufficiency must be identified before host generation; it requires Product
 support for the evidence shape rather than endless answer shortening.
 

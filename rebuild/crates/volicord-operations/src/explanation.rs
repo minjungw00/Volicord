@@ -159,7 +159,7 @@ impl LocalOperations {
         let mut privacy = PrivacyStore::open(self.layout().privacy_store())
             .map_err(|e| Error::with_source("cannot open explanation storage", e))?;
         privacy.record_managed_derived(ManagedDerivedDraft { project_id:project, kind:ManagedDerivedKind::CachedSummary,
-            provider:None, model:retained.realization.generator.model.clone(), purpose:purpose(subject, language), analysis_snapshot:None,
+            provider:None, model:retained.realization.generator.model.clone(), purpose:purpose(subject, language), analysis_snapshot:match subject { ExplanationSubject::Repository(id) => Some(id), _ => None },
             included_sources, canonical_links, content,
             uncertainty:None, retained_until,
             retention_basis:"Explicit active-host explanation recording; local disposable Derived content; no provider invocation".into() })
@@ -310,17 +310,40 @@ impl LocalOperations {
             attached.insert(key, readings.clone());
             readings
         };
-        let repository_subject = records.as_ref().ok().and_then(|inspection| {
-            inspection.managed_derived.iter().rev().find_map(|record| {
-                let prefix = record.purpose.strip_prefix("explanation:repository:")?;
-                let id = prefix.split(':').next()?;
-                volicord_repository_intelligence::AnalysisSnapshotId::from_hex(id)
-                    .ok()
-                    .map(ExplanationSubject::Repository)
-            })
-        });
-        if let Some(subject) = repository_subject {
-            projection.repository_explanations = attach(subject);
+        let mut repository_subjects = std::collections::BTreeMap::new();
+        if let Ok(inspection) = &records {
+            for record in &inspection.managed_derived {
+                if record.kind != ManagedDerivedKind::CachedSummary {
+                    continue;
+                }
+                if let Some(rest) = record.purpose.strip_prefix("explanation:repository:") {
+                    if let Some((id, language)) = rest.split_once(':') {
+                        if let Ok(id) =
+                            volicord_repository_intelligence::AnalysisSnapshotId::from_hex(id)
+                        {
+                            repository_subjects
+                                .insert(language, ExplanationSubject::Repository(id));
+                        }
+                    }
+                }
+            }
+        }
+        for (language, subject) in repository_subjects {
+            projection.repository_explanations.extend(
+                attach(subject)
+                    .into_iter()
+                    .filter(|r| r.language == language),
+            );
+        }
+        if let Err(error) = &records {
+            projection.repository_explanations = vec![ExplanationReading {
+                language: "*".into(),
+                state: ExplanationState::Unavailable,
+                content: None,
+                diagnostic: Some(format!("explanation storage unavailable: {error}")),
+                source_excerpts: Vec::new(),
+                omitted_source_excerpt_count: 0,
+            }];
         }
         for work in projection
             .selected_work

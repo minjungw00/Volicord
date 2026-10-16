@@ -1050,3 +1050,18 @@ For a small direct observation, use `capture-human-viewer-observations --locale 
 --observation-block work` with the actually inspected Korean Work display. Remaining
 blocks/locales stay pending. Operator mappings include literal `dimension_answer_quotes`;
 applying them updates only the private mutable draft. See the qualitative review owner.
+
+## Work-free repository reading
+
+`volicord-operations --test repository_explanation` exercises independent repository
+scope, Source isolation, UTF-8/hash/range binding, deletion/expiry, corrupt and
+unsupported copies/output, and failed-record preservation. Existing Work Source and
+Work/Decision host/public consumer targets retain their separate positive/negative
+coverage. `end-to-end/multi-repository/repository_reading.py --bin-dir PATH --output
+NEW_PRIVATE_DIRECTORY` exercises actual CLI initialization/binding, analysis,
+observation, preparation/composition/record, CLI/MCP readback, live loopback Viewer
+and script-free offline export. It retains child streams and exact operation exits,
+then cleans up its disposable Runtime and listener. The control's authored prose
+supplies contract/presentation evidence only. A separately host-produced repository
+document, source inspection, exact candidate identities and user comprehension are
+separate observations; this adds no authoritative gate or generation platform.

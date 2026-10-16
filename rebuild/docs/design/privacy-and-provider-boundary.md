@@ -649,3 +649,8 @@ Every reader unit, including headings/synopsis/limits, traverses shared groundin
 size, dependency, deletion and expiry checks. Repository summaries use the existing
 CachedSummary lifecycle and expire no later than their earliest cited Source copy.
 Reads, rendering and export never create copies, regenerate or renew retention.
+
+Repository copy retention expiry and complete observed metadata are bound into
+the File Source fingerprint. Managed expiry edits cannot extend the original grant.
+Exact Source reads use verified snapshot metadata/inventory; this authorizes no
+uncited body access or assumption that a structural/semantic graph is complete.

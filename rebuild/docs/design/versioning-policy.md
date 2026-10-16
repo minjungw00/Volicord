@@ -384,8 +384,16 @@ explicit current preparation/composition/recording is recovery. Work and Decisio
 use this same single current writer/decoder; there is no v3 compatibility reader.
 Canonical, bundle, Analysis Snapshot and document-metadata versions are unchanged.
 Repository-scoped disposable copies have kind
-`volicord_repository_source_observation`, exact current version 1; existing Work
+`volicord_repository_source_observation`, exact current version 2; existing Work
 copies retain their distinct `volicord_source_observation` version 2 contract.
 These are different authority associations, never alternate decoders for one scope.
 Non-current repository copies are Unsupported; explicit bounded observation is
 recovery and historical evidence is never rewritten or imported into a new scope.
+
+Repository Source copy format 2 binds the complete observation metadata and original
+retention expiry into its canonical File Source fingerprint. Non-current copies
+are Unsupported; there is no version-1 decoder or copy conversion. Scoped body
+retrieval verifies exact hashed Analysis metadata/inventory rather than decoding
+the entire graph for every Source; this does not certify graph integrity or semantic
+completeness. Current explanation admission/publication still validates its full
+selected analysis and repository dependencies.

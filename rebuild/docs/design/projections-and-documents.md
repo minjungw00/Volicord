@@ -1834,3 +1834,11 @@ uses committed insertion order; failed writes preserve prior records, while a la
 deleted/invalid record cannot revive an older document. Ordinary public projection
 exposes repository explanations independently of selected Work. Original Project
 Purpose stays separate canonical context, including when absent.
+
+Repository preparation preserves complete inventory classifications and compact
+capability coverage path sets, state, reason, usable remainder and producer identity.
+Large repeated diagnostic/uncertainty lists are explicitly represented by exact
+counts and hashes, with full immutable metadata/diagnostics available through
+`repository explain evidence --analysis ID`. This is an inspectable projection,
+not silent truncation or complete semantic coverage. The preparation/retention
+bounds remain unchanged and reject an unrepresentable basis before authoring.

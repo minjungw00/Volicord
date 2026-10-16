@@ -350,7 +350,7 @@ def require_markers(
 def markdown_files(root: Path, tracked: Iterable[str]) -> list[Path]:
     selected: list[Path] = []
     for relative in tracked:
-        if relative in {"AGENTS.md", "rebuild/AGENTS.md", "rebuild/crates/volicord-projections/src/explanation.rs"} or (
+        if relative in {"AGENTS.md", "rebuild/AGENTS.md", "rebuild/crates/volicord-projections/src/explanation.rs", "rebuild/crates/volicord-operations/src/repository_explanation.rs"} or (
             relative.endswith(".md")
             and (
                 relative.startswith("rebuild/docs/design/")
@@ -1107,6 +1107,11 @@ def check_explanation_ownership(root: Path) -> list[str]:
             errors.append(f"{name}: current explanation format disagrees with writer")
         if "each require at least one answer" in text or "subject's required questions" in text:
             errors.append(f"{name}: obsolete mandatory explanation roles")
+    source = (root / "rebuild/crates/volicord-operations/src/repository_explanation.rs").read_text()
+    copy_version = re.search(r"const VERSION: u32 = (\d+)", source).group(1)
+    policy = (root / DESIGN_DIRECTORY / "versioning-policy.md").read_text()
+    if f"`volicord_repository_source_observation`, exact current version {copy_version};" not in policy:
+        errors.append("versioning-policy.md: repository Source copy format disagrees with writer")
     return errors
 
 
@@ -1130,7 +1135,7 @@ def check_repository(root: Path, known_tracked: list[str] | None = None) -> list
 def copy_self_test_fixture(destination: Path, tracked: list[str]) -> list[str]:
     selected: list[str] = []
     for relative in tracked:
-        if relative in {"AGENTS.md", "rebuild/AGENTS.md", "rebuild/crates/volicord-projections/src/explanation.rs"} or (
+        if relative in {"AGENTS.md", "rebuild/AGENTS.md", "rebuild/crates/volicord-projections/src/explanation.rs", "rebuild/crates/volicord-operations/src/repository_explanation.rs"} or (
             relative.endswith(".md")
             and (
                 relative.startswith("rebuild/docs/design/")
@@ -1484,6 +1489,11 @@ def self_test() -> int:
                     + "\nRoles each require at least one answer.\n")),
              "obsolete mandatory explanation roles"),
         )
+        cases += (("repository-copy-format-drift", lambda root, _: replace_once(
+            root / DESIGN_DIRECTORY / "versioning-policy.md",
+            "`volicord_repository_source_observation`, exact current version 2;",
+            "`volicord_repository_source_observation`, exact current version 0;"),
+            "repository Source copy format disagrees with writer"),)
         for name, mutate, expected_error in cases:
             case_root = temporary_root / name
             shutil.copytree(base, case_root)

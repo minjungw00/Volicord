@@ -19,7 +19,7 @@ use volicord_projections::{explanation_text_hash, ExplanationPlan};
 use volicord_repository_intelligence::{AnalysisSnapshot, AnalysisSnapshotId, CanonicalGrounding};
 
 const KIND: &str = "volicord_repository_source_observation";
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 #[derive(Clone, Debug)]
 pub struct RepositoryFileObservationRequest {
@@ -50,12 +50,31 @@ pub struct RepositoryReaderUnit {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RepositoryClaimRange {
+    #[serde(with = "source_identity")]
     pub source_id: SourceId,
     pub start_byte: usize,
     pub end_byte: usize,
     /// None binds the complete authored unit. Explicit subclaims are UTF-8 bytes.
     pub claim: Option<FileByteRange>,
 }
+mod source_identity {
+    use super::*;
+    pub fn serialize<S: serde::Serializer>(
+        id: &SourceId,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(id)
+    }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<SourceId, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        crate::operations::parse_identity(&text)
+            .map(SourceId::from_bytes)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct RepositoryObservation {
@@ -70,6 +89,7 @@ struct RepositoryObservation {
     source_id: SourceId,
     source_revision: u64,
     observed_at_unix_micros: i64,
+    retained_until_unix_micros: i64,
     detail: Value,
 }
 impl RepositoryObservation {
@@ -81,7 +101,8 @@ impl RepositoryObservation {
             self.repository_source_id,
             self.binding_id,
             self.binding_revision,
-            self.observed_at_unix_micros
+            self.observed_at_unix_micros,
+            self.retained_until_unix_micros
         ])
     }
 }
@@ -89,7 +110,9 @@ fn repository_file_binding(observation: &RepositoryObservation) -> Result<String
     let file = file_snapshot_binding(&observation.detail, &observation.identity_basis())?;
     Ok(format!(
         "{file};repository-basis:{}",
-        explanation_text_hash(&observation.identity_basis().to_string())
+        explanation_text_hash(
+            &json!([observation.identity_basis(), observation.detail]).to_string()
+        )
     ))
 }
 fn purpose(analysis: AnalysisSnapshotId, source: SourceId) -> String {
@@ -211,6 +234,20 @@ impl LocalOperations {
         )?;
         Ok(response)
     }
+    /// Explicit exact-snapshot metadata inspection. No Source bodies or current
+    /// filesystem fallback, generation, retention renewal or authority upgrade.
+    pub fn repository_explanation_evidence(
+        &self,
+        project: ProjectId,
+        id: AnalysisSnapshotId,
+    ) -> Result<Value, Error> {
+        self.canonical_basis(project)?;
+        let analysis = self.load_analysis_snapshot(project, id)?;
+        Ok(
+            json!({"analysis_metadata":volicord_repository_intelligence::AnalysisMetadata::from(&analysis),
+            "diagnostics":analysis.diagnostics,"read_only":true,"evidence_use":"historical_stored_analysis_not_complete_semantic_understanding"}),
+        )
+    }
     pub(crate) fn repository_explanation_plan(
         &self,
         canonical: &CanonicalReadBasis,
@@ -237,12 +274,28 @@ impl LocalOperations {
             .iter()
             .map(|e| json!([e.area.path, e.classifications]))
             .collect();
+        let capabilities: Vec<_> = analysis.capabilities.iter().map(|report| {
+            let coverage = &report.coverage;
+            let paths = |areas: &[volicord_repository_intelligence::AreaId]| areas.iter().map(|area|area.path.clone()).collect::<Vec<_>>();
+            // Repeated diagnostic IDs can be megabytes. Preserve their exact
+            // count/hash and expose the full immutable metadata explicitly.
+            json!({"language":report.language,"area":report.area,"capability":report.capability,"state":report.state,
+                "reason":report.reason,"usable_remainder":report.usable_remainder,"user_visible_consequence":report.user_visible_consequence,
+                "coverage":{"included":paths(&coverage.included),"excluded":paths(&coverage.excluded),"unsupported":paths(&coverage.unsupported),
+                    "unavailable":paths(&coverage.unavailable),"failed":paths(&coverage.failed),"stale":paths(&coverage.stale),
+                    "covered_file_count":coverage.covered_file_count,"covered_entity_count":coverage.covered_entity_count,"covered_relation_count":coverage.covered_relation_count},
+                "diagnostic_count":report.diagnostics.len(),"diagnostics_sha256":explanation_text_hash(&json!(report.diagnostics).to_string()),
+                "diagnostic_detail":"repository explain evidence --analysis exact_analysis_snapshot_id",
+                "adapter":report.adapter,"analyzer":report.analyzer,"provenance_class":report.provenance_class,"freshness":report.freshness,
+                "uncertainty_level":report.uncertainty.level,"uncertainty_reason_count":report.uncertainty.reasons.len(),
+                "uncertainty_reasons_sha256":explanation_text_hash(&json!(report.uncertainty.reasons).to_string())})
+        }).collect();
         volicord_projections::prepare_repository_explanation(canonical, id,
             analysis.repository_source.identity(), json!({"repository":repository,
                 "analysis_snapshot_id":id, "analysis_format_version":analysis.format_version,
                 "binding_id":binding.id.to_string(), "binding_revision":binding.revision,
                 "observed_worktree":analysis.repository_worktree, "inventory_scope":scope,
-                "capabilities":analysis.capabilities, "freshness":analysis.freshness,
+                "capabilities":capabilities, "freshness":analysis.freshness,
                 "generated_at_unix_micros":analysis.generated_at_unix_micros,
                 "semantic_completeness":"not_established", "purpose_role":"inferred_repository_summary_is_not_canonical_project_purpose"}), language).map_err(Error::new)
     }
@@ -279,8 +332,7 @@ impl LocalOperations {
         request: RepositoryFileObservationRequest,
     ) -> Result<Value, Error> {
         let _mutation = self.layout().acquire_mutation_lock()?;
-        let now = now_micros()?;
-        let until = retention_until(now, request.retain_seconds)?;
+        retention_until(now_micros()?, request.retain_seconds)?;
         let canonical = self.canonical_basis(request.project_id)?;
         let analysis =
             self.load_analysis_snapshot(request.project_id, request.analysis_snapshot_id)?;
@@ -291,6 +343,8 @@ impl LocalOperations {
             .map_err(|e| Error::with_source("repository binding unavailable", e))?;
         let detail =
             self.capture_included_file(&canonical, &analysis, &request.path, request.byte_range)?;
+        let now = now_micros()?;
+        let until = retention_until(now, request.retain_seconds)?;
         let mut observation = RepositoryObservation {
             format_kind: KIND.into(),
             format_version: VERSION,
@@ -303,6 +357,7 @@ impl LocalOperations {
             source_id: SourceId::from_bytes([0; 16]),
             source_revision: 1,
             observed_at_unix_micros: now.as_unix_micros(),
+            retained_until_unix_micros: until.as_unix_micros(),
             detail,
         };
         // Open/check both stores before publishing the canonical Source identity.
@@ -374,9 +429,27 @@ impl LocalOperations {
                 ))
             })?;
         Ok(
-            json!({"project_id":request.project_id,"analysis_snapshot_id":analysis.identity,"source_id":source.id,"source_revision":1,
+            json!({"project_id":request.project_id.to_string(),"analysis_snapshot_id":analysis.identity,"source_id":source.id.to_string(),"source_revision":1,
             "retained_until_unix_micros":until.as_unix_micros()}),
         )
+    }
+    fn repository_source_metadata(
+        &self,
+        project: ProjectId,
+        id: AnalysisSnapshotId,
+    ) -> Result<volicord_repository_intelligence::AnalysisMetadata, Error> {
+        let path = self
+            .layout()
+            .analysis_project_dir(project)
+            .join(format!("{id}.json"));
+        let manifest = crate::analysis_io::read_manifest(&path)?;
+        let metadata = crate::analysis_io::read_metadata(&path, &manifest)?;
+        if metadata.project.identity() != project || metadata.identity != id {
+            return Err(Error::new(
+                "repository Source Analysis metadata belongs to another Project or snapshot",
+            ));
+        }
+        Ok(metadata)
     }
     /// Historical retained bytes only. Current repository equality is a separate
     /// explanation admission/publication check, never a fallback body source.
@@ -387,7 +460,7 @@ impl LocalOperations {
         source: SourceId,
     ) -> Result<Value, Error> {
         let canonical = self.canonical_basis(project)?;
-        let analysis = self.load_analysis_snapshot(project, analysis_id)?;
+        let analysis = self.repository_source_metadata(project, analysis_id)?;
         let inspection = self.privacy_status(project)?;
         let record = inspection.managed_derived.iter().find(|r| r.kind == ManagedDerivedKind::SourceObservation && r.purpose == purpose(analysis_id,source))
             .ok_or_else(|| Error::new("Source has no explicit association with this Project/repository/Analysis Snapshot"))?;
@@ -431,6 +504,9 @@ impl LocalOperations {
             || observation.analysis_snapshot_id != analysis_id
             || observation.source_id != source
             || observation.source_revision != 1
+            || binding.availability != Availability::Available
+            || record.retained_until.map(|t| t.as_unix_micros())
+                != Some(observation.retained_until_unix_micros)
             || observation.repository_snapshot_id != analysis.repository_snapshot.to_string()
             || observation.repository_source_id != analysis.repository_source.identity()
             || record.analysis_snapshot != Some(analysis_id)
@@ -456,6 +532,22 @@ impl LocalOperations {
             .iter()
             .find(|s| s.source.id == source)
             .ok_or_else(|| Error::new("Source unavailable"))?;
+        let revision = canonical
+            .revisions
+            .iter()
+            .find(|r| {
+                r.record_kind == volicord_context::CanonicalRecordKind::Source
+                    && r.record_identity == source.to_string()
+            })
+            .and_then(|r| r.revisions.last().copied());
+        if revision != Some(observation.source_revision)
+            || observation.observed_at_unix_micros > original.source.recorded_at.as_unix_micros()
+            || observation.detail["kind"] != "file"
+        {
+            return Err(Error::new(
+                "repository Source kind, revision or chronology mismatch",
+            ));
+        }
         let locator = observation.detail["path"]
             .as_str()
             .ok_or_else(|| Error::new("corrupt Source locator"))?;
@@ -489,7 +581,7 @@ impl LocalOperations {
             json!({"observation":observation,"observation_fingerprint":fingerprint,
             "citation_basis":{"source_id":source.to_string(),"source_revision":1,"observation_fingerprint":fingerprint,
                 "analysis_snapshot_id":analysis_id,"repository_snapshot_id":analysis.repository_snapshot,"repository_source_id":analysis.repository_source.identity().to_string()},
-            "metadata":{"retained_until_unix_micros":record.retained_until.map(|t|t.as_unix_micros())},"read_only":true}),
+            "metadata":{"retained_until_unix_micros":record.retained_until.map(|t|t.as_unix_micros())},"scope_validation":"verified_analysis_metadata_inventory_not_graph_completeness","read_only":true}),
         )
     }
     pub fn delete_repository_source_observation(

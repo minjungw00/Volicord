@@ -560,3 +560,72 @@ Candidate meaning; withheld, expired or deleted content is not reconstructed.
 Decision readings show their retained exact originating Question context separately
 from user choice and agent recommendation. Ordinary reading invokes no explanation
 generation or provider.
+
+## Repository explanation without Work
+
+An explicitly selected repository explanation needs no Goal or Checkpoint. It is
+host-authored Derived interpretation, separate from a user-recorded Project Purpose.
+Use a fresh local Runtime Home or an already bound Project. The active host performs
+these commands under its current repository access authority:
+
+```sh
+volicord --runtime /absolute/local-runtime --repository /absolute/repository --json init "Repository reading"
+volicord --runtime /absolute/local-runtime --repository /absolute/repository --json analyze --exclude path/to/reference
+volicord --runtime /absolute/local-runtime --repository /absolute/repository --json repository explain prepare --analysis ANALYSIS_ID --language en
+volicord --runtime /absolute/local-runtime --repository /absolute/repository --json repository source observe --analysis ANALYSIS_ID --path src/main.py --retain-seconds 3600
+volicord --runtime /absolute/local-runtime --repository /absolute/repository --json repository source read --analysis ANALYSIS_ID --source SOURCE_ID
+```
+
+Preparation binds the exact Project, local binding, Repository/Analysis Snapshot,
+observed revision, complete inventory scope and capability/coverage/freshness.
+`repository explain evidence --analysis ANALYSIS_ID` reads the full stored
+metadata and diagnostics separately. Preparation carries exact diagnostic counts
+and hashes and complete coverage path sets without repeating megabytes of IDs.
+Partial structural or semantic analysis still permits scoped included-file
+investigation. It is not complete semantic understanding. Excluded, ignored,
+symlink, foreign-snapshot or changed files cannot be observed. Large files need
+explicit absolute UTF-8 `--start-byte N --end-byte N` selection; the copy is at
+most 16,384 bytes and the full-file verification scope is at most 16 MiB.
+
+The host reads the returned Source body and authors a draft, rather than asking the
+user to build JSON. The ephemeral draft has `plan_fingerprint`, `language`,
+self-reported `generator: {host, session, agent, model}`, and `paragraphs` with
+`question`, `text`, `evidence_keys`, and `sources`. A source selection contains
+`source_id`, absolute `start_byte`, `end_byte` and nullable `claim` (an optional
+`{start_byte, end_byte}` range in the authored unit; null binds the entire unit).
+Use the plan's exact keys and reader roles. Unknown agent/model stays null.
+Describe purpose, responsibilities, a complete representative mechanism and
+material uncertainty; distinguish source-recorded reasons from inferred reasons.
+
+```sh
+volicord --json repository explain compose --analysis ANALYSIS_ID --input /absolute/host-draft.json
+# Save the returned realization object as /absolute/host-realization.json.
+volicord --json repository explain record --analysis ANALYSIS_ID --language en --input /absolute/host-realization.json
+volicord repository explain read --language en
+volicord viewer open --view code --language en
+volicord viewer export --output /absolute/repository-reading.html --language en
+```
+
+Use the same explicit runtime/repository options on every command, or run from its
+bound repository with `VOLICORD_RUNTIME_DIR` set. Composition derives exact Source
+identities, coordinates and hashes without retaining a document; recording is a
+separate explicit operation. Neither operation authenticates host authorship or
+certifies the prose's meaning. The same current content reaches ordinary CLI
+`status`, MCP `repository_understanding`, live Overview (when Work-free), repository
+Code Understanding and script-free offline snapshots. All Source links retain exact
+claim navigation, scope metadata and generator provenance. Snapshot export performs
+no host generation and renews no retention.
+
+`repository source delete --analysis ANALYSIS_ID --source SOURCE_ID` removes one
+copy; dependent generated fields become unavailable. `repository explain delete
+--analysis ANALYSIS_ID` deletes every language/history for that subject. Explicit
+fresh observation/preparation/composition/recording is recovery after changed,
+expired, deleted, withheld, corrupt or unsupported evidence. Reads never refill a
+copy from current files. Current explanation format is 4; non-current content is
+Unsupported, with no historical conversion or compatibility decoder.
+
+Focused public contract control (authored support, no model/user assessment):
+
+```sh
+rebuild/scripts/validate focused repository-reading -- python3 rebuild/validation/end-to-end/multi-repository/repository_reading.py --bin-dir rebuild/target/debug --output rebuild/.local/repository-reading/control
+```

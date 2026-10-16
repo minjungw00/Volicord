@@ -58,7 +58,12 @@ fn observe(
         })
 }
 fn source(receipt: &Value) -> Result<SourceId, Box<dyn Error>> {
-    Ok(serde_json::from_value(receipt["source_id"].clone())?)
+    let value = receipt["source_id"].as_str().ok_or("Source ID")?;
+    let mut bytes = [0u8; 16];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)?;
+    }
+    Ok(SourceId::from_bytes(bytes))
 }
 fn response(f: &Fixture, source: SourceId) -> Result<ExplanationRealization, Box<dyn Error>> {
     let plan =

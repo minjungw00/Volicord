@@ -233,7 +233,7 @@ impl HostAdapter {
             None => Err(HostError::new("unknown high-level tool")),
         };
         match result {
-            Ok(value) if name == "work_explanation" => explanation_tool_result(value),
+            Ok(value) if name == "work_explanation" || (name == "repository_understanding" && value["repository_explanation"]["explanation_state"] == "current") => explanation_tool_result(value),
             Ok(value)
                 if name == "recall"
                     || name == "canonical_inspect"
@@ -2375,6 +2375,7 @@ fn project_understanding_json(
         "health":format!("{:?}",understanding.health).to_lowercase(),
         "candidate_dependency":candidate_dependency_key(projection.candidate_dependency),
         "candidate_inspection":volicord_operations::work_learning_inspection_json(projection),
+        "repository_explanation":volicord_projections::explanation_answers(&projection.repository_explanations,language,locale),
         "project_purpose":understanding.project_purpose.iter().map(context_json).collect::<Vec<_>>(),
         "selected_work":understanding.selected_work.as_ref().map(work_json),
         "current_work":understanding.current_work.iter().map(work_json).collect::<Vec<_>>(),
