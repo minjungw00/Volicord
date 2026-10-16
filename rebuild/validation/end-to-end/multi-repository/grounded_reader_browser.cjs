@@ -185,6 +185,11 @@ async function check(page, item, language, expected, offline) {
         if (!config.offline) {
           for (const view of ['overview','work']) {
             await page.goto(`${config.url}?view=${view}&locale=${language}&language=${language}`);
+            const purpose=page.locator('.project-goal.project-purpose');
+            if (await purpose.count()) {
+              const box=await purpose.boundingBox(), gutter=width>900?48:width>600?28:20;
+              assert.ok(Math.abs(box.width-Math.min(960,width-2*gutter))<2,'reference Project Purpose card width');
+            }
             const cards=page.locator('.work-card');
             assert.ok(await cards.count()>0,'reference catalog contains actual Work cards');
             for (const card of await cards.all()) {
