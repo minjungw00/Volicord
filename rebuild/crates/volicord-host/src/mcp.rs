@@ -236,7 +236,9 @@ impl HostAdapter {
             Ok(value)
                 if name == "work_explanation"
                     || (name == "repository_understanding"
-                        && value["repository_explanation"]["explanation_state"] == "current") =>
+                        && (arguments["reading_focus"] == "repository_explanation"
+                            || value["repository_explanation"]["explanation_state"]
+                                == "current")) =>
             {
                 explanation_tool_result(value)
             }
@@ -637,6 +639,30 @@ impl HostAdapter {
     }
 
     fn repository_understanding(&self, args: &Value) -> Result<Value, HostError> {
+        if args["reading_focus"] == "repository_explanation" {
+            let project = project(args)?;
+            let language = args["requested_language"].as_str().unwrap_or("en");
+            let projection = self
+                .operations
+                .project_projection_selected(
+                    project,
+                    volicord_projections::WorkSelector::Repository,
+                )
+                .map_err(operation_error)?;
+            let answers = volicord_projections::explanation_answers(
+                &projection.repository_explanations,
+                language,
+                if args["fixed_locale"] == "ko" {
+                    FixedLocale::Korean
+                } else {
+                    FixedLocale::English
+                },
+            );
+            return Ok(
+                json!({"project_id":project.to_string(),"reading_focus":"repository_explanation",
+                "repository_explanation":answers,"read_only":true}),
+            );
+        }
         let projection = self
             .operations
             .project_projection(project(args)?)
@@ -2962,8 +2988,8 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_understanding" => (
-            "Read the bounded human-oriented Project Understanding: purpose; current, completed, and remaining Work with stable identities; Decisions and rationale; next steps; current-work code, component, and flow basis; coverage, freshness, gaps, uncertainty, and explicit omissions. This richer explanation surface complements the compact resume-oriented Recall and never mutates canonical or Candidate state.",
-            object_schema(vec![("project_id",identity_schema("Project identity")),("requested_language",text_schema("Exact generated language",1,128)),("fixed_locale",enum_schema("Fixed labels", &["en","ko"]))], &["project_id"]),
+            "Read the bounded human-oriented Project Understanding: purpose; current, completed, and remaining Work with stable identities; Decisions and rationale; next steps; current-work code, component, and flow basis; coverage, freshness, gaps, uncertainty, and explicit omissions. For retained repository prose without the full topology, select reading_focus=repository_explanation; this uses the existing bounded complete explanation transport and never generates. This richer explanation surface complements the compact resume-oriented Recall and never mutates canonical or Candidate state.",
+            object_schema(vec![("project_id",identity_schema("Project identity")),("requested_language",text_schema("Exact generated language",1,128)),("fixed_locale",enum_schema("Fixed labels", &["en","ko"])),("reading_focus",enum_schema("Read the full overview or only the exact retained repository document", &["overview","repository_explanation"]))], &["project_id"]),
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_analyze" => (

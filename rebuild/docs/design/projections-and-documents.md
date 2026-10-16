@@ -1842,3 +1842,9 @@ counts and hashes, with full immutable metadata/diagnostics available through
 `repository explain evidence --analysis ID`. This is an inspectable projection,
 not silent truncation or complete semantic coverage. The preparation/retention
 bounds remain unchanged and reject an unrepresentable basis before authoring.
+
+MCP `repository_understanding` accepts optional `reading_focus` (`overview` or
+`repository_explanation`). The latter returns the exact retained reader document
+without unrelated topology/Work catalogs, using existing complete explanation
+transport bounds and read-only lifecycle. This is selection, not a new retained
+format, Source grant, summary store or generation operation.

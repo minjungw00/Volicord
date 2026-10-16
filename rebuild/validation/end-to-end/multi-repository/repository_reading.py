@@ -74,7 +74,7 @@ def main():
             before_read = call('privacy-before', 'privacy', 'status')
             # Actual stdio MCP consumer, no new producer authority.
             messages = [dict(jsonrpc='2.0', id=1, method='initialize', params={'capabilities': {}}),
-                        dict(jsonrpc='2.0', id=2, method='tools/call', params={'name': 'repository_understanding', 'arguments': {'project_id': project, 'requested_language': 'en'}})]
+                        dict(jsonrpc='2.0', id=2, method='tools/call', params={'name': 'repository_understanding', 'arguments': {'project_id': project, 'requested_language': 'en','reading_focus':'repository_explanation'}})]
             env = os.environ.copy(); env['VOLICORD_RUNTIME_DIR'] = str(runtime)
             raw = run('mcp', [binaries / 'volicord-mcp'], payload=('\n'.join(json.dumps(m) for m in messages)+'\n').encode(), env=env)
             result = [json.loads(line) for line in raw.splitlines() if json.loads(line).get('id') == 2][0]['result']

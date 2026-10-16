@@ -629,3 +629,11 @@ Focused public contract control (authored support, no model/user assessment):
 ```sh
 rebuild/scripts/validate focused repository-reading -- python3 rebuild/validation/end-to-end/multi-repository/repository_reading.py --bin-dir rebuild/target/debug --output rebuild/.local/repository-reading/control
 ```
+
+For a repository document through MCP, call `repository_understanding` with
+`reading_focus: "repository_explanation"`, exact `project_id` and
+`requested_language`. This reads the same retained document and complete grounding
+without also serializing the entire topology/Work overview. Default `overview`
+remains the full understanding request. The focused response uses the existing
+256 KiB complete-result admission; oversize rejects rather than truncating
+grounding. It performs no generation, Source observation or retention renewal.
