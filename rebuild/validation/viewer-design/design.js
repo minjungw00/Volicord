@@ -47,7 +47,9 @@
         if (origin) origin.focus({preventScroll:true});
         if (y !== undefined) {
           window.scrollTo(0, y);
-          requestAnimationFrame(() => window.scrollTo(0, y));
+          requestAnimationFrame(() => {
+            if (location.hash === '#' + id && !document.body.classList.contains('code-open')) window.scrollTo(0, y);
+          });
         }
         else if (origin) origin.scrollIntoView({block:'center'});
         selected = null;
