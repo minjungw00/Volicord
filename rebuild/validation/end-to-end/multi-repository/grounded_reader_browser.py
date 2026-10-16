@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import signal
 import sqlite3
 import subprocess
 import tempfile
@@ -84,7 +85,7 @@ def main():
                 probe.bind(('127.0.0.1',0)); port=probe.getsockname()[1]
             with (output/f'viewer-{index}.stdout').open('wb') as stdout, (output/f'viewer-{index}.stderr').open('wb') as stderr:
                 process=subprocess.Popen([str(a) for a in cli[:-1]+['viewer','open','--bind',f'127.0.0.1:{port}']],
-                                         env=environment,stdout=stdout,stderr=stderr,cwd=harness.ROOT)
+                                         env=environment,stdout=stdout,stderr=stderr,cwd=harness.ROOT,start_new_session=True)
             case_output=output/f'case-{index}'; case_output.mkdir()
             config={'cases':[item],'basis':basis,'snapshots':snapshots,'chromium':str(args.chromium.resolve()),
                     'playwright':str(args.playwright_module.resolve()),'output':str(case_output),
@@ -138,8 +139,17 @@ def main():
                     source.write_bytes(original)
                     config.pop('denied_state',None); config.pop('expected_diagnostic',None)
             finally:
-                process.terminate(); process.wait(timeout=10)
+                # `viewer open` waits for a Viewer child. Own a separate group
+                # so stopping the CLI also stops its listener before offline reads.
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=10)
                 result.setdefault('viewer_exits',[]).append(process.returncode)
+                result.setdefault('viewer_cleanup',[]).append({
+                    'scope':'owned_process_group','process_group':process.pid,
+                    'signal':'SIGTERM','parent_exit':process.returncode})
             if json.loads(run(f'privacy-after-{index}',cli+['privacy','status']))!=before[item['project']]:
                 raise RuntimeError('GET/export changed managed state or retention')
             if retained_state(item['runtime']) != stored_before:
