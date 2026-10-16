@@ -186,17 +186,26 @@ authored `synopsis` as its lead. Neither is a canonical Work rename or a certifi
 achievement. Missing heading/synopsis never triggers clipping, sentence extraction
 or first-body-paragraph selection. The complete original Goal and exact Work/revision
 metadata remain readable, ordinarily when interpretation is unavailable and through
-an opening native disclosure when present. The full category classification, counts,
+an opening link to the native original-instructions disclosure when present. The full category classification, counts,
 omissions and Purpose remain intact. Host interpretation is attributed independently
 of the UI locale and keeps its original requested language.
 
 Ordinary Work selection uses concise cards, with document-style detail and code reading.
-Live and offline reading share top navigation, a centered document and claim-linked
-Source panels: beside the prose on wide screens, full-width on narrow screens,
+Live and offline reading share Overview/Work primary navigation, full-width
+catalog cards, and the selected design's left-offset reader document. Code,
+Decisions, Analysis, Documents, language and memory remain in secondary disclosures.
+The document opens with heading/lead, independent recorded status and explicit
+explanation/limits/original-instructions/full-evidence navigation. Complete generated
+limitations follow the narrative; real dependency failures and independent recorded
+verification/review/acceptance remain at the opening. Claim-linked Source panels: beside the prose on wide screens, full-width on narrow screens,
 with an exact paragraph return. Native fragments preserve script-free navigation;
 an inline Source appendix remains the fallback without CSS relational selectors.
-Critical generated limits and independent recorded check/review/acceptance facts stay
-at the opening. Full original evidence, provenance and history remain inspectable.
+The live-only bundled presentation script restores origin scroll/focus on return or
+Escape, opens linked native disclosures and cycles narrow-panel keyboard controls.
+Its exact digest is the sole HTTP script grant; it has no network, persistence,
+generation or domain-state authority. Offline publication remains script-free.
+The opening limits link reaches the complete limitation units without replacing
+those units with a generated summary. Full original evidence, provenance and history remain inspectable.
 Narrative order within each role is preserved; heading, synopsis and critical limits
 have explicit placement rather than inheriting the first paragraph's role. All screens
 use the same current reader envelope and maintained live/offline components. The

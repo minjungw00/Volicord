@@ -1485,8 +1485,9 @@ fn presentation_keeps_subject_navigation_and_readable_history_before_raw_evidenc
                 f.goals["older"]
             ),
         );
-        assert!(detail.contains("<main id=\"viewer-content\" tabindex=\"-1\">"));
-        assert!(detail.contains("class=\"subject-navigation\""));
+        assert!(detail
+            .contains("<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">"));
+        assert!(detail.contains("class=\"subject-navigation breadcrumb\""));
         let nav = detail
             .split("<nav aria-label=\"Viewer\">")
             .nth(1)
@@ -1494,11 +1495,12 @@ fn presentation_keeps_subject_navigation_and_readable_history_before_raw_evidenc
             .split("</nav>")
             .next()
             .ok_or("nav end")?;
-        assert!(nav.contains(&format!(
-            "view=work&amp;work={}&amp;locale={locale}&amp;language=fr-CA",
-            f.goals["older"]
-        )));
-        assert!(nav.contains(&format!("scope=work&amp;work={}", f.goals["older"])));
+        assert!(nav.contains(&format!("view=work&amp;locale={locale}&amp;language=fr-CA")));
+        assert!(detail.contains(&format!("scope=work&amp;work={}", f.goals["older"])));
+        assert!(
+            !nav.contains("scope="),
+            "primary navigation contains only Overview and Work"
+        );
         let history = detail
             .split("class=\"verification-timeline\"")
             .nth(1)
@@ -1516,7 +1518,7 @@ fn presentation_keeps_subject_navigation_and_readable_history_before_raw_evidenc
         let overview = exchange(&server, &format!("/?view=overview&locale={locale}"));
         assert!(
             overview
-                .find("class=\"project-purpose\"")
+                .find("class=\"project-goal project-purpose\"")
                 .ok_or("purpose")?
                 < overview.find("class=\"work-list\"").ok_or("works")?
         );

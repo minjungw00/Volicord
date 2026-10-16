@@ -276,7 +276,7 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
             let overview = String::from_utf8(response)?;
             assert!(overview.starts_with("HTTP/1.1 200"));
             for html in [&overview, &snapshot] {
-                let card = html.split(&format!("class=\"understanding-card work-item work-summary\" data-work-id=\"{work}\""))
+                let card = html.split(&format!("class=\"understanding-card work-item work-summary work-card\" data-work-id=\"{work}\""))
                     .nth(1).ok_or("compact Work card")?.split("</article>").next().ok_or("card end")?;
                 check_primary(
                     card,

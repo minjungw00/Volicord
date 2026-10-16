@@ -693,7 +693,7 @@ impl HttpResponse {
     }
 
     fn write(self, writer: &mut impl Write) -> io::Result<()> {
-        write!(writer, "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'\r\n", self.status, self.reason, self.content_type, self.body.len())?;
+        write!(writer, "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src {}; form-action 'self'; frame-ancestors 'none'\r\n", self.status, self.reason, self.content_type, self.body.len(), crate::interaction::csp_source())?;
         if let Some(location) = self.location {
             write!(writer, "Location: {location}\r\n")?;
         }

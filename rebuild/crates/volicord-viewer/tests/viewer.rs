@@ -490,9 +490,10 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
         let page = render_view(&viewer, project, view);
         assert!(page.contains(&format!("id=\"{section}\"")));
         assert!(page.contains(":focus-visible"));
-        assert!(page.contains("@media (max-width: 64rem)"));
+        assert!(page.contains("@media(max-width:900px)"));
         assert!(page.contains("href=\"#viewer-content\""));
-        assert!(!page.contains("<script"));
+        assert_eq!(page.matches("<script data-viewer-reading>").count(), 1);
+        assert!(!page.contains("<script src="));
         assert_eq!(
             before,
             viewer
@@ -783,7 +784,7 @@ fn project_understanding_diagrams_use_only_inspectable_relation_topology() {
             node.identity
         );
     }
-    for forbidden in ["<script", "cdn", "mermaid", "graphviz", " src=\""] {
+    for forbidden in ["<script src=", "cdn", "mermaid", "graphviz", " src=\""] {
         assert!(!html.contains(forbidden), "found {forbidden}");
     }
     let snapshot = viewer
@@ -1429,7 +1430,7 @@ fn representative_large_repository_page_is_deterministically_bounded() {
     );
     assert!(!first
         .html
-        .split("<main id=\"viewer-content\"")
+        .split("<main class=\"shell viewer-shell\" id=\"viewer-content\"")
         .nth(1)
         .expect("main reading")
         .contains("<details open"));

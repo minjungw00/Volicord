@@ -44,8 +44,8 @@ Live reads use purpose-oriented views (default `overview`):
 /?view=tools&tool=documents|memory|status|evidence
 ```
 
-Top-level navigation is Overview, Work, Code Understanding, Decisions, Analysis,
-and Documents. Analysis reuses `/?view=tools&tool=status`; Documents reuses
+Primary navigation is Overview and Work. Code Understanding, Decisions, Analysis
+and Documents remain available in the secondary views disclosure. Analysis reuses `/?view=tools&tool=status`; Documents reuses
 `/?view=tools&tool=documents`. Evidence and Memory are in a native Tools disclosure. The active navigation item has `aria-current="page"`.
 Overview begins with a recorded Project Purpose when available, then populated Work
 categories. When Purpose is absent, available Work appears before that explicit gap
@@ -62,20 +62,29 @@ Overview also keeps current open questions, canonical risks and unresolved Work
 association visible before next actions. There is no universal Material limitations
 section; unrelated capability failures do not precede ordinary Work meaning.
 Work rows use an authored derived heading and synopsis when available. Detail is a
-reader document: lead, critical limits, supported narrative, observations/comparisons
+reader document: lead, recorded status, explicit explanation/limits/original-instructions/full-evidence
+buttons, supported narrative, observations/comparisons, full generated limitations
 and claim-linked code guidance. Recorded state/check/review/acceptance facts retain
 their own authority and chronology. Missing heading or explanation keeps the full
 original Goal and exact distinguishing Work/revision metadata; no Goal clipping or
-first-paragraph result is synthesized. Original-language quotations remain accessible
-at the opening. Titles and leads are visibly host interpretation, never canonical
+first-paragraph result is synthesized. Original-language quotations remain accessible through the opening original-instructions
+link to the full native record disclosure. Titles and leads are visibly host interpretation, never canonical
 renames or independently approved achievements.
-The reading layout uses a white top navigation bar, blue-gray page, centered
-document, white Work cards and blue citation buttons. Language/tools remain native
+The reading layout follows the explicitly selected local Viewer reference: a
+76px white masthead, centered Overview/Work navigation, blue-gray page, full-width
+catalog cards, 900px reader document offset from the left, and blue citation buttons.
+Document actions and white record disclosures use the same reference primitives.
+Cards show the actual observation time in explicit UTC; it is not a fabricated
+Work creation or completion date. Source line numbers come from the cited range;
+the original code bytes remain unchanged. Language/tools remain native
 disclosures. Selecting a citation opens its exact Source beside the document on
 wide screens and in a full-width panel on narrow screens. The return link goes
 back to the cited paragraph; direct Source-range links also provide a return.
 Native URL fragments power this journey in both live pages and script-free offline
-snapshots. Browsers without CSS `:has` retain the complete inline Source appendix.
+snapshots. Live pages add only the bundled presentation script: Escape, origin scroll
+restoration, native record opening and narrow-panel keyboard cycling. The HTTP CSP
+allows that script by its exact SHA-256 digest, without external script/network
+permissions. It performs no requests, persistence, generation or Runtime mutations. Browsers without CSS `:has` retain the complete inline Source appendix.
 Offline snapshots retain a visible read-only notice and put their Evidence
 navigation in the same native disclosure hierarchy.
 

@@ -568,9 +568,9 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             .render(&korean_request, "test-form-authenticity")?
             .html;
         assert!(korean.contains("선택 스냅샷에서 관측한 파일 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"));
-        assert!(korean.contains("변경 / 조사 · 선택 스냅샷에서 관측한 파일 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"));
+        assert!(korean.contains("구조와 동작 · 선택 스냅샷에서 관측한 파일 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"));
         assert!(
-            korean.contains("<p class=\"source-purpose\">해석에서 인용한 내용: 변경 / 조사</p>")
+            korean.contains("<p class=\"source-purpose\">해석에서 인용한 내용: 구조와 동작</p>")
         );
         assert_eq!(
             korean.contains(
@@ -1386,7 +1386,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
     assert!(page.contains("identical bytes"));
     for (locale, title) in [
         (ViewerLocale::English, "Change / investigation"),
-        (ViewerLocale::Korean, "변경 / 조사"),
+        (ViewerLocale::Korean, "구조와 동작"),
     ] {
         let mut code_request = request(&f)?;
         code_request.locale = locale;
@@ -2028,8 +2028,8 @@ fn authored_heading_synopsis_and_reading_points_share_public_lifecycle(
         assert!(page.contains("data-question=\"Heading\" data-content-language=\"en\">A constant return, examined</h3>"));
         assert!(page.contains("class=\"reader-lead\""));
         assert!(
-            page.find("data-section=\"Limits\"").ok_or("limit")?
-                < page.find("data-section=\"Purpose\"").ok_or("problem")?
+            page.find("data-section=\"Purpose\"").ok_or("problem")?
+                < page.find("data-section=\"Limits\"").ok_or("limit")?
         );
         assert!(page.contains("class=\"return-to-claim\""));
         assert!(page.contains(f["goal"].as_str().ok_or("original Goal")?));

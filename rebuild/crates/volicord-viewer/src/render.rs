@@ -420,23 +420,22 @@ impl ViewerAdapter {
                 "snapshot"
             }
         ));
-        html.push_str(&format!("<a class=\"skip-link\" href=\"#viewer-content\">{}</a><header class=\"viewer-header\"><p class=\"brand\">Volicord", text(request.locale, "Skip to content", "본문으로 건너뛰기")));
+        html.push_str(&format!("<a class=\"skip skip-link\" href=\"#viewer-content\">{}</a><header class=\"masthead viewer-header\"><div class=\"shell\"><a class=\"brand\" href=\"{}\">Volicord</a>", text(request.locale, "Skip to content", "본문으로 건너뛰기"), if snapshot { "#overview".into() } else { format!("/?view=overview&locale={}&language={}", locale_key(request.locale), percent_encode(&request.requested_language)) }));
+        html.push_str("<div class=\"viewer-navigation\">");
+        reading::navigation(&mut html, request, snapshot);
+        html.push_str("</div>");
         if snapshot {
             html.push_str(&format!(
-                "<span class=\"snapshot-mode\">{}</span>",
+                "<span class=\"trial snapshot-mode\" title=\"{}\">{}</span>",
                 text(
                     request.locale,
                     "Read-only static snapshot",
                     "읽기 전용 정적 스냅샷"
-                )
+                ),
+                text(request.locale, "Read-only", "읽기 전용")
             ));
         }
-        html.push_str("</p>");
-        heading(&mut html, 1, &projection.overview.project_name);
-        html.push_str("<div class=\"viewer-navigation\">");
-        let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
-        reading::navigation(&mut html, request, snapshot);
-        html.push_str("</div></header><div class=\"viewer-shell\"><main id=\"viewer-content\" tabindex=\"-1\">");
+        html.push_str("</div></header><main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">");
         reading::runtime_blockers(&mut html, request, &health);
         if snapshot {
             reading::snapshot(&mut html, request, &projection, &understanding);
@@ -512,7 +511,13 @@ impl ViewerAdapter {
                 );
             }
         }
-        html.push_str("</main></div></body></html>");
+        html.push_str("</main>");
+        if !snapshot {
+            html.push_str("<script data-viewer-reading>");
+            html.push_str(crate::interaction::SCRIPT);
+            html.push_str("</script>");
+        }
+        html.push_str("</body></html>");
         let html_render = render_started.elapsed();
         Ok((
             ViewerPage {
@@ -705,10 +710,10 @@ fn render_work_card(
         request.locale.fixed(),
     );
     html.push_str(&format!(
-        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><h3 lang=\"{}\" data-title-basis=\"{}\"{}>{}</h3>",
+        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><p class=\"eyebrow\">WORK DOCUMENT · {}</p><h3 lang=\"{}\" data-title-basis=\"{}\"{}>{}</h3>",
         work.work_item_id,
         understanding_work_state_key(work.state),
-        escape(&language), basis, reading::reader_heading_attributes(&answers), escape(&title),
+        text(request.locale, "interpretation and observations", "해석과 관측"), escape(&language), basis, reading::reader_heading_attributes(&answers), escape(&title),
     ));
     reading::work_explanation(html, request, work);
     html.push_str(&format!(

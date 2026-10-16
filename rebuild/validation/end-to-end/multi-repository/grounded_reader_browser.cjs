@@ -1,5 +1,6 @@
 // Local browser support over actual recorded Product outputs. No prose authoring.
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
 const {pathToFileURL} = require('node:url');
 const [configuration] = process.argv.slice(2);
@@ -39,7 +40,7 @@ async function checkSources(work, item, navigation=false) {
   }
 }
 async function checkCodeMeaning(page, language, expected) {
-  const original = ['Synopsis','Limits'].flatMap(role=>expected.prose.filter(a=>a.question===role)).concat(expected.prose.filter(a=>!['Heading','Synopsis','Limits'].includes(a.question)));
+  const original = expected.prose.filter(a=>a.question==='Synopsis').concat(expected.prose.filter(a=>!['Heading','Synopsis','Limits'].includes(a.question)),expected.prose.filter(a=>a.question==='Limits'));
   // Citation details also carry data-question, on an enclosing section whose
   // claim quotation has its own language. Inspect the ordinary reading paragraphs.
   const paragraphs = page.locator('.code-work-meaning .answer-section > p[data-question], .code-work-meaning > p[data-question]');
@@ -58,7 +59,7 @@ async function sourcePanelRoundTrip(page, width) {
   const panelId=await point.locator('xpath=ancestor::figure').getAttribute('id');
   const panel=page.locator(`[id="${panelId}"]`);
   const box=await panel.boundingBox();
-  assert.ok(box && Math.abs(box.y)<2 && Math.abs(box.x+box.width-width)<2,
+  assert.ok(box && Math.abs(box.y-(width>900?76:0))<2 && Math.abs(box.x+box.width-width)<2,
     'selected Source panel occupies the viewport edge');
   assert.ok(width>900 ? box.x>width*.4 : box.x<2,
     'desktop retains prose beside Source; narrow screens focus Source');
@@ -72,6 +73,12 @@ async function sourcePanelRoundTrip(page, width) {
     'native return restores the exact cited paragraph');
   assert.equal(await panel.evaluate(n=>getComputedStyle(n).position),'relative',
     'return closes the Source panel');
+  if (await page.locator('script[data-viewer-reading]').count()) {
+    await page.locator(`a.source-citation[href="#${pointId}"]`).press('Enter');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(()=>document.activeElement.id),destination,
+      'live Escape restores the exact origin through the bounded presentation script');
+  }
   // Reopen using the original citation for subsequent code keyboard checks.
   await page.locator(`a.source-citation[href="#${pointId}"]`).press('Enter');
   assert.equal(await page.evaluate(()=>document.activeElement.id),pointId);
@@ -79,6 +86,19 @@ async function sourcePanelRoundTrip(page, width) {
 async function check(page, item, language, expected, offline) {
   const work = page.locator(`article[data-work-id="${item.work}"]`).filter({has:page.locator('.source-excerpt')}).first();
   assert.equal(await work.count(), 1, 'selected Work has cited code');
+  if (await page.locator('.source-reading-point:target,.source-excerpt:target').count()===0) {
+  const width=page.viewportSize().width;
+  const primary=page.locator('nav[aria-label="Viewer"] a');
+  assert.equal(await primary.count(),2,'reference primary navigation is Overview and Work');
+  const frame=await page.locator('.masthead').boundingBox();
+  assert.ok(frame && Math.abs(frame.height-(width>600?76:64))<2,'reference masthead height');
+  const doc=await work.boundingBox();
+  assert.ok(doc && Math.abs(doc.x-(width>=1100?182:width>900?(width-900)/2:width>600?28:20))<2,
+    'reference document offset and responsive page gutters');
+  for(const action of await work.locator('.reader-actions .button').all()) {
+    assert.ok((await action.boundingBox()).height>=44,'reference document actions remain button-sized');
+  }
+  }
   const source = work.locator(`.source-excerpt[data-source-id="${item.after}"]`);
   assert.equal(await source.count(), 1, 'exact current Source identity');
   await checkSources(work,item,true);
@@ -162,10 +182,32 @@ async function check(page, item, language, expected, offline) {
       const expected=config.basis[item.project][language];
       for (const width of [390,768,1440]) {
         await page.setViewportSize({width,height:900});
+        if (!config.offline) {
+          for (const view of ['overview','work']) {
+            await page.goto(`${config.url}?view=${view}&locale=${language}&language=${language}`);
+            const cards=page.locator('.work-card');
+            assert.ok(await cards.count()>0,'reference catalog contains actual Work cards');
+            for (const card of await cards.all()) {
+              const box=await card.boundingBox(), gutter=width>900?48:width>600?28:20;
+              assert.ok(box && Math.abs(box.x-gutter)<2 && Math.abs(box.width-(width-2*gutter))<2,
+                'reference overview and Work cards use the complete content width');
+              assert.ok((await card.locator('.work-card-footer a').boundingBox()).height>=44,
+                'reference card has a distinct reading action');
+            }
+            await page.screenshot({path:`${config.output}/${item.comparison}-${language}-${width}-${view}-catalog.png`});
+          }
+        }
         const url=config.offline ? pathToFileURL(config.snapshots[item.project][language]).href+`#work-${item.work}`
           : `${config.url}?view=work&work=${item.work}&locale=${language}&language=${language}`;
         if (config.offline) await context.setOffline(true);
-        await page.goto(url); await page.evaluate(()=>document.fonts.ready);
+        const response = await page.goto(url); await page.evaluate(()=>document.fonts.ready);
+        if (!config.offline) {
+          const script=await page.locator('script[data-viewer-reading]').textContent();
+          const digest=crypto.createHash('sha256').update(script).digest('base64');
+          const policy=(await response.allHeaders())['content-security-policy'];
+          assert.ok(policy.includes(`script-src 'sha256-${digest}'`),'only the exact presentation script is permitted');
+          assert.ok(!policy.includes("script-src 'unsafe-inline'"),'arbitrary inline scripts remain blocked');
+        }
         await check(page,item,language,expected,config.offline);
         await page.screenshot({path:`${config.output}/${item.comparison}-${language}-${width}-reading.png`});
         if (!config.offline) {
@@ -174,10 +216,10 @@ async function check(page, item, language, expected, offline) {
           assert.equal(await page.locator('.code-work-meaning h3').getAttribute('data-title-basis'),'neutral-label','Code title preserves original Goal basis');
           const codeParagraphs=await checkCodeMeaning(page,language,expected);
           const questionLabels=language==='ko'
-            ? {Purpose:'문제',ReportedChange:'변경 / 조사',ExpectedEffect:'결과 / 기대 효과',Limits:'남은 불확실성'}
+            ? {Purpose:'문제와 요청',ReportedChange:'구조와 동작',ExpectedEffect:'결과 / 기대 효과',Limits:'결과를 읽을 때의 한계'}
             : {Purpose:'Problem',ReportedChange:'Change / investigation',ExpectedEffect:'Result / expected effect',Limits:'Remaining uncertainty'};
-          const questions=expected.prose.filter(a=>a.question==='Limits')
-            .concat(expected.prose.filter(a=>a.question!=='Limits'))
+          const questions=expected.prose.filter(a=>a.question!=='Limits')
+            .concat(expected.prose.filter(a=>a.question==='Limits'))
             .map(a=>a.question).filter(q=>questionLabels[q]);
           const sections=questions.filter((q,index)=>index===0 || q!==questions[index-1]).map(q=>questionLabels[q]);
           const headings=(await page.locator('.code-work-meaning h4').allTextContents()).filter(label=>Object.values(questionLabels).includes(label));

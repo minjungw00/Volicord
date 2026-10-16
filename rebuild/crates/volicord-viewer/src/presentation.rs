@@ -35,6 +35,32 @@ pub(super) fn empty_state(html: &mut String, value: &str) {
     html.push_str(&format!("<p class=\"empty-state\">{}</p>", escape(value)));
 }
 
+/// Calendar presentation of the actual observation instant, in explicit UTC.
+/// This does not infer Work creation/completion from a later observation.
+pub(super) fn observation_time(timestamp: volicord_context::TimestampMicros) -> (String, String) {
+    let seconds = timestamp.as_unix_micros().div_euclid(1_000_000);
+    let days = seconds.div_euclid(86_400);
+    let day_seconds = seconds.rem_euclid(86_400);
+    // Gregorian civil date from days since 1970-01-01.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    year += i64::from(month <= 2);
+    let hour = day_seconds / 3600;
+    let minute = day_seconds % 3600 / 60;
+    let second = day_seconds % 60;
+    (
+        format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"),
+        format!("{year:04}.{month:02}.{day:02} {hour:02}:{minute:02} UTC"),
+    )
+}
+
 pub(super) const fn text<'a>(locale: ViewerLocale, english: &'a str, korean: &'a str) -> &'a str {
     match locale {
         ViewerLocale::English => english,
@@ -78,7 +104,12 @@ pub(super) fn escape(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-pub(super) const STYLE: &str = concat!("<style>", include_str!("presentation.css"), "</style>");
+pub(super) const STYLE: &str = concat!(
+    "<style>",
+    include_str!("reader.css"),
+    include_str!("presentation.css"),
+    "</style>"
+);
 
 // A presentation hint, never the arbitrary requested-language identity. Unknown
 // values must not inherit the fixed interface locale as a translation claim.
@@ -113,5 +144,26 @@ pub(super) const fn code_explanation_state_label(
         Stale => text(locale, "Stale", "오래됨"),
         Unsupported => text(locale, "Unsupported", "지원하지 않음"),
         Unavailable => text(locale, "Unavailable", "이용 불가"),
+    }
+}
+
+#[cfg(test)]
+mod calendar_tests {
+    #[test]
+    fn observation_dates_handle_epoch_negative_and_leap_day() {
+        for (seconds, date) in [
+            (0, "1970-01-01T00:00:00Z"),
+            (-1, "1969-12-31T23:59:59Z"),
+            (951_782_400, "2000-02-29T00:00:00Z"),
+            (4_107_542_400, "2100-03-01T00:00:00Z"),
+        ] {
+            assert_eq!(
+                super::observation_time(volicord_context::TimestampMicros::from_unix_micros(
+                    seconds * 1_000_000
+                ))
+                .0,
+                date
+            );
+        }
     }
 }
