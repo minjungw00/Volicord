@@ -190,7 +190,11 @@ an opening native disclosure when present. The full category classification, cou
 omissions and Purpose remain intact. Host interpretation is attributed independently
 of the UI locale and keeps its original requested language.
 
-Ordinary Work selection uses concise rows, with document-style detail and code reading.
+Ordinary Work selection uses concise cards, with document-style detail and code reading.
+Live and offline reading share top navigation, a centered document and claim-linked
+Source panels: beside the prose on wide screens, full-width on narrow screens,
+with an exact paragraph return. Native fragments preserve script-free navigation;
+an inline Source appendix remains the fallback without CSS relational selectors.
 Critical generated limits and independent recorded check/review/acceptance facts stay
 at the opening. Full original evidence, provenance and history remain inspectable.
 Narrative order within each role is preserved; heading, synopsis and critical limits

@@ -52,6 +52,30 @@ async function checkCodeMeaning(page, language, expected) {
     'Code interpretation preserves requested language');
   return paragraphs;
 }
+async function sourcePanelRoundTrip(page, width) {
+  const point=page.locator('.source-reading-point:target');
+  const pointId=await point.getAttribute('id');
+  const panelId=await point.locator('xpath=ancestor::figure').getAttribute('id');
+  const panel=page.locator(`[id="${panelId}"]`);
+  const box=await panel.boundingBox();
+  assert.ok(box && Math.abs(box.y)<2 && Math.abs(box.x+box.width-width)<2,
+    'selected Source panel occupies the viewport edge');
+  assert.ok(width>900 ? box.x>width*.4 : box.x<2,
+    'desktop retains prose beside Source; narrow screens focus Source');
+  const returnLink=point.locator('.return-to-claim');
+  const destination=(await returnLink.getAttribute('href')).slice(1);
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(()=>document.activeElement.className),'return-to-claim',
+    'native Tab reaches the exact paragraph return');
+  await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(()=>document.activeElement.id),destination,
+    'native return restores the exact cited paragraph');
+  assert.equal(await panel.evaluate(n=>getComputedStyle(n).position),'relative',
+    'return closes the Source panel');
+  // Reopen using the original citation for subsequent code keyboard checks.
+  await page.locator(`a.source-citation[href="#${pointId}"]`).press('Enter');
+  assert.equal(await page.evaluate(()=>document.activeElement.id),pointId);
+}
 async function check(page, item, language, expected, offline) {
   const work = page.locator(`article[data-work-id="${item.work}"]`).filter({has:page.locator('.source-excerpt')}).first();
   assert.equal(await work.count(), 1, 'selected Work has cited code');
@@ -186,6 +210,7 @@ async function check(page, item, language, expected, offline) {
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-citation')),'citation reachable with Tab');
           await page.keyboard.press('Enter');
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-reading-point')),'Enter focuses the exact claim beside its code');
+          await sourcePanelRoundTrip(page,width);
           for (let step=0;step<12;step++) {
             await page.keyboard.press('Tab');
             if (await page.evaluate(()=>document.activeElement.matches('.source-excerpt pre[role=region]'))) break;
@@ -218,6 +243,7 @@ async function check(page, item, language, expected, offline) {
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-citation')),'offline citation reachable with Tab');
           await page.keyboard.press('Enter');
           assert.ok(await page.evaluate(()=>document.activeElement.classList.contains('source-reading-point')),'offline Enter focuses the exact claim beside its code');
+          await sourcePanelRoundTrip(page,width);
           const source=page.locator(`.source-excerpt[data-source-id="${item.after}"] code`);
           const original=await source.textContent();
           await source.evaluate(n=>n.textContent='fabricated control');

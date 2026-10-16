@@ -807,7 +807,7 @@ fn reader_citations(
 ) {
     for (citation_index, citation) in answers.prose[index].citations.iter().enumerate() {
         html.push_str(&format!(
-            "<a class=\"source-citation\" href=\"#{}\">{} · {} · {}:{}–{}</a> ",
+            "<a class=\"source-citation\" href=\"#{}\"><span>{} · {} · </span><span class=\"citation-path\">{}:{}–{} ↗</span></a> ",
             source_point_anchor(answers, index, citation_index),
             answer_title(&answers.prose[index].question, r.locale),
             citation_use_label(r.locale, citation.use_kind),
@@ -1131,6 +1131,20 @@ fn render_source_excerpts(
         html.push_str(&format!("<figure class=\"source-excerpt\" id=\"{}\" tabindex=\"-1\" data-source-id=\"{}\"><figcaption><strong>{}:{}–{}</strong> · {}</figcaption>",
             escape(&anchor), escape(&c.source_id), escape(&c.locator), c.start_line, c.end_line,
             citation_use_label(r.locale, c.use_kind)));
+        // Direct range links (including before-observation navigation) need a
+        // return destination too. Citation links retain their exact paragraph.
+        if let Some(index) = answers.prose.iter().position(|answer| {
+            answer
+                .citations
+                .iter()
+                .any(|citation| source_excerpt_anchor(answers, citation) == anchor)
+        }) {
+            html.push_str(&format!(
+                "<a class=\"source-panel-return\" href=\"#{}\">← {}</a>",
+                reader_claim_anchor(answers, index),
+                text(r.locale, "Return to explanation", "설명으로 돌아가기")
+            ));
+        }
         // Purpose labels come only from paragraphs that actually cite this
         // exact range/use. A path or nearby function cannot supply relevance.
         let mut purposes = Vec::new();

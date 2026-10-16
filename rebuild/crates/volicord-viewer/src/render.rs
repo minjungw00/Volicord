@@ -420,7 +420,7 @@ impl ViewerAdapter {
                 "snapshot"
             }
         ));
-        html.push_str(&format!("<a class=\"skip-link\" href=\"#viewer-content\">{}</a><header class=\"viewer-header\"><p class=\"brand\">VOLICORD", text(request.locale, "Skip to content", "본문으로 건너뛰기")));
+        html.push_str(&format!("<a class=\"skip-link\" href=\"#viewer-content\">{}</a><header class=\"viewer-header\"><p class=\"brand\">Volicord", text(request.locale, "Skip to content", "본문으로 건너뛰기")));
         if snapshot {
             html.push_str(&format!(
                 "<span class=\"snapshot-mode\">{}</span>",
@@ -433,10 +433,10 @@ impl ViewerAdapter {
         }
         html.push_str("</p>");
         heading(&mut html, 1, &projection.overview.project_name);
-        html.push_str("</header><div class=\"viewer-shell\"><aside class=\"viewer-navigation\">");
+        html.push_str("<div class=\"viewer-navigation\">");
         let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
         reading::navigation(&mut html, request, snapshot);
-        html.push_str("</aside><main id=\"viewer-content\" tabindex=\"-1\">");
+        html.push_str("</div></header><div class=\"viewer-shell\"><main id=\"viewer-content\" tabindex=\"-1\">");
         reading::runtime_blockers(&mut html, request, &health);
         if snapshot {
             reading::snapshot(&mut html, request, &projection, &understanding);

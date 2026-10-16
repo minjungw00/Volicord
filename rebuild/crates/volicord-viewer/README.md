@@ -69,8 +69,14 @@ original Goal and exact distinguishing Work/revision metadata; no Goal clipping 
 first-paragraph result is synthesized. Original-language quotations remain accessible
 at the opening. Titles and leads are visibly host interpretation, never canonical
 renames or independently approved achievements.
-On narrow screens, compact language/tools disclosures keep ordinary Work reading
-reachable. Offline snapshots retain a visible read-only notice and put their Evidence
+The reading layout uses a white top navigation bar, blue-gray page, centered
+document, white Work cards and blue citation buttons. Language/tools remain native
+disclosures. Selecting a citation opens its exact Source beside the document on
+wide screens and in a full-width panel on narrow screens. The return link goes
+back to the cited paragraph; direct Source-range links also provide a return.
+Native URL fragments power this journey in both live pages and script-free offline
+snapshots. Browsers without CSS `:has` retain the complete inline Source appendix.
+Offline snapshots retain a visible read-only notice and put their Evidence
 navigation in the same native disclosure hierarchy.
 
 Code identifies the selected Work, repository or exact-entity read basis and keeps

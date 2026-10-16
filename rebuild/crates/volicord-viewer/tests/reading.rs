@@ -9,6 +9,25 @@ use volicord_viewer::{
     ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer, ViewerTool, ViewerView,
 };
 
+// Code contains nested repository explanation and cited-Source sections. Read
+// its complete outer section rather than stopping at the first child's end.
+fn code_section(html: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let start = html.find("<section id=\"code\"").ok_or("Code section")?;
+    let mut depth = 0;
+    for (offset, _) in html[start..].match_indices('<') {
+        let tag = &html[start + offset..];
+        if tag.starts_with("<section ") || tag.starts_with("<section>") {
+            depth += 1;
+        } else if tag.starts_with("</section>") {
+            depth -= 1;
+            if depth == 0 {
+                return Ok(html[start..start + offset + "</section>".len()].to_owned());
+            }
+        }
+    }
+    Err("Code section end".into())
+}
+
 fn exchange(server: &ViewerServer, path: &str) -> String {
     let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n");
     let mut output = Vec::new();
@@ -1127,16 +1146,6 @@ fn offline_repository_code_uses_live_repository_limits_without_another_analysis_
         assert!(offline_understanding.omissions.contains(expected));
     }
     let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
-    let code_section = |html: &str| -> Result<String, Box<dyn std::error::Error>> {
-        Ok(html
-            .split("id=\"code\"")
-            .nth(1)
-            .ok_or("Code section")?
-            .split("</section>")
-            .next()
-            .ok_or("Code section end")?
-            .to_owned())
-    };
     let contextual_limits = |html: &str| -> Result<String, Box<dyn std::error::Error>> {
         Ok(html
             .split("id=\"code-limit-details\"")
@@ -1881,16 +1890,6 @@ fn code_diagnostics_follow_supported_meaning_with_exact_scoped_counts_and_snapsh
         .entity
         .clone();
     let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
-    let code_section = |html: &str| -> Result<String, Box<dyn std::error::Error>> {
-        Ok(html
-            .split("id=\"code\"")
-            .nth(1)
-            .ok_or("Code")?
-            .split("</section>")
-            .next()
-            .ok_or("Code end")?
-            .to_owned())
-    };
     for locale in [ViewerLocale::English, ViewerLocale::Korean] {
         let mut repository = reading_request(
             f.project,

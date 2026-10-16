@@ -550,15 +550,16 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
                 .count(),
             1
         );
-        assert!(page.contains("Observed file in selected snapshot · main.py:1–2</a>"));
+        assert!(page.contains("Observed file in selected snapshot · </span>"));
+        assert!(page.contains("class=\"citation-path\">main.py:1–2 ↗</span></a>"));
         assert!(page.contains(
-            "Change / investigation · Observed file in selected snapshot · main.py:1–2</a>"
+            "Change / investigation · Observed file in selected snapshot · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"
         ));
         assert!(page.contains(
             "<p class=\"source-purpose\">Cited in interpretation: Change / investigation</p>"
         ));
         assert_eq!(
-            page.contains("Before: historical observation · main.py:1–2</a>"),
+            page.contains("Before: historical observation · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"),
             comparison != "missing_before_state"
         );
         let mut korean_request = request(&f)?;
@@ -566,13 +567,15 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         let korean = ViewerAdapter::new(ops(&f)?)
             .render(&korean_request, "test-form-authenticity")?
             .html;
-        assert!(korean.contains("선택 스냅샷에서 관측한 파일 · main.py:1–2</a>"));
-        assert!(korean.contains("변경 / 조사 · 선택 스냅샷에서 관측한 파일 · main.py:1–2</a>"));
+        assert!(korean.contains("선택 스냅샷에서 관측한 파일 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"));
+        assert!(korean.contains("변경 / 조사 · 선택 스냅샷에서 관측한 파일 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"));
         assert!(
             korean.contains("<p class=\"source-purpose\">해석에서 인용한 내용: 변경 / 조사</p>")
         );
         assert_eq!(
-            korean.contains("이전: 과거 관측 · main.py:1–2</a>"),
+            korean.contains(
+                "이전: 과거 관측 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"
+            ),
             comparison != "missing_before_state"
         );
         assert!(
