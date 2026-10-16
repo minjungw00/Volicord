@@ -176,7 +176,9 @@ async function check(page, item, language, expected, offline) {
           const questionLabels=language==='ko'
             ? {Purpose:'문제',ReportedChange:'변경 / 조사',ExpectedEffect:'결과 / 기대 효과',Limits:'남은 불확실성'}
             : {Purpose:'Problem',ReportedChange:'Change / investigation',ExpectedEffect:'Result / expected effect',Limits:'Remaining uncertainty'};
-          const questions=expected.prose.map(a=>a.question).filter(q=>questionLabels[q]);
+          const questions=expected.prose.filter(a=>a.question==='Limits')
+            .concat(expected.prose.filter(a=>a.question!=='Limits'))
+            .map(a=>a.question).filter(q=>questionLabels[q]);
           const sections=questions.filter((q,index)=>index===0 || q!==questions[index-1]).map(q=>questionLabels[q]);
           const headings=(await page.locator('.code-work-meaning h4').allTextContents()).filter(label=>Object.values(questionLabels).includes(label));
           assert.deepEqual(headings,sections,'Code groups adjacent paragraphs under one section label');
