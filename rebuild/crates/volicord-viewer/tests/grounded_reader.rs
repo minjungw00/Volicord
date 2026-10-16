@@ -1189,7 +1189,7 @@ fn seed_representative(root: &Path) -> Result<Value, Box<dyn Error>> {
     for (start_marker, end_marker) in [
         (
             "    fn explanation_source(",
-            "    pub(crate) fn validate_explanation_sources(",
+            "    pub(crate) fn validate_subject_sources(",
         ),
         (
             "                    let current_hash =",
