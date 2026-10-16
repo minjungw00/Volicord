@@ -156,10 +156,10 @@ commits confer no association. Detail retains original text and revision evidenc
 | --- | --- | --- | --- | --- |
 | What was reported? | Latest nonblank `Checkpoint.state_change`, its revision and Sources; purpose/effect from clear source material | Same Work, result observation time then identity; correction uses current revision | Blank/null later records cannot erase earlier result; reported change is not verified achievement; no result means no reported result | Ordinary explanation; quotation in evidence |
 | What is the latest state? | `work_state` with exact Checkpoint revision/Sources | Latest same-Work observation; Goal-only derives Open | Cannot derive state from change text, verification, review or acceptance | Ordinary |
-| What was verified? | Latest nonempty `verification` observation; individual fact state, Command Source and outcome | Independently selected; subsequent meaningful change makes coverage historical/unknown; no silent inheritance | No record differs from explicit NotRun, failure and historical pass; cannot infer coverage from filename or kind | Ordinary with historical warning; full history in detail |
-| Was it reviewed / accepted? | Latest independent `user_review` / `user_acceptance` facts and their Source, including explicit reset to NotRequested | Latest same-Work observation per dimension | Review is not acceptance; accepted is not passed; absent Checkpoint is no observation | Ordinary; history/detail |
-| What next? | Latest Checkpoint `next_step` and exact revision/Sources | Latest observation, no fallback to obsolete earlier direction if blank | No recorded direction means missing next-step information | Ordinary |
-| What is current/completed/remaining? | Complete canonical Work classification before category bounds; category total/displayed/omitted and completeness | State observation time for current/remaining, result time for outcomes, identity only as tie-break | Catalog page and unrelated completed Works cannot hide current category; unknown completeness is not zero | Overview |
+| What was verified? | Latest nonempty `verification` observation; individual fact state, Command Source and outcome | Independently selected; subsequent meaningful change makes coverage historical/unknown; no silent inheritance | No record differs from explicit NotRun, failure and historical pass; cannot infer coverage from filename or kind | Full evidence with historical warning and complete history |
+| Was it reviewed / accepted? | Latest independent `user_review` / `user_acceptance` facts and their Source, including explicit reset to NotRequested | Latest same-Work observation per dimension | Review is not acceptance; accepted is not passed; absent Checkpoint is no observation | Full evidence; independent current facts and history |
+| What next? | Latest Checkpoint `next_step` and exact revision/Sources | Latest observation, no fallback to obsolete earlier direction if blank | No recorded direction means missing next-step information | Full evidence; generated uncertainty stays in narrative |
+| What is current/completed/remaining? | Complete canonical Work classification before category bounds; category total/displayed/omitted and completeness | State observation time for current/remaining, result time for outcomes, identity only as tie-break | Catalog page and unrelated completed Works cannot erase classification; unknown completeness is not zero | Shared read model; recent cards link to exact records |
 | What does this Work mean? | Purpose, reported change, expected effect, verification limits and unresolved next step, each grounded in exact selected evidence | Current question/evidence revisions and language; interpretation remains derived | No invented feature for generic implementation-changed prose; excerpt/unavailable alone fails sufficient-source explanation | Ordinary answer with deeper grounding |
 
 Null/blank history prefixes and later changes must be observed through Operations
@@ -168,49 +168,43 @@ paraphrased cases test reading meaning, rather than lexical match with a fixture
 key. A stale realization, generation/authorization failure, selection failure and
 genuinely absent information are distinct outcomes.
 
-The server-rendered Viewer reading hierarchy is **Overview → Work → Code
-Understanding / Decisions → evidence**, with mutation, export and diagnostic tools
-separate from ordinary reading.
-Overview preserves a present Project Purpose first. Populated Work categories precede
-an absent-Purpose notice and empty Work categories; counts follow ordinary cards.
-This is presentation ordering over the existing classification, not selection of a
-new current Work or promotion of a Goal to Purpose. Goal-only Work remains Open in
-Remaining Work. Without permitted explanation prose, the card presents the complete
-original Goal as a quotation beneath a neutral Work label and links to full detail.
-The absence of Purpose, category totals/omissions, unresolved grouping and Checkpoint
-availability remain inspectable. Narrow live/offline layouts share these components;
-snapshot Evidence navigation uses a closed native disclosure and the read-only notice
-remains visible. No output wording, binding, canonical state or generation changes.
-A permitted authored `heading` supplies derived reader wording, with an independently
-authored `synopsis` as its lead. Neither is a canonical Work rename or a certified
-achievement. Missing heading/synopsis never triggers clipping, sentence extraction
-or first-body-paragraph selection. The complete original Goal and exact Work/revision
-metadata remain readable, ordinarily when interpretation is unavailable and through
-an opening link to the native original-instructions disclosure when present. The full category classification, counts,
-omissions and Purpose remain intact. Host interpretation is attributed independently
-of the UI locale and keeps its original requested language.
+The Viewer presents Overview and Work as its two primary destinations. Overview
+contains the canonical Project Purpose and recent Work cards. Work selection uses
+full-width cards with an authored heading/synopsis when available, the recorded
+lifecycle state and a truthful observation timestamp. No heading or synopsis is
+inferred from another paragraph; absent interpretation retains the complete original
+Goal under a neutral Work label. Cards do not repeat state histories, independent
+verification/review/acceptance, identity disclosures, next-step lists or diagnostic
+panels. Those records remain inspectable in the selected document's full evidence.
+The complete Work classification and bounded selection remain projection data;
+Overview does not reinterpret a Goal as Purpose or a recent Work as completed.
 
-Ordinary Work selection uses concise cards, with document-style detail and code reading.
-Live and offline reading share Overview/Work primary navigation, full-width
-catalog cards, and the selected design's left-offset reader document. Code,
-Decisions, Analysis, Documents, language and memory remain in secondary disclosures.
-The document opens with heading/lead, independent recorded status and explicit
-explanation/limits/original-instructions/full-evidence navigation. Complete generated
-limitations follow the narrative; real dependency failures and independent recorded
-verification/review/acceptance remain at the opening. Claim-linked Source panels: beside the prose on wide screens, full-width on narrow screens,
-with an exact paragraph return. Native fragments preserve script-free navigation;
-an inline Source appendix remains the fallback without CSS relational selectors.
-The live-only bundled presentation script restores origin scroll/focus on return or
-Escape, opens linked native disclosures and cycles narrow-panel keyboard controls.
-Its exact digest is the sole HTTP script grant; it has no network, persistence,
-generation or domain-state authority. Offline publication remains script-free.
-The opening limits link reaches the complete limitation units without replacing
-those units with a generated summary. Full original evidence, provenance and history remain inspectable.
-Narrative order within each role is preserved; heading, synopsis and critical limits
-have explicit placement rather than inheriting the first paragraph's role. All screens
-use the same current reader envelope and maintained live/offline components. The
-current route/CLI/snapshot contract is maintained in the
-[Viewer README](../../crates/volicord-viewer/README.md).
+Selected documents use the user-selected reading design: breadcrumb, heading/lead,
+concise recorded lifecycle strip, interpretation attribution, reading/limits/original
+instructions/full-evidence actions, supported narrative, complete generated limits,
+and two native record disclosures. Independent recorded facts and chronological
+history retain their authority within full evidence; original instructions preserve
+the complete Goal and exact revision. No extra empty category, related-data or tool
+section is inserted into ordinary document reading. Relevant Decisions, Learning,
+questions and detailed code remain inspectable through full evidence. Tool routes
+retain their separate Operations authority, outside the two-item reading masthead.
+The repository explanation is a separate document reached from Overview when no
+Work exists; it never supplies canonical Purpose or a fabricated Work identity.
+
+Each Source citation opens a claim-specific Source point beside the document on
+wide screens and across the viewport on narrow screens. Its exact claim quotation,
+Source identity, observed file coordinates and original bytes are preserved, with
+truthful bounded/before-state notices and a return to the cited paragraph. Native
+fragments provide script-free offline navigation; browsers without relational CSS
+selectors retain the inline appendix. Offline publication contains the same page
+components, selecting one screen at a time through fragments rather than stacking
+all routes into Overview. Evidence remains available without a running Runtime.
+Live pages add only a bundled presentation script for disclosure opening, origin
+scroll/focus restoration, Escape and narrow-panel keyboard containment. The exact
+script digest is the sole HTTP script grant. It performs no requests, persistence,
+generation, retention renewal or domain-state writes. Interpretation language and
+canonical/source authority are independent of UI locale. The current route/CLI/
+snapshot contract is maintained in the [Viewer README](../../crates/volicord-viewer/README.md).
 
 Shared projection selection has three meanings: `LatestWork` resolves the actual
 Goal identity associated with the latest Checkpoint, or the newest Goal when no

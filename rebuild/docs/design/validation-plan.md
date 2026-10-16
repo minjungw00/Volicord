@@ -2716,7 +2716,7 @@ establish no new naturalistic session, authenticated reviewer identity or Phase 
 
 ### Explicit Product host explanation support
 
-Focused `grounded_reader::overview_reads_available_work_before_missing_project_context`
+Focused `grounded_reader::overview_uses_purpose_and_recent_cards_without_empty_legacy_sections`
 compares actual HTTP and snapshot consumers with independent no-Purpose/no-Checkpoint
 inputs, both before and after explicit authored explanation recording. It retains Open
 Work and exact detail links without inventing current/completed state. Optional absolute
@@ -2874,7 +2874,7 @@ state through the complete restart consumer and reject revived generated content
 
 ### Work heading presentation support
 
-Actual `grounded_reader::overview_reads_available_work_before_missing_project_context`
+Actual `grounded_reader::overview_uses_purpose_and_recent_cards_without_empty_legacy_sections`
 seeds a long mixed-language Goal, no Project Purpose and no Checkpoint, with and
 without a labeled authored interpretation. Without an authored Heading unit, independent assertions require neutral
 localized headings, the exact full Goal quotation and its original-language boundary,
@@ -2897,8 +2897,13 @@ missing-before two-line files and two observed regions of maintained production
 Source-reading code. It makes no model call. Run `grounded_reader_browser.py`
 with that `fixtures.json`, candidate `--bin-dir`, existing `--chromium` and
 `--playwright-module` via `validate focused`. The driver checks exact original
-paragraph/Source bytes, output identity, attributed behavior claims, verification
-before code, keyboard code regions and retained-before navigation. Changed/missing
+paragraph/Source bytes, output identity, attributed behavior claims, concise cards,
+document evidence, keyboard code regions and retained-before navigation. It also
+checks the two-link masthead, absence of obsolete menus/card disclosures/empty
+category structures, full-width cards and left-offset document geometry. Both
+live and offline Overview/index/document journeys select a single screen.
+The representative authored control includes independent heading and synopsis
+units; no reference design prose supplies Product facts. Changed/missing
 Sources must withhold prose and expose the actual dependency diagnostic outside
 any disclosure. Offline reads run with the Runtime unavailable and browser network
 disabled. Six serial plus eighteen concurrent actual HTTP reads per case cover

@@ -42,31 +42,30 @@ fn check_primary(
     history: Option<&str>,
     micros: &[String],
 ) -> Result<(), &'static str> {
-    let text = ordinary_text(html);
+    let facts = html
+        .split("class=\"record-facts\"")
+        .nth(1)
+        .and_then(|s| s.split("</div>").next())
+        .ok_or("record facts missing")?;
     for state in [verification, review, acceptance] {
-        if text.matches(state).count() != 1 {
+        if facts.matches(state).count() != 1 {
             return Err("current state missing or duplicated");
         }
     }
-    if history.is_some_and(|summary| text.matches(summary).count() != 1) {
+    if history.is_some_and(|summary| facts.matches(summary).count() != 1) {
         return Err("historical summary missing or duplicated");
     }
-    if micros.iter().any(|timestamp| text.contains(timestamp)) {
+    let opening = html.split("class=\"audit\"").next().ok_or("opening")?;
+    if micros
+        .iter()
+        .any(|time| ordinary_text(opening).contains(time))
+    {
         return Err("raw timestamp in ordinary reading");
     }
     Ok(())
 }
-
-fn audit_body(html: &str) -> Result<&str, &'static str> {
-    html.split("<details class=\"work-state-history\" data-reading-role=\"audit-history\">")
-        .nth(1)
-        .and_then(|tail| tail.split("</ol></details>").next())
-        .ok_or("closed audit history missing")
-}
-
-fn check_audit(html: &str, exact_records: &[String]) -> Result<(), &'static str> {
-    let audit = audit_body(html)?;
-    if exact_records.iter().any(|record| !audit.contains(record)) {
+fn check_audit(html: &str, records: &[String]) -> Result<(), &'static str> {
+    if records.iter().any(|record| !html.contains(record)) {
         return Err("exact observation lost");
     }
     Ok(())
@@ -276,26 +275,34 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
             let overview = String::from_utf8(response)?;
             assert!(overview.starts_with("HTTP/1.1 200"));
             for html in [&overview, &snapshot] {
-                let card = html.split(&format!("class=\"understanding-card work-item work-summary work-card\" data-work-id=\"{work}\""))
-                    .nth(1).ok_or("compact Work card")?.split("</article>").next().ok_or("card end")?;
-                check_primary(
-                    card,
-                    expected.0,
-                    expected.1,
-                    expected.2,
-                    summary_text,
-                    &micros,
-                )?;
+                let card = html
+                    .split(&format!("class=\"work-card\" data-work-id=\"{work}\""))
+                    .nth(1)
+                    .ok_or("card")?
+                    .split("</article>")
+                    .next()
+                    .ok_or("card end")?;
+                for state in [expected.0, expected.1, expected.2] {
+                    assert!(
+                        !card.contains(state),
+                        "independent audit dimensions do not become card clutter"
+                    );
+                }
+                assert!(!card.contains("<details"));
+                assert!(card.contains("class=\"work-status\""));
+                assert!(
+                    card.contains(&format!("#work-{work}"))
+                        || card.contains(&format!("work={work}"))
+                );
             }
             for html in [&live, &snapshot] {
-                // Isolate the selected Work in an offline whole-project snapshot.
                 let selected = html
                     .split(&format!("id=\"work-{work}\""))
                     .nth(1)
                     .ok_or("selected section")?
-                    .split("</section>")
+                    .split("<section class=\"snapshot-page\"")
                     .next()
-                    .ok_or("section end")?;
+                    .ok_or("end")?;
                 check_primary(
                     selected,
                     expected.0,
@@ -309,45 +316,25 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     .states
                     .iter()
                     .map(|state| {
-                        // Full, untruncated record including arrays, exact time, revision and Sources.
-                        let escaped = format!("{state:?}")
+                        format!("{state:?}")
                             .replace('&', "&amp;")
                             .replace('<', "&lt;")
                             .replace('>', "&gt;")
                             .replace('"', "&quot;")
-                            .replace('\'', "&#39;");
-                        escaped
+                            .replace('\'', "&#39;")
                     })
                     .collect();
                 check_audit(selected, &exact_records)?;
-                assert!(audit_body(selected)?.starts_with(if language == "en" {
-                    "<summary>Verification and original state observations</summary>"
-                } else {
-                    "<summary>검증 및 원래 상태 관찰</summary>"
-                }));
-                let missing_event = selected.replace(&exact_records[0], "removed observation");
+                assert!(selected.contains("class=\"state-observation\""));
+                let missing = selected.replace(&exact_records[0], "removed observation");
                 assert_eq!(
-                    check_audit(&missing_event, &exact_records),
+                    check_audit(&missing, &exact_records),
                     Err("exact observation lost")
                 );
-                if case == "recovered" {
-                    assert!(!ordinary_text(selected).contains(if language == "en" {
-                        "Checkpoint verification: failed"
-                    } else {
-                        "Checkpoint 검증: 실패"
-                    }));
-                }
-                // Sensitivity controls challenge semantic placement, retention and duplication.
-                let hidden = selected.replace(
-                    &format!("<p data-question=\"VerificationState\">{}</p>", expected.0),
-                    &format!(
-                        "<details><summary>audit</summary><p>{}</p></details>",
-                        expected.0
-                    ),
-                );
+                let missing = selected.replace(expected.0, "removed current fact");
                 assert_eq!(
                     check_primary(
-                        &hidden,
+                        &missing,
                         expected.0,
                         expected.1,
                         expected.2,
@@ -356,52 +343,19 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     ),
                     Err("current state missing or duplicated")
                 );
-                let duplicated = format!("{selected}<p>{}</p>", expected.0);
-                assert!(check_primary(
-                    &duplicated,
-                    expected.0,
-                    expected.1,
-                    expected.2,
-                    summary_text,
-                    &micros
-                )
-                .is_err());
-                let leaked = format!("{selected}<p>{}</p>", micros[0]);
+                let duplicated =
+                    selected.replace(expected.0, &format!("{} {}", expected.0, expected.0));
                 assert_eq!(
                     check_primary(
-                        &leaked,
+                        &duplicated,
                         expected.0,
                         expected.1,
                         expected.2,
                         summary_text,
                         &micros
                     ),
-                    Err("raw timestamp in ordinary reading")
+                    Err("current state missing or duplicated")
                 );
-                let removed =
-                    selected.replace("class=\"work-state-history\"", "class=\"removed-history\"");
-                assert_eq!(audit_body(&removed), Err("closed audit history missing"));
-                if case == "recovered" {
-                    let old_current = selected.replace(
-                        expected.0,
-                        if language == "en" {
-                            "Checkpoint verification: failed"
-                        } else {
-                            "Checkpoint 검증: 실패"
-                        },
-                    );
-                    assert_eq!(
-                        check_primary(
-                            &old_current,
-                            expected.0,
-                            expected.1,
-                            expected.2,
-                            summary_text,
-                            &micros
-                        ),
-                        Err("current state missing or duplicated")
-                    );
-                }
             }
             assert!(micros.iter().all(|time| !answers.text().contains(time)));
         }

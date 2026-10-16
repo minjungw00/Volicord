@@ -9,7 +9,7 @@ use volicord_viewer::{
     ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer, ViewerTool, ViewerView,
 };
 
-// Code contains nested repository explanation and cited-Source sections. Read
+// Code contains nested structure and diagnostics sections. Read
 // its complete outer section rather than stopping at the first child's end.
 fn code_section(html: &str) -> Result<String, Box<dyn std::error::Error>> {
     let start = html.find("<section id=\"code\"").ok_or("Code section")?;
@@ -62,15 +62,13 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
         for key in ["change", "verification_only", "later_change"] {
             assert!(page.contains(&fixture.checkpoints[key].to_string()));
         }
-        let states = ["reader-status", "fact-states"]
-            .into_iter()
-            .map(|class| {
-                page.split(&format!("class=\"{class}\""))
-                    .nth(1)
-                    .and_then(|s| s.split("</div>").next())
-                    .unwrap_or("")
-            })
-            .collect::<String>();
+        let states = page
+            .split("class=\"record-facts\"")
+            .nth(1)
+            .ok_or("facts")?
+            .split("</div>")
+            .next()
+            .ok_or("facts end")?;
         for expected in if locale == "en" {
             ["completed", "not run", "not requested", "rejected"]
         } else {
@@ -111,7 +109,7 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
     assert!(code.contains("python/worker.py"));
     assert!(code.contains("CallsSyntactically"));
     let without_purpose = exchange(&server, "/?view=overview");
-    assert!(without_purpose.contains("Project Understanding"));
+    assert!(without_purpose.contains("PROJECT OVERVIEW"));
     assert!(!without_purpose.contains("request_authenticity"));
     assert!(fixture.repository.is_dir());
     assert!(before.context_items.iter().any(|c| c.id == fixture.purpose));
@@ -136,6 +134,8 @@ fn malformed_removed_and_foreign_selectors_never_fallback() -> Result<(), Box<dy
         "/?view=invalid",
         "/?view=work&work=bad",
         "/?view=overview&work=bad",
+        "/?view=repository&work=bad",
+        "/?view=repository&scope=work",
         "/?view=code",
         "/?view=code&scope=repository&work=bad",
         "/?view=tools&tool=invalid",
@@ -198,7 +198,7 @@ fn bounded_whole_snapshot_has_only_unique_existing_fragment_targets(
         .split(&format!("id=\"work-{}\"", fixture.goals["older"]))
         .nth(1)
         .ok_or("older Work section")?
-        .split("</section>")
+        .split("<section class=\"snapshot-page\"")
         .next()
         .ok_or("section end")?;
     assert!(older.contains(&fixture.decisions["explicit"].to_string()));
@@ -833,10 +833,10 @@ fn ordinary_hierarchy_separates_catalog_detail_and_audit_in_both_locales(
         );
         assert!(works.contains("data-work-state=\"completed\""));
         assert!(works.contains("data-work-state=\"open\""));
-        assert!(works.contains("data-question=\"RecordedNextStep\""));
+        assert!(!works.contains("data-question=\"RecordedNextStep\""));
         assert!(
-            works.contains("data-question=\"VerificationCoverage\""),
-            "historical verification must remain ordinary"
+            !works.contains("data-question=\"VerificationCoverage\""),
+            "cards leave verification history in the document record"
         );
         assert!(!works.contains("work-audit"));
         assert!(!works.contains("result-evidence"));
@@ -847,15 +847,12 @@ fn ordinary_hierarchy_separates_catalog_detail_and_audit_in_both_locales(
                 f.goals["older"]
             ),
         );
+        assert!(detail.contains("class=\"doc-head\""));
         assert!(
-            detail.find("answer-unavailable").ok_or("answer")?
-                < detail.find("class=\"work-audit\"").ok_or("audit")?
+            detail.find("class=\"audit-links\"").ok_or("actions")?
+                < detail.find("class=\"record-box\"").ok_or("record")?
         );
-        assert!(detail.contains(if locale == "en" {
-            "Selected Work"
-        } else {
-            "선택한 작업"
-        }));
+        assert!(detail.contains("data-question=\"VerificationCoverage\""));
         let decision = exchange(
             &server,
             &format!(
@@ -1487,7 +1484,7 @@ fn presentation_keeps_subject_navigation_and_readable_history_before_raw_evidenc
         );
         assert!(detail
             .contains("<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">"));
-        assert!(detail.contains("class=\"subject-navigation breadcrumb\""));
+        assert!(detail.contains("class=\"breadcrumb\""));
         let nav = detail
             .split("<nav aria-label=\"Viewer\">")
             .nth(1)
@@ -1502,7 +1499,7 @@ fn presentation_keeps_subject_navigation_and_readable_history_before_raw_evidenc
             "primary navigation contains only Overview and Work"
         );
         let history = detail
-            .split("class=\"verification-timeline\"")
+            .split("class=\"state-observation\"")
             .nth(1)
             .ok_or("timeline")?;
         assert!(history.contains(if locale == "en" {
@@ -1510,16 +1507,11 @@ fn presentation_keeps_subject_navigation_and_readable_history_before_raw_evidenc
         } else {
             "검증"
         }));
-        assert!(
-            history.find("<li>").ok_or("history item")?
-                < history.find("<pre>").ok_or("exact history")?
-        );
-        assert!(detail.contains("data-reading-role=\"audit-history\""));
+        assert!(history.find("<p>").ok_or("state")? < history.find("<pre>").ok_or("identity")?);
+        assert!(detail.contains("class=\"record-facts\""));
         let overview = exchange(&server, &format!("/?view=overview&locale={locale}"));
         assert!(
-            overview
-                .find("class=\"project-goal project-purpose\"")
-                .ok_or("purpose")?
+            overview.find("class=\"project-goal\"").ok_or("purpose")?
                 < overview.find("class=\"work-list\"").ok_or("works")?
         );
     }
@@ -1553,17 +1545,15 @@ fn language_controls_preserve_page_subject_and_arbitrary_request_without_writes(
     for fields in cases {
         let page = exchange(&server, &format!("/?{fields}&locale=ko&language=fr-CA"));
         assert!(page.starts_with("HTTP/1.1 200"));
-        let settings = page
-            .split("class=\"reading-settings\"")
-            .nth(1)
-            .ok_or("settings")?;
-        assert!(settings.contains("method=\"get\" action=\"/\""));
-        assert!(settings.contains("name=\"language\" value=\"fr-CA\""));
-        assert!(settings.contains(&format!(
-            "{}&amp;locale=en&amp;language=fr-CA",
-            fields.replace('&', "&amp;")
-        )));
-        assert!(settings.contains("내용을 생성하거나 번역하지 않습니다"));
+        assert!(
+            !page.contains("class=\"reading-settings\""),
+            "the reference masthead has no extra language/tool menu"
+        );
+        assert!(
+            page.contains("language=fr-CA"),
+            "navigation preserves the requested content language"
+        );
+        assert!(page.contains("<html lang=\"ko\">"));
     }
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
@@ -2093,6 +2083,34 @@ fn code_diagnostics_follow_supported_meaning_with_exact_scoped_counts_and_snapsh
             || summary.contains("Code explanation unavailable")
     );
     assert!(!page.contains("data-explanation-state=\"Current\""));
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn repository_document_is_separate_from_overview_and_preserves_repository_selection(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = fixture()?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let request = ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::Korean,
+        view: ViewerView::RepositoryExplanation,
+        requested_language: "fr-CA".into(),
+        guarded_request: None,
+    };
+    let page = viewer.render(&request, "authenticity")?.html;
+    assert!(page.contains("id=\"repository-explanation\""));
+    assert!(
+        !page.contains("data-work-id="),
+        "repository document never selects a Work"
+    );
+    assert!(page.contains("class=\"doc-head\""));
+    assert!(
+        !page.contains("id=\"code\""),
+        "structure inspection is a separate destination"
+    );
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }

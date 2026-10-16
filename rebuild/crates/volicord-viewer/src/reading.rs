@@ -26,179 +26,45 @@ fn link(
         .map(|id| format!("#{id}"))
         .unwrap_or_else(|| url(request, &view));
     html.push_str(&format!(
-        "<a class=\"nav-link\" href=\"{}\">{}</a>",
+        "<a href=\"{}\">{}</a>",
         escape(&href),
         escape(label)
     ));
 }
-pub(super) fn navigation(html: &mut String, request: &ViewerRequest, snapshot: bool) {
-    html.push_str("<nav aria-label=\"Viewer\"><ul class=\"view-nav\">");
-    for (position, (view, label, id)) in [
+pub(super) fn navigation(html: &mut String, r: &ViewerRequest, snapshot: bool) {
+    html.push_str("<nav aria-label=\"Viewer\">");
+    for (view, label, id) in [
         (
             ViewerView::Overview,
-            text(request.locale, "Overview", "개요"),
+            text(r.locale, "Overview", "개요"),
             "overview",
         ),
         (
             ViewerView::Work { work: None },
-            text(request.locale, "Work", "작업"),
+            text(r.locale, "Work", "작업"),
             "works",
         ),
-        (
-            ViewerView::Code {
-                scope: match request.view.selection() {
-                    volicord_projections::WorkSelector::ExactWork(id) => CodeScope::Work(Some(id)),
-                    _ => CodeScope::Repository,
-                },
-                entity: None,
+    ] {
+        let href = if snapshot {
+            format!("#{id}")
+        } else {
+            url(r, &view)
+        };
+        let selected = !snapshot && r.view.key() == view.key();
+        html.push_str(&format!(
+            "<a class=\"nav-link\" href=\"{}\"{}>{}</a>",
+            escape(&href),
+            if selected {
+                " aria-current=\"page\""
+            } else {
+                ""
             },
-            text(request.locale, "Code Understanding", "코드 이해"),
-            "code",
-        ),
-        (
-            ViewerView::Decisions { decision: None },
-            text(request.locale, "Decisions", "결정"),
-            "decision-reading",
-        ),
-        (
-            ViewerView::Tools {
-                tool: ViewerTool::Status,
-            },
-            text(request.locale, "Analysis", "분석"),
-            "health",
-        ),
-        (
-            ViewerView::Tools {
-                tool: ViewerTool::Documents,
-            },
-            text(request.locale, "Documents", "문서"),
-            "documents",
-        ),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        if position == 2 {
-            html.push_str("</ul></nav><details class=\"viewer-menu utility-navigation\"><summary aria-label=\"More views\">⋯</summary><nav aria-label=\"Additional views\"><ul class=\"view-nav\">");
-        }
-        html.push_str("<li>");
-        let selected = !snapshot
-            && match (&request.view, &view) {
-                (ViewerView::Tools { tool }, ViewerView::Tools { tool: target }) => tool == target,
-                _ => request.view.key() == view.key(),
-            };
-        let start = html.len();
-        link(html, request, view, label, snapshot.then_some(id));
-        if selected {
-            html.insert_str(start + 2, " aria-current=\"page\"");
-        }
-        html.push_str("</li>");
-    }
-    html.push_str("</ul></nav>");
-    if !snapshot {
-        html.push_str("<details class=\"utility-navigation\"><summary>");
-        html.push_str(text(request.locale, "Memory tools", "기억 도구"));
-        html.push_str("</summary><nav aria-label=\"Tools\"><ul class=\"view-nav\">");
-        for (tool, label) in [
-            (ViewerTool::Memory, text(request.locale, "Memory", "기억")),
-            (
-                ViewerTool::Evidence,
-                text(request.locale, "Evidence", "근거"),
-            ),
-        ] {
-            html.push_str("<li>");
-            let start = html.len();
-            link(html, request, ViewerView::Tools { tool }, label, None);
-            if request.view == (ViewerView::Tools { tool }) {
-                html.insert_str(start + 2, " aria-current=\"page\"");
-            }
-            html.push_str("</li>");
-        }
-        html.push_str("</ul></nav></details>");
-        if matches!(
-            request.view,
-            ViewerView::Tools {
-                tool: ViewerTool::Memory | ViewerTool::Evidence
-            }
-        ) {
-            let marker = "<details class=\"utility-navigation\">";
-            if let Some(index) = html.rfind(marker) {
-                html.insert_str(index + "<details".len(), " open");
-            }
-        }
-    }
-    if snapshot {
-        html.push_str("<details class=\"utility-navigation\"><summary>");
-        html.push_str(text(request.locale, "Evidence", "근거"));
-        html.push_str("</summary><p>");
-        html.push_str(text(
-            request.locale,
-            "This file works offline without a running Viewer or Runtime.",
-            "이 파일은 실행 중인 뷰어나 런타임 없이 오프라인으로 읽습니다.",
+            label
         ));
-        html.push_str("</p><nav aria-label=\"Tools\"><ul class=\"view-nav\"><li>");
-        link(
-            html,
-            request,
-            ViewerView::Tools {
-                tool: ViewerTool::Evidence,
-            },
-            text(request.locale, "Evidence", "근거"),
-            Some("diagnostics"),
-        );
-        html.push_str("</li></ul></nav></details>");
     }
-    reading_settings(html, request, snapshot);
-    html.push_str("</details>");
+    html.push_str("</nav>");
 }
 
-fn reading_settings(html: &mut String, r: &ViewerRequest, snapshot: bool) {
-    html.push_str("<details class=\"reading-settings\"><summary>");
-    html.push_str(text(r.locale, "Language", "언어"));
-    html.push_str("</summary>");
-    if snapshot {
-        html.push_str(&format!(
-            "<p>{}: {}<br>{}: <bdi>{}</bdi></p>",
-            text(r.locale, "Interface", "화면"),
-            text(r.locale, "English", "한국어"),
-            text(
-                r.locale,
-                "Requested explanation language",
-                "요청한 설명 언어"
-            ),
-            escape(&r.requested_language)
-        ));
-    } else {
-        html.push_str("<nav aria-label=\"Interface language\">");
-        for (locale, label) in [
-            (ViewerLocale::English, "English"),
-            (ViewerLocale::Korean, "한국어"),
-        ] {
-            let mut localized = r.clone();
-            localized.locale = locale;
-            html.push_str(&format!(
-                "<a data-locale=\"{}\" href=\"{}\"{}>{}</a>",
-                locale_key(locale),
-                escape(&url(&localized, &r.view)),
-                if locale == r.locale {
-                    " aria-current=\"true\""
-                } else {
-                    ""
-                },
-                label
-            ));
-        }
-        html.push_str("</nav><form method=\"get\" action=\"/\">");
-        for (key, value) in r.view.fields() {
-            hidden(html, key, &value);
-        }
-        hidden(html, "locale", locale_key(r.locale));
-        html.push_str(&format!("<label for=\"reading-language\">{}</label><input id=\"reading-language\" name=\"language\" value=\"{}\"><button type=\"submit\">{}</button></form>", text(r.locale, "Requested explanation language", "요청한 설명 언어"), escape(&r.requested_language), text(r.locale, "Apply", "적용")));
-    }
-    html.push_str("<p>");
-    html.push_str(text(r.locale, "Original quotations keep their language. Changing the request reads retained explanations; it does not generate or translate content.", "원문 인용은 원래 언어를 유지합니다. 언어 변경은 보존된 설명을 읽으며 내용을 생성하거나 번역하지 않습니다."));
-    html.push_str("</p></details>");
-}
 pub(super) fn runtime_blockers(
     html: &mut String,
     r: &ViewerRequest,
@@ -342,354 +208,115 @@ pub(super) fn diagnostics(
 }
 fn overview(
     html: &mut String,
-    request: &ViewerRequest,
+    r: &ViewerRequest,
     p: &ProjectProjection,
     u: &ProjectUnderstanding,
     snapshot: bool,
 ) {
-    section_start(
-        html,
-        "overview",
-        text(request.locale, "Project Understanding", "프로젝트 이해"),
-    );
-    html.push_str("<p class=\"eyebrow\">PROJECT OVERVIEW</p>");
+    html.push_str("<section id=\"overview\" class=\"snapshot-page\"><p class=\"eyebrow\">PROJECT OVERVIEW</p>");
     heading(html, 1, &p.overview.project_name);
+    project_purpose(html, r, u);
+    // A repository document is an independent reading destination, never a
+    // fabricated Work or a replacement for canonical Project Purpose.
     if p.work_count == 0 {
-        project_purpose(html, request, u);
-        repository_explanation(html, request, p);
-    }
-    if !u.project_purpose.is_empty() && p.work_count != 0 {
-        project_purpose(html, request, u);
-    }
-    for populated in [true, false] {
-        if !populated {
-            if u.project_purpose.is_empty() && p.work_count != 0 {
-                project_purpose(html, request, u);
-            }
-            html.push_str("<nav class=\"overview-jumps\" aria-label=\"Overview sections\">");
-            for (id, label) in [
-                (
-                    "overview-current",
-                    text(request.locale, "Current Work", "현재 작업"),
-                ),
-                (
-                    "overview-remaining",
-                    text(request.locale, "Remaining Work", "남은 작업"),
-                ),
-                (
-                    "overview-issues",
-                    text(request.locale, "Questions and constraints", "질문 및 제약"),
-                ),
-                (
-                    "overview-next",
-                    text(request.locale, "Next actions", "다음 행동"),
-                ),
-            ] {
-                link(html, request, ViewerView::Overview, label, Some(id));
-            }
-            html.push_str("</nav>");
-        }
-        for (id, label, works) in [
-            (
-                "overview-current",
-                text(request.locale, "Current Work", "현재 작업"),
-                &u.work_overview.current,
-            ),
-            (
-                "overview-completed",
-                text(request.locale, "Recent outcomes", "최근 결과"),
-                &u.work_overview.completed,
-            ),
-            (
-                "overview-remaining",
-                text(request.locale, "Remaining Work", "남은 작업"),
-                &u.work_overview.remaining,
-            ),
-        ] {
-            if works.items.is_empty() == populated {
-                continue;
-            }
-            html.push_str(&format!("<div class=\"section-heading\"><div><p class=\"eyebrow\">{}</p><h3 id=\"{id}\">{}</h3></div>",
-                match id { "overview-current" => "CURRENT WORK", "overview-completed" => "RECENT WORK", _ => "REMAINING WORK" }, escape(label)));
-            link(
-                html,
-                request,
-                ViewerView::Work { work: None },
-                text(request.locale, "All Work →", "전체 작업 보기 →"),
-                snapshot.then_some("works"),
-            );
-            html.push_str("</div>");
-            if works.items.is_empty() && works.complete {
-                empty_state(
-                    html,
-                    text(
-                        request.locale,
-                        "No recorded Work in this section.",
-                        "이 항목에 기록된 작업이 없습니다.",
-                    ),
-                );
-            }
-            html.push_str("<div class=\"work-list\">");
-            for work in &works.items {
-                work_summary(html, request, p, work, snapshot);
-            }
-            html.push_str("</div>");
-            html.push_str("<details class=\"category-details\"><summary>");
-            html.push_str(text(
-                request.locale,
-                "Work counts and omissions",
-                "작업 수 및 생략",
-            ));
-            html.push_str("</summary>");
-            html.push_str(&format!(
-                "<p class=\"category-count\">{}: {} · {}: {} · {}: {}</p>",
-                text(request.locale, "Total", "전체"),
-                if works.complete {
-                    works.total.to_string()
-                } else {
-                    text(request.locale, "unknown", "알 수 없음").into()
-                },
-                text(request.locale, "Displayed", "표시"),
-                works.items.len(),
-                text(request.locale, "Omitted", "생략"),
-                if works.complete {
-                    works.omitted.to_string()
-                } else {
-                    text(request.locale, "unknown", "알 수 없음").into()
-                }
-            ));
-            html.push_str("</details>");
-            if works.omitted > 0 {
-                empty_state(
-                    html,
-                    text(
-                        request.locale,
-                        "Additional Works are available; open Work navigation.",
-                        "추가 작업이 있습니다. 작업 탐색을 여세요.",
-                    ),
-                );
-            }
-        }
-    }
-    html.push_str(&format!(
-        "<h3 id=\"overview-issues\">{}</h3>",
-        text(
-            request.locale,
-            "Blockers and uncertainty",
-            "차단 문제 및 불확실성"
-        )
-    ));
-    {
-        if u.open_questions.is_empty()
-            && u.risks_assumptions_and_limits.is_empty()
-            && u.unresolved_work_grouping.is_empty()
-        {
-            empty_state(
-                html,
-                text(
-                    request.locale,
-                    "No questions or constraints are included in this bounded view.",
-                    "이 제한된 보기에 포함된 질문이나 제약이 없습니다.",
-                ),
-            );
-        }
-        for question in &u.open_questions {
-            empty_state(html, &question.prompt);
-        }
-        for risk in &u.risks_assumptions_and_limits {
-            empty_state(html, &risk.statement);
-        }
-        for unresolved in &u.unresolved_work_grouping {
-            empty_state(html, &unresolved.reason);
-        }
-    }
-    contextual_limits(html, request, p, snapshot);
-    html.push_str(&format!(
-        "<h3 id=\"overview-next\">{}</h3>",
-        text(request.locale, "Recorded next steps", "기록된 다음 단계")
-    ));
-    for work in &u.work_overview.next_steps.items {
-        let answers = volicord_projections::work_answers(
-            work,
-            &request.requested_language,
-            request.locale.fixed(),
-        );
-        if let Some(answer) = answers.next_step_answer() {
-            html.push_str(&format!(
-                "<p class=\"next-action\">{}</p>",
-                escape(&answer.text)
-            ));
-        }
-    }
-    if u.work_overview.next_steps.total == 0 && u.work_overview.next_steps.complete {
-        empty_state(
-            html,
-            text(
-                request.locale,
-                "No Checkpoint next action is recorded. This alone does not establish whether task instructions or suggestions exist.",
-                "Checkpoint에 기록된 다음 행동이 없습니다. 작업 지시나 제안의 유무는 이 사실만으로 알 수 없습니다.",
-            ),
-        );
-    }
-    section_end(html);
-}
-fn project_purpose(html: &mut String, request: &ViewerRequest, u: &ProjectUnderstanding) {
-    html.push_str("<div class=\"project-goal project-purpose\">");
-    heading(
-        html,
-        3,
-        text(request.locale, "Project purpose", "프로젝트 목적"),
-    );
-    if u.project_purpose.is_empty() {
-        empty_state(
-            html,
-            text(
-                request.locale,
-                "No source-grounded Project purpose is recorded.",
-                "source-grounded 프로젝트 목적이 기록되지 않았습니다.",
-            ),
-        );
-    }
-    for purpose in &u.project_purpose {
-        html.push_str("<p data-statement-role=\"verified-canonical\" lang=\"\">");
-        html.push_str(&escape(&purpose.statement));
-        html.push_str("</p>");
-    }
-    html.push_str("</div>");
-}
-fn work_summary(
-    html: &mut String,
-    r: &ViewerRequest,
-    p: &ProjectProjection,
-    w: &UnderstandingWork,
-    snapshot: bool,
-) {
-    let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
-    let (title, title_basis, title_language) = work_reading_heading(w, r);
-    html.push_str(&format!("<article class=\"understanding-card work-item work-summary work-card\" data-work-id=\"{}\" data-work-state=\"{}\"><div class=\"work-card-heading\"><h4 lang=\"{}\" data-title-basis=\"{}\">",w.work_item_id,understanding_work_state_key(w.state),escape(&title_language),title_basis));
-    let fragment = snapshot.then(|| format!("work-{}", w.work_item_id));
-    link(
-        html,
-        r,
-        ViewerView::Work {
-            work: Some(w.work_item_id),
-        },
-        &title,
-        fragment.as_deref(),
-    );
-    html.push_str(&format!(
-        "</h4><p class=\"work-state\"><span class=\"badge\">{}</span></p></div>",
-        escape(understanding_work_state_label(w.state, r.locale))
-    ));
-    if let Some(answer) = answers
-        .synopsis()
-        .or_else(|| answers.prose.iter().find(|a| a.question == "Purpose"))
-    {
-        html.push_str(&format!("<p class=\"work-synopsis\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</p>",escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
-    } else {
-        for answer in &answers.prose {
-            html.push_str(&format!(
-                "<p class=\"explanation-availability\" data-question=\"{}\">{}</p>",
-                escape(&answer.question),
-                escape(&answer.text)
-            ));
-        }
-        work_goal_opening(html, r, w);
-    }
-    explanation_diagnostic(html, r, &answers);
-    // Material recorded coverage/failure information stays ordinary reading;
-    // all independent states, exact Goal and identity remain in the record box.
-    html.push_str("<div class=\"card-status-strip\">");
-    for fact in answers.facts.iter().filter(|a| {
-        matches!(
-            a.question.as_str(),
-            "HistoricalAdversity"
-                | "VerificationCoverage"
-                | "SourceEvidenceGap"
-                | "RecordedLimits"
-                | "VerificationState"
-                | "UserReview"
-                | "UserAcceptance"
-                | "SourceExecutionObservation"
-        )
-    }) {
         html.push_str(&format!(
-            "<p class=\"summary-status\" data-question=\"{}\">{}</p>",
-            escape(&fact.question),
-            escape(&fact.text)
-        ));
-    }
-    html.push_str("</div>");
-    let (instant, calendar) = observation_time(w.observed_at);
-    html.push_str(&format!("<div class=\"work-card-footer\"><div class=\"work-dates\"><span>{}</span><time datetime=\"{}\" data-recorded-at=\"{}\">{}</time></div>",text(r.locale,"Observed","관측"),instant,w.observed_at.as_unix_micros(),calendar));
-    link(
-        html,
-        r,
-        ViewerView::Work {
-            work: Some(w.work_item_id),
-        },
-        text(r.locale, "Open work →", "작업 읽기 →"),
-        fragment.as_deref(),
-    );
-    html.push_str("</div><details class=\"summary-records\"><summary>");
-    html.push_str(text(
-        r.locale,
-        "Recorded result and direction",
-        "기록된 결과·방향",
-    ));
-    html.push_str(&format!(
-        "</summary><p class=\"record-meta work-identity\">Work {} · {} {}</p>",
-        w.work_item_id,
-        text(r.locale, "Goal revision", "목표 리비전"),
-        w.reading.goal.basis.revision
-    ));
-    if answers.provenance.is_some() {
-        work_goal_opening(html, r, w);
-    }
-    for answer in answers.prose.iter().filter(|a| a.question == "Limits") {
-        html.push_str(&format!(
-            "<p class=\"reader-limit\" data-question=\"Limits\" lang=\"{}\">{}</p>",
-            escape(&content_language_tag(&r.requested_language)),
-            escape(&answer.text)
-        ));
-    }
-    for fact in &answers.facts {
-        html.push_str(&format!(
-            "<p class=\"summary-status\" data-question=\"{}\">{}</p>",
-            escape(&fact.question),
-            escape(&fact.text)
-        ));
-    }
-    if let Some(action) = answers
-        .next_step_answer()
-        .filter(|a| a.recorded_action.is_some())
-    {
-        html.push_str(&format!(
-            "<p class=\"next-action\" data-question=\"RecordedNextStep\">{}</p>",
-            escape(&action.text)
-        ));
-    }
-    for candidate in related_learning(p, w.work_item_id) {
-        html.push_str("<p class=\"learning-inspection-reference\">");
-        link(
-            html,
-            r,
-            ViewerView::Work {
-                work: Some(w.work_item_id),
+            "<p><a class=\"button secondary\" href=\"{}\">{} →</a></p>",
+            if snapshot {
+                "#repository-explanation".into()
+            } else {
+                escape(&url(r, &ViewerView::RepositoryExplanation))
             },
             text(
                 r.locale,
-                "Inspect related Learning (Session Candidate)",
-                "관련 학습 확인 (Session Candidate)",
-            ),
-            snapshot
-                .then(|| format!("learning-{}", candidate.candidate_id))
-                .as_deref(),
-        );
-        html.push_str("</p>");
+                "Read the repository explanation",
+                "저장소 설명 읽기"
+            )
+        ));
     }
-    html.push_str("</details></article>");
+    html.push_str(&format!("<div class=\"section-heading\"><div><p class=\"eyebrow\">RECENT WORK</p><h2>{}</h2></div><a class=\"button secondary\" href=\"{}\">{} →</a></div>",
+        text(r.locale,"Recent Work","최근 작업"),
+        if snapshot { "#works".into() } else { escape(&url(r,&ViewerView::Work {work:None})) },
+        text(r.locale,"All Work","전체 작업 보기")));
+    html.push_str(&format!("<p class=\"source-note\">{}</p><div class=\"work-list\">",text(r.locale,"Interpretations are based on Sources; verification, review and acceptance follow the original records.","Source에 근거한 해석 · 검증·검토·수락 상태는 원래 기록을 따릅니다.")));
+    let mut recent = p
+        .work_history
+        .iter()
+        .chain(&u.work_overview.current.items)
+        .chain(&u.work_overview.completed.items)
+        .chain(&u.work_overview.remaining.items)
+        .collect::<Vec<_>>();
+    recent.sort_by_key(|w| std::cmp::Reverse(w.observed_at));
+    let mut seen = std::collections::BTreeSet::new();
+    for w in recent
+        .into_iter()
+        .filter(|w| seen.insert(w.work_item_id))
+        .take(3)
+    {
+        work_summary(html, r, w, snapshot);
+    }
+    if p.work_count == 0 {
+        empty_state(
+            html,
+            text(
+                r.locale,
+                "No Work has been recorded.",
+                "기록된 작업이 없습니다.",
+            ),
+        );
+    }
+    html.push_str("</div></section>");
 }
+fn project_purpose(html: &mut String, r: &ViewerRequest, u: &ProjectUnderstanding) {
+    html.push_str("<section class=\"project-goal\">");
+    heading(html, 2, text(r.locale, "Project purpose", "프로젝트 목적"));
+    if u.project_purpose.is_empty() {
+        html.push_str(&format!(
+            "<p class=\"project-purpose\">{}</p>",
+            text(
+                r.locale,
+                "No Project purpose has been recorded.",
+                "기록된 프로젝트 목적이 없습니다."
+            )
+        ));
+    } else {
+        for purpose in &u.project_purpose {
+            html.push_str(&format!("<p class=\"project-purpose\" data-statement-role=\"verified-canonical\" lang=\"\">{}</p>",escape(&purpose.statement)));
+        }
+        html.push_str(&format!(
+            "<details><summary>{}</summary><pre>{}</pre></details>",
+            text(r.locale, "Purpose basis", "목적의 근거"),
+            escape(&format!("{:?}", u.project_purpose))
+        ));
+    }
+    html.push_str("</section>");
+}
+fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, snapshot: bool) {
+    let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
+    let (title, basis, language) = work_reading_heading(w, r);
+    let href = if snapshot {
+        format!("#work-{}", w.work_item_id)
+    } else {
+        url(
+            r,
+            &ViewerView::Work {
+                work: Some(w.work_item_id),
+            },
+        )
+    };
+    html.push_str(&format!("<article class=\"work-card\" data-work-id=\"{}\" data-work-state=\"{}\"><div class=\"work-card-heading\"><h3 lang=\"{}\" data-title-basis=\"{}\"><a href=\"{}\">{}</a></h3><span class=\"work-status\">{}</span></div>",w.work_item_id,understanding_work_state_key(w.state),escape(&language),basis,escape(&href),escape(&title),understanding_work_state_label(w.state,r.locale)));
+    if let Some(synopsis) = answers.synopsis() {
+        html.push_str(&format!("<p class=\"work-summary\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p>",escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&synopsis.text)));
+    } else {
+        // Preserve the complete instruction without manufacturing a synopsis.
+        html.push_str(&format!(
+            "<blockquote class=\"work-summary\" lang=\"\">{}</blockquote>",
+            escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title))
+        ));
+    }
+    let (instant, calendar) = observation_time(w.observed_at);
+    html.push_str(&format!("<div class=\"work-card-footer\"><div class=\"work-dates\"><span class=\"work-date\"><span>{}</span><time datetime=\"{}\" data-recorded-at=\"{}\">{}</time></span></div><a class=\"button secondary card-action\" href=\"{}\">{} →</a></div></article>",text(r.locale,"Observed","관측"),instant,w.observed_at.as_unix_micros(),calendar,escape(&href),text(r.locale,"Read Work","작업 읽기")));
+}
+
 /// A permitted authored heading is derived wording, never canonical title
 /// authority. Missing headings keep the full Goal and exact distinguishing metadata.
 pub(super) fn work_reading_heading(
@@ -711,43 +338,6 @@ pub(super) fn work_reading_heading(
     )
 }
 
-/// Keep the complete original Goal accessible at the opening. With a current
-/// interpretation it is a disclosure beside the ordinary problem paragraph;
-/// without one the quotation itself is ordinary reading, never a fabricated title
-/// or summary. UI locale cannot establish the original quotation's language.
-pub(super) fn work_goal_opening(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork) {
-    let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
-    let interpreted = answers.provenance.is_some()
-        && answers
-            .prose
-            .iter()
-            .any(|a| matches!(a.question.as_str(), "Heading" | "Synopsis" | "Purpose"));
-    html.push_str(if interpreted {
-        "<details class=\"work-goal\"><summary>"
-    } else {
-        "<div class=\"work-goal\"><p class=\"record-meta\">"
-    });
-    html.push_str(text(
-        r.locale,
-        "Recorded Goal · original quotation",
-        "기록된 목표 · 원문 인용",
-    ));
-    html.push_str(if interpreted { "</summary>" } else { "</p>" });
-    html.push_str(&format!(
-        "<blockquote lang=\"\" data-statement-role=\"verified-canonical\" data-question=\"RecordedGoal\">{}</blockquote>",
-        escape(w.reading.goal.original_text.as_deref().unwrap_or(""))
-    ));
-    html.push_str(&format!(
-        "<details class=\"goal-basis\"><summary>{}</summary><pre>{}</pre></details>",
-        text(
-            r.locale,
-            "Goal identity and Sources",
-            "목표 식별자 및 Source"
-        ),
-        escape(&format!("{:?}", w.reading.goal.basis))
-    ));
-    html.push_str(if interpreted { "</details>" } else { "</div>" });
-}
 fn answer_title<'a>(question: &str, locale: ViewerLocale) -> &'a str {
     match question {
         "Heading" => text(locale, "Work heading · interpretation", "작업 제목 · 해석"),
@@ -778,7 +368,9 @@ fn reader_claim_anchor(answers: &volicord_projections::QuestionAnswers, index: u
         .provenance
         .as_ref()
         .map(|p| format!("{}-{}", p.subject.key(), p.realization_fingerprint))
-        .unwrap_or_default();
+        .unwrap_or_else(|| {
+            volicord_projections::explanation_text_hash(&format!("{:?}", answers.facts))
+        });
     format!("reader-{}-p{}", fragment_identity(&identity), index + 1)
 }
 fn source_point_anchor(
@@ -788,102 +380,182 @@ fn source_point_anchor(
 ) -> String {
     format!("{}-c{}", reader_claim_anchor(answers, unit), citation + 1)
 }
-pub(super) fn reader_heading_attributes(answers: &volicord_projections::QuestionAnswers) -> String {
-    answers
-        .prose
-        .iter()
-        .position(|a| a.question == "Heading")
-        .map(|index| {
-            format!(
-                " id=\"{}\" tabindex=\"-1\" data-question=\"Heading\" data-content-language=\"{}\"",
-                reader_claim_anchor(answers, index),
-                escape(
-                    &answers
-                        .provenance
-                        .as_ref()
-                        .map(|p| p.language.clone())
-                        .unwrap_or_default()
-                )
-            )
-        })
-        .unwrap_or_default()
-}
-fn opening_fact(question: &str) -> bool {
-    matches!(
-        question,
-        "VerificationState"
-            | "SourceExecutionObservation"
-            | "UserReview"
-            | "UserAcceptance"
-            | "HistoricalAdversity"
-            | "VerificationCoverage"
-            | "SourceEvidenceGap"
-            | "RecordedLimits"
-            | "RecordedNonGoals"
-    )
-}
 fn reader_citations(
     html: &mut String,
     r: &ViewerRequest,
     answers: &volicord_projections::QuestionAnswers,
     index: usize,
 ) {
-    for (citation_index, citation) in answers.prose[index].citations.iter().enumerate() {
-        html.push_str(&format!(
-            "<a class=\"source-citation\" href=\"#{}\"><span>{} · {} · </span><span class=\"citation-path\">{}:{}–{} ↗</span></a> ",
-            source_point_anchor(answers, index, citation_index),
-            answer_title(&answers.prose[index].question, r.locale),
-            citation_use_label(r.locale, citation.use_kind),
-            escape(&citation.locator),
-            citation.start_line,
-            citation.end_line
-        ));
+    html.push_str("<div class=\"evidence-actions\">");
+    for (n, c) in answers.prose[index].citations.iter().enumerate() {
+        html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\">{} · {} {} ↗<span>{}:{}–{}</span></a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),answer_title(&answers.prose[index].question,r.locale),text(r.locale,"Source","근거"),n+1,escape(&c.locator),c.start_line,c.end_line));
     }
+    html.push_str("</div>");
 }
+
 fn document_anchor(answers: &volicord_projections::QuestionAnswers, section: &str) -> String {
     format!("{}-{section}", reader_claim_anchor(answers, 0))
 }
-fn render_reader_prose(
+fn reader_unit(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    index: usize,
+) {
+    let answer = &answers.prose[index];
+    html.push_str(&format!("<div class=\"unit\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</p>",reader_claim_anchor(answers,index),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
+    reader_citations(html, r, answers, index);
+    html.push_str("</div>");
+}
+pub(super) fn render_answers(
     html: &mut String,
     r: &ViewerRequest,
     answers: &volicord_projections::QuestionAnswers,
     work: Option<&UnderstandingWork>,
+    snapshot: bool,
+) {
+    render_document(html, r, answers, work, "", snapshot);
+}
+fn render_document(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    work: Option<&UnderstandingWork>,
+    records: &str,
+    snapshot: bool,
 ) {
     let current = answers.provenance.is_some();
-    explanation_diagnostic(html, r, answers);
-    if let Some(index) = answers.prose.iter().position(|a| a.question == "Heading") {
-        if answers.provenance.as_ref().is_some_and(|p| {
-            matches!(
-                p.subject,
-                volicord_projections::ExplanationSubject::Decision(_)
-                    | volicord_projections::ExplanationSubject::Repository(_)
-            )
-        }) {
-            html.push_str("<p class=\"eyebrow\">REPOSITORY DOCUMENT</p>");
-            html.push_str(&format!(
-                "<h4{} lang=\"{}\">{}</h4>",
-                reader_heading_attributes(answers),
-                escape(&content_language_tag(&r.requested_language)),
-                escape(&answers.prose[index].text)
-            ));
-        }
+    let repository = answers.provenance.as_ref().is_some_and(|p| {
+        matches!(
+            p.subject,
+            volicord_projections::ExplanationSubject::Repository(_)
+        )
+    });
+    html.push_str(&format!("<article class=\"doc\"{}><p class=\"breadcrumb\"><a href=\"{}\">{}</a></p><header class=\"doc-head\"><p class=\"eyebrow\">{} · {}</p>",
+        work.map(|w|format!(" data-work-id=\"{}\" data-work-state=\"{}\"",w.work_item_id,understanding_work_state_key(w.state))).unwrap_or_default(),
+        if snapshot { if work.is_some() {"#works".into()} else {"#overview".into()} } else {escape(&url(r,&if work.is_some(){ViewerView::Work{work:None}}else{ViewerView::Overview}))},
+        if work.is_some(){text(r.locale,"← Work list","← 작업 목록")}else{text(r.locale,"← Overview","← 개요")},
+        if work.is_some(){"WORK DOCUMENT"}else if repository{"REPOSITORY DOCUMENT"}else{"DOCUMENT"},text(r.locale,"interpretation and observations","해석과 관측")));
+    if let Some((index, title)) = answers
+        .prose
+        .iter()
+        .enumerate()
+        .find(|(_, a)| a.question == "Heading")
+    {
+        html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><h1 data-title-basis=\"generated-interpretation\" data-question=\"Heading\" lang=\"{}\" data-content-language=\"{}\">{}</h1></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&title.text)));
+    } else {
+        html.push_str(&format!(
+            "<h1 data-title-basis=\"neutral-label\" lang=\"{}\">{}</h1>",
+            locale_key(r.locale),
+            if work.is_some() {
+                text(r.locale, "Recorded Work", "작업 기록")
+            } else {
+                text(r.locale, "Repository explanation", "저장소 설명")
+            }
+        ));
     }
-    for (index, answer) in answers
+
+    for (index, lead) in answers
         .prose
         .iter()
         .enumerate()
         .filter(|(_, a)| a.question == "Synopsis")
     {
-        html.push_str(&format!("<p class=\"reader-lead\" id=\"{}\" tabindex=\"-1\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p>", reader_claim_anchor(answers,index), escape(&content_language_tag(&r.requested_language)), escape(&r.requested_language), escape(&answer.text)));
+        html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><p class=\"lead\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&lead.text)));
     }
-    html.push_str("<div class=\"reader-status\" data-statement-role=\"deterministic-derived\">");
-    if let Some(work) = work {
+    if let Some(w) = work {
         html.push_str(&format!(
-            "<p class=\"work-state\"><span class=\"badge work-status\">{}</span></p>",
-            escape(understanding_work_state_label(work.state, r.locale))
+            "<p class=\"record-strip\"><span>{}: {}</span></p>",
+            text(r.locale, "Recorded state", "기록된 상태"),
+            understanding_work_state_label(w.state, r.locale)
         ));
     }
-    for fact in answers.facts.iter().filter(|a| opening_fact(&a.question)) {
+    if current {
+        html.push_str(&format!("<p class=\"interpretation\">{}</p>",text(r.locale,"Source-grounded host interpretation · verification, review and acceptance follow the original records.","Source에 근거한 호스트 해석 · 검증·검토·수락 상태는 원래 기록을 따릅니다.")));
+    }
+    html.push_str("</header>");
+    explanation_diagnostic(html, r, answers);
+    html.push_str("<nav class=\"audit-links\" aria-label=\"Document sections\">");
+    for (section, label) in [
+        (
+            "reading",
+            text(r.locale, "Read explanation ↓", "설명 읽기 ↓"),
+        ),
+        (
+            "limits",
+            text(
+                r.locale,
+                "Result / verification limits ↓",
+                "결과·검증 한계 ↓",
+            ),
+        ),
+        (
+            "original",
+            text(r.locale, "Original instructions", "원래 지시"),
+        ),
+        ("audit", text(r.locale, "Full evidence", "전체 근거")),
+    ] {
+        if (section == "original" && work.is_none())
+            || (section == "limits" && !answers.prose.iter().any(|a| a.question == "Limits"))
+        {
+            continue;
+        }
+        html.push_str(&format!(
+            "<a class=\"button {}\" href=\"#{}\">{}</a>",
+            if section == "reading" {
+                "primary"
+            } else {
+                "secondary"
+            },
+            document_anchor(answers, section),
+            label
+        ));
+    }
+    html.push_str(&format!(
+        "</nav><div id=\"{}\" tabindex=\"-1\">",
+        document_anchor(answers, "reading")
+    ));
+    let mut previous: Option<&str> = None;
+    for (index, answer) in answers
+        .prose
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| !matches!(a.question.as_str(), "Heading" | "Synopsis" | "Limits"))
+    {
+        if previous != Some(answer.question.as_str()) {
+            if previous.is_some() {
+                html.push_str("</section>");
+            }
+            html.push_str("<section class=\"reading-section\">");
+            if current {
+                heading(html, 2, answer_title(&answer.question, r.locale));
+            }
+            previous = Some(&answer.question);
+        }
+        reader_unit(html, r, answers, index);
+    }
+    if previous.is_some() {
+        html.push_str("</section>");
+    }
+    html.push_str("</div>");
+    if answers.prose.iter().any(|a| a.question == "Limits") {
+        html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),answer_title("Limits",r.locale)));
+        for (index, _) in answers
+            .prose
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.question == "Limits")
+        {
+            reader_unit(html, r, answers, index);
+        }
+        html.push_str("</aside></section>");
+    }
+    html.push_str("<div class=\"audit\">");
+    if let Some(w) = work {
+        html.push_str(&format!("<details class=\"record-box\" id=\"{}\"{}><summary>{}</summary><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></details>",document_anchor(answers,"original"),if current && !snapshot {""}else{" open"},text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
+    }
+    html.push_str(&format!("<details class=\"record-box\" id=\"{}\"{}><summary>{}</summary><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",document_anchor(answers,"audit"),if snapshot{" open"}else{""},text(r.locale,"Full evidence · states · output identity","전체 근거 · 상태 · 출력 identity")));
+    for fact in &answers.facts {
         html.push_str(&format!(
             "<p data-question=\"{}\">{}</p>",
             escape(&fact.question),
@@ -891,169 +563,15 @@ fn render_reader_prose(
         ));
     }
     html.push_str("</div>");
-    if current {
+    if let Some(provenance) = &answers.provenance {
         html.push_str(&format!(
-            "<p class=\"interpretation-label interpretation\">{}</p>",
+            "<p>{}</p><pre>{}</pre>",
             text(
                 r.locale,
-                "Host interpretation · semantic accuracy has not been independently established.",
-                "호스트 해석 · 의미 정확성은 독립적으로 확인되지 않았습니다."
-            )
-        ));
-        html.push_str(
-            "<nav class=\"audit-links reader-actions\" aria-label=\"Document sections\">",
-        );
-        for (section, label) in [
-            (
-                "reading",
-                text(r.locale, "Read explanation ↓", "설명 읽기 ↓"),
-            ),
-            (
-                "limits",
-                text(
-                    r.locale,
-                    "Result / verification limits ↓",
-                    "결과·검증 한계 ↓",
-                ),
-            ),
-            (
-                "original",
-                text(r.locale, "Original instructions", "원래 지시"),
-            ),
-            ("audit", text(r.locale, "Full evidence", "전체 근거")),
-        ] {
-            if section == "original" && work.is_none() {
-                continue;
-            }
-            if section == "limits" && !answers.prose.iter().any(|a| a.question == "Limits") {
-                continue;
-            }
-            html.push_str(&format!(
-                "<a class=\"button {}\" href=\"#{}\">{}</a>",
-                if section == "reading" {
-                    "primary"
-                } else {
-                    "secondary"
-                },
-                document_anchor(answers, section),
-                label
-            ));
-        }
-        html.push_str("</nav>");
-    }
-    // The selected design places the explanatory narrative first, and the
-    // complete generated limitations at its explicit, opening-linked section.
-    // Dependency failures and independent recorded facts remain at the opening.
-    for limits in [false, true] {
-        if current {
-            html.push_str(&format!(
-                "<div id=\"{}\" tabindex=\"-1\">",
-                document_anchor(answers, if limits { "limits" } else { "reading" })
-            ));
-        }
-        let mut previous = None;
-        for (index, answer) in answers.prose.iter().enumerate().filter(|(_, a)| {
-            !matches!(a.question.as_str(), "Heading" | "Synopsis")
-                && (a.question == "Limits") == limits
-        }) {
-            if previous != Some(answer.question.as_str()) {
-                if previous.is_some() {
-                    html.push_str("</div>");
-                }
-                html.push_str(&format!(
-                    "<div class=\"answer-section reading-section\" data-section=\"{}\">",
-                    escape(&answer.question)
-                ));
-                if current {
-                    heading(html, 4, answer_title(&answer.question, r.locale));
-                }
-                previous = Some(answer.question.as_str());
-            }
-            html.push_str(&format!(
-                "<p{} data-question=\"{}\"{}>{}</p>",
-                if current {
-                    format!(
-                        " id=\"{}\" tabindex=\"-1\"",
-                        reader_claim_anchor(answers, index)
-                    )
-                } else {
-                    String::new()
-                },
-                escape(&answer.question),
-                if current {
-                    format!(
-                        " lang=\"{}\" data-content-language=\"{}\"",
-                        escape(&content_language_tag(&r.requested_language)),
-                        escape(&r.requested_language)
-                    )
-                } else {
-                    String::new()
-                },
-                escape(&answer.text)
-            ));
-            reader_citations(html, r, answers, index);
-        }
-        if previous.is_some() {
-            html.push_str("</div>");
-        }
-        if current {
-            html.push_str("</div>");
-        }
-    }
-    if let Some(work) = work {
-        if current {
-            html.push_str(&format!(
-                "<div id=\"{}\" tabindex=\"-1\" class=\"original-record\">",
-                document_anchor(answers, "original")
-            ));
-        }
-        html.push_str(&format!("<details class=\"work-identity\" data-statement-role=\"deterministic-derived\"><summary>{} · {} {}</summary><p>{}</p></details>", text(r.locale,"Selected Work","선택한 작업"), text(r.locale,"Goal revision","목표 리비전"), work.reading.goal.basis.revision, work.work_item_id));
-        work_goal_opening(html, r, work);
-        if current {
-            html.push_str("</div>");
-        }
-    }
-}
-
-pub(super) fn render_answers(
-    html: &mut String,
-    r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
-    work: Option<&UnderstandingWork>,
-) {
-    let current = answers.provenance.is_some();
-    html.push_str(&format!(
-        "<div class=\"{}\" data-statement-role=\"{}\">",
-        if current {
-            "work-explanation"
-        } else {
-            "answer-unavailable"
-        },
-        if current {
-            "generated-interpretation"
-        } else {
-            "deterministic-derived"
-        }
-    ));
-    render_reader_prose(html, r, answers, work);
-    if let Some(provenance) = &answers.provenance {
-        html.push_str("<details class=\"explanation-authority\"><summary>");
-        html.push_str(text(r.locale, "About this explanation", "이 설명의 성격"));
-        html.push_str("</summary>");
-        empty_state(html,text(r.locale,"Host interpretation; claims remain grounded reports, not independent verification.","호스트 해석입니다. 근거 있는 보고이며 독립 검증을 뜻하지 않습니다."));
-        html.push_str("</details>");
-        html.push_str(&format!(
-            "<details class=\"explanation-grounding record-box\" id=\"{}\"><summary>{}</summary><pre>{}</pre>",
-            document_anchor(answers, "audit"), text(
-                r.locale,
-                "Explanation evidence and generator",
-                "설명 근거 및 생성자"
+                "Host interpretation; semantic accuracy has not been independently established.",
+                "호스트 해석입니다. 의미 정확성은 독립적으로 확인되지 않았습니다."
             ),
             escape(&format!("{provenance:?}"))
-        ));
-        html.push_str(&format!(
-            "<details class=\"lead-citations\"><summary>{}</summary>",
-            text(r.locale, "Heading and synopsis Sources", "제목·요약 근거")
         ));
         for (index, _) in answers
             .prose
@@ -1063,49 +581,49 @@ pub(super) fn render_answers(
         {
             reader_citations(html, r, answers, index);
         }
-        html.push_str("</details></details>");
     }
-    html.push_str(
-        "</div><div class=\"fact-states\" data-statement-role=\"deterministic-derived\">",
-    );
-    for fact in &answers.facts {
-        // Work's opening already preserves the complete quotation and basis.
-        if fact.question == "RecordedGoal" || opening_fact(&fact.question) {
-            continue;
+    if let Some(w) = work {
+        for state in &w.reading.states {
+            html.push_str(&format!(
+                "<section class=\"state-observation\"><h3>{} · {}</h3>",
+                timestamp_label(state.observed_at, r.locale),
+                work_state_label(state.work_state, r.locale)
+            ));
+            for fact in &state.verification {
+                html.push_str(&format!(
+                    "<p>{}: {} · {}</p>",
+                    text(r.locale, "Verification", "검증"),
+                    verification_state_label(fact.state, r.locale),
+                    escape(fact.outcome.as_deref().unwrap_or(""))
+                ));
+            }
+            html.push_str(&format!(
+                "<p>{}: {} · {}: {}</p><pre>{}</pre></section>",
+                text(r.locale, "Review", "검토"),
+                user_review_label(state.user_review.state, r.locale),
+                text(r.locale, "Acceptance", "수용"),
+                user_acceptance_label(state.user_acceptance.state, r.locale),
+                escape(&format!("{state:?}"))
+            ));
         }
-        if matches!(
-            fact.question.as_str(),
-            "UserRationale" | "RecommendedChoice" | "DeclaredScope" | "ReviewBasis"
-        ) {
-            html.push_str("<div class=\"decision-fact\">");
-            heading(
-                html,
-                4,
-                match fact.question.as_str() {
-                    "UserRationale" => text(r.locale, "User rationale", "사용자 이유"),
-                    "RecommendedChoice" => text(r.locale, "Recorded recommendation", "기록된 권고"),
-                    "ReviewBasis" => text(
-                        r.locale,
-                        "Applicability needs review",
-                        "적용 가능성 검토 필요",
-                    ),
-                    _ => text(r.locale, "Declared scope", "선언된 범위"),
-                },
-            );
-        }
-        html.push_str(&format!(
-            "<p data-question=\"{}\">{}</p>",
-            escape(&fact.question),
-            escape(&fact.text)
-        ));
-        if matches!(
-            fact.question.as_str(),
-            "UserRationale" | "RecommendedChoice" | "DeclaredScope" | "ReviewBasis"
-        ) {
-            html.push_str("</div>");
-        }
+        html.push_str(&format!("<pre>{}</pre>", escape(&format!("Work: {}\nGoal basis: {:?}\nchanges: {:?}\nCheckpoints: {:?}\nDecisions: {:?}\nQuestions: {:?}\nresult: {:?}\nnext step: {:?}", w.work_item_id,w.reading.goal.basis,w.reading.changes,w.checkpoint_ids,w.decision_ids,w.open_question_ids,w.reading.answers.result,w.reading.next_step))));
     }
-    html.push_str("</div>");
+    if work.is_none() {
+        html.push_str("<p>");
+        link(
+            html,
+            r,
+            ViewerView::Code {
+                scope: CodeScope::Repository,
+                entity: None,
+            },
+            text(r.locale, "Inspect repository structure", "저장소 구조 확인"),
+            snapshot.then_some("code"),
+        );
+        html.push_str("</p>");
+    }
+    html.push_str(records);
+    html.push_str("</details></div></article>");
     render_source_excerpts(html, r, answers);
 }
 
@@ -1185,246 +703,129 @@ fn render_source_excerpts(
     if provenance.citations.is_empty() {
         return;
     }
-    html.push_str("<section class=\"explanation-code\" data-reading-role=\"cited-source\" data-statement-role=\"observed-fact\">");
+    html.push_str("<aside class=\"appendix\" data-reading-role=\"cited-source\" data-statement-role=\"observed-fact\">");
     heading(
         html,
-        4,
-        text(
-            r.locale,
-            "Read the supporting code and output",
-            "근거 코드와 출력 읽기",
-        ),
+        2,
+        text(r.locale, "Sources for this document", "이 문서의 Source"),
     );
     let mut seen = std::collections::BTreeSet::new();
-    for c in &provenance.citations {
-        let anchor = source_excerpt_anchor(answers, c);
-        if !seen.insert(anchor.clone()) {
-            continue;
-        }
-        let excerpt = answers.source_excerpts.iter().find(|e| {
-            e.citation.source_id == c.source_id
-                && e.citation.field == c.field
-                && e.citation.start_byte == c.start_byte
-                && e.citation.end_byte == c.end_byte
-                && e.citation.use_kind == c.use_kind
-        });
-        html.push_str(&format!(
-            "<figure class=\"source-excerpt\" id=\"{}\" tabindex=\"-1\" data-source-id=\"{}\">",
-            escape(&anchor),
-            escape(&c.source_id)
-        ));
-        // Direct range links (including before-observation navigation) need a
-        // return destination too. Citation links retain their exact paragraph.
-        if let Some(index) = answers.prose.iter().position(|answer| {
-            answer
-                .citations
-                .iter()
-                .any(|citation| source_excerpt_anchor(answers, citation) == anchor)
-        }) {
-            html.push_str(&format!(
-                "<a class=\"source-panel-return\" href=\"#{}\">← {}</a>",
-                reader_claim_anchor(answers, index),
-                text(r.locale, "Return to explanation", "설명으로 돌아가기")
-            ));
-        }
-        // Purpose labels come only from paragraphs that actually cite this
-        // exact range/use. A path or nearby function cannot supply relevance.
-        let mut purposes = Vec::new();
-        for answer in &answers.prose {
-            if answer
-                .citations
-                .iter()
-                .any(|citation| source_excerpt_anchor(answers, citation) == anchor)
-            {
-                let purpose = answer_title(&answer.question, r.locale);
-                if !purposes.contains(&purpose) {
-                    purposes.push(purpose);
-                }
+    for (index, answer) in answers.prose.iter().enumerate() {
+        for (n, c) in answer.citations.iter().enumerate() {
+            let anchor = source_point_anchor(answers, index, n);
+            let excerpt = answers.source_excerpts.iter().find(|e| {
+                source_excerpt_anchor(answers, &e.citation) == source_excerpt_anchor(answers, c)
+            });
+            let claim = answer
+                .text
+                .get(c.claim_start_byte..c.claim_end_byte)
+                .unwrap_or("");
+            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><blockquote class=\"claim-quote\" tabindex=\"0\" lang=\"{}\">{}</blockquote><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),text(r.locale,"Evidence for this explanation","이 설명을 확인하는 근거"),escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
+            html.push_str(&format!("<div data-statement-role=\"generated-interpretation\" data-question=\"{}\" data-paragraph=\"{}\" data-claim-start=\"{}\" data-claim-end=\"{}\"></div>",escape(&answer.question),index+1,c.claim_start_byte,c.claim_end_byte));
+            let range = source_excerpt_anchor(answers, c);
+            if seen.insert(range.clone()) {
+                html.push_str(&format!("<span id=\"{}\"></span>", escape(&range)));
             }
-        }
-        if !purposes.is_empty() {
             html.push_str(&format!(
-                "<p class=\"source-purpose\">{}: {}</p>",
-                text(r.locale, "Cited in interpretation", "해석에서 인용한 내용"),
-                escape(&purposes.join(" / "))
+                "<p class=\"source-note\">{}</p>",
+                citation_use_label(r.locale, c.use_kind)
             ));
-        }
-        for (index, answer) in answers.prose.iter().enumerate() {
-            for (citation_index, citation) in answer
+            if let Some(e) = excerpt {
+                if c.use_kind == volicord_projections::ExplanationSourceUse::CurrentCode {
+                    let comparison=match e.comparison.as_deref() {
+                        Some("changed")=>text(r.locale,"The explicit before/after file observations differ. Selected ranges are not a diff.","명시적 이전/이후 파일 관측이 다릅니다. 선택된 범위는 diff가 아닙니다."),
+                        Some("no_change")=>text(r.locale,"The paired file observations have identical bytes. No change is shown.","짝지어진 파일 관측의 바이트가 동일합니다. 변경이 표시되지 않습니다."),
+                        _=>text(r.locale,"Before-state was not retained. A before/after comparison is unavailable.","이전 상태가 보존되지 않았습니다. 이전/이후 비교를 이용할 수 없습니다."),
+                    };
+                    html.push_str(&format!("<p class=\"source-note\">{}</p>", comparison));
+                    if let Some(before) = e.before_source_id.as_ref().and_then(|id| {
+                        answers.source_excerpts.iter().find(|b| {
+                            &b.citation.source_id == id
+                                && b.citation.use_kind
+                                    == volicord_projections::ExplanationSourceUse::BeforeCode
+                        })
+                    }) {
+                        html.push_str(&format!(
+                            "<p><a href=\"#{}\">{}</a></p>",
+                            escape(&source_excerpt_anchor(answers, &before.citation)),
+                            text(
+                                r.locale,
+                                "Read the retained before observation",
+                                "보존된 이전 관측 읽기"
+                            )
+                        ));
+                    }
+                }
+                if e.source_representation.as_deref() == Some("bounded_excerpt") {
+                    html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.","제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
+                }
+                html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,c.end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),escape(&e.text)));
+                if e.omitted_utf8_bytes > 0 {
+                    html.push_str(&format!(
+                        "<p class=\"source-note\">{}: {} · {}–{} · bytes {}–{}</p>",
+                        text(
+                            r.locale,
+                            "Omitted UTF-8 bytes in this cited range",
+                            "이 인용 범위에서 생략된 UTF-8 바이트"
+                        ),
+                        e.omitted_utf8_bytes,
+                        c.start_line,
+                        e.displayed_end_line,
+                        c.start_byte,
+                        e.displayed_end_byte
+                    ));
+                }
+                if let Some(execution) = &e.execution {
+                    html.push_str(&format!(
+                        "<p class=\"source-note\">{}: {} · {}: {}</p>",
+                        text(r.locale, "Observed exit", "관측 종료 코드"),
+                        escape(&execution["exit_code"].to_string()),
+                        text(r.locale, "Termination", "종료 상태"),
+                        escape(&execution["termination"].to_string())
+                    ));
+                }
+            } else {
+                empty_state(
+                    html,
+                    text(
+                        r.locale,
+                        "This cited range was omitted by the shared code-reading bound.",
+                        "이 인용 범위는 공통 코드 읽기 한도로 생략되었습니다.",
+                    ),
+                );
+            }
+            html.push_str("<nav class=\"point-others\">");
+            for (other, other_c) in answer
                 .citations
                 .iter()
                 .enumerate()
-                .filter(|(_, c)| source_excerpt_anchor(answers, c) == anchor)
+                .filter(|(other, _)| *other != n)
             {
-                if let Some(claim) = answer
-                    .text
-                    .get(citation.claim_start_byte..citation.claim_end_byte)
-                {
-                    html.push_str(&format!("<div class=\"source-reading-point\" id=\"{}\" tabindex=\"-1\" data-statement-role=\"generated-interpretation\"><div class=\"point-bar\"><a class=\"return-to-claim\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} / {}</span></div><p class=\"record-meta\">{} · {}</p><blockquote class=\"source-purpose-claim\" lang=\"{}\">{}</blockquote></div>",
-                        source_point_anchor(answers,index,citation_index), reader_claim_anchor(answers,index), text(r.locale,"Return to this claim","이 문단으로 돌아가기"), citation_index+1, answer.citations.len(), text(r.locale,"Host interpretation","호스트 해석"), answer_title(&answer.question,r.locale),
-                        escape(&content_language_tag(&provenance.language)), escape(claim)));
-                }
+                html.push_str(&format!(
+                    "<a href=\"#{}\">{} {} · {}:{}–{}</a>",
+                    source_point_anchor(answers, index, other),
+                    text(r.locale, "Source", "근거"),
+                    other + 1,
+                    escape(&other_c.locator),
+                    other_c.start_line,
+                    other_c.end_line
+                ));
             }
+            html.push_str(&format!("</nav><details><summary>{}</summary><pre>{}</pre></details></section>",text(r.locale,"Source identity · observed scope","Source identity · 관측 범위"),escape(&format!("output: {}\nsubject: {:?}\ncitation: {c:#?}\nWork revision: {:?}\nobserved at: {:?}",provenance.realization_fingerprint,provenance.subject,excerpt.map(|e|e.work_revision),excerpt.map(|e|e.observed_at_unix_micros)))));
         }
-        html.push_str(&format!(
-            "<figcaption><strong>{}:{}–{}</strong> · {}</figcaption>",
-            escape(&c.locator),
-            c.start_line,
-            c.end_line,
-            citation_use_label(r.locale, c.use_kind)
-        ));
-        if let Some(e) = excerpt {
-            if c.use_kind == volicord_projections::ExplanationSourceUse::CurrentCode {
-                let comparison = match e.comparison.as_deref() {
-                    Some("changed") => text(r.locale, "The explicit before/after file observations differ. These excerpts are selected ranges, not a diff.", "명시적 이전/이후 파일 관측이 다릅니다. 발췌는 선택된 범위이며 diff가 아닙니다."),
-                    Some("no_change") => text(r.locale, "The paired file observations have identical bytes. No change is shown.", "짝지어진 파일 관측의 바이트가 동일합니다. 변경이 표시되지 않습니다."),
-                    _ => text(r.locale, "Before-state was not retained. A before/after comparison is unavailable.", "이전 상태가 보존되지 않았습니다. 이전/이후 비교를 이용할 수 없습니다."),
-                };
-                html.push_str(&format!(
-                    "<p class=\"source-comparison\">{}</p>",
-                    comparison
-                ));
-                if let Some(before) = e.before_source_id.as_ref().and_then(|id| {
-                    answers.source_excerpts.iter().find(|before| {
-                        &before.citation.source_id == id
-                            && before.citation.use_kind
-                                == volicord_projections::ExplanationSourceUse::BeforeCode
-                    })
-                }) {
-                    html.push_str(&format!(
-                        "<p class=\"comparison-navigation\"><a href=\"#{}\">{}</a></p>",
-                        escape(&source_excerpt_anchor(answers, &before.citation)),
-                        text(
-                            r.locale,
-                            "Read the retained before observation",
-                            "보존된 이전 관측 읽기"
-                        )
-                    ));
-                }
-                if e.before_source_id.as_ref().is_some_and(|id| {
-                    !answers.source_excerpts.iter().any(|before| {
-                        &before.citation.source_id == id
-                            && before.citation.use_kind
-                                == volicord_projections::ExplanationSourceUse::BeforeCode
-                    })
-                }) {
-                    html.push_str(&format!("<p>{}</p>",text(r.locale, "The earlier copy is a dependency; its code was not cited in this output.", "이전 사본은 의존 근거입니다. 이 출력에는 해당 코드가 인용되지 않았습니다.")));
-                }
-            }
-            if e.source_representation.as_deref() == Some("bounded_excerpt") {
-                html.push_str(&format!("<p class=\"bound\">{}</p>", text(r.locale,
-                    "Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.",
-                    "제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
-            }
-            html.push_str(&format!(
-                "<pre tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\">{}</code></pre>",
-                text(r.locale, "Original Source", "Source 원문"), escape(&c.locator), c.start_line, c.end_line,
-                e.text.split_inclusive('\n').enumerate().map(|(line,_)| format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(), escape(&e.text)
-            ));
-            if e.omitted_utf8_bytes > 0 {
-                html.push_str(&format!(
-                    "<p class=\"bound\">{}: {} · {} {}–{} · bytes {}–{}</p>",
-                    text(
-                        r.locale,
-                        "Omitted UTF-8 bytes in this cited range",
-                        "이 인용 범위에서 생략된 UTF-8 바이트"
-                    ),
-                    e.omitted_utf8_bytes,
-                    text(r.locale, "Displayed lines", "표시된 줄"),
-                    c.start_line,
-                    e.displayed_end_line,
-                    c.start_byte,
-                    e.displayed_end_byte
-                ));
-            }
-            if let Some(execution) = &e.execution {
-                html.push_str(&format!(
-                    "<p>{}: {} · {}: {}</p>",
-                    text(r.locale, "Observed exit", "관측 종료 코드"),
-                    escape(&execution["exit_code"].to_string()),
-                    text(r.locale, "Termination", "종료 상태"),
-                    escape(&execution["termination"].to_string())
-                ));
-            }
-        } else {
-            empty_state(html, text(r.locale, "This cited range was omitted by the shared code-reading bound. Inspect its exact Source through the scoped reader.", "이 인용 범위는 공통 코드 읽기 한도로 생략되었습니다. 범위가 제한된 리더에서 정확한 Source를 확인하세요."));
-        }
-        html.push_str(&format!(
-            "<details class=\"source-citation-basis\"><summary>{}</summary><pre>{}</pre>",
-            text(
-                r.locale,
-                "Exact subject / Source revisions and claim grounding",
-                "정확한 설명 대상 / Source 리비전과 주장 근거"
-            ),
-            escape(&format!(
-                "Work revision: {:?}\nobserved at: {:?}\noutput: {}",
-                excerpt.map(|e| e.work_revision),
-                excerpt.map(|e| e.observed_at_unix_micros),
-                provenance.realization_fingerprint
-            ))
-        ));
-        // A shared code range is one navigation destination, but each paragraph
-        // keeps its own claim coordinates. Showing only the first citation
-        // would substitute that claim for later paragraphs using this card.
-        for (index, answer) in answers.prose.iter().enumerate() {
-            for citation in &answer.citations {
-                if source_excerpt_anchor(answers, citation) != anchor {
-                    continue;
-                }
-                html.push_str(&format!(
-                    "<section class=\"source-claim-basis\" data-statement-role=\"generated-interpretation\" data-question=\"{}\" data-paragraph=\"{}\" data-claim-start=\"{}\" data-claim-end=\"{}\"><h5>{} · {} {} · {}</h5>",
-                    escape(&answer.question), index + 1, citation.claim_start_byte,
-                    citation.claim_end_byte, answer_title(&answer.question, r.locale),
-                    text(r.locale, "Paragraph", "문단"), index + 1,
-                    text(r.locale, "Generated claim quotation", "생성된 주장 인용")
-                ));
-                if let Some(claim) = answer
-                    .text
-                    .get(citation.claim_start_byte..citation.claim_end_byte)
-                {
-                    html.push_str(&format!(
-                        "<blockquote lang=\"{}\" data-content-language=\"{}\" class=\"source-bound-claim\">{}</blockquote>",
-                        escape(&content_language_tag(&provenance.language)),
-                        escape(&provenance.language),
-                        escape(claim)
-                    ));
-                }
-                html.push_str(&format!(
-                    "<pre>{}</pre></section>",
-                    escape(&format!("citation: {citation:#?}"))
-                ));
-            }
-        }
-        html.push_str("</details></figure>");
     }
     if answers.omitted_source_excerpt_count > 0 {
-        html.push_str(&format!(
-            "<p class=\"bound\">{}: {}</p>",
-            text(r.locale, "Omitted cited excerpts", "생략된 인용 발췌"),
-            answers.omitted_source_excerpt_count
-        ));
+        empty_state(
+            html,
+            &format!(
+                "{}: {}",
+                text(r.locale, "Omitted cited excerpts", "생략된 인용 발췌"),
+                answers.omitted_source_excerpt_count
+            ),
+        );
     }
-    html.push_str("</section>");
+    html.push_str("</aside>");
 }
-pub(super) fn work_explanation(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork) {
-    let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
-    render_answers(html, r, &answers, Some(w));
-    // Quotation has an explicit evidence role; never the ordinary explanation.
-    if let Some(result) = &w.reading.answers.result {
-        html.push_str("<details class=\"result-evidence\"><summary>");
-        html.push_str(text(
-            r.locale,
-            "Reported result quotation",
-            "보고된 결과 인용",
-        ));
-        html.push_str("</summary><p lang=\"\">");
-        html.push_str(&escape(result.original_text.as_deref().unwrap_or("")));
-        html.push_str("</p><pre>");
-        html.push_str(&escape(&format!("{:?}", result.basis)));
-        html.push_str("</pre></details>");
-    }
-}
-
 fn work_detail(
     html: &mut String,
     r: &ViewerRequest,
@@ -1432,160 +833,28 @@ fn work_detail(
     w: &UnderstandingWork,
     snapshot: bool,
 ) {
-    section_start(
-        html,
-        &format!("work-{}", w.work_item_id),
-        text(r.locale, "Work detail", "작업 상세"),
-    );
-    html.push_str("<p class=\"subject-navigation breadcrumb\">");
-    link(
-        html,
-        r,
-        ViewerView::Work { work: None },
-        text(r.locale, "← Work list", "← 작업 목록"),
-        snapshot.then_some("works"),
-    );
-    html.push_str("</p>");
-    let decisions = if snapshot {
-        p.decision_catalog
-            .iter()
-            .filter(|d| w.decision_ids.contains(&d.decision.decision_id))
-            .cloned()
-            .collect::<Vec<_>>()
-    } else {
-        p.selected_work_decisions.clone()
-    };
-    render_work_card(html, r, w, &decisions);
-    if !snapshot || p.selection.work_item_id == Some(w.work_item_id) {
-        contextual_limits(html, r, p, snapshot);
-    }
-
-    html.push_str(
-        "<details class=\"work-state-history\" data-reading-role=\"audit-history\"><summary>",
-    );
-    html.push_str(text(
-        r.locale,
-        "Verification and original state observations",
-        "검증 및 원래 상태 관찰",
+    html.push_str(&format!(
+        "<section class=\"snapshot-page\" id=\"work-{}\">",
+        w.work_item_id
     ));
-    html.push_str("</summary>");
-    html.push_str("<ol class=\"verification-timeline\">");
-    for state in &w.reading.states {
-        html.push_str("<li>");
-        heading(
-            html,
-            4,
-            &format!(
-                "{} · {}",
-                timestamp_label(state.observed_at, r.locale),
-                work_state_label(state.work_state, r.locale)
-            ),
-        );
-        for fact in &state.verification {
-            html.push_str(&format!(
-                "<p>{}: {} · {}</p>",
-                text(r.locale, "Verification", "검증"),
-                escape(verification_state_label(fact.state, r.locale)),
-                escape(fact.outcome.as_deref().unwrap_or(text(
-                    r.locale,
-                    "No outcome recorded",
-                    "결과 기록 없음"
-                )))
-            ));
-        }
-        html.push_str(&format!(
-            "<p>{}: {} · {}: {}</p>",
-            text(r.locale, "Review", "검토"),
-            user_review_label(state.user_review.state, r.locale),
-            text(r.locale, "Acceptance", "수용"),
-            user_acceptance_label(state.user_acceptance.state, r.locale)
-        ));
-        if !state.later_changed_checkpoint_ids.is_empty() {
-            empty_state(html, text(r.locale, "Later changes are recorded; this observation does not establish their verification coverage.", "이후 변경이 기록되었습니다. 이 관찰은 이후 변경의 검증 범위를 입증하지 않습니다."));
-        }
-        html.push_str(&format!(
-            "<details><summary>{}</summary><pre>{}</pre></details></li>",
-            text(
-                r.locale,
-                "Exact observation and Sources",
-                "정확한 관찰 및 Source"
-            ),
-            escape(&format!("{state:?}"))
-        ));
-    }
-    html.push_str("</ol>");
-    html.push_str("</details>");
-    heading(
-        html,
-        3,
-        text(r.locale, "Decisions and Questions", "결정 및 질문"),
-    );
-    for decision in &decisions {
-        if !snapshot {
-            decision_link(html, r, decision, false);
-        } else {
-            html.push_str("<p>");
-            link(
-                html,
-                r,
-                ViewerView::Decisions {
-                    decision: Some(decision.decision.decision_id),
-                },
-                &decision_choice_attribution(&decision.decision, r.locale),
-                Some(&format!("decision-{}", decision.decision.decision_id)),
-            );
-            html.push_str("</p>");
-        }
-    }
-    heading(
-        html,
-        3,
-        text(
-            r.locale,
-            "Related Learning — Candidate Inspection",
-            "관련 학습 — Candidate Inspection",
-        ),
-    );
-    if p.candidate_dependency != volicord_projections::CandidateDependencyState::Available {
-        empty_state(
-            html,
-            &format!(
-                "{}: {:?}",
-                text(
-                    r.locale,
-                    "Candidate Inspection dependency",
-                    "Candidate Inspection 의존성"
-                ),
-                p.candidate_dependency
-            ),
-        );
-    }
-    for issue in p
-        .issues
+    let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
+    let mut records = String::new();
+    contextual_limits(&mut records, r, p, snapshot);
+    let decisions = if snapshot {
+        &p.decision_catalog
+    } else {
+        &p.selected_work_decisions
+    };
+    for d in decisions
         .iter()
-        .filter(|issue| issue.affected_scope == "candidate_inspection")
+        .filter(|d| w.decision_ids.contains(&d.decision.decision_id))
     {
-        empty_state(
-            html,
-            &format!(
-                "{} ({}: {})",
-                issue.reason,
-                text(r.locale, "omitted", "생략"),
-                issue.omitted_count
-            ),
-        );
+        decision_link(&mut records, r, d, snapshot);
     }
-    let learning = related_learning(p, w.work_item_id);
-    if learning.is_empty() {
-        empty_state(html, text(r.locale,
-            "No permitted retained Learning association is visible for this Work. Withheld, expired or deleted content is not inferred.",
-            "이 작업에 공개 가능한 보존 학습 연결이 없습니다. 비공개·만료·삭제 내용을 추론하지 않습니다."));
-    }
-    for candidate in learning {
-        html.push_str(&format!("<article id=\"learning-{}\" data-candidate-id=\"{}\" data-work-id=\"{}\" data-statement-role=\"session-candidate\">",
-            candidate.candidate_id, candidate.candidate_id, w.work_item_id));
-        learning_inspection(html, r, candidate);
-        html.push_str("</article>");
+    for candidate in related_learning(p, w.work_item_id) {
+        records.push_str(&format!("<article id=\"learning-{}\" data-candidate-id=\"{}\" data-work-id=\"{}\" data-statement-role=\"session-candidate\">",candidate.candidate_id,candidate.candidate_id,w.work_item_id));
+        learning_inspection(&mut records, r, candidate);
+        records.push_str("</article>");
     }
     for q in p
         .resume
@@ -1593,14 +862,12 @@ fn work_detail(
         .iter()
         .filter(|q| w.open_question_ids.contains(&q.question_id))
     {
-        html.push_str(&format!("<p>{}</p>", escape(&q.prompt)));
+        records.push_str(&format!("<p>{}</p>", escape(&q.prompt)));
     }
-    if snapshot {
-        empty_state(html,text(r.locale,"Selected-Work code detail is omitted from this bounded snapshot. The repository view below is explicitly repository scope.","이 제한된 스냅샷에서는 선택 작업 코드 상세가 생략됩니다. 아래 저장소 보기는 명시적으로 저장소 범위입니다."));
-    } else {
-        html.push_str("<p>");
+    if !snapshot {
+        records.push_str("<p>");
         link(
-            html,
+            &mut records,
             r,
             ViewerView::Code {
                 scope: CodeScope::Work(Some(w.work_item_id)),
@@ -1609,17 +876,22 @@ fn work_detail(
             text(r.locale, "Explore this Work's code", "이 작업의 코드 탐색"),
             None,
         );
-        html.push_str("</p>");
+        records.push_str("</p>");
     }
-    section_end(html);
+    render_document(html, r, &answers, Some(w), &records, snapshot);
+    html.push_str("</section>");
 }
+
 fn decision_link(
     html: &mut String,
     r: &ViewerRequest,
     d: &volicord_projections::UnderstandingDecision,
     snapshot: bool,
 ) {
-    html.push_str("<article class=\"decision-summary\"><h3>");
+    html.push_str(&format!(
+        "<article class=\"decision-summary\" data-decision-id=\"{}\"><h3>",
+        d.decision.decision_id
+    ));
     link(
         html,
         r,
@@ -1706,7 +978,7 @@ fn decision_detail(
         );
     }
     html.push_str("</ul>");
-    render_answers(html, r, &answers, None);
+    render_answers(html, r, &answers, None, snapshot);
     if !snapshot {
         contextual_limits(html, r, p, false);
     }
@@ -2122,14 +1394,19 @@ fn code_limit_details(html: &mut String, r: &ViewerRequest, p: &ProjectProjectio
     html.push_str("</p></details>");
 }
 
-fn repository_explanation(html: &mut String, r: &ViewerRequest, p: &ProjectProjection) {
-    html.push_str("<section class=\"doc repository-document\" id=\"repository-explanation\" aria-label=\"Repository explanation\">");
+fn repository_explanation(
+    html: &mut String,
+    r: &ViewerRequest,
+    p: &ProjectProjection,
+    snapshot: bool,
+) {
+    html.push_str("<section class=\"snapshot-page\" id=\"repository-explanation\" aria-label=\"Repository explanation\">");
     let answers = volicord_projections::explanation_answers(
         &p.repository_explanations,
         &r.requested_language,
         r.locale.fixed(),
     );
-    render_answers(html, r, &answers, None);
+    render_answers(html, r, &answers, None, snapshot);
     html.push_str("</section>");
 }
 
@@ -2155,47 +1432,13 @@ fn code(
             _ => text(r.locale, "Repository context", "저장소 범위"),
         },
     );
-    if !matches!(
-        r.view,
-        ViewerView::Code {
-            scope: CodeScope::Work(_),
-            ..
-        }
-    ) {
-        if snapshot && p.work_count == 0 {
-            html.push_str("<p><a href=\"#repository-explanation\">");
-            html.push_str(text(
-                r.locale,
-                "Read the repository explanation",
-                "저장소 설명 읽기",
-            ));
-            html.push_str("</a></p>");
-        } else {
-            repository_explanation(html, r, p);
-        }
-    }
     code_limit_summary(html, r, p, snapshot);
     if let Some(work) = &p.selected_work {
         html.push_str("<div class=\"code-work-meaning\">");
         let answers =
             volicord_projections::work_answers(work, &r.requested_language, r.locale.fixed());
-        let (title, basis, language) = work_reading_heading(work, r);
-        html.push_str(&format!(
-            "<h3 lang=\"{}\" data-title-basis=\"{}\"{}>{}</h3>",
-            escape(&language),
-            basis,
-            if snapshot {
-                String::new()
-            } else {
-                reader_heading_attributes(&answers)
-            },
-            escape(&title),
-        ));
-        if snapshot {
-            explanation_diagnostic(html, r, &answers);
-        }
         if !snapshot {
-            render_reader_prose(html, r, &answers, Some(work));
+            render_answers(html, r, &answers, Some(work), false);
         }
         html.push_str("<p>");
         link(
@@ -2214,10 +1457,6 @@ fn code(
                 .as_deref(),
         );
         html.push_str("</p>");
-        // Offline Work detail already owns these exact fragment targets.
-        if !snapshot {
-            render_source_excerpts(html, r, &answers);
-        }
         html.push_str("</div>");
     }
     let entities = u
@@ -2521,31 +1760,7 @@ pub(super) fn surface(
             }
         }
         ViewerView::Work { work: None } | ViewerView::WorkPage { .. } => {
-            section_start(html, "works", text(r.locale, "Choose a Work", "작업 선택"));
-            html.push_str("<p class=\"eyebrow\">VOLICORD / WORK</p>");
-            heading(html, 1, text(r.locale, "Work", "작업"));
-            html.push_str(&format!(
-                "<p class=\"intro index-intro\">{}</p><div class=\"work-list\">",
-                text(
-                    r.locale,
-                    "Read the work and its recorded progress.",
-                    "작업의 내용과 진행 현황을 확인합니다."
-                )
-            ));
-            for w in &p.work_history {
-                if p.selection.work_item_id == Some(w.work_item_id) {
-                    html.push_str("<div class=\"current-work\"><p class=\"selection-label\">");
-                    html.push_str(text(r.locale, "Latest recorded Work", "최근 기록된 작업"));
-                    html.push_str("</p>");
-                    work_summary(html, r, p, w, false);
-                    html.push_str("</div>");
-                } else {
-                    work_summary(html, r, p, w, false);
-                }
-            }
-            html.push_str("</div>");
-            pagination(html, r, p.work_count, r.view.detail().work_page, true);
-            section_end(html);
+            work_index(html, r, p, false);
         }
         ViewerView::Decisions { decision: Some(_) } => {
             if let Some(d) = &p.selected_decision {
@@ -2570,6 +1785,7 @@ pub(super) fn surface(
             );
             section_end(html);
         }
+        ViewerView::RepositoryExplanation => repository_explanation(html, r, p, false),
         ViewerView::Code { .. } => code(html, r, p, u, false),
         ViewerView::Tools { .. } => {}
     }
@@ -2581,7 +1797,7 @@ pub(super) fn snapshot(
     u: &ProjectUnderstanding,
 ) {
     overview(html, r, p, u, true);
-    section_start(html, "works", text(r.locale, "Work", "작업"));
+    work_index(html, r, p, true);
     let mut seen = std::collections::BTreeSet::new();
     for w in p
         .work_history
@@ -2596,16 +1812,12 @@ pub(super) fn snapshot(
             work_detail(html, r, p, w, true);
         }
     }
-    section_end(html);
-    section_start(
-        html,
-        "decision-reading",
-        text(r.locale, "Decisions", "결정"),
-    );
+    html.push_str("<section class=\"snapshot-page\" id=\"decision-reading\">");
     for d in &p.decision_catalog {
         decision_detail(html, r, d, p, true);
     }
-    section_end(html);
+    html.push_str("</section>");
+    repository_explanation(html, r, &p.for_repository_reading(), true);
     let repository_projection = p.for_repository_reading();
     let repository = build_project_understanding(
         &repository_projection,
@@ -2613,7 +1825,33 @@ pub(super) fn snapshot(
             max_items_per_section: 32,
         },
     );
+    html.push_str("<section class=\"snapshot-page\" id=\"repository-code\">");
     code(html, r, &repository_projection, &repository, true);
+    html.push_str("</section>");
+}
+fn work_index(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snapshot: bool) {
+    html.push_str(
+        "<section class=\"snapshot-page\" id=\"works\"><p class=\"eyebrow\">VOLICORD / WORK</p>",
+    );
+    html.push_str(&format!("<h1 class=\"index-title\">{}</h1><p class=\"intro index-intro\">{}</p><div class=\"work-list\">",text(r.locale,"Work","작업"),text(r.locale,"Read the work and its recorded progress.","작업의 내용과 진행 현황을 확인합니다.")));
+    for w in &p.work_history {
+        work_summary(html, r, w, snapshot);
+    }
+    if p.work_count == 0 {
+        empty_state(
+            html,
+            text(
+                r.locale,
+                "No Work has been recorded.",
+                "기록된 작업이 없습니다.",
+            ),
+        );
+    }
+    html.push_str("</div>");
+    if !snapshot {
+        pagination(html, r, p.work_count, r.view.detail().work_page, true);
+    }
+    html.push_str("</section>");
 }
 
 fn pagination(html: &mut String, r: &ViewerRequest, count: usize, page: usize, work: bool) {

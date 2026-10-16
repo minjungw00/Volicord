@@ -301,8 +301,8 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
     assert!(working.contains("data-view=\"tools\""));
     assert!(working.contains("문서 미리보기"));
     assert!(deep.contains("data-view=\"tools\""));
-    assert!(overview.contains("No source-grounded Project purpose is recorded."));
-    assert!(overview.contains("Current Work"));
+    assert!(overview.contains("No Project purpose has been recorded."));
+    assert!(overview.contains("Recent Work"));
     assert!(
         working.contains("main.py"),
         "document preview must retain actual repository content"

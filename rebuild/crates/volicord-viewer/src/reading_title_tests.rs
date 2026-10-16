@@ -109,9 +109,10 @@ fn assert_goal(w: &UnderstandingWork, r: &ViewerRequest) {
         "fixed label language is independent of Goal"
     );
     let mut html = String::new();
-    work_goal_opening(&mut html, r, w);
+    let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
+    render_answers(&mut html, r, &answers, Some(w), false);
     assert!(html.contains(GOAL));
-    assert!(html.contains("lang=\"\" data-statement-role=\"verified-canonical\""));
+    assert!(html.contains("class=\"goal\" lang=\"\""));
 }
 
 #[test]

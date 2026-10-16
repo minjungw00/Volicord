@@ -510,7 +510,7 @@ fn korean_fixed_text_and_all_purpose_views_are_available() {
     let (_temporary, viewer, project) = setup();
     for (view, label) in [
         (ViewerView::Overview, "목적"),
-        (ViewerView::Work { work: None }, "작업 선택"),
+        (ViewerView::Work { work: None }, "작업의 내용과 진행 현황"),
         (
             ViewerView::Code {
                 scope: CodeScope::Repository,
@@ -1239,7 +1239,11 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         .expect("render completed working Viewer")
         .html;
     assert!(working.contains("Keep mutation targets readable"));
-    assert!(working.contains("completed"));
+    assert!(working.contains("data-work-state=\"open\""));
+    assert!(
+        !working.contains("data-work-state=\"completed\""),
+        "an unassociated completion cannot complete this Goal"
+    );
     assert!(page
         .html
         .contains("No further work is planned for this goal"));

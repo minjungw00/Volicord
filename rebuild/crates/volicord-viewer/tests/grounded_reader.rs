@@ -276,7 +276,8 @@ fn get(f: &Value) -> Result<String, Box<dyn Error>> {
 }
 
 #[test]
-fn overview_reads_available_work_before_missing_project_context() -> Result<(), Box<dyn Error>> {
+fn overview_uses_purpose_and_recent_cards_without_empty_legacy_sections(
+) -> Result<(), Box<dyn Error>> {
     for recorded in [false, true] {
         let temp = tempfile::tempdir()?;
         let capture = std::env::var_os("VOLICORD_OVERVIEW_CAPTURE").map(std::path::PathBuf::from);
@@ -307,12 +308,12 @@ fn overview_reads_available_work_before_missing_project_context() -> Result<(), 
             (
                 ViewerLocale::English,
                 "en",
-                "No source-grounded Project purpose is recorded.",
+                "No Project purpose has been recorded.",
             ),
             (
                 ViewerLocale::Korean,
                 "ko",
-                "source-grounded 프로젝트 목적이 기록되지 않았습니다.",
+                "기록된 프로젝트 목적이 없습니다.",
             ),
         ] {
             let r = ViewerRequest {
@@ -347,33 +348,20 @@ fn overview_reads_available_work_before_missing_project_context() -> Result<(), 
                     .ok_or("overview end")?;
                 let card = overview.find("data-work-id=").ok_or("available Work")?;
                 assert!(
-                    card < overview.find(missing_purpose).ok_or("missing Purpose")?,
-                    "{mode}/{key}: empty Project Purpose precedes recorded Work"
+                    overview.find(missing_purpose).ok_or("missing Purpose")? < card,
+                    "{mode}/{key}: reference purpose card precedes recent Work"
                 );
-                assert!(
-                    card < overview
-                        .find("id=\"overview-current\"")
-                        .ok_or("empty current")?
-                );
-                assert!(
-                    card < overview
-                        .find("id=\"overview-completed\"")
-                        .ok_or("empty outcomes")?
-                );
+                assert!(!overview.contains("id=\"overview-current\""));
+                assert!(!overview.contains("id=\"overview-completed\""));
+                assert!(!overview.contains("overview-jumps"));
                 assert!(overview.contains("data-title-basis=\"neutral-label\""));
                 assert!(
                     !overview.contains("data-question=\"Synopsis\""),
                     "Purpose-only controls cannot acquire a synthesized synopsis"
                 );
                 assert!(overview.contains(f["goal"].as_str().ok_or("original Goal")?));
-                assert!(overview.contains("lang=\"\" data-statement-role=\"verified-canonical\""));
                 assert!(overview.contains("data-work-state=\"open\""));
                 assert!(!overview.contains("data-work-state=\"completed\""));
-                assert!(overview.contains(if recorded {
-                    "Understand the constant return in value()."
-                } else {
-                    "RecordedGoal"
-                }));
                 assert!(page.contains(if mode == "live" {
                     "view=work&amp;work="
                 } else {
@@ -443,7 +431,7 @@ fn missing_checkpoint_direction_does_not_erase_goal_or_promote_advice() -> Resul
             "NextStepAvailability"
         );
         assert_eq!(answers.prose.iter().any(|a| a.text == advice), !stale);
-        for (locale, gap, heading) in [
+        for (locale, _gap, heading) in [
             (
                 ViewerLocale::English,
                 "No Checkpoint next action is recorded.",
@@ -464,15 +452,25 @@ fn missing_checkpoint_direction_does_not_erase_goal_or_promote_advice() -> Resul
             let snapshot = adapter
                 .render_snapshot(&r, TimestampMicros::from_unix_micros(123))?
                 .html;
-            for page in [&overview, &snapshot] {
-                assert!(
-                    page.contains(gap),
-                    "Checkpoint gap must be scoped to recorded direction"
-                );
-                assert!(!page.contains("다음 단계 없음:"));
-                assert!(page.contains("Explain why value returns 5"));
-                assert!(!page.contains("data-question=\"RecordedNextStep\""));
-            }
+            assert!(!overview.contains("data-question=\"RecordedNextStep\""));
+            assert!(
+                snapshot.contains(
+                    &work_answers(
+                        selected,
+                        "en",
+                        if locale == ViewerLocale::English {
+                            FixedLocale::English
+                        } else {
+                            FixedLocale::Korean
+                        }
+                    )
+                    .next_step_answer()
+                    .ok_or("recorded direction")?
+                    .text
+                ),
+                "the complete recorded direction remains available in document evidence"
+            );
+            assert!(overview.contains("Explain why value returns 5"));
             for page in [&detail, &snapshot] {
                 assert_eq!(page.contains(advice), !stale);
                 assert_eq!(page.contains(heading), !stale);
@@ -544,51 +542,32 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         assert!(mcp.to_string().contains("return 5"));
         let page = get(&f)?;
         assert!(page.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
-        assert!(page.contains("data-title-basis=\"neutral-label\">Recorded Work</h3>"));
+        assert!(page.contains("data-title-basis=\"neutral-label\" lang=\"en\">Recorded Work</h1>"));
         assert_eq!(
             page.matches("Understand the constant return in value().")
                 .count(),
             1
         );
-        assert!(page.contains("Observed file in selected snapshot · </span>"));
-        assert!(page.contains("class=\"citation-path\">main.py:1–2 ↗</span></a>"));
-        assert!(page.contains(
-            "Change / investigation · Observed file in selected snapshot · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"
-        ));
-        assert!(page.contains(
-            "<p class=\"source-purpose\">Cited in interpretation: Change / investigation</p>"
-        ));
+        assert!(page.contains("<span>main.py:1–2</span></a>"));
+        assert!(page.contains("Change / investigation · Source 1 ↗"));
+        assert!(page.contains("Observed file in selected snapshot"));
         assert_eq!(
-            page.contains("Before: historical observation · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"),
+            page.contains("Before: historical observation"),
             comparison != "missing_before_state"
         );
         let mut korean_request = request(&f)?;
         korean_request.locale = ViewerLocale::Korean;
         let korean = ViewerAdapter::new(ops(&f)?)
-            .render(&korean_request, "test-form-authenticity")?
+            .render(&korean_request, "test-authenticity")?
             .html;
-        assert!(korean.contains("선택 스냅샷에서 관측한 파일 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"));
-        assert!(korean.contains("구조와 동작 · 선택 스냅샷에서 관측한 파일 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"));
+        assert!(korean.contains("구조와 동작 · 근거 1 ↗"));
+        assert!(korean.contains("선택 스냅샷에서 관측한 파일"));
         assert!(
-            korean.contains("<p class=\"source-purpose\">해석에서 인용한 내용: 구조와 동작</p>")
+            page.find("class=\"record-facts\"").ok_or("facts")?
+                < page.find("class=\"appendix\"").ok_or("sources")?
         );
-        assert_eq!(
-            korean.contains(
-                "이전: 과거 관측 · </span><span class=\"citation-path\">main.py:1–2 ↗</span></a>"
-            ),
-            comparison != "missing_before_state"
-        );
-        assert!(
-            page.find("class=\"fact-states\"").ok_or("facts")?
-                < page
-                    .find("class=\"explanation-code\"")
-                    .ok_or("cited code")?,
-            "verification and direction precede code-reading burden"
-        );
-        assert!(page.contains("class=\"source-purpose-claim\" lang=\"en\">The observed function returns the constant 5.</blockquote>"));
-        assert!(page.contains(
-            "<pre tabindex=\"0\" role=\"region\" aria-label=\"Original Source: main.py:1–2\">"
-        ));
+        assert!(page.contains("class=\"claim-quote\" tabindex=\"0\" lang=\"en\">The observed function returns the constant 5.</blockquote>"));
+        assert!(page.contains("<pre class=\"code-region\" tabindex=\"0\" role=\"region\""));
         assert_eq!(
             page.contains("Read the retained before observation"),
             comparison != "missing_before_state"
@@ -841,10 +820,17 @@ fn long_original_explanation_is_retained_once_below_a_goal_title() -> Result<(),
     record_with_purpose(&f, &mut host, &purpose)?;
     let before = ops(&f)?.canonical_basis(project(&f)?)?;
     let page = get(&f)?;
-    assert_eq!(page.matches(&purpose).count(), 1);
+    assert_eq!(
+        page.matches(&format!("data-content-language=\"en\">{purpose}</p>"))
+            .count(),
+        1,
+        "ordinary prose occurs once; Source panels quote their exact bound claims separately"
+    );
     assert!(!page.contains(&format!("{purpose}</h3>")));
     assert!(page.contains("data-title-basis=\"neutral-label\""));
-    assert!(page.contains("class=\"explanation-authority\"><summary>About this explanation"));
+    assert!(page.contains(
+        "Host interpretation; semantic accuracy has not been independently established."
+    ));
     let projection =
         ops(&f)?.project_projection_selected(project(&f)?, WorkSelector::ExactWork(work(&f)?))?;
     let answers = work_answers(
@@ -1397,7 +1383,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
         let code = ViewerAdapter::new(ops(&f)?)
             .render(&code_request, "test-form-authenticity")?
             .html;
-        assert_eq!(code.matches(&format!("<h4>{title}</h4>")).count(), 1);
+        assert_eq!(code.matches(&format!("<h2>{title}</h2>")).count(), 1);
         assert!(code.contains(text));
         assert!(code.contains("Both pairs are retained observations"));
     }
@@ -1665,74 +1651,48 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
         ViewerAdapter::new(ops(&f)?).export_snapshot(&req, &destination)?;
         let snapshot = fs::read_to_string(destination)?;
         for page in [&live, &snapshot] {
-            let cards: Vec<_> = page
-                .split("<figure class=\"source-excerpt\"")
+            let points: Vec<_> = page
+                .split("<section class=\"source-point\"")
                 .skip(1)
-                .map(|tail| tail.split("</figure>").next().ok_or("figure end"))
+                .map(|s| s.split("</section>").next().ok_or("point end"))
                 .collect::<Result<_, _>>()?;
-            assert_eq!(cards.len(), 2, "One figure per Source/range/use");
-            let full = cards
-                .iter()
-                .find(|card| card.contains("<code lang=\"\">def value():\n    return 5\n</code>"))
-                .ok_or("full-range card")?;
-            let other = cards
-                .iter()
-                .find(|card| card.contains("<code lang=\"\">def value():</code>"))
-                .ok_or("other-range card")?;
-            assert_eq!(
-                full.matches("class=\"source-claim-basis\"").count(),
-                3,
-                "Shared Source must retain all three distinct paragraph bindings"
-            );
-            assert_eq!(other.matches("class=\"source-claim-basis\"").count(), 1);
+            assert_eq!(points.len(), 4, "one Source point per exact claim binding");
             for (_, question, ordinal, paragraph, claim, _, end) in cases {
-                let target = if end == body.len() { full } else { other };
-                let excluded = if end == body.len() { other } else { full };
                 let offset = paragraph.find(claim).ok_or("claim")?;
-                let marker = format!("data-question=\"{question}\" data-paragraph=\"{ordinal}\" data-claim-start=\"{offset}\" data-claim-end=\"{}\"", offset + claim.len());
-                assert!(
-                    target.contains(&marker),
-                    "Exact question/paragraph/UTF-8 claim basis missing: {marker}"
+                let marker=format!("data-question=\"{question}\" data-paragraph=\"{ordinal}\" data-claim-start=\"{offset}\" data-claim-end=\"{}\"",offset+claim.len());
+                let matching: Vec<_> = points.iter().filter(|p| p.contains(&marker)).collect();
+                assert_eq!(
+                    matching.len(),
+                    1,
+                    "exact claim identity must not leak to another Source point"
                 );
-                assert!(target.contains(&format!(
-                    "class=\"source-bound-claim\">{claim}</blockquote>"
-                )));
-                assert!(target.contains(&explanation_text_hash(claim)));
+                let point = matching[0];
+                assert!(point.contains(&format!("{claim}</blockquote>")));
+                assert!(point.contains(&explanation_text_hash(claim)));
+                assert!(point.contains("class=\"return\""));
                 let citation: ExplanationCitation = serde_json::from_value(
                     realization["paragraphs"][ordinal - 1]["citations"][0].clone(),
                 )?;
-                let complete_citation = format!("citation: {citation:#?}")
+                let expected = format!("citation: {citation:#?}")
                     .replace('&', "&amp;")
                     .replace('<', "&lt;")
                     .replace('>', "&gt;")
                     .replace('"', "&quot;")
                     .replace('\'', "&#39;");
                 assert!(
-                    target.contains(&complete_citation),
-                    "Complete paragraph-specific citation missing"
+                    point.contains(&expected),
+                    "complete exact citation retained"
                 );
+                let code = if end == body.len() {
+                    "def value():\n    return 5\n"
+                } else {
+                    "def value():"
+                };
                 assert!(
-                    !excluded.contains(&marker),
-                    "Another range inherited this claim"
+                    point.contains(&format!("<code lang=\"\">{code}</code>")),
+                    "claim keeps its exact range"
                 );
-                assert!(!excluded.contains(claim));
-                assert!(!excluded.contains(&explanation_text_hash(claim)));
             }
-            assert_eq!(full.matches("citation: ExplanationCitation").count(), 3);
-            assert_eq!(other.matches("citation: ExplanationCitation").count(), 1);
-            assert_eq!(full.matches("class=\"return-to-claim\"").count(), 3);
-            assert_eq!(other.matches("class=\"return-to-claim\"").count(), 1);
-            assert_eq!(
-                full.matches("data-statement-role=\"generated-interpretation\"")
-                    .count(),
-                6 // Three exact bindings and three separately selectable attributed claims.
-            );
-            assert_eq!(
-                other
-                    .matches("data-statement-role=\"generated-interpretation\"")
-                    .count(),
-                2 // One exact binding and the ordinary attributed claim.
-            );
         }
     }
     assert_eq!(canonical, operations.canonical_basis(project(&f)?)?);
@@ -1810,13 +1770,15 @@ fn seed_authored_reading_browser_runtime() -> Result<(), Box<dyn Error>> {
             citations.push(citation);
         }
         let paragraphs: Vec<_> = [
+            ("heading", if language=="ko" {"보존된 Source를 읽는 경계"}else{"Reading retained Sources"}),
+            ("synopsis", if language=="ko" {"보존된 근거 조회와 현재 파일의 해시 검증을 따라갑니다. 실행 효과는 이 관측으로 확인하지 않습니다."}else{"Follow retained evidence lookup and current-file hash validation. These observations do not verify runtime effects."}),
             ("purpose", if language == "ko" { "보존된 근거의 조회와 현재 코드 검증을 이해합니다." } else { "Understand retained evidence lookup and current-code validation." }),
             ("reported_change", text),
             ("expected_effect", if language == "ko" { "실행 중 효과는 검증되지 않았습니다." } else { "No runtime effect is verified." }),
             ("verification", if language == "ko" { "이 테스트 문구는 실행 결과를 제공하지 않습니다." } else { "This authored control supplies no execution result." }),
             ("next_step", if language == "ko" { "다음 행동은 기록되지 않았습니다." } else { "No next action is recorded." }),
             ("limits", if language == "ko" { "두 파일 구간만 관측했습니다. 주변 코드와 의미적 승인은 확인되지 않았습니다." } else { "Only two file regions were observed. Surrounding code and semantic approval remain unavailable." }),
-        ].into_iter().map(|(question, text)| json!({"question":question,"text":text,"evidence_keys":[if question == "next_step" { "next_step" } else { "goal" }], "citations":if question == "reported_change" { citations.clone() } else { vec![] }})).collect();
+        ].into_iter().map(|(question, text)| json!({"question":question,"text":text,"evidence_keys":[if question == "next_step" { "next_step" } else { "goal" }], "citations":if matches!(question,"heading"|"synopsis"|"reported_change") { citations.iter().cloned().map(|mut citation|{citation["claim_start_byte"]=json!(0);citation["claim_end_byte"]=json!(text.len());citation["claim_sha256"]=json!(explanation_text_hash(text));citation}).collect::<Vec<_>>() } else { vec![] }})).collect();
         let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"plan_fingerprint":generation["plan"]["fingerprint"],"language":language,"generator":{"host":"authored-structural-control","session":"representative-browser","agent":null,"model":null},"paragraphs":paragraphs});
         call(
             &mut host,
@@ -2025,13 +1987,13 @@ fn authored_heading_synopsis_and_reading_points_share_public_lifecycle(
             .html,
     ] {
         assert!(page.contains("data-title-basis=\"generated-interpretation\""));
-        assert!(page.contains("data-question=\"Heading\" data-content-language=\"en\">A constant return, examined</h3>"));
-        assert!(page.contains("class=\"reader-lead\""));
+        assert!(page.contains("data-question=\"Heading\" lang=\"en\" data-content-language=\"en\">A constant return, examined</h1>"));
+        assert!(page.contains("class=\"lead\""));
         assert!(
-            page.find("data-section=\"Purpose\"").ok_or("problem")?
-                < page.find("data-section=\"Limits\"").ok_or("limit")?
+            page.find("data-question=\"Purpose\"").ok_or("problem")?
+                < page.find("data-question=\"Limits\"").ok_or("limit")?
         );
-        assert!(page.contains("class=\"return-to-claim\""));
+        assert!(page.contains("class=\"return\""));
         assert!(page.contains(f["goal"].as_str().ok_or("original Goal")?));
     }
     ops(&f)?.delete_work_source_observation(

@@ -196,11 +196,8 @@ mod learning_tests {
                         assert!(html.contains(&format!("id=\"learning-{candidate_id}\"")));
                     }
                     let mut summary = String::new();
-                    work_summary(&mut summary, &r, &p, w, true);
-                    assert_eq!(
-                        summary.contains("learning-inspection-reference"),
-                        learning_present && mode == 0
-                    );
+                    work_summary(&mut summary, &r, w, true);
+                    assert!(!summary.contains("learning-inspection-reference"));
                     assert!(!summary.contains("tagged provenance costs an allocation"));
                 }
             }

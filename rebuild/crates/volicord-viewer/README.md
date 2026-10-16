@@ -37,6 +37,7 @@ Live reads use purpose-oriented views (default `overview`):
 
 ```text
 /?view=overview
+/?view=repository
 /?view=work&work=CANONICAL_GOAL_ID
 /?view=code&scope=work&work=CANONICAL_GOAL_ID&entity=ENTITY_ID
 /?view=code&scope=repository
@@ -44,49 +45,37 @@ Live reads use purpose-oriented views (default `overview`):
 /?view=tools&tool=documents|memory|status|evidence
 ```
 
-Primary navigation is Overview and Work. Code Understanding, Decisions, Analysis
-and Documents remain available in the secondary views disclosure. Analysis reuses `/?view=tools&tool=status`; Documents reuses
-`/?view=tools&tool=documents`. Evidence and Memory are in a native Tools disclosure. The active navigation item has `aria-current="page"`.
-Overview begins with a recorded Project Purpose when available, then populated Work
-categories. When Purpose is absent, available Work appears before that explicit gap
-and empty categories. This order preserves classification: a Goal-only Work stays
-open in Remaining Work, never Project Purpose, Current Work or a recent outcome.
-Category counts follow the cards; every empty section and omission remains inspectable.
-Cards show lifecycle,
-result availability, verification and the recorded next action; selecting one opens
-its explanation sections before closed evidence/history disclosures. Decisions have
-separate choice, alternatives, explanation, applicability and original-evidence areas.
-Missing user rationale is an explicit absence, never a rendering error. Work cards
-retain historical verification coverage alongside the actual recorded direction.
-Overview also keeps current open questions, canonical risks and unresolved Work
-association visible before next actions. There is no universal Material limitations
-section; unrelated capability failures do not precede ordinary Work meaning.
-Work rows use an authored derived heading and synopsis when available. Detail is a
-reader document: lead, recorded status, explicit explanation/limits/original-instructions/full-evidence
-buttons, supported narrative, observations/comparisons, full generated limitations
-and claim-linked code guidance. Recorded state/check/review/acceptance facts retain
-their own authority and chronology. Missing heading or explanation keeps the full
-original Goal and exact distinguishing Work/revision metadata; no Goal clipping or
-first-paragraph result is synthesized. Original-language quotations remain accessible through the opening original-instructions
-link to the full native record disclosure. Titles and leads are visibly host interpretation, never canonical
-renames or independently approved achievements.
-The reading layout follows the explicitly selected local Viewer reference: a
-76px white masthead, centered Overview/Work navigation, blue-gray page, full-width
-catalog cards, 900px reader document offset from the left, and blue citation buttons.
-Document actions and white record disclosures use the same reference primitives.
-Cards show the actual observation time in explicit UTC; it is not a fabricated
-Work creation or completion date. Source line numbers come from the cited range;
-the original code bytes remain unchanged. Language/tools remain native
-disclosures. Selecting a citation opens its exact Source beside the document on
-wide screens and in a full-width panel on narrow screens. The return link goes
-back to the cited paragraph; direct Source-range links also provide a return.
-Native URL fragments power this journey in both live pages and script-free offline
-snapshots. Live pages add only the bundled presentation script: Escape, origin scroll
-restoration, native record opening and narrow-panel keyboard cycling. The HTTP CSP
-allows that script by its exact SHA-256 digest, without external script/network
-permissions. It performs no requests, persistence, generation or Runtime mutations. Browsers without CSS `:has` retain the complete inline Source appendix.
-Offline snapshots retain a visible read-only notice and put their Evidence
-navigation in the same native disclosure hierarchy.
+Primary navigation contains only Overview and Work. Overview shows the recorded
+Project Purpose and recent Work cards; the Work index uses the same cards. Each
+card contains an authored heading/synopsis when available, a lifecycle badge, the
+actual observation time in explicit UTC, and a reading link. Missing interpretation
+keeps a neutral title and the complete original Goal quotation. It never fabricates
+creation/completion dates, a synopsis, Project Purpose or Work association.
+
+A selected Work is a reading document with breadcrumb, heading/lead, concise recorded
+state, interpretation attribution, document actions, narrative, full limitations,
+original instructions and full evidence. Independent verification/review/acceptance,
+recorded directions, chronological history, exact identities and related records live
+inside full evidence. They are not repeated as card paragraphs or separate empty
+sections. Tools and code inspection keep their explicit routes outside the reading
+masthead. Without Work, Overview links to an independent repository explanation
+at `/?view=repository`, rather than inserting that document into Overview.
+
+The selected reference supplies the page, card and document structure directly:
+white masthead, centered two-item navigation, blue-gray page, full-width catalog,
+left-offset 900px document, blue citation controls and white record disclosures.
+Each citation opens its exact bound claim and observed Source in a side panel on
+wide screens and a full viewport panel on narrow screens. Original Source bytes
+and observed line coordinates remain unchanged; no diff or execution is inferred.
+The return link restores the exact cited paragraph. Native URL fragments power
+both live and script-free offline journeys. The live presentation script adds
+Escape, scroll/focus restoration, linked disclosure opening and narrow-panel
+keyboard containment with inert background. HTTP grants only its exact SHA-256
+script digest. No requests, generation, persistence or Runtime mutation occur.
+Snapshots select one screen at a time through local fragments, keeping the same
+Overview, index and document components. Original/evidence records are open in
+snapshot documents so they remain reachable without scripts; all retained support
+information remains in the file. Without CSS `:has`, all content is inline.
 
 Code identifies the selected Work, repository or exact-entity read basis and keeps
 a concise reliability summary beside the ordinary explanation. The summary counts

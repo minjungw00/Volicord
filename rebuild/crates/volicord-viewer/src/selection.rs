@@ -24,6 +24,7 @@ pub enum ViewerView {
         page: usize,
     },
     Overview,
+    RepositoryExplanation,
     Work {
         work: Option<ContextItemId>,
     },
@@ -42,6 +43,7 @@ impl ViewerView {
     pub fn named(name: &str) -> Result<Self, ViewerError> {
         match name {
             "overview" => Ok(Self::Overview),
+            "repository" => Ok(Self::RepositoryExplanation),
             "work" => Ok(Self::Work { work: None }),
             "code" => Ok(Self::Code {
                 scope: CodeScope::Repository,
@@ -58,7 +60,7 @@ impl ViewerView {
         let value = |key: &str| values.get(key).map(String::as_str);
         let name = value("view").unwrap_or(default.key());
         let allowed: &[&str] = match name {
-            "overview" => &[],
+            "overview" | "repository" => &[],
             "work" => &["work", "page"],
             "code" => &["scope", "work", "entity"],
             "decisions" => &["decision", "page"],
@@ -97,6 +99,7 @@ impl ViewerView {
         };
         Ok(match name {
             "overview" => Self::Overview,
+            "repository" => Self::RepositoryExplanation,
             "work" if page > 0 => Self::WorkPage { page },
             "work" => Self::Work { work: work()? },
             "code" => {
@@ -155,6 +158,7 @@ impl ViewerView {
     pub fn key(&self) -> &'static str {
         match self {
             Self::Overview => "overview",
+            Self::RepositoryExplanation => "repository",
             Self::Work { .. } | Self::WorkPage { .. } => "work",
             Self::Code { .. } => "code",
             Self::Decisions { .. } | Self::DecisionsPage { .. } => "decisions",
@@ -172,6 +176,7 @@ impl ViewerView {
                 scope: CodeScope::Repository,
                 ..
             }
+            | Self::RepositoryExplanation
             | Self::Decisions { .. } => WorkSelector::Repository,
             _ => WorkSelector::LatestWork,
         }

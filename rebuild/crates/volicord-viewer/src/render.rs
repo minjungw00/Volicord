@@ -107,6 +107,7 @@ fn read_requirements(
             || matches!(
                 view,
                 ViewerView::Code { .. }
+                    | ViewerView::RepositoryExplanation
                     | ViewerView::Tools {
                         tool: ViewerTool::Documents | ViewerTool::Status | ViewerTool::Evidence
                     }
@@ -421,17 +422,19 @@ impl ViewerAdapter {
             }
         ));
         html.push_str(&format!("<a class=\"skip skip-link\" href=\"#viewer-content\">{}</a><header class=\"masthead viewer-header\"><div class=\"shell\"><a class=\"brand\" href=\"{}\">Volicord</a>", text(request.locale, "Skip to content", "본문으로 건너뛰기"), if snapshot { "#overview".into() } else { format!("/?view=overview&locale={}&language={}", locale_key(request.locale), percent_encode(&request.requested_language)) }));
-        html.push_str("<div class=\"viewer-navigation\">");
         reading::navigation(&mut html, request, snapshot);
-        html.push_str("</div>");
-        if snapshot {
+        if snapshot || !matches!(request.view, crate::ViewerView::Tools { .. }) {
             html.push_str(&format!(
                 "<span class=\"trial snapshot-mode\" title=\"{}\">{}</span>",
-                text(
-                    request.locale,
-                    "Read-only static snapshot",
-                    "읽기 전용 정적 스냅샷"
-                ),
+                if snapshot {
+                    text(
+                        request.locale,
+                        "Read-only static snapshot",
+                        "읽기 전용 정적 스냅샷",
+                    )
+                } else {
+                    text(request.locale, "Read-only reading view", "읽기 전용 화면")
+                },
                 text(request.locale, "Read-only", "읽기 전용")
             ));
         }
@@ -439,6 +442,7 @@ impl ViewerAdapter {
         reading::runtime_blockers(&mut html, request, &health);
         if snapshot {
             reading::snapshot(&mut html, request, &projection, &understanding);
+            html.push_str("<section class=\"snapshot-page\" id=\"snapshot-support\">");
             if let Some(documents) = &documents {
                 render_documents(&mut html, request, documents, None);
             }
@@ -448,6 +452,7 @@ impl ViewerAdapter {
             if let ViewerRenderMode::Snapshot { generated_at } = mode {
                 render_snapshot_basis(&mut html, request, &projection, generated_at);
             }
+            html.push_str("</section>");
         } else {
             reading::surface(&mut html, request, &projection, &understanding);
             if let crate::ViewerView::Tools { tool } = request.view {
@@ -695,148 +700,6 @@ impl ViewerAdapter {
             .publish_document(document, format, destination)
             .map_err(|error| ViewerError::new(error.to_string()))
     }
-}
-
-fn render_work_card(
-    html: &mut String,
-    request: &ViewerRequest,
-    work: &UnderstandingWork,
-    decisions: &[volicord_projections::UnderstandingDecision],
-) {
-    let (title, basis, language) = reading::work_reading_heading(work, request);
-    let answers = volicord_projections::work_answers(
-        work,
-        &request.requested_language,
-        request.locale.fixed(),
-    );
-    html.push_str(&format!(
-        "<article class=\"understanding-card work-item\" data-work-id=\"{}\" data-work-state=\"{}\"><p class=\"eyebrow\">WORK DOCUMENT · {}</p><h3 lang=\"{}\" data-title-basis=\"{}\"{}>{}</h3>",
-        work.work_item_id,
-        understanding_work_state_key(work.state),
-        text(request.locale, "interpretation and observations", "해석과 관측"), escape(&language), basis, reading::reader_heading_attributes(&answers), escape(&title),
-    ));
-    reading::work_explanation(html, request, work);
-    html.push_str(&format!(
-        "<details><summary>{}</summary><p>{}</p></details>",
-        text(
-            request.locale,
-            "Original next-step evidence",
-            "원래 다음 단계 근거"
-        ),
-        escape(
-            work.reading
-                .next_step
-                .original_text
-                .as_deref()
-                .unwrap_or("")
-        )
-    ));
-    if !work.changed_paths.is_empty() || !work.changed_components.is_empty() {
-        html.push_str(&format!(
-            "<p class=\"work-scope\"><strong>{}:</strong> {}{}</p>",
-            escape(text(request.locale, "Affected code", "영향받는 코드")),
-            escape(&bounded_names(&work.changed_paths, 4, request.locale)),
-            if work.changed_components.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " · {}: {}",
-                    escape(text(request.locale, "components", "컴포넌트")),
-                    escape(&bounded_names(&work.changed_components, 4, request.locale))
-                )
-            }
-        ));
-    }
-    html.push_str(&format!(
-        "<p class=\"work-links\">{} {} · {} {} · {} {}</p>",
-        work.checkpoint_ids.len(),
-        escape(text(request.locale, "Checkpoints", "체크포인트")),
-        work.decision_ids.len(),
-        escape(text(request.locale, "Decisions", "결정")),
-        work.open_question_ids.len(),
-        escape(text(request.locale, "open Questions", "열린 질문"))
-    ));
-    let scoped_decisions = decisions
-        .iter()
-        .filter(|decision| {
-            decision.decision.work_scope == DecisionWorkScope::WorkItem(work.work_item_id)
-        })
-        .filter(|decision| work.decision_ids.contains(&decision.decision.decision_id))
-        .take(32)
-        .collect::<Vec<_>>();
-    if !scoped_decisions.is_empty() {
-        html.push_str(&format!(
-            "<div class=\"work-decisions\"><strong>{}</strong><ul>",
-            escape(text(
-                request.locale,
-                "Decisions for this work",
-                "이 작업의 결정"
-            ))
-        ));
-        for decision in scoped_decisions {
-            html.push_str(&format!(
-                "<li data-decision-id=\"{}\" data-decision-scope=\"work-item\">",
-                decision.decision.decision_id
-            ));
-            let answers = reading::decision_answers(request, &decision.decision);
-            reading::render_answers(html, request, &answers, None);
-            html.push_str("</li>");
-        }
-        html.push_str("</ul></div>");
-    }
-    html.push_str(&format!(
-        "<details class=\"work-audit\"><summary>{}</summary><dl class=\"explanation-basis\">",
-        escape(text(
-            request.locale,
-            "Inspect work audit identities",
-            "작업 감사 식별자 확인"
-        ))
-    ));
-    definition(html, "Work Item", &work.work_item_id.to_string());
-    definition(
-        html,
-        text(request.locale, "Original Goal", "원래 목표"),
-        &work.title,
-    );
-    for change in &work.reading.changes {
-        if let Some(original) = &change.original_text {
-            definition(
-                html,
-                &format!(
-                    "{:?} / {} / revision {}",
-                    change.basis.record, change.basis.field, change.basis.revision
-                ),
-                original,
-            );
-        }
-    }
-    definition(
-        html,
-        text(request.locale, "Checkpoints", "체크포인트"),
-        &bounded_names(
-            &work
-                .checkpoint_ids
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>(),
-            8,
-            request.locale,
-        ),
-    );
-    definition(
-        html,
-        text(request.locale, "Decisions", "결정"),
-        &bounded_names(
-            &work
-                .decision_ids
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>(),
-            8,
-            request.locale,
-        ),
-    );
-    html.push_str("</dl></details></article>");
 }
 
 fn render_deterministic_explanation(

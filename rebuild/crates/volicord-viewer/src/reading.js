@@ -1,9 +1,9 @@
-// Local presentation only. No requests, storage, generation or runtime mutations.
+// Presentation only: no requests, persistence, generation or Runtime mutations.
 (() => {
   const saved = new Map();
+  const narrow = matchMedia('(max-width:900px)');
   let selected = null;
   let focusedHash = null;
-  const narrow = matchMedia('(max-width:900px)');
   function apply() {
     const target = document.getElementById(location.hash.slice(1));
     if (target) {
@@ -11,22 +11,31 @@
       for (let parent = target.parentElement; parent; parent = parent.parentElement) {
         if (parent.matches('details')) parent.open = true;
       }
-      if (target.matches('.original-record')) {
-        const goal = target.querySelector('details.work-goal');
-        if (goal) goal.open = true;
-      }
     }
-    const panel = target && (target.matches('.source-excerpt') ? target :
-      target.matches('.source-reading-point') ? target.closest('.source-excerpt') : null);
-    if (panel) {
+    const point = target?.closest('.source-point');
+    const article = document.querySelector('.doc');
+    const header = document.querySelector('.masthead');
+    if (article) article.inert = !!point && narrow.matches;
+    if (header) header.inert = !!point && narrow.matches;
+    if (selected && selected !== point) {
+      selected.removeAttribute('role');
+      selected.removeAttribute('aria-modal');
+    }
+    if (point) {
       const changed = focusedHash !== location.hash;
+      selected = point;
       focusedHash = location.hash;
-      selected = panel;
-      const point = target.matches('.source-reading-point') ? target : panel;
-      const link = point.querySelector('.return-to-claim,.source-panel-return');
-      const origin = link && document.getElementById(link.hash.slice(1));
-      if (changed && !narrow.matches && origin) origin.scrollIntoView({block:'center'});
-      if (!panel.contains(document.activeElement)) point.focus({preventScroll:true});
+      if (narrow.matches) {
+        point.setAttribute('role', 'dialog');
+        point.setAttribute('aria-modal', 'true');
+        point.setAttribute('aria-label', point.querySelector('.source-path').textContent);
+      } else {
+        point.removeAttribute('role');
+        point.removeAttribute('aria-modal');
+      }
+      const origin = document.getElementById(point.dataset.origin);
+      if (changed && !narrow.matches) origin?.scrollIntoView({block:'center'});
+      if (!point.contains(document.activeElement)) point.focus({preventScroll:true});
     } else if (selected) {
       selected = null;
       focusedHash = null;
@@ -39,24 +48,18 @@
     }
   }
   document.addEventListener('click', event => {
-    const link = event.target.closest('a.source-citation');
-    if (!link) return;
-    const point = document.getElementById(link.hash.slice(1));
-    const back = point && point.querySelector('.return-to-claim');
-    if (back && !selected) saved.set(back.hash.slice(1), scrollY);
+    const link = event.target.closest('a.evidence-link');
+    if (link && !selected) saved.set(link.dataset.origin, scrollY);
   });
   document.addEventListener('keydown', event => {
-    // Native fragment focus can arrive before the queued hashchange event.
-    const active = document.getElementById(location.hash.slice(1));
-    selected = active && active.closest('.source-excerpt');
-    if (!selected) return;
-    const point = selected.querySelector('.source-reading-point:target') || selected;
-    const back = point.querySelector('.return-to-claim,.source-panel-return');
-    if (event.key === 'Escape' && back) {
-      event.preventDefault(); back.click();
-      document.getElementById(back.hash.slice(1))?.focus({preventScroll:true});
+    const point = document.getElementById(location.hash.slice(1))?.closest('.source-point');
+    if (!point) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      point.querySelector('.return').click();
+      apply();
     } else if (event.key === 'Tab' && narrow.matches) {
-      const controls = [...selected.querySelectorAll('a[href],summary,[tabindex="0"]')]
+      const controls = [...point.querySelectorAll('a[href],summary,[tabindex="0"]')]
         .filter(n => n.getClientRects().length && !n.closest('details:not([open]) :not(summary)'));
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && (document.activeElement === first || document.activeElement === point)) {

@@ -94,7 +94,7 @@ fn selected_result_and_state_have_independent_prefix_basis(
         let page = get(&server(&f), &format!("/?view=work&work={work}"));
         assert!(page.contains("Interpretation has not been generated"));
         assert!(!page.contains("class=\"work-explanation\""));
-        assert_eq!(page.contains("class=\"result-evidence\""), prefix > 0);
+        assert_eq!(page.contains("result: Some("), prefix > 0);
     }
     Ok(())
 }
@@ -105,17 +105,15 @@ fn korean_visible_state_answers_are_localized() -> Result<(), Box<dyn std::error
         &server(&f),
         &format!("/?view=work&work={}&locale=ko", f.goals["older"]),
     );
-    // Independent dimensions now appear at the opening and in the remaining
-    // facts panel. Inspect only those ordinary panels, not raw audit wire values.
-    let states = ["reader-status", "fact-states"]
-        .into_iter()
-        .map(|class| {
-            page.split(&format!("class=\"{class}\""))
-                .nth(1)
-                .and_then(|s| s.split("</div>").next())
-                .unwrap_or("")
-        })
-        .collect::<String>();
+    // Independent states remain localized in the full-evidence facts, separate
+    // from original wire identities and the concise lifecycle strip.
+    let states = page
+        .split("class=\"record-facts\"")
+        .nth(1)
+        .ok_or("facts")?
+        .split("</div>")
+        .next()
+        .ok_or("facts end")?;
     for expected in ["완료", "실행하지 않음", "요청하지 않음", "거부됨"] {
         assert!(states.contains(expected), "missing {expected}: {states}");
     }
@@ -206,16 +204,11 @@ fn current_work_survives_a_catalog_full_of_completed_work() -> Result<(), Box<dy
         "fixture must reverse chronological and identity order"
     );
     let page = get(&server(&f), "/?view=overview");
-    let current_section = page
-        .split("Current Work</h3>")
-        .nth(1)
-        .ok_or("current section")?
-        .split("Recent outcomes</h3>")
-        .next()
-        .ok_or("end")?;
+    assert!(page.contains("RECENT WORK"));
+    let exact = get(&server(&f), &format!("/?view=work&work={current}"));
     assert!(
-        current_section.contains(&current.to_string()),
-        "current Work lost to catalog pagination"
+        exact.contains(&format!("data-work-id=\"{current}\"")),
+        "current Work must remain independently reachable beyond catalog bounds"
     );
     use volicord_projections::{
         build_project_understanding, ProjectionDetail, UnderstandingBound, WorkSelector,
@@ -279,7 +272,7 @@ fn decision_facts_name_user_choice_and_agent_recommendation_independently(
             ),
         );
         let facts = page
-            .split("class=\"fact-states\"")
+            .split("class=\"record-facts\"")
             .nth(1)
             .ok_or("facts")?
             .split("</div>")

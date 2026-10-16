@@ -110,7 +110,7 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
         &f,
         &format!("/?view=work&work={work}&locale=ko&language=ko"),
     );
-    assert!(page.contains("class=\"work-explanation\""));
+    assert!(page.contains("class=\"doc-head\""));
     assert!(page.contains("Fake unit-test paragraph"));
     assert!(page.contains("data-question=\"Purpose\" lang=\"ko\" data-content-language=\"ko\""));
     let mixed = get(
