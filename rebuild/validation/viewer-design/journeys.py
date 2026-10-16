@@ -129,7 +129,7 @@ def attach(out, missing_root, works, frame):
         title = next(u['text'] for u in w['authored']['units'] if u['role'] == 'heading')
         intro = f'<h1>Work · {key.upper()}</h1><p class="source-note">같은 단일 Work 후보 집합의 탐색 비교 · 과거 A/B/C 목록과 별개</p><article class="work-card" data-work-id="{selected["work_item_id"]}"><h2>{escape(title)}</h2><p>상태: {escape(selected["state"])}</p><a class="button" href="{key}.html">작업 읽기 →</a></article>'
         (out / f'find-{key}.html').write_text(frame('Work 찾기', intro))
-        cases.append(dict(key=key, work=selected['work_item_id'], baseline=f'baseline-{key}.html#overview', target=f'find-{key}.html', mechanism_ref='next' if key == 'b' else 'open'))
+        cases.append(dict(key=key, work=selected['work_item_id'], baseline=f'baseline-{key}.html#overview', target=f'find-{key}.html#main', mechanism_ref='next' if key == 'b' else 'open'))
     cases.append(dict(key='missing', work=spec['work'], baseline='baseline-missing.html#overview', target='missing.html', code_task='unavailable; no Work-bound Source', explanation='missing'))
     tasks = [
         ('find', '목표에 해당하는 Work를 찾으세요. 상태와 어떤 기록을 읽는지 설명하세요.'),
@@ -147,7 +147,7 @@ def attach(out, missing_root, works, frame):
     receipt = dict(cases=cases, source_first=evidence, tasks=[dict(id=k, prompt=t) for k,t in tasks],
                    missing_case=spec, human_timing=None, human_errors=None, human_acceptance='pending',
                    evaluator_separation='source-first assertions consume original ranges; presentation prompts contain no editorial answer; no independent model reviewer run',
-                   content_delta='B/Click exact units, facts, Goal, excerpts and audit retained; historical A/B/C catalog excluded from matched discovery; baseline repository map/diagnostics/documents remain via baseline links; target does not recreate them')
+                   content_delta='B/Click exact units, facts, Goal, excerpts and audit retained in detail. Matched target discovery shows title/state only; baseline discovery also has synopsis/limits/Goal disclosures and Project Purpose. Those Work facts remain one entry away in target; no discovery-only comprehension superiority is claimed. Historical A/B/C catalog excluded from matched discovery. Baseline repository map/diagnostics/documents remain via baseline links; target does not recreate them.')
     (out / 'inputs/journeys.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2))
     return receipt
 

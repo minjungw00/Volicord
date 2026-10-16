@@ -4,18 +4,34 @@
   if (!points.length) return;
   document.body.classList.add('enhanced');
   const saved = new Map();
+  const appendix = document.querySelector('.appendix');
+  const background = [...document.querySelectorAll('.doc,.masthead,footer,.skip')];
   let selected = null;
   function apply() {
     const id = location.hash.slice(1);
     const point = points.find(p => p.id === id);
+    // Native fragments do not open a closed details element consistently.
+    const target = document.getElementById(id);
+    if (target) {
+      if (target.matches('details')) target.open = true;
+      for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+        if (parent.matches('details')) parent.open = true;
+      }
+    }
     if (point) {
       selected = point;
       document.body.classList.add('code-open');
       points.forEach(p => p.classList.toggle('active', p === point));
+      background.forEach(n => n.inert = true);
+      appendix.setAttribute('role', 'dialog');
+      appendix.setAttribute('aria-modal', 'true');
       point.closest('.appendix').scrollTop = 0;
       point.focus({preventScroll:true});
     } else {
       document.body.classList.remove('code-open');
+      background.forEach(n => n.inert = false);
+      appendix.removeAttribute('role');
+      appendix.removeAttribute('aria-modal');
       points.forEach(p => p.classList.remove('active'));
       if (selected) {
         const origin = document.getElementById(id);
@@ -38,6 +54,16 @@
     history.replaceState(null, '', '#' + origin);
   });
   document.addEventListener('keydown', event => {
+    if (event.key === 'Tab' && selected) {
+      const controls = [...selected.querySelectorAll('a[href],summary,[tabindex="0"]')]
+        .filter(n => n.getClientRects().length);
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === selected)) {
+        event.preventDefault(); last?.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === selected)) {
+        event.preventDefault(); first?.focus();
+      }
+    }
     if (event.key === 'Escape' && selected) {
       event.preventDefault();
       location.hash = selected.dataset.origin;

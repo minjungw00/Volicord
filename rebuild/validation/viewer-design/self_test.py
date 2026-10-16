@@ -83,6 +83,10 @@ class ReviewTests(unittest.TestCase):
         self.change_readback(lambda d:d['work_history'][0]['answers'].update(explanation_state='withheld',omitted_source_excerpt_count=1))
         with self.assertRaisesRegex(ValueError,'unavailable/incomplete'):design.admit(self.root)
 
+    def test_unsupported_explanation_is_not_current(self):
+        self.change_readback(lambda d:d['work_history'][0]['answers'].update(explanation_state='unsupported'))
+        with self.assertRaisesRegex(ValueError,'unavailable/incomplete'):design.admit(self.root)
+
     def test_hostile_and_missing_content(self):
         _,_,works=design.admit(self.root);w=copy.deepcopy(works[0]);attack='</script><img src=https://example.invalid onerror="window.__attack=1">'
         long=attack+(' 긴 설명 mixed-language λ漢字 아주긴경로_without_breaks' * 100)
@@ -130,17 +134,37 @@ class ReviewTests(unittest.TestCase):
             self.assertNotIn('<script>', ''.join(rendered));self.assertNotIn('<img ', ''.join(rendered))
             self.assertIn('syntax-keyword',''.join(rendered))
 
+    def test_conditional_comparison_requires_original_order(self):
+        _,_,works=design.admit(self.root);click=works[1]
+        self.assertIn('class="condition-table"',design.work_page(click,False))
+        # A rearranged stdout must not become a mismatched condition-to-paragraph link.
+        source=click['sources']['reproduction'];source['text']=source['text'].replace('read lazy=True absolute=False: B','read lazy=True absolute=False: A')
+        with self.assertRaisesRegex(ValueError,'original stdout'):
+            design.work_page(click,False)
+
     def test_package_links_and_hashes(self):
         if not ARGS.build:self.skipTest('no package supplied')
         root=ARGS.build.resolve();manifest=design.load(root/'manifest.json')
         for name,d in manifest['files'].items():self.assertEqual(design.sha((root/name).read_bytes()),d['sha256'],name)
+        class Ids(design.HTMLParser):
+            def __init__(inner):super().__init__();inner.ids=set()
+            def handle_starttag(inner,tag,attrs):
+                inner.ids.update(v for k,v in attrs if k=='id')
+        ids={}
+        for p in root.rglob('*.html'):
+            parser=Ids();parser.feed(p.read_text());ids[p.resolve()]=parser.ids
         class Links(design.HTMLParser):
             def handle_starttag(inner,tag,attrs):
                 for key,value in attrs:
-                    if key not in {'href','src'} or not value or value.startswith('#'):continue
+                    if key not in {'href','src'} or not value:continue
                     self.assertNotIn('://',value,'remote/external link')
-                    self.assertTrue((root/value.split('#')[0]).is_file(),value)
-        for p in root.glob('*.html'):Links().feed(p.read_text())
+                    parts=value.split('#',1)
+                    target=(inner.base/parts[0]).resolve() if parts[0] else inner.document
+                    self.assertTrue(target.is_relative_to(root),'package escape '+value)
+                    self.assertTrue(target.is_file(),value)
+                    if len(parts)==2 and parts[1] and target in ids:self.assertIn(parts[1],ids[target],f'{inner.document.name}: missing fragment {value}')
+        for p in root.rglob('*.html'):
+            parser=Links();parser.base=p.parent;parser.document=p.resolve();parser.feed(p.read_text())
         self.assertFalse(any(p.suffix=='.html' for p in (root/'inputs').rglob('*')), 'executable historical prototype must not be delivered')
 
 

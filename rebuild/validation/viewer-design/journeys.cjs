@@ -47,6 +47,10 @@ module.exports=async function journeys({browser,url,build,out,refined=false}) {
     row.outcome={explanation:'missing',relevant_code:'unavailable',reason:'no Work-bound Source',recovery:'requires evidence/host explanation; layout cannot repair content'};
    }else{
     row.opening={problem:await geometry(p.problem),mechanism:await geometry(p.mechanism),limits:await geometry(p.limits)};
+    if(layout==='target'&&refined){
+     const jump=page.locator('.audit-links a[href="#limits"]');
+     row.limit_shortcut=await geometry(jump);assert(row.limit_shortcut.visible,'limits shortcut on opening screen');
+    }
     row.typography=await p.mechanism.evaluate(n=>({font:getComputedStyle(n).fontSize,line_height:getComputedStyle(n).lineHeight,width:n.getBoundingClientRect().width,text_length:n.textContent.length}));
     const start=await page.evaluate(()=>scrollY);
     await p.mechanism.scrollIntoViewIfNeeded();
@@ -83,8 +87,22 @@ module.exports=async function journeys({browser,url,build,out,refined=false}) {
      const units=authored.works.find(w=>w.key==='click').units.filter(u=>u.role==='comparison');
      const content=await p.article.textContent();for(const u of units)assert(content.includes(u.text),'all three conditional observations');
      row.comparison={conditions:units.length,geometry:await geometry(p.comparison),human_correctness:null};
+     if(layout==='target'&&refined){
+      assert.deepEqual(await page.locator('.condition-table tbody td code').allTextContents(),['B','A','A'],'independent stdout outcomes');
+      const table=page.locator('.condition-table');await table.scrollIntoViewIfNeeded();
+      row.comparison.table=await geometry(table);
+      await page.screenshot({path:path.join(out,`journey-click-conditions-${width}.png`)});
+      const links=table.locator('tbody a');await activate(page,links.nth(1),steps,'compare condition and inspect explanation');
+      assert.equal(new URL(page.url()).hash,'#claim-7');
+      await page.screenshot({path:path.join(out,`journey-click-condition-explanation-${width}.png`)});
+     }
     }
-    await p.limits.scrollIntoViewIfNeeded();row.limits_reachable=await p.limits.isVisible();
+    if(layout==='target'&&refined){
+     await activate(page,page.locator('.audit-links a[href="#limits"]'),steps,'inspect verification limits');
+     await page.waitForFunction(()=>location.hash==='#limits');
+     assert((await geometry(p.limits)).visible,'limits reached directly');
+    }else await p.limits.scrollIntoViewIfNeeded();
+    row.limits_reachable=await p.limits.isVisible();
     // Reproduction of defects is explicit, with positive and adverse controls.
     if(layout==='target'){
      await page.goto(url+work.key+'.html#original');await page.evaluate(()=>document.fonts.ready);
@@ -95,6 +113,12 @@ module.exports=async function journeys({browser,url,build,out,refined=false}) {
      await active.locator('.return').focus();await page.keyboard.press('Shift+Tab');
      row.code_focus_contained=await page.evaluate(()=>!!document.activeElement.closest('.appendix'));
      if(refined){assert(row.fragment_disclosure_open,'direct disclosure must open');assert(row.code_focus_contained,'modal keyboard focus contained');}
+     if(refined){
+      assert.equal(await page.locator('.doc').evaluate(n=>n.inert),true,'background excluded');
+      await page.goto(url+work.key+'.html#point-'+p.index+'-0');
+      await page.locator('.source-point.active').waitFor({state:'visible'});
+      assert.equal(await page.locator('.appendix').getAttribute('role'),'dialog','direct Source selection');
+     }
      await page.keyboard.press('Escape');
      if(refined){assert.equal(await page.locator('#original').evaluate(n=>n.open),false,'unrelated disclosure remains closed');}
     }
@@ -117,8 +141,18 @@ module.exports=async function journeys({browser,url,build,out,refined=false}) {
  await page.locator('[data-origin="claim-5"].evidence-link').first().evaluate(n=>n.href='#point-7-0');
  await page.locator('[data-origin="claim-5"].evidence-link').first().click();
  assert(!(await page.locator('.source-point.active .source-path').textContent()).includes('archive/cli.rs:1423'),'wrong-purpose selection detected');
+ await page.goto(url+'b.html');await page.locator('[data-origin="claim-5"].evidence-link').first().click();
+ assert((await page.locator('.source-point.active .source-path').textContent()).includes('archive/cli.rs:1423'),'restored purpose selection passes');
+ if(refined){
+  await page.evaluate(()=>document.addEventListener('keydown',e=>{if(e.key==='Tab')e.stopImmediatePropagation()},true));
+  await page.locator('.doc').evaluate(n=>n.inert=false);await page.locator('.masthead').evaluate(n=>n.inert=false);
+  await page.locator('.source-point.active .return').focus();await page.keyboard.press('Shift+Tab');
+  assert.equal(await page.evaluate(()=>!!document.activeElement.closest('.appendix')),false,'removing focus containment reproduces failure');
+  await page.goto(url+'b.html#point-5-0');await page.reload();await page.locator('.source-point.active .return').focus();await page.keyboard.press('Shift+Tab');
+  assert(await page.evaluate(()=>!!document.activeElement.closest('.appendix')),'restored focus containment passes');
+ }
  await page.close();
- const receipt={kind:'browser measurements and scripted tasks; no human or independent model comprehension verdict',refined,rows,negative_controls:['deleted adverse outcome rejected; restored positive passes','wrong-purpose Source differs from independent expected range'],human_acceptance:'pending'};
+ const receipt={kind:'browser measurements and scripted tasks; no human or independent model comprehension verdict',refined,rows,negative_controls:['deleted adverse outcome rejected; restored positive passes','wrong-purpose Source differs from independent expected range; restored positive passes',...(refined?['removed focus containment reproduces failure; restored positive passes']:[])],human_acceptance:'pending'};
  fs.writeFileSync(path.join(out,'journeys.json'),JSON.stringify(receipt,null,2));
  return {journeys:rows.length,refined,defects:{closed_fragment:rows.filter(r=>r.fragment_disclosure_open===false).length,focus_escape:rows.filter(r=>r.code_focus_contained===false).length},human_acceptance:'pending'};
 };

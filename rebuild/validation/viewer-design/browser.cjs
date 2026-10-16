@@ -24,6 +24,7 @@ async function paint(page){await page.evaluate(()=>document.fonts.ready);}
 function expected(work){const control=fixture.cases.find(f=>f.key===work.key);const status=JSON.parse(fs.readFileSync(path.join(build,`inputs/${work.key}-status.json`)));return status.work_history.find(w=>w.work_item_id===control.work);}
 async function content(page,work){
  const truth=expected(work);
+ assert.equal(await page.locator('.record-strip').getAttribute('data-control-state'),truth.state,'exact control state separated from historical catalog');
  for(const [i,u] of work.units.entries())assert.equal(await page.locator(`[data-unit="${i}"]`).textContent(),u.text,'exact prose '+i);
  assert.equal(await page.locator('.goal').textContent(),work.goal,'full original Goal');
  for(const f of truth.answers.facts)assert.equal(await page.locator(`[data-fact="${f.question}"]`).textContent(),f.text,'fact '+f.question);
@@ -56,8 +57,8 @@ async function trip(page,work,truth,width,offline=false){
    if(await regionBox.evaluate(n=>n.scrollWidth>n.clientWidth+2))await page.waitForFunction(n=>n.scrollLeft>0,await regionBox.elementHandle());
    if(!offline){
      const box=await regionBox.boundingBox();assert(box.y>=0&&box.y<700,'code starts in viewport');
-     if(width<=900)assert.equal(await page.locator('.doc').isVisible(),false,'purposeful mobile full-screen code');
-     else assert.equal(await page.locator('.doc').isVisible(),true,'desktop explanation remains visible');
+     assert.equal(await page.locator('.doc').isVisible(),false,'focused code with exact origin quotation');
+     assert.equal(await page.locator('.appendix').getAttribute('aria-modal'),'true');
    }
    if(u.role==='reading_point'&&j===0&&trips<20)await page.screenshot({path:path.join(out,`${work.key}-${width}-${offline?'offline':'live'}-point-${i}.png`)});
    if(!offline&&trips%2===0){await page.keyboard.press('Escape');}
