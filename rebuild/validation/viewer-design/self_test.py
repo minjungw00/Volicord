@@ -92,6 +92,16 @@ class ReviewTests(unittest.TestCase):
         p=self.catalog_path();d=json.loads(p.read_text());d['purpose']['text']='a prototype-only purpose';p.write_text(json.dumps(d))
         with self.assertRaisesRegex(ValueError,'exact independent'):design.catalog_input.admit(p)
 
+    def test_card_dates_do_not_invent_missing_history(self):
+        catalog=design.catalog_input.admit(self.catalog_path())
+        item=catalog['items'][0];item['goal']['revision']=2
+        item['checkpoint']['work_state']='in_progress'
+        page=design.catalog_rows(dict(items=[item]))
+        self.assertNotIn('<time ',page)
+        self.assertEqual(page.count('기록 없음'),2)
+        self.assertNotIn('<h3><a',page)
+        self.assertEqual(page.count('<a '),1)
+
     def test_highlighting_preserves_multiline_source(self):
         for locator,text in [('a.rs','/* first\nsecond */\nlet s = "<script>";\n'),('a.py','def read():\n    return "<img src=x>" # comment\n')]:
             rendered=design.syntax.lines(text,locator)

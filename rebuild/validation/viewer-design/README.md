@@ -3,10 +3,10 @@
 Disposable local reading design; production migration, framework choice and human
 acceptance are pending. This support creates no canonical records, generates no
 explanation and invokes no provider. The provisional review contract and observed
-limits are in [blue-gray-review.md](blue-gray-review.md) (the original trial is retained in [report.md](report.md)).
+limits are in [card-details-review.md](card-details-review.md) (earlier reviews are retained in [blue-gray-review.md](blue-gray-review.md) and [report.md](report.md)).
 
 The delivered private package starts at
-`rebuild/.local/viewer-task-design/blue-gray/review/index.html`. Open it directly, or run
+`rebuild/.local/viewer-task-design/card-details/review/index.html`. Open it directly, or run
 `python3 serve.py` **from that package directory** and open the printed loopback
 URL. Stop with Ctrl-C. Python 3 is the only preview runtime. All review links,
 Source files, scripts, baseline snapshots and observations are package-local.
@@ -117,3 +117,10 @@ boxed original instructions/full evidence, explicit button and disclosure states
 and build-time Rust/Python lexical coloring. The source-owned production Viewer
 and its existing opening-limit contract are unchanged. The user's feedback governs
 the disposable comparison layout; Product adoption remains a separate decision.
+
+Card navigation is limited to the reading button; titles are plain text. Creation
+time comes only from the first Goal revision, completion from a completed
+completion Checkpoint. Timestamps display in KST with exact machine-readable
+values and scoped tooltips; missing evidence remains explicitly missing. Limits
+use the same divider and spacing as other narrative sections. Work-page guidance
+does not hardcode the fixture count.

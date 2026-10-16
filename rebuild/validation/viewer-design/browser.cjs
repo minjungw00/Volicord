@@ -85,6 +85,7 @@ async function trip(page,work,truth,width,offline=false){
    await page.screenshot({path:path.join(out,`entry-${width}.png`)});
    await page.goto(server.url+'works.html');await paint(page);
    assert.equal(await page.locator('[data-work]').count(),catalog.works.length);
+   assert.equal(await page.locator('.index-intro').textContent(),'작업의 내용과 진행 현황을 확인합니다.');
    for(const file of ['overview.html','works.html']){
     await page.goto(server.url+file);await paint(page);
     if(file==='overview.html')assert.equal(await page.locator('.project-purpose').textContent(),catalog.purpose.text);
@@ -93,7 +94,14 @@ async function trip(page,work,truth,width,offline=false){
     assert.deepEqual(await page.locator('.work-card').evaluateAll(ns=>ns.map(n=>n.dataset.catalogWork)),ordered);
     for(const work of catalog.works){
      const card=page.locator(`[data-catalog-work=${work.key}]`);
-     assert.equal(await card.locator('h3 a').textContent(),work.title);assert.equal(await card.locator('.work-summary').textContent(),work.summary);
+     assert.equal(await card.locator('h3').textContent(),work.title);
+     assert.equal(await card.locator('a,button,[tabindex]').count(),1,'only reading button is interactive');
+     assert.equal(await card.locator('a').getAttribute('data-work'),work.key);
+     const goal=rows('context_items').find(r=>r.id===work.work);
+     const cpTime=rows('checkpoints').find(r=>r.id===work.checkpoint);
+     assert.deepEqual(await card.locator('time').evaluateAll(ns=>ns.map(n=>n.dataset.recordedAt)),[String(goal.recorded_at),String(cpTime.recorded_at)],'exact original creation/completion records');
+     const format=n=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(n/1000)).replaceAll('-','.');
+     assert.deepEqual(await card.locator('time').allTextContents(),[format(goal.recorded_at),format(cpTime.recorded_at)],'KST time independently formatted');assert.equal(await card.locator('.work-summary').textContent(),work.summary);
      const cp=rows('checkpoints').find(r=>r.id===work.checkpoint&&r.work_item_id===work.work);assert(cp,'independent original Work checkpoint');
      assert.equal(await card.locator('.work-status').getAttribute('data-recorded-state'),cp.work_state);
      assert.equal(await card.locator('.work-status').textContent(),'완료');assert.equal(await card.locator('.limit,details').count(),0,'cards contain title/state/summary, no hidden summary or limits');
@@ -119,6 +127,9 @@ async function trip(page,work,truth,width,offline=false){
     const truth=await content(page,work);
     assert(await page.locator('#reading').evaluate(n=>!!(n.compareDocumentPosition(document.querySelector('.guard'))&Node.DOCUMENT_POSITION_FOLLOWING)),'limits follow the explanation');
     assert.equal(await page.locator('.record-box').count(),2);
+    assert(!(await page.locator('.breadcrumb').textContent()).includes('/ 보존된 Work'));
+    const divider=await page.locator('.limits-section').evaluate(n=>({border:getComputedStyle(n).borderTopWidth,padding:parseFloat(getComputedStyle(n).paddingTop),margin:parseFloat(getComputedStyle(n).marginTop)}));
+    assert.equal(divider.border,'1px');assert(divider.padding>=28&&divider.margin>=28,'limits separated like narrative sections');
     assert(await page.locator('.code-region .syntax-keyword').count()>0,'build-time syntax highlighting');
     await page.locator('#original summary').click();assert(await page.locator('.goal').isVisible());await page.locator('#original summary').click();
     await page.screenshot({path:path.join(out,`${work.key}-${width}-records.png`)});await page.evaluate(()=>scrollTo(0,0));

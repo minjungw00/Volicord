@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Disposable editorial design over verified retained readbacks; no generation."""
 import argparse
+from datetime import datetime, timedelta, timezone
 import hashlib
 from html import escape as esc
 from html.parser import HTMLParser
@@ -136,7 +137,7 @@ def unit(work, i):
 def work_page(work, scripted=True, failure=False, catalog_item=None):
     a = work['authored']; units = a['units']; selected = work['selected']; key = a['key']
     title = next((u['text'] for u in units if u['role'] == 'heading'), '기록된 작업')
-    body = '<article class="doc"><p class="breadcrumb"><a href="works.html">← 작업 목록</a> / 보존된 Work</p><header class="doc-head"><p class="eyebrow">Work document · 해석과 관측</p>'
+    body = '<article class="doc"><p class="breadcrumb"><a href="works.html">← 작업 목록</a></p><header class="doc-head"><p class="eyebrow">Work document · 해석과 관측</p>'
     if not any(u['role'] == 'heading' for u in units):
         body += '<h1>기록된 작업</h1>'
     for i,u in enumerate(units):
@@ -172,7 +173,7 @@ def work_page(work, scripted=True, failure=False, catalog_item=None):
     body += '</div>'
     for i,u in enumerate(units):
         if u['role'] == 'limits':
-            body += f'<aside class="guard" aria-label="중요한 한계"><h2>결과를 읽을 때의 한계</h2>{unit(work,i)}</aside>'
+            body += f'<section class="reading-section limits-section"><aside class="guard" aria-label="중요한 한계"><h2>결과를 읽을 때의 한계</h2>{unit(work,i)}</aside></section>'
     body += '<div class="audit"><details class="record-box" id="original"><summary>원래 지시 · 전체 Goal</summary><blockquote class="goal">' + esc(a['goal']) + '</blockquote></details>'
     body += '<details class="record-box" id="audit"><summary>전체 근거 · 상태 · 출력 identity</summary><p>Captured Current는 과거 readback의 상태입니다. 현재 Source freshness나 새 검증을 뜻하지 않습니다.</p>'
     body += f'<p>현재 control Work: {esc(selected["work_item_id"])} · 과거 Work: {esc(a["historical_work"])}</p>'
@@ -205,12 +206,27 @@ def work_page(work, scripted=True, failure=False, catalog_item=None):
 STATE_LABELS = {'completed':'완료','in_progress':'진행 중','paused':'일시 중지','open':'미완료'}
 
 
+def card_time(value, label, basis):
+    if value is None:
+        return f'<span class="work-date"><span>{label}</span> 기록 없음</span>'
+    if type(value) is not int or value <= 0:
+        raise ValueError('invalid recorded timestamp')
+    instant = (datetime(1970,1,1,tzinfo=timezone.utc)+timedelta(microseconds=value)).astimezone(timezone(timedelta(hours=9)))
+    return f'<span class="work-date"><span>{label}</span> <time datetime="{instant.isoformat()}" data-recorded-at="{value}" title="{esc(basis)} · {instant.isoformat()}">{instant:%Y.%m.%d %H:%M}</time></span>'
+
+
 def catalog_rows(catalog, limit=None):
     rows = ''
     items = sorted(catalog['items'],key=lambda i:i['checkpoint']['recorded_at'],reverse=True)
     for item in items if limit is None else items[:limit]:
-        a=item['authored']; cp=item['checkpoint']
-        rows += f'<article class="work-card" data-catalog-work="{a["key"]}"><div class="work-card-heading"><h3><a data-work="{a["key"]}" href="{a["key"]}.html">{esc(a["title"])}</a></h3><span class="work-status" data-recorded-state="{cp["work_state"]}" title="보존된 원래 작업의 Checkpoint 기준">{STATE_LABELS[cp["work_state"]]}</span></div><p class="work-summary">{esc(a["summary"])}</p><a class="button secondary card-action" href="{a["key"]}.html">작업 읽기 <span aria-hidden="true">→</span></a></article>'
+        a=item['authored']; cp=item['checkpoint']; goal=item['goal']
+        # Only the first Goal revision establishes its creation record. A later
+        # revision is not evidence of creation time. Completion is scoped to the
+        # retained completion Checkpoint, not an inferred execution end.
+        created = goal['recorded_at'] if goal['revision'] == 1 else None
+        completed = cp['recorded_at'] if cp['work_state'] == 'completed' and cp['checkpoint_kind'] == 'completion' else None
+        dates = card_time(created,'생성','Goal 최초 기록 시각')+card_time(completed,'완료','완료 Checkpoint 기록 시각')
+        rows += f'<article class="work-card" data-catalog-work="{a["key"]}"><div class="work-card-heading"><h3>{esc(a["title"])}</h3><span class="work-status" data-recorded-state="{cp["work_state"]}" title="보존된 원래 작업의 Checkpoint 기준">{STATE_LABELS[cp["work_state"]]}</span></div><p class="work-summary">{esc(a["summary"])}</p><div class="work-card-footer"><div class="work-dates">{dates}<span class="time-zone">한국 시간 · KST</span></div><a class="button secondary card-action" data-work="{a["key"]}" href="{a["key"]}.html">작업 읽기 <span aria-hidden="true">→</span></a></div></article>'
     return rows
 
 
@@ -218,9 +234,9 @@ def record_page(item):
     a=item['authored']; cp=item['checkpoint']; key=a['key']
     body='<article class="doc"><p class="breadcrumb"><a class="button secondary" href="works.html">← 전체 작업</a></p><header class="doc-head"><p class="eyebrow">Volicord / 보존된 작업 기록</p><h1>'+esc(a['title'])+'</h1><p class="lead">'+esc(a['summary'])+'</p><span class="work-status">'+STATE_LABELS[cp['work_state']]+'</span></header>'
     body+='<section class="reading-section"><h2>기록된 작업 내용</h2><p class="unit-text">'+esc(cp['state_change'])+'</p></section><section class="reading-section"><h2>기록된 다음 단계</h2><p class="unit-text">'+esc(cp['next_step'])+'</p></section>'
-    body+='<aside class="guard"><h2>결과와 한계</h2><p>보존된 완료 기록입니다. 현재 테스트 성공이나 사용자 인수 승인을 뜻하지 않습니다.</p>'
+    body+='<section class="reading-section limits-section"><aside class="guard"><h2>결과와 한계</h2><p>보존된 완료 기록입니다. 현재 테스트 성공이나 사용자 인수 승인을 뜻하지 않습니다.</p>'
     for limit in item['limits']:body+='<p>'+esc(limit)+'</p>'
-    body+='</aside><div class="audit"><details class="record-box" id="original"><summary>원래 지시</summary><blockquote class="goal">'+esc(item['goal']['statement'])+'</blockquote></details><details class="record-box" id="audit"><summary>전체 근거와 기록</summary><p>제목과 요약은 원본 기록을 바탕으로 작성한 디자인 검토용 해석입니다. 이 작업의 정밀 코드 읽기 문서는 새로 생성하지 않았습니다.</p><pre>'+esc(json.dumps(dict(goal=item['goal'],checkpoint=cp),ensure_ascii=False,indent=2))+'</pre><a href="inputs/catalog-bundle.json">보존된 원본 기록 열기</a></details></div></article>'
+    body+='</aside></section><div class="audit"><details class="record-box" id="original"><summary>원래 지시</summary><blockquote class="goal">'+esc(item['goal']['statement'])+'</blockquote></details><details class="record-box" id="audit"><summary>전체 근거와 기록</summary><p>제목과 요약은 원본 기록을 바탕으로 작성한 디자인 검토용 해석입니다. 이 작업의 정밀 코드 읽기 문서는 새로 생성하지 않았습니다.</p><pre>'+esc(json.dumps(dict(goal=item['goal'],checkpoint=cp),ensure_ascii=False,indent=2))+'</pre><a href="inputs/catalog-bundle.json">보존된 원본 기록 열기</a></details></div></article>'
     return frame(a['title'],body)
 
 
@@ -272,7 +288,7 @@ def build(args):
     manifest['catalog'] = dict(project_id=catalog['spec']['project_id'],input_sha256=sha(args.catalog.read_bytes()),
         classification=catalog['spec']['classification'],works=[dict(key=i['authored']['key'],work=i['goal']['id'],checkpoint=i['checkpoint']['id'],state=i['checkpoint']['work_state']) for i in catalog['items']],purpose_authority=catalog['spec']['purpose']['authority'])
     rows = catalog_rows(catalog)
-    catalog_intro = '<p class="eyebrow">Volicord / 전체 작업</p><h1 class="index-title">작업</h1><p class="intro index-intro">보존된 세 작업의 내용과 현황을 확인합니다.</p>'
+    catalog_intro = '<p class="eyebrow">Volicord / 전체 작업</p><h1 class="index-title">작업</h1><p class="intro index-intro">작업의 내용과 진행 현황을 확인합니다.</p>'
     (output/'works.html').write_text(frame('전체 작업',catalog_intro+'<div class="work-list">'+rows+'</div>'))
     overview = '<p class="eyebrow">Project overview</p><h1>Volicord</h1><section class="project-goal"><h2>프로젝트 목표</h2><p class="project-purpose">'+esc(catalog['spec']['purpose']['text'])+'</p><details><summary>목표의 근거</summary><p>유지 중인 제품 헌장의 인용입니다. 보존된 Project에 별도 Project Purpose 기록이 있다는 의미는 아닙니다.</p><a href="inputs/project-charter.md">제품 헌장 원문 열기</a></details></section>'
     overview += '<div class="section-heading"><div><p class="eyebrow">Recent work</p><h2>최근 작업</h2></div><a class="button secondary" href="works.html">전체 작업 보기 →</a></div><p class="source-note">보존된 프로젝트 작업 기록 기준 · 완료는 현재 테스트 성공이나 사용자 인수 승인을 뜻하지 않습니다.</p><div class="work-list">'+catalog_rows(catalog,3)+'</div>'
