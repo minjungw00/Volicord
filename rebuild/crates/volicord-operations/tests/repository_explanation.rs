@@ -686,7 +686,7 @@ fn denied_file_permissions_do_not_publish_an_observation() -> Result<(), Box<dyn
     let before = f.ops.canonical_basis(f.project)?;
     let file = f.root.join("main.py");
     let original = fs::metadata(&file)?.permissions();
-    fs::set_permissions(&file, fs::Permissions::from_mode(0))?;
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o0))?;
     let denied = observe(&f, "main.py", None);
     fs::set_permissions(&file, original)?;
     assert!(
