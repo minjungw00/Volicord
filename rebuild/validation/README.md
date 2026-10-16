@@ -1065,3 +1065,28 @@ then cleans up its disposable Runtime and listener. The control's authored prose
 supplies contract/presentation evidence only. A separately host-produced repository
 document, source inspection, exact candidate identities and user comprehension are
 separate observations; this adds no authoritative gate or generation platform.
+
+The repository reading coverage is scoped as follows:
+
+- A1/A4: public `repository_reading.py` invokes fresh Project binding through real
+  CLI, MCP, HTTP and offline publication, with no Goal/Checkpoint and unchanged
+  retention on reads. Its prose is explicitly authored support.
+- A2/A5: `repository_explanation` Rust controls cover foreign Project/snapshots,
+  excluded/ignored/unsafe paths, UTF-8/full-file changes, missing analysis, binding
+  revision changes, expiry/deletion/forgetting, corrupted storage/content and
+  metadata, unsupported formats, failed-record preservation and explicit recovery.
+- A3/A7: separately retained active-host Source reads and actual explanation/View
+  artifacts are required; authored controls, valid hashes and complete transport
+  establish no semantic approval, user comprehension or final UI acceptance.
+- A6: architecture contract checker compares current explanation and repository
+  copy writers with owners, with negative version/mandatory-role drift controls.
+- A8: existing operations `source_observations`, `explanation_cli` and
+  `explanation_budgets`, Host `work_explanation` and Viewer `work_explanation` /
+  `grounded_reader` retain their independent positive/negative responsibilities.
+
+The large-diagnostic control uses fresh synthetic Rust with unresolved calls, not
+prototype text or a canned repository answer. It verifies full stored diagnostic
+inspection alongside count/hash/complete-coverage preparation within existing byte
+bounds. Purpose and forgetting controls preserve the canonical Purpose record;
+missing analysis, explicit rebinding and unreadable storage retain truthful read
+states and never gain ambient Source access.

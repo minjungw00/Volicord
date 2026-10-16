@@ -190,6 +190,18 @@ fn repository_authority_rejects_foreign_snapshots_paths_and_work_borrowing(
 ) -> Result<(), Box<dyn Error>> {
     let f = fixture()?;
     let id = source(&observe(&f, "main.py", None)?)?;
+    for seconds in [0, 604801] {
+        assert!(f
+            .ops
+            .observe_repository_file(RepositoryFileObservationRequest {
+                project_id: f.project,
+                analysis_snapshot_id: f.analysis,
+                path: "main.py".into(),
+                byte_range: None,
+                retain_seconds: seconds
+            })
+            .is_err());
+    }
     for path in [
         "secret.py",
         "ignored.py",
@@ -408,5 +420,279 @@ fn expired_corrupt_and_unsupported_copies_and_outputs_never_supply_prose(
                 .is_err());
         }
     }
+    Ok(())
+}
+
+#[test]
+fn original_project_purpose_and_source_forgetting_stay_work_free() -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let purpose_text = "Keep the recorded project rationale available across clones.";
+    let purpose = f.ops.record_current_host_user_context(
+        f.project,
+        "authored-control".into(),
+        "purpose".into(),
+        purpose_text.into(),
+        volicord_context::ContextItemRole::ProjectPurpose,
+        purpose_text.into(),
+    )?;
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let r = response(&f, id)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        r,
+    )?;
+    let before = f.ops.canonical_basis(f.project)?;
+    let original = before
+        .context_items
+        .iter()
+        .find(|i| i.id == purpose.context_item_id)
+        .ok_or("Purpose")?
+        .clone();
+    assert_eq!(original.statement, purpose_text);
+    assert!(before
+        .context_items
+        .iter()
+        .all(|i| i.role != volicord_context::ContextItemRole::Goal));
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    let authorization = f.ops.record_user_source(
+        f.project,
+        "authored-control".into(),
+        "forget".into(),
+        "Forget this observed file Source.".into(),
+    )?;
+    let authorization = source(&serde_json::json!({"source_id":authorization.identity}))?;
+    let result = f.ops.forget_record(
+        f.project,
+        volicord_context::CanonicalRecordId::Source(id),
+        authorization,
+    )?;
+    assert!(
+        result.canonical_committed
+            && result.managed_derived_cleanup_completed
+            && result.residue_verified
+    );
+    assert!(f
+        .ops
+        .read_repository_explanation_source(f.project, f.analysis, id)
+        .is_err());
+    assert_ne!(
+        f.ops
+            .read_repository_explanation(f.project, "en")?
+            .explanation_state,
+        ExplanationState::Current
+    );
+    let after = f.ops.canonical_basis(f.project)?;
+    assert_eq!(
+        after.context_items.iter().find(|i| i.id == original.id),
+        Some(&original)
+    );
+    assert!(after.latest_checkpoint.is_none());
+    Ok(())
+}
+
+#[test]
+fn missing_analysis_rebinding_and_storage_failure_have_bounded_recovery(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let r = response(&f, id)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        r.clone(),
+    )?;
+    let path = f
+        .ops
+        .layout()
+        .analysis_project_dir(f.project)
+        .join(format!("{}.json", f.analysis));
+    let hidden = path.with_extension("hidden");
+    fs::rename(&path, &hidden)?;
+    let absent = f.ops.read_repository_explanation(f.project, "en")?;
+    assert_eq!(absent.explanation_state, ExplanationState::Unavailable);
+    assert!(f
+        .ops
+        .read_repository_explanation_source(f.project, f.analysis, id)
+        .is_err());
+    fs::rename(&hidden, &path)?;
+    assert_eq!(
+        f.ops
+            .read_repository_explanation(f.project, "en")?
+            .explanation_state,
+        ExplanationState::Current
+    );
+    let before = f.ops.canonical_basis(f.project)?;
+    let database = f.ops.layout().privacy_store();
+    let original = database.with_extension("original");
+    fs::rename(&database, &original)?;
+    fs::write(&database, b"Authored unavailable SQLite control")?;
+    assert!(observe(&f, "main.py", None).is_err());
+    assert!(f
+        .ops
+        .record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            r
+        )
+        .is_err());
+    assert_eq!(
+        f.ops
+            .read_repository_explanation(f.project, "en")?
+            .explanation_state,
+        ExplanationState::Unavailable
+    );
+    assert_eq!(fs::read(&database)?, b"Authored unavailable SQLite control");
+    fs::remove_file(&database)?;
+    fs::rename(&original, &database)?;
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    assert_eq!(
+        f.ops
+            .read_repository_explanation(f.project, "en")?
+            .explanation_state,
+        ExplanationState::Current
+    );
+    let other = f._temp.path().join("identical-other-repository");
+    fs::create_dir(&other)?;
+    for name in ["main.py", "secret.py", "ignored.py", ".gitignore"] {
+        fs::copy(f.root.join(name), other.join(name))?;
+    }
+    f.ops.bind_project(f.project, Some(1), &other)?;
+    assert!(f
+        .ops
+        .read_repository_explanation_source(f.project, f.analysis, id)
+        .is_err());
+    assert_ne!(
+        f.ops
+            .read_repository_explanation(f.project, "en")?
+            .explanation_state,
+        ExplanationState::Current
+    );
+    Ok(())
+}
+
+#[test]
+fn large_diagnostic_metadata_is_inspectable_without_bloating_the_reader_plan(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = fixture()?;
+    let rust=(0..256).map(|n|format!("fn value_{n}() {{ missing_a_{n}(); missing_b_{n}(); missing_c_{n}(); missing_d_{n}(); missing_e_{n}(); missing_f_{n}(); missing_g_{n}(); missing_h_{n}(); }}\n")).collect::<String>();
+    fs::write(f.root.join("diagnostics.rs"), rust)?;
+    f.analysis = f
+        .ops
+        .analyze(f.project, vec!["secret.py".into()])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let full = f
+        .ops
+        .repository_explanation_evidence(f.project, f.analysis)?;
+    let reports = full["analysis_metadata"]["capabilities"]
+        .as_array()
+        .ok_or("reports")?;
+    let repeated_diagnostic_bytes: usize = reports
+        .iter()
+        .map(|r| r["diagnostics"].to_string().len())
+        .sum();
+    assert!(
+        repeated_diagnostic_bytes > EXPLANATION_RETAINED_BYTE_LIMIT,
+        "control needs large repeated diagnostic IDs; got {repeated_diagnostic_bytes}"
+    );
+    let plan =
+        f.ops
+            .prepare_explanation(f.project, ExplanationSubject::Repository(f.analysis), "en")?;
+    assert!(serde_json::to_vec(&plan)?.len() <= EXPLANATION_PLAN_BYTE_LIMIT);
+    assert!(plan.retention_budget.response_byte_capacity >= EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY);
+    let compact = plan
+        .evidence
+        .iter()
+        .find(|e| e.key == "repository_basis")
+        .ok_or("basis")?
+        .content["capabilities"]
+        .as_array()
+        .ok_or("compact reports")?;
+    assert_eq!(compact.len(), reports.len());
+    for (summary, original) in compact.iter().zip(reports) {
+        assert_eq!(summary["state"], original["state"]);
+        assert_eq!(
+            summary["diagnostic_count"].as_u64(),
+            original["diagnostics"].as_array().map(|d| d.len() as u64)
+        );
+        assert_eq!(
+            summary["diagnostics_sha256"],
+            explanation_text_hash(&original["diagnostics"].to_string())
+        );
+        assert_eq!(
+            summary["coverage"]["included"].as_array().map(Vec::len),
+            original["coverage"]["included"].as_array().map(Vec::len)
+        );
+    }
+    println!(
+        "diagnostic metadata={repeated_diagnostic_bytes} bytes; prepared reader={} bytes",
+        serde_json::to_vec(&plan)?.len()
+    );
+    Ok(())
+}
+
+#[test]
+fn repository_copy_metadata_tampering_is_rejected_before_disclosure() -> Result<(), Box<dyn Error>>
+{
+    for key in [
+        "kind",
+        "repository_worktree",
+        "comparison",
+        "retention_expiry",
+    ] {
+        let f = fixture()?;
+        let id = source(&observe(&f, "main.py", None)?)?;
+        let connection = rusqlite::Connection::open(f.ops.layout().privacy_store())?;
+        let (record_id,raw):(Vec<u8>,String)=connection.query_row("SELECT id,record_json FROM managed_derived WHERE json_extract(record_json,'$.kind')='source_observation'",[],|r|Ok((r.get(0)?,r.get(1)?)))?;
+        let mut record: Value = serde_json::from_str(&raw)?;
+        let mut body: Value = serde_json::from_str(record["content"].as_str().ok_or("content")?)?;
+        if key == "retention_expiry" {
+            record["retained_until"] = serde_json::json!(
+                body["retained_until_unix_micros"]
+                    .as_i64()
+                    .ok_or("expiry")?
+                    + 86_400_000_000i64
+            );
+        } else {
+            body["detail"][key] = serde_json::json!("forged provenance");
+        }
+        record["content"] = serde_json::json!(body.to_string());
+        connection.execute(
+            "UPDATE managed_derived SET record_json=?1 WHERE id=?2",
+            rusqlite::params![record.to_string(), record_id],
+        )?;
+        drop(connection);
+        assert!(
+            f.ops
+                .read_repository_explanation_source(f.project, f.analysis, id)
+                .is_err(),
+            "accepted {key}"
+        );
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn denied_file_permissions_do_not_publish_an_observation() -> Result<(), Box<dyn Error>> {
+    use std::os::unix::fs::PermissionsExt;
+    let f = fixture()?;
+    let before = f.ops.canonical_basis(f.project)?;
+    let file = f.root.join("main.py");
+    let original = fs::metadata(&file)?.permissions();
+    fs::set_permissions(&file, fs::Permissions::from_mode(0))?;
+    let denied = observe(&f, "main.py", None);
+    fs::set_permissions(&file, original)?;
+    assert!(
+        denied.is_err(),
+        "the permission control requires a non-root test process"
+    );
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
     Ok(())
 }

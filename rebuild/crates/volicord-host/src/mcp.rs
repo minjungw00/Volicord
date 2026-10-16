@@ -233,7 +233,13 @@ impl HostAdapter {
             None => Err(HostError::new("unknown high-level tool")),
         };
         match result {
-            Ok(value) if name == "work_explanation" || (name == "repository_understanding" && value["repository_explanation"]["explanation_state"] == "current") => explanation_tool_result(value),
+            Ok(value)
+                if name == "work_explanation"
+                    || (name == "repository_understanding"
+                        && value["repository_explanation"]["explanation_state"] == "current") =>
+            {
+                explanation_tool_result(value)
+            }
             Ok(value)
                 if name == "recall"
                     || name == "canonical_inspect"
