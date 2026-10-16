@@ -191,6 +191,7 @@ async function check(page, item, language, expected, offline) {
               const box=await card.boundingBox(), gutter=width>900?48:width>600?28:20;
               assert.ok(box && Math.abs(box.x-gutter)<2 && Math.abs(box.width-(width-2*gutter))<2,
                 'reference overview and Work cards use the complete content width');
+              assert.equal(await card.locator('.work-card-heading h4 a').evaluate(n=>getComputedStyle(n).paddingLeft),'6px','reference card heading keeps the text offset');
               assert.ok((await card.locator('.work-card-footer a').boundingBox()).height>=44,
                 'reference card has a distinct reading action');
             }

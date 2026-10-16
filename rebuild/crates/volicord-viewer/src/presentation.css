@@ -186,3 +186,8 @@ button { width: max-content; min-height: 2.75rem; cursor: pointer; }
 @media(max-width:600px) {
  .snapshot-mode { display:block;position:fixed;bottom:12px;right:12px;background:var(--surface);z-index:3; }
 }
+/* Match the reference title link and index typography rather than nav hit boxes. */
+.work-card-heading h4 a.nav-link { padding:3px 6px;margin:-3px -6px;min-height:0;border:0;border-radius:4px; }
+#works > h1 { font-size:2.2rem; }
+.work-item > h3, .work-explanation > h4[data-question=Heading], .code-work-meaning > h3 { margin-bottom:0; }
+@media(max-width:600px) { #works > h1 { font-size:1.8rem; } }
