@@ -129,10 +129,10 @@ navigation performs no analysis, provider request or canonical mutation. No
 arbitrary filesystem-path source endpoint is provided.
 
 Work interpretations answer purpose, reported change, expected effect, verification
-limits and next step in ordinary reading. Original result quotations are closed
-evidence disclosures. Goal/rationale quotations do not claim translation. Missing Purpose/result/user
+limits and next-step uncertainty in the document narrative. Original result
+quotations and recorded directions remain in full evidence. Goal/rationale quotations do not claim translation. Missing Purpose/result/user
 rationale remains unavailable. Completed work, verification, user review and
-acceptance are independently shown; failed/rejected history remains visible.
+acceptance remain independent facts in full evidence, including failed/rejected history.
 Code diagrams show static grounded evidence, not confirmed runtime ordering.
 Grounded components without resolved relationships remain inspectable as
 disconnected architecture nodes with an explicit no-edge gap. They do not populate
@@ -248,57 +248,35 @@ increased; optional named timing enforcement remains a separate diagnostic.
 `render.rs` coordinates projection reads and authority. `reading.rs` composes
 purpose views from those projections; `presentation.rs` owns escaped HTML
 primitives and embeds `presentation.css` into both live and offline output.
-There is one server-rendered frontend, with no client runtime or remote assets.
+There is one server-rendered frontend with a bounded presentation script and no
+remote assets or client framework.
 Stable `data-work-id`, `data-decision-id`, `data-entity-id`, `data-question`,
 statement roles and exact fragment targets remain the inspection selectors.
 
-The Project header leads into a reading navigation rail on wide screens and
-wrapping navigation above content on smaller screens. A keyboard skip link targets
-the main landmark. Current navigation uses text emphasis and `aria-current`.
-Project Purpose has its own panel; distinct Work cards keep problem, outcome,
-verification limits and recorded next action together. Exact Work navigation retains
-that Work when opening Code; All Work returns to the paged catalog. Documents,
-Analysis/Runtime remains a primary destination; Memory and Evidence remain reachable
-through a native Tools disclosure. Snapshot Evidence links only to included diagnostics.
+The selected reading design governs the masthead, Overview, Work index, documents,
+record boxes and claim-specific Source points described above. There is no side rail,
+secondary masthead menu, category-jump navigation or expanded audit content inside
+Work cards. The main landmark has a keyboard skip link. Full evidence preserves
+localized state observations before exact Source/revision detail, and distinguishes
+Decision and Learning authority. Code inspection keeps its directed topology and
+an equivalent native list/disclosure path without arbitrary filesystem access.
 
-Work explanation sections precede closed source quotations, grounding and history.
-The history disclosure offers localized observation/state/verification rows before
-exact Source and revision detail. Decision choice and applicability use a distinct
-presentation from permitted Learning Candidate Inspection, whose authority notice
-remains explicit. Selected code identity, behavior reliability and retained source
-come before the topology. Diagrams keep an equivalent native disclosure/list path.
-No source navigation grants arbitrary filesystem access.
+Requested explanation language remains unrestricted and independent of the fixed
+English/Korean UI locale. Explicit CLI/query parameters preserve that selection;
+ordinary navigation never generates or translates content. Generated paragraphs
+carry their declared language; original quotations keep an unknown language hint.
+Offline documents contain no forms or scripts. All included navigation resolves to
+local fragments, and exact original/evidence records remain accessible.
 
-Styles use system fonts, wrapping text, visible keyboard outlines and textual state
-labels. Color supplements labels and line patterns. Ordinary text reflows; diagrams
-have their own horizontal scroll region. All included snapshot navigation stays within
-existing fragment targets, and forms/authentication/live context remain live-only.
-Reading language is a native disclosure. Live locale links and the GET language
-form preserve the parsed view, exact subject and catalog page. Requested language
-is unrestricted and independent of fixed English/Korean labels. It reads retained
-explanations and does not generate or translate on navigation. Recorded generated
-paragraphs carry their declared requested language separately from UI labels;
-syntactically unknown language requests use an unknown HTML language hint rather
-than inheriting the fixed locale. Original evidence remains original-language text.
-Offline settings disclose the chosen values and provide no forms or locale links.
-Overview section shortcuts work in both modes, including empty sections.
-
-At effective widths below 320px, nested card padding is reduced without reducing
-font size; ordinary fixed words keep room at native 200% zoom.
-
-The maintained browser fixture explicitly associates its latest Checkpoint with
-Work so the highlighted catalog card is exercised. Browser checks compare card and
-container bounds at 390/768/1440 and native 200% zoom, challenge long Unicode
-text and reproduce the former nested 100% height overflow. They also exercise
-skip-to-main, language changes, locale switching, secondary Tools and page/subject
-preservation through native keyboard actions. Generated-language parity is retained
-HTML support using explicitly labeled test realizations, not host prose-quality proof.
-Direct human evaluation of comprehension, screen-reader pronunciation, visual comfort
-and Decision/Learning clarity is still separate from automated geometry and focus.
-
-Visual reference patterns came from Understand-Anything's ProjectOverview, NodeInfo,
-CodeViewer and responsive navigation, and agentmemory's compact status/history;
-no external frontend source or runtime dependency was copied.
+`grounded_reader_browser.py` checks actual Product Overview/index/document screens
+at 390/768/1440px in en/ko, including authored heading/synopsis/comparison controls,
+exact Source bytes and claims, keyboard return/Escape/code scrolling, distinct Source
+failures, unchanged retained state and offline reading with Runtime unavailable.
+Its process group owns and stops both the CLI and Viewer child. These observations
+are technical support; native zoom, actual screen-reader use, personal comprehension
+and final visual acceptance remain separate. The visual reference is the selected
+local `viewer-evidence-border/review/viewer` design. Prototype explanatory prose,
+recorded statuses, observations and Source coordinates are not Product inputs.
 
 ## Explicit Work and Decision explanations
 
@@ -308,19 +286,16 @@ The host investigates permitted relevant code, retrieves selected retained Sourc
 with `read_source`, authors natural prose with exact source/claim bindings and
 uses `record`. Its initial awaiting-host status is not completed generation, and
 the user does not construct JSON. Source links navigate to the actual cited code
-or command output. Each code panel quotes the first exact bound claim as host
-interpretation so the behavior being explained is readable beside the code;
-all claims, exact revisions and hashes remain in closed details. Recorded
-verification and direction precede the code panels. Expired/denied/changed Source
-diagnostics stay in ordinary reading in Overview, Work and Work-scoped Code.
-Code scroll regions accept keyboard focus and explicit paired observations link
-to the exact retained before range without inventing a diff. Link
-labels lead with the cited paragraph's purpose (problem, change, effect or checks),
-then distinguish current code, historical before code and command output. Each code
-panel lists only the purposes of paragraphs citing its exact range and evidence use.
-When paragraphs share a code range, its disclosure retains each paragraph's
-question, ordinal, generated claim quotation and exact citation rather than
-showing only the first claim. These quotations remain interpretations.
+or command output. Each citation opens its exact bound claim as host interpretation beside the code.
+The Source point retains that claim's complete citation, Source revisions and hashes;
+other paragraphs using the same range get their own points and exact return links.
+Recorded verification, direction and chronology stay inside document evidence.
+Expired/denied/changed dependencies withhold generated prose and code, with the
+actual diagnostic visible on the selected document. Code regions accept keyboard
+focus. Explicitly paired observations link to a retained cited before range without
+inventing a diff; purpose labels and current/historical/command-use notices retain
+their separate authority. Comparison units use the reference observation cards;
+no structured result table is inferred from unstructured explanation wording.
 The same bounded excerpt basis serves CLI/MCP, live Viewer and offline snapshots.
 Viewer headings and the optional API `reading_title` select only the authored Heading
 unit; synopsis has its own role. They are grounded derived wording, not canonical
@@ -482,27 +457,13 @@ ordinary output preserves grouping gaps and omission counts. Checksum subject
 matter is unchanged. Administration/mutation command receipts retain their existing
 identity output.
 
-Work detail and compact Overview/Work cards show current verification, user review
-and acceptance plus one concise prior-adversity summary when applicable. A current
-failure/rejection remains visible; prior failures do not masquerade as current blockers.
-The shared `HistoricalAdversity` answer excludes the independently selected current
-observation per dimension. Repeated state arrays, exact times, revisions and Source
-provenance remain in the closed native `details.work-state-history` disclosure with
-`data-reading-role="audit-history"`, identically for live and offline Work detail.
-Its English/Korean summary is “Verification and original state observations” /
-“검증 및 원래 상태 관찰”. Exact audit values are retained in their original form.
-CLI/MCP JSON retains complete `selected_work.evidence.states`; ordinary CLI/document
-Work summaries consume the same concise facts. No canonical state machine changes.
-
-The independent answer verifier extends the existing browser driver. Required claims
-are read from rendered text nodes outside all evidence disclosures and hidden/CSS
-suppressed content; exact provenance is checked separately after an explicit disclosure.
-The semantic controls delete/hide/replace a recent result, substitute another Work,
-hide current failure, promote historical pass, replace Korean state with a Debug enum,
-insert audit text into ordinary reading, and replace the current fingerprint. Each
-control must fail its named assertion and the restored actual page must pass. A
-meaningful SHA-256 result remains ordinary content. Category omissions are checked
-independently from exact-detail availability.
+Full Work evidence shows independent current verification, review and acceptance
+facts, prior-adversity summaries, and complete localized chronological observations
+with exact times, revisions and Sources. Compact cards retain only their reading
+heading/synopsis, lifecycle badge, observation time and action. Current and historical
+facts are not conflated. `work_history` compares the complete read model to canonical
+input and challenges missing/duplicated current facts and deleted audit observations.
+CLI/MCP retain their complete evidence arrays; no canonical state machine changes.
 
 For final candidate evidence, first commit the candidate and install it with the
 maintained installer into an ignored absolute prefix. Seed a fresh canonical fixture,
@@ -606,7 +567,7 @@ volicord --json repository explain compose --analysis ANALYSIS_ID --input /absol
 # Save the returned realization object as /absolute/host-realization.json.
 volicord --json repository explain record --analysis ANALYSIS_ID --language en --input /absolute/host-realization.json
 volicord repository explain read --language en
-volicord viewer open --view code --language en
+volicord viewer open --view repository --language en
 volicord viewer export --output /absolute/repository-reading.html --language en
 ```
 
@@ -615,8 +576,8 @@ bound repository with `VOLICORD_RUNTIME_DIR` set. Composition derives exact Sour
 identities, coordinates and hashes without retaining a document; recording is a
 separate explicit operation. Neither operation authenticates host authorship or
 certifies the prose's meaning. The same current content reaches ordinary CLI
-`status`, MCP `repository_understanding`, live Overview (when Work-free), repository
-Code Understanding and script-free offline snapshots. All Source links retain exact
+`status`, MCP `repository_understanding`, the independent repository document
+(linked from Work-free Overview) and script-free offline snapshots. All Source links retain exact
 claim navigation, scope metadata and generator provenance. Snapshot export performs
 no host generation and renews no retention.
 
