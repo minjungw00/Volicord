@@ -1774,11 +1774,14 @@ fn seed_authored_reading_browser_runtime() -> Result<(), Box<dyn Error>> {
             ("synopsis", if language=="ko" {"보존된 근거 조회와 현재 파일의 해시 검증을 따라갑니다. 실행 효과는 이 관측으로 확인하지 않습니다."}else{"Follow retained evidence lookup and current-file hash validation. These observations do not verify runtime effects."}),
             ("purpose", if language == "ko" { "보존된 근거의 조회와 현재 코드 검증을 이해합니다." } else { "Understand retained evidence lookup and current-code validation." }),
             ("reported_change", text),
+            ("comparison",if language=="ko" {"보존된 사본을 읽는 관측입니다. 새 명령 실행은 확인하지 않습니다."}else{"Reading a retained copy is an observation; it does not verify a new execution."}),
+            ("comparison",if language=="ko" {"현재 파일의 해시를 비교하는 관측입니다. 줄별 변경을 추정하지 않습니다."}else{"The current-file hash is compared without inferring a line-by-line change."}),
+            ("comparison",if language=="ko" {"두 범위 밖의 코드는 이 관측에 포함되지 않습니다."}else{"Code outside the two regions is not part of these observations."}),
             ("expected_effect", if language == "ko" { "실행 중 효과는 검증되지 않았습니다." } else { "No runtime effect is verified." }),
             ("verification", if language == "ko" { "이 테스트 문구는 실행 결과를 제공하지 않습니다." } else { "This authored control supplies no execution result." }),
             ("next_step", if language == "ko" { "다음 행동은 기록되지 않았습니다." } else { "No next action is recorded." }),
             ("limits", if language == "ko" { "두 파일 구간만 관측했습니다. 주변 코드와 의미적 승인은 확인되지 않았습니다." } else { "Only two file regions were observed. Surrounding code and semantic approval remain unavailable." }),
-        ].into_iter().map(|(question, text)| json!({"question":question,"text":text,"evidence_keys":[if question == "next_step" { "next_step" } else { "goal" }], "citations":if matches!(question,"heading"|"synopsis"|"reported_change") { citations.iter().cloned().map(|mut citation|{citation["claim_start_byte"]=json!(0);citation["claim_end_byte"]=json!(text.len());citation["claim_sha256"]=json!(explanation_text_hash(text));citation}).collect::<Vec<_>>() } else { vec![] }})).collect();
+        ].into_iter().map(|(question, text)| json!({"question":question,"text":text,"evidence_keys":[if question == "next_step" { "next_step" } else { "goal" }], "citations":if matches!(question,"heading"|"synopsis"|"reported_change"|"comparison") { citations.iter().cloned().map(|mut citation|{citation["claim_start_byte"]=json!(0);citation["claim_end_byte"]=json!(text.len());citation["claim_sha256"]=json!(explanation_text_hash(text));citation}).collect::<Vec<_>>() } else { vec![] }})).collect();
         let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"plan_fingerprint":generation["plan"]["fingerprint"],"language":language,"generator":{"host":"authored-structural-control","session":"representative-browser","agent":null,"model":null},"paragraphs":paragraphs});
         call(
             &mut host,
@@ -1943,6 +1946,8 @@ fn authored_heading_synopsis_and_reading_points_share_public_lifecycle(
         (ExplanationQuestion::Purpose, "Inspect the observed return value before recommending a change."),
         (ExplanationQuestion::ReadingPoint, "Read the return expression to see the constant 5."),
         (ExplanationQuestion::Comparison, "The file observation has no retained before-state; there is no patch comparison."),
+        (ExplanationQuestion::Comparison, "The observed return expression is a retained file observation, not an execution."),
+        (ExplanationQuestion::Comparison, "No downstream behavior is verified by this code observation."),
         (ExplanationQuestion::Limits, "Execution and downstream effects remain unverified."),
     ];
     retained.realization.paragraphs = cases
@@ -1989,6 +1994,8 @@ fn authored_heading_synopsis_and_reading_points_share_public_lifecycle(
         assert!(page.contains("data-title-basis=\"generated-interpretation\""));
         assert!(page.contains("data-question=\"Heading\" lang=\"en\" data-content-language=\"en\">A constant return, examined</h1>"));
         assert!(page.contains("class=\"lead\""));
+        assert_eq!(page.matches("class=\"comparison-card\"").count(), 3);
+        assert!(page.contains("class=\"comparisons\""));
         assert!(
             page.find("data-question=\"Purpose\"").ok_or("problem")?
                 < page.find("data-question=\"Limits\"").ok_or("limit")?

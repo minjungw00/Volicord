@@ -19,6 +19,8 @@
  .source-point:target, .source-point:has(:target) { display: block; margin: 0; border: 0; padding: 0; }
  body:has(.appendix :target) main.shell { max-width: none; padding-inline: 28px; }
  body:has(.appendix :target) .doc { width: 44%; max-width: none; margin: 0; }
+ body:has(.appendix :target) .doc-head h1 { font-size: 2.1rem; }
+ body:has(.appendix :target) .comparisons { grid-template-columns: 1fr; }
  body:has(.appendix :target) .claim-quote { max-height: 20vh; font-size: 1rem; line-height: 1.8; }
  body[data-viewer-mode=snapshot] .snapshot-page { display: none; }
  body[data-viewer-mode=snapshot]:not(:has(main :target)) #overview { display: block; }

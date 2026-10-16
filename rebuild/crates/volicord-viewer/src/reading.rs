@@ -516,6 +516,7 @@ fn render_document(
         document_anchor(answers, "reading")
     ));
     let mut previous: Option<&str> = None;
+    let mut comparison_ordinal = 0;
     for (index, answer) in answers
         .prose
         .iter()
@@ -523,6 +524,9 @@ fn render_document(
         .filter(|(_, a)| !matches!(a.question.as_str(), "Heading" | "Synopsis" | "Limits"))
     {
         if previous != Some(answer.question.as_str()) {
+            if previous == Some("Comparison") {
+                html.push_str("</div>");
+            }
             if previous.is_some() {
                 html.push_str("</section>");
             }
@@ -530,9 +534,27 @@ fn render_document(
             if current {
                 heading(html, 2, answer_title(&answer.question, r.locale));
             }
+            if answer.question == "Comparison" {
+                html.push_str("<div class=\"comparisons\">");
+                comparison_ordinal = 0;
+            }
             previous = Some(&answer.question);
         }
+        if answer.question == "Comparison" {
+            comparison_ordinal += 1;
+            html.push_str(&format!(
+                "<div class=\"comparison-card\"><p class=\"serial\">{} {:02}</p>",
+                text(r.locale, "Observation", "관측"),
+                comparison_ordinal
+            ));
+        }
         reader_unit(html, r, answers, index);
+        if answer.question == "Comparison" {
+            html.push_str("</div>");
+        }
+    }
+    if previous == Some("Comparison") {
+        html.push_str("</div>");
     }
     if previous.is_some() {
         html.push_str("</section>");

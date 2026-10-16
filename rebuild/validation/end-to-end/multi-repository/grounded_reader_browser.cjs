@@ -13,6 +13,7 @@ async function checkDocument(page,item,language,expected){
  assert.deepEqual(await prose.allTextContents(),ordered(expected).map(p=>p.text),'complete original interpretation');
  assert.ok(await prose.evaluateAll((nodes,language)=>nodes.every(n=>n.lang===language&&n.dataset.contentLanguage===language),language),'requested prose language');
  assert.equal(await doc.locator('h1').count(),1,'one document title');
+ assert.equal(await doc.locator('.comparison-card').count(),expected.prose.filter(p=>p.question==='Comparison').length,'reference observation cards preserve every comparison');
  assert.equal(await doc.locator(':scope > .audit > details.record-box').count(),2,'reference original/full-evidence disclosures');
  assert.ok(!(await doc.locator('.record-strip').innerText()).includes('Checkpoint verification'),'opening contains concise lifecycle only');
  for(const removed of ['.card-status-strip','.work-audit','.fact-states','.overview-jumps','.work-state-history'])assert.equal(await doc.locator(removed).count(),0,'obsolete presentation removed');
