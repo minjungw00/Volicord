@@ -3,10 +3,10 @@
 Disposable local reading design; production migration, framework choice and human
 acceptance are pending. This support creates no canonical records, generates no
 explanation and invokes no provider. The provisional review contract and observed
-limits are in [report.md](report.md).
+limits are in [blue-gray-review.md](blue-gray-review.md) (the original trial is retained in [report.md](report.md)).
 
 The delivered private package starts at
-`rebuild/.local/viewer-task-design/review/index.html`. Open it directly, or run
+`rebuild/.local/viewer-task-design/blue-gray/review/index.html`. Open it directly, or run
 `python3 serve.py` **from that package directory** and open the printed loopback
 URL. Stop with Ctrl-C. Python 3 is the only preview runtime. All review links,
 Source files, scripts, baseline snapshots and observations are package-local.
@@ -26,6 +26,7 @@ HTML and editorial text are excluded from the delivered content inputs.
 ```sh
 rebuild/scripts/validate focused viewer-design-build -- python3 -B \
   rebuild/validation/viewer-design/build.py \
+  --catalog rebuild/.local/viewer-task-design/blue-gray/catalog.json \
   --retained rebuild/.local/reader-documents \
   --prototype rebuild/.local/prototype/prototype-v2-as-reviewed.html \
   --output rebuild/.local/viewer-task-design/new-candidate
@@ -42,6 +43,10 @@ If it fails, recapture a current accurate baseline rather than silently using an
 older layout. Captured Current means historical readback, not renewed retention
 or current Source freshness. B/Click are independently Source-derived authored
 controls previously recorded/read through Product, not autonomous generation.
+
+Build-time syntax highlighting uses the installed Python Pygments package; the
+preview and script-free outputs do not depend on it. Unknown code languages remain
+plain text. No analyzer capability or Product dependency changes.
 
 Browser prerequisites are the already available Playwright Core, Chromium and
 Korean font configuration. A private JSON configuration supplies absolute paths:
@@ -88,3 +93,27 @@ commit whose source bytes were independently compared with those copies. Absolut
 paths in retained JSON describe historical provenance; the runnable package does
 not resolve them. No repository-wide aggregate, new evaluation platform, frontend
 framework dependency or Node runtime service is introduced.
+
+## Project overview and catalog
+
+`--catalog` is a private, explicitly authored review JSON input. It identifies an
+immutable historical canonical export by full SHA-256, a Project and exact
+Goal/Checkpoint identities, and separate authored titles/summaries. `catalog.py`
+verifies Project/Work association and the latest retained Checkpoint before deriving
+the status badge. It is disposable fixture reading, not a Product import or write.
+The current catalog selects Volicord A/B/C; the overview shows the latest three
+records and the Work page shows all records. With three records, cards match.
+
+Project goal text is an exact paragraph from the independently hashed maintained
+charter, attributed as a document quote. The historical Project has no canonical
+Project Purpose; a Work Goal is never promoted to Purpose. A/C detail pages expose
+their original Goal, canonical report and limits, without claiming new detailed
+code interpretations. B keeps its independently admitted reading document. Click
+remains a separate no-change review control, outside this Volicord catalog.
+
+The revised disposable trial uses the reference light/dark blue-gray palette,
+visible summary text on title/status/summary cards, explanation before limits,
+boxed original instructions/full evidence, explicit button and disclosure states,
+and build-time Rust/Python lexical coloring. The source-owned production Viewer
+and its existing opening-limit contract are unchanged. The user's feedback governs
+the disposable comparison layout; Product adoption remains a separate decision.

@@ -8,6 +8,10 @@ fs.mkdirSync(out,{recursive:false});
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const manifest=JSON.parse(fs.readFileSync(path.join(build,'manifest.json')));
 const authored=JSON.parse(fs.readFileSync(path.join(build,'inputs/review-input-final.json')));
+const catalog=JSON.parse(fs.readFileSync(path.join(build,'inputs/catalog.json')));
+const catalogBundle=JSON.parse(fs.readFileSync(path.join(build,'inputs/catalog-bundle.json')));
+const records=name=>catalogBundle.payload.tables.find(t=>t.name===name);
+const rows=name=>records(name).rows.map(row=>Object.fromEntries(records(name).columns.map((k,i)=>[k,row[i].value])));
 const fixture=JSON.parse(fs.readFileSync(path.join(build,'inputs/fixtures.json')));
 const result={status:'running',head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),driver_sha256:hash(fs.readFileSync(__filename)),manifest_sha256:hash(fs.readFileSync(path.join(build,'manifest.json'))),checks:[],requests:[],processes:[],human_acceptance:'pending'};
 function identity(){for(const [f,d] of Object.entries(manifest.files))assert.equal(hash(fs.readFileSync(path.join(build,f))),d.sha256,'package identity '+f);}
@@ -80,14 +84,44 @@ async function trip(page,work,truth,width,offline=false){
    await page.goto(server.url);await paint(page);assert.equal(await page.locator('h1').textContent(),'작업을 이해하는새로운 읽기 공간.');
    await page.screenshot({path:path.join(out,`entry-${width}.png`)});
    await page.goto(server.url+'works.html');await paint(page);
-   assert.equal(await page.locator('[data-work]').count(),authored.works.length);
+   assert.equal(await page.locator('[data-work]').count(),catalog.works.length);
+   for(const file of ['overview.html','works.html']){
+    await page.goto(server.url+file);await paint(page);
+    if(file==='overview.html')assert.equal(await page.locator('.project-purpose').textContent(),catalog.purpose.text);
+    assert.equal(await page.locator('.work-card').count(),3);
+    const ordered=[...catalog.works].sort((a,b)=>rows('checkpoints').find(r=>r.id===b.checkpoint).recorded_at-rows('checkpoints').find(r=>r.id===a.checkpoint).recorded_at).map(w=>w.key);
+    assert.deepEqual(await page.locator('.work-card').evaluateAll(ns=>ns.map(n=>n.dataset.catalogWork)),ordered);
+    for(const work of catalog.works){
+     const card=page.locator(`[data-catalog-work=${work.key}]`);
+     assert.equal(await card.locator('h3 a').textContent(),work.title);assert.equal(await card.locator('.work-summary').textContent(),work.summary);
+     const cp=rows('checkpoints').find(r=>r.id===work.checkpoint&&r.work_item_id===work.work);assert(cp,'independent original Work checkpoint');
+     assert.equal(await card.locator('.work-status').getAttribute('data-recorded-state'),cp.work_state);
+     assert.equal(await card.locator('.work-status').textContent(),'완료');assert.equal(await card.locator('.limit,details').count(),0,'cards contain title/state/summary, no hidden summary or limits');
+    }
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    const actualPalette=await page.evaluate(()=>['--paper','--surface','--soft','--ink','--muted','--line','--accent','--wash'].map(k=>getComputedStyle(document.documentElement).getPropertyValue(k).trim()));
+    assert.deepEqual(actualPalette,['#f3f5f9','#ffffff','#f3f6fa','#1c2b40','#53637a','#dce3ec','#2357a0','#eaf1fc']);
+    await page.screenshot({path:path.join(out,`${file==='overview.html'?'overview':'discovery'}-${width}.png`)});
+   }
+   for(const item of catalog.works.filter(w=>!authored.works.some(a=>a.key===w.key))){
+    await page.goto(server.url+'works.html');await page.locator(`[data-work=${item.key}]`).focus();await page.keyboard.press('Enter');await page.waitForURL('**/'+item.key+'.html');
+    assert.equal(await page.locator('h1').textContent(),item.title);
+    assert.equal(await page.locator('.goal').textContent(),rows('context_items').find(r=>r.id===item.work).statement);
+    await page.locator('#original summary').click();assert(await page.locator('.goal').isVisible());await page.screenshot({path:path.join(out,`${item.key}-${width}-record.png`)});
+   }
+   await page.goto(server.url+'works.html');
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
    await page.screenshot({path:path.join(out,`discovery-${width}.png`)});
    for(const work of authored.works){
-    await page.goto(server.url+'works.html');await page.locator(`[data-work=${work.key}]`).focus();await page.keyboard.press('Enter');
+    if(catalog.works.some(i=>i.key===work.key)){await page.goto(server.url+'works.html');await page.locator(`[data-work=${work.key}]`).focus();await page.keyboard.press('Enter');}
+    else await page.goto(server.url+work.key+'.html');
     await page.waitForURL('**/'+work.key+'.html');await paint(page);
     const truth=await content(page,work);
-    assert((await page.locator('.guard').boundingBox()).y<850,'critical limit present at opening');
+    assert(await page.locator('#reading').evaluate(n=>!!(n.compareDocumentPosition(document.querySelector('.guard'))&Node.DOCUMENT_POSITION_FOLLOWING)),'limits follow the explanation');
+    assert.equal(await page.locator('.record-box').count(),2);
+    assert(await page.locator('.code-region .syntax-keyword').count()>0,'build-time syntax highlighting');
+    await page.locator('#original summary').click();assert(await page.locator('.goal').isVisible());await page.locator('#original summary').click();
+    await page.screenshot({path:path.join(out,`${work.key}-${width}-records.png`)});await page.evaluate(()=>scrollTo(0,0));
     assert.equal(await page.locator('.source-point.active').count(),0,'no arbitrary initial source selection');
     await page.screenshot({path:path.join(out,`${work.key}-${width}-reading.png`)});
     if(await page.locator('.comparisons').count()){await page.locator('.comparisons').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${work.key}-${width}-comparisons.png`)});}
@@ -104,7 +138,7 @@ async function trip(page,work,truth,width,offline=false){
     for(const u of work.units)assert((await article.textContent()).includes(u.text),'baseline substantive parity');
     await page.screenshot({path:path.join(out,`${work.key}-${width}-baseline.png`)});
     assert(await page.locator('#decision-reading').count());assert(await page.locator('#health').count());assert(await page.locator('#code').count());
-    result.checks.push({width,work:work.key,prose:'exact',facts:'exact',sources:'original bytes/coordinates',trips,keyboard_return:'passed',baseline:'same content; unchanged Product source'});
+    result.checks.push({width,work:work.key,catalog:'A/B/C; exact title/summary and canonical status; overview goal; palette; keyboard entry',syntax:'lexical spans preserve exact bytes',prose:'exact',facts:'exact',sources:'original bytes/coordinates',trips,keyboard_return:'passed',baseline:'same content; unchanged Product source'});
    }
    await context.close();
   }

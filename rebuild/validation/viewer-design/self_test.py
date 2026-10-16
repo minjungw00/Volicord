@@ -75,6 +75,30 @@ class ReviewTests(unittest.TestCase):
         missing=design.work_page(w,False,True)
         self.assertIn('<h1>기록된 작업</h1>',missing);self.assertIn('Source unavailable',missing);self.assertNotIn('class="comparisons"',missing)
 
+    def catalog_path(self):
+        if not ARGS.build:self.skipTest('no catalog package supplied')
+        p=self.root/'catalog.json';shutil.copyfile(ARGS.build/'inputs/catalog.json',p);return p
+
+    def test_catalog_canonical_binding(self):
+        p=self.catalog_path();catalog=design.catalog_input.admit(p)
+        self.assertEqual(len(catalog['items']),3)
+        self.assertTrue(all(i['checkpoint']['work_state']=='completed' for i in catalog['items']))
+        d=json.loads(p.read_text());d['works'][0]['checkpoint']=d['works'][1]['checkpoint'];p.write_text(json.dumps(d))
+        with self.assertRaisesRegex(ValueError,'latest retained'):design.catalog_input.admit(p)
+
+    def test_catalog_rejects_wrong_work_or_goal(self):
+        p=self.catalog_path();d=json.loads(p.read_text());d['works'][0]['work']='wrong-work';p.write_text(json.dumps(d))
+        with self.assertRaisesRegex(ValueError,'wrong Work'):design.catalog_input.admit(p)
+        p=self.catalog_path();d=json.loads(p.read_text());d['purpose']['text']='a prototype-only purpose';p.write_text(json.dumps(d))
+        with self.assertRaisesRegex(ValueError,'exact independent'):design.catalog_input.admit(p)
+
+    def test_highlighting_preserves_multiline_source(self):
+        for locator,text in [('a.rs','/* first\nsecond */\nlet s = "<script>";\n'),('a.py','def read():\n    return "<img src=x>" # comment\n')]:
+            rendered=design.syntax.lines(text,locator)
+            self.assertEqual([''.join(design.Text(line).parts) for line in rendered],text.rstrip('\n').split('\n'))
+            self.assertNotIn('<script>', ''.join(rendered));self.assertNotIn('<img ', ''.join(rendered))
+            self.assertIn('syntax-keyword',''.join(rendered))
+
     def test_package_links_and_hashes(self):
         if not ARGS.build:self.skipTest('no package supplied')
         root=ARGS.build.resolve();manifest=design.load(root/'manifest.json')
