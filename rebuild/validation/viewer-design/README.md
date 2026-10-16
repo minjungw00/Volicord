@@ -9,13 +9,15 @@ and latest feedback are in [responsive-review.md](responsive-review.md); the ear
 Earlier [card](card-details-review.md), [palette](blue-gray-review.md) and
 [initial](report.md) reviews remain unchanged.
 
-The Viewer starts at `rebuild/.local/viewer-responsive/review/viewer/index.html`.
-The standalone `rebuild/.local/viewer-responsive/viewer.zip` contains only Viewer
+The Viewer starts at `rebuild/.local/viewer-evidence-border/review/viewer/index.html`.
+The evidence section has no blue selection/focus outline around its container;
+keyboard focus remains visible on its links and code regions.
+The standalone `rebuild/.local/viewer-evidence-border/viewer.zip` contains only Viewer
 pages and their required sources/scripts: extract it and open `viewer/index.html`.
 No review navigation, badges, footer, measurements or comparison links are part of
 that Viewer. Original Goal/Source quotations retain their exact fixture wording.
 
-The separate review entry is `rebuild/.local/viewer-responsive/review/index.html`;
+The separate review entry is `rebuild/.local/viewer-evidence-border/review/index.html`;
 answer-free comparison tasks are in `journeys.html`, measurements in
 `journey-observations.html`. Run `python3 serve.py` from the full package directory:
 the printed root URL opens the Viewer; `/index.html` opens review material.
