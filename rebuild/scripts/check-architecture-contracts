@@ -1475,7 +1475,7 @@ def self_test() -> int:
         cases += (
             ("explanation-format-drift", lambda root, _: replace_once(
                 root / DESIGN_DIRECTORY / "projections-and-documents.md",
-                "exact-current `volicord_explanation` version 3",
+                "exact-current `volicord_explanation` version 4",
                 "exact-current `volicord_explanation` version 0"),
              "current explanation format disagrees with writer"),
             ("mandatory-explanation-roles", lambda root, _: (

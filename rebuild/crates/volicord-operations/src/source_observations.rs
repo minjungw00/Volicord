@@ -247,6 +247,60 @@ impl LocalOperations {
         Ok(ids.len())
     }
 
+    pub(crate) fn capture_included_file(
+        &self,
+        basis: &CanonicalReadBasis,
+        analysis: &volicord_repository_intelligence::AnalysisSnapshot,
+        path: &str,
+        byte_range: Option<FileByteRange>,
+    ) -> Result<Value, Error> {
+        // Only an included, hashed inventory file is admissible. Unsupported
+        // language analysis does not remove inventory/body capability.
+        let entry = analysis.inventory.entries.iter().find(|e| e.area.path == path)
+            .filter(|e| e.classifications.contains(&InventoryClassification::Included))
+            .and_then(|e| e.content_sha256.as_ref())
+            .ok_or_else(|| Error::new("source path is excluded, unavailable or absent from the exact Analysis Snapshot"))?;
+        let canonical = self.open_canonical()?;
+        let binding = canonical
+            .get_local_binding(basis.project.id)
+            .map_err(|e| Error::with_source("repository binding unavailable", e))?;
+        drop(canonical);
+        let root = RepositoryRoot::open(&binding.absolute_path)
+            .map_err(|e| Error::with_source("repository unavailable", e))?;
+        if root.canonical_path() != binding.absolute_path {
+            return Err(Error::new("bound repository root was redirected; explicit binding is required before observation"));
+        }
+        let (body, hash, region) = if let Some(range) = byte_range {
+            let excerpt = root
+                .read_utf8_excerpt(Path::new(&path), range.start_byte, range.end_byte)
+                .map_err(|e| Error::with_source("scoped source excerpt unavailable", e))?;
+            let region = json!({"start_byte":range.start_byte,"end_byte":range.end_byte,
+                "start_line":excerpt.start_line,"end_line":excerpt.end_line,"file_utf8_bytes":excerpt.total_bytes,
+                "excerpt_sha256":format!("{:x}",Sha256::digest(excerpt.body.as_bytes()))});
+            (excerpt.body, excerpt.sha256, Some(region))
+        } else {
+            let bytes = root
+                .read_bounded_regular_file(Path::new(&path), FILE_BYTES)
+                .map_err(|e| Error::with_source("scoped source observation unavailable", e))?;
+            let hash = format!("{:x}", Sha256::digest(&bytes));
+            let body = String::from_utf8(bytes)
+                .map_err(|_| Error::new("binary/non-UTF-8 source body is unsupported"))?;
+            (body, hash, None)
+        };
+        if &hash != entry {
+            return Err(Error::new("source hash changed since the selected Analysis Snapshot; analyze and observe afresh"));
+        }
+        let mut detail = json!({"kind":"file","path":path,"sha256":hash,
+            "representation":if region.is_some() {"bounded_excerpt"} else {"whole_file"},
+            "body":body,"observed_utf8_bytes":body.len(),"omitted_utf8_bytes":region.as_ref().and_then(|r|r["file_utf8_bytes"].as_u64()).unwrap_or(body.len() as u64) - body.len() as u64,
+            "comparison":"missing_before_state","before_source_id":null,"current_repository_state":"not_rechecked",
+            "repository_worktree":analysis.repository_worktree,"reconstruction":"not_attempted"});
+        if let Some(region) = region {
+            detail["region"] = region;
+        }
+        Ok(detail)
+    }
+
     pub fn observe_work_file(
         &self,
         request: FileObservationRequest,
@@ -258,52 +312,14 @@ impl LocalOperations {
         let work_revision = work_revision(&basis, request.work_item_id)?;
         let analysis =
             self.load_analysis_snapshot(request.project_id, request.analysis_snapshot_id)?;
-        // Only an included, hashed inventory file is admissible. Unsupported
-        // language analysis does not remove inventory/body capability.
-        let entry = analysis.inventory.entries.iter().find(|e| e.area.path == request.path)
-            .filter(|e| e.classifications.contains(&InventoryClassification::Included))
-            .and_then(|e| e.content_sha256.as_ref())
-            .ok_or_else(|| Error::new("source path is excluded, unavailable or absent from the exact Analysis Snapshot"))?;
-        let canonical = self.open_canonical()?;
-        let binding = canonical
-            .get_local_binding(request.project_id)
-            .map_err(|e| Error::with_source("repository binding unavailable", e))?;
-        drop(canonical);
-        let root = RepositoryRoot::open(&binding.absolute_path)
-            .map_err(|e| Error::with_source("repository unavailable", e))?;
-        if root.canonical_path() != binding.absolute_path {
-            return Err(Error::new("bound repository root was redirected; explicit binding is required before observation"));
-        }
-        let (body, hash, region) = if let Some(range) = request.byte_range {
-            let excerpt = root
-                .read_utf8_excerpt(Path::new(&request.path), range.start_byte, range.end_byte)
-                .map_err(|e| Error::with_source("scoped source excerpt unavailable", e))?;
-            let region = json!({"start_byte":range.start_byte,"end_byte":range.end_byte,
-                "start_line":excerpt.start_line,"end_line":excerpt.end_line,"file_utf8_bytes":excerpt.total_bytes,
-                "excerpt_sha256":format!("{:x}",Sha256::digest(excerpt.body.as_bytes()))});
-            (excerpt.body, excerpt.sha256, Some(region))
-        } else {
-            let bytes = root
-                .read_bounded_regular_file(Path::new(&request.path), FILE_BYTES)
-                .map_err(|e| Error::with_source("scoped source observation unavailable", e))?;
-            let hash = format!("{:x}", Sha256::digest(&bytes));
-            let body = String::from_utf8(bytes)
-                .map_err(|_| Error::new("binary/non-UTF-8 source body is unsupported"))?;
-            (body, hash, None)
-        };
-        if &hash != entry {
-            return Err(Error::new("source hash changed since the selected Analysis Snapshot; analyze and observe afresh"));
-        }
+        let mut detail =
+            self.capture_included_file(&basis, &analysis, &request.path, request.byte_range)?;
+        let hash = detail["sha256"]
+            .as_str()
+            .ok_or_else(|| Error::new("file hash unavailable"))?
+            .to_owned();
         let now = now_micros()?;
         let until = retention_until(now, request.retain_seconds)?;
-        let mut detail = json!({"kind":"file","path":request.path,"sha256":hash,
-            "representation":if region.is_some() {"bounded_excerpt"} else {"whole_file"},
-            "body":body,"observed_utf8_bytes":body.len(),"omitted_utf8_bytes":region.as_ref().and_then(|r|r["file_utf8_bytes"].as_u64()).unwrap_or(body.len() as u64) - body.len() as u64,
-            "comparison":"missing_before_state","before_source_id":null,"current_repository_state":"not_rechecked",
-            "repository_worktree":analysis.repository_worktree,"reconstruction":"not_attempted"});
-        if let Some(region) = region {
-            detail["region"] = region;
-        }
         if let Some(before) = request.before_source_id {
             let earlier = self
                 .retained_source_observation(&basis, request.work_item_id, before)?
@@ -612,7 +628,10 @@ impl LocalOperations {
     }
 }
 
-fn retention_until(now: TimestampMicros, seconds: u64) -> Result<TimestampMicros, Error> {
+pub(crate) fn retention_until(
+    now: TimestampMicros,
+    seconds: u64,
+) -> Result<TimestampMicros, Error> {
     if seconds == 0 || seconds > MAX_RETENTION_SECONDS {
         return Err(Error::new("Source retention must be 1..604800 seconds"));
     }
@@ -757,7 +776,10 @@ fn verify_body(source: &Source, observation: &SourceObservation) -> Result<(), E
 
 /// Canonical File Source anchors retained excerpt bytes and measured coordinates,
 /// as well as full-file identity. Managed content cannot self-report new offsets.
-fn file_snapshot_binding(detail: &Value, identity_basis: &Value) -> Result<String, Error> {
+pub(crate) fn file_snapshot_binding(
+    detail: &Value,
+    identity_basis: &Value,
+) -> Result<String, Error> {
     let body = detail["body"]
         .as_str()
         .ok_or_else(|| Error::new("file body unavailable"))?;

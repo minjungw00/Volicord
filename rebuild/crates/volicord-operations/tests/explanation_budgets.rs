@@ -106,6 +106,9 @@ fn response(
     target: usize,
 ) -> Result<ExplanationRealization, Box<dyn std::error::Error>> {
     let questions: &[(ExplanationQuestion, &str)] = match plan.subject {
+        ExplanationSubject::Repository(_) => {
+            return Err("repository budgets use separate controls".into())
+        }
         ExplanationSubject::Work(_) => &[
             (ExplanationQuestion::Purpose, "goal"),
             (ExplanationQuestion::ReportedChange, "result"),

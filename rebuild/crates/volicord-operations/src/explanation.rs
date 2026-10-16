@@ -43,8 +43,11 @@ impl LocalOperations {
             let retained = decode_explanation(record.content.as_deref()).map_err(|_| {
                 Error::new("explanation unavailable; render again before publication")
             })?;
-            let plan = prepare_explanation(&canonical, provenance.subject, &provenance.language)
-                .map_err(Error::new)?;
+            let plan = self.prepare_subject_explanation(
+                &canonical,
+                provenance.subject,
+                &provenance.language,
+            )?;
             if record.state != ManagedDerivedState::Current
                 || ExplanationProvenance::from(&retained) != *provenance
                 || !retained_matches(&plan, &retained)
@@ -53,8 +56,12 @@ impl LocalOperations {
                     "explanation changed; render again before publication",
                 ));
             }
-            if let ExplanationSubject::Work(work) = provenance.subject {
-                self.validate_explanation_sources(&canonical, work, &retained.realization)?;
+            if !matches!(provenance.subject, ExplanationSubject::Decision(_)) {
+                self.validate_subject_sources(
+                    &canonical,
+                    provenance.subject,
+                    &retained.realization,
+                )?;
             }
         }
         Ok(())
@@ -67,7 +74,20 @@ impl LocalOperations {
         language: &str,
     ) -> Result<ExplanationPlan, Error> {
         let canonical = self.canonical_basis(project)?;
-        prepare_explanation(&canonical, subject, language).map_err(Error::new)
+        self.prepare_subject_explanation(&canonical, subject, language)
+    }
+    pub(crate) fn prepare_subject_explanation(
+        &self,
+        canonical: &CanonicalReadBasis,
+        subject: ExplanationSubject,
+        language: &str,
+    ) -> Result<ExplanationPlan, Error> {
+        match subject {
+            ExplanationSubject::Repository(id) => {
+                self.repository_explanation_plan(canonical, id, language)
+            }
+            _ => prepare_explanation(canonical, subject, language).map_err(Error::new),
+        }
     }
     pub fn record_explanation(
         &self,
@@ -78,12 +98,11 @@ impl LocalOperations {
     ) -> Result<RetainedExplanation, Error> {
         let _mutation = self.layout().acquire_mutation_lock()?;
         let canonical = self.canonical_basis(project)?;
-        let plan = prepare_explanation(&canonical, subject, language).map_err(Error::new)?;
+        let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
         validate_explanation(&plan, &realization).map_err(Error::new)?;
         let (source_dependencies, retained_until) = match subject {
-            ExplanationSubject::Work(work) => {
-                let validated =
-                    self.validate_explanation_sources(&canonical, work, &realization)?;
+            ExplanationSubject::Work(_) | ExplanationSubject::Repository(_) => {
+                let validated = self.validate_subject_sources(&canonical, subject, &realization)?;
                 (validated.dependencies, validated.expiry)
             }
             ExplanationSubject::Decision(_) => (Vec::new(), None),
@@ -111,6 +130,9 @@ impl LocalOperations {
             .collect::<Result<Vec<_>, Error>>()?;
         let mut canonical_links = Vec::new();
         for e in &plan.evidence {
+            if e.record_kind == "analysis_snapshot" {
+                continue;
+            }
             let bytes = parse_identity(&e.identity)?;
             canonical_links.push(match e.record_kind.as_str() {
                 "context_item" => {
@@ -180,6 +202,19 @@ impl LocalOperations {
             })?;
         Ok(ids.len())
     }
+    pub fn read_repository_explanation(
+        &self,
+        project: ProjectId,
+        language: &str,
+    ) -> Result<volicord_projections::QuestionAnswers, Error> {
+        let projection = self
+            .project_projection_selected(project, volicord_projections::WorkSelector::Repository)?;
+        Ok(explanation_answers(
+            &projection.repository_explanations,
+            language,
+            FixedLocale::English,
+        ))
+    }
     pub(crate) fn attach_explanations(
         &self,
         canonical: &CanonicalReadBasis,
@@ -233,14 +268,14 @@ impl LocalOperations {
                             Err((state, diagnostic)) => (state, None, Some(diagnostic)),
                             Ok(retained) => {
                                 preparations += 1;
-                                match prepare_explanation(canonical, subject, &language) {
-                            Err(e) => (ExplanationState::Unavailable, None, Some(e)),
+                                match self.prepare_subject_explanation(canonical, subject, &language) {
+                            Err(e) => (ExplanationState::Unavailable, None, Some(e.to_string())),
                             Ok(plan)
                                 if record.state == ManagedDerivedState::Current
                                     && retained_matches(&plan, &retained) =>
                             {
                                 let validation = match subject {
-                                    ExplanationSubject::Work(work) => self.validate_explanation_sources(canonical,work,&retained.realization).map(|validated| {
+                                    ExplanationSubject::Work(_) | ExplanationSubject::Repository(_) => self.validate_subject_sources(canonical,subject,&retained.realization).map(|validated| {
                                         source_excerpts = validated.excerpts;
                                         omitted_source_excerpt_count = validated.omitted_excerpt_count;
                                     }),
@@ -275,6 +310,18 @@ impl LocalOperations {
             attached.insert(key, readings.clone());
             readings
         };
+        let repository_subject = records.as_ref().ok().and_then(|inspection| {
+            inspection.managed_derived.iter().rev().find_map(|record| {
+                let prefix = record.purpose.strip_prefix("explanation:repository:")?;
+                let id = prefix.split(':').next()?;
+                volicord_repository_intelligence::AnalysisSnapshotId::from_hex(id)
+                    .ok()
+                    .map(ExplanationSubject::Repository)
+            })
+        });
+        if let Some(subject) = repository_subject {
+            projection.repository_explanations = attach(subject);
+        }
         for work in projection
             .selected_work
             .iter_mut()

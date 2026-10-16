@@ -509,7 +509,7 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             answers.source_excerpts[0].comparison.as_deref(),
             Some(comparison)
         );
-        assert_eq!(answers.source_excerpts[0].work_revision, 1);
+        assert_eq!(answers.source_excerpts[0].work_revision, Some(1));
         assert_eq!(
             answers.source_excerpts.len(),
             if comparison == "missing_before_state" {

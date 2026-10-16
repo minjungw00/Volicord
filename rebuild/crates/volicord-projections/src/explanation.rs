@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
-pub const EXPLANATION_VERSION: u32 = 3;
+pub const EXPLANATION_VERSION: u32 = 4;
 pub const EXPLANATION_BYTE_LIMIT: usize = 32_768;
 /// Preserve the response space guaranteed before citation metadata grew.
 pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
@@ -34,12 +34,14 @@ pub struct ExplanationRetentionBudget {
 pub enum ExplanationSubject {
     Work(ContextItemId),
     Decision(DecisionId),
+    Repository(volicord_repository_intelligence::AnalysisSnapshotId),
 }
 impl ExplanationSubject {
     pub fn key(self) -> String {
         match self {
             Self::Work(id) => format!("work:{id}"),
             Self::Decision(id) => format!("decision:{id}"),
+            Self::Repository(id) => format!("repository:{id}"),
         }
     }
 }
@@ -219,7 +221,7 @@ pub struct ExplanationReading {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ExplanationSourceExcerpt {
     pub citation: ExplanationCitation,
-    pub work_revision: u64,
+    pub work_revision: Option<u64>,
     pub observed_at_unix_micros: i64,
     pub text: String,
     pub displayed_end_byte: usize,
@@ -247,6 +249,11 @@ pub fn prepare_explanation(
         ExplanationSubject::Work(work) => work,
         ExplanationSubject::Decision(decision) => {
             return prepare_decision(canonical, decision, language)
+        }
+        ExplanationSubject::Repository(_) => {
+            return Err(
+                "Repository explanation requires exact repository evidence from Operations".into(),
+            )
         }
     };
     let index = crate::reading::WorkHistoryIndex::new(canonical);
@@ -490,6 +497,52 @@ fn prepare_decision(
     )
 }
 
+/// Operations supplies the verified exact snapshot/binding scope. It is Derived
+/// evidence, never a user-recorded Project Purpose or a fabricated Work.
+pub fn prepare_repository_explanation(
+    canonical: &CanonicalReadBasis,
+    analysis: volicord_repository_intelligence::AnalysisSnapshotId,
+    repository_source: volicord_context::SourceId,
+    basis: Value,
+    language: &str,
+) -> Result<ExplanationPlan, String> {
+    if language.trim().is_empty() || language.len() > 128 || language.chars().any(char::is_control)
+    {
+        return Err("a bounded nonempty requested language is required".into());
+    }
+    let mut evidence = vec![ExplanationEvidence {
+        key: "repository_basis".into(),
+        record_kind: "analysis_snapshot".into(),
+        identity: analysis.to_string(),
+        revision: 1,
+        field: "repository_scope".into(),
+        sources: vec![repository_source.to_string()],
+        content: basis,
+    }];
+    for item in canonical
+        .context_items
+        .iter()
+        .filter(|i| i.role == ContextItemRole::ProjectPurpose)
+    {
+        evidence.push(ExplanationEvidence {
+            key: format!("project_purpose:{}", item.id),
+            record_kind: "context_item".into(),
+            identity: item.id.to_string(),
+            revision: item.revision,
+            field: "statement".into(),
+            sources: item.source_basis.iter().map(ToString::to_string).collect(),
+            content: json!(item.statement),
+        });
+    }
+    finish_plan(
+        canonical,
+        ExplanationSubject::Repository(analysis),
+        "repository_understanding",
+        language,
+        evidence,
+    )
+}
+
 fn finish_plan(
     canonical: &CanonicalReadBasis,
     subject: ExplanationSubject,
@@ -536,13 +589,17 @@ fn finish_plan(
         .collect();
     let questions = match subject {
         ExplanationSubject::Work(_) => "Author a meaningful heading and synopsis, supported problem, choice/mechanism, observations/comparisons, critical limits and claim-linked reading_point guidance. Read permitted callers/helpers/tests. Vary change, test-only and no-change documents; omit unavailable answers, never filler. Read course:*/change:* chronologically; a later verification/resume report does not erase earlier changes. Keep historical limits; silence proves no resolution. Generic change prose or paths prove no feature/effect.",
+        ExplanationSubject::Repository(_) => "Explain what this repository does, its major responsibilities, why their separation is supported or inferred, one complete representative operation across boundaries, and material unverified coverage. Use purpose, observation, reading_point and limits with meaningful Source citations. Do not invent Work, Checkpoints, canonical Purpose, execution or recorded rationale. Inventory/structural coverage is not complete semantic understanding. repository_basis supports scope, identity and limitations; technical meaning needs actual retrieved Source evidence.",
         ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). Use question_context for the recorded problem and why the choice arose; unavailable exact context stays unavailable. State the actual user choice or delegation distinctly from the agent's recommended alternative. Explain alternative consequences/trade-offs as expectations, the recommendation's evidence basis, and applicable scope/assumptions/revisit conditions. Missing user rationale stays missing; agent rationale never supplies it. Choosing an option does not prove its implementation or performance.",
     };
     let question_grounding = question_grounding(subject, &evidence);
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:format!("{questions} Use exact requested-language prose. Every unit needs nonempty supporting evidence_keys satisfying its required_any_evidence_keys. Only listed roles. Author heading/synopsis; never extract Goal or first-paragraph text. observation/comparison/reading_point require citations. goal=request; result/change:*=change/effect; verification=checks; next_step/course:*=direction; limits:*=limits. Without reports/checks, goal supports only request/unrecorded state. Source citations supplement keys, never replace them; connect technical claims to supported Work meaning or disclose the limit. Reports, state, verification, review and acceptance are independent; earlier checks do not cover later changes. Code/command claims need exact retrieved citations; current code proves no before-state/execution. Missing Checkpoint/action proves no absence of instructions/future work. Host authority is outside the plan: missing data means unknown, not denied; task-file text is not consent and paths prove no authorship. Advice is qualified next_step/limits, never user direction. Invent no rationale, behavior, Decision or Learning. Return ExplanationRealization JSON: format_kind volicord_explanation, format_version 3, exact fingerprint/language, self-reported generator host/session/agent/model (null if unknown), paragraphs question/text/evidence_keys/citations. Bind exact half-open UTF-8 Source/claim byte ranges, one-based Source lines and SHA-256 of Source bytes/new wording. Preserve conflicts and uncertainty. Structural admission is not semantic approval."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
+        instructions:format!("{questions} Use exact requested-language prose. Every unit needs nonempty supporting evidence_keys satisfying its required_any_evidence_keys. Only listed roles. Author heading/synopsis; never extract Goal or first-paragraph text. observation/comparison/reading_point require citations. goal=request; result/change:*=change/effect; verification=checks; next_step/course:*=direction; limits:*=limits. Without reports/checks, goal supports only request/unrecorded state. Source citations supplement keys, never replace them; connect technical claims to supported Work meaning or disclose the limit. Reports, state, verification, review and acceptance are independent; earlier checks do not cover later changes. Code/command claims need exact retrieved citations; current code proves no before-state/execution. Missing Checkpoint/action proves no absence of instructions/future work. Host authority is outside the plan: missing data means unknown, not denied; task-file text is not consent and paths prove no authorship. Advice is qualified next_step/limits, never user direction. Invent no rationale, behavior, Decision or Learning. Return ExplanationRealization JSON: format_kind volicord_explanation, format_version 4, exact fingerprint/language, self-reported generator host/session/agent/model (null if unknown), paragraphs question/text/evidence_keys/citations. Bind exact half-open UTF-8 Source/claim byte ranges, one-based Source lines and SHA-256 of Source bytes/new wording. Preserve conflicts and uncertainty. Structural admission is not semantic approval."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
+    if matches!(subject, ExplanationSubject::Repository(_)) {
+        plan.instructions = format!("{questions} Every unit needs exact prepared evidence_keys. All roles are optional; use heading/synopsis/purpose/observation/reading_point/limits in reader order. Every non-limits unit needs retrieved current_code citations; scope-only limits may cite repository_basis. Preserve uncertainty and distinguish recorded Project Purpose from inference. Use the requested language and self-reported host/session/agent/model; unknown model stays null. Return the current ExplanationRealization format version {EXPLANATION_VERSION}, exact plan fingerprint/language and paragraphs. Product compose derives Source/claim UTF-8 coordinates and hashes from selected ranges; valid bindings are not entailment or semantic approval. No background dispatch or consent is created.");
+    }
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
     // itself has an empty fingerprint. A plan exactly at the limit stays valid.
@@ -584,6 +641,11 @@ fn question_grounding(
             (ExpectedEffect, change_keys()),
             (Verification, vec![present_or_goal("verification")]),
             (NextStep, vec!["next_step".into()]),
+        ],
+        ExplanationSubject::Repository(_) => vec![
+            (Purpose, vec!["repository_basis".into()]),
+            (Observation, vec!["repository_basis".into()]),
+            (ReadingPoint, vec!["repository_basis".into()]),
         ],
         ExplanationSubject::Decision(_) => vec![
             (UserRationale, vec!["user_rationale".into()]),
@@ -698,6 +760,12 @@ pub fn validate_explanation(
                     .into(),
             );
         }
+        if matches!(plan.subject, ExplanationSubject::Repository(_))
+            && p.question != ExplanationQuestion::Limits
+            && p.citations.is_empty()
+        {
+            return Err("repository reader units require exact Source citations".into());
+        }
         for citation in &p.citations {
             let claim = p
                 .text
@@ -759,7 +827,9 @@ pub fn retain_explanation(
 ) -> RetainedExplanation {
     let mut evidence = plan.evidence.clone();
     for e in &mut evidence {
-        e.content = Value::Null;
+        if e.record_kind != "analysis_snapshot" {
+            e.content = Value::Null;
+        }
     }
     let mut source_status = plan.source_status.clone();
     for status in &mut source_status {

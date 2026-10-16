@@ -633,3 +633,19 @@ existing inspection lock. Generic Operations `privacy_status` withholds all
 SourceObservation bodies; it cannot become an unscoped body reader. Candidate
 collection opt-out remains independent because these copies are explicit local
 Source operations, not new automatic Candidate collection.
+
+### Explicit repository explanation retention
+
+Repository explanation requires the current interactive host's existing authority
+and an explicit repository subject. Explicit repository file collection retains one
+included hashed inventory file or selected UTF-8 range, under the same 16,384-byte
+copy, 16 MiB full-file verification and 1..604800-second retention limits as Work
+copies. No arbitrary path fallback, command execution, automatic provider dispatch
+or inference of background consent is introduced. Each Source read requires exact
+Project, Analysis Snapshot and Source association. Other Project/Work associations
+cannot borrow that authority. Binding revision, canonical availability, managed
+state, expiry, content hash and canonical forgetting are checked before disclosure.
+Every reader unit, including headings/synopsis/limits, traverses shared grounding,
+size, dependency, deletion and expiry checks. Repository summaries use the existing
+CachedSummary lifecycle and expire no later than their earliest cited Source copy.
+Reads, rendering and export never create copies, regenerate or renew retention.

@@ -21,7 +21,12 @@ mod operations;
 mod payload;
 mod provider;
 mod recall;
+mod repository_explanation;
 mod source_observations;
+pub use repository_explanation::{
+    RepositoryClaimRange, RepositoryExplanationDraft, RepositoryFileObservationRequest,
+    RepositoryReaderUnit,
+};
 
 pub use analysis_storage::{
     AnalysisFileFootprint, AnalysisReachabilityReference, AnalysisSectionFootprint,

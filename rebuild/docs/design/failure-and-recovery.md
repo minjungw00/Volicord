@@ -520,3 +520,15 @@ coordinates cannot pass the canonical File Source binding on retrieval. A later
 filesystem version never repairs a historical excerpt. Expiry, deletion, corrected
 Work revisions, unavailable Sources and the canonical forgetting read barrier apply
 to excerpts and their dependent explanations through the existing lifecycle.
+
+### Repository explanation failure and recovery
+
+Missing/foreign/stale Analysis Snapshots and redirected/unavailable local bindings
+prevent current repository preparation, observation or publication. Missing,
+expired/deleted/withheld or corrupt repository Source copies cannot supply prose;
+no ordinary read repairs them from current files. Unsupported retained formats have
+explicit current preparation/recording recovery. Failed record admission leaves
+earlier valid content unchanged. Source capture may publish a canonical identity
+before a body-store failure; that failure reports the surviving identity and body
+unavailability without a success receipt. Model generation, retained recording,
+structural validation and user comprehension remain separate observations.

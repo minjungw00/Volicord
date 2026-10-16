@@ -692,3 +692,15 @@ or equal observed bytes. It does not establish exclusive actor attribution or
 absence of changes throughout a Work. Without that observation, before-state is
 missing; HEAD, current files, nearby Work and later Checkpoints cannot supply it.
 Command execution is an observed fact, never a user Decision or Learning response.
+
+### Repository-scoped Source observations and interpretation
+
+An explicit repository explanation subject is an exact Analysis Snapshot within
+one Project/repository/binding, independent of Work or Checkpoint existence. An
+explicit included-file observation records a canonical File Source and retains a
+disposable repository-scoped copy with binding identity/revision, Repository and
+Analysis identities, repository Source, full-file hash, exact UTF-8 region and
+observation/expiry times. Work and repository associations do not grant each other's
+body authority. This does not introduce a seventh canonical entity.
+An inferred repository purpose remains generated interpretation. A recorded Project
+Purpose is separately sourced canonical context and never overwritten by explanation.

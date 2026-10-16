@@ -352,7 +352,7 @@ volicord --json work explain delete --work GOAL_ID
 
 Preparation returns `{operation, plan}`. The current active agent reads the entire
 plan under its existing source-access authority and creates a response JSON using
-`format_kind: "volicord_explanation"`, `format_version: 3`, the exact
+`format_kind: "volicord_explanation"`, `format_version: 4`, the exact
 `plan_fingerprint`, `language`, `generator: {host, session, agent, model}` and
 `paragraphs: [{question, text, evidence_keys, citations}]`. The small reader vocabulary adds authored `heading` and `synopsis`, `observation`,
 `comparison`, `limits` and claim-linked `reading_point` to the supported narrative

@@ -441,7 +441,7 @@ Inventing source-specific lexical rules would not generalize to the reordered va
 and independent export case. Deterministic selection and state explanations remain
 appropriate for structured facts; explicit host realization supplies Work prose.
 
-`ExplanationRealization` uses exact-current `volicord_explanation` version 3,
+`ExplanationRealization` uses exact-current `volicord_explanation` version 4,
 plan fingerprint, language, host/session and nullable agent/model provenance, and
 question/text/evidence-key/citation units in reader-selected order. A document has
 1..32 grounded units; heading and synopsis are optional singletons. Purpose,
@@ -1812,3 +1812,25 @@ control provenance. An absent authored synopsis may show a separately labeled
 problem paragraph or original Goal, never relabel that paragraph as a synopsis.
 Recorded next actions and recorded limits stay ordinary in Work rows; absent
 next-action metadata remains separate from original instructions and suggestions.
+
+### Repository reader document
+
+`ExplanationSubject::Repository(AnalysisSnapshotId)` is independently scoped;
+Operations prepares exact snapshot/binding evidence rather than choosing recent Work.
+A repository reader document explains purpose, responsibilities and a representative
+mechanism, distinguishes recorded rationale from inferred reasons and names material
+unverified coverage. Inventory alone is insufficient explanatory content.
+The existing reader-unit envelope and exhaustive traversal remain shared with Work
+and Decision. Repository roles are optional heading/synopsis/purpose/observation/
+reading_point/limits. Every unit needs exact prepared evidence keys, and every
+non-limits unit needs current-code Source citations from that exact Analysis Snapshot.
+Scope-only limits can use repository basis without a technical Source assertion.
+Product composition derives Source revision/locator, absolute UTF-8 ranges/lines and
+range/claim hashes from explicit host-selected spans; the host authors prose, not
+mechanical identities. A valid hash/range is neither entailment nor semantic approval.
+Repository snapshot/coverage/scope metadata remains retained and inspectable; raw
+Source bytes stay in separately managed disposable copies. Latest permitted reading
+uses committed insertion order; failed writes preserve prior records, while a later
+deleted/invalid record cannot revive an older document. Ordinary public projection
+exposes repository explanations independently of selected Work. Original Project
+Purpose stays separate canonical context, including when absent.

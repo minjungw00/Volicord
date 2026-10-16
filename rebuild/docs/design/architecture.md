@@ -768,3 +768,13 @@ Full scope/diagnostic inspection uses the already supported `--json`; no new ver
 option or analyzer path is introduced. Automation receives every stored diagnostic
 and complete capability diagnostic IDs/coverage scopes without a host payload bound.
 Partial-result and operational error exit semantics remain unchanged.
+
+### Repository explanation without Work
+
+Local Operations composes an explicitly selected Repository/Analysis Snapshot and
+local binding into a repository-scoped explanation basis. Repository Intelligence
+continues to own inventory/capability/coverage; Projections owns the reader document.
+Adapters explicitly observe/read Sources and submit active-host interpretation.
+This path uses existing Kernel Source identities and managed Derived retention; it
+creates no Goal, Checkpoint, canonical Purpose, new truth store or provider dispatch.
+Ordinary reading/publication validates dependencies and never generates or renews.

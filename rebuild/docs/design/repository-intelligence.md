@@ -762,3 +762,15 @@ observations: missing surrounding code is not retained or inferred. Explicit
 before/after pairs require the same representation and byte interval as well as
 the existing Work/path/time compatibility. Comparison uses full-file identity;
 changed file identity does not claim every retained line changed.
+
+### Repository explanation evidence boundary
+
+Repository-scoped explanation selection names an exact retained Analysis Snapshot,
+Project and local binding. Its complete included/excluded/unavailable area basis,
+observed revision, inventory path/classification scope, capability matrix, freshness
+and Source provenance remain inspectable. Partial or unsupported structural/semantic
+coverage permits inventory and explicit included hashed-file investigation; it does
+not establish complete semantic understanding. Observation and current explanation
+admission compare the selected repository basis; missing/foreign snapshots, changed
+files, symlinks and redirected roots reject. Historical retained Source reading can
+return exact previous permitted bytes but cannot assert current repository equality.

@@ -2,7 +2,9 @@
 use crate::{operations::parse_identity, Error, LocalOperations};
 use serde_json::{json, Value};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ProjectId, SourceId};
-use volicord_projections::{explanation_text_hash, ExplanationRealization, ExplanationSourceUse};
+use volicord_projections::{
+    explanation_text_hash, ExplanationRealization, ExplanationSourceUse, ExplanationSubject,
+};
 
 pub(crate) struct ValidatedExplanationSources {
     pub dependencies: Vec<SourceId>,
@@ -60,12 +62,21 @@ impl LocalOperations {
         )
     }
 
-    pub(crate) fn validate_explanation_sources(
+    pub(crate) fn validate_subject_sources(
         &self,
         basis: &CanonicalReadBasis,
-        work: ContextItemId,
+        subject: ExplanationSubject,
         response: &ExplanationRealization,
     ) -> Result<ValidatedExplanationSources, Error> {
+        let read_source = |source| match subject {
+            ExplanationSubject::Work(work) => self.explanation_source(basis, work, source),
+            ExplanationSubject::Repository(analysis) => {
+                self.read_repository_explanation_source(basis.project.id, analysis, source)
+            }
+            ExplanationSubject::Decision(_) => {
+                Err(Error::new("Decision cannot read scoped Source bodies"))
+            }
+        };
         let mut readings = std::collections::BTreeMap::new();
         let mut dependencies = std::collections::BTreeSet::new();
         let mut expiry = None;
@@ -75,9 +86,16 @@ impl LocalOperations {
         let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
         let mut omitted_excerpt_count = 0;
         for citation in response.citations() {
+            if let ExplanationSubject::Repository(analysis) = subject {
+                if citation.analysis_snapshot_id != analysis.to_string()
+                    || citation.use_kind != ExplanationSourceUse::CurrentCode
+                {
+                    return Err(Error::new("repository explanation requires current file Sources from its exact Analysis Snapshot"));
+                }
+            }
             let source = SourceId::from_bytes(parse_identity(&citation.source_id)?);
             if let std::collections::btree_map::Entry::Vacant(entry) = readings.entry(source) {
-                entry.insert(self.explanation_source(basis, work, source)?);
+                entry.insert(read_source(source)?);
             }
             let read = &readings[&source];
             let observation = &read["observation"];
@@ -240,7 +258,7 @@ impl LocalOperations {
                     // A corrupt comparison cannot supply even an otherwise valid current range.
                     if let Some(before) = detail["before_source_id"].as_str() {
                         let before = SourceId::from_bytes(parse_identity(before)?);
-                        let earlier = self.explanation_source(basis, work, before)?;
+                        let earlier = read_source(before)?;
                         let old = &earlier["observation"];
                         let comparison = if old["detail"]["sha256"] == detail["sha256"] {
                             "no_change"
@@ -313,8 +331,10 @@ impl LocalOperations {
                     let end = citation.start_byte + bytes;
                     excerpts.push(volicord_projections::ExplanationSourceExcerpt {
                         citation: citation.clone(),
-                        work_revision: observation["work_revision"].as_u64()
-                            .ok_or_else(|| Error::new("Source Work revision unavailable"))?,
+                        work_revision: match subject {
+                            ExplanationSubject::Work(_) => Some(observation["work_revision"].as_u64().ok_or_else(||Error::new("Source Work revision unavailable"))?),
+                            _ => None,
+                        },
                         observed_at_unix_micros: observation["observed_at_unix_micros"].as_i64()
                             .ok_or_else(|| Error::new("Source observation time unavailable"))?,
                         text: range[..bytes].into(), displayed_end_byte: end,

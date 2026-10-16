@@ -160,7 +160,7 @@ def validate_response(plan, response):
         raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; prepared response capacity {capacity}; preserve grounding and seek Product support for this evidence shape')
     if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
             'plan_fingerprint', 'language', 'generator', 'paragraphs'}
-            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 3
+            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 4
             or response['plan_fingerprint'] != plan['fingerprint']
             or response['language'] != plan['requested_language']):
         raise api().CampaignError('explanation response format/plan/language mismatch')

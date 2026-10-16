@@ -293,8 +293,8 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 
 ### Shared explanation content
 
-Retained Work/Decision explanation JSON inside the existing managed CachedSummary store
-has format kind `volicord_explanation` and exact current format version 3
+Retained Work/Decision/repository explanation JSON inside the existing managed CachedSummary store
+has format kind `volicord_explanation` and exact current format version 4
 in its realization header. Record/read check that header before typed domain
 decode. Non-current content is Unsupported and its prose is withheld; malformed
 current content is Corrupt. Explicit delete and preparation/generation from current
@@ -303,7 +303,7 @@ The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Sn
 formats do not change; generated-document metadata is current version 10. A preparation fingerprint binds evidence
 and language; it is neither a format version nor an authenticity certificate.
 
-Explanation format 3 uses one reader-unit envelope (`question`, `text`,
+Explanation format 4 uses one reader-unit envelope (`question`, `text`,
 `evidence_keys`, `citations`) for authored heading, synopsis, narrative, observation,
 comparison, critical limits and reading-point guidance. All units share exhaustive
 validation, retrieval/dependency traversal, retention, budgeting and output identity.
@@ -373,3 +373,19 @@ field or entity and does not change Privacy SQL, portable bundle, Analysis Snaps
 or retained explanation formats. Read-time explanation source excerpts additionally
 expose `source_representation` and `observation_region`; they are not persisted
 copies inside retained explanation records.
+
+### Repository explanation and Source copy formats
+
+Current `volicord_explanation` format 4 adds the explicit repository subject and
+retained repository scope/coverage metadata in its analysis evidence, and read-time
+Source excerpts have an optional Work revision (absent for repository scope).
+Version 3 and every other non-current format are Unsupported with prose withheld;
+explicit current preparation/composition/recording is recovery. Work and Decision
+use this same single current writer/decoder; there is no v3 compatibility reader.
+Canonical, bundle, Analysis Snapshot and document-metadata versions are unchanged.
+Repository-scoped disposable copies have kind
+`volicord_repository_source_observation`, exact current version 1; existing Work
+copies retain their distinct `volicord_source_observation` version 2 contract.
+These are different authority associations, never alternate decoders for one scope.
+Non-current repository copies are Unsupported; explicit bounded observation is
+recovery and historical evidence is never rewritten or imported into a new scope.

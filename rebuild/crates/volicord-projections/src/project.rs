@@ -936,6 +936,7 @@ pub struct RepositoryScopeMetadata {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
+    pub repository_explanations: Vec<crate::ExplanationReading>,
     pub repository_analysis: crate::RepositoryAnalysisReading,
     pub repository_scope_metadata: RepositoryScopeMetadata,
     /// Contextual answer limits, selected before capability/list bounds. Raw
@@ -1697,6 +1698,7 @@ pub fn build_project_projection(
         health,
     };
     let mut projection = ProjectProjection {
+        repository_explanations: Vec::new(),
         repository_analysis,
         repository_scope_metadata,
         answer_capability_gaps,
