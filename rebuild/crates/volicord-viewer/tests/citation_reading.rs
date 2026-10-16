@@ -574,3 +574,64 @@ fn seed_citation_browser_runtime() -> Result<(), Box<dyn Error>> {
     let _ = f.temp.keep();
     Ok(())
 }
+
+#[test]
+fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
+) -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new_kind(None, true)?;
+    let answers = f.answers()?;
+    let reader = answers
+        .source_excerpts
+        .iter()
+        .find(|e| e.citation.locator == "explanation.rs")
+        .ok_or("reader")?;
+    assert_eq!(
+        reader.text, f.originals[8],
+        "the representative function must reach its actual validation and bounded-return logic"
+    );
+    assert!(reader
+        .text
+        .contains("self.validate_subject_sources_selected("));
+    assert!(reader.text.contains("bytes.len() > 32_768"));
+    assert_eq!(answers.source_excerpts.len(), 11);
+    assert_eq!(answers.omitted_source_excerpt_count, 0);
+    assert!(answers
+        .source_excerpts
+        .iter()
+        .all(|e| !e.text.is_empty() && e.text.len() <= 4096));
+    assert!(
+        answers
+            .source_excerpts
+            .iter()
+            .map(|e| e.text.len())
+            .sum::<usize>()
+            <= 16384
+    );
+    let mut changed = f.realization.clone();
+    changed.paragraphs.reverse();
+    for unit in &mut changed.paragraphs {
+        unit.citations.reverse();
+    }
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        changed,
+    )?;
+    for e in f.answers()?.source_excerpts {
+        let same = answers
+            .source_excerpts
+            .iter()
+            .find(|b| b.citation.source_id == e.citation.source_id)
+            .ok_or("same")?;
+        assert_eq!(e.text, same.text);
+    }
+    let destination = f.temp.path().join("mechanism.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &destination)?;
+    let html = fs::read_to_string(destination)?;
+    assert!(html.contains("self.validate_subject_sources_selected("));
+    assert!(html.contains("bytes.len() &gt; 32_768"));
+    assert!(!html.contains("<script"));
+    Ok(())
+}

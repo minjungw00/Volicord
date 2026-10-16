@@ -412,7 +412,7 @@ impl LocalOperations {
                 ));
             }
         }
-        let omitted_excerpt_count = bound_excerpts(&mut excerpts);
+        let omitted_excerpt_count = bound_excerpts(&mut excerpts, response);
         Ok(ValidatedExplanationSources {
             dependencies: dependencies.into_iter().collect(),
             expiry,
@@ -435,13 +435,16 @@ fn bound_expiry(
     Ok(())
 }
 
-/// Max-min character allocation over unique verified ranges. Stable identity order
-/// makes reordered citations and repeated claims unable to consume another range's
-/// share. Short ranges release unused capacity to the rest; no byte limit changes.
-fn bound_excerpts(excerpts: &mut Vec<volicord_projections::ExplanationSourceExcerpt>) -> usize {
-    let mut order: Vec<_> = (0..excerpts.len()).collect();
-    order.sort_by_key(|&i| {
-        let c = &excerpts[i].citation;
+/// Reserve at most half the existing budget for representative reading-point
+/// evidence, then share the remainder across every unique range. Select the
+/// shortest range in each authored reading point (stable identity breaks ties),
+/// so a complete bounded mechanism can survive unrelated leading excerpts.
+/// This is presentation priority, never semantic validation of the author's claim.
+fn bound_excerpts(
+    excerpts: &mut Vec<volicord_projections::ExplanationSourceExcerpt>,
+    response: &ExplanationRealization,
+) -> usize {
+    let key = |c: &volicord_projections::ExplanationCitation| {
         (
             c.source_id.clone(),
             c.field.clone(),
@@ -449,22 +452,49 @@ fn bound_excerpts(excerpts: &mut Vec<volicord_projections::ExplanationSourceExce
             c.end_byte,
             format!("{:?}", c.use_kind),
         )
-    });
+    };
+    let representatives: std::collections::BTreeSet<_> = response
+        .generated_units()
+        .filter(|u| u.question == volicord_projections::ExplanationQuestion::ReadingPoint)
+        .filter_map(|u| {
+            u.citations
+                .iter()
+                .min_by_key(|c| (c.end_byte.saturating_sub(c.start_byte), key(c)))
+                .map(key)
+        })
+        .collect();
+    let prioritized: Vec<_> = excerpts
+        .iter()
+        .map(|e| representatives.contains(&key(&e.citation)))
+        .collect();
+    let mut order: Vec<_> = (0..excerpts.len()).collect();
+    order.sort_by_key(|&i| key(&excerpts[i].citation));
     let mut ends = vec![0; excerpts.len()];
     let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
-    loop {
-        let mut advanced = false;
-        for &i in &order {
-            if let Some(ch) = excerpts[i].text[ends[i]..].chars().next() {
-                if ch.len_utf8() <= remaining {
-                    ends[i] += ch.len_utf8();
-                    remaining -= ch.len_utf8();
-                    advanced = true;
+    for priority_phase in [true, false] {
+        let mut quota = if priority_phase {
+            volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT / 2
+        } else {
+            remaining
+        };
+        loop {
+            let mut advanced = false;
+            for &i in &order {
+                if priority_phase && !prioritized[i] {
+                    continue;
+                }
+                if let Some(ch) = excerpts[i].text[ends[i]..].chars().next() {
+                    if ch.len_utf8() <= quota {
+                        ends[i] += ch.len_utf8();
+                        remaining -= ch.len_utf8();
+                        quota -= ch.len_utf8();
+                        advanced = true;
+                    }
                 }
             }
-        }
-        if !advanced {
-            break;
+            if !advanced {
+                break;
+            }
         }
     }
     for (e, end) in excerpts.iter_mut().zip(ends) {

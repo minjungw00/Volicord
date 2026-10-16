@@ -1718,8 +1718,13 @@ observation time, citation/range/claim hash and observed comparison. The shared
 bound is 16,384 UTF-8 text bytes, at most 4,096 per unique cited range; clipped
 ranges report displayed byte/line ends and exact omitted bytes, while completely
 omitted ranges keep a counted navigation placeholder. Initial selection shares capacity
-progressively across unique verified ranges, in stable range-identity order, returning
-unused short-range capacity to the rest. Duplicate/shared claims consume one share;
+progressively across unique verified ranges, in stable range-identity order. At most
+half of the existing shared budget first serves one representative range per authored
+ReadingPoint: the shortest cited range, with stable range identity breaking ties.
+The remainder (including unused priority capacity) serves all ranges. This permits
+a complete bounded core mechanism instead of prefixes alone, while keeping capacity
+for other ranges. Reading-point priority never changes claim spans or certifies the
+author's relevance; impossible complete inclusion remains explicitly clipped. Duplicate/shared claims consume one share;
 reordering citations cannot starve a later mechanism. This selection makes no claim
 about semantic importance or entailment. No uncited Source, current
 file fallback or new Source observation is materialized. Only Current permitted

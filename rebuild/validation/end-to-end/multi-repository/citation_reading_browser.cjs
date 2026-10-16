@@ -126,7 +126,7 @@ function command(label,args){
     await p.setViewportSize({width,height:900});await p.goto(pathToFileURL(path.join(config.fixture,'offline.html')).href+'#repository-explanation');
     assert.equal(await p.locator('script,.citation-inspection,[data-citation-url]').count(),0);
     const link=p.locator('#repository-explanation .doc a.evidence-link').nth(8);await link.focus();await p.keyboard.press('Enter');
-    const point=p.locator('.source-point:target');assert.ok((await point.locator('code').textContent()).startsWith(fixture.originals[8].split('\n')[0]));
+    const point=p.locator('.source-point:target');assert.equal(await point.locator('code').textContent(),fixture.originals[8],'complete representative mechanism embedded offline');
     assert.ok((await point.textContent()).includes('Offline: only the displayed bytes are included'));
     await p.screenshot({path:path.join(config.output,`offline-${width}.png`)});await point.locator('.return').click();
    }
