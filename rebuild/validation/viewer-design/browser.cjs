@@ -176,6 +176,11 @@ async function trip(page,work,truth,width,offline=false){
    }
    result.checks.push({stress:'long mixed language; hostile Goal, heading, prose, Source and audit; all widths; no injection'});
   }
+  if(manifest.journeys){
+   result.journey_driver_sha256=hash(fs.readFileSync(path.join(__dirname,'journeys.cjs')));
+   assert.equal(result.journey_driver_sha256,manifest.files['support/journeys.cjs'].sha256,'exact journey support');
+   result.checks.push(await require('./journeys.cjs')({browser,url:server.url,build,out,refined:!!c.refined}));
+  }
   assert(result.requests.every(url=>new URL(url).origin===new URL(server.url).origin),'no remote request');
   // Deliberate missing route cannot silently select a different Work.
   const bad=await browser.newPage();assert.equal((await bad.goto(server.url+'unknown-work.html')).status(),404);await bad.close();

@@ -54,6 +54,27 @@ class ReviewTests(unittest.TestCase):
         self.change_readback(lambda d:d['work_history'][0]['answers']['source_excerpts'][0].update(comparison='changed'))
         with self.assertRaisesRegex(ValueError,'missing-before'):design.admit(self.root)
 
+    def test_source_first_outcomes_reject_deleted_adverse_fact(self):
+        _,_,works=design.admit(self.root)
+        self.assertEqual(len(design.journeys.source_check(works)),7)
+        # Rehashing a candidate cannot make a removed source fact true.
+        works[0]['sources']['report']['text']='All checks passed.'
+        with self.assertRaisesRegex(ValueError,'source-first outcome missing'):
+            design.journeys.source_check(works)
+
+    def test_missing_case_cannot_acquire_generated_success(self):
+        if not ARGS.missing_case:self.skipTest('no independent missing case supplied')
+        root=self.root/'missing';root.mkdir()
+        for name in ['case.json','canonical.json','source.py','status.json','baseline.html']:
+            shutil.copyfile(ARGS.missing_case/name,root/name)
+        design.journeys.missing_admit(root)
+        p=root/'status.json';d=design.load(p)
+        d['work_history'][0]['answers']['explanation_state']='current'
+        p.write_text(json.dumps(d));p=root/'case.json';d=design.load(p)
+        d['files']['status.json']=design.sha((root/'status.json').read_bytes());p.write_text(json.dumps(d))
+        with self.assertRaisesRegex(ValueError,'absent explanation'):
+            design.journeys.missing_admit(root)
+
     def test_invalid_json(self):
         (self.root/'review-input-final.json').write_text('{ invalid')
         with self.assertRaises(ValueError):design.admit(self.root)
@@ -124,5 +145,5 @@ class ReviewTests(unittest.TestCase):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--retained',type=Path,required=True);p.add_argument('--build',type=Path);p.add_argument('--stress',type=Path);ARGS=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--retained',type=Path,required=True);p.add_argument('--build',type=Path);p.add_argument('--stress',type=Path);p.add_argument('--missing-case',type=Path);ARGS=p.parse_args()
     unittest.main(argv=['self_test.py'],verbosity=2)

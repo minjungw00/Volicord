@@ -12,6 +12,7 @@ import subprocess
 import catalog as catalog_input
 import syntax
 import pygments
+import journeys
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
@@ -297,7 +298,9 @@ def build(args):
         key=item['authored']['key']
         if key not in {w['authored']['key'] for w in works}:
             (output/f'{key}.html').write_text(record_page(item))
-    for name in ['build.py','design.css','design.js','serve.py','browser.cjs','self_test.py','catalog.py','syntax.py']:
+    if args.missing_case:
+        manifest['journeys'] = journeys.attach(output, args.missing_case, works, frame)
+    for name in ['build.py','design.css','design.js','serve.py','browser.cjs','self_test.py','catalog.py','syntax.py','journeys.py','journeys.cjs']:
         shutil.copyfile(HERE/name,output/'support'/name)
     shutil.copyfile(HERE/'design.js',output/'design.js')
     shutil.copyfile(HERE/'serve.py',output/'serve.py')
@@ -311,6 +314,9 @@ def build(args):
     intro='''<p class="eyebrow">Volicord / disposable design trial</p><h1>작업을 이해하는<br>새로운 읽기 공간.</h1><p class="intro">현재 Viewer와 제안한 디자인을 같은 보존 자료로 비교합니다. 원래 지시, 해석, 결과, 중요한 한계와 전체 근거를 두 디자인 모두에서 확인할 수 있습니다.</p>'''
     instructions='''<div class="instructions"><h2>살펴볼 순서</h2><ol><li>현재 Viewer와 새 목록에서 B를 찾고, 작동 원리와 중요한 실패를 설명할 수 있는지 비교하세요.</li><li>작동 원리의 근거 링크를 열어 정확한 원문을 읽고, 같은 설명으로 돌아오세요.</li><li>Click의 조건별 관측을 비교하세요. 패치 없음, 과거 실행, 미검증 범위와 수정 전 원문 없음을 구별할 수 있는지 보세요.</li></ol><h2>키보드와 마우스</h2><p>Tab / Shift+Tab으로 링크와 코드 영역에 이동하고 Enter로 선택합니다. 코드는 줄바꿈 없이 가로 스크롤합니다. 코드에서 “설명으로 돌아가기” 또는 Escape로 원래 문단과 스크롤 위치로 돌아옵니다. 브라우저 뒤로/앞으로도 사용할 수 있습니다. 좁은 화면에서는 코드가 별도 전체 화면으로 열립니다. Script-free 문서는 native fragment와 반환 링크를 사용합니다.</p><h2>정확한 입력과 실행</h2><p>이 폴더에서 <code>python3 serve.py</code>를 실행하고 출력된 loopback URL을 여세요. 종료는 Ctrl-C입니다. Node, Runtime, provider나 외부 asset은 필요 없습니다. 이 페이지와 script-free 문서는 파일로 직접 열 수도 있습니다.</p><p><a href="manifest.json">후보·입력·전체 파일 SHA-256</a> · <a href="inputs/identities.json">원래 readback identities</a> · <a href="support/build.py">재현 지원 소스</a></p><h2>검토의 범위</h2><p>해석 문구는 이전에 독립 Source에서 작성하고 Product를 통해 기록·읽은 control입니다. 새 자율 생성이 아닙니다. Prototype은 시각·상호작용 참고로만 사용했습니다. Baseline은 historical content capture이며 현재 Runtime freshness나 새 테스트 성공을 뜻하지 않습니다. 전체 campaign ZIP은 재검증하지 않았습니다. 기술 검사는 사람의 이해·선호·수락을 증명하지 않습니다. 새 frontend framework나 production migration은 선택하지 않았습니다. 이 패키지는 private local review용입니다.</p></div>'''
     (output/'index.html').write_text(frame('디자인 비교',intro+cards+instructions,active='index'))
+    if args.missing_case:
+        entry = (output/'index.html').read_text().replace('<h2>살펴볼 순서</h2>', '<p><a class="button" href="journeys.html">동일 Work 여정 비교와 답안 없는 검토 과제 →</a></p><h2>살펴볼 순서</h2>')
+        (output/'index.html').write_text(entry)
     (output/'README.txt').write_text('Open index.html directly, or run: python3 serve.py\nStop with Ctrl-C. All review links are package-relative. Private local material; do not publish.\n')
     manifest['files']={str(p.relative_to(output)):dict(sha256=sha(p.read_bytes()),bytes=p.stat().st_size) for p in sorted(output.rglob('*')) if p.is_file()}
     (output/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
@@ -318,5 +324,5 @@ def build(args):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--catalog',type=Path,required=True);p.add_argument('--retained',type=Path,required=True);p.add_argument('--prototype',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
+    p=argparse.ArgumentParser();p.add_argument('--catalog',type=Path,required=True);p.add_argument('--retained',type=Path,required=True);p.add_argument('--prototype',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--missing-case',type=Path)
     build(p.parse_args())
