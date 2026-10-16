@@ -1,9 +1,9 @@
 // Disposable, read-only comparison server. Generated inputs/assets live in .local.
 use std::{
     env, fs,
-    io::{Read, Write},
-    net::TcpListener,
-    time::Duration,
+    io::{self, Read, Write},
+    net::{TcpListener, TcpStream},
+    time::{Duration, Instant},
 };
 include!("data.rs");
 const STYLE: &str = include_str!("reader.css");
@@ -133,50 +133,132 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("http://{authority}/");
     std::io::stdout().flush()?;
     for stream in listener.incoming() {
+        // Accept errors are listener failures; read/parse/write failures belong
+        // to one client and must never end a user-launched preview.
         let mut stream = stream?;
-        stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-        let mut bytes = [0u8; 16384];
-        let n = stream.read(&mut bytes)?;
-        let request = String::from_utf8_lossy(&bytes[..n]);
-        let target = request.split_whitespace().nth(1).unwrap_or("/");
-        let host = request.lines().find_map(|l| {
-            l.strip_prefix("Host: ")
-                .or_else(|| l.strip_prefix("host: "))
-        });
-        let (status, kind, body) =
-            if !request.starts_with("GET ") || host != Some(authority.as_str()) {
-                (
-                    "403 Forbidden",
-                    "text/plain",
-                    "read-only same-host evaluation".to_owned(),
-                )
-            } else if target == "/app.js" {
-                ("200 OK", "text/javascript", SCRIPT.to_owned())
-            } else if target == "/data.json" {
-                ("200 OK", "application/json", DATA.to_owned())
-            } else if target.starts_with("/?") || target == "/" {
-                let key = target
-                    .split('?')
-                    .nth(1)
-                    .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("work=")));
-                (
-                    "200 OK",
-                    "text/html",
-                    if cfg!(vue) {
-                        vue_shell()
-                    } else {
-                        render(key, false, target.contains("failure=1"))
-                    },
-                )
-            } else {
-                ("404 Not Found", "text/plain", "unavailable".to_owned())
-            };
-        let head=format!("HTTP/1.1 {status}\r\nContent-Type: {kind}; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\n\r\n",body.len());
-        let _ = stream
-            .write_all(head.as_bytes())
-            .and_then(|_| stream.write_all(body.as_bytes()));
+        if let Err(error) = serve_connection(&mut stream, &authority) {
+            let _ = writeln!(io::stderr().lock(), "preview connection failed: {error}");
+        }
     }
     Ok(())
+}
+
+fn serve_connection(stream: &mut TcpStream, authority: &str) -> io::Result<()> {
+    stream.set_write_timeout(Some(Duration::from_secs(2)))?;
+    let request = match read_headers(stream) {
+        Ok(request) => request,
+        Err(code) => return respond(stream, code, "text/plain", "invalid or incomplete request"),
+    };
+    let target = match request_target(&request, authority) {
+        Ok(target) => target,
+        Err(code) => return respond(stream, code, "text/plain", "read-only same-host evaluation"),
+    };
+    let (status, kind, body) = if target == "/app.js" {
+        ("200 OK", "text/javascript", SCRIPT.to_owned())
+    } else if target == "/data.json" {
+        ("200 OK", "application/json", DATA.to_owned())
+    } else if target.starts_with("/?") || target == "/" {
+        let key = target
+            .split('?')
+            .nth(1)
+            .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("work=")));
+        (
+            "200 OK",
+            "text/html",
+            if cfg!(vue) {
+                vue_shell()
+            } else {
+                render(key, false, target.contains("failure=1"))
+            },
+        )
+    } else {
+        ("404 Not Found", "text/plain", "unavailable".to_owned())
+    };
+    respond(stream, status, kind, &body)
+}
+
+fn read_headers(stream: &mut TcpStream) -> Result<String, &'static str> {
+    const LIMIT: usize = 16384;
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut bytes = Vec::new();
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err("408 Request Timeout");
+        }
+        stream
+            .set_read_timeout(Some(remaining))
+            .map_err(|_| "400 Bad Request")?;
+        let mut chunk = [0; 1024];
+        let n = match stream.read(&mut chunk) {
+            Ok(0) => return Err("400 Bad Request"),
+            Ok(n) => n,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) =>
+            {
+                return Err("408 Request Timeout")
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err("400 Bad Request"),
+        };
+        bytes.extend_from_slice(&chunk[..n]);
+        if bytes.len() > LIMIT {
+            return Err("431 Request Header Fields Too Large");
+        }
+        if let Some(end) = bytes.windows(4).position(|b| b == b"\r\n\r\n") {
+            if end + 4 != bytes.len() {
+                return Err("400 Bad Request");
+            }
+            return String::from_utf8(bytes).map_err(|_| "400 Bad Request");
+        }
+    }
+}
+
+fn request_target<'a>(request: &'a str, authority: &str) -> Result<&'a str, &'static str> {
+    let mut lines = request.split("\r\n");
+    let parts: Vec<_> = lines.next().unwrap_or("").split(' ').collect();
+    if parts.len() != 3
+        || parts[2] != "HTTP/1.1"
+        || !parts[1].starts_with('/')
+        || parts[1].starts_with("//")
+        || parts[1].bytes().any(|c| c <= 32 || c == 127)
+    {
+        return Err("400 Bad Request");
+    }
+    let mut host = None;
+    for line in lines.take_while(|line| !line.is_empty()) {
+        let (name, value) = line.split_once(':').ok_or("400 Bad Request")?;
+        if name.is_empty()
+            || !name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
+            || value.bytes().any(|c| c < 32 || c == 127)
+        {
+            return Err("400 Bad Request");
+        }
+        if name.eq_ignore_ascii_case("host") {
+            if host.replace(value.trim()).is_some() {
+                return Err("400 Bad Request");
+            }
+        }
+        if name.eq_ignore_ascii_case("transfer-encoding")
+            || (name.eq_ignore_ascii_case("content-length") && value.trim() != "0")
+        {
+            return Err("400 Bad Request");
+        }
+    }
+    if parts[0] != "GET" || host != Some(authority) {
+        return Err("403 Forbidden");
+    }
+    Ok(parts[1])
+}
+
+fn respond(stream: &mut TcpStream, status: &str, kind: &str, body: &str) -> io::Result<()> {
+    let head=format!("HTTP/1.1 {status}\r\nContent-Type: {kind}; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\n\r\n",body.len());
+    stream
+        .write_all(head.as_bytes())
+        .and_then(|_| stream.write_all(body.as_bytes()))
 }
 
 #[test]
