@@ -60,7 +60,7 @@ function command(label,args){
    catch(e){result.reads.push({status:r.status(),body_measurement:'unavailable after navigation/abort',url:r.url(),error:e.message});}
   })());}});
   let exactPoint;
-  for(const locale of ['en','ko']) for(const width of [1440,390]){
+  for(const locale of ['en','ko']) for(const width of [1440,1024,768,390,320]){
    await page.setViewportSize({width,height:900});await page.goto(base+`?view=repository&locale=${locale}&language=en`);
    const html=await page.content();result.initial_html_bytes=Buffer.byteLength(html);fs.writeFileSync(path.join(config.output,`live-${locale}-${width}.html`),html);
    const points=page.locator('.source-point');assert.equal(await points.count(),12);
@@ -72,6 +72,8 @@ function command(label,args){
    assert.equal(await point.locator('.claim-quote').textContent(),fixture.answers.prose[1].text);
    assert.equal(await page.evaluate(()=>document.activeElement.id),exactPoint);
    assert.equal(await page.locator('.doc').evaluate(n=>n.inert),width<900);
+   assert.equal(await page.locator('.project-navigation').evaluate(n=>n.inert),width<900);
+   assert.equal(await point.locator('.citation-inspection pre').evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<=900?'13px':'15px');
    assert.equal(await point.getAttribute('role'),width<900?'dialog':null);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
    const box=await point.boundingBox();if(width>900)assert.ok(box.x>500,'desktop right evidence pane');
@@ -122,7 +124,7 @@ function command(label,args){
   fs.renameSync(fixture.runtime,fixture.runtime+'.unavailable');
   try {
    const offline=await browser.newContext({javaScriptEnabled:false});await offline.route('**/*',r=>new URL(r.request().url()).protocol==='file:'?r.continue():r.abort());const p=await offline.newPage();
-   for(const width of [1440,390]){
+   for(const width of [1440,1024,768,390,320]){
     await p.setViewportSize({width,height:900});await p.goto(pathToFileURL(path.join(config.fixture,'offline.html')).href+'#repository-explanation');
     assert.equal(await p.locator('script,.citation-inspection,[data-citation-url]').count(),0);
     const link=p.locator('#repository-explanation .doc a.evidence-link').nth(8);await link.focus();await p.keyboard.press('Enter');

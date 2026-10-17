@@ -188,3 +188,46 @@ completion Checkpoint. Timestamps display in KST with exact machine-readable
 values and scoped tooltips; missing evidence remains explicitly missing. Limits
 use the same divider and spacing as other narrative sections. Work-page guidance
 does not hardcode the fixture count.
+
+## Actual Product integration review
+
+`product_review.cjs CONFIG` drives the actual Rust Product at 1440, 1024, 768,
+390 and 320 CSS pixels. It accepts explicit `viewer`, `cli`, `playwright`,
+`chromium`, optional `fontconfig`, a fresh `output` and `cases`. Each case has
+`key`, absolute `runtime`, `project`, `project_name`, optional exact `work` and
+`decision`, `locale`, `language`, `purpose_count` and `source_root`. It never authors
+or records a case explanation. Use permitted actual retained records, preserving
+Work/Decision identity; an original portable bundle may be imported into a separate
+local Runtime using Product operations. Preserve its checksum and original hash.
+Do not substitute authored historical card text or a different control Work.
+
+The runner follows Overview → repository explanation, Work catalog → exact detail,
+Decisions and each Tools destination, then returns through ordinary navigation.
+It captures actual HTML/screens, checks missing/malformed identities and Host/Origin
+rejection, reads exact code against `source_root` when supplied, exercises source
+refresh/history/return, and reads the actual exported snapshot without script or
+network. Logical SQLite row hashes must remain identical after reads/export.
+Native screen-reader use, native zoom, comprehension and design acceptance remain
+separate observations. Existing `citation_reading_browser.cjs` independently checks
+all five widths in both locales, exact ranges, mobile navigation inertness, bounded
+pagination and actual Source deletion removing displayed code.
+
+```sh
+rebuild/scripts/validate focused product-reader -- node \
+  rebuild/validation/viewer-design/product_review.cjs /absolute/private/config.json
+rebuild/scripts/validate focused product-reader-package -- python3 \
+  rebuild/validation/viewer-design/package_product_review.py \
+  --config /absolute/private/config.json \
+  --baseline /absolute/private/baseline-captures \
+  --reference-manifest /absolute/selected-reference/manifest.json \
+  --bundle /absolute/original-canonical-copy.bundle.json \
+  --output /absolute/new-private-review
+```
+
+Packaging requires a passing result bound to current HEAD and clean tracked source.
+The unchanged Product exports are entry pages; review instructions/comparisons live
+in a separate `index.html`. The manifest hashes every delivered file and identifies
+executables, original canonical input and selected visual reference. No generated
+screens, Source bytes, Runtime, model output or private report is tracked. The
+[Product integration observations](product-integration-review.md) distinguish
+technical support from exact-artifact human acceptance.

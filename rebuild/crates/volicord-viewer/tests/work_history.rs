@@ -311,7 +311,13 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     assert!(opening.contains(summary));
                 }
                 if case != "retained" && case != "recovered" {
-                    assert_eq!(opening.matches("data-question=\"VerificationState\"").count(), 1, "one concise failure notice; individual outcomes remain in audit");
+                    assert_eq!(
+                        opening
+                            .matches("data-question=\"VerificationState\"")
+                            .count(),
+                        1,
+                        "one concise failure notice; individual outcomes remain in audit"
+                    );
                     assert!(opening.contains(if language == "en" {
                         "Checkpoint verification includes failures"
                     } else {

@@ -2988,3 +2988,22 @@ hashes and screenshots. Navigation-aborted body measurements remain explicitly
 unavailable rather than zero or success. This is technical browser review; human
 comprehension, semantic entailment and design acceptance remain pending. No new
 campaign, provider invocation, aggregate gate or historical-artifact rewrite occurs.
+
+### Actual Product reading/navigation integration support
+
+`viewer-design/product_review.cjs` reads explicitly selected actual Projects through
+the production executable, preserving original Work/Decision identities and Source
+limits. It checks Work-less/populated entry, all tool journeys, five responsive
+widths, exact Source return/history and unchanged canonical/privacy/Candidate rows.
+`package_product_review.py` packages unchanged actual exports, reference/baseline
+screens and task instructions with candidate/input/executable hashes. It rejects
+another HEAD or dirty tracked-source review. Historical designs supply visual and
+interaction evidence only; importing a permitted original canonical bundle into a
+separate local Runtime does not renew historical execution or user acceptance.
+
+Shared scope and material-limit regressions use independent nested-path, excluded
+Source, current failure/rejection, recovered and prior-adverse controls. Public
+CLI/MCP/live/offline consumers preserve the same facts; current scope preview is
+withheld with unavailable explanation dependencies. The actual Product package
+remains separate from authored test controls and exact-artifact human acceptance.
+No Final, V11, campaign or provider qualification is implied.

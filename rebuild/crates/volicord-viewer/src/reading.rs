@@ -1005,8 +1005,7 @@ fn opening_context(
                 | "SourceEvidenceGap"
                 | "Conflicts"
                 | "ReviewBasis"
-        )
-            || (rejected && a.question == "UserAcceptance")
+        ) || (rejected && a.question == "UserAcceptance")
     });
     let mut notice = String::new();
     if failed {
