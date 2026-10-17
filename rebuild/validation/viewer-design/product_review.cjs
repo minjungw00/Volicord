@@ -37,7 +37,8 @@ async function sourceJourney(page,c,width,offline=false){
  const link=links.last(),target=(await link.getAttribute('href')).slice(1);
  const origin=await link.getAttribute('data-origin');await link.focus();await link.press('Enter');
  const point=page.locator(`[id="${target}"]`);await point.waitFor({state:'visible'});
- if(!offline){assert.equal(await page.evaluate(()=>document.activeElement.id),target);
+ if(!offline){await page.waitForFunction(({id,narrow})=>{const n=document.getElementById(id);return n&&document.activeElement===n&&n.getAttribute('role')===(narrow?'dialog':null);},{id:target,narrow:width<=900});
+  assert.equal(await page.evaluate(()=>document.activeElement.id),target);
   assert.equal(await point.getAttribute('role'),width<=900?'dialog':null);
   assert.equal(await article.evaluate(n=>n.inert),width<=900);
   const status=point.locator('.citation-status');if(await status.count())await status.filter({hasText:/Displayed|표시 범위/}).waitFor();
