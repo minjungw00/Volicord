@@ -1830,6 +1830,31 @@ problem paragraph or original Goal, never relabel that paragraph as a synopsis.
 Recorded next actions and recorded limits stay ordinary in Work rows; absent
 next-action metadata remains separate from original instructions and suggestions.
 
+### Viewer reading and tool navigation
+
+Overview and Work remain the compact global navigation. A separate local reading
+row connects the repository explanation and Decisions; its native Tools disclosure
+connects Analysis/privacy, Documents, Memory and Evidence/history. These links keep
+exact locale, requested language and subject selection; they do not materialize
+Candidate bodies or grant mutation authority on an ordinary read. Explicit Memory
+inspection uses its existing dependency and authenticated controls. Tool pages share
+the reader's typography, spacing and heading hierarchy, with original diagnostics
+and operations preserved below their task introduction.
+
+Overview links to repository explanation whether Work exists or not, keeps canonical
+Project Purpose separate, and connects real Project Decisions. Work details expose
+only their actually associated Decisions before full audit. Decision detail uses
+the shared document composition and links to its declared Work identity; path overlap
+never creates that association. A Work card has one reading button and plain title.
+Only an admitted authored heading/synopsis supplies generated card wording. Otherwise
+the original Goal remains a labeled quotation. Observation dates do not assert creation,
+completion, new execution or acceptance.
+
+Script-free snapshots use the same reading/tool components and exact internal
+identities. Separate native fragment destinations keep Analysis, Documents, Memory
+inspection and Evidence reachable, with no script, form or authenticity material.
+The output is a local read-only publication, not a new canonical input format.
+
 ### Repository reader document
 
 `ExplanationSubject::Repository(AnalysisSnapshotId)` is independently scoped;

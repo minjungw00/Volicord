@@ -439,68 +439,52 @@ impl ViewerAdapter {
             ));
         }
         html.push_str("</div></header><main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">");
+        reading::project_navigation(&mut html, request, snapshot);
         reading::runtime_blockers(&mut html, request, &health);
         if snapshot {
             reading::snapshot(&mut html, request, &projection, &understanding);
-            html.push_str("<section class=\"snapshot-page\" id=\"snapshot-support\">");
-            if let Some(documents) = &documents {
-                render_documents(&mut html, request, documents, None);
+            for tool in [
+                crate::ViewerTool::Status,
+                crate::ViewerTool::Documents,
+                crate::ViewerTool::Memory,
+                crate::ViewerTool::Evidence,
+            ] {
+                render_tool(
+                    &mut html,
+                    request,
+                    tool,
+                    &projection,
+                    &understanding,
+                    &health,
+                    privacy.as_ref(),
+                    documents.as_ref(),
+                    None,
+                );
             }
-            render_status(&mut html, request, &projection, &health);
-            reading::diagnostics(&mut html, request, &projection, &health);
-            render_privacy(&mut html, request, privacy.as_ref());
             if let ViewerRenderMode::Snapshot { generated_at } = mode {
+                html.push_str("<section class=\"snapshot-page\" id=\"snapshot-support\">");
                 render_snapshot_basis(&mut html, request, &projection, generated_at);
+                html.push_str("</section>");
             }
-            html.push_str("</section>");
         } else {
             reading::surface(&mut html, request, &projection, &understanding);
             if let crate::ViewerView::Tools { tool } = request.view {
-                match tool {
-                    crate::ViewerTool::Documents => {
-                        if let Some(documents) = &documents {
-                            render_narrative_availability(&mut html, request, documents);
-                            render_documents(
-                                &mut html,
-                                request,
-                                documents,
-                                Some(match mode {
-                                    ViewerRenderMode::Live {
-                                        request_authenticity,
-                                    } => request_authenticity,
-                                    _ => "",
-                                }),
-                            );
-                        }
-                    }
-                    crate::ViewerTool::Memory => {
-                        render_canonical(&mut html, request, &projection);
-                        render_candidates(&mut html, request, &projection);
-                        render_mutation_controls(
-                            &mut html,
-                            request,
-                            &projection,
-                            match mode {
-                                ViewerRenderMode::Live {
-                                    request_authenticity,
-                                } => request_authenticity,
-                                _ => "",
-                            },
-                        );
-                    }
-                    crate::ViewerTool::Status => {
-                        render_status(&mut html, request, &projection, &health);
-                        reading::diagnostics(&mut html, request, &projection, &health);
-                        render_privacy(&mut html, request, privacy.as_ref());
-                    }
-                    crate::ViewerTool::Evidence => {
-                        reading::diagnostics(&mut html, request, &projection, &health);
-                        render_understanding_evidence(&mut html, request, &understanding);
-                        render_checkpoints(&mut html, request, &projection);
-                        render_repository(&mut html, request, &projection);
-                        render_overview(&mut html, request, &projection);
-                    }
-                }
+                render_tool(
+                    &mut html,
+                    request,
+                    tool,
+                    &projection,
+                    &understanding,
+                    &health,
+                    privacy.as_ref(),
+                    documents.as_ref(),
+                    Some(match mode {
+                        ViewerRenderMode::Live {
+                            request_authenticity,
+                        } => request_authenticity,
+                        _ => "",
+                    }),
+                );
             }
             if let Some(candidate) = guarded.as_ref() {
                 render_guarded(
@@ -700,6 +684,65 @@ impl ViewerAdapter {
             .publish_document(document, format, destination)
             .map_err(|error| ViewerError::new(error.to_string()))
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_tool(
+    html: &mut String,
+    request: &ViewerRequest,
+    tool: crate::ViewerTool,
+    projection: &ProjectProjection,
+    understanding: &ProjectUnderstanding,
+    health: &volicord_operations::HealthReport,
+    privacy: Option<&volicord_privacy::ProjectPrivacyInspection>,
+    documents: Option<&DocumentSet>,
+    authenticity: Option<&str>,
+) {
+    let id = match tool {
+        crate::ViewerTool::Status => "analysis-tool",
+        crate::ViewerTool::Documents => "documents-tool",
+        crate::ViewerTool::Memory => "memory-tool",
+        crate::ViewerTool::Evidence => "evidence-tool",
+    };
+    html.push_str(&format!(
+        "<section class=\"{}tool-page\" id=\"{id}\">",
+        if authenticity.is_none() {
+            "snapshot-page "
+        } else {
+            ""
+        }
+    ));
+    reading::tool_heading(html, request, tool);
+    match tool {
+        crate::ViewerTool::Status => {
+            render_status(html, request, projection, health);
+            reading::diagnostics(html, request, projection, health);
+            render_privacy(html, request, privacy);
+        }
+        crate::ViewerTool::Documents => {
+            if let Some(documents) = documents {
+                render_narrative_availability(html, request, documents);
+                render_documents(html, request, documents, authenticity);
+            }
+        }
+        crate::ViewerTool::Memory => {
+            render_canonical(html, request, projection);
+            render_candidates(html, request, projection);
+            if let Some(token) = authenticity {
+                render_mutation_controls(html, request, projection, token);
+            }
+        }
+        crate::ViewerTool::Evidence => {
+            if authenticity.is_some() {
+                reading::diagnostics(html, request, projection, health);
+            }
+            render_understanding_evidence(html, request, understanding);
+            render_checkpoints(html, request, projection);
+            render_repository(html, request, projection);
+            render_overview(html, request, projection);
+        }
+    }
+    html.push_str("</section>");
 }
 
 fn render_deterministic_explanation(

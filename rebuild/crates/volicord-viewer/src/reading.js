@@ -74,8 +74,10 @@
     const point = target?.closest('.source-point');
     const article = document.querySelector('.doc');
     const header = document.querySelector('.masthead');
+    const navigation = document.querySelector('.project-navigation');
     if (article) article.inert = !!point && narrow.matches;
     if (header) header.inert = !!point && narrow.matches;
+    if (navigation) navigation.inert = !!point && narrow.matches;
     if (selected && selected !== point) {
       selected.removeAttribute('role');
       selected.removeAttribute('aria-modal');
@@ -116,7 +118,13 @@
   });
   document.addEventListener('keydown', event => {
     const point = document.getElementById(location.hash.slice(1))?.closest('.source-point');
-    if (!point) return;
+    if (!point) {
+      const menu = document.querySelector('.tools-menu[open]');
+      if (menu && event.key === 'Escape') {
+        event.preventDefault(); menu.open = false; menu.querySelector('summary').focus();
+      }
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       point.querySelector('.return').click();

@@ -65,6 +65,94 @@ pub(super) fn navigation(html: &mut String, r: &ViewerRequest, snapshot: bool) {
     html.push_str("</nav>");
 }
 
+/// Local reading destinations are separate from the compact global header.
+/// Native disclosures work without scripting and confer no inspection authority.
+pub(super) fn project_navigation(html: &mut String, r: &ViewerRequest, snapshot: bool) {
+    html.push_str("<div class=\"project-navigation\"><nav aria-label=\"Project reading\">");
+    for (view, label, id) in [
+        (
+            ViewerView::RepositoryExplanation,
+            text(r.locale, "Repository", "저장소 설명"),
+            "repository-explanation",
+        ),
+        (
+            ViewerView::Decisions { decision: None },
+            text(r.locale, "Decisions", "결정"),
+            "decision-reading",
+        ),
+    ] {
+        let href = if snapshot {
+            format!("#{id}")
+        } else {
+            url(r, &view)
+        };
+        html.push_str(&format!(
+            "<a class=\"nav-link\" href=\"{}\"{}>{}</a>",
+            escape(&href),
+            if !snapshot && r.view.key() == view.key() {
+                " aria-current=\"page\""
+            } else {
+                ""
+            },
+            label
+        ));
+    }
+    html.push_str("</nav><details class=\"tools-menu\"><summary>");
+    html.push_str(text(r.locale, "Tools", "도구"));
+    html.push_str("</summary><nav aria-label=\"Project tools\">");
+    for (tool, label, id) in [
+        (
+            ViewerTool::Status,
+            text(r.locale, "Analysis & privacy", "분석 및 개인정보"),
+            "analysis-tool",
+        ),
+        (
+            ViewerTool::Documents,
+            text(r.locale, "Documents", "문서"),
+            "documents-tool",
+        ),
+        (
+            ViewerTool::Memory,
+            text(r.locale, "Memory · inspect & edit", "기억 · 검사 및 수정"),
+            "memory-tool",
+        ),
+        (
+            ViewerTool::Evidence,
+            text(r.locale, "Evidence & history", "근거 및 이력"),
+            "evidence-tool",
+        ),
+    ] {
+        let href = if snapshot {
+            format!("#{id}")
+        } else {
+            url(r, &ViewerView::Tools { tool })
+        };
+        html.push_str(&format!(
+            "<a href=\"{}\"{}>{}</a>",
+            escape(&href),
+            if !snapshot && r.view == (ViewerView::Tools { tool }) {
+                " aria-current=\"page\""
+            } else {
+                ""
+            },
+            label
+        ));
+    }
+    html.push_str("</nav></details></div>");
+}
+
+pub(super) fn tool_heading(html: &mut String, r: &ViewerRequest, tool: ViewerTool) {
+    let (title, description) = match tool {
+        ViewerTool::Status => (text(r.locale, "Analysis & privacy", "분석 및 개인정보"), text(r.locale, "Understand coverage and freshness, then inspect local recovery and provider settings.", "분석 범위와 최신성을 확인하고 로컬 복구 안내와 제공자 설정을 살펴봅니다.")),
+        ViewerTool::Documents => (text(r.locale, "Documents", "문서"), text(r.locale, "Read grounded previews and explicitly export the document you need.", "근거가 연결된 미리보기를 읽고 필요한 문서를 명시적으로 내보냅니다.")),
+        ViewerTool::Memory => (text(r.locale, "Memory", "기억"), text(r.locale, "Inspect original records and retained Candidates. Corrections and forgetting require an explicit authorized action.", "원래 기록과 보존된 Candidate를 검사합니다. 수정과 삭제는 명시적으로 승인된 동작이 필요합니다.")),
+        ViewerTool::Evidence => (text(r.locale, "Evidence & history", "근거 및 이력"), text(r.locale, "Inspect original observations, repository inventory and the full diagnostic record.", "원래 관측, 저장소 목록과 전체 진단 기록을 검사합니다.")),
+    };
+    html.push_str("<header class=\"page-head\"><p class=\"eyebrow\">PROJECT TOOLS</p>");
+    heading(html, 1, title);
+    html.push_str(&format!("<p class=\"intro\">{}</p></header>", description));
+}
+
 pub(super) fn runtime_blockers(
     html: &mut String,
     r: &ViewerRequest,
@@ -218,21 +306,11 @@ fn overview(
     project_purpose(html, r, u);
     // A repository document is an independent reading destination, never a
     // fabricated Work or a replacement for canonical Project Purpose.
-    if p.work_count == 0 {
-        html.push_str(&format!(
-            "<p><a class=\"button secondary\" href=\"{}\">{} →</a></p>",
-            if snapshot {
-                "#repository-explanation".into()
-            } else {
-                escape(&url(r, &ViewerView::RepositoryExplanation))
-            },
-            text(
-                r.locale,
-                "Read the repository explanation",
-                "저장소 설명 읽기"
-            )
-        ));
-    }
+    html.push_str(&format!("<section class=\"repository-entry\"><h2>{}</h2><p>{}</p><a class=\"button primary\" href=\"{}\">{} →</a></section>",
+        text(r.locale, "Understand the repository", "저장소 이해하기"),
+        text(r.locale, "Read its responsibilities and mechanism, with the observed scope and Sources. This interpretation is separate from the recorded Project purpose.", "관찰된 범위와 Source를 따라 역할과 작동 방식을 읽습니다. 이 해석은 기록된 프로젝트 목적과 구분됩니다."),
+        if snapshot { "#repository-explanation".into() } else { escape(&url(r, &ViewerView::RepositoryExplanation)) },
+        text(r.locale, "Read the repository explanation", "저장소 설명 읽기")));
     html.push_str(&format!("<div class=\"section-heading\"><div><p class=\"eyebrow\">RECENT WORK</p><h2>{}</h2></div><a class=\"button secondary\" href=\"{}\">{} →</a></div>",
         text(r.locale,"Recent Work","최근 작업"),
         if snapshot { "#works".into() } else { escape(&url(r,&ViewerView::Work {work:None})) },
@@ -264,21 +342,47 @@ fn overview(
             ),
         );
     }
-    html.push_str("</div></section>");
+    html.push_str("</div><section class=\"reading-section related-decisions\"><div class=\"section-heading\"><h2>");
+    html.push_str(text(r.locale, "Project Decisions", "프로젝트 결정"));
+    html.push_str("</h2>");
+    link(
+        html,
+        r,
+        ViewerView::Decisions { decision: None },
+        text(r.locale, "All Decisions →", "전체 결정 →"),
+        snapshot.then_some("decision-reading"),
+    );
+    html.push_str("</div>");
+    for d in p.decision_catalog.iter().take(3) {
+        decision_link(html, r, d, snapshot);
+    }
+    if p.decision_count == 0 {
+        empty_state(
+            html,
+            text(
+                r.locale,
+                "No Decisions have been recorded.",
+                "기록된 결정이 없습니다.",
+            ),
+        );
+    }
+    html.push_str("</section></section>");
 }
 fn project_purpose(html: &mut String, r: &ViewerRequest, u: &ProjectUnderstanding) {
-    html.push_str("<section class=\"project-goal\">");
-    heading(html, 2, text(r.locale, "Project purpose", "프로젝트 목적"));
     if u.project_purpose.is_empty() {
         html.push_str(&format!(
-            "<p class=\"project-purpose\">{}</p>",
+            "<p class=\"purpose-absence\">{}</p>",
             text(
                 r.locale,
                 "No Project purpose has been recorded.",
                 "기록된 프로젝트 목적이 없습니다."
             )
         ));
-    } else {
+        return;
+    }
+    html.push_str("<section class=\"project-goal\">");
+    heading(html, 2, text(r.locale, "Project purpose", "프로젝트 목적"));
+    {
         for purpose in &u.project_purpose {
             html.push_str(&format!("<p class=\"project-purpose\" data-statement-role=\"verified-canonical\" lang=\"\">{}</p>",escape(&purpose.statement)));
         }
@@ -303,7 +407,7 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
             },
         )
     };
-    html.push_str(&format!("<article class=\"work-card\" data-work-id=\"{}\" data-work-state=\"{}\"><div class=\"work-card-heading\"><h3 lang=\"{}\" data-title-basis=\"{}\"><a href=\"{}\">{}</a></h3><span class=\"work-status\">{}</span></div>",w.work_item_id,understanding_work_state_key(w.state),escape(&language),basis,escape(&href),escape(&title),understanding_work_state_label(w.state,r.locale)));
+    html.push_str(&format!("<article class=\"work-card\" data-work-id=\"{}\" data-work-state=\"{}\"><div class=\"work-card-heading\"><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3><span class=\"work-status\">{}</span></div>",w.work_item_id,understanding_work_state_key(w.state),escape(&language),basis,escape(&title),understanding_work_state_label(w.state,r.locale)));
     if let Some(synopsis) = answers.synopsis() {
         html.push_str(&format!("<p class=\"work-summary\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p>",escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&synopsis.text)));
     } else {
@@ -414,28 +518,46 @@ pub(super) fn render_answers(
     work: Option<&UnderstandingWork>,
     snapshot: bool,
 ) {
-    render_document(html, r, answers, work, "", snapshot);
+    render_document(html, r, answers, work, None, "", "", snapshot);
 }
+#[allow(clippy::too_many_arguments)]
 fn render_document(
     html: &mut String,
     r: &ViewerRequest,
     answers: &volicord_projections::QuestionAnswers,
     work: Option<&UnderstandingWork>,
+    decision: Option<&volicord_projections::UnderstandingDecision>,
     records: &str,
+    related: &str,
     snapshot: bool,
 ) {
     let current = answers.provenance.is_some();
-    let repository = answers.provenance.as_ref().is_some_and(|p| {
-        matches!(
-            p.subject,
-            volicord_projections::ExplanationSubject::Repository(_)
+    let repository = work.is_none() && decision.is_none();
+    let (back_view, back_id, back_label, kind) = if work.is_some() {
+        (
+            ViewerView::Work { work: None },
+            "works",
+            text(r.locale, "← Work list", "← 작업 목록"),
+            "WORK DOCUMENT",
         )
-    });
+    } else if decision.is_some() {
+        (
+            ViewerView::Decisions { decision: None },
+            "decision-reading",
+            text(r.locale, "← Decisions", "← 결정 목록"),
+            "DECISION DOCUMENT",
+        )
+    } else {
+        (
+            ViewerView::Overview,
+            "overview",
+            text(r.locale, "← Overview", "← 개요"),
+            "REPOSITORY DOCUMENT",
+        )
+    };
     html.push_str(&format!("<article class=\"doc\"{}><p class=\"breadcrumb\"><a href=\"{}\">{}</a></p><header class=\"doc-head\"><p class=\"eyebrow\">{} · {}</p>",
         work.map(|w|format!(" data-work-id=\"{}\" data-work-state=\"{}\"",w.work_item_id,understanding_work_state_key(w.state))).unwrap_or_default(),
-        if snapshot { if work.is_some() {"#works".into()} else {"#overview".into()} } else {escape(&url(r,&if work.is_some(){ViewerView::Work{work:None}}else{ViewerView::Overview}))},
-        if work.is_some(){text(r.locale,"← Work list","← 작업 목록")}else{text(r.locale,"← Overview","← 개요")},
-        if work.is_some(){"WORK DOCUMENT"}else if repository{"REPOSITORY DOCUMENT"}else{"DOCUMENT"},text(r.locale,"interpretation and observations","해석과 관측")));
+        if snapshot { format!("#{back_id}") } else { escape(&url(r, &back_view)) }, back_label, kind, text(r.locale,"interpretation and observations","해석과 관측")));
     if let Some((index, title)) = answers
         .prose
         .iter()
@@ -449,6 +571,8 @@ fn render_document(
             locale_key(r.locale),
             if work.is_some() {
                 text(r.locale, "Recorded Work", "작업 기록")
+            } else if decision.is_some() {
+                text(r.locale, "Recorded Decision", "결정 기록")
             } else {
                 text(r.locale, "Repository explanation", "저장소 설명")
             }
@@ -472,6 +596,9 @@ fn render_document(
     }
     if current {
         html.push_str(&format!("<p class=\"interpretation\">{}</p>",text(r.locale,"Source-grounded host interpretation · verification, review and acceptance follow the original records.","Source에 근거한 호스트 해석 · 검증·검토·수락 상태는 원래 기록을 따릅니다.")));
+    }
+    if let Some(d) = decision {
+        html.push_str(&format!("<p class=\"lead\" data-statement-role=\"verified-canonical\">{}</p><p class=\"record-strip\">{}</p>", escape(&decision_choice_attribution(&d.decision, r.locale)), brief_decision_state_label(d.decision.state, r.locale)));
     }
     html.push_str("</header>");
     explanation_diagnostic(html, r, answers);
@@ -572,6 +699,20 @@ fn render_document(
         }
         html.push_str("</aside></section>");
     }
+    if !related.is_empty() {
+        html.push_str("<section class=\"reading-section related-decisions\">");
+        heading(
+            html,
+            2,
+            if decision.is_some() {
+                text(r.locale, "Related Work", "관련 작업")
+            } else {
+                text(r.locale, "Related Decisions", "관련 결정")
+            },
+        );
+        html.push_str(related);
+        html.push_str("</section>");
+    }
     html.push_str("<div class=\"audit\">");
     if let Some(w) = work {
         html.push_str(&format!("<details class=\"record-box\" id=\"{}\"{}><summary>{}</summary><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></details>",document_anchor(answers,"original"),if current && !snapshot {""}else{" open"},text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
@@ -630,7 +771,7 @@ fn render_document(
         }
         html.push_str(&format!("<pre>{}</pre>", escape(&format!("Work: {}\nGoal basis: {:?}\nchanges: {:?}\nCheckpoints: {:?}\nDecisions: {:?}\nQuestions: {:?}\nresult: {:?}\nnext step: {:?}", w.work_item_id,w.reading.goal.basis,w.reading.changes,w.checkpoint_ids,w.decision_ids,w.open_question_ids,w.reading.answers.result,w.reading.next_step))));
     }
-    if work.is_none() {
+    if repository {
         html.push_str("<p>");
         link(
             html,
@@ -906,11 +1047,12 @@ fn work_detail(
     } else {
         &p.selected_work_decisions
     };
+    let mut related = String::new();
     for d in decisions
         .iter()
         .filter(|d| w.decision_ids.contains(&d.decision.decision_id))
     {
-        decision_link(&mut records, r, d, snapshot);
+        decision_link(&mut related, r, d, snapshot);
     }
     for candidate in related_learning(p, w.work_item_id) {
         records.push_str(&format!("<article id=\"learning-{}\" data-candidate-id=\"{}\" data-work-id=\"{}\" data-statement-role=\"session-candidate\">",candidate.candidate_id,candidate.candidate_id,w.work_item_id));
@@ -939,7 +1081,16 @@ fn work_detail(
         );
         records.push_str("</p>");
     }
-    render_document(html, r, &answers, Some(w), &records, snapshot);
+    render_document(
+        html,
+        r,
+        &answers,
+        Some(w),
+        None,
+        &records,
+        &related,
+        snapshot,
+    );
     html.push_str("</section>");
 }
 
@@ -1005,25 +1156,12 @@ fn decision_detail(
     p: &ProjectProjection,
     snapshot: bool,
 ) {
-    html.push_str(&format!(
-        "<article class=\"decision-reading\" data-decision-scope=\"{}\">",
-        decision_scope_key(d.decision.work_scope)
-    ));
-    section_start(
-        html,
-        &format!("decision-{}", d.decision.decision_id),
-        text(r.locale, "Decision detail", "결정 상세"),
-    );
-    html.push_str(&format!(
-        "<p class=\"state\">{} · {}</p>",
-        escape(&decision_choice_attribution(&d.decision, r.locale)),
-        escape(brief_decision_state_label(d.decision.state, r.locale))
-    ));
+    html.push_str(&format!("<section id=\"decision-{}\" class=\"decision-reading\" data-decision-id=\"{}\" data-decision-scope=\"{}\">", d.decision.decision_id, d.decision.decision_id, decision_scope_key(d.decision.work_scope)));
     let answers = decision_answers(r, &d.decision);
-    heading(html, 3, text(r.locale, "Choice", "선택"));
-    empty_state(html, &decision_choice_attribution(&d.decision, r.locale));
+    let mut records = String::new();
+    contextual_limits(&mut records, r, p, snapshot);
     heading(
-        html,
+        &mut records,
         3,
         text(
             r.locale,
@@ -1031,65 +1169,32 @@ fn decision_detail(
             "대안과 예상 절충",
         ),
     );
-    html.push_str("<ul class=\"alternatives\">");
+    records.push_str("<ul class=\"alternatives\">");
     for alternative in &d.decision.displayed_alternatives {
         list_item(
-            html,
+            &mut records,
             &format!("{}: {}", alternative.label, alternative.consequence),
         );
     }
-    html.push_str("</ul>");
-    render_answers(html, r, &answers, None, snapshot);
-    if !snapshot {
-        contextual_limits(html, r, p, false);
-    }
+    records.push_str("</ul>");
     heading(
-        html,
+        &mut records,
         3,
         text(r.locale, "Declared applicability", "선언된 적용 범위"),
     );
-    html.push_str("<dl>");
+    records.push_str("<dl>");
     definition(
-        html,
+        &mut records,
         text(r.locale, "Typed scope", "명시적 범위"),
         decision_scope_label(d.decision.work_scope, r.locale),
     );
     definition(
-        html,
+        &mut records,
         text(r.locale, "Declared paths", "선언된 경로"),
         &d.declared_paths.join(", "),
     );
-    html.push_str("</dl>");
-    empty_state(
-        html,
-        text(
-            r.locale,
-            "Related code indicates scope overlap, not proof that this Decision was implemented.",
-            "관련 코드는 범위 중첩이며 결정이 구현되었다는 증거가 아닙니다.",
-        ),
-    );
-    for gap in d.known_link_gaps.iter().chain(&d.decision.known_limits) {
-        empty_state(html, gap);
-    }
-    html.push_str("<details><summary>");
-    html.push_str(text(
-        r.locale,
-        "Actual evidence and original rationale",
-        "실제 근거 및 원래 이유",
-    ));
-    html.push_str("</summary><dl>");
     definition(
-        html,
-        text(r.locale, "User Source", "사용자 Source"),
-        &join_ids(&d.decision.user_source_basis),
-    );
-    definition(
-        html,
-        text(r.locale, "Recommendation Source", "권고 Source"),
-        &join_ids(&d.decision.recommendation_source_basis),
-    );
-    definition(
-        html,
+        &mut records,
         text(r.locale, "Original user rationale", "원래 사용자 이유"),
         d.reading
             .user_rationale
@@ -1098,7 +1203,7 @@ fn decision_detail(
             .unwrap_or(""),
     );
     definition(
-        html,
+        &mut records,
         text(
             r.locale,
             "Original recommendation rationale",
@@ -1111,13 +1216,44 @@ fn decision_detail(
             .unwrap_or(""),
     );
     definition(
-        html,
+        &mut records,
         text(r.locale, "Reading basis", "읽기 근거"),
         &format!("{:?}", d.reading),
     );
-    html.push_str("</dl></details>");
-    section_end(html);
-    html.push_str("</article>");
+    definition(
+        &mut records,
+        text(
+            r.locale,
+            "Decision and exact Question basis",
+            "결정 및 정확한 질문 근거",
+        ),
+        &format!("{:?}", d.decision),
+    );
+    records.push_str("</dl>");
+    for gap in d.known_link_gaps.iter().chain(&d.decision.known_limits) {
+        empty_state(&mut records, gap);
+    }
+    let mut related = String::new();
+    if let DecisionWorkScope::WorkItem(work) = d.decision.work_scope {
+        link(
+            &mut related,
+            r,
+            ViewerView::Work { work: Some(work) },
+            text(r.locale, "Read the linked Work →", "연결된 작업 읽기 →"),
+            snapshot.then(|| format!("work-{work}")).as_deref(),
+        );
+    }
+    render_document(
+        html,
+        r,
+        &answers,
+        None,
+        Some(d),
+        &records,
+        &related,
+        snapshot,
+    );
+    html.push_str("</section>");
 }
 pub(super) fn analysis_summary(
     html: &mut String,
@@ -1834,6 +1970,16 @@ pub(super) fn surface(
                 "decision-reading",
                 text(r.locale, "Decisions", "결정"),
             );
+            if p.decision_count == 0 {
+                empty_state(
+                    html,
+                    text(
+                        r.locale,
+                        "No Decisions have been recorded.",
+                        "기록된 결정이 없습니다.",
+                    ),
+                );
+            }
             for d in &p.decision_catalog {
                 decision_link(html, r, d, false);
             }

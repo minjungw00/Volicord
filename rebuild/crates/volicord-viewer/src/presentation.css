@@ -1,44 +1,3 @@
-/* Product data bindings. Reading components use the reference markup directly. */
-* { min-width: 0; }
-.masthead > .shell { position: relative; }
-.masthead nav { position: absolute; left: 50%; transform: translateX(-50%); }
-.masthead .trial { margin-left: auto; }
-[id] { scroll-margin-top: 100px; }
-.unit-text { white-space: pre-line; }
-.code-region { display: flex; white-space: pre; overflow-wrap: normal; }
-.code-region code { display: block; flex-shrink: 0; padding-right: 24px; white-space: pre; overflow-wrap: normal; font-size: inherit; }
-.source-line-numbers { display: block; flex-shrink: 0; position: sticky; left: 0; background: var(--soft); user-select: none; }
-.source-line-numbers > span { display: block; width: 5em; text-align: right; padding-right: 1.4em; height: 1.8em; color: var(--muted); }
-.source-line-numbers > span::before { content: attr(data-line); }
-/* Native fragments provide the same selected Source without scripting. */
-@supports selector(:has(*)) {
- .appendix { display: none; }
- .appendix:has(:target) { display: block; position: fixed; inset: 76px 0 0 auto; width: 52%; margin: 0; padding: 24px; background: var(--surface); border-left: 1px solid var(--line); overflow: auto; z-index: 5; overscroll-behavior: contain; }
- .appendix:has(:target) > h2 { display: none; }
- .source-point { display: none; }
- .source-point:target, .source-point:has(:target) { display: block; margin: 0; border: 0; padding: 0; }
- body:has(.appendix :target) main.shell { max-width: none; padding-inline: 28px; }
- body:has(.appendix :target) .doc { width: 44%; max-width: none; margin: 0; }
- body:has(.appendix :target) .doc-head h1 { font-size: 2.1rem; }
- body:has(.appendix :target) .comparisons { grid-template-columns: 1fr; }
- body:has(.appendix :target) .claim-quote { max-height: 20vh; font-size: 1rem; line-height: 1.8; }
- body[data-viewer-mode=snapshot] .snapshot-page { display: none; }
- body[data-viewer-mode=snapshot]:not(:has(main :target)) #overview { display: block; }
- body[data-viewer-mode=snapshot] .snapshot-page:target,
- body[data-viewer-mode=snapshot] .snapshot-page:has(:target) { display: block; }
-}
-@media(max-width:900px) {
- .source-line-numbers > span { height: 1.65em; }
- @supports selector(:has(*)) {
-  body:has(.appendix :target) { overflow: hidden; }
-  .appendix:has(:target) { inset: 0; width: 100%; padding: 16px; z-index: 20; border: 0; }
-  body:has(.appendix :target) .claim-quote { max-height: 17vh; font-size: .9rem; }
- }
-}
-@media(max-width:600px) {
- .source-line-numbers > span { width: 3.25em; padding-right: .6em; }
- .appendix:has(:target) { padding: 12px; }
-}
 /* Secondary tool routes keep their own controls, outside the reading chrome. */
 .empty-state { color: var(--muted); margin: 16px 0; }
 .contextual-limits, .runtime-blocker { padding: 20px 24px; margin: 24px 0; background: var(--soft); border-left: 3px solid var(--accent); }
@@ -52,11 +11,13 @@ dt { font-weight: 600; } dd { margin: 4px 0 16px; }
 .diagram-node[data-selected=true] rect { stroke-width: 4; }
 .diagram-edge line, .diagram-edge path { fill: none; stroke: var(--muted); stroke-width: 2; }
 .diagram-edge[data-relation-class=semantic-result] line, .diagram-edge[data-relation-class=semantic-result] path { stroke-dasharray: 6 4; }
+.tool-page>section { margin-top:36px; padding-top:28px; border-top:1px solid var(--line); }
+.tool-page h2 { margin-bottom:16px; }
 .cards, .timeline, .canonical-list, .preview-claims, .verification-list, .audit-list, .status-summary, .goals, .gap-list, .understanding-list { padding-left: 1.3rem; }
 .action-form { display: grid; gap: .75rem; margin: 1rem 0; }
-.action-form fieldset { display: grid; gap: .6rem; border: 1px solid var(--line); border-radius: .5rem; }
+.action-form fieldset { min-inline-size: 0; display: grid; gap: .6rem; border: 1px solid var(--line); border-radius: .5rem; }
 .action-form label { display: grid; gap: .25rem; }
-textarea, input, select, button { font: inherit; padding: .5rem; max-width: 100%; border: 1px solid #899bb3; border-radius: .35rem; background: white; color: var(--ink); }
+textarea, input, select, button { font: inherit; padding: .5rem; max-width: 100%; border: 1px solid #899bb3; border-radius: .35rem; background: var(--surface); color: var(--ink); }
 textarea { min-height: 5rem; resize: vertical; }
 button { width: max-content; min-height: 2.75rem; cursor: pointer; }
 .button-row { display: flex; flex-wrap: wrap; gap: .5rem; }
