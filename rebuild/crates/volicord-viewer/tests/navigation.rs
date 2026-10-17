@@ -116,3 +116,134 @@ fn workless_project_keeps_repository_and_empty_decisions_reachable(
         .contains("No Decisions have been recorded"));
     Ok(())
 }
+
+#[test]
+fn nested_repository_scope_and_boundaries_precede_explanation_in_live_and_offline(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_operations::{
+        RepositoryClaimRange, RepositoryExplanationDraft, RepositoryFileObservationRequest,
+        RepositoryReaderUnit, RuntimeLayout,
+    };
+    use volicord_projections::*;
+    let root = tempfile::tempdir()?;
+    let repo = root.path().join("repo");
+    std::fs::create_dir_all(repo.join("rebuild/crates/relay"))?;
+    std::fs::create_dir_all(repo.join("legacy"))?;
+    let code = "def deliver(value):\n    return value\n";
+    std::fs::write(repo.join("rebuild/crates/relay/main.py"), code)?;
+    std::fs::write(repo.join("legacy/old.py"), "unexamined = True\n")?;
+    let operations = LocalOperations::new(RuntimeLayout::new(root.path().join("runtime"))?);
+    let project = operations
+        .initialize_project("Bounded repository", Some(&repo))?
+        .project
+        .id;
+    let analysis = operations
+        .analyze(project, vec!["legacy".into()])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let observation = operations.observe_repository_file(RepositoryFileObservationRequest {
+        project_id: project,
+        analysis_snapshot_id: analysis,
+        path: "rebuild/crates/relay/main.py".into(),
+        byte_range: None,
+        retain_seconds: 3600,
+    })?;
+    let source_hex = observation["source_id"].as_str().ok_or("Source identity")?;
+    let mut source_bytes = [0; 16];
+    for (index, byte) in source_bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&source_hex[index * 2..index * 2 + 2], 16)?;
+    }
+    let source = volicord_context::SourceId::from_bytes(source_bytes);
+    let plan =
+        operations.prepare_explanation(project, ExplanationSubject::Repository(analysis), "en")?;
+    let realization = operations.compose_repository_explanation(
+        project,
+        analysis,
+        RepositoryExplanationDraft {
+            plan_fingerprint: plan.fingerprint,
+            language: "en".into(),
+            generator: ExplanationGenerator {
+                host: "independent-scope-control".into(),
+                session: "test".into(),
+                agent: None,
+                model: None,
+            },
+            paragraphs: vec![RepositoryReaderUnit {
+                question: ExplanationQuestion::Observation,
+                text: "The bounded relay function returns its argument.".into(),
+                evidence_keys: vec!["repository_basis".into()],
+                sources: vec![RepositoryClaimRange {
+                    source_id: source,
+                    start_byte: 0,
+                    end_byte: code.len(),
+                    claim: None,
+                }],
+            }],
+        },
+    )?;
+    operations.record_explanation(
+        project,
+        ExplanationSubject::Repository(analysis),
+        "en",
+        realization,
+    )?;
+    let before = operations.canonical_basis(project)?;
+    let answers = operations.read_repository_explanation(project, "en")?;
+    let fact = |key: &str| {
+        answers
+            .facts
+            .iter()
+            .find(|a| a.question == key)
+            .map(|a| a.text.as_str())
+            .ok_or("scope fact")
+    };
+    assert!(fact("RepositoryScope")?.contains("Cited Source area: rebuild/crates/relay (1 files)"));
+    assert!(fact("RepositoryScope")?.contains("Observed inventory: rebuild/crates/relay (1 files)"));
+    assert!(fact("RepositoryCoverage")?.contains("Excluded boundaries: 1"));
+    assert!(
+        fact("RepositoryCoverage")?.contains("Complete semantic understanding is not established")
+    );
+    let viewer = ViewerAdapter::new(operations);
+    let request = ViewerRequest {
+        project_id: project,
+        locale: ViewerLocale::English,
+        requested_language: "en".into(),
+        view: ViewerView::RepositoryExplanation,
+        guarded_request: None,
+    };
+    for html in [
+        viewer.render(&request, "test")?.html,
+        viewer
+            .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?
+            .html,
+    ] {
+        let doc = html
+            .split("id=\"repository-explanation\"")
+            .nth(1)
+            .ok_or("repository page")?;
+        assert!(
+            doc.find("data-question=\"RepositoryScope\"")
+                .ok_or("ordinary scope")?
+                < doc.find("class=\"audit-links\"").ok_or("reading links")?
+        );
+        assert!(doc.contains("legacy"));
+        assert!(!doc.contains("unexamined = True"));
+        assert!(doc.contains("Included, excluded and unexamined boundaries"));
+    }
+    assert_eq!(before, viewer.operations().canonical_basis(project)?);
+    // A missing dependency may not preserve a plausible scope card as current explanation.
+    viewer
+        .operations()
+        .delete_repository_source_observation(project, analysis, source)?;
+    let unavailable = viewer
+        .operations()
+        .read_repository_explanation(project, "en")?;
+    assert!(unavailable.provenance.is_none());
+    assert!(!unavailable
+        .facts
+        .iter()
+        .any(|a| a.question == "RepositoryScope"));
+    Ok(())
+}

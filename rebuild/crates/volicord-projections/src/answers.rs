@@ -227,11 +227,117 @@ pub fn explanation_answers(
             0
         },
     };
+    if let Some(e) = current.filter(|e| matches!(e.subject, ExplanationSubject::Repository(_))) {
+        result.facts.extend(repository_scope_facts(e, locale));
+    }
     if current.is_some_and(|e| !e.conflicts.is_empty()) {
         result.facts.push(fact("Conflicts",fixed(locale,"The evidence includes contradiction or supersession; this interpretation does not resolve it.","근거에 모순 또는 대체 관계가 있습니다. 이 해석은 해당 관계를 해결하지 않습니다."),Vec::new()));
     }
     result
 }
+// Describe exactly retained scope, not a guessed Product boundary or semantic
+// completeness. Root/directory inventory entries cannot inflate file coverage.
+fn common_file_area(paths: &[&str]) -> String {
+    let Some(first) = paths.first() else {
+        return ".".into();
+    };
+    let mut prefix = first
+        .rsplit_once('/')
+        .map_or("", |(parent, _)| parent)
+        .split('/')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>();
+    for path in paths.iter().skip(1) {
+        let parent = path
+            .rsplit_once('/')
+            .map_or("", |(parent, _)| parent)
+            .split('/')
+            .collect::<Vec<_>>();
+        let count = prefix
+            .iter()
+            .zip(parent)
+            .take_while(|(a, b)| **a == *b)
+            .count();
+        prefix.truncate(count);
+    }
+    if prefix.is_empty() {
+        ".".into()
+    } else {
+        prefix.join("/")
+    }
+}
+fn repository_scope_facts(e: &RetainedExplanation, locale: FixedLocale) -> Vec<QuestionAnswer> {
+    let Some(basis) = e
+        .evidence
+        .iter()
+        .find(|item| item.key == "repository_basis")
+    else {
+        return Vec::new();
+    };
+    let area_paths = |key: &str| {
+        basis.content["repository"][key]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|area| area["path"].as_str())
+            .collect::<Vec<_>>()
+    };
+    let included = basis.content["repository"]["included_areas"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|area| area["kind"].as_str() == Some("file"))
+        .filter_map(|area| area["path"].as_str())
+        .collect::<Vec<_>>();
+    let cited = e
+        .realization
+        .generated_units()
+        .flat_map(|p| &p.citations)
+        .map(|c| c.locator.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let inventory_area = common_file_area(&included);
+    let cited_area = common_file_area(&cited);
+    let excluded = area_paths("excluded_areas").len();
+    let unavailable = area_paths("unavailable_areas").len();
+    let key = vec!["repository_basis".into()];
+    let scope = match locale {
+        FixedLocale::English => format!("Cited Source area: {cited_area} ({} files). Observed inventory: {inventory_area} ({} files). Inventory inclusion does not establish explanation coverage.", cited.len(), included.len()),
+        FixedLocale::Korean => format!("인용 Source 영역: {cited_area} ({}개 파일). 관찰한 목록 범위: {inventory_area} ({}개 파일). 목록에 포함되어도 모든 파일을 설명한 것은 아닙니다.", cited.len(), included.len()),
+    };
+    let scope = if included.is_empty() {
+        fixed(locale, "No included inventory files are retained; repository-wide coverage is not established.", "포함된 목록 파일이 보존되지 않았습니다. 저장소 전체 범위를 확인할 수 없습니다.")
+    } else {
+        scope
+    };
+    let capabilities = basis.content["capabilities"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    let failed = capabilities
+        .iter()
+        .filter(|c| c["state"].as_str() == Some("failed"))
+        .count();
+    let limited = capabilities
+        .iter()
+        .filter(|c| c["state"].as_str() != Some("available"))
+        .count();
+    let noncurrent = capabilities
+        .iter()
+        .filter(|c| c["freshness"]["state"].as_str() != Some("current"))
+        .count();
+    let limits = match locale {
+        FixedLocale::English => format!("Excluded boundaries: {excluded}; unavailable or unexamined boundaries: {unavailable}. Analysis limits: {limited} capability reports ({failed} failed; {noncurrent} stale or unknown). Complete semantic understanding is not established; cited code remains usable."),
+        FixedLocale::Korean => format!("제외 경계 {excluded}개, 이용 불가 또는 미조사 경계 {unavailable}개. 분석 제한 보고 {limited}건 (실패 {failed}건, 오래되었거나 최신성 미확인 {noncurrent}건). 완전한 의미 분석을 입증하지 않습니다. 인용 코드는 이 한계 안에서 읽을 수 있습니다."),
+    };
+    vec![
+        fact("RepositoryScope", scope, key.clone()),
+        fact("RepositoryCoverage", limits, key),
+    ]
+}
+
 fn fact(question: &str, text: String, evidence_keys: Vec<String>) -> QuestionAnswer {
     QuestionAnswer {
         question: question.into(),
@@ -595,7 +701,31 @@ pub fn work_answers(
             }),
         ));
     }
-    if answers.result.is_none() {
+    if let Some(recorded) = answers
+        .result
+        .as_ref()
+        .filter(|r| r.original_text.is_some())
+    {
+        result.facts.push(fact(
+            "ReportedResult",
+            format!(
+                "{}: {}",
+                fixed(
+                    locale,
+                    "Recorded result quotation (original language)",
+                    "기록된 결과 인용 (원문 언어)"
+                ),
+                recorded.original_text.as_deref().unwrap_or("")
+            ),
+            match &recorded.basis.record {
+                crate::ReadingRecord::Checkpoint(id) => vec![format!(
+                    "checkpoint:{id}@{}:{}",
+                    recorded.basis.revision, recorded.basis.field
+                )],
+                _ => Vec::new(),
+            },
+        ));
+    } else {
         result.facts.push(fact(
             "ReportedResult",
             fixed(

@@ -50,6 +50,9 @@ main.shell { padding-top:24px; padding-bottom:80px; }
 .doc-head { margin-bottom:32px; }
 .doc-head .lead { font-size:1.2rem; line-height:1.8; margin-top:22px; }
 .interpretation { color:var(--muted); font-size:.8rem; margin-top:18px; }
+.scope-summary { color:var(--muted); font-size:.88rem; margin:16px 0; max-width:85ch; }
+.opening-limits { margin:20px 0; padding:16px 0; border-block:1px solid var(--line); font-size:.9rem; }
+.limit-shortcut { margin:16px 0; font-size:.88rem; }
 .record-strip { display:flex; flex-wrap:wrap; gap:8px 20px; font-size:.8rem; padding:12px 0; margin-top:18px; border-block:1px solid var(--line); color:var(--muted); }
 .reading-section { padding-top:36px; margin-top:36px; border-top:1px solid var(--line); }
 .reading-section h2 { margin-bottom:16px; }
@@ -103,6 +106,7 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 .decision-summary { padding:20px 0; border-bottom:1px solid var(--line); }
 .badge { font-size:.8rem; color:var(--muted); }
 .source-point { margin:32px 0; padding:0; scroll-margin-top:20px; }
+.source-point:focus-visible { outline:none; }
 .point-title { font-size:.85rem; color:var(--accent); font-weight:700; }
 .claim-quote { border-left:2px solid var(--accent); padding:8px 16px; margin:16px 0; font-size:.95rem; max-height:24vh; overflow:auto; }
 .source-path { font-family:ui-monospace,monospace; font-size:.8rem; margin:16px 0 6px; }

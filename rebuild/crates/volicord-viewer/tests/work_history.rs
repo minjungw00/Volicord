@@ -303,6 +303,21 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     .split("<section class=\"snapshot-page\"")
                     .next()
                     .ok_or("end")?;
+                let opening = selected
+                    .split("class=\"audit-links\"")
+                    .next()
+                    .ok_or("opening")?;
+                if let Some(summary) = summary_text {
+                    assert!(opening.contains(summary));
+                }
+                if case != "retained" && case != "recovered" {
+                    assert!(opening.contains(if language == "en" {
+                        "Checkpoint verification includes failures"
+                    } else {
+                        "Checkpoint 검증에 실패한 항목"
+                    }));
+                }
+                assert!(selected.contains("data-question=\"ReportedResult\""));
                 check_primary(
                     selected,
                     expected.0,

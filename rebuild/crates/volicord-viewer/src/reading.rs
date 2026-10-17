@@ -306,11 +306,70 @@ fn overview(
     project_purpose(html, r, u);
     // A repository document is an independent reading destination, never a
     // fabricated Work or a replacement for canonical Project Purpose.
-    html.push_str(&format!("<section class=\"repository-entry\"><h2>{}</h2><p>{}</p><a class=\"button primary\" href=\"{}\">{} →</a></section>",
+    let repository_answers = volicord_projections::explanation_answers(
+        &p.repository_explanations,
+        &r.requested_language,
+        r.locale.fixed(),
+    );
+    html.push_str("<section class=\"repository-entry\">");
+    heading(
+        html,
+        2,
         text(r.locale, "Understand the repository", "저장소 이해하기"),
-        text(r.locale, "Read its responsibilities and mechanism, with the observed scope and Sources. This interpretation is separate from the recorded Project purpose.", "관찰된 범위와 Source를 따라 역할과 작동 방식을 읽습니다. 이 해석은 기록된 프로젝트 목적과 구분됩니다."),
-        if snapshot { "#repository-explanation".into() } else { escape(&url(r, &ViewerView::RepositoryExplanation)) },
-        text(r.locale, "Read the repository explanation", "저장소 설명 읽기")));
+    );
+    if let Some(title) = repository_answers.reading_title() {
+        html.push_str(&format!(
+            "<h3 data-title-basis=\"generated-interpretation\" lang=\"{}\">{}</h3>",
+            escape(&content_language_tag(&r.requested_language)),
+            escape(title)
+        ));
+    }
+    if let Some(synopsis) = repository_answers.synopsis() {
+        html.push_str(&format!(
+            "<p data-question=\"Synopsis\" lang=\"{}\">{}</p>",
+            escape(&content_language_tag(&r.requested_language)),
+            escape(&synopsis.text)
+        ));
+    } else if repository_answers.provenance.is_some() {
+        html.push_str(&format!(
+            "<p>{}</p>",
+            text(
+                r.locale,
+                "Read the retained explanation and its exact Sources.",
+                "보존된 설명과 정확한 Source를 읽습니다."
+            )
+        ));
+    } else {
+        html.push_str(&format!("<p>{}</p>", text(r.locale, "Read responsibilities, mechanism and Sources. A current repository interpretation is not available here; original records remain inspectable.", "역할·작동 방식·Source를 읽습니다. 현재 유효한 저장된 설명이 없습니다. 원래 기록은 확인할 수 있습니다.")));
+    }
+    for fact in repository_answers
+        .facts
+        .iter()
+        .filter(|a| a.question == "RepositoryScope")
+    {
+        html.push_str(&format!(
+            "<p class=\"scope-summary\">{}</p>",
+            escape(&fact.text)
+        ));
+    }
+    html.push_str(&format!(
+        "<p class=\"source-note\">{}</p><a class=\"button primary\" href=\"{}\">{} →</a></section>",
+        text(
+            r.locale,
+            "Generated repository interpretation · separate from recorded Project purpose.",
+            "생성된 저장소 해석 · 기록된 프로젝트 목적과 구분됩니다."
+        ),
+        if snapshot {
+            "#repository-explanation".into()
+        } else {
+            escape(&url(r, &ViewerView::RepositoryExplanation))
+        },
+        text(
+            r.locale,
+            "Read the repository explanation",
+            "저장소 설명 읽기"
+        )
+    ));
     html.push_str(&format!("<div class=\"section-heading\"><div><p class=\"eyebrow\">RECENT WORK</p><h2>{}</h2></div><a class=\"button secondary\" href=\"{}\">{} →</a></div>",
         text(r.locale,"Recent Work","최근 작업"),
         if snapshot { "#works".into() } else { escape(&url(r,&ViewerView::Work {work:None})) },
@@ -531,6 +590,13 @@ fn render_document(
     related: &str,
     snapshot: bool,
 ) {
+    let has_limits = answers.prose.iter().any(|a| a.question == "Limits")
+        || answers.facts.iter().any(|a| {
+            matches!(
+                a.question.as_str(),
+                "RecordedLimits" | "RecordedNonGoals" | "KnownLimit"
+            )
+        });
     let current = answers.provenance.is_some();
     let repository = work.is_none() && decision.is_none();
     let (back_view, back_id, back_label, kind) = if work.is_some() {
@@ -601,7 +667,27 @@ fn render_document(
         html.push_str(&format!("<p class=\"lead\" data-statement-role=\"verified-canonical\">{}</p><p class=\"record-strip\">{}</p>", escape(&decision_choice_attribution(&d.decision, r.locale)), brief_decision_state_label(d.decision.state, r.locale)));
     }
     html.push_str("</header>");
+    opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
+    if !current {
+        let quotes = if decision.is_some() {
+            &["QuestionContext", "UserRationale"][..]
+        } else {
+            &["ReportedResult"][..]
+        };
+        for fact in answers.facts.iter().filter(|a| {
+            quotes.contains(&a.question.as_str())
+                && (a.question != "ReportedResult"
+                    || work.is_some_and(|w| w.reading.answers.result.is_some()))
+        }) {
+            html.push_str(&format!("<section class=\"reading-section recorded-reading\"><p class=\"unit-text\" data-question=\"{}\" lang=\"\" data-statement-role=\"verified-canonical\">{}</p></section>", escape(&fact.question), escape(&fact.text)));
+        }
+        if let Some(d) = decision {
+            if let Some(rationale) = &d.reading.user_rationale.original_text {
+                html.push_str(&format!("<section class=\"reading-section\"><h2>{}</h2><blockquote lang=\"\">{}</blockquote></section>", text(r.locale, "Recorded user rationale · quotation", "기록된 사용자 이유 · 인용"), escape(rationale)));
+            }
+        }
+    }
     html.push_str("<nav class=\"audit-links\" aria-label=\"Document sections\">");
     for (section, label) in [
         (
@@ -622,9 +708,7 @@ fn render_document(
         ),
         ("audit", text(r.locale, "Full evidence", "전체 근거")),
     ] {
-        if (section == "original" && work.is_none())
-            || (section == "limits" && !answers.prose.iter().any(|a| a.question == "Limits"))
-        {
+        if (section == "original" && work.is_none()) || (section == "limits" && !has_limits) {
             continue;
         }
         html.push_str(&format!(
@@ -687,7 +771,7 @@ fn render_document(
         html.push_str("</section>");
     }
     html.push_str("</div>");
-    if answers.prose.iter().any(|a| a.question == "Limits") {
+    if has_limits {
         html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),answer_title("Limits",r.locale)));
         for (index, _) in answers
             .prose
@@ -696,6 +780,18 @@ fn render_document(
             .filter(|(_, a)| a.question == "Limits")
         {
             reader_unit(html, r, answers, index);
+        }
+        for fact in answers.facts.iter().filter(|a| {
+            matches!(
+                a.question.as_str(),
+                "RecordedLimits" | "RecordedNonGoals" | "KnownLimit"
+            )
+        }) {
+            html.push_str(&format!(
+                "<p class=\"unit-text\" data-question=\"{}\" lang=\"\">{}</p>",
+                escape(&fact.question),
+                escape(&fact.text)
+            ));
         }
         html.push_str("</aside></section>");
     }
@@ -715,7 +811,7 @@ fn render_document(
     }
     html.push_str("<div class=\"audit\">");
     if let Some(w) = work {
-        html.push_str(&format!("<details class=\"record-box\" id=\"{}\"{}><summary>{}</summary><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></details>",document_anchor(answers,"original"),if current && !snapshot {""}else{" open"},text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
+        html.push_str(&format!("<details class=\"record-box\" id=\"{}\"{}><summary>{}</summary><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></details>",document_anchor(answers,"original"),if snapshot {" open"}else{""},text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
     }
     html.push_str(&format!("<details class=\"record-box\" id=\"{}\"{}><summary>{}</summary><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",document_anchor(answers,"audit"),if snapshot{" open"}else{""},text(r.locale,"Full evidence · states · output identity","전체 근거 · 상태 · 출력 identity")));
     for fact in &answers.facts {
@@ -727,6 +823,7 @@ fn render_document(
     }
     html.push_str("</div>");
     if let Some(provenance) = &answers.provenance {
+        repository_boundaries(html, r, answers, provenance);
         html.push_str(&format!(
             "<p>{}</p><pre>{}</pre>",
             text(
@@ -788,6 +885,183 @@ fn render_document(
     html.push_str(records);
     html.push_str("</details></div></article>");
     render_source_excerpts(html, r, answers, snapshot);
+}
+
+fn repository_boundaries(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    provenance: &volicord_projections::ExplanationProvenance,
+) {
+    if !matches!(
+        provenance.subject,
+        volicord_projections::ExplanationSubject::Repository(_)
+    ) {
+        return;
+    }
+    let Some(basis) = provenance
+        .evidence
+        .iter()
+        .find(|e| e.key == "repository_basis")
+    else {
+        return;
+    };
+    html.push_str(&format!(
+        "<details id=\"{}\"><summary>{}</summary>",
+        document_anchor(answers, "scope"),
+        text(
+            r.locale,
+            "Included, excluded and unexamined boundaries",
+            "포함·제외·미조사 경계"
+        )
+    ));
+    for (key, label) in [
+        (
+            "included_areas",
+            text(
+                r.locale,
+                "Included inventory (not all explained)",
+                "포함된 목록 (모든 항목을 설명한 것은 아님)",
+            ),
+        ),
+        (
+            "excluded_areas",
+            text(r.locale, "Excluded / unexamined", "제외 / 미조사"),
+        ),
+        (
+            "unavailable_areas",
+            text(r.locale, "Unavailable / unexamined", "이용 불가 / 미조사"),
+        ),
+    ] {
+        heading(html, 3, label);
+        html.push_str("<ul>");
+        if let Some(areas) = basis.content["repository"][key].as_array() {
+            for area in areas {
+                if let Some(path) = area["path"].as_str() {
+                    list_item(html, path);
+                }
+            }
+            if areas.is_empty() {
+                list_item(
+                    html,
+                    text(r.locale, "None recorded.", "기록된 항목이 없습니다."),
+                );
+            }
+        }
+        html.push_str("</ul>");
+    }
+    html.push_str("</details>");
+}
+
+fn opening_context(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    work: Option<&UnderstandingWork>,
+    decision: Option<&volicord_projections::UnderstandingDecision>,
+) {
+    for fact in answers.facts.iter().filter(|a| {
+        matches!(
+            a.question.as_str(),
+            "RepositoryScope" | "RepositoryCoverage"
+        )
+    }) {
+        html.push_str(&format!(
+            "<p class=\"scope-summary\" data-question=\"{}\">{}</p>",
+            escape(&fact.question),
+            escape(&fact.text)
+        ));
+    }
+    if answers
+        .facts
+        .iter()
+        .any(|a| a.question == "RepositoryScope")
+    {
+        html.push_str(&format!(
+            "<p class=\"limit-shortcut\"><a href=\"#{}\">{}</a></p>",
+            document_anchor(answers, "scope"),
+            text(
+                r.locale,
+                "Inspect included, excluded and unexamined boundaries ↓",
+                "포함·제외·미조사 경계 확인 ↓"
+            )
+        ));
+    }
+    let failed = work
+        .and_then(|w| w.reading.answers.verification.as_ref())
+        .is_some_and(|s| {
+            s.verification
+                .iter()
+                .any(|v| v.state == VerificationState::Failed)
+        });
+    let rejected = work
+        .and_then(|w| w.reading.answers.acceptance.as_ref())
+        .is_some_and(|s| s.user_acceptance.state == UserAcceptanceState::Rejected);
+    let important = answers.facts.iter().filter(|a| {
+        matches!(
+            a.question.as_str(),
+            "HistoricalAdversity"
+                | "VerificationCoverage"
+                | "SourceEvidenceGap"
+                | "Conflicts"
+                | "ReviewBasis"
+        ) || (failed && a.question == "VerificationState")
+            || (rejected && a.question == "UserAcceptance")
+    });
+    let mut notice = String::new();
+    if failed {
+        notice.push_str(&format!("<p data-question=\"VerificationState\">{}</p>",text(r.locale,"Checkpoint verification includes failures. Completion does not establish passing verification.","Checkpoint 검증에 실패한 항목이 있습니다. 완료 상태가 검증 통과를 뜻하지는 않습니다.")));
+    }
+    for fact in important {
+        notice.push_str(&format!(
+            "<p data-question=\"{}\">{}</p>",
+            escape(&fact.question),
+            escape(&fact.text)
+        ));
+    }
+    if !notice.is_empty() {
+        html.push_str("<aside class=\"opening-limits\">");
+        html.push_str(&notice);
+        html.push_str(&format!(
+            "<a href=\"#{}\">{}</a></aside>",
+            document_anchor(answers, "audit"),
+            text(
+                r.locale,
+                "Inspect exact states and observations ↓",
+                "정확한 상태와 관측 확인 ↓"
+            )
+        ));
+    }
+    if decision.is_some() {
+        for fact in answers
+            .facts
+            .iter()
+            .filter(|a| a.question == "DeclaredScope")
+        {
+            html.push_str(&format!(
+                "<p class=\"scope-summary\">{}</p>",
+                escape(&fact.text)
+            ));
+        }
+    }
+    if answers.prose.iter().any(|a| a.question == "Limits")
+        || answers.facts.iter().any(|a| {
+            matches!(
+                a.question.as_str(),
+                "RecordedLimits" | "RecordedNonGoals" | "KnownLimit"
+            )
+        })
+    {
+        html.push_str(&format!(
+            "<p class=\"limit-shortcut\"><a href=\"#{}\">{}</a></p>",
+            document_anchor(answers, "limits"),
+            text(
+                r.locale,
+                "Read the explanation's stated limits ↓",
+                "설명에 명시된 한계 읽기 ↓"
+            )
+        ));
+    }
 }
 
 fn explanation_diagnostic(

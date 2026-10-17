@@ -70,6 +70,10 @@ def main():
             call('record', 'repository', 'explain', 'record', '--analysis', analysis, '--input', response_path)
             answers = call('read', 'repository', 'explain', 'read')['answers']
             assert answers['explanation_state'] == 'current' and answers['prose'][1]['text'] == text
+            facts = {a['question']: a['text'] for a in answers['facts']}
+            assert 'Cited Source area: . (1 files)' in facts['RepositoryScope']
+            assert 'Excluded boundaries: 1' in facts['RepositoryCoverage']
+            assert 'Complete semantic understanding is not established' in facts['RepositoryCoverage']
             assert answers['source_excerpts'][0]['text'] == source_text and answers['source_excerpts'][0]['work_revision'] is None
             before_read = call('privacy-before', 'privacy', 'status')
             # Actual stdio MCP consumer, no new producer authority.
@@ -80,6 +84,7 @@ def main():
             result = [json.loads(line) for line in raw.splitlines() if json.loads(line).get('id') == 2][0]['result']
             assert not result.get('isError'), result
             assert result['structuredContent']['repository_explanation']['provenance'] == answers['provenance']
+            assert result['structuredContent']['repository_explanation']['facts'] == answers['facts']
             # Real loopback HTTP, complete process cleanup even on assertion failure.
             stderr = (output / 'viewer.stderr').open('wb'); stdout = (output / 'viewer.stdout').open('wb')
             viewer = subprocess.Popen([str(binaries / 'volicord-viewer'), '--runtime', str(runtime), '--project', project, '--bind', '127.0.0.1:0'], stdout=stdout, stderr=stderr)
@@ -90,11 +95,18 @@ def main():
                 if match: url = match.group(); break
                 time.sleep(.05)
             assert url, 'Viewer startup timeout'
-            for name, query in [('overview', ''), ('code', '?view=code&scope=repository')]:
+            for name, query in [('overview', '?view=overview'), ('repository', '?view=repository'), ('code', '?view=code&scope=repository')]:
                 page = urllib.request.urlopen(url + query, timeout=15).read().decode()
                 (output / (name + '.html')).write_text(page)
-                assert text in page and 'Authored repository reading' in page and source_text.replace("'", '&#39;')[:12] in page
-                assert 'repository-explanation' in page
+                if name == 'code':
+                    assert 'id="code"' in page and 'main.py' in page
+                    continue
+                assert text in page and 'Authored repository reading' in page
+                if name != 'overview':
+                    assert source_text.replace("'", '&#39;')[:12] in page
+                if name == 'repository':
+                    assert page.index('data-question="RepositoryScope"') < page.index('class="audit-links"')
+                assert 'repository-explanation' in page or 'view=repository' in page
             snapshot = output / 'offline.html'
             call('snapshot', 'viewer', 'export', '--output', snapshot)
             html = snapshot.read_text(); assert text in html and '<script' not in html and '<form' not in html

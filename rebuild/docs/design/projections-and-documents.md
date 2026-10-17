@@ -1746,7 +1746,8 @@ to its own original heading, synopsis or paragraph. Shared ranges never substitu
 the first claim for another. Native fragments and browser history retain exact
 Project/subject/realization/unit/citation identity. The script-free document uses
 only embedded ranges; live selected inspection follows the exact read boundary below.
-Neither navigation generates nor grants new Source access. Critical limits appear before narrative; the original unit indices
+Neither navigation generates nor grants new Source access. Concise material limits and an explicit limits shortcut appear before narrative;
+full authored/canonical limits retain their own section. The original unit indices
 remain stable for grounding and return navigation. A code panel's closed disclosure
 preserves all exact claims, ranges, hashes and revisions. Matching bytes establish
 binding, not entailment, semantic approval or authenticated authorship.
@@ -1890,6 +1891,25 @@ MCP `repository_understanding` accepts optional `reading_focus` (`overview` or
 without unrelated topology/Work catalogs, using existing complete explanation
 transport bounds and read-only lifecycle. This is selection, not a new retained
 format, Source grant, summary store or generation operation.
+
+Repository reading summaries distinguish the exact cited Source file area from
+included inventory files. Their common directory is a presentation of the retained
+paths, never a claim to explain every file below it. Root/directory entries do not
+count as included files. Excluded and unavailable/unexamined boundaries, limited
+and failed capability reports, and non-current freshness remain separate counts;
+complete semantic understanding is not inferred. Exact included/excluded/unavailable
+paths and original capability coverage remain in the inspectable retained basis.
+The same deterministic scope facts reach CLI/MCP, live Viewer and offline documents.
+Unavailable/stale/withheld explanations cannot supply a current scope preview.
+
+Ordinary Work reading shows current failed verification and rejection separately
+from prior adverse observations, Source gaps and verification coverage limits near
+the opening. Complete independent state observations stay in full evidence. When
+host interpretation is missing, a nonblank canonical result remains a labeled
+original-language quotation; it is not generated explanation, a current code claim
+or a new execution. Decision reading likewise preserves exact Question context and
+recorded user rationale without substituting a recommendation. Unrecorded unknown
+states remain inspectable without dominating every first screen.
 
 ### Exact selected citation inspection
 
