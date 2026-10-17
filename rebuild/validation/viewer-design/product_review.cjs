@@ -32,7 +32,7 @@ async function fits(page){assert.ok(await page.evaluate(()=>document.documentEle
 async function capture(page,c,name,width){await fits(page);await page.screenshot({path:path.join(output,`${c.key}-${name}-${width}.png`)});}
 async function sourceJourney(page,c,width,offline=false){
  const article=page.locator('#repository-explanation .doc');
- const links=article.locator('a.evidence-link');if(!await links.count())return {state:'unavailable'};
+ const links=article.locator('a.evidence-link:visible');if(!await links.count())return {state:'unavailable'};
  // A reading point selected by the real document, rather than any historical case.
  const link=links.last(),target=(await link.getAttribute('href')).slice(1);
  const origin=await link.getAttribute('data-origin');await link.focus();await link.press('Enter');
