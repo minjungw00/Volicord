@@ -704,7 +704,7 @@ pub fn work_answers(
     if let Some(recorded) = answers
         .result
         .as_ref()
-        .filter(|r| r.original_text.is_some())
+        .filter(|r| r.original_text.is_some() && result.provenance.is_none())
     {
         result.facts.push(fact(
             "ReportedResult",
@@ -725,7 +725,8 @@ pub fn work_answers(
                 _ => Vec::new(),
             },
         ));
-    } else {
+    }
+    if answers.result.is_none() {
         result.facts.push(fact(
             "ReportedResult",
             fixed(
