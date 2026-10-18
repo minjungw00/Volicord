@@ -397,3 +397,13 @@ retrieval verifies exact hashed Analysis metadata/inventory rather than decoding
 the entire graph for every Source; this does not certify graph integrity or semantic
 completeness. Current explanation admission/publication still validates its full
 selected analysis and repository dependencies.
+
+### Reader identity production and event projection
+
+The [reader experience](reader-experience-design.md) first path retains current
+explanation v4 with its exhaustive reader-unit traversal and whole-realization
+validity. Ephemeral Work composition adds no retained decoder or parallel store.
+Canonical revision-1 event read metadata is derived from existing revision history;
+it changes no canonical SQL or portable format. No numeric version is raised for
+an unchanged durable representation. Missing/non-current content is never converted
+into a current title.

@@ -168,28 +168,23 @@ paraphrased cases test reading meaning, rather than lexical match with a fixture
 key. A stale realization, generation/authorization failure, selection failure and
 genuinely absent information are distinct outcomes.
 
-The Viewer presents Overview and Work as its two primary destinations. Overview
-contains the canonical Project Purpose and recent Work cards. Work selection uses
-full-width cards with an authored heading/synopsis when available, the recorded
-lifecycle state and a truthful observation timestamp. No heading or synopsis is
-inferred from another paragraph; absent interpretation retains the complete original
-Goal under a neutral Work label. Cards do not repeat state histories, independent
-verification/review/acceptance, identity disclosures, next-step lists or diagnostic
-panels. Those records remain inspectable in the selected document's full evidence.
-The complete Work classification and bounded selection remain projection data;
-Overview does not reinterpret a Goal as Purpose or a recent Work as completed.
+The current experience requirements are [Reader experience design](reader-experience-design.md),
+D-01–D-18 / AC-01–AC-16. One right-aligned navigation includes Overview,
+Repository explanation, Work and a native Tools disclosure. The brand is left;
+read-only status belongs outside navigation and describes the actual surface.
+Overview shows PROJECT OVERVIEW, the actual canonical Project name, canonical
+Purpose or short absence, Recent Work and All Work. It has no duplicate repository
+summary, RECENT WORK eyebrow or Project Decision list. Tools preserve unassociated
+Decision inspection and all protected operations.
 
-Selected documents use the user-selected reading design: breadcrumb, heading/lead,
-concise recorded lifecycle strip, interpretation attribution, reading/limits/original
-instructions/full-evidence actions, supported narrative, complete generated limits,
-and two native record disclosures. Independent recorded facts and chronological
-history retain their authority within full evidence; original instructions preserve
-the complete Goal and exact revision. No extra empty category, related-data or tool
-section is inserted into ordinary document reading. Relevant Decisions, Learning,
-questions and detailed code remain inspectable through full evidence. Tool routes
-retain their separate Operations authority, outside the two-item reading masthead.
-The repository explanation is a separate document reached from Overview when no
-Work exists; it never supplies canonical Purpose or a fabricated Work identity.
+Normal Work cards require a host-authored name and problem/actual-approach/outcome
+synopsis, exact lifecycle and separate creation/latest-record event bases. No
+renderer clipping or copied Goal supplies generated wording. Missing content is
+explicitly incomplete; permitted original Goal/facts remain behind inspection.
+A selected document connects the same Work's problem, mechanism, result, Decisions
+and limits in reader order. Expected effect is distinct from observed result.
+The original Goal, independent verification/review/acceptance and complete history
+retain authority in native evidence disclosures. Reading never generates.
 
 Each Source citation opens a claim-specific Source point beside the document on
 wide screens and across the viewport on narrow screens. Its exact claim quotation,
@@ -1833,28 +1828,13 @@ next-action metadata remains separate from original instructions and suggestions
 
 ### Viewer reading and tool navigation
 
-Overview and Work remain the compact global navigation. A separate local reading
-row connects the repository explanation and Decisions; its native Tools disclosure
-connects Analysis/privacy, Documents, Memory and Evidence/history. These links keep
-exact locale, requested language and subject selection; they do not materialize
-Candidate bodies or grant mutation authority on an ordinary read. Explicit Memory
-inspection uses its existing dependency and authenticated controls. Tool pages share
-the reader's typography, spacing and heading hierarchy, with original diagnostics
-and operations preserved below their task introduction.
-
-Overview links to repository explanation whether Work exists or not, keeps canonical
-Project Purpose separate, and connects real Project Decisions. Work details expose
-only their actually associated Decisions before full audit. Decision detail uses
-the shared document composition and links to its declared Work identity; path overlap
-never creates that association. A Work card has one reading button and plain title.
-Only an admitted authored heading/synopsis supplies generated card wording. Otherwise
-the original Goal remains a labeled quotation. Observation dates do not assert creation,
-completion, new execution or acceptance.
-
-Script-free snapshots use the same reading/tool components and exact internal
-identities. Separate native fragment destinations keep Analysis, Documents, Memory
-inspection and Evidence reachable, with no script, form or authenticity material.
-The output is a local read-only publication, not a new canonical input format.
+The single shell/Overview contract above and D-04–D-13 replace the former
+two-item masthead plus separate Project row, duplicate Overview repository summary,
+Project Decision list, neutral-title-as-normal-output and observation-time-only rules.
+Work-scoped and applied Decisions remain contextual; unassociated Decisions remain
+inspectable through Tools. Live and script-free snapshots share the same components,
+exact identities and meaningful normal-versus-unavailable distinction. Snapshot
+publication grants no Runtime mutation capability.
 
 ### Repository reader document
 

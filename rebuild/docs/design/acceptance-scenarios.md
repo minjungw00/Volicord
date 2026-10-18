@@ -1313,3 +1313,14 @@ clean install
   conflicts need targeted human escalation. Review alone never grants Phase 9 readiness.
 - The candidate technical gate is reused by capsule/archive verification; naturalistic
   re-evaluation does not rerun final/provider/V11 or relabel old evidence as a new candidate.
+
+## Current reader acceptance
+
+[Reader experience design](reader-experience-design.md) owns D-01–D-18 and
+AC-01–AC-16, supplementing scenario N and replacing obsolete Viewer layout rules.
+Normal real host-generated Work name/summary/detail, unavailable controls and actual
+human reading are independent acceptance classes. All-missing output fails normal
+content acceptance. Work0 repository access, exact Project/Purpose, single navigation,
+truthful dual event times and retained protected tools must reach live and offline
+consumers. Historical tests/evaluations prove only their candidate and assertions;
+the earlier delivered UI was rejected. New output remains unassessed until reviewed.

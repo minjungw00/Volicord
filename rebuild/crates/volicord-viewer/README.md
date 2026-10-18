@@ -1,3 +1,7 @@
+Current reader contract: [D-01–D-18 / AC-01–AC-16](../../docs/design/reader-experience-design.md).
+This supersedes historical two-menu, neutral-normal-card and single observation-date
+guidance below. New output is unassessed until reviewed; previous delivered UI was rejected.
+
 # Volicord local viewer
 
 This crate is the loopback-only local Project viewer. It renders existing
@@ -45,25 +49,28 @@ Live reads use purpose-oriented views (default `overview`):
 /?view=tools&tool=documents|memory|status|evidence
 ```
 
-Primary navigation contains only Overview and Work. Overview shows the recorded
-Project Purpose and recent Work cards; the Work index uses the same cards. Each
-card contains an authored heading/synopsis when available, a lifecycle badge, the
-actual observation time in explicit UTC, and a reading link. Missing interpretation
-keeps a neutral title and the complete original Goal quotation. It never fabricates
-creation/completion dates, a synopsis, Project Purpose or Work association.
+The brand sits left of one right-aligned navigation containing Overview,
+Repository explanation, Work and Tools. Tools includes Decision inspection,
+Analysis/privacy, Documents, Memory and Evidence, preserving exact locale/language
+and protected actions. Read-only status sits outside navigation and is scoped to
+the actual reading or offline surface.
 
-A selected Work is a reading document with breadcrumb, heading/lead, concise recorded
-state, interpretation attribution, document actions, narrative, full limitations,
-original instructions and full evidence. Independent verification/review/acceptance,
-recorded directions, chronological history, exact identities and related records live
-inside full evidence. They are not repeated as card paragraphs or separate empty
-sections. Tools and code inspection keep their explicit routes outside the reading
-masthead. Without Work, Overview links to an independent repository explanation
-at `/?view=repository`, rather than inserting that document into Overview.
+Overview shows PROJECT OVERVIEW, the actual Project name, canonical Purpose or
+short absence, Recent Work and All Work. It contains no duplicate repository
+summary, RECENT WORK eyebrow or Project Decision list. Repository reading works
+with or without Work. Cards require an explicitly host-authored name and meaningful
+problem/actual-approach/outcome synopsis for normal-content completion. Missing
+interpretation is incomplete and links to permitted original instructions; the
+renderer never copies a Goal into a summary. Cards and detail share exact Work,
+realization and event bases: original Goal creation and latest same-Work Checkpoint
+recording, in UTC with inspectable record/revision. Missing events stay absent.
 
-The selected reference supplies the page, card and document structure directly:
-white masthead, centered two-item navigation, blue-gray page, full-width catalog,
-left-offset 900px document, blue citation controls and white record disclosures.
+A selected Work is a blue-gray editorial document with breadcrumb, authored
+heading/lead, recorded state, supported narrative and exact limits. Related
+Decisions retain their explicit/applied Work relation. Original Goal, independent
+verification/review/acceptance, directions and complete history remain inspectable
+through native record disclosures. Ordinary reads never generate.
+
 Each citation opens its exact bound claim and observed Source in a side panel on
 wide screens and a full viewport panel on narrow screens. Original Source bytes
 and observed line coordinates remain unchanged; no diff or execution is inferred.
@@ -466,7 +473,7 @@ identity output.
 Full Work evidence shows independent current verification, review and acceptance
 facts, prior-adversity summaries, and complete localized chronological observations
 with exact times, revisions and Sources. Compact cards retain only their reading
-heading/synopsis, lifecycle badge, observation time and action. Current and historical
+heading/synopsis, lifecycle badge, separate creation/latest-record event bases and action. Current and historical
 facts are not conflated. `work_history` compares the complete read model to canonical
 input and challenges missing/duplicated current facts and deleted audit observations.
 CLI/MCP retain their complete evidence arrays; no canonical state machine changes.

@@ -704,3 +704,15 @@ observation/expiry times. Work and repository associations do not grant each oth
 body authority. This does not introduce a seventh canonical entity.
 An inferred repository purpose remains generated interpretation. A recorded Project
 Purpose is separately sourced canonical context and never overwritten by explanation.
+
+### Work reader event basis
+
+[Reader experience AC-07](reader-experience-design.md) distinguishes original Goal
+revision-1 recording from latest same-Work Checkpoint recording. Canonical read
+history exposes the revision-1 instant without replacing current revision time.
+Missing history is unknown; no Checkpoint is absent. Corrections and imports retain
+original identity/time provenance; import, generation, view and Git time are never
+Work event substitutes. Equal valid instants remain equal; Checkpoint identity is
+only a deterministic tie-break. Late-arriving older records do not become latest.
+Generated Work names/summaries remain disposable interpretation, never canonical
+title authority.

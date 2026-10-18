@@ -27,6 +27,7 @@ implementation task.
 | Repository inventory, analysis snapshots, analyzers, capability, coverage, or freshness | `rebuild/docs/design/repository-intelligence.md` |
 | Local/interactive-host/background-provider authority, opt-in, transmission, retention, or deletion | `rebuild/docs/design/privacy-and-provider-boundary.md` |
 | Inquiry, Question Candidate/frontier, responses, Decision applicability/reuse, Learning, or Checkpoint interaction | `rebuild/docs/design/inquiry-and-decision.md` |
+| Reader experience, Work content, navigation or Overview | `rebuild/docs/design/reader-experience-design.md` and affected specialized owners |
 | Recall, maps, projection, generated documents, grounding, preview, adoption, or output formats | `rebuild/docs/design/projections-and-documents.md` |
 | Portable bundles, Project/clone binding, divergence, conflicts, resolution, or merge provenance | `rebuild/docs/design/portable-context.md` |
 | Canonical/bundle/Analysis Snapshot/Derived Index/document metadata versions, reads, writes, or upgrades | `rebuild/docs/design/versioning-policy.md` |

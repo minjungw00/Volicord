@@ -1115,6 +1115,28 @@ def check_explanation_ownership(root: Path) -> list[str]:
     return errors
 
 
+def check_reader_experience(root: Path) -> list[str]:
+    """Check routing/coverage, without freezing requirement prose or claiming quality."""
+    path = root / DESIGN_DIRECTORY / "reader-experience-design.md"
+    if not path.is_file():
+        return ["missing maintained reader experience entry"]
+    content = path.read_text()
+    errors = []
+    for prefix, count in (("D", 18), ("AC", 16)):
+        for number in range(1, count + 1):
+            identity = f"{prefix}-{number:02}"
+            if f"**{identity}**" not in content:
+                errors.append(f"reader experience missing {identity}")
+    if "reader-experience-design.md" not in (root / "rebuild/AGENTS.md").read_text():
+        errors.append("reader experience missing instruction routing")
+    for name in ("projections-and-documents.md", "acceptance-scenarios.md",
+                 "domain-model.md", "privacy-and-provider-boundary.md",
+                 "versioning-policy.md", "validation-plan.md"):
+        if "reader-experience-design.md" not in (root / DESIGN_DIRECTORY / name).read_text():
+            errors.append(f"reader experience missing owner route: {name}")
+    return errors
+
+
 def check_repository(root: Path, known_tracked: list[str] | None = None) -> list[str]:
     tracked = tracked_paths(root) if known_tracked is None else known_tracked
     errors: list[str] = []
@@ -1535,7 +1557,7 @@ def usage() -> int:
 def main(arguments: list[str]) -> int:
     if not arguments:
         try:
-            return report(check_repository(REPOSITORY_ROOT))
+            return report(check_repository(REPOSITORY_ROOT) + check_reader_experience(REPOSITORY_ROOT))
         except (OSError, RuntimeError) as error:
             print(f"architecture contract check failed: {error}", file=sys.stderr)
             return 1

@@ -2872,7 +2872,7 @@ Unknown states remain errors. Independent restart controls exercise each added
 state through the complete restart consumer and reject revived generated content.
 
 
-### Work heading presentation support
+### Historical Work heading presentation support (superseded experience expectations)
 
 Actual `grounded_reader::overview_uses_purpose_and_recent_cards_without_empty_legacy_sections`
 seeds a long mixed-language Goal, no Project Purpose and no Checkpoint, with and
@@ -2880,7 +2880,7 @@ without a labeled authored interpretation. Without an authored Heading unit, ind
 localized headings, the exact full Goal quotation and its original-language boundary,
 Open Work and unchanged canonical basis in actual HTTP and snapshot readers.
 `project_overview_browser.cjs` exercises these actual Runtime fixtures at desktop
-and narrow widths in en/ko, including first-screen meaning, exact Work keyboard
+and narrow widths in en/ko, including the then-current first-screen structure, exact Work keyboard
 navigation, missing direction and Source navigation. `VOLICORD_OVERVIEW_CAPTURE`
 retains the disposable fixture for that driver. Original host-recorded output must
 also be checked separately; authored fixture success is not generator quality or
@@ -2898,8 +2898,8 @@ Source-reading code. It makes no model call. Run `grounded_reader_browser.py`
 with that `fixtures.json`, candidate `--bin-dir`, existing `--chromium` and
 `--playwright-module` via `validate focused`. The driver checks exact original
 paragraph/Source bytes, output identity, attributed behavior claims, concise cards,
-document evidence, keyboard code regions and retained-before navigation. It also
-checks the two-link masthead, absence of obsolete menus/card disclosures/empty
+document evidence, keyboard code regions and retained-before navigation. Historically it also
+checked the two-link masthead, absence of obsolete menus/card disclosures/empty
 category structures, full-width cards and left-offset document geometry. Both
 live and offline Overview/index/document journeys select a single screen.
 The representative authored control includes independent heading and synopsis
@@ -2989,7 +2989,7 @@ unavailable rather than zero or success. This is technical browser review; human
 comprehension, semantic entailment and design acceptance remain pending. No new
 campaign, provider invocation, aggregate gate or historical-artifact rewrite occurs.
 
-### Actual Product reading/navigation integration support
+### Historical Product reading/navigation integration support
 
 `viewer-design/product_review.cjs` reads explicitly selected actual Projects through
 the production executable, preserving original Work/Decision identities and Source
@@ -3007,3 +3007,21 @@ CLI/MCP/live/offline consumers preserve the same facts; current scope preview is
 withheld with unavailable explanation dependencies. The actual Product package
 remains separate from authored test controls and exact-artifact human acceptance.
 No Final, V11, campaign or provider qualification is implied.
+
+### Current reader experience validation
+
+[Reader experience AC ledger](reader-experience-design.md#implementation-responsibility-and-acceptance-ledger)
+routes all D/AC requirements to implementation, direct checks and unfinished human
+or external conditions. Neutral fallback, single observation date, two-item masthead
+plus Project row and Overview Decision/repository-summary expectations above are
+historical, superseded by D-04–D-13. Preserve original reports and raw evidence;
+record later user rejection separately from original pending manifests.
+
+Use focused checks only for this delivery, inspecting complete streams and numeric
+exit/termination/inner results. Separate genuine host-generated actual Work output
+from synthetic normal controls and unavailable controls. Preserve first attempts,
+repairs, candidate/source/output identities under ignored local paths. Browser
+checks inspect actual HTTP and script-free snapshots at desktop/390/320 CSS px;
+native zoom, assistive use, content understanding and acceptance stay unobserved
+unless actually performed. No aggregate gate or naturalistic claim follows from
+these checks. Existing citation/v4/managed retention are regression baselines.
