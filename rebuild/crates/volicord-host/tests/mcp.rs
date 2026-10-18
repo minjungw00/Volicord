@@ -7306,7 +7306,16 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             shape(&["repository"], &["repository"]),
         ],
         "project_health" => vec![shape(&["project_id"], &[])],
-        "recall" | "repository_understanding" => {
+        "repository_understanding" => vec![shape(
+            &[
+                "project_id",
+                "requested_language",
+                "fixed_locale",
+                "reading_focus",
+            ],
+            &["project_id"],
+        )],
+        "recall" => {
             vec![shape(
                 &["project_id", "requested_language", "fixed_locale"],
                 &["project_id"],
@@ -7401,6 +7410,22 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "work_item_id",
                     "generation_id",
                     "realization",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "draft",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "draft",
                 ],
             ),
             shape(

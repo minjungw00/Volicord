@@ -1607,7 +1607,7 @@ impl HostAdapter {
                     result["generation_status"] = json!("awaiting_host_interpretation");
                     result["generation_id"] = json!(request_id.clone());
                     result["host_session_correlation"] = json!(self.host_session);
-                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Discover existing Source copies in source_inventory; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Write natural prose explaining problem, mechanism, supported result and limits, with readable source citations. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
+                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Discover existing Source copies in source_inventory; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Author a distinct heading and synopsis connecting the problem, actual approach and supported outcome; then write reader narrative. Use compose with this generation_id and a host-authored draft to derive mechanical citation bindings. Record the composed realization. A fresh record-only document can omit unavailable technical detail; technical claims keep their Source dependencies. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
                     explanation_tool_result(result.clone())?;
                     self.explanation_requests.insert(
                         request_id,
@@ -1650,7 +1650,7 @@ impl HostAdapter {
                     .insert((source.to_string(), fingerprint.into()));
                 Ok(read)
             }
-            "record" => {
+            "compose" | "record" => {
                 let request_id = required_str(args, "generation_id")?;
                 let request = self.explanation_requests.get(request_id).ok_or_else(|| {
                     HostError::new(
@@ -1660,9 +1660,25 @@ impl HostAdapter {
                 if request.project != project || request.work != work {
                     return Err(HostError::new("explanation request Project/Work mismatch"));
                 }
-                let response: ExplanationRealization =
+                let composing = args["action"] == "compose";
+                let response: ExplanationRealization = if composing {
+                    let draft: volicord_operations::WorkExplanationDraft =
+                        serde_json::from_value(args["draft"].clone())
+                            .map_err(|_| HostError::new("invalid host-authored Work draft"))?;
+                    if draft.plan_fingerprint != request.fingerprint
+                        || draft.language != request.language
+                    {
+                        return Err(HostError::new(
+                            "explanation request preparation/language mismatch",
+                        ));
+                    }
+                    self.operations
+                        .compose_work_explanation(project, work, draft)
+                        .map_err(operation_error)?
+                } else {
                     serde_json::from_value(args["realization"].clone())
-                        .map_err(|_| HostError::new("invalid host explanation realization"))?;
+                        .map_err(|_| HostError::new("invalid host explanation realization"))?
+                };
                 if response.plan_fingerprint != request.fingerprint {
                     return Err(HostError::new("explanation request preparation mismatch"));
                 }
@@ -1673,6 +1689,12 @@ impl HostAdapter {
                     )) {
                         return Err(HostError::new("citation requires exact Source retrieval in this current explanation request"));
                     }
+                }
+                if composing {
+                    return Ok(
+                        json!({"generation_status":"composed_host_interpretation", "realization":response,
+                        "retained":false,"semantic_approval":"not_established"}),
+                    );
                 }
                 let retained = self
                     .operations
@@ -2670,6 +2692,21 @@ fn work_explanation_schema() -> Value {
         ),
         ("realization", explanation_realization_schema()),
     ]);
+    let mut compose = scope();
+    compose.extend([
+        (
+            "action",
+            enum_schema(
+                "Bind a host-authored name, summary and narrative",
+                &["compose"],
+            ),
+        ),
+        (
+            "generation_id",
+            identity_schema("Current ephemeral host request"),
+        ),
+        ("draft", work_explanation_draft_schema()),
+    ]);
     let mut delete = scope();
     delete.push((
         "action",
@@ -2678,6 +2715,7 @@ fn work_explanation_schema() -> Value {
     json!({"oneOf":[object_schema(prepare,&["action","project_id","work_item_id","language"]),
         object_schema(read,&["action","project_id","work_item_id","generation_id","source_id"]),
         object_schema(record,&["action","project_id","work_item_id","generation_id","realization"]),
+        object_schema(compose,&["action","project_id","work_item_id","generation_id","draft"]),
         object_schema(delete,&["action","project_id","work_item_id"])]})
 }
 
@@ -2848,6 +2886,31 @@ fn explanation_realization_schema() -> Value {
     );
     schema["description"] = json!("Host-authored current explanation realization");
     schema["properties"]["generator"]["description"] = json!("Self-reported generator provenance");
+    schema
+}
+
+fn work_explanation_draft_schema() -> Value {
+    // Reuse the same generator/reader-role shape, without a second retained format.
+    let mut schema = explanation_realization_schema();
+    if let Some(properties) = schema["properties"].as_object_mut() {
+        properties.remove("format_kind");
+        properties.remove("format_version");
+    }
+    schema["required"] = json!(["plan_fingerprint", "language", "generator", "paragraphs"]);
+    schema["description"] = json!("New host-authored Work content; one heading and synopsis required. No prior-output salvage.");
+    let paragraph = &mut schema["properties"]["paragraphs"]["items"];
+    if let Some(properties) = paragraph["properties"].as_object_mut() {
+        properties.remove("citations");
+        properties.insert("sources".into(), json!({"type":"array","maxItems":32,"description":"Explicit permitted Source selections; empty for record-supported claims", "items": object_schema(vec![
+            ("source_id", identity_schema("Exact Source retrieved in this generation request")),
+            ("field", enum_schema("Retained field", &["body","stdout","stderr"])),
+            ("use_kind", enum_schema("Evidence role", &["current_code","before_code","observed_execution"])),
+            ("start_byte", unsigned_schema("Inclusive Source byte",0)),
+            ("end_byte", unsigned_schema("Exclusive Source byte",1)),
+            ("claim", json!({"description":"Exact UTF-8 claim span, or null for complete unit","oneOf":[file_byte_range_schema(),{"type":"null","description":"Bind the complete authored unit"}]})),
+        ], &["source_id","field","use_kind","start_byte","end_byte","claim"])}));
+    }
+    paragraph["required"] = json!(["question", "text", "evidence_keys", "sources"]);
     schema
 }
 

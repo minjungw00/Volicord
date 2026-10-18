@@ -24,9 +24,21 @@ impl Default for UnderstandingBound {
     }
 }
 
+/// An inspectable original canonical event; its revision is the event revision.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+pub struct WorkRecordEvent {
+    pub kind: &'static str,
+    pub recorded_at_unix_micros: i64,
+    pub record_kind: &'static str,
+    pub record_identity: String,
+    pub revision: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnderstandingWork {
     pub observed_at: volicord_context::TimestampMicros,
+    pub creation_event: Option<WorkRecordEvent>,
+    pub latest_work_record_event: Option<WorkRecordEvent>,
     pub reading: crate::WorkReading,
     pub work_item_id: ContextItemId,
     pub title: String,

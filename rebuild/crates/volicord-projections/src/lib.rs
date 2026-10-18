@@ -64,7 +64,7 @@ pub use understanding::{
     UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingDecision,
     UnderstandingEvidence, UnderstandingEvidenceClass, UnderstandingExplanation,
     UnderstandingExplanationKind, UnderstandingOmission, UnderstandingWork, UnderstandingWorkState,
-    UnresolvedWorkGrouping, WorkOverview, WorkSection,
+    UnresolvedWorkGrouping, WorkOverview, WorkRecordEvent, WorkSection,
 };
 
 pub use reading::{

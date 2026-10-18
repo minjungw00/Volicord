@@ -247,7 +247,7 @@ fn explanation_command(kind: &'static str) -> Command {
             .default_value("en")
             .value_name("LANGUAGE")
     };
-    Command::new(kind)
+    let mut command = Command::new(kind)
         .about("Read and explain a specific subject")
         .subcommand_required(true)
         .subcommand(
@@ -277,7 +277,13 @@ fn explanation_command(kind: &'static str) -> Command {
                         .about("Delete all retained explanations for this subject")
                         .arg(subject()),
                 ),
-        )
+        );
+    if kind == "work" {
+        command = command.mut_subcommand("explain", |explain| explain.subcommand(
+            Command::new("compose").about("Bind a host-authored Work name, summary and narrative; no generation or retention")
+                .arg(subject()).arg(path_arg("input", "input", "Host-authored Work draft JSON").required(true))));
+    }
+    command
 }
 
 fn repository_command() -> Command {
@@ -887,6 +893,16 @@ fn dispatch_explanation_action(
         ),
     };
     match action {
+        "compose" if kind == "work" => {
+            let volicord_projections::ExplanationSubject::Work(work) = subject else {
+                return Err(Error::new("Work subject required"));
+            };
+            let draft = serde_json::from_value(read_explanation_input(args)?)
+                .map_err(|_| Error::new("invalid host-authored Work draft"))?;
+            Ok(
+                json!({"operation":"work_explanation_compose", "realization":operations.compose_work_explanation(project,work,draft)?}),
+            )
+        }
         "prepare" => Ok(
             json!({"operation":"explanation_prepare", "plan":operations.prepare_explanation(project,subject,required(args,"language")?)?}),
         ),

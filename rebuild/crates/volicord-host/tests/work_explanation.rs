@@ -1630,3 +1630,197 @@ fn every_reader_unit_is_grounded_atomic_and_invalidated_through_mcp() -> Result<
     }
     Ok(())
 }
+
+#[test]
+fn compose_work_name_summary_and_unicode_citations_without_manual_bindings(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    let generation = f.generate()?;
+    let draft = json!({"plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
+    "generator":{"host":"test","session":"authored-control","agent":null,"model":null},
+    "paragraphs":[
+        {"question":"heading","text":"Inspect the returned value","evidence_keys":["goal"],"sources":[]},
+        {"question":"synopsis","text":"The request is to investigate the value before recommending changes. The retained file returns 7; no execution or completed change is recorded.","evidence_keys":["goal"],"sources":[]},
+        {"question":"purpose","text":"값을 확인합니다: return 7.","evidence_keys":["goal"],"sources":[{"source_id":f.source.to_string(),"field":"body","use_kind":"current_code","start_byte":17,"end_byte":25,"claim":null}]}
+    ]});
+    let mut compose = f.args("compose");
+    compose["generation_id"] = generation["generation_id"].clone();
+    compose["draft"] = draft;
+    // Even Product-bound metadata cannot bypass retrieval in this host request.
+    assert_eq!(
+        call(&mut f.host, compose.clone())["result"]["isError"],
+        true
+    );
+    f.read(&generation, f.source)?;
+    let composed = success(&mut f.host, compose.clone())?;
+    assert_eq!(composed["retained"], false);
+    assert_eq!(composed["realization"]["format_version"], 4);
+    let response: ExplanationRealization = serde_json::from_value(composed["realization"].clone())?;
+    let args = f.record_args(&generation, &response)?;
+    success(&mut f.host, args)?;
+    let projection = f
+        .host
+        .operations()
+        .project_projection_selected(f.project, WorkSelector::ExactWork(f.work))?;
+    let selected = projection.selected_work.ok_or("selected Work")?;
+    assert_eq!(
+        work_answers(&selected, "en", FixedLocale::English).reading_title(),
+        Some("Inspect the returned value")
+    );
+    assert!(selected.creation_event.is_some());
+    assert!(selected.latest_work_record_event.is_none());
+    let previous = f
+        .host
+        .operations()
+        .privacy_status(f.project)?
+        .managed_derived;
+    let next = f.generate()?;
+    f.read(&next, f.source)?;
+    compose["generation_id"] = next["generation_id"].clone();
+    // Split a multibyte claim, then foreign Work/Project and malformed input.
+    compose["draft"]["paragraphs"][2]["sources"][0]["claim"] = json!({"start_byte":1,"end_byte":4});
+    assert_eq!(
+        call(&mut f.host, compose.clone())["result"]["isError"],
+        true
+    );
+    compose["draft"]["paragraphs"][2]["sources"][0]["claim"] = Value::Null;
+    compose["work_item_id"] = json!("01".repeat(16));
+    assert_eq!(
+        call(&mut f.host, compose.clone())["result"]["isError"],
+        true
+    );
+    compose["work_item_id"] = json!(f.work.to_string());
+    compose["project_id"] = json!("01".repeat(16));
+    assert_eq!(call(&mut f.host, compose)["result"]["isError"], true);
+    assert_eq!(
+        previous,
+        f.host
+            .operations()
+            .privacy_status(f.project)?
+            .managed_derived
+    );
+    // Fresh record-only production remains possible after detailed code disappears.
+    f.host
+        .operations()
+        .delete_work_source_observation(f.project, f.work, f.source)?;
+    let current = f
+        .host
+        .operations()
+        .project_projection_selected(f.project, WorkSelector::ExactWork(f.work))?;
+    assert_eq!(
+        current.selected_work.ok_or("work")?.reading.explanations[0].state,
+        ExplanationState::Stale
+    );
+    let fresh = f.generate()?;
+    let mut record_only = f.args("compose");
+    record_only["generation_id"] = fresh["generation_id"].clone();
+    let mut draft = json!({"plan_fingerprint":fresh["plan"]["fingerprint"],"language":"en",
+    "generator":{"host":"test","session":"fresh-record-only","agent":null,"model":null},
+    "paragraphs":[
+        {"question":"heading","text":"Investigate value before a change","evidence_keys":["goal"],"sources":[]},
+        {"question":"synopsis","text":"The user requested an investigation before recommending a change. No Checkpoint records an approach or result yet; technical evidence is unavailable.","evidence_keys":["goal"],"sources":[]}
+    ]});
+    record_only["draft"] = draft.clone();
+    let fresh_composed = success(&mut f.host, record_only.clone())?;
+    let response = serde_json::from_value(fresh_composed["realization"].clone())?;
+    let args = f.record_args(&fresh, &response)?;
+    success(&mut f.host, args)?;
+    let current = f
+        .host
+        .operations()
+        .project_projection_selected(f.project, WorkSelector::ExactWork(f.work))?;
+    assert_eq!(
+        work_answers(
+            &current.selected_work.ok_or("work")?,
+            "en",
+            FixedLocale::English
+        )
+        .reading_title(),
+        Some("Investigate value before a change")
+    );
+    // Missing name cannot be admitted as normal Work composition.
+    let final_request = f.generate()?;
+    record_only["generation_id"] = final_request["generation_id"].clone();
+    draft["paragraphs"]
+        .as_array_mut()
+        .ok_or("paragraphs")?
+        .remove(0);
+    record_only["draft"] = draft;
+    assert_eq!(call(&mut f.host, record_only)["result"]["isError"], true);
+    // A new recorded outcome invalidates the entire previous realization.
+    use volicord_context::*;
+    let canonical = f.host.operations().canonical_basis(f.project)?;
+    let source = canonical
+        .context_items
+        .iter()
+        .find(|i| i.id == f.work)
+        .ok_or("Goal")?
+        .source_basis[0];
+    let retained_before = f
+        .host
+        .operations()
+        .privacy_status(f.project)?
+        .managed_derived;
+    let mut store = Store::open(f.host.operations().layout().canonical_store())?;
+    store.record_checkpoint(
+        OperationId::from_bytes([0xac; 16]),
+        f.project,
+        CheckpointDraft {
+            expected_project_revision: canonical.project.revision,
+            work_item_id: Some(f.work),
+            kind: CheckpointKind::Handoff,
+            goal: "Explain value; investigate before recommending a change.".into(),
+            work_state: WorkState::Paused,
+            state_change: Some("Investigation paused without a recommended change.".into()),
+            source_basis: vec![source],
+            changed_source_basis: vec![],
+            changed_paths: vec![],
+            applied_decisions: vec![],
+            verification: vec![],
+            user_review: UserReviewFact {
+                state: UserReviewState::NotRequested,
+                source_id: None,
+            },
+            user_acceptance: UserAcceptanceFact {
+                state: UserAcceptanceState::NotRequested,
+                source_id: None,
+            },
+            known_limits: vec![],
+            non_goals: vec![],
+            open_questions: vec![],
+            next_step: "Inspect callers".into(),
+            handoff_to: Some("next investigation".into()),
+        },
+    )?;
+    let current = f
+        .host
+        .operations()
+        .project_projection_selected(f.project, WorkSelector::ExactWork(f.work))?;
+    let work = current.selected_work.ok_or("Work")?;
+    assert_eq!(work.reading.explanations[0].state, ExplanationState::Stale);
+    assert!(work_answers(&work, "en", FixedLocale::English)
+        .reading_title()
+        .is_none());
+    assert!(work.latest_work_record_event.is_some());
+    assert_eq!(
+        retained_before,
+        f.host
+            .operations()
+            .privacy_status(f.project)?
+            .managed_derived
+    );
+    // The previous plan cannot overwrite a prior record after the changed result.
+    assert!(f
+        .host
+        .operations()
+        .record_explanation(f.project, ExplanationSubject::Work(f.work), "en", response)
+        .is_err());
+    assert_eq!(
+        retained_before,
+        f.host
+            .operations()
+            .privacy_status(f.project)?
+            .managed_derived
+    );
+    Ok(())
+}

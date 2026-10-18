@@ -530,6 +530,29 @@ impl WorkHistory<'_> {
         let has_scope =
             !goal.applicability.paths.is_empty() || !goal.applicability.components.is_empty();
         UnderstandingWork {
+            creation_event: canonical
+                .revisions
+                .iter()
+                .find(|r| {
+                    r.record_kind == volicord_context::CanonicalRecordKind::ContextItem
+                        && r.record_identity == goal.id.to_string()
+                        && r.revisions.contains(&1)
+                })
+                .and_then(|r| r.first_recorded_at)
+                .map(|time| crate::understanding::WorkRecordEvent {
+                    kind: "goal_created",
+                    recorded_at_unix_micros: time.as_unix_micros(),
+                    record_kind: "context_item",
+                    record_identity: goal.id.to_string(),
+                    revision: 1,
+                }),
+            latest_work_record_event: latest.map(|cp| crate::understanding::WorkRecordEvent {
+                kind: "checkpoint_recorded",
+                recorded_at_unix_micros: cp.recorded_at.as_unix_micros(),
+                record_kind: "checkpoint",
+                record_identity: cp.id.to_string(),
+                revision: cp.revision,
+            }),
             work_item_id: goal.id,
             title: goal.statement.clone(),
             state,

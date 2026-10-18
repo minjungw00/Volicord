@@ -98,7 +98,11 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
             } else {
                 "passed"
             }));
-            assert!(!selected["answers"].to_string().contains("감사 참고"));
+            // Retained canonical facts (including exact next-action quotations) survive.
+            // Only generated prose must disappear; the whole DTO is not a prose surface.
+            assert!(!selected["answers"]["prose"]
+                .to_string()
+                .contains("감사 참고"));
             let basis = selected["answers"]["provenance"]["evidence"]
                 .as_array()
                 .ok_or("answer basis")?
@@ -130,7 +134,11 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
     let result=host.handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall","arguments":{"project_id":f.project.to_string(),"requested_language":"ko","fixed_locale":"ko"}}})).ok_or("MCP response")?;
     let selected = &result["result"]["structuredContent"]["selected_work"];
     assert_eq!(selected["answers"]["explanation_state"], "deleted");
-    assert!(!selected["answers"].to_string().contains("감사 참고"));
+    // Retained canonical facts (including exact next-action quotations) survive.
+    // Only generated prose must disappear; the whole DTO is not a prose surface.
+    assert!(!selected["answers"]["prose"]
+        .to_string()
+        .contains("감사 참고"));
     assert!(!selected["answers"].to_string().contains("Transport-only"));
     assert!(
         selected["evidence"]["result"]["original_text"].is_string()

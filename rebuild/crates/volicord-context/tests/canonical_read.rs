@@ -475,3 +475,41 @@ fn merge_and_branch_basis_remain_ordered_and_portable_without_sources(
     );
     Ok(())
 }
+
+#[test]
+fn original_revision_event_survives_correction_and_later_import(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempdir()?;
+    let path = root.path().join("events.sqlite3");
+    let mut value = store(&path, &[1, 2, 3, 4, 5, 6, 7, 8, 9])?;
+    let fixture = populate(&mut value)?;
+    let read = value.read_canonical_basis(fixture.project.id, CanonicalReadOptions::default())?;
+    let origin = read
+        .revisions
+        .iter()
+        .find(|r| r.record_identity == fixture.item.id.to_string())
+        .ok_or("history")?;
+    assert!(origin.revisions.len() > 1);
+    assert_eq!(
+        origin.first_recorded_at,
+        Some(TimestampMicros::from_unix_micros(1_790_000_000_000_000))
+    );
+    let bundle = root.path().join("events.json");
+    value.export_bundle(fixture.project.id, &bundle)?;
+    let mut imported = Store::open_with(
+        root.path().join("imported.sqlite3"),
+        DeterministicIdGenerator::new([[90; 16]]),
+        FixedClock::new(TimestampMicros::from_unix_micros(1_890_000_000_000_000)),
+    )?;
+    imported.import_bundle(operation(80), &bundle)?;
+    let after =
+        imported.read_canonical_basis(fixture.project.id, CanonicalReadOptions::default())?;
+    assert_eq!(
+        after
+            .revisions
+            .iter()
+            .find(|r| r.record_identity == fixture.item.id.to_string()),
+        Some(origin)
+    );
+    Ok(())
+}

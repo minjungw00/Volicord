@@ -31,6 +31,8 @@ pub struct CanonicalRevisionBasis {
     pub record_kind: CanonicalRecordKind,
     pub record_identity: String,
     pub revisions: Vec<u64>,
+    /// Original revision-1 event, never the current correction/import time.
+    pub first_recorded_at: Option<TimestampMicros>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -370,28 +372,37 @@ fn read_revisions(
     let mut values = Vec::new();
     for (kind, table, id_column) in specs {
         let sql = format!(
-            "SELECT {id_column}, revision FROM {table} WHERE project_id = ?1 ORDER BY {id_column}, revision"
+            "SELECT {id_column}, revision, recorded_at FROM {table} WHERE project_id = ?1 ORDER BY {id_column}, revision"
         );
         let mut statement = connection.prepare(&sql).map_err(read_error)?;
         let rows = statement
             .query_map([project_id.as_bytes().as_slice()], |row| {
-                Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, i64>(1)?))
+                Ok((
+                    row.get::<_, Vec<u8>>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
             })
             .map_err(read_error)?;
-        let mut grouped = BTreeMap::<String, Vec<u64>>::new();
+        let mut grouped = BTreeMap::<String, (Vec<u64>, Option<TimestampMicros>)>::new();
         for row in rows {
-            let (id, revision) = row.map_err(read_error)?;
+            let (id, revision, recorded_at) = row.map_err(read_error)?;
             let revision = u64::try_from(revision)
                 .map_err(|_| Error::new(ErrorKind::CorruptState, "revision is invalid"))?;
-            grouped.entry(hex(&id)).or_default().push(revision);
+            let group = grouped.entry(hex(&id)).or_default();
+            group.0.push(revision);
+            if revision == 1 {
+                group.1 = Some(TimestampMicros::from_unix_micros(recorded_at));
+            }
         }
-        values.extend(grouped.into_iter().map(|(record_identity, revisions)| {
-            CanonicalRevisionBasis {
+        values.extend(grouped.into_iter().map(
+            |(record_identity, (revisions, first_recorded_at))| CanonicalRevisionBasis {
                 record_kind: kind,
                 record_identity,
                 revisions,
-            }
-        }));
+                first_recorded_at,
+            },
+        ));
     }
     values.sort_by(|left, right| {
         (left.record_kind, &left.record_identity).cmp(&(right.record_kind, &right.record_identity))

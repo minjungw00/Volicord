@@ -24,10 +24,12 @@ mod provider;
 mod recall;
 mod repository_explanation;
 mod source_observations;
+mod work_explanation;
 pub use repository_explanation::{
     RepositoryClaimRange, RepositoryExplanationDraft, RepositoryFileObservationRequest,
     RepositoryReaderUnit,
 };
+pub use work_explanation::{WorkClaimRange, WorkExplanationDraft, WorkReaderUnit};
 
 pub use analysis_storage::{
     AnalysisFileFootprint, AnalysisReachabilityReference, AnalysisSectionFootprint,

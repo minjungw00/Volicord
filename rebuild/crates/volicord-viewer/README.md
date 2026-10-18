@@ -615,3 +615,27 @@ without also serializing the entire topology/Work overview. Default `overview`
 remains the full understanding request. The focused response uses the existing
 256 KiB complete-result admission; oversize rejects rather than truncating
 grounding. It performs no generation, Source observation or retention renewal.
+
+## Explicit Work name and summary production
+
+The active authorized host prepares the exact Work, reads supporting canonical
+material and permitted Source copies, then authors a new draft. Use
+`work explain compose --work GOAL_ID --input /absolute/host-draft.json` followed by
+`work explain record --work GOAL_ID --language ko --input /absolute/composed.json`.
+Compose returns the `realization` to record unchanged. It derives bindings, creates
+no prose and retains nothing. Drafts contain exact `plan_fingerprint`, `language`,
+self-reported `generator` and `paragraphs` with `question`, `text`, `evidence_keys`,
+`sources`. Each Source selection supplies `source_id`, `field`, `use_kind`, absolute
+`start_byte`, `end_byte` and optional UTF-8 `claim` span (null means the whole unit).
+One independently authored heading and synopsis are required by this production path.
+
+MCP `work_explanation` supports the same `compose` action with a generation_id and
+`draft`; every selected Source must first be read in that exact generation request.
+Record uses the resulting realization and the same request. Unsupported host access
+or authority leaves production incomplete, with ordinary Work operations usable.
+A fresh record-only draft can explain requested/reported work without unavailable
+technical bodies. Technical claims require citations; deleting such a dependency
+withholds the whole realization. Explicit fresh production is recovery, with no
+stale-title extraction or mixed output. Generated wording is never canonical title
+truth. Creation/latest work-record events are public JSON in CLI/MCP and remain
+independent from generation time.

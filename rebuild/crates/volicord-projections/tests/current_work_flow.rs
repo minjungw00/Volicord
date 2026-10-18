@@ -1466,6 +1466,7 @@ fn work_decision_code_relevance_selects_limits_without_other_work_leakage(
                 review_due: None,
             });
             canonical.revisions.push(CanonicalRevisionBasis {
+                first_recorded_at: None,
                 record_kind: CanonicalRecordKind::Decision,
                 record_identity: id.to_string(),
                 revisions: vec![1],
@@ -2351,5 +2352,104 @@ fn bounded_behavior_priority_checks_source_validity_before_selecting_a_candidate
         assert!(u.architecture.components.len() <= 24);
         assert!(p.repository_map.entities.len() <= 64);
     }
+    Ok(())
+}
+
+#[test]
+fn work_events_use_original_history_and_latest_recorded_instant_without_substitution(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::{CanonicalRecordKind, TimestampMicros};
+    use volicord_projections::*;
+    let (mut canonical, analysis, candidates) = projection_scenario_basis(
+        &[("main.py", "print('events')\n")],
+        &[],
+        &[vec![], vec![]],
+        |_| Ok(()),
+    )?;
+    let goal = canonical
+        .context_items
+        .iter()
+        .find(|i| i.role == ContextItemRole::Goal)
+        .ok_or("Goal")?
+        .id;
+    let original = TimestampMicros::from_unix_micros(1_700_000_000_000_000);
+    canonical
+        .context_items
+        .iter_mut()
+        .find(|i| i.id == goal)
+        .ok_or("Goal")?
+        .revision = 2;
+    let revision = canonical
+        .revisions
+        .iter_mut()
+        .find(|r| {
+            r.record_kind == CanonicalRecordKind::ContextItem
+                && r.record_identity == goal.to_string()
+        })
+        .ok_or("revision")?;
+    revision.revisions = vec![1, 2];
+    revision.first_recorded_at = Some(original);
+    for cp in canonical
+        .checkpoint_history
+        .iter_mut()
+        .chain(canonical.latest_checkpoint.iter_mut())
+    {
+        cp.recorded_at = original;
+    }
+    let project = |basis: &volicord_context::CanonicalReadBasis| {
+        build_project_projection(ProjectProjectionInputs {
+            requirements: ProjectionReadRequirements::default(),
+            metadata: &[],
+            detail: ProjectionDetail::default(),
+            selection: WorkSelector::ExactWork(goal),
+            analysis_issues: &[],
+            canonical: basis,
+            analyses: &[&analysis],
+            applicability: volicord_inquiry::ApplicabilityQuery {
+                project_id: basis.project.id,
+                paths: vec![],
+                components: vec![],
+                work_contexts: vec![],
+                current_assumptions: vec![],
+                met_revisit_triggers: vec![],
+            },
+            candidates: CandidateProjectionInput::Available(&candidates),
+            candidate_content_access: CandidateContentAccess::PolicyWithheld,
+            observed_at: TimestampMicros::from_unix_micros(1_900_000_000_000_000),
+            bound: ProjectionBound::default(),
+        })
+        .map(|p| p.selected_work.ok_or("Work"))
+    };
+    let selected = project(&canonical)??;
+    let creation = selected.creation_event.ok_or("creation")?;
+    let activity = selected.latest_work_record_event.ok_or("activity")?;
+    assert_eq!(creation.kind, "goal_created");
+    assert_eq!(creation.revision, 1);
+    assert_eq!(activity.kind, "checkpoint_recorded");
+    assert_eq!(
+        creation.recorded_at_unix_micros,
+        activity.recorded_at_unix_micros
+    );
+    // An older record arriving last cannot change the latest event.
+    let mut late = canonical
+        .checkpoint_history
+        .first()
+        .ok_or("checkpoint")?
+        .clone();
+    late.id = volicord_context::CheckpointId::from_bytes([0xfe; 16]);
+    late.recorded_at = TimestampMicros::from_unix_micros(original.as_unix_micros() - 100);
+    canonical.checkpoint_history.push(late);
+    assert_eq!(
+        project(&canonical)??.latest_work_record_event,
+        Some(activity)
+    );
+    canonical.latest_checkpoint = None;
+    canonical.checkpoint_history.clear();
+    assert!(project(&canonical)??.latest_work_record_event.is_none());
+    assert_eq!(project(&canonical)??.creation_event, Some(creation));
+    canonical
+        .revisions
+        .retain(|r| r.record_identity != goal.to_string());
+    assert!(project(&canonical)??.creation_event.is_none());
     Ok(())
 }
