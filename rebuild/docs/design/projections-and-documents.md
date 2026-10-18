@@ -1929,3 +1929,15 @@ clipping/omission and identity. It includes no selected-read controls, endpoint 
 script and cannot retrieve omitted evidence. Initial unique text bytes, per-range
 limits and additional selected-read byte limits are visible in their own context;
 HTML transfer size includes markup, repeated claim panels and escaped text separately.
+
+### Explicit Work content composition
+
+`LocalOperations::compose_work_explanation` and Work CLI/MCP compose consume a
+new host-authored heading, synopsis and reader-ordered narrative. Product derives
+Source revisions, coordinates and Source/claim hashes from exact permitted reads;
+MCP additionally requires retrieval in the same ephemeral generation request.
+Compose persists nothing and invokes no model. Work record/read retain the single
+v4 whole-realization lifecycle; a fresh record-only document is allowed, while
+technical claims keep Source dependencies. Canonical-only failures or missing
+bodies are not reasons to extract stale title text. See the current reader ledger
+for direct tests and outstanding semantic/human conditions.

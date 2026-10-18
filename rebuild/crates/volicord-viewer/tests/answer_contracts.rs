@@ -204,7 +204,8 @@ fn current_work_survives_a_catalog_full_of_completed_work() -> Result<(), Box<dy
         "fixture must reverse chronological and identity order"
     );
     let page = get(&server(&f), "/?view=overview");
-    assert!(page.contains("RECENT WORK"));
+    assert!(!page.contains("RECENT WORK"));
+    assert!(page.contains("PROJECT OVERVIEW"));
     let exact = get(&server(&f), &format!("/?view=work&work={current}"));
     assert!(
         exact.contains(&format!("data-work-id=\"{current}\"")),

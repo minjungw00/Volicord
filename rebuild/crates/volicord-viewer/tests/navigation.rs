@@ -21,10 +21,16 @@ fn project_destinations_and_exact_related_records_are_readable_without_mutation(
             guarded_request: None,
         };
         let overview = viewer.render(&request, "test-authenticity")?.html;
-        assert!(overview.contains("class=\"repository-entry\""));
+        assert!(!overview.contains("class=\"repository-entry\""));
+        assert!(!overview.contains("RECENT WORK"));
+        assert!(!overview.contains("Project Decisions"));
+        assert!(!overview.contains("class=\"project-navigation\""));
         assert!(overview.contains("view=repository"));
         assert!(overview.contains("view=decisions"));
-        assert!(overview.contains(&f.decisions["project"].to_string()));
+        let masthead = overview.split("</header>").next().ok_or("header")?;
+        assert_eq!(masthead.matches("<nav ").count(), 1);
+        assert!(!masthead.contains("Read-only"));
+        assert!(!masthead.contains("읽기 전용"));
         assert!(!overview.contains("<form"));
         let menu = overview
             .split("class=\"tools-menu\"")

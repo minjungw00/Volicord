@@ -72,7 +72,7 @@ function command(label,args){
    assert.equal(await point.locator('.claim-quote').textContent(),fixture.answers.prose[1].text);
    assert.equal(await page.evaluate(()=>document.activeElement.id),exactPoint);
    assert.equal(await page.locator('.doc').evaluate(n=>n.inert),width<900);
-   assert.equal(await page.locator('.project-navigation').evaluate(n=>n.inert),width<900);
+   assert.equal(await page.locator('.masthead').evaluate(n=>n.inert),width<900);
    assert.equal(await point.locator('.citation-inspection pre').evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<=900?'13px':'15px');
    assert.equal(await point.getAttribute('role'),width<900?'dialog':null);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));

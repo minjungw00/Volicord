@@ -1,5 +1,16 @@
 # Viewer journey comparison
 
+Current Product requirements and AC responsibility/status are in the maintained
+[reader experience entry](../../docs/design/reader-experience-design.md).
+The evaluations below, including the original Product integration evaluation,
+remain historical observations of their exact candidates. Subsequent user feedback
+rejected the earlier delivered UI; its original pending manifest is preserved.
+The latest single navigation, Purpose-led Overview, generated Work name/summary and
+separate Work event dates supersede the old screen rules. New exact output remains
+unassessed until actually reviewed. Current `product_review.cjs` and packaging
+consume real Product output; synthetic controls remain separately identified.
+
+
 Disposable local reading design; production migration, framework choice and human
 acceptance are pending. This support generates no explanation and invokes no
 provider. The exact artifact, source-first outcomes, measured benefits/regressions

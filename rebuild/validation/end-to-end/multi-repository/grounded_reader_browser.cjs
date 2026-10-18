@@ -73,8 +73,9 @@ async function roundTrip(page,link,width,live){
    for(const view of ['overview','work']){
     await page.goto(config.offline?base+`#${view==='work'?'works':'overview'}`:`${base}?view=${view}&locale=${language}&language=${language}`);
     await page.evaluate(()=>scrollTo(0,0));
-    assert.equal(await page.locator('.masthead nav a').count(),2,'reference masthead has exactly two links');
-    assert.equal(await page.locator('.masthead details').count(),0,'no old tool/language menus');
+    assert.equal(await page.locator('.masthead nav>.nav-link').count(),3,'single navigation includes repository reading');
+    assert.equal(await page.locator('.masthead .tools-menu').count(),1,'secondary tools share the single navigation');
+    assert.equal(await page.locator('.project-navigation').count(),0);
     const root=config.offline?page.locator(view==='work'?'#works':'#overview'):page.locator('main');
     for(const removed of ['.overview-jumps','.category-details','.current-work','.card-status-strip','.summary-records'])assert.equal(await root.locator(removed).count(),0,'obsolete ordinary structure removed');
     assert.ok(await root.locator('.work-card').count()>0,'actual Work cards');

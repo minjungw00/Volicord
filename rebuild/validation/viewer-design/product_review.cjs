@@ -12,9 +12,9 @@ const result={candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'
  executable_sha256:hash(fs.readFileSync(config.viewer)),cli_sha256:hash(fs.readFileSync(config.cli)),
  config_sha256:hash(fs.readFileSync(process.argv[2])),commands:[],cases:[],
  human_acceptance:'pending',screen_reader:'not_observed',native_zoom:'not_observed'};
-function command(label,argv){const p=spawnSync(argv[0],argv.slice(1),{encoding:'utf8',timeout:120000});
+function command(label,argv){const started=performance.now();const p=spawnSync(argv[0],argv.slice(1),{encoding:'utf8',timeout:120000});
  fs.writeFileSync(path.join(output,label+'.stdout'),p.stdout||'');fs.writeFileSync(path.join(output,label+'.stderr'),p.stderr||'');
- const r={label,argv,exit:p.status,signal:p.signal,error:p.error?.message};result.commands.push(r);assert.equal(p.status,0,JSON.stringify(r));return p.stdout;}
+ const r={label,argv,exit:p.status,signal:p.signal,error:p.error?.message,duration_ms:performance.now()-started,stdout_bytes:Buffer.byteLength(p.stdout||''),stderr_bytes:Buffer.byteLength(p.stderr||'')};result.commands.push(r);assert.equal(p.status,0,JSON.stringify(r));return p.stdout;}
 function state(runtime){return execFileSync('python3',['-c',`import sqlite3,json,hashlib,sys,pathlib
 r={}
 for p in sorted(pathlib.Path(sys.argv[1]).glob('*.sqlite3')):
@@ -62,33 +62,77 @@ async function sourceJourney(page,c,width,offline=false){
  browser=await chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox','--disable-dev-shm-usage'],env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
  for(const c of config.cases){const r={key:c.key,project:c.project,work:c.work,decision:c.decision,widths:[]};result.cases.push(r);
   const before=state(c.runtime);r.state_before_sha256=hash(before);
+  let originalEvents;
+  if(c.source_bundle && c.work){
+   const bundle=JSON.parse(fs.readFileSync(c.source_bundle,'utf8'));
+   const rows=name=>{const table=bundle.payload.tables.find(t=>t.name===name);return table.rows.map(row=>Object.fromEntries(table.columns.map((key,n)=>[key,row[n].value])));};
+   const goal=rows('context_item_revisions').find(v=>v.context_item_id===c.work&&v.revision===1);
+   const records=rows('checkpoints').filter(v=>v.work_item_id===c.work).sort((a,b)=>a.recorded_at-b.recorded_at||a.id.localeCompare(b.id));
+   originalEvents={creation:goal,latest:records.at(-1)};r.event_oracle='original portable canonical record/revision timestamps';
+  }
   const args=[config.cli,'--runtime',c.runtime,'--project',c.project,'--json'];
   const status=JSON.parse(command(c.key+'-status',[...args,'status','--language',c.language||'ko']));
   fs.writeFileSync(path.join(output,c.key+'-public-status.json'),JSON.stringify(status,null,2));
   const offlinePath=path.join(output,c.key+'-offline.html');
   command(c.key+'-export',[...args,'viewer','export','--output',offlinePath,'--language',c.language||'ko','--locale',c.locale||'ko']);
+  r.http_reads=[];
   const server=await serve(c);const context=await browser.newContext();const errors=[],external=[];
   context.on('request',q=>{if(new URL(q.url()).origin!==new URL(server.base).origin)external.push(q.url())});
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
-  try {for(const width of [1440,1024,768,390,320]){
+  try {
+   for(const view of ['overview','work','repository'])for(let attempt=0;attempt<3;attempt++){
+    const started=performance.now(),response=await context.request.get(server.base+'?view='+view);
+    const body=await response.body();assert.equal(response.status(),200);
+    r.http_reads.push({view,attempt,status:response.status(),duration_ms:performance.now()-started,bytes:body.length});
+   }
+   for(const width of [1440,1024,768,390,320]){
    const row={width};r.widths.push(row);await page.setViewportSize({width,height:1000});
    await page.goto(server.base+'?view=overview');assert.equal(await page.locator('#overview h1').textContent(),c.project_name);
    assert.equal(await page.locator('#overview .project-purpose[data-statement-role=verified-canonical]').count(),c.purpose_count||0);
+   assert.equal(await page.locator('.project-navigation,.masthead .surface-status,.masthead .trial').count(),0);
+   assert.equal(await page.locator('.masthead nav').count(),1);
+   assert.equal(await page.locator('#overview .repository-entry,#overview .related-decisions').count(),0);
+   assert.ok(!(await page.locator('#overview').textContent()).includes('RECENT WORK'));
+   const geometry=await page.evaluate(()=>{const brand=document.querySelector('.brand').getBoundingClientRect(),nav=document.querySelector('.masthead nav').getBoundingClientRect(),shell=document.querySelector('.masthead>.shell').getBoundingClientRect();return {brand:brand.x,nav:nav.x,right:nav.right,shellRight:shell.right};});
+   assert.ok(Math.abs(geometry.right-(width-(width>1440?(width-1440)/2:0)-(width<=600?20:width<=900?28:48)))<2,'right aligned navigation');
+   if(width>=768)assert.ok(geometry.nav>geometry.brand+100);
+   row.navigation_geometry=geometry;
+   if(c.normal_work){const card=page.locator(`.work-card[data-work-id="${c.normal_work}"]`);
+    assert.equal(await card.locator('h3').getAttribute('data-title-basis'),'generated-interpretation');
+    assert.equal(await card.locator('blockquote').count(),0);assert.equal(await card.locator('[data-question="Synopsis"]').count(),1);
+    assert.equal(await card.locator('time[data-event-kind="goal_created"]').count(),1);
+    assert.equal(await card.locator('time[data-event-kind="checkpoint_recorded"]').count(),1);
+    assert.ok((await card.locator('h3').textContent()).length<160);
+    if(originalEvents){
+     const creation=card.locator('time[data-event-kind="goal_created"]'),latest=card.locator('time[data-event-kind="checkpoint_recorded"]');
+     assert.equal(await creation.getAttribute('data-recorded-at'),String(originalEvents.creation.recorded_at));
+     assert.equal(await creation.getAttribute('data-revision'),'1');
+     assert.equal(await creation.getAttribute('data-record-id'),c.work);
+     assert.equal(await latest.getAttribute('data-recorded-at'),String(originalEvents.latest.recorded_at));
+     assert.equal(await latest.getAttribute('data-record-id'),originalEvents.latest.id);
+     row.creation_event={record:c.work,revision:1,micros:originalEvents.creation.recorded_at};
+     row.latest_work_event={record:originalEvents.latest.id,revision:originalEvents.latest.revision,micros:originalEvents.latest.recorded_at};
+    }
+    row.reading_title=await card.locator('h3').textContent();row.synopsis=await card.locator('[data-question="Synopsis"]').textContent();
+    row.normal_content='exact public host-produced name and synopsis; semantic quality unassessed';
+   }
+   if(c.unavailable_work)assert.equal(await page.locator(`.work-card[data-work-id="${c.unavailable_work}"] .content-unavailable`).count(),1);
    const tools=page.locator('.tools-menu');await tools.locator('summary').focus();await tools.locator('summary').press('Enter');
    assert.ok(await tools.evaluate(n=>n.open));await page.keyboard.press('Escape');assert.ok(!await tools.evaluate(n=>n.open));
    assert.equal(await page.evaluate(()=>document.activeElement.matches('.tools-menu>summary')),true);
    await capture(page,c,'overview',width);
-   await page.locator('.repository-entry a').click();assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
+   await page.locator('.masthead a[href*="view=repository"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
    fs.writeFileSync(path.join(output,`${c.key}-repository-${width}.html`),await page.content());await capture(page,c,'repository',width);
    row.source=await sourceJourney(page,c,width);
-   await page.locator('.masthead .nav-link').nth(1).click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);
+   await page.locator('.masthead a[href*="view=work"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);
    if(c.work){const card=page.locator(`.work-card[data-work-id="${c.work}"]`);assert.equal(await card.locator('a').count(),1);
     await card.locator('.card-action').click();assert.equal(new URL(page.url()).searchParams.get('work'),c.work);
-    assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);await capture(page,c,'work',width);
+    assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);if(c.normal_work){assert.equal(await page.locator('.doc h1').textContent(),row.reading_title);assert.equal(await page.locator('.doc .lead[data-question="Synopsis"]').textContent(),row.synopsis);}
+    await capture(page,c,'work',width);
     await page.reload();assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);
     await page.locator('.breadcrumb a').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');
    }else assert.ok((await page.locator('#works').textContent()).match(/No Work|기록된 작업이 없/));
-   await page.locator('.project-navigation>nav a').nth(1).click();assert.equal(new URL(page.url()).searchParams.get('view'),'decisions');
+   if(!await page.locator('.tools-menu').evaluate(n=>n.open))await page.locator('.tools-menu>summary').click();await page.locator('.tools-menu a[href*="view=decisions"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'decisions');
    if(c.decision){await page.locator(`.decision-summary[data-decision-id="${c.decision}"] a`).click();assert.equal(new URL(page.url()).searchParams.get('decision'),c.decision);assert.equal(await page.locator('.doc').count(),1);await capture(page,c,'decision',width);}
    else assert.ok((await page.locator('#decision-reading').textContent()).match(/No Decisions|기록된 결정이 없/));
    for(const tool of ['status','documents','memory','evidence']){
@@ -109,7 +153,14 @@ async function sourceJourney(page,c,width,offline=false){
   const offline=await browser.newContext({javaScriptEnabled:false});await offline.setOffline(true);const p=await offline.newPage();
   for(const width of [1440,1024,768,390,320]){await p.setViewportSize({width,height:1000});await p.goto(pathToFileURL(offlinePath).href);
    assert.equal(await p.locator('script,form,[data-citation-url]').count(),0);
-   await capture(p,c,'offline-overview',width);await p.locator('.repository-entry a').click();await capture(p,c,'offline-repository',width);await sourceJourney(p,c,width,true);
+   assert.equal(await p.locator('#overview h1').textContent(),c.project_name);
+   assert.equal(await p.locator('.masthead nav').count(),1);
+   assert.equal(await p.locator('#overview .repository-entry,#overview .related-decisions').count(),0);
+   await capture(p,c,'offline-overview',width);
+   if(c.work){await p.locator(`.work-card[data-work-id="${c.work}"] .card-action`).first().click();
+    assert.equal(await p.locator(`article.doc[data-work-id="${c.work}"]:visible`).count(),1);
+    await capture(p,c,'offline-work',width);}
+   await p.locator('.masthead a[href="#repository-explanation"]').click();await capture(p,c,'offline-repository',width);await sourceJourney(p,c,width,true);
    for(const id of ['analysis-tool','documents-tool','memory-tool','evidence-tool']){await p.goto(pathToFileURL(offlinePath).href+'#'+id);assert.ok(await p.locator('#'+id).isVisible());await fits(p);}
   }
   await offline.close();assert.equal(state(c.runtime),before,'GET/export changed canonical, retention, provider or Candidate rows');r.read_state_unchanged=true;

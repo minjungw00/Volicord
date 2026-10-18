@@ -423,23 +423,25 @@ impl ViewerAdapter {
         ));
         html.push_str(&format!("<a class=\"skip skip-link\" href=\"#viewer-content\">{}</a><header class=\"masthead viewer-header\"><div class=\"shell\"><a class=\"brand\" href=\"{}\">Volicord</a>", text(request.locale, "Skip to content", "본문으로 건너뛰기"), if snapshot { "#overview".into() } else { format!("/?view=overview&locale={}&language={}", locale_key(request.locale), percent_encode(&request.requested_language)) }));
         reading::navigation(&mut html, request, snapshot);
+        html.push_str("</div></header><main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">");
         if snapshot || !matches!(request.view, crate::ViewerView::Tools { .. }) {
             html.push_str(&format!(
-                "<span class=\"trial snapshot-mode\" title=\"{}\">{}</span>",
+                "<p class=\"surface-status\">{}</p>",
                 if snapshot {
                     text(
                         request.locale,
-                        "Read-only static snapshot",
-                        "읽기 전용 정적 스냅샷",
+                        "Read-only static publication",
+                        "읽기 전용 정적 문서",
                     )
                 } else {
-                    text(request.locale, "Read-only reading view", "읽기 전용 화면")
-                },
-                text(request.locale, "Read-only", "읽기 전용")
+                    text(
+                        request.locale,
+                        "Read-only reading surface",
+                        "이 읽기 화면은 읽기 전용입니다",
+                    )
+                }
             ));
         }
-        html.push_str("</div></header><main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">");
-        reading::project_navigation(&mut html, request, snapshot);
         reading::runtime_blockers(&mut html, request, &health);
         if snapshot {
             reading::snapshot(&mut html, request, &projection, &understanding);

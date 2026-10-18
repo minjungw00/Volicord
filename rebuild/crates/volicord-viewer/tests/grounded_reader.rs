@@ -359,7 +359,15 @@ fn overview_uses_purpose_and_recent_cards_without_empty_legacy_sections(
                     !overview.contains("data-question=\"Synopsis\""),
                     "Purpose-only controls cannot acquire a synthesized synopsis"
                 );
-                assert!(overview.contains(f["goal"].as_str().ok_or("original Goal")?));
+                let card = overview
+                    .split("class=\"work-card\"")
+                    .nth(1)
+                    .ok_or("card")?
+                    .split("</article>")
+                    .next()
+                    .ok_or("card end")?;
+                assert!(!card.contains(f["goal"].as_str().ok_or("original Goal")?));
+                assert!(card.contains("content-unavailable"));
                 assert!(overview.contains("data-work-state=\"open\""));
                 assert!(!overview.contains("data-work-state=\"completed\""));
                 assert!(page.contains(if mode == "live" {
@@ -431,7 +439,7 @@ fn missing_checkpoint_direction_does_not_erase_goal_or_promote_advice() -> Resul
             "NextStepAvailability"
         );
         assert_eq!(answers.prose.iter().any(|a| a.text == advice), !stale);
-        for (locale, _gap, heading) in [
+        for (locale, _gap, _heading) in [
             (
                 ViewerLocale::English,
                 "No Checkpoint next action is recorded.",
@@ -470,10 +478,11 @@ fn missing_checkpoint_direction_does_not_erase_goal_or_promote_advice() -> Resul
                 ),
                 "the complete recorded direction remains available in document evidence"
             );
-            assert!(overview.contains("Explain why value returns 5"));
+            assert!(!overview.contains("<blockquote class=\"work-summary\""));
+            assert!(detail.contains("Explain why value returns 5"));
             for page in [&detail, &snapshot] {
                 assert_eq!(page.contains(advice), !stale);
-                assert_eq!(page.contains(heading), !stale);
+                assert_eq!(page.contains("data-question=\"NextStep\""), !stale);
             }
         }
     }
@@ -1406,7 +1415,10 @@ fn representative_production_code_preserves_grounding_across_public_readers(
         let code = ViewerAdapter::new(ops(&f)?)
             .render(&code_request, "test-form-authenticity")?
             .html;
-        assert_eq!(code.matches(&format!("<h2>{title}</h2>")).count(), 1);
+        assert!(
+            !code.contains(&format!("<h2>{title}</h2>")),
+            "Work narrative is not grouped by record-role headings"
+        );
         assert!(code.contains(text));
         assert!(code.contains("Both pairs are retained observations"));
     }

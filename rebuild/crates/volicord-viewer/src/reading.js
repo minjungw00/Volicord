@@ -74,10 +74,8 @@
     const point = target?.closest('.source-point');
     const article = document.querySelector('.doc');
     const header = document.querySelector('.masthead');
-    const navigation = document.querySelector('.project-navigation');
     if (article) article.inert = !!point && narrow.matches;
     if (header) header.inert = !!point && narrow.matches;
-    if (navigation) navigation.inert = !!point && narrow.matches;
     if (selected && selected !== point) {
       selected.removeAttribute('role');
       selected.removeAttribute('aria-modal');
