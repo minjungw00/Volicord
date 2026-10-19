@@ -618,20 +618,11 @@ fn render_document(
     html.push_str("</header>");
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
-    html.push_str("<nav class=\"audit-links\" aria-label=\"Document sections\">");
+    html.push_str("<nav class=\"document-nav\" aria-label=\"Document sections\">");
     for (section, label) in [
-        (
-            "reading",
-            text(r.locale, "Read explanation ↓", "설명 읽기 ↓"),
-        ),
-        (
-            "limits",
-            text(
-                r.locale,
-                "Result / verification limits ↓",
-                "결과·검증 한계 ↓",
-            ),
-        ),
+        ("reading", text(r.locale, "Article", "설명")),
+        ("limits", text(r.locale, "Limitations", "한계")),
+        ("choice", text(r.locale, "Recorded choice", "기록된 선택")),
         (
             "original",
             text(r.locale, "Original instructions", "원래 지시"),
@@ -644,20 +635,16 @@ fn render_document(
             "evidence-index",
             text(r.locale, "Evidence index", "근거 색인"),
         ),
-        ("audit", text(r.locale, "Full evidence", "전체 근거")),
+        ("audit", text(r.locale, "Inspect records", "기록 검사")),
     ] {
         if ((section == "original" || section == "verification") && work.is_none())
             || (section == "limits" && !has_limits)
+            || (section == "choice" && decision.is_none())
         {
             continue;
         }
         html.push_str(&format!(
-            "<a class=\"button {}\" href=\"#{}\">{}</a>",
-            if section == "reading" {
-                "primary"
-            } else {
-                "secondary"
-            },
+            "<a href=\"#{}\">{}</a>",
             document_anchor(answers, section),
             label
         ));
@@ -667,19 +654,13 @@ fn render_document(
         document_anchor(answers, "reading")
     ));
     if !current {
-        let quotes = &["ReportedResult"][..];
-        for fact in answers.facts.iter().filter(|a| {
-            quotes.contains(&a.question.as_str())
-                && (a.question != "ReportedResult"
-                    || work.is_some_and(|w| w.reading.answers.result.is_some()))
-        }) {
-            html.push_str(&format!("<section class=\"reading-section recorded-reading\"><p class=\"unit-text\" data-question=\"{}\" lang=\"\" data-statement-role=\"verified-canonical\">{}</p></section>", escape(&fact.question), escape(&fact.text)));
+        if let Some(result) = work
+            .and_then(|w| w.reading.answers.result.as_ref())
+            .and_then(|r| r.original_text.as_ref())
+        {
+            html.push_str(&format!("<details class=\"recorded-reading\"><summary>{}</summary><blockquote lang=\"\">{}</blockquote></details>",
+                text(r.locale,"Original recorded result · quotation", "원래 기록된 결과 · 인용"),escape(result)));
         }
-    }
-    if !current {
-        html.push_str(&format!("<p class=\"article-absence\">{}</p>", text(r.locale,
-            "A reader article is not available. Original recorded facts below remain quotations, not a generated account of the work.",
-            "독자용 설명을 이용할 수 없습니다. 아래 원래 기록은 인용이며 작업을 해석한 설명이 아닙니다.")));
     }
     let mut flow_open = false;
     for (index, answer) in answers
@@ -715,7 +696,7 @@ fn render_document(
     }
     html.push_str("</div>");
     if let Some(d) = decision {
-        render_recorded_choice(html, r, d);
+        render_recorded_choice(html, r, answers, d);
     }
     if let Some(work) = work {
         render_verification(html, r, answers, &work.reading.verification_report);
@@ -997,6 +978,17 @@ fn repository_boundaries(
     html.push_str("</details>");
 }
 
+fn reading_warning(
+    html: &mut String,
+    _r: &ViewerRequest,
+    kind: &str,
+    severity: &str,
+    title: &str,
+    message: &str,
+) {
+    html.push_str(&format!("<aside class=\"reading-warning\" role=\"note\" aria-label=\"{}\" data-warning=\"{}\" data-severity=\"{}\"><strong>{}</strong><p>{}</p></aside>", escape(title),escape(kind),escape(severity),escape(title),escape(message)));
+}
+
 fn opening_context(
     html: &mut String,
     r: &ViewerRequest,
@@ -1016,32 +1008,50 @@ fn opening_context(
             escape(&fact.text)
         ));
     }
-    if answers
-        .facts
+    use volicord_projections::ReadingCautionKind as Kind;
+    let failed: Vec<_> = answers
+        .cautions
         .iter()
-        .any(|a| a.question == "RepositoryScope")
-    {
-        html.push_str(&format!(
-            "<p class=\"limit-shortcut\"><a href=\"#{}\">{}</a></p>",
-            document_anchor(answers, "scope"),
-            text(
-                r.locale,
-                "Inspect included, excluded and unexamined boundaries ↓",
-                "포함·제외·미조사 경계 확인 ↓"
-            )
-        ));
+        .filter(|c| c.kind == Kind::FailedCheck)
+        .collect();
+    let historical = |c: &&volicord_projections::ReadingCaution| {
+        c.historical || work.is_some_and(|w|
+        c.checkpoint.as_ref().is_some_and(|reference| w.reading.verification_report.checks.iter().any(|check|
+            &check.original == reference && check.applicability == volicord_projections::VerificationApplicability::HistoricalAfterRecordedChange)))
+    };
+    if failed.iter().any(|c| !historical(c)) {
+        reading_warning(html, r, "failure", "danger", text(r.locale,"Latest reported check failed", "최근 보고된 검증 실패"),
+            text(r.locale,"Checkpoint verification includes failures. Completion does not establish passing verification. Current code coverage and a comparable retest are not established.","Checkpoint 검증에 실패한 항목이 있습니다. 완료 상태가 검증 통과를 뜻하지는 않습니다. 현재 코드 coverage와 비교 가능한 재검증은 확인되지 않았습니다."));
     }
-    let failed = work
-        .and_then(|w| w.reading.answers.verification.as_ref())
-        .is_some_and(|s| {
-            s.verification
-                .iter()
-                .any(|v| v.state == VerificationState::Failed)
-        });
+    if failed.iter().any(historical)
+        && !answers
+            .facts
+            .iter()
+            .any(|f| f.question == "HistoricalAdversity")
+    {
+        reading_warning(html, r, "historical", "history", text(r.locale,"Historical failure", "과거 검증 실패"),
+            text(r.locale,"An earlier check failed. Later reports or recorded changes do not establish a comparable retest; the original failure remains in the verification report.","과거 검증 실패가 있습니다. 후속 보고나 변경 기록만으로 비교 가능한 재검증을 확정하지 않습니다. 원래 실패는 검증 보고에 남아 있습니다."));
+    }
+    if answers
+        .cautions
+        .iter()
+        .any(|c| c.kind == Kind::PartialCheck && !c.historical)
+    {
+        reading_warning(html, r,"partial","caution",text(r.locale,"Partial verification", "부분 검증"),
+            text(r.locale,"The latest report covers only part of the intended verification. Inspect the original report for its stated limits.","최근 보고는 의도한 검증의 일부만 다룹니다. 원래 보고에서 명시된 한계를 확인하세요."));
+    } else if answers.cautions.iter().any(|c| {
+        matches!(
+            c.kind,
+            Kind::NotRun | Kind::CoverageUnknown | Kind::HistoricalCoverage
+        )
+    }) {
+        reading_warning(html,r,"unverified","note",text(r.locale,"Coverage remains unestablished", "검증 범위 미확인"),
+            text(r.locale,"A reported pass or process exit does not establish current assertion coverage. Skips, historical results and unresolved comparison remain separate in the report.","보고된 통과나 프로세스 종료만으로 현재 assertion coverage를 확정하지 않습니다. 미실행·과거 결과·비교 미해결은 보고에서 구분됩니다."));
+    }
     let rejected = work
         .and_then(|w| w.reading.answers.acceptance.as_ref())
         .is_some_and(|s| s.user_acceptance.state == UserAcceptanceState::Rejected);
-    let important = answers.facts.iter().filter(|a| {
+    for fact in answers.facts.iter().filter(|a| {
         matches!(
             a.question.as_str(),
             "HistoricalAdversity"
@@ -1050,30 +1060,46 @@ fn opening_context(
                 | "Conflicts"
                 | "ReviewBasis"
         ) || (rejected && a.question == "UserAcceptance")
-    });
-    let mut notice = String::new();
-    if failed {
-        notice.push_str(&format!("<p data-question=\"VerificationState\">{}</p>",text(r.locale,"Checkpoint verification includes failures. Completion does not establish passing verification.","Checkpoint 검증에 실패한 항목이 있습니다. 완료 상태가 검증 통과를 뜻하지는 않습니다.")));
-    }
-    for fact in important {
-        notice.push_str(&format!(
-            "<p data-question=\"{}\">{}</p>",
-            escape(&fact.question),
-            escape(&fact.text)
-        ));
-    }
-    if !notice.is_empty() {
-        html.push_str("<aside class=\"opening-limits\">");
-        html.push_str(&notice);
-        html.push_str(&format!(
-            "<a href=\"#{}\">{}</a></aside>",
-            document_anchor(answers, "audit"),
-            text(
-                r.locale,
-                "Inspect exact states and observations ↓",
-                "정확한 상태와 관측 확인 ↓"
-            )
-        ));
+    }) {
+        // Detailed verification already carries these facts; avoid duplicate notices.
+        if fact.question == "VerificationCoverage" {
+            continue;
+        }
+        let (kind, severity, title) = match fact.question.as_str() {
+            "HistoricalAdversity" => (
+                "history",
+                "history",
+                text(r.locale, "Prior adverse observations", "과거 문제 관측"),
+            ),
+            "SourceEvidenceGap" => (
+                "source",
+                "caution",
+                text(
+                    r.locale,
+                    "Source verification unavailable",
+                    "Source 확인 불가",
+                ),
+            ),
+            "UserAcceptance" => (
+                "rejected",
+                "danger",
+                text(
+                    r.locale,
+                    "Latest recorded acceptance: rejected",
+                    "최근 기록된 수락: 거부",
+                ),
+            ),
+            _ => (
+                "review",
+                "caution",
+                text(
+                    r.locale,
+                    "Applicability needs review",
+                    "적용 가능성 검토 필요",
+                ),
+            ),
+        };
+        reading_warning(html, r, kind, severity, title, &fact.text);
     }
     if decision.is_some() {
         for fact in answers
@@ -1086,24 +1112,6 @@ fn opening_context(
                 escape(&fact.text)
             ));
         }
-    }
-    if answers.prose.iter().any(|a| a.question == "Limits")
-        || answers.facts.iter().any(|a| {
-            matches!(
-                a.question.as_str(),
-                "RecordedLimits" | "RecordedNonGoals" | "KnownLimit"
-            )
-        })
-    {
-        html.push_str(&format!(
-            "<p class=\"limit-shortcut\"><a href=\"#{}\">{}</a></p>",
-            document_anchor(answers, "limits"),
-            text(
-                r.locale,
-                "Read the explanation's stated limits ↓",
-                "설명에 명시된 한계 읽기 ↓"
-            )
-        ));
     }
 }
 
@@ -1127,7 +1135,7 @@ fn explanation_diagnostic(
             text(r.locale, "The interpretation has an unavailable dependency or invalid content. Recorded facts remain readable; inspect the diagnostic for its exact cause.", "설명의 의존 근거를 이용할 수 없거나 내용이 유효하지 않습니다. 기록된 사실은 계속 읽을 수 있습니다. 정확한 원인은 진단에서 확인하세요.")
         };
         html.push_str(&format!(
-            "<div class=\"contextual-limits explanation-diagnostic\"><p class=\"dependency-reason\"><strong>{}:</strong> {}</p><details><summary>{}</summary><p>{}</p></details></div>",
+            "<div class=\"reading-warning explanation-diagnostic\" role=\"note\" data-warning=\"source\" data-severity=\"caution\"><p class=\"dependency-reason\"><strong>{}:</strong> {}</p><details><summary>{}</summary><p>{}</p></details></div>",
             text(r.locale, "Explanation limitation", "설명 한계"), reason,
             text(r.locale, "Exact dependency diagnostic", "정확한 의존 근거 진단"), escape(diagnostic)
         ));
@@ -1414,9 +1422,10 @@ fn work_detail(
 fn render_recorded_choice(
     html: &mut String,
     r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
     d: &volicord_projections::UnderstandingDecision,
 ) {
-    html.push_str("<section class=\"reading-section recorded-choice\" data-statement-role=\"verified-canonical\">");
+    html.push_str(&format!("<section class=\"reading-section recorded-choice\" id=\"{}\" tabindex=\"-1\" data-statement-role=\"verified-canonical\">", document_anchor(answers,"choice")));
     heading(
         html,
         2,

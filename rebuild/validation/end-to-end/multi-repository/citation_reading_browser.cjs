@@ -62,6 +62,26 @@ function command(label,args){
   let exactPoint;
   for(const locale of ['en','ko']) for(const width of [1440,1024,768,390,320]){
    await page.setViewportSize({width,height:900});await page.goto(base+`?view=repository&locale=${locale}&language=en`);
+   const navigation=page.locator('.doc .document-nav');
+   assert.equal(await navigation.count(),1,'one document section navigator');
+   assert.equal(await page.locator('.audit-links,.opening-limits,.limit-shortcut').count(),0,'obsolete duplicate controls removed');
+   const destinations=await navigation.locator('a').evaluateAll(links=>links.map(a=>a.hash.slice(1)));
+   for(const id of destinations)assert.equal(await page.locator(`[id="${id}"]`).count(),1,'each navigation destination actually exists');
+   for(const id of destinations){
+    const anchor=navigation.locator(`a[href="#${id}"]`);await anchor.focus();await page.keyboard.press('Enter');
+    await page.waitForURL(url=>url.hash==='#'+id);
+    const target=page.locator(`[id="${id}"]`);await target.waitFor({state:'visible'});
+    const geometry=await page.evaluate(id=>{
+     const nav=document.querySelector('.document-nav').getBoundingClientRect();
+     const target=document.getElementById(id).getBoundingClientRect();
+     return {navTop:nav.top,navBottom:nav.bottom,targetTop:target.top};
+    },id);
+    assert.ok(geometry.navTop>=-1,'persistent navigation remains on screen');
+    assert.ok(geometry.targetTop>=geometry.navBottom-2,'fragment is not covered by navigation');
+   }
+   await page.evaluate(()=>window.scrollBy(0,400));
+   const sticky=await navigation.boundingBox();assert.ok(sticky.y>=-1 && sticky.y<100,'bounded navigation persists after offscreen scrolling');
+   await page.goto(base+`?view=repository&locale=${locale}&language=en`);
    const html=await page.content();result.initial_html_bytes=Buffer.byteLength(html);fs.writeFileSync(path.join(config.output,`live-${locale}-${width}.html`),html);
    const points=page.locator('.source-point');assert.equal(await points.count(),12);
    const link=page.locator('.doc a.evidence-link').nth(8);exactPoint=(await link.getAttribute('href')).slice(1);
@@ -97,6 +117,29 @@ function command(label,args){
    assert.equal(await shared.locator('.claim-quote').textContent(),fixture.answers.prose[2].text);
    assert.equal(await shared.locator('.citation-inspection code').textContent(),fixture.originals[8]);
   }
+  // A permitted response delayed in transport cannot paint a closed or switched claim.
+  await page.setViewportSize({width:390,height:900});
+  await page.goto(base+'?view=repository');
+  let release, intercepted;
+  const arrived=new Promise(resolve=>intercepted=resolve);
+  const held=new Promise(resolve=>release=resolve);
+  const delayed=async route=>{
+   const response=await route.fetch();intercepted();await held;
+   try{await route.fulfill({response});}catch(error){/* aborted selected read */}
+  };
+  await context.route('**/citation?*',delayed);
+  await page.locator('.doc a.evidence-link').nth(8).click();await arrived;
+  await page.keyboard.press('Escape');
+  const originFocus=await page.evaluate(()=>document.activeElement.id);
+  release();await context.unroute('**/citation?*',delayed);
+  await page.locator('.doc a.evidence-link').nth(11).click();
+  let active=page.locator('.source-point:target');
+  await active.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
+  assert.equal(await active.locator('.claim-quote').textContent(),fixture.answers.prose[2].text);
+  assert.equal(await active.locator('.citation-read').isEnabled(),true,'aborted request does not strand its button');
+  const modalControls=active.locator('a.return');await modalControls.focus();
+  await page.keyboard.press('Shift+Tab');assert.ok(await active.evaluate(n=>n.contains(document.activeElement)),'mobile focus remains inside the Source dialog');
+  await page.keyboard.press('Escape');assert.ok(originFocus);
   // Pagination replaces a bounded chunk rather than appending retained file bytes.
   await page.goto(base+'?view=repository');await page.locator('.doc a.evidence-link').first().click();
   let selected=page.locator('.source-point:target');await selected.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
@@ -127,6 +170,12 @@ function command(label,args){
    for(const width of [1440,1024,768,390,320]){
     await p.setViewportSize({width,height:900});await p.goto(pathToFileURL(path.join(config.fixture,'offline.html')).href+'#repository-explanation');
     assert.equal(await p.locator('script,.citation-inspection,[data-citation-url]').count(),0);
+    const nav=p.locator('#repository-explanation .document-nav');assert.equal(await nav.count(),1);
+    for(const href of await nav.locator('a').evaluateAll(a=>a.map(n=>n.getAttribute('href')))){
+     await nav.locator(`a[href="${href}"]`).focus();await p.keyboard.press('Enter');
+     assert.equal(new URL(p.url()).hash,href);assert.ok(await p.locator(`[id="${href.slice(1)}"]`).isVisible());
+    }
+    await p.goto(pathToFileURL(path.join(config.fixture,'offline.html')).href+'#repository-explanation');
     const link=p.locator('#repository-explanation .doc a.evidence-link').nth(8);await link.focus();await p.keyboard.press('Enter');
     const point=p.locator('.source-point:target');assert.equal(await point.locator('code').textContent(),fixture.originals[8],'complete representative mechanism embedded offline');
     assert.ok((await point.textContent()).includes('Offline: only the displayed bytes are included'));

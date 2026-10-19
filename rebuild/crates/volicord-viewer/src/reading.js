@@ -5,6 +5,7 @@
   let selected = null;
   let focusedHash = null;
   let pendingRead = null;
+  const reads = new WeakMap();
   const ko = document.documentElement.lang === 'ko';
   async function readCitation(point, offset = 0) {
     const control = point.querySelector('.citation-inspection');
@@ -12,9 +13,11 @@
     pendingRead?.abort();
     const controller = new AbortController();
     pendingRead = controller;
+    reads.set(control, controller);
     const status = control.querySelector('.citation-status');
     const button = control.querySelector('button');
     button.disabled = true;
+    point.querySelectorAll('pre.code-region').forEach(n => n.hidden = true);
     status.textContent = ko ? '현재 허용된 인용 바이트 확인 중…' : 'Checking current permitted cited bytes…';
     try {
       const url = new URL(control.dataset.citationUrl, location.href);
@@ -29,7 +32,7 @@
           String(result.unit_index) !== control.dataset.unit || String(result.citation_index) !== control.dataset.citation ||
           result.claim !== point.querySelector('.claim-quote').textContent ||
           new TextEncoder().encode(chunk.text).length > 4096) throw Error('binding');
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || reads.get(control) !== controller || selected !== point || !point.isConnected) return;
       point.querySelectorAll('pre.code-region,.initial-range-omission').forEach(n => n.hidden = true);
       let region = control.querySelector('pre');
       if (!region) {
@@ -51,16 +54,20 @@
         ? (ko ? '인용 범위 처음부터 다시 읽기' : 'Read cited range again from start')
         : (ko ? '다음 인용 바이트 읽기 (최대 4,096)' : 'Read next cited bytes (up to 4,096)');
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || reads.get(control) !== controller || selected !== point || !point.isConnected) return;
       // Remove previously displayed bytes from this failed reading point.
-      point.querySelectorAll('pre.code-region').forEach(n => n.remove());
+      // A deleted shared Source must not leave an earlier claim's cached code.
+      document.querySelectorAll('.source-point').forEach(other => {
+        if (other.dataset.sourceId === point.dataset.sourceId)
+          other.querySelectorAll('pre.code-region').forEach(n => n.remove());
+      });
       point.querySelectorAll('.initial-range-omission').forEach(n => n.hidden = true);
       status.textContent = ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'
         : 'This exact citation is unavailable or changed. Return to the explanation and reopen its current version.';
       button.dataset.nextOffset = 0;
       button.textContent = ko ? '허용된 인용 다시 확인' : 'Check permitted citation again';
     } finally {
-      if (!controller.signal.aborted) button.disabled = false;
+      if (reads.get(control) === controller) button.disabled = false;
     }
   }
   function apply() {
@@ -72,11 +79,16 @@
       }
     }
     const point = target?.closest('.source-point');
+    document.querySelectorAll('.document-nav a').forEach(link => {
+      if (link.hash === location.hash) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
     const article = document.querySelector('.doc');
     const header = document.querySelector('.masthead');
     if (article) article.inert = !!point && narrow.matches;
     if (header) header.inert = !!point && narrow.matches;
     if (selected && selected !== point) {
+      pendingRead?.abort();
       selected.removeAttribute('role');
       selected.removeAttribute('aria-modal');
     }

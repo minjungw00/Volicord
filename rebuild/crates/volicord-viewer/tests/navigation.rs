@@ -232,8 +232,30 @@ fn nested_repository_scope_and_boundaries_precede_explanation_in_live_and_offlin
         assert!(
             doc.find("data-question=\"RepositoryScope\"")
                 .ok_or("ordinary scope")?
-                < doc.find("class=\"audit-links\"").ok_or("reading links")?
+                < doc.find("class=\"document-nav\"").ok_or("reading links")?
         );
+        assert_eq!(doc.matches("class=\"document-nav\"").count(), 1);
+        assert!(!doc.contains("Inspect exact states"));
+        assert!(!doc.contains("Read the explanation's stated limits"));
+        let nav = doc
+            .split("class=\"document-nav\"")
+            .nth(1)
+            .ok_or("nav")?
+            .split("</nav>")
+            .next()
+            .ok_or("nav end")?;
+        assert!(!nav.contains("Original instructions"));
+        assert!(!nav.contains("Verification report"));
+        for destination in nav
+            .split("href=\"#")
+            .skip(1)
+            .filter_map(|s| s.split('"').next())
+        {
+            assert!(
+                doc.contains(&format!("id=\"{destination}\"")),
+                "missing actual section {destination}"
+            );
+        }
         assert!(doc.contains("legacy"));
         assert!(!doc.contains("unexamined = True"));
         assert!(doc.contains("Included, excluded and unexamined boundaries"));

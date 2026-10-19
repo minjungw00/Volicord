@@ -36,7 +36,7 @@ fn ordinary_text(html: &str) -> String {
 
 fn check_primary(
     html: &str,
-    verification: &str,
+    _verification: &str,
     review: &str,
     acceptance: &str,
     history: Option<&str>,
@@ -47,7 +47,7 @@ fn check_primary(
         .nth(1)
         .and_then(|s| s.split("</div>").next())
         .ok_or("record facts missing")?;
-    for state in [verification, review, acceptance] {
+    for state in [review, acceptance] {
         if facts.matches(state).count() != 1 {
             return Err("current state missing or duplicated");
         }
@@ -131,6 +131,38 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
             assert_eq!(state.verification, cp.verification);
             assert_eq!(state.user_review, cp.user_review);
             assert_eq!(state.user_acceptance, cp.user_acceptance);
+        }
+        let expected_checks: Vec<_> = before
+            .checkpoint_history
+            .iter()
+            .flat_map(|cp| {
+                cp.verification
+                    .iter()
+                    .enumerate()
+                    .map(move |(index, check)| (cp, index, check))
+            })
+            .collect();
+        assert_eq!(
+            w.reading.verification_report.checks.len(),
+            expected_checks.len()
+        );
+        for (actual, (cp, index, check)) in w
+            .reading
+            .verification_report
+            .checks
+            .iter()
+            .zip(expected_checks)
+        {
+            assert_eq!(actual.original.checkpoint_id, cp.id.to_string());
+            assert_eq!(actual.original.checkpoint_revision, cp.revision);
+            assert_eq!(actual.original.verification_index, index);
+            assert_eq!(actual.reported_state, check.state.into());
+            assert_eq!(actual.original_outcome, check.outcome);
+            assert_eq!(actual.source_id, check.source_id.map(|id| id.to_string()));
+            assert_eq!(
+                actual.reported_at_unix_micros,
+                cp.recorded_at.as_unix_micros()
+            );
         }
         let micros: Vec<_> = before
             .checkpoint_history
@@ -218,12 +250,8 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                 ),
             };
             assert_eq!(
-                (
-                    fact("VerificationState")?,
-                    fact("UserReview")?,
-                    fact("UserAcceptance")?
-                ),
-                expected
+                (fact("UserReview")?, fact("UserAcceptance")?),
+                (expected.1, expected.2)
             );
             let summary = answers
                 .facts
@@ -304,25 +332,15 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     .next()
                     .ok_or("end")?;
                 let opening = selected
-                    .split("class=\"audit-links\"")
+                    .split("class=\"document-nav\"")
                     .next()
                     .ok_or("opening")?;
                 if let Some(summary) = summary_text {
                     assert!(opening.contains(summary));
                 }
                 if case != "retained" && case != "recovered" {
-                    assert_eq!(
-                        opening
-                            .matches("data-question=\"VerificationState\"")
-                            .count(),
-                        1,
-                        "one concise failure notice; individual outcomes remain in audit"
-                    );
-                    assert!(opening.contains(if language == "en" {
-                        "Checkpoint verification includes failures"
-                    } else {
-                        "Checkpoint 검증에 실패한 항목"
-                    }));
+                    assert_eq!(opening.matches("data-warning=\"failure\"").count(), usize::from(case != "blank_later"),
+                        "one latest-reported failure notice; full original outcomes remain inspectable");
                 }
                 assert!(selected.contains("data-question=\"ReportedResult\""));
                 check_primary(
@@ -353,7 +371,7 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     check_audit(&missing, &exact_records),
                     Err("exact observation lost")
                 );
-                let missing = selected.replace(expected.0, "removed current fact");
+                let missing = selected.replace(expected.1, "removed current fact");
                 assert_eq!(
                     check_primary(
                         &missing,
@@ -366,7 +384,7 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     Err("current state missing or duplicated")
                 );
                 let duplicated =
-                    selected.replace(expected.0, &format!("{} {}", expected.0, expected.0));
+                    selected.replace(expected.1, &format!("{} {}", expected.1, expected.1));
                 assert_eq!(
                     check_primary(
                         &duplicated,

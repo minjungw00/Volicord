@@ -849,7 +849,7 @@ fn ordinary_hierarchy_separates_catalog_detail_and_audit_in_both_locales(
         );
         assert!(detail.contains("class=\"doc-head\""));
         assert!(
-            detail.find("class=\"audit-links\"").ok_or("actions")?
+            detail.find("class=\"document-nav\"").ok_or("actions")?
                 < detail.find("class=\"record-box\"").ok_or("record")?
         );
         assert!(detail.contains("data-question=\"VerificationCoverage\""));
