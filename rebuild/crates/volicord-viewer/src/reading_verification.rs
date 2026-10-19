@@ -112,6 +112,11 @@ fn check(
                 "Historical: later changes were recorded",
                 "과거 결과: 이후 변경이 기록됨",
             ),
+            VerificationApplicability::CapturedArtifactsAtExecution => text(
+                r.locale,
+                "Captured artifacts at execution; current coverage unestablished",
+                "실행 당시 관측 대상; 현재 coverage 미확인",
+            ),
             VerificationApplicability::Unknown => text(
                 r.locale,
                 "Current applicability unestablished",
@@ -131,8 +136,120 @@ fn check(
             escape(quote)
         ));
     }
-    html.push_str(&format!("<p class=\"source-note\">{}</p><details><summary>{}</summary><p><a href=\"#{}\">Checkpoint {}@{} · verification[{}]</a></p><p>{}: {}</p><p>{}: {}</p></details></section>",
-        text(r.locale,"Comparable retest: not established. A different run's pass does not resolve this report.", "비교 가능한 재검증: 미확인. 다른 실행의 통과로 이 보고가 해결되지는 않습니다."),
+    html.push_str("<dl>");
+    definition(
+        html,
+        text(
+            r.locale,
+            "Declared bounded coverage",
+            "선언된 한정 coverage",
+        ),
+        detail(&check.declared_coverage, r.locale),
+    );
+    definition(
+        html,
+        text(
+            r.locale,
+            "Operator environment description",
+            "작업자 환경 설명",
+        ),
+        detail(&check.declared_environment, r.locale),
+    );
+    definition(
+        html,
+        text(r.locale, "Comparable retest", "비교 가능한 재검증"),
+        &comparison_label(&check.retest_comparison, r.locale),
+    );
+    html.push_str("</dl>");
+    if let EvidenceDetail::Observed(run) = &check.scoped_run {
+        html.push_str("<details class=\"scoped-check-basis\"><summary>");
+        html.push_str(text(
+            r.locale,
+            "Original captured check and target basis",
+            "원래 캡처한 검증 및 대상 근거",
+        ));
+        html.push_str("</summary><dl>");
+        definition(html, "Check key", &run.declaration.key);
+        definition(
+            html,
+            text(r.locale, "Declared assertion", "선언된 assertion"),
+            &run.declaration.assertion,
+        );
+        definition(html, "Operation", &run.operation_id);
+        definition(html, "Invocation fingerprint", &run.invocation_fingerprint);
+        definition(html, "Analysis Snapshot", &run.analysis_snapshot_id);
+        definition(html, "Repository Snapshot", &run.repository_snapshot_id);
+        definition(
+            html,
+            "Repository Source",
+            &run.repository_source_id.to_string(),
+        );
+        definition(html, "Work revision", &run.work_revision.to_string());
+        definition(
+            html,
+            text(r.locale, "Started", "시작 시각"),
+            &instant(run.started_at_unix_micros, r.locale),
+        );
+        definition(
+            html,
+            text(r.locale, "Ended", "종료 시각"),
+            &instant(run.ended_at_unix_micros, r.locale),
+        );
+        definition(
+            html,
+            text(r.locale, "Artifact samples", "대상 표본"),
+            if run.target_unchanged_during_run {
+                text(
+                    r.locale,
+                    "Before/after hashes agree within declared paths",
+                    "선언된 경로의 전후 해시 일치",
+                )
+            } else {
+                text(
+                    r.locale,
+                    "Target changed or became unavailable during execution",
+                    "실행 중 대상 변경 또는 이용 불가",
+                )
+            },
+        );
+        for artifact in &run.artifacts {
+            definition(html, &artifact.path, &artifact.sha256);
+        }
+        if let Some(evidence) = &run.assertion_evidence {
+            definition(
+                html,
+                text(
+                    r.locale,
+                    "Assertion evidence coordinates",
+                    "Assertion 근거 좌표",
+                ),
+                &format!(
+                    "{:?} bytes {}..{} · sha256:{}",
+                    evidence.stream, evidence.start_byte, evidence.end_byte, evidence.sha256
+                ),
+            );
+        }
+        if let Some(link) = &run.retest {
+            definition(
+                html,
+                text(
+                    r.locale,
+                    "Explicit comparison rationale",
+                    "명시적 비교 근거",
+                ),
+                &link.rationale,
+            );
+            definition(
+                html,
+                text(r.locale, "Prior Command Source", "이전 명령 Source"),
+                &link.source_id.to_string(),
+            );
+        }
+        html.push_str("</dl><p class=\"source-note\">");
+        html.push_str(text(r.locale,"Explicit local capture. Assertion and coverage are operator reports bound to retained stream coordinates. Artifact end-point samples prove neither an atomic snapshot nor whole-tree coverage. No trusted-host or human acceptance is established.", "명시적 로컬 캡처. Assertion과 coverage는 보존 스트림 좌표에 결속된 작업자 보고입니다. 대상 전후 표본은 원자적 snapshot이나 전체 트리 coverage를 확정하지 않습니다. 신뢰 호스트 캡처나 사용자 수락은 미확인입니다."));
+        html.push_str("</p></details>");
+    }
+    html.push_str(&format!("<details><summary>{}</summary><p><a href=\"#{}\">Checkpoint {}@{} · verification[{}]</a></p><p>{}: {}</p><p>{}: {}</p></details></section>",
         text(r.locale,"Inspect original report identity", "원래 보고 식별자 검사"),document_anchor(answers,"audit"),
         escape(&check.original.checkpoint_id),check.original.checkpoint_revision,check.original.verification_index,
         text(r.locale,"Command Source", "명령 Source"),escape(check.source_id.as_deref().unwrap_or(text(r.locale,"None recorded", "기록 없음"))),
@@ -148,7 +265,7 @@ pub(super) fn render_verification(
     html.push_str(&format!("<section class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p>{}</p><p class=\"source-note\">{}</p>",
         document_anchor(answers,"verification"),text(r.locale,"Verification report", "검증 보고"),
         text(r.locale,"Observed executions and Checkpoint reports have separate provenance. Exit status proves no assertions.", "실행 관측과 Checkpoint 보고는 출처가 다릅니다. 종료 코드만으로 assertion을 확정하지 않습니다."),
-        text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·assertion 상세·coverage는 관측되었을 때만 표시합니다.")));
+        if report.checks.iter().all(|c|matches!(c.scoped_run,EvidenceDetail::NotObserved)) {text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·assertion 상세·coverage는 관측되었을 때만 표시합니다.")} else {text(r.locale,"Only explicit recorded relationships support comparison. Earlier failures remain original facts; environment and coverage descriptions are attributed operator reports.","명시적으로 기록된 관계만 비교를 뒷받침합니다. 이전 실패는 원래 사실로 보존하며 환경과 coverage 설명은 작업자 보고로 표시합니다.")}));
     if report.checks.is_empty() {
         html.push_str(&format!(
             "<p>{}</p>",
@@ -211,7 +328,11 @@ pub(super) fn render_verification(
                 html.push_str("<dl>");
                 definition(html,text(r.locale,"Started", "시작 시각"),&instant(o.started_at_unix_micros,r.locale));
                 definition(html,text(r.locale,"Ended", "종료 시각"),&instant(o.ended_at_unix_micros,r.locale));
-                definition(html,text(r.locale,"Target limitation", "대상 한계"),text(r.locale,"Selected analysis only; execution-time tree was not rechecked", "선택된 분석이며 실행 시점의 트리는 재확인하지 않았습니다"));
+                definition(html,text(r.locale,"Target limitation", "대상 한계"),match o.target_state {
+                    ExecutionTargetState::SelectedAnalysisOnlyNotRechecked => text(r.locale,"Selected analysis only; execution-time tree was not rechecked", "선택된 분석이며 실행 시점의 트리는 재확인하지 않았습니다"),
+                    ExecutionTargetState::DeclaredArtifactsSampled => text(r.locale,"Declared artifact hashes sampled before and after execution; whole-tree coverage unestablished", "실행 전후 선언 대상 해시 표본; 전체 트리 coverage 미확인"),
+                    ExecutionTargetState::DeclaredArtifactsChanged => text(r.locale,"Declared targets changed or became unavailable during execution", "실행 중 선언 대상 변경 또는 이용 불가"),
+                });
                 definition(html,text(r.locale,"Timeout detected", "시간 초과 감지"),if o.timeout_detected {text(r.locale,"Yes", "예")} else {text(r.locale,"No", "아니요")});
                 definition(html,text(r.locale,"Cancellation requested", "취소 요청됨"),if o.cancellation_requested {text(r.locale,"Yes", "예")} else {text(r.locale,"No", "아니요")});
                 definition(html,text(r.locale,"Signal number", "시그널 번호"),&o.signal_number.map(|n|n.to_string()).unwrap_or_else(||text(r.locale,"None observed", "관측 없음").into()));
@@ -300,4 +421,102 @@ pub(super) fn render_verification(
         document_anchor(answers, "audit"),
         text(r.locale, "Inspect complete originals", "전체 원본 검사")
     ));
+}
+
+fn comparison_label(comparison: &RetestComparison, locale: ViewerLocale) -> String {
+    match comparison {
+        RetestComparison::Unresolved => text(
+            locale,
+            "Not established. A different run's pass does not resolve this report.",
+            "미확인. 다른 실행의 통과로 이 보고가 해결되지는 않습니다.",
+        )
+        .into(),
+        RetestComparison::Comparable {
+            previous,
+            target_relation,
+            earlier_assertion,
+            later_assertion,
+            ..
+        } => format!(
+            "{}: {}@{} verification[{}] · {:?} · {:?} → {:?}. {}",
+            text(
+                locale,
+                "Explicit comparable rerun",
+                "명시적 비교 가능 재실행"
+            ),
+            previous.checkpoint_id,
+            previous.checkpoint_revision,
+            previous.verification_index,
+            target_relation,
+            earlier_assertion,
+            later_assertion,
+            text(
+                locale,
+                "Original failure remains recorded; comparison is limited to declared coverage.",
+                "원래 실패는 보존하며 비교는 선언된 coverage로 제한됩니다."
+            )
+        ),
+        RetestComparison::NotComparable { previous, reason } => format!(
+            "{}: {}@{} verification[{}] · {}",
+            text(
+                locale,
+                "Explicit link is not comparable",
+                "명시적 연결은 비교 불가"
+            ),
+            previous.checkpoint_id,
+            previous.checkpoint_revision,
+            previous.verification_index,
+            comparison_limit(*reason, locale)
+        ),
+    }
+}
+
+fn comparison_limit(reason: ComparisonLimit, locale: ViewerLocale) -> &'static str {
+    match reason {
+        ComparisonLimit::PriorRunUnavailable => text(
+            locale,
+            "Prior scoped run/revision unavailable",
+            "이전 범위 실행 또는 revision 이용 불가",
+        ),
+        ComparisonLimit::CheckIdentityOrPurposeChanged => text(
+            locale,
+            "Check identity, purpose or intended assertion differs",
+            "검증 식별자·목적 또는 의도한 assertion 다름",
+        ),
+        ComparisonLimit::InvocationChanged => text(
+            locale,
+            "Invocation fingerprint differs",
+            "호출 fingerprint 다름",
+        ),
+        ComparisonLimit::CoverageMissingOrDifferent => text(
+            locale,
+            "Declared coverage missing or different",
+            "선언된 coverage 누락 또는 다름",
+        ),
+        ComparisonLimit::EnvironmentMissingOrDifferent => text(
+            locale,
+            "Declared environment missing or different",
+            "선언된 환경 누락 또는 다름",
+        ),
+        ComparisonLimit::TargetScopeChanged => text(
+            locale,
+            "Declared target path scope differs",
+            "선언된 대상 경로 범위 다름",
+        ),
+        ComparisonLimit::TargetChangedDuringRun => text(
+            locale,
+            "Target changed or became unavailable during execution",
+            "실행 중 대상 변경 또는 이용 불가",
+        ),
+        ComparisonLimit::TargetRelationContradicted => text(
+            locale,
+            "Measured artifact hashes contradict the declared target relation",
+            "관측된 대상 해시와 선언된 대상 관계 불일치",
+        ),
+        ComparisonLimit::AssertionNotObserved => text(
+            locale,
+            "At least one assertion outcome was not observed",
+            "하나 이상의 assertion 결과 미관측",
+        ),
+    }
 }

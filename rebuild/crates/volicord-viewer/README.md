@@ -729,3 +729,30 @@ unsupported or corrupt dependency. Wrong Host is 421 and wrong Origin/authentici
 is 403, as is a withheld Candidate field. HTTP results are not cached. Static Viewer exports include only their bounded
 permitted subset and native evidence anchors; they have no live inspection queries,
 protected forms or script. Raw row envelopes require intentional disclosure.
+
+
+### Explicit local check reports
+
+Verification detail is available without an article: `volicord work verification
+--work WORK_ID` (add global `--json` for the full typed model). A local operator can
+use `work source run --check-input DECLARATION.json` with the existing exact Work,
+Analysis, timeout and retention arguments. The declaration contains `key`, `purpose`,
+`assertion`, optional `coverage`/non-secret `environment`, and up to sixteen included
+`target_paths`. Only selected target hashes are sampled; no environment dump or
+whole-tree coverage is inferred.
+
+`work check --input REPORT.json` records that exact retained Source in a same-Work
+pause Checkpoint. The report contains hexadecimal `work_item_id`/`source_id`,
+`assertion_state` (`not_observed`, `passed`, `failed`), optional `assertion_evidence`
+(`stream`, UTF-8 `start_byte`/`end_byte`, `sha256`), original `outcome` and `next_step`.
+An observed assertion is an operator interpretation bound to exact retained bytes;
+exit zero alone cannot supply it. Optional `retest` names the exact earlier
+`checkpoint_id`, `checkpoint_revision`, `verification_index`, `source_id`, explicit
+`target_relation` (`same_artifacts`/`changed_artifacts`) and `rationale`.
+
+MCP `work_source action=record_check` accepts the same report under `recording` with
+exact outer Project/Work. It executes no command. Missing output prevents new report
+admission; later output expiry/deletion preserves the original Checkpoint report.
+Viewer shows whether the recorded comparison bases support a comparable rerun and
+keeps earlier failures. Current whole-tree coverage, trusted-host capture and user
+review/acceptance remain separate.

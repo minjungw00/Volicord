@@ -757,7 +757,7 @@ pub fn work_answers(
         });
         result.facts.push(fact(if historical {"HistoricalVerification"} else {"VerificationObservation"},
             format!("{}: {} · {} · {}",fixed(locale,"Recorded verification quotation","기록된 검증 인용"),check.reported_state.label(locale),check.original_outcome.as_deref().unwrap_or(""),
-                fixed(locale,"Assertion detail and comparable retest are not recorded; this report establishes no user acceptance or unrecorded coverage.","assertion 상세와 비교 가능한 재검증은 기록되지 않았습니다. 이 보고로 사용자 수락이나 미기록 coverage를 확정하지 않습니다.")),keys));
+                if matches!(check.scoped_run,crate::EvidenceDetail::Observed(_)) {fixed(locale,"Explicit scoped check report; comparison and declared coverage are separately qualified. No user acceptance is established.","명시적 범위 검증 보고; 비교와 선언된 coverage는 별도로 한정합니다. 사용자 수락은 미확인입니다.")} else {fixed(locale,"Assertion detail and comparable retest are not recorded; this report establishes no user acceptance or unrecorded coverage.","assertion 상세와 비교 가능한 재검증은 기록되지 않았습니다. 이 보고로 사용자 수락이나 미기록 coverage를 확정하지 않습니다.")}),keys));
     }
     for (field, state) in [
         ("UserReview", answers.review.as_ref()),

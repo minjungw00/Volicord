@@ -3,7 +3,10 @@
 //! reconstructed from a Checkpoint outcome or a successful process exit.
 use crate::WorkStateObservation;
 use serde::Serialize;
-use volicord_context::{CanonicalReadBasis, CommandTermination, SourcePayload, VerificationState};
+use volicord_context::{
+    AssertionState, CanonicalReadBasis, CheckTargetRelation, CommandTermination, ScopedCheckRun,
+    SourcePayload, VerificationState,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(tag = "state", content = "value", rename_all = "snake_case")]
@@ -47,12 +50,37 @@ impl ReportedCheckState {
 #[serde(rename_all = "snake_case")]
 pub enum VerificationApplicability {
     HistoricalAfterRecordedChange,
+    CapturedArtifactsAtExecution,
     Unknown,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum RetestComparison {
+    Unresolved,
+    Comparable {
+        previous: VerificationReference,
+        source_id: String,
+        target_relation: CheckTargetRelation,
+        earlier_assertion: AssertionState,
+        later_assertion: AssertionState,
+    },
+    NotComparable {
+        previous: VerificationReference,
+        reason: ComparisonLimit,
+    },
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum RetestComparison {
-    Unresolved,
+pub enum ComparisonLimit {
+    PriorRunUnavailable,
+    CheckIdentityOrPurposeChanged,
+    InvocationChanged,
+    CoverageMissingOrDifferent,
+    EnvironmentMissingOrDifferent,
+    TargetScopeChanged,
+    TargetChangedDuringRun,
+    TargetRelationContradicted,
+    AssertionNotObserved,
 }
 
 /// Original vector position within this exact Checkpoint revision, NOT an
@@ -72,6 +100,10 @@ pub struct VerificationReading {
     pub source_id: Option<String>,
     pub intended_check: EvidenceDetail<String>,
     pub assertion_result: EvidenceDetail<String>,
+    /// Original canonical report basis survives disposal of execution output.
+    pub scoped_run: EvidenceDetail<ScopedCheckRun>,
+    pub declared_coverage: EvidenceDetail<String>,
+    pub declared_environment: EvidenceDetail<String>,
     pub applicability: VerificationApplicability,
     pub later_changed_checkpoint_ids: Vec<String>,
     pub retest_comparison: RetestComparison,
@@ -134,6 +166,8 @@ pub enum StreamRepresentation {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionTargetState {
+    DeclaredArtifactsSampled,
+    DeclaredArtifactsChanged,
     SelectedAnalysisOnlyNotRechecked,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -181,7 +215,7 @@ pub(crate) fn verification_report(
     canonical: &CanonicalReadBasis,
     states: &[WorkStateObservation],
 ) -> WorkVerificationReport {
-    let checks: Vec<_> = states
+    let mut checks: Vec<_> = states
         .iter()
         .flat_map(|s| {
             s.verification
@@ -197,10 +231,49 @@ pub(crate) fn verification_report(
                     reported_state: fact.state.into(),
                     original_outcome: fact.outcome.clone(),
                     source_id: fact.source_id.map(|id| id.to_string()),
-                    intended_check: EvidenceDetail::NotObserved,
-                    assertion_result: EvidenceDetail::NotObserved,
+                    intended_check: fact.scoped_run.as_ref().map_or(
+                        EvidenceDetail::NotObserved,
+                        |run| {
+                            EvidenceDetail::Observed(format!(
+                                "{}: {}",
+                                run.declaration.key, run.declaration.purpose
+                            ))
+                        },
+                    ),
+                    assertion_result: fact
+                        .scoped_run
+                        .as_ref()
+                        .filter(|r| r.assertion_state != AssertionState::NotObserved)
+                        .map_or(EvidenceDetail::NotObserved, |run| {
+                            EvidenceDetail::Observed(format!(
+                                "Operator reported {:?}: {}",
+                                run.assertion_state, run.declaration.assertion
+                            ))
+                        }),
+                    scoped_run: fact
+                        .scoped_run
+                        .clone()
+                        .map_or(EvidenceDetail::NotObserved, EvidenceDetail::Observed),
+                    declared_coverage: fact
+                        .scoped_run
+                        .as_ref()
+                        .and_then(|r| r.declaration.coverage.clone())
+                        .map_or(EvidenceDetail::NotObserved, EvidenceDetail::Observed),
+                    declared_environment: fact
+                        .scoped_run
+                        .as_ref()
+                        .and_then(|r| r.declaration.environment.clone())
+                        .map_or(EvidenceDetail::NotObserved, EvidenceDetail::Observed),
                     applicability: if s.later_changed_checkpoint_ids.is_empty() {
-                        VerificationApplicability::Unknown
+                        if fact
+                            .scoped_run
+                            .as_ref()
+                            .is_some_and(|r| r.target_unchanged_during_run)
+                        {
+                            VerificationApplicability::CapturedArtifactsAtExecution
+                        } else {
+                            VerificationApplicability::Unknown
+                        }
                     } else {
                         VerificationApplicability::HistoricalAfterRecordedChange
                     },
@@ -213,6 +286,13 @@ pub(crate) fn verification_report(
                 })
         })
         .collect();
+    let comparisons = checks
+        .iter()
+        .map(|c| compare_retest(c, &checks))
+        .collect::<Vec<_>>();
+    for (check, comparison) in checks.iter_mut().zip(comparisons) {
+        check.retest_comparison = comparison;
+    }
     let mut executions = Vec::new();
     for id in checks
         .iter()
@@ -322,4 +402,83 @@ pub fn work_verification_publication_basis(
             },
         )
         .collect()
+}
+
+fn compare_retest(
+    current: &VerificationReading,
+    checks: &[VerificationReading],
+) -> RetestComparison {
+    let EvidenceDetail::Observed(run) = &current.scoped_run else {
+        return RetestComparison::Unresolved;
+    };
+    let Some(link) = &run.retest else {
+        return RetestComparison::Unresolved;
+    };
+    let reference = VerificationReference {
+        checkpoint_id: link.checkpoint_id.to_string(),
+        checkpoint_revision: link.checkpoint_revision,
+        verification_index: link.verification_index,
+    };
+    let prior = checks
+        .iter()
+        .find(|c| {
+            c.original == reference && c.source_id.as_deref() == Some(&link.source_id.to_string())
+        })
+        .and_then(|c| match &c.scoped_run {
+            EvidenceDetail::Observed(r) => Some(r),
+            _ => None,
+        });
+    let failure = |reason| RetestComparison::NotComparable {
+        previous: reference.clone(),
+        reason,
+    };
+    let Some(prior) = prior else {
+        return failure(ComparisonLimit::PriorRunUnavailable);
+    };
+    if run.work_item_id != prior.work_item_id
+        || run.work_revision != prior.work_revision
+        || prior.ended_at_unix_micros >= run.started_at_unix_micros
+    {
+        return failure(ComparisonLimit::PriorRunUnavailable);
+    }
+    if run.declaration.key != prior.declaration.key
+        || run.declaration.purpose != prior.declaration.purpose
+        || run.declaration.assertion != prior.declaration.assertion
+    {
+        return failure(ComparisonLimit::CheckIdentityOrPurposeChanged);
+    }
+    if run.invocation_fingerprint != prior.invocation_fingerprint {
+        return failure(ComparisonLimit::InvocationChanged);
+    }
+    if run.declaration.coverage.is_none() || run.declaration.coverage != prior.declaration.coverage
+    {
+        return failure(ComparisonLimit::CoverageMissingOrDifferent);
+    }
+    if run.declaration.environment.is_none()
+        || run.declaration.environment != prior.declaration.environment
+    {
+        return failure(ComparisonLimit::EnvironmentMissingOrDifferent);
+    }
+    if run.declaration.target_paths != prior.declaration.target_paths {
+        return failure(ComparisonLimit::TargetScopeChanged);
+    }
+    if !run.target_unchanged_during_run || !prior.target_unchanged_during_run {
+        return failure(ComparisonLimit::TargetChangedDuringRun);
+    }
+    let equal = run.artifacts == prior.artifacts;
+    if equal != (link.target_relation == CheckTargetRelation::SameArtifacts) {
+        return failure(ComparisonLimit::TargetRelationContradicted);
+    }
+    if run.assertion_state == AssertionState::NotObserved
+        || prior.assertion_state == AssertionState::NotObserved
+    {
+        return failure(ComparisonLimit::AssertionNotObserved);
+    }
+    RetestComparison::Comparable {
+        previous: reference,
+        source_id: link.source_id.to_string(),
+        target_relation: link.target_relation,
+        earlier_assertion: prior.assertion_state,
+        later_assertion: run.assertion_state,
+    }
 }

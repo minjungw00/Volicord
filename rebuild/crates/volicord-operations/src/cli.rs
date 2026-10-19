@@ -1722,6 +1722,20 @@ fn render_verification_report(
                 check["applicability"].as_str().unwrap_or("unknown")
             ),
         )?;
+        if check["scoped_run"]["state"] == "observed" {
+            let run = &check["scoped_run"]["value"];
+            write_line(
+                stdout,
+                format!(
+                    "    Check {} · {} · operator assertion {} · {}",
+                    run["declaration"]["key"].as_str().unwrap_or(""),
+                    run["declaration"]["purpose"].as_str().unwrap_or(""),
+                    run["assertion_state"].as_str().unwrap_or("not_observed"),
+                    run["declaration"]["assertion"].as_str().unwrap_or("")
+                ),
+            )?;
+            write_line(stdout,format!("    Declared coverage {} · declared environment {} · sampled artifacts {} · comparison {}",run["declaration"]["coverage"],run["declaration"]["environment"],run["target_unchanged_during_run"],check["retest_comparison"]))?;
+        }
         if let Some(quote) = check["original_outcome"].as_str() {
             write_line(
                 stdout,
@@ -1780,9 +1794,9 @@ fn render_verification_report(
             checks.min(64),
             runs.min(32),
             if ko {
-                "테스트 ID·환경·현재 coverage·재검증 관계는 미관측입니다. 전체 원본: --json / canonical_inspect / work source read."
+                "종료 코드 0만으로 assertion은 미확인입니다. 현재 전체 트리 coverage는 미확인입니다. 명시적 검증 보고와 비교는 자체 근거를 유지합니다. 전체 원본: --json / canonical_inspect / work source read."
             } else {
-                "Test IDs, environment, current coverage and retest relation are unobserved. Full originals: --json / canonical_inspect / work source read."
+                "Exit zero alone establishes no assertion. Current whole-tree coverage is unestablished. Explicit check reports and comparisons retain their own basis. Full originals: --json / canonical_inspect / work source read."
             }
         ),
     )

@@ -551,3 +551,13 @@ default. The launched viewer authorizes one Project; do not present a global Pro
 catalog. Analysis and Documents keep their specialized journeys, and protected
 memory actions remain explicit. Static snapshots describe their included subset
 and keep native evidence links without live search or mutation controls.
+
+
+The explicit scoped verification producer supplies D-21 with named check/purpose,
+retained Command Source, original execution and sampled artifact basis. Reader
+comparison requires an exact recorded prior run and supported declared comparison
+basis; missing/different environment or coverage and unstable/contradictory targets
+remain typed non-comparable. Earlier failures remain visible beside later passes.
+Historical inputs remain unobserved rather than acquiring inferred identities.
+Artifact scope is bounded and operator assertion interpretation remains attributed;
+current whole-tree coverage, trusted-host capture and user acceptance are separate.

@@ -194,3 +194,139 @@ fn explicit_cli_capture_and_attachment_preserve_independent_receipts() -> Result
     assert_eq!(cp.verification[0].source_id, Some(source));
     Ok(())
 }
+
+#[test]
+fn comparison_requires_explicit_identity_coverage_environment_and_measured_target_relation(
+) -> Result<(), Box<dyn Error>> {
+    use volicord_projections::{
+        ComparisonLimit, EvidenceDetail, ReportedCheckState, RetestComparison,
+    };
+    let f = fixture()?;
+    let original = f.ops.read_work_verification(f.project, f.work)?;
+    assert_eq!(original.checks.len(), 2);
+    assert_eq!(
+        original.checks[0].reported_state,
+        ReportedCheckState::Failed
+    );
+    assert_eq!(
+        original.checks[0].retest_comparison,
+        RetestComparison::Unresolved
+    );
+    assert!(matches!(
+        original.checks[1].retest_comparison,
+        RetestComparison::Comparable {
+            target_relation: CheckTargetRelation::ChangedArtifacts,
+            earlier_assertion: AssertionState::Failed,
+            later_assertion: AssertionState::Passed,
+            ..
+        }
+    ));
+    assert!(f
+        .ops
+        .read_work_verification(f.project, f.other)?
+        .checks
+        .is_empty());
+    let before = f.ops.canonical_basis(f.project)?;
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    for variant in [
+        "unlinked",
+        "identity",
+        "purpose",
+        "coverage",
+        "environment",
+        "unknown_environment",
+        "relation",
+        "unknown_assertion",
+    ] {
+        let mut declared = declaration();
+        match variant {
+            "identity" => declared.key = "other.check".into(),
+            "purpose" => declared.purpose = "Other unrelated purpose".into(),
+            "coverage" => declared.coverage = None,
+            "environment" => declared.environment = Some("Other environment".into()),
+            "unknown_environment" => declared.environment = None,
+            _ => {}
+        }
+        let source = f
+            .ops
+            .run_work_check(command(&f.ops, f.project, f.work)?, declared)?
+            .source_id;
+        let mut request = recording(f.work, source, true);
+        if variant != "unlinked" {
+            request.retest = Some(CheckRetestBasis {
+                checkpoint_id: f.failed.checkpoint_id,
+                checkpoint_revision: 1,
+                verification_index: 0,
+                source_id: f.failed.source_id,
+                target_relation: if variant == "relation" {
+                    CheckTargetRelation::SameArtifacts
+                } else {
+                    CheckTargetRelation::ChangedArtifacts
+                },
+                rationale: "Explicit comparison request; not an assertion of equivalence".into(),
+            });
+        }
+        if variant == "unknown_assertion" {
+            request.assertion_state = AssertionState::NotObserved;
+            request.assertion_evidence = None;
+        }
+        let receipt = f.ops.record_work_check(f.project, request)?;
+        let report = f.ops.read_work_verification(f.project, f.work)?;
+        let check = report
+            .checks
+            .iter()
+            .find(|c| c.original.checkpoint_id == receipt.checkpoint_id.to_string())
+            .ok_or("check")?;
+        let expected = match variant {
+            "unlinked" => RetestComparison::Unresolved,
+            _ => RetestComparison::NotComparable {
+                previous: original.checks[0].original.clone(),
+                reason: match variant {
+                    "identity" | "purpose" => ComparisonLimit::CheckIdentityOrPurposeChanged,
+                    "coverage" => ComparisonLimit::CoverageMissingOrDifferent,
+                    "environment" | "unknown_environment" => {
+                        ComparisonLimit::EnvironmentMissingOrDifferent
+                    }
+                    "relation" => ComparisonLimit::TargetRelationContradicted,
+                    _ => ComparisonLimit::AssertionNotObserved,
+                },
+            },
+        };
+        assert_eq!(check.retest_comparison, expected, "{variant}");
+        if variant == "unknown_assertion" {
+            assert_eq!(check.assertion_result, EvidenceDetail::NotObserved);
+            assert_eq!(check.reported_state, ReportedCheckState::Partial);
+        }
+        assert_eq!(report.checks[0], original.checks[0]);
+        assert_eq!(
+            report
+                .executions
+                .iter()
+                .find(|e| e.source_id == f.failed.source_id.to_string())
+                .ok_or("failure")?
+                .exit_code,
+            Some(1)
+        );
+    }
+    // Canonical scoped facts and comparison survive disposal; no output revival.
+    let report = f.ops.read_work_verification(f.project, f.work)?;
+    f.ops
+        .delete_work_source_observation(f.project, f.work, f.failed.source_id)?;
+    f.ops
+        .delete_work_source_observation(f.project, f.work, f.passed.source_id)?;
+    let disposed = f.ops.read_work_verification(f.project, f.work)?;
+    assert_eq!(report.checks, disposed.checks);
+    assert!(matches!(
+        disposed.checks[1].scoped_run,
+        EvidenceDetail::Observed(_)
+    ));
+    assert_eq!(
+        disposed.executions[0].observation,
+        EvidenceDetail::Unavailable
+    );
+    assert_eq!(
+        disposed.executions[1].observation,
+        EvidenceDetail::Unavailable
+    );
+    Ok(())
+}

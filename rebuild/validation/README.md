@@ -1159,3 +1159,19 @@ These controls do not supply genuine current-host prospective Work capture, live
 model article quality, independent semantic review or human comprehension. Current
 trusted Volicord activation/source authority must exist for that separate positive;
 its absence is Blocked, never a synthetic substitute. No authoritative gate ran.
+
+
+## Scoped checks and comparable reruns
+
+Run `validate focused scoped-checks -- cargo test --manifest-path rebuild/Cargo.toml
+-p volicord-operations -p volicord-host -p volicord-viewer --test scoped_checks` for
+explicit local capture/adoption and public reader controls. `--test
+scoped_check_targets` on Operations additionally verifies empty and Unicode/polyglot
+artifact scope. Assertions and numeric command outcomes remain separate; comparison
+requires an exact recorded prior Checkpoint/run and compatible declared bases.
+
+Optional absolute, new `VOLICORD_SCOPED_CHECK_JOURNEY_CAPTURE` on the Viewer's exact
+scoped consumer test retains original command observations, independent typed report,
+MCP and en/ko live/offline artifacts. These are task-owned controlled executions;
+missing trusted SessionStart activation is Blocked and no ordinary-user/human claim
+is supplied. Retain every failed validation attempt under the ignored runner paths.

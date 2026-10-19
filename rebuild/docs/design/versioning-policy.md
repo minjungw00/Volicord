@@ -361,16 +361,15 @@ freshness evidence; missing historical receipts imply no knowledge of earlier at
 
 Privacy SQL current schema is `2`, adding the managed `source_observation` kind.
 Non-current Privacy stores are rejected before domain read/write; no migration
-or implicit conversion is supplied. Canonical schema `16`, bundle `9` and analysis
-formats are unchanged because the existing Source payload and canonical meaning
-are unchanged. Source observation content has exact kind
-`volicord_source_observation`, version `2`, checked before typed decode, inside the
+or implicit conversion is supplied. Canonical schema `17` and bundle `10` carry the scoped Checkpoint run; analysis
+formats are unchanged. Source observation content has exact kind
+`volicord_source_observation`, version `4`, checked before typed decode, inside the
 existing 147,456-byte managed body limit. Unsupported/corrupt bodies are withheld;
 metadata and explicit deletion remain available. Exact local Source/Work links,
 revision, selected snapshots, observation time and bounded representation belong
 to this disposable format, not a replacement canonical schema or explanation plan.
 
-Source observation version 3 is the single current envelope for whole-file,
+Source observation version 4 is the single current envelope for whole-file,
 bounded file excerpt and command observations. Non-current copies are unsupported
 and withheld; deletion and fresh explicit observation remain available, without
 migration or a second decoder. File excerpt metadata includes full-file identity,
@@ -393,7 +392,7 @@ use this same single current writer/decoder; there is no v3 compatibility reader
 Canonical, bundle, Analysis Snapshot and document-metadata versions are unchanged.
 Repository-scoped disposable copies have kind
 `volicord_repository_source_observation`, exact current version 2; existing Work
-copies use their distinct `volicord_source_observation` version 3 contract.
+copies use their distinct `volicord_source_observation` version 4 contract.
 These are different authority associations, never alternate decoders for one scope.
 Non-current repository copies are Unsupported; explicit bounded observation is
 recovery and historical evidence is never rewritten or imported into a new scope.
@@ -430,14 +429,14 @@ capabilities stay explicit instead of coercing old records into new evidence.
 
 The independent verification report, caution/evidence index and Viewer publication
 proofs are ephemeral read metadata over existing Checkpoint/Command Source and
-SourceObservation v3. The ephemeral reads introduce no canonical schema upgrade
+SourceObservation v4. The ephemeral reads introduce no canonical schema upgrade
 or alternative article decoder. The command integrity correction below separately
 replaces the disposable Work copy format. Exact-current explanation v6 admits independent Work publications; each retains
 its full own dependencies.
 
 ### Command observation artifact integrity
 
-Work SourceObservation is exact current version 3. Each current copy includes its
+Work SourceObservation is exact current version 4. Each current copy includes its
 original expiry; command copies additionally reference an immutable File Source
 for the serialized managed observation artifact. Its `volicord-observation:SOURCE`
 locator identifies that artifact only, never a repository path or access grant.
@@ -448,7 +447,7 @@ links, without canonical/Privacy SQL or portable schema changes. The command's
 invocation fingerprint retains its original argv-only meaning. No raw output is
 canonicalized and the artifact Source is not a second execution or a user adoption.
 
-Only the v3 reader/writer exists. Non-current Work copies are Unsupported; explicit
+Only the v4 reader/writer exists. Non-current Work copies are Unsupported; explicit
 new observation is recovery. Historical artifacts stay unchanged; no old-copy
 conversion or retrospective integrity assertion exists. Mutated or rehashed copies
 cannot replace the immutable Source anchor. Every citation dependency includes

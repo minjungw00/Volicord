@@ -3150,3 +3150,21 @@ stdout/stderr and numeric exits via `validate focused`; no Final/V11. Record rou
 coverage and actual results under `validation/viewer-design/inspection-review.md`.
 Synthetic records establish technical/presentation controls only; human acceptance
 and any proposed authority expansion remain separate.
+
+
+### Scoped verification and explicit retests
+
+Operations `scoped_checks` records actual failing/passing task-owned Python checks
+against separately sampled artifact states, exact Checkpoint adoption, restart and
+portable import, wrong Work/Project/Source and assertion-evidence rejection, explicit
+comparable retests and unlinked/different/missing comparison bases. Operations
+`scoped_check_targets` covers non-ASCII/empty/polyglot included artifacts without
+claiming that those languages were executed. Host `scoped_checks` permits report
+attachment only, rejects remote execution and verifies canonical nonmutation on
+rejection. Viewer `scoped_checks` compares independent producer facts across CLI
+JSON, MCP, selected Work, en/ko HTTP, embedded typed read models and published
+script-free snapshots without any article. Artifact capture is explicitly labeled
+task-owned controlled execution, never ordinary-user or trusted-host evidence.
+Use the focused runner and inspect original complete streams/numeric results.
+Canonical, Source and historical reader controls keep their separate responsibilities;
+these controls supply no Final/V11, semantic/human verdict or user acceptance.

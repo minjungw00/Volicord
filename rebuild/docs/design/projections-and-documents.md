@@ -2087,15 +2087,18 @@ retains Checkpoint/revision/original vector position (not a test ID), observatio
 time, reported state, exact original quotation, exact Command Source link, later
 recorded changes and typed Unknown/Historical applicability. Free text is not
 parsed into authoritative intended checks, assertion details or repair causality.
-NotRun remains distinct from absence. No typed comparable target/run relation is
-retained by current producers, so comparison is explicitly Unresolved. A subsequent
+NotRun remains distinct from absence. Historical quotation-only producers retain no typed comparable relation, so their
+comparison stays Unresolved. The explicit scoped-check producer records exact run,
+artifact and prior Checkpoint basis; readers compare only that recorded relation. A subsequent
 unrelated pass never repairs a failure or grants current coverage.
 
 Canonical execution metadata survives unavailable disposable bodies as separately
 qualified historical evidence. Permitted command copies add exact operation/window,
 Work revision, selected Repository/Analysis Snapshot, target-not-rechecked limit,
 expiry, stream representation/count/completeness, timeout/cancellation/signal.
-Environment and assertion detail remain NotObserved; exit zero alone supplies none.
+Historical environment and assertion detail remain NotObserved; exit zero alone supplies none.
+New scoped facts expose declared coverage/environment and stream-bound operator
+assertion reports separately from measured process metadata.
 Unavailable, deleted, expired and changed copies remove observation-derived fields.
 Every enriched execution uses the existing exact Work/source read barrier.
 
@@ -2122,7 +2125,7 @@ window, selected target/not-rechecked limitation, body state, environment/assert
 availability, timeout/signal/cancellation and stream capture each retain separate
 attribution. Record-only outcomes remain honest quotations. All report originals,
 including rows beyond display bounds, remain in an explicitly disclosed JSON read
-model and independent canonical audit. No assertion or comparable retest is derived.
+model and independent canonical audit. No assertion or comparable retest is inferred from labels, quotations or exits.
 
 The shared live/offline article renderer uses one bounded sticky native section
 navigator. Material warning labels distinguish latest reported failure, prior adverse
@@ -2144,3 +2147,21 @@ Documents preview/export remain specialized tools. Memory and Evidence entry
 routes remain reachable; Work/Decision evidence indices retain their article
 context and return paths. See the [inspection threat model](privacy-and-provider-boundary.md#bounded-project-data-inspection-threat-model).
 No durable schema or format changes are needed for this request-local projection.
+
+Scoped verification rows retain the original canonical `ScopedCheckRun` separately
+from disposable execution observation. Expired/deleted stdout cannot erase that
+reported assertion, sampled artifacts or recorded comparison basis, and cannot
+make output available. `CapturedArtifactsAtExecution` is limited to original sampled
+paths; current whole-tree applicability remains unestablished. An explicit retest
+selects an exact prior same-Work Checkpoint revision/vector position/Source. The
+reader returns Comparable only for equal check key/purpose/assertion, known equal
+operator environment and declared coverage, same invocation/path scope, observed
+assertions, stable samples and measured same/changed-artifacts relation. Otherwise
+the linked run is NotComparable with a typed reason. Unlinked passes stay Unresolved.
+Original failures never change state, even when a later scoped rerun passes.
+
+CLI text/JSON, MCP verification, selected Work detail, live Viewer and script-free
+offline publication use the same independent typed report. Viewer discloses original
+run window, artifact hashes, declared scope/environment, assertion provenance and
+prior identity/rationale. No article, generation or citation selection is required.
+Existing bounded display and publication revalidation remain authoritative.

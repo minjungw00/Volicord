@@ -197,7 +197,11 @@ fn scoped_command(
         )
         .ok()?
         .to_string(),
-        target_state: ExecutionTargetState::SelectedAnalysisOnlyNotRechecked,
+        target_state: match detail["check_capture"]["target_unchanged_during_run"].as_bool() {
+            Some(true) => ExecutionTargetState::DeclaredArtifactsSampled,
+            Some(false) => ExecutionTargetState::DeclaredArtifactsChanged,
+            None => ExecutionTargetState::SelectedAnalysisOnlyNotRechecked,
+        },
         started_at_unix_micros: detail["started_at_unix_micros"].as_i64()?,
         ended_at_unix_micros: detail["ended_at_unix_micros"].as_i64()?,
         retained_until_unix_micros: metadata["retained_until_unix_micros"].as_i64()?,
