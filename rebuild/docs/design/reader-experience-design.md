@@ -510,9 +510,10 @@ permissions above are revalidation baselines. They are not newly invented featur
 or evidence that the following outcomes are complete.
 
 AC-17–22 and AC-25 remain pending end-to-end narrative/presentation/human evaluation.
-AC-23 has existing bounded Operations and file MCP support; its local command caller
-and genuine prospective capture require separate evidence. AC-24 requires per-claim
-admission controls and the applicability report routed by validation-plan.md.
+AC-23 has bounded Operations/file MCP and a tested explicit local CLI caller; genuine
+prospective capture remains Blocked without current trusted activation. AC-24 has
+per-claim admission diagnostics and an applicability report routed by validation-plan.md;
+its required genuine positive remains unsatisfied.
 The original rejected sample has one actual host-produced record-only Work (eight
 units, zero code citations), two missing Work documents, and missing Decision and
 repository documents. It supports historical-record and missing-state tests, not

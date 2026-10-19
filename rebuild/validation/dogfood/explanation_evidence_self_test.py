@@ -162,6 +162,145 @@ def publish_fixture(root, *, kind='work', language='en', before_state='unavailab
     return directory
 
 
+class ReaderApplicabilityTests(unittest.TestCase):
+    """Independent structural controls, never actual prospective evidence."""
+    def read(self, *, source='04' * 16, kind='file', before=None, observed=10, until=100):
+        p, _, _, _ = lifecycle()
+        plan = p['plan']
+        obs = {'format_kind': 'volicord_source_observation', 'format_version': 2,
+            'project_id': plan['project_id'], 'work_item_id': plan['subject']['identity'],
+            'work_revision': 1, 'source_id': source, 'source_revision': 1,
+            'analysis_snapshot_id': 'analysis', 'repository_snapshot_id': 'repository',
+            'observed_at_unix_micros': observed,
+            'detail': {'kind': kind, 'path': 'main.custom', 'body': 'observed fixture bytes',
+                'before_source_id': before, 'comparison': 'changed' if before else 'missing_before_state',
+                'representation': 'whole_file'}}
+        result = {'observation': obs, 'read_only': True, 'observation_fingerprint': 'sha256:' + '4' * 64,
+            'citation_basis': {'source_id': source, 'source_revision': 1,
+                'analysis_snapshot_id': 'analysis', 'repository_snapshot_id': 'repository',
+                'observation_fingerprint': 'sha256:' + '4' * 64},
+            'metadata': {'retained_state': 'available', 'retained_until_unix_micros': until}}
+        if kind == 'command':
+            obs['detail'] = {'kind': 'command', 'operation_id': 'named-operation',
+                'started_at_unix_micros': 1, 'ended_at_unix_micros': 2,
+                'exit_code': 13, 'termination': 'exited', 'repository_state': 'selected_analysis_only_not_rechecked'}
+            result['command_source'] = {'command_label': 'Named failed control',
+                'invocation_fingerprint': 'sha256:' + '3' * 64, 'exit_code': 13, 'termination': 'exited'}
+        return result
+
+    def assess(self, *reads, **kwargs):
+        return e.reader_applicability(lifecycle()[0]['plan'], source_reads=reads,
+            origin='authored_control', now_unix_micros=50, **kwargs)
+
+    def test_self_reported_authority_and_prospective_label_never_attest_capture(self):
+        value = e.reader_applicability(lifecycle()[0]['plan'], source_reads=[self.read()],
+            origin='prospective', host_authority='available', now_unix_micros=50)
+        self.assertEqual(value['claims']['task_time_capture']['state'], 'not_established')
+        self.assertEqual(value['qualification'], 'not_established')
+
+    def test_record_positive_survives_missing_code_and_blocked_capture(self):
+        value = self.assess(host_authority='unavailable')['claims']
+        self.assertEqual(value['record_reading']['state'], 'eligible_for_assessment')
+        self.assertEqual(value['code_body_read']['state'], 'not_observed')
+        self.assertEqual(value['task_time_capture']['state'], 'blocked')
+        self.assertEqual(value['human_acceptance']['state'], 'pending')
+
+    def test_recommendation_present_user_reason_absent_source_unavailable(self):
+        p, _, _, _ = lifecycle('decision')
+        plan = p['plan']
+        plan['evidence'].extend([
+            {'key': 'recommendation', 'content': {'alternative_key': 'compact', 'rationale': 'Retained contemporaneous reason'}},
+            {'key': 'user_rationale', 'content': None}])
+        plan['source_status'][0]['availability'] = 'Unavailable'
+        value = e.reader_applicability(plan, origin='historical_record')['claims']
+        self.assertEqual(value['recommendation_reason']['state'], 'eligible_for_assessment')
+        self.assertEqual(value['user_reason']['state'], 'absent')
+        self.assertEqual(value['code_body_read']['state'], 'not_observed')
+
+    def test_observed_pair_positive_and_missing_before_control(self):
+        before = self.read()
+        after = self.read(source='05' * 16, before='04' * 16, observed=20)
+        self.assertEqual(self.assess(after)['claims']['two_observed_states']['reason'], 'missing_before_inspection')
+        value = self.assess(before, after)
+        self.assertEqual(value['claims']['two_observed_states']['state'], 'eligible_for_assessment')
+        self.assertEqual(value['claims']['task_time_capture']['state'], 'not_established')
+        self.assertEqual(len(value['input_bindings']['source_reads']), 2)
+        self.assertNotIn('observed fixture bytes', json.dumps(value))
+        after['observation']['detail']['path'] = 'other.custom'
+        self.assertEqual(self.assess(before, after)['claims']['two_observed_states']['state'], 'not_observed')
+
+    def test_comparison_positive_and_missing_inspection_are_both_retained(self):
+        before = self.read()
+        after = self.read(source='05' * 16, before='04' * 16, observed=20)
+        missing = self.read(source='06' * 16, before='07' * 16, observed=30)
+        for reads in [(before, after, missing), (missing, after, before)]:
+            comparison = self.assess(*reads)['claims']['two_observed_states']
+            self.assertEqual(comparison['state'], 'eligible_for_assessment')
+            self.assertEqual(comparison['gaps'][0]['reason'], 'missing_before_inspection')
+
+    def test_expired_deleted_before_and_read_are_inaccessible(self):
+        expired = self.read(until=50)
+        self.assertEqual(self.assess(expired)['claims']['code_body_read']['reason'], 'expired_retention')
+        deleted = self.read()
+        deleted['metadata']['retained_state'] = 'source_body_deleted'
+        self.assertEqual(self.assess(deleted)['claims']['code_body_read']['state'], 'inaccessible')
+        after = self.read(source='05' * 16, before='04' * 16, observed=20)
+        self.assertEqual(self.assess(expired, after)['claims']['two_observed_states']['reason'], 'expired_retention')
+
+    def test_wrong_project_work_source_snapshot_revision_and_format_rejected(self):
+        for section, key, value in [('observation', 'project_id', '09' * 16),
+                ('observation', 'work_item_id', '09' * 16), ('observation', 'work_revision', 2),
+                ('observation', 'format_version', 99), ('citation_basis', 'source_id', '09' * 16),
+                ('citation_basis', 'analysis_snapshot_id', 'foreign'),
+                ('citation_basis', 'repository_snapshot_id', 'foreign')]:
+            read = self.read(); read[section][key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'reader Source'):
+                self.assess(read)
+
+    def test_named_failure_never_establishes_retest_or_erases_original(self):
+        failed = self.read(kind='command')
+        original = copy.deepcopy(failed)
+        passed = copy.deepcopy(failed)
+        passed['observation']['source_id'] = passed['citation_basis']['source_id'] = '05' * 16
+        passed['observation']['detail']['exit_code'] = passed['command_source']['exit_code'] = 0
+        value = self.assess(failed, passed)['claims']
+        self.assertEqual(value['named_command']['state'], 'eligible_for_assessment')
+        self.assertEqual(value['retest_coverage']['state'], 'unsupported')
+        self.assertEqual(failed, original)
+        self.assertEqual(value['task_time_capture']['state'], 'not_established')
+
+    def test_historical_format_not_rewritten_as_current_article(self):
+        p, response, _, _ = lifecycle()
+        original = copy.deepcopy(response)
+        response['format_version'] = 2
+        value = e.reader_applicability(p['plan'], response, origin='historical_record')['claims']
+        self.assertEqual(value['article']['state'], 'unsupported')
+        self.assertEqual(value['record_reading']['state'], 'eligible_for_assessment')
+        self.assertEqual(response['format_version'], 2)
+        self.assertEqual(original['format_version'], 4)
+
+    def test_campaign_inspection_consumes_applicability_without_rewriting_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            c.write_json(c.inventory_path(root), {'kind': 'phase8_dogfood_evidence_inventory',
+                'schema_version': 1, 'artifacts': {}})
+            publish_fixture(root)
+            original = {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            inspected = e.inspect(root)
+            claims = inspected['explanations'][0]['reader_applicability']['claims']
+            self.assertEqual(claims['article']['state'], 'eligible_for_assessment')
+            self.assertEqual(claims['code_body_read']['state'], 'not_observed')
+            self.assertEqual(claims['task_time_capture']['state'], 'not_established')
+            self.assertEqual(original, {str(p): p.read_bytes() for p in root.rglob('*') if p.is_file()})
+
+    def test_current_record_only_response_is_positive_without_code_capture(self):
+        p, response, _, _ = lifecycle()
+        value = e.reader_applicability(p['plan'], response)['claims']
+        self.assertEqual(value['article']['state'], 'eligible_for_assessment')
+        self.assertEqual(value['code_body_read']['state'], 'not_observed')
+        self.assertEqual(value['task_time_capture']['state'], 'not_established')
+
+
 class LifecycleTests(unittest.TestCase):
     def test_review_preserves_missing_deleted_and_withheld_before_states(self):
         import review_explanations as review

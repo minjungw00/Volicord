@@ -240,6 +240,121 @@ def validate_lifecycle(preparation, response, receipt, after):
     return observation
 
 
+def reader_applicability(plan, response=None, *, source_reads=(), origin='post_session_replay',
+                         host_authority='unknown', now_unix_micros=None):
+    """Per-claim assessment inputs, never semantic approval or capture attestation.
+
+    Called by preparation/inspection, after their existing candidate/hash checks.
+    Optional reads must be actual public scoped responses, kept privately by the
+    collector. This diagnostic never fetches, renews, executes or grants authority.
+    """
+    import time
+    now = time.time_ns() // 1000 if now_unix_micros is None else now_unix_micros
+    if origin not in {'historical_record', 'post_session_replay', 'authored_control', 'prospective'}:
+        raise api().CampaignError('unknown reader evidence origin')
+    if host_authority not in {'unknown', 'unavailable', 'available'}:
+        raise api().CampaignError('unknown current host authority')
+    def result(state, reason):
+        return {'state': state, 'reason': reason}
+    def identity(value):
+        return bytes(value).hex() if isinstance(value, list) else value
+    subject = plan['subject']
+    work = identity(subject['identity']) if subject['kind'] == 'work' else None
+    offered = {v['key']: v for v in plan['evidence']}
+    claims = {'record_reading': result('eligible_for_assessment', 'exact_prepared_record_fields'),
+        'article': result('not_observed', 'no_recorded_response_supplied'),
+        'code_body_read': result('not_observed', 'no_scoped_file_body_read_supplied'),
+        'two_observed_states': result('not_observed', 'missing_before_state'),
+        'named_command': result('not_observed', 'no_named_execution_read_supplied'),
+        'retest_coverage': result('unsupported', 'no_explicit_typed_retest_coverage_relation'),
+        'task_time_capture': result('blocked' if host_authority == 'unavailable' else 'not_established',
+            'current_trusted_activation_or_source_authority_unavailable' if host_authority == 'unavailable'
+            else 'origin_and_readback_do_not_attest_authenticated_task_time_capture'),
+        'human_acceptance': result('pending', 'requires_separate_actual_reader_judgment')}
+    for key, field in [('recommendation_reason', 'recommendation'), ('user_reason', 'user_rationale')]:
+        item = offered.get(field)
+        if subject['kind'] != 'decision':
+            claims[key] = result('not_applicable', 'not_a_decision_subject')
+        elif item is None:
+            claims[key] = result('not_observed', 'field_not_in_supplied_plan')
+        else:
+            value = item['content'].get('rationale') if field == 'recommendation' and isinstance(item['content'], dict) else item['content']
+            claims[key] = result('absent', 'optional_reason_not_recorded') if value is None else result(
+                'eligible_for_assessment', 'recorded_reason_independent_of_supporting_source_availability')
+    if response is not None:
+        # Current format/bindings only. Historical bytes remain immutable and can
+        # still supply record/presentation evidence without becoming a replay.
+        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 4:
+            claims['article'] = result('unsupported', 'non_current_explanation_format')
+        else:
+            validate_response(plan, response)
+            claims['article'] = result('eligible_for_assessment', 'current_bound_response_not_semantic_approval')
+    usable, blocked = {}, {}
+    for read in source_reads:
+        obs, meta = read.get('observation', {}), read.get('metadata', {})
+        if (work is None or identity(obs.get('project_id')) != plan['project_id']
+                or identity(obs.get('work_item_id')) != work
+                or obs.get('format_kind') != 'volicord_source_observation' or obs.get('format_version') != 2
+                or read.get('read_only') is not True
+                or read.get('observation_fingerprint') != read.get('citation_basis', {}).get('observation_fingerprint')
+                or identity(obs.get('source_id')) != read.get('citation_basis', {}).get('source_id')
+                or obs.get('source_revision') != read.get('citation_basis', {}).get('source_revision')
+                or any(obs.get(k) != read.get('citation_basis', {}).get(k)
+                    for k in ('analysis_snapshot_id', 'repository_snapshot_id'))
+                or type(obs.get('work_revision')) is not int):
+            raise api().CampaignError('reader Source scope/format/binding mismatch')
+        goal = offered.get('goal')
+        if goal and obs['work_revision'] != goal['revision']:
+            raise api().CampaignError('reader Source Work revision mismatch')
+        until = meta.get('retained_until_unix_micros')
+        if type(until) is not int or until <= now or meta.get('retained_state') != 'available':
+            blocked[identity(obs['source_id'])] = 'expired_retention' if type(until) is int and until <= now else meta.get('retained_state', 'source_body_inaccessible')
+            continue
+        usable[identity(obs['source_id'])] = read
+    files = [r for r in usable.values() if r['observation']['detail'].get('kind') == 'file'
+        and isinstance(r['observation']['detail'].get('body'), str)]
+    if files:
+        claims['code_body_read'] = result('eligible_for_assessment', 'permitted_observed_file_bytes_not_causal_proof')
+    elif blocked:
+        claims['code_body_read'] = result('inaccessible', next(iter(blocked.values())))
+    comparison_gaps = []
+    for read in files:
+        after = read['observation']; detail = after['detail']; before = usable.get(detail.get('before_source_id'))
+        if before is None:
+            if detail.get('before_source_id'):
+                reason = blocked.get(detail['before_source_id'], 'missing_before_inspection')
+                comparison_gaps.append({'source_id': identity(after['source_id']),
+                    **result('inaccessible' if detail['before_source_id'] in blocked else 'not_observed', reason)})
+            continue
+        prior = before['observation']; old = prior['detail']
+        if (old.get('kind') == 'file' and old.get('path') == detail.get('path')
+                and old.get('representation') == detail.get('representation')
+                and all((old.get('region') or {}).get(k) == (detail.get('region') or {}).get(k)
+                    for k in ('start_byte', 'end_byte'))
+                and prior['observed_at_unix_micros'] < after['observed_at_unix_micros']
+                and detail.get('comparison') in {'changed', 'no_change'}):
+            claims['two_observed_states'] = result('eligible_for_assessment', 'explicit_same_work_path_region_pair_not_actor_attribution')
+    if comparison_gaps:
+        if claims['two_observed_states']['state'] != 'eligible_for_assessment':
+            claims['two_observed_states'] = {k: comparison_gaps[0][k] for k in ('state', 'reason')}
+        claims['two_observed_states']['gaps'] = comparison_gaps
+    for read in usable.values():
+        detail, command = read['observation']['detail'], read.get('command_source')
+        if (detail.get('kind') == 'command' and isinstance(command, dict) and command.get('command_label')
+                and detail.get('operation_id') and type(detail.get('started_at_unix_micros')) is int
+                and type(detail.get('ended_at_unix_micros')) is int
+                and detail['started_at_unix_micros'] <= detail['ended_at_unix_micros']
+                and command.get('exit_code') == detail.get('exit_code')
+                and command.get('termination') == detail.get('termination')):
+            claims['named_command'] = result('eligible_for_assessment', 'observed_named_outcome_not_assertion_coverage_or_retest')
+    return {'project_id': plan['project_id'], 'subject': subject, 'plan_fingerprint': plan['fingerprint'],
+        'origin': origin, 'host_authority': host_authority, 'claims': claims,
+        'input_bindings': {'plan': binding(compact_bytes(plan)),
+            'response': None if response is None else binding(compact_bytes(response)),
+            'source_reads': [binding(compact_bytes(v)) for v in source_reads]},
+        'qualification': 'not_established', 'source_lifetime_recheck': 'required_at_every_product_read'}
+
+
 def preparations(root):
     inventory = api().load_inventory(root)['artifacts']
     return [root / name for name in sorted(inventory)
@@ -402,7 +517,8 @@ def prepare(root, raw_paths, *, languages=None, work_ids=None, decision_ids=None
                 document_realization.publish(root, files)
                 files = {}
                 index.append({'identity': identity, 'subject': subject, 'language': language,
-                    'preparation': c.relative(root, directory / 'preparation.json')})
+                    'preparation': c.relative(root, directory / 'preparation.json'),
+                    'reader_applicability': reader_applicability(plan)})
     if not index:
         raise c.CampaignError('no requested explanation subjects found in measured Projects')
     selected = {item['subject']['identity'] for item in index}
@@ -558,7 +674,9 @@ def inspect(root):
             values.append({'identity': attempt['identity'], 'subject': attempt['subject'], 'language': attempt['language'],
                 'state': 'recorded' if receipt else 'prepared_unrecorded' if preparation else 'pending_or_failed_preparation',
                 'selected_identity': chain[-1]['identity'], 'previous': attempt['previous'],
-                'phase': 'post_session_steward'})
+                'phase': 'post_session_steward',
+                'reader_applicability': None if preparation is None else reader_applicability(preparation['plan'],
+                    json.loads(bound(root, path.parent / 'response.json')) if receipt else None)})
     return {'state': 'inspected', 'mutation': 'none', 'explanations': values}
 
 

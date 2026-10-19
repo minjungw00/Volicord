@@ -309,6 +309,30 @@ fn public_capture_read_compose_record_journey_uses_two_observed_states(
         .output()?;
     assert!(!denied.status.success());
     assert!(!String::from_utf8_lossy(&denied.stdout).contains("value = 5"));
+    if let Some(directory) = std::env::var_os("VOLICORD_WORK_SOURCE_CAPTURE") {
+        let directory = PathBuf::from(directory);
+        if !directory.is_absolute() {
+            return Err("control capture directory must be absolute".into());
+        }
+        // A fresh private output only. Original observations are never replaced.
+        fs::create_dir(&directory)?;
+        for (name, value) in [
+            ("before-read", &first),
+            ("after-read", &read),
+            ("command-read", &command),
+            ("manifest", &manifest),
+            ("preparation", &plan),
+            ("authored-draft", &draft),
+            ("composed", &composed),
+            ("public-status", &status),
+        ] {
+            fs::write(
+                directory.join(format!("{name}.json")),
+                serde_json::to_vec_pretty(value)?,
+            )?;
+        }
+        fs::write(directory.join("origin.txt"), "Authored disposable control. No genuine task, host activation, user Decision, semantic approval or human acceptance is supplied. Selected analysis is not execution-time tree proof.\n")?;
+    }
     println!("AUTHORED CONTROL: caller capture -> scoped Source read -> Work prepare/compose/record -> status; two observed states, missing-before, actual named assertion; no naturalistic or semantic approval");
     Ok(())
 }
@@ -365,6 +389,34 @@ fn public_command_preserves_failure_termination_and_rejects_invalid_execution(
         ])?;
         assert_eq!(invalid.status.code(), Some(2));
         assert!(!f.root.join("forbidden-marker").exists());
+    }
+    for (work, analysis) in [
+        ("00000000000000000000000000000001", f.analysis.as_str()),
+        (
+            f.work.as_str(),
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        ),
+    ] {
+        let denied = f.call(&[
+            "work",
+            "source",
+            "run",
+            "--work",
+            work,
+            "--analysis",
+            analysis,
+            "--retain-seconds",
+            "3600",
+            "--timeout-seconds",
+            "1",
+            "--label",
+            "Denied scope",
+            "--",
+            "touch",
+            "forbidden-scope-marker",
+        ])?;
+        assert!(!denied.status.success());
+        assert!(!f.root.join("forbidden-scope-marker").exists());
     }
     assert!(f
         .run(

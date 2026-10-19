@@ -3065,3 +3065,14 @@ child and recording outcomes, original times and no-read-write/retention behavio
 `source_observations` and Host `source_evidence` supply coupled UTF-8/region/hash,
 unsupported-language, symlink, forgetting, corruption and MCP no-execution controls.
 None is a genuine prospective Work or independent semantic assessment.
+
+The maintained [per-task applicability report](../../validation/dogfood/reader-evidence-applicability.md)
+routes historical B/Click, review_101901, local public-caller controls and the precise
+blocked prospective case. Existing campaign prepare/inspect returns per-claim
+`reader_applicability` diagnostics bound to the supplied plan/response/read bytes.
+Eligibility is an assessment input, never proof of semantic quality or genuine host
+activity; self-reported origin/authority cannot qualify capture. Its self-tests
+preserve both applicable positives and explicit negative gaps, including separate
+missing-before versus missing-before-inspection and expiry/deletion states. The
+actual historical Decision reason control uses supported disposable import and
+public Decision preparation/read, preserving the original bytes and absent user reason.

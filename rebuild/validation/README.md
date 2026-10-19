@@ -1104,3 +1104,14 @@ paths, runs local browser navigation/deletion/offline checks and retains exact
 candidate hashes, numeric child outcomes, sizes, timings and screenshots.
 Each attempt uses a fresh fixture/output; failure artifacts are preserved.
 These are technical observations, not human comprehension or semantic approval.
+
+Reader collection applicability is documented in
+[the per-task evidence disposition](dogfood/reader-evidence-applicability.md).
+Existing `dogfood-campaign prepare-explanations` and `inspect-explanations` expose
+per-claim diagnostic inputs through `explanation_evidence.reader_applicability`;
+eligibility is separate from semantic/host/human approval. Run focused
+`python3 rebuild/validation/dogfood/explanation_evidence_self_test.py` for positive
+record/pair/command controls and missing, foreign, expired, deleted, unsupported and
+blocked-capture distinctions. Optional `VOLICORD_WORK_SOURCE_CAPTURE=/absolute/new/path`
+on the Operations `cli_work_sources` integration test retains labeled authored
+readbacks under an ignored directory. It creates no genuine prospective Work.
