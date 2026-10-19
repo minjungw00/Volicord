@@ -382,8 +382,8 @@ fn assert_three_work_hierarchy(with_git: bool) {
 #[test]
 fn candidate_view_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies() {
     let (_healthy_root, healthy, healthy_project) = setup();
-    let healthy_page = render_deep(&healthy, healthy_project);
-    assert!(healthy_page.contains("No Session Candidates."));
+    let healthy_page = inspect_http(&healthy, healthy_project);
+    assert!(healthy_page.contains("No permitted records match"));
     assert!(!healthy_page.contains("Candidate data omitted"));
 
     let (_unsupported_root, unsupported, unsupported_project) = setup();
@@ -435,12 +435,33 @@ fn render_deep(viewer: &ViewerAdapter, project: ProjectId) -> String {
     )
 }
 
+fn inspect_http(viewer: &ViewerAdapter, project: ProjectId) -> String {
+    let server = volicord_viewer::ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(viewer.operations().layout().clone())),
+        project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse().expect("authority"),
+    )
+    .expect("server");
+    let mut response = Vec::new();
+    server
+        .serve_connection(
+            &mut std::io::Cursor::new(
+                "GET /inspection?class=candidate HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n",
+            ),
+            &mut response,
+        )
+        .expect("HTTP");
+    String::from_utf8(response).expect("response")
+}
 fn assert_candidate_view_dependency(viewer: &ViewerAdapter, project: ProjectId, expected: &str) {
-    let page = render_deep(viewer, project);
-    assert!(page.contains("Candidate data omitted"), "{page}");
+    let page = inspect_http(viewer, project);
+    assert!(page.starts_with("HTTP/1.1 503"), "{page}");
     assert!(page.contains(expected), "{page}");
-    assert!(!page.contains("No Session Candidates."), "{page}");
-    assert!(page.contains("Canonical context"), "{page}");
+    assert!(!page.contains("permitted matches"));
+    assert!(render_deep(viewer, project).contains("inspection-results"));
 }
 
 #[test]
@@ -472,7 +493,7 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
             ViewerView::Tools {
                 tool: ViewerTool::Memory,
             },
-            "memory-actions",
+            "inspection-results",
         ),
         (
             ViewerView::Tools {
@@ -487,12 +508,21 @@ fn reads_render_every_project_surface_without_mutating_canonical_state() {
             "checkpoints",
         ),
     ] {
+        let native = matches!(
+            view,
+            ViewerView::Tools {
+                tool: ViewerTool::Memory | ViewerTool::Evidence
+            }
+        );
         let page = render_view(&viewer, project, view);
         assert!(page.contains(&format!("id=\"{section}\"")));
         assert!(page.contains(":focus-visible"));
         assert!(page.contains("@media(max-width:900px)"));
         assert!(page.contains("href=\"#viewer-content\""));
-        assert_eq!(page.matches("<script data-viewer-reading>").count(), 1);
+        assert_eq!(
+            page.matches("<script data-viewer-reading>").count(),
+            usize::from(!native)
+        );
         assert!(!page.contains("<script src="));
         assert_eq!(
             before,
@@ -1144,6 +1174,32 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         )
         .expect("render rich Viewer");
     let mut page = page;
+    for (class, id) in [
+        (
+            if context.role == ContextItemRole::Goal {
+                "work"
+            } else {
+                "context"
+            },
+            context.id.to_string(),
+        ),
+        ("decision", decision.id.to_string()),
+    ] {
+        let server = volicord_viewer::ViewerServer::new(
+            ViewerAdapter::new(LocalOperations::new(viewer.operations().layout().clone())),
+            project,
+            ViewerLocale::English,
+            ViewerView::Overview,
+            "en".into(),
+            "127.0.0.1:3219".parse().expect("authority"),
+        )
+        .expect("inspection server");
+        let mut output = Vec::new();
+        server.serve_connection(&mut std::io::Cursor::new(format!("GET /inspection?class={class}&id={id} HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n")),&mut output).expect("inspect record");
+        page.html
+            .push_str(&String::from_utf8(output).expect("inspection response"));
+    }
+
     page.html.push_str(&render_view(
         &viewer,
         project,
@@ -1162,9 +1218,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         .html
         .contains("<summary><strong>Context Item</strong>: Keep mutation targets readable"));
     assert!(page.html.contains(&context.id.to_string()));
-    assert!(page
-        .html
-        .contains("<summary><strong>Decision</strong>: Alternative: audit-first"));
+    assert!(page.html.contains("Alternative: audit-first"));
     assert!(page.html.contains("Audit-first console [audit-first]"));
     assert!(page
         .html
@@ -1188,7 +1242,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
     let first_memory_form = page.html.find("action=\"/memory/").expect("memory form");
     assert!(administration < first_memory_form);
     assert!(page.html.contains("data-administration=\"memory\""));
-    let memory = section_html(&page.html, "memory-actions");
+    let memory = page.html.as_str();
     assert!(memory.contains("action=\"/memory/context/correct\""));
     assert!(memory.contains("action=\"/memory/decision/correct\""));
     assert!(memory.contains("action=\"/memory/decision/supersede\""));
@@ -1453,7 +1507,7 @@ fn representative_large_repository_page_is_deterministically_bounded() {
     );
     assert!(!first
         .html
-        .split("<main class=\"shell viewer-shell\" id=\"viewer-content\"")
+        .split("id=\"viewer-content\"")
         .nth(1)
         .expect("main reading")
         .contains("<details open"));
@@ -1550,15 +1604,6 @@ fn repository_entries(temporary: &tempfile::TempDir) -> Vec<String> {
         .collect::<Vec<_>>();
     entries.sort();
     entries
-}
-
-fn section_html<'a>(page: &'a str, identity: &str) -> &'a str {
-    let start = page
-        .find(&format!("<section id=\"{identity}\""))
-        .expect("section start");
-    let remainder = &page[start..];
-    let end = remainder.find("</section>").expect("section end");
-    &remainder[..end]
 }
 
 fn assert_snapshot_fragments(html: &str) {

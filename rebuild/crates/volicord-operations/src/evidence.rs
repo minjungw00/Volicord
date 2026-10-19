@@ -200,7 +200,7 @@ impl LocalOperations {
                         .and_then(|r| r.revisions.last().copied());
                     sources.push(s.source.id);
                     // Metadata only. In particular CurrentHostUserTurn.turn is not a body reader.
-                    fields = json!({"observation":source_observation(s)});
+                    fields = json!({"observation":source_observation(s),"reference":source_reference(&s.source.payload)});
                     if request.field == "body" {
                         if let Some(work_id) = request.work_item_id {
                             let read =
@@ -438,7 +438,7 @@ pub(crate) fn canonical_fields(kind: &str) -> &'static [&'static str] {
             "why_it_matters_now",
             "what_the_answer_unlocks",
         ],
-        "source" => &["observation", "body", "source_status"],
+        "source" => &["observation", "reference", "body", "source_status"],
         _ => &[],
     }
 }
@@ -451,6 +451,34 @@ fn source_status(basis: &CanonicalReadBasis, sources: &[SourceId]) -> Value {
         json!({"source_id":id.to_string(),"state":if source.is_some(){"retained"}else{"missing"},"availability":source.map(|s|format!("{:?}",s.availability).to_lowercase()),
             "freshness":source.map(|s|format!("{:?}",s.freshness).to_lowercase()),"snapshot_basis":source.and_then(|s|s.snapshot_basis.as_ref())})
     }).collect::<Vec<_>>())
+}
+fn source_reference(payload: &volicord_context::SourcePayload) -> Value {
+    use volicord_context::SourcePayload::*;
+    // Canonical locators are data. Neither this read nor presentation dereferences them.
+    match payload {
+        CurrentHostUserTurn { host, session, .. } => {
+            json!({"kind":"current_host_user_turn","host":host,"session":session,"body_access":"policy_withheld"})
+        }
+        File { locator, snapshot } => json!({"kind":"file","locator":locator,"snapshot":snapshot}),
+        Symbol { locator, snapshot } => {
+            json!({"kind":"symbol","locator":locator,"snapshot":snapshot})
+        }
+        RepositorySnapshot { revision } => {
+            json!({"kind":"repository_snapshot","revision":revision})
+        }
+        RepositoryCommit { commit } => json!({"kind":"repository_commit","commit":commit}),
+        Url { url } => json!({"kind":"url","url":url}),
+        AdoptedArtifact { locator, revision } => {
+            json!({"kind":"adopted_artifact","locator":locator,"revision":revision})
+        }
+        CommandExecution {
+            command_label,
+            invocation_fingerprint,
+            outcome,
+        } => {
+            json!({"kind":"command_execution","command_label":command_label,"invocation_fingerprint":invocation_fingerprint,"exit_code":outcome.exit_code,"termination":format!("{:?}",outcome.termination).to_lowercase()})
+        }
+    }
 }
 fn source_observation(s: &volicord_context::SourceReadBasis) -> Value {
     use volicord_context::SourcePayload::*;

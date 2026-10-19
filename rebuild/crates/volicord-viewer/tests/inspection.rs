@@ -192,6 +192,10 @@ fn mixed_projects_source_body_and_literal_search_do_not_leak_through_public_quer
         f.page("class=source&q=withheld-user-turn-marker")?["page"]["permitted_match_count"],
         0
     );
+    let reference = f.page(&format!(
+        "class=source&id={source}&revision=1&field=reference"
+    ))?;
+    assert!(!reference.to_string().contains("withheld-user-turn-marker"));
     let detail = f.page(&format!("class=source&id={source}&revision=1&field=body"))?;
     assert_eq!(detail["detail"]["state"], "unavailable");
     assert!(!detail.to_string().contains("withheld-user-turn-marker"));
@@ -315,6 +319,9 @@ fn candidate_retention_and_derived_private_fields_are_not_searchable_or_hashed()
     )?;
     let expired = f.page("class=candidate")?;
     assert_eq!(expired["page"]["rows"][0]["state"], "expired");
+    assert!(f
+        .get(&format!("class=candidate&id={c}&revision=1&field=summary"))?
+        .starts_with("HTTP/1.1 403"));
     assert!(!expired.to_string().contains("candidate-expired-marker"));
     assert_eq!(
         f.page("class=candidate&q=candidate-expired-marker")?["page"]["permitted_match_count"],
@@ -519,6 +526,15 @@ fn source_body_is_exact_work_scoped_and_rechecks_expiration_on_each_http_chunk()
             retain_seconds: 3600,
         })?;
     let source = receipt.source_id;
+    let reference = f.page(&format!(
+        "class=source&id={source}&revision={}&field=reference",
+        receipt.source_revision
+    ))?;
+    assert!(reference["detail"]["chunk"]
+        .as_str()
+        .ok_or("reference")?
+        .contains("python/worker.py"));
+    assert!(!reference.to_string().contains("def "));
     let query = format!(
         "class=source&id={source}&revision={}&field=body&work={work}",
         receipt.source_revision
@@ -596,5 +612,206 @@ fn foreign_relationship_targets_and_unavailable_dependencies_are_not_empty_succe
     assert!(!unavailable.contains("record_json"));
     assert!(f.get("class=work")?.starts_with("HTTP/1.1 200"));
     assert_eq!(canonical, f.ops().canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn html_search_exact_fields_and_receipts_escape_stored_content_and_keep_protected_actions() -> Result
+{
+    let f = Fixture::new()?;
+    let goal = f.goal(
+        f.project,
+        "Inspect <script>window.stolen=1</script> & retained wording",
+    )?;
+    let list = f.raw(
+        "/inspection?class=work&q=%3Cscript%3E",
+        &format!("Host: {AUTH}\r\n"),
+    )?;
+    assert!(list.starts_with("HTTP/1.1 200"), "{list}");
+    assert!(!list.contains("<script>"));
+    assert!(list.contains("&lt;script&gt;"));
+    assert!(!list.contains("<pre>"));
+    assert!(list.contains("Read Work document"));
+    let exact = f.raw(
+        &format!("/inspection?class=work&id={goal}&revision=1&field=statement"),
+        &format!("Host: {AUTH}\r\n"),
+    )?;
+    assert!(!exact.contains("<script>"));
+    assert!(exact.contains("Back to results"));
+    assert!(exact.contains("/memory/context/correct"));
+    assert!(exact.contains("/memory/forget"));
+    let localized = f.raw(
+        &format!("/inspection?class=work&id={goal}&locale=ko&language=ja"),
+        &format!("Host: {AUTH}\r\n"),
+    )?;
+    assert!(localized.contains(&format!("work={goal}&amp;locale=ko&amp;language=ja")));
+    let marker = "name=\"request_authenticity\" value=\"";
+    let token = exact
+        .split_once(marker)
+        .ok_or("authenticity")?
+        .1
+        .split('"')
+        .next()
+        .ok_or("token")?;
+    let body=format!("record_kind=context_item&record_id={goal}&user_turn=Forget+this+exact+Goal&view=tools&tool=memory&inspection_class=work&request_authenticity={token}");
+    let post = |origin: &str, token_body: &str| {
+        format!("POST /memory/forget HTTP/1.1\r\nHost: {AUTH}\r\nOrigin: {origin}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{token_body}",token_body.len())
+    };
+    let mut output = Vec::new();
+    f.server.serve_connection(
+        &mut Cursor::new(post("https://attacker.invalid", &body)),
+        &mut output,
+    )?;
+    assert!(String::from_utf8(output)?.starts_with("HTTP/1.1 403"));
+    assert!(f
+        .get(&format!("class=work&id={goal}"))?
+        .starts_with("HTTP/1.1 200"));
+    let mut output = Vec::new();
+    f.server.serve_connection(
+        &mut Cursor::new(post(&format!("http://{AUTH}"), &body)),
+        &mut output,
+    )?;
+    let receipt = String::from_utf8(output)?;
+    assert!(receipt.starts_with("HTTP/1.1 200"), "{receipt}");
+    assert!(receipt.contains("Forgetting completed"));
+    assert!(receipt.contains(&goal.to_string()));
+    assert!(!receipt.contains("<script>"));
+    assert!(!receipt.contains(token));
+    assert!(f
+        .get(&format!("class=work&id={goal}"))?
+        .starts_with("HTTP/1.1 404"));
+    Ok(())
+}
+
+#[test]
+fn seed_inspection_review() -> Result {
+    let Some(root) = std::env::var_os("VOLICORD_INSPECTION_REVIEW_ROOT") else {
+        return Ok(());
+    };
+    let root = std::path::PathBuf::from(root);
+    std::fs::create_dir_all(&root)?;
+    let control = reading_fixture::scenario_in(&root, reading_fixture::rich_scenario()?)?;
+    let ops = LocalOperations::new(control.operations.layout().clone());
+    let server = ViewerServer::new(
+        ViewerAdapter::new(ops),
+        control.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        AUTH.parse()?,
+    )?;
+    let f = Fixture {
+        _temp: tempfile::tempdir()?,
+        server,
+        project: control.project,
+    };
+    let s = f.source(f.project, "private-source-marker")?;
+    let candidate = f.candidate(s, "Inspect a retained investigation candidate")?;
+    let expired = f.candidate(s, "expired-review-secret")?;
+    let derived = f.derived(s, "derived-review-secret")?;
+    let db = rusqlite::Connection::open(f.ops().layout().candidate_store())?;
+    let raw: String = db.query_row(
+        "SELECT record_json FROM candidates WHERE id=?1",
+        [expired.as_bytes().as_slice()],
+        |r| r.get(0),
+    )?;
+    let mut record: Value = serde_json::from_str(&raw)?;
+    record["retention"]["retained_until"] = json!(2);
+    db.execute(
+        "UPDATE candidates SET record_json=?1 WHERE id=?2",
+        rusqlite::params![record.to_string(), expired.as_bytes().as_slice()],
+    )?;
+    let empty = f
+        .ops()
+        .initialize_project("Empty inspection control", None)?
+        .project
+        .id;
+    let manifest = json!({"runtime":f.ops().layout().root(),"project":f.project.to_string(),"work":control.goals["older"].to_string(),
+        "decision":control.decisions["explicit"].to_string(),"candidate":candidate.to_string(),"expired":expired.to_string(),"derived":derived.to_string(),
+        "empty_project":empty.to_string(),"synthetic":true,"human_acceptance":"pending"});
+    std::fs::write(
+        root.join("fixture.json"),
+        serde_json::to_vec_pretty(&manifest)?,
+    )?;
+    let _kept = control._temporary.keep();
+    Ok(())
+}
+
+#[test]
+fn decision_correction_and_supersession_use_domain_operations_and_exact_receipts() -> Result {
+    let (control, f) = rich()?;
+    let id = control.decisions["project"];
+    let basis = f.ops().canonical_basis(f.project)?;
+    let original = &basis
+        .active_decisions
+        .iter()
+        .find(|d| d.decision.id == id)
+        .ok_or("Decision")?
+        .decision;
+    let corrected = format!(
+        "{}.",
+        original.user_rationale.as_deref().ok_or("rationale")?
+    );
+    let alternative=original.displayed_alternatives.iter().find(|a|!matches!(&original.choice,volicord_context::DecisionChoice::Alternative{alternative_key} if *alternative_key==a.key)).ok_or("different alternative")?.key.clone();
+    let html = f.raw(
+        &format!("/inspection?class=decision&id={id}"),
+        &format!("Host: {AUTH}\r\n"),
+    )?;
+    let token = html
+        .split_once("name=\"request_authenticity\" value=\"")
+        .ok_or("token")?
+        .1
+        .split('"')
+        .next()
+        .ok_or("token")?;
+    let encode = |s: &str| s.bytes().map(|b| format!("%{b:02X}")).collect::<String>();
+    let post = |path: &str, body: String| -> Result<String> {
+        let body = format!(
+            "{body}&view=tools&tool=memory&inspection_class=decision&request_authenticity={token}"
+        );
+        let request=format!("POST {path} HTTP/1.1\r\nHost: {AUTH}\r\nOrigin: http://{AUTH}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",body.len());
+        let mut output = Vec::new();
+        f.server
+            .serve_connection(&mut Cursor::new(request), &mut output)?;
+        Ok(String::from_utf8(output)?)
+    };
+    let correction=post("/memory/decision/correct",format!("record_id={id}&expected_revision={}&corrected_text={}&user_turn=Correct+the+punctuation",original.revision,encode(&corrected)))?;
+    assert!(correction.starts_with("HTTP/1.1 200"), "{correction}");
+    assert!(correction.contains(&id.to_string()));
+    assert!(correction.contains("revision 2"));
+    let supersession = post(
+        "/memory/decision/supersede",
+        format!(
+            "record_id={id}&alternative={}&user_turn=Choose+this+different+displayed+alternative",
+            encode(&alternative)
+        ),
+    )?;
+    assert!(supersession.starts_with("HTTP/1.1 200"), "{supersession}");
+    let basis = f.ops().canonical_basis(f.project)?;
+    let old = basis
+        .superseded_decisions
+        .iter()
+        .find(|d| d.decision.id == id)
+        .ok_or("superseded")?;
+    let new = old.superseded_by.ok_or("successor")?;
+    assert_ne!(new, id);
+    assert!(supersession.contains(&new.to_string()));
+    assert!(!supersession.contains(token));
+    let successor = &basis
+        .active_decisions
+        .iter()
+        .find(|d| d.decision.id == new)
+        .ok_or("successor")?
+        .decision;
+    assert_eq!(successor.work_scope, original.work_scope);
+    assert!(successor.user_rationale.is_none());
+    assert_eq!(
+        f.page(&format!("class=decision&id={id}"))?["page"]["rows"][0]["state"],
+        "superseded"
+    );
+    assert_eq!(
+        f.page(&format!("class=decision&id={new}"))?["page"]["rows"][0]["state"],
+        "active"
+    );
     Ok(())
 }

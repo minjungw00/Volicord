@@ -1,3 +1,6 @@
+#[path = "inspection_render.rs"]
+mod inspection_render;
+pub(crate) use inspection_render::inspection_page;
 #[path = "presentation.rs"]
 mod presentation;
 #[path = "reading.rs"]
@@ -79,6 +82,7 @@ pub struct ViewerPage {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ViewerRenderProfile {
     pub projection: ProjectProjectionProfile,
+    pub inspection_query: Duration,
     pub project_projection_passes: usize,
     pub understanding: Duration,
     pub health_read: Duration,
@@ -214,6 +218,37 @@ impl ViewerAdapter {
         request: &ViewerRequest,
         request_authenticity: &str,
     ) -> Result<(ViewerPage, ViewerRenderProfile), ViewerError> {
+        if let crate::ViewerView::Tools {
+            tool: tool @ (crate::ViewerTool::Memory | crate::ViewerTool::Evidence),
+        } = request.view
+        {
+            let started = Instant::now();
+            let mut selection = crate::inspection::InspectionSelection::default();
+            selection.query.class = if tool == crate::ViewerTool::Evidence {
+                volicord_operations::InspectionClass::Source
+            } else {
+                volicord_operations::InspectionClass::Work
+            };
+            let (mut page, mut profile) = self
+                .render_inspection_profiled(request, &selection, request_authenticity)
+                .map_err(ViewerError::from)?;
+            if let Some(id) = request.guarded_request {
+                let guarded = self
+                    .operations
+                    .guarded_request(id)
+                    .map_err(|_| ViewerError::new("Guarded request unavailable"))?;
+                if guarded.project_id != request.project_id {
+                    let mut e = ViewerError::new("Guarded request unavailable");
+                    e.not_found = true;
+                    return Err(e);
+                }
+                let mut form = String::new();
+                render_guarded(&mut form, request, &guarded, request_authenticity);
+                page.html = page.html.replace("</main>", &format!("{form}</main>"));
+            }
+            profile.total = started.elapsed();
+            return Ok((page, profile));
+        }
         self.render_with_mode_profiled(
             request,
             ViewerRenderMode::Live {
@@ -545,6 +580,7 @@ impl ViewerAdapter {
                 html,
             },
             ViewerRenderProfile {
+                inspection_query: Duration::ZERO,
                 projection: projection_profile,
                 project_projection_passes: 1,
                 understanding: understanding_duration,
@@ -733,13 +769,18 @@ fn render_tool(
             }
         }
         crate::ViewerTool::Memory => {
+            html.push_str("<p>Static included subset; live search and protected actions require the local viewer.</p><details><summary>Inspect included canonical and Candidate records</summary>");
             render_canonical(html, request, projection);
             render_candidates(html, request, projection);
             if let Some(token) = authenticity {
                 render_mutation_controls(html, request, projection, token);
             }
+            html.push_str("</details>");
         }
         crate::ViewerTool::Evidence => {
+            html.push_str(
+                "<details><summary>Inspect included observations, inventory and history</summary>",
+            );
             if authenticity.is_some() {
                 reading::diagnostics(html, request, projection, health);
             }
@@ -747,6 +788,7 @@ fn render_tool(
             render_checkpoints(html, request, projection);
             render_repository(html, request, projection);
             render_overview(html, request, projection);
+            html.push_str("</details>");
         }
     }
     html.push_str("</section>");
@@ -2722,6 +2764,19 @@ fn render_mutation_controls(
     projection: &ProjectProjection,
     request_authenticity: &str,
 ) {
+    render_mutation_records(
+        html,
+        request,
+        &projection.canonical_inspection,
+        request_authenticity,
+    );
+}
+fn render_mutation_records(
+    html: &mut String,
+    request: &ViewerRequest,
+    records: &[volicord_projections::CanonicalInspectionItem],
+    request_authenticity: &str,
+) {
     html.push_str(&format!(
         "<details class=\"memory-administration\" data-administration=\"memory\"><summary>{}</summary>",
         escape(text(
@@ -2737,12 +2792,28 @@ fn render_mutation_controls(
     );
     empty_state(html, text(request.locale, "Correction, supersession, and forgetting are submitted to Local Operations with explicit current-host user input. The Viewer does not own canonical mutation authority.", "수정, 대체 및 삭제는 명시적인 현재 호스트 사용자 입력과 함께 로컬 작업 계층에 제출됩니다. 뷰어는 정식 변경 권한을 소유하지 않습니다."));
     let mut action_count = 0_usize;
-    for record in &projection.canonical_inspection {
+    for record in records {
         match record.kind {
             CanonicalInspectionKind::ContextItem => {
                 action_count += 1;
                 html.push_str(&format!("<details class=\"memory-target\"><summary><strong>{}</strong>: {} <span class=\"record-meta\">({}; {} {}; ID <code>{}</code>)</span></summary><form class=\"action-form\" method=\"post\" action=\"/memory/context/correct\"><fieldset><legend>{}</legend>", escape(text(request.locale, "Context Item", "맥락 항목")), escape(&record.summary), escape(canonical_lifecycle_label(&record.lifecycle_state, request.locale)), escape(text(request.locale, "revision", "리비전")), record.revision, escape(&record.identity), escape(text(request.locale, "Correct this current value", "이 현재 값 수정"))));
                 hidden(html, "record_id", &record.identity);
+                hidden(
+                    html,
+                    "inspection_class",
+                    match record.kind {
+                        CanonicalInspectionKind::ContextItem
+                            if record.statement_role.as_deref() == Some("goal") =>
+                        {
+                            "work"
+                        }
+                        CanonicalInspectionKind::ContextItem => "context",
+                        CanonicalInspectionKind::Source => "source",
+                        CanonicalInspectionKind::Question => "question",
+                        CanonicalInspectionKind::Checkpoint => "checkpoint",
+                        _ => "decision",
+                    },
+                );
                 hidden(html, "expected_revision", &record.revision.to_string());
                 html.push_str(&format!("<label>{} <textarea name=\"corrected_text\" required></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "Corrected statement", "수정한 진술")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
                 render_view_fields(html, request, request_authenticity);
@@ -2755,11 +2826,43 @@ fn render_mutation_controls(
                 action_count += 1;
                 html.push_str(&format!("<details class=\"memory-target\"><summary><strong>{}</strong>: {} <span class=\"record-meta\">({}; {} {}; ID <code>{}</code>)</span></summary><form class=\"action-form\" method=\"post\" action=\"/memory/decision/correct\"><fieldset><legend>{}</legend>", escape(text(request.locale, "Decision", "결정")), escape(&record.summary), escape(canonical_lifecycle_label(&record.lifecycle_state, request.locale)), escape(text(request.locale, "revision", "리비전")), record.revision, escape(&record.identity), escape(text(request.locale, "Correct this rationale", "이 근거 수정"))));
                 hidden(html, "record_id", &record.identity);
+                hidden(
+                    html,
+                    "inspection_class",
+                    match record.kind {
+                        CanonicalInspectionKind::ContextItem
+                            if record.statement_role.as_deref() == Some("goal") =>
+                        {
+                            "work"
+                        }
+                        CanonicalInspectionKind::ContextItem => "context",
+                        CanonicalInspectionKind::Source => "source",
+                        CanonicalInspectionKind::Question => "question",
+                        CanonicalInspectionKind::Checkpoint => "checkpoint",
+                        _ => "decision",
+                    },
+                );
                 hidden(html, "expected_revision", &record.revision.to_string());
                 html.push_str(&format!("<label>{} <textarea name=\"corrected_text\" required></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "Corrected rationale", "수정한 근거")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
                 render_view_fields(html, request, request_authenticity);
                 html.push_str(&format!("<button type=\"submit\">{}</button></fieldset></form><form class=\"action-form\" method=\"post\" action=\"/memory/decision/supersede\"><fieldset><legend>{}</legend>", escape(text(request.locale, "Correct rationale", "근거 수정")), escape(text(request.locale, "Supersede this Decision", "이 결정 대체"))));
                 hidden(html, "record_id", &record.identity);
+                hidden(
+                    html,
+                    "inspection_class",
+                    match record.kind {
+                        CanonicalInspectionKind::ContextItem
+                            if record.statement_role.as_deref() == Some("goal") =>
+                        {
+                            "work"
+                        }
+                        CanonicalInspectionKind::ContextItem => "context",
+                        CanonicalInspectionKind::Source => "source",
+                        CanonicalInspectionKind::Question => "question",
+                        CanonicalInspectionKind::Checkpoint => "checkpoint",
+                        _ => "decision",
+                    },
+                );
                 html.push_str(&format!("<label>{} <input name=\"alternative\" required></label><label>{} <textarea name=\"rationale\"></textarea></label><label>{} <textarea name=\"user_turn\" required></textarea></label>", escape(text(request.locale, "New displayed alternative key", "새 표시 대안 키")), escape(text(request.locale, "Rationale", "근거")), escape(text(request.locale, "Current user turn", "현재 사용자 입력"))));
                 render_view_fields(html, request, request_authenticity);
                 html.push_str(&format!(
@@ -2774,6 +2877,22 @@ fn render_mutation_controls(
             html.push_str(&format!("<details class=\"memory-target destructive\"><summary><strong>{} {}</strong>: {} <span class=\"record-meta\">({}; {} {}; ID <code>{}</code>)</span></summary><form class=\"action-form\" method=\"post\" action=\"/memory/forget\"><fieldset><legend>{}</legend>", escape(text(request.locale, "Forget", "삭제")), escape(canonical_kind_label(record.kind, request.locale)), escape(&record.summary), escape(canonical_lifecycle_label(&record.lifecycle_state, request.locale)), escape(text(request.locale, "revision", "리비전")), record.revision, escape(&record.identity), escape(text(request.locale, "Confirm the identifiable current target", "식별 가능한 현재 대상 확인"))));
             hidden(html, "record_kind", kind);
             hidden(html, "record_id", &record.identity);
+            hidden(
+                html,
+                "inspection_class",
+                match record.kind {
+                    CanonicalInspectionKind::ContextItem
+                        if record.statement_role.as_deref() == Some("goal") =>
+                    {
+                        "work"
+                    }
+                    CanonicalInspectionKind::ContextItem => "context",
+                    CanonicalInspectionKind::Source => "source",
+                    CanonicalInspectionKind::Question => "question",
+                    CanonicalInspectionKind::Checkpoint => "checkpoint",
+                    _ => "decision",
+                },
+            );
             html.push_str(&format!(
                 "<label>{} <textarea name=\"user_turn\" required></textarea></label>",
                 escape(text(

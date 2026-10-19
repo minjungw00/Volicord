@@ -1,4 +1,4 @@
-Current reader contract: [D-01–D-18 / AC-01–AC-16](../../docs/design/reader-experience-design.md).
+Current reader contract: [D-01–D-27 / AC-01–AC-25](../../docs/design/reader-experience-design.md).
 This supersedes historical two-menu, neutral-normal-card and single observation-date
 guidance below. New output is unassessed until reviewed; previous delivered UI was rejected.
 
@@ -680,3 +680,48 @@ Focused browser checks cover five widths, section fragments, delayed reads, shar
 Sources, deletion, keyboard and offline navigation. They do not establish native
 zoom, screen-reader usability, semantic adequacy or human acceptance. The previous
 reader was rejected; new review output remains pending exact-artifact feedback.
+
+## Project record inspection
+
+Tools → Project records & memory starts a deliberate inspection dashboard;
+Sources & history opens the same inspector on Sources, retaining inventory,
+Checkpoint history and diagnostics behind a native disclosure. Analysis and
+Documents keep their specialized health/recovery and preview/export workflows.
+
+`/inspection?class=work` selects a record class: `work`, `context`, `checkpoint`,
+`decision`, `question`, `source`, `candidate` or `derived`. The Project control shows
+only the launched authorized Project. Use a separately launched viewer for another
+Project; no global Project catalog or database access is granted.
+
+Use literal `q` search over the displayed summary (up to 240 characters) or exact
+identity. State/role filters and page size are under **Filter state, role and page
+size**. Stable ID ordering and permitted-match counts never search Source bodies,
+withheld Candidate text or Derived content. Page size is 1–20 (native choices 5,
+10, 20); continuation carries the query's permitted-basis fingerprint and refuses
+changed correction, forgetting or expiry with 409. No persistent cache is used.
+
+**Inspect record** opens the exact `id`. Explicit relationships admit both endpoints
+in this Project, identify recorded Question revision separately from its current
+revision, and page eight at a time. **Read selected field** requires the displayed
+current `revision`. Each field chunk is at most 2,048 UTF-8 bytes and rechecks the
+existing evidence reader. The `reference` field shows complete canonical locator/snapshot metadata as text,
+with user-turn bodies excluded. Source bodies additionally require the exact Work that
+retained the copy; a link or matching filename grants no body authority. Unavailable
+bodies and withheld fields remain explicit. Derived inspection exposes kind, state,
+expiry and admitted links only; it has no general body reader.
+
+Memory administration is closed by default and offers the existing correction,
+Decision supersession and forgetting operations for displayed exact targets. Native
+forms keep Origin/authenticity and current revision checks; inspector submissions
+return a direct identity/revision or forgetting-completion receipt. Guarded requests
+still use their dedicated exact effect/revision confirmation page. Inspection never
+dispatches effects, captures Sources, renews retention or invokes a model/provider.
+
+`/inspection.json` is the same bounded read for public transport consumers. It
+accepts fixed typed selectors only; no SQL, paths, file downloads, arbitrary joins,
+raw UPDATE/DELETE or new authority exists. 400 means invalid selector, 404 unavailable
+exact identity in this Project, 409 changed basis/revision, and 503 a named unavailable,
+unsupported or corrupt dependency. Wrong Host is 421 and wrong Origin/authenticity
+is 403, as is a withheld Candidate field. HTTP results are not cached. Static Viewer exports include only their bounded
+permitted subset and native evidence anchors; they have no live inspection queries,
+protected forms or script. Raw row envelopes require intentional disclosure.

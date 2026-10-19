@@ -55,8 +55,15 @@ fn project_destinations_and_exact_related_records_are_readable_without_mutation(
                 assert!(html.contains("<form"));
                 assert!(html.contains("test-authenticity"));
             }
-            if matches!(tool, ViewerTool::Status | ViewerTool::Evidence) {
+            if tool == ViewerTool::Status {
                 assert!(!html.contains("<form"));
+            }
+            if tool == ViewerTool::Evidence {
+                assert!(html.contains("class=\"inspection-query\""));
+                assert!(
+                    html.contains("Repository inventory, history and diagnostics")
+                        || html.contains("저장소 목록, 이력 및 진단")
+                );
             }
         }
         request.view = ViewerView::Work {

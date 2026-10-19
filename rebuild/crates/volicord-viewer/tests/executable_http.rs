@@ -295,7 +295,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
 
     let overview = get(address, "/?view=overview&locale=en&language=fr-CA");
     let working = get(address, "/?view=tools&tool=documents&locale=ko&language=ko");
-    let deep = get(address, "/?view=tools&tool=memory&locale=en&language=ja");
+    let deep = get(address, "/inspection?class=source&locale=en&language=ja");
     assert!(overview.starts_with("HTTP/1.1 200 OK"), "{overview}");
     assert!(overview.contains("data-view=\"overview\""));
     assert!(working.contains("data-view=\"tools\""));
@@ -365,7 +365,7 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         .value;
     drop(store);
     assert!(!overview.contains(&context.id.to_string()));
-    let refreshed = get(address, "/?view=tools&tool=memory&locale=en&language=en");
+    let refreshed = get(address, "/inspection?class=context&locale=en&language=en");
     assert!(refreshed.contains(&context.id.to_string()));
     assert!(refreshed.contains("viewer state created after startup"));
 
@@ -396,7 +396,9 @@ fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
         corrected_context.statement,
         "state created after viewer startup"
     );
-    assert!(get(address, "/?view=tools&tool=memory").contains("state created after viewer startup"));
+    assert!(
+        get(address, "/inspection?class=context").contains("state created after viewer startup")
+    );
 
     let published_document = temporary.path().join("published").join("handoff.md");
     let published = post(

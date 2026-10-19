@@ -123,7 +123,7 @@ fn routes_each_request_with_its_own_depth_and_fresh_state() {
     assert!(deep.contains("data-view=\"tools\""));
     assert!(deep.contains("기억"));
     assert!(deep.contains("<html lang=\"ko\""));
-    assert!(deep.contains("id=\"canonical-context\""));
+    assert!(deep.contains("class=\"inspection-query\""));
     assert!(deep.contains("없습니다"));
     assert!(!deep.contains("절대 대상 경로"));
     assert_ne!(overview, deep);
@@ -141,7 +141,7 @@ fn routes_each_request_with_its_own_depth_and_fresh_state() {
     assert!(!overview.contains(&source.identity));
     let refreshed = exchange(
         &server,
-        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /inspection?class=source HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(refreshed.contains(&source.identity));
 }
@@ -151,7 +151,7 @@ fn forgetting_http_cleans_linked_local_content_and_preserves_unrelated() {
     let (_temporary, server, project) = setup();
     let page = exchange(
         &server,
-        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /inspection?class=source HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     let request_authenticity = request_authenticity(&page);
     let source = server
@@ -252,7 +252,7 @@ fn forgetting_http_cleans_linked_local_content_and_preserves_unrelated() {
 
     let refreshed = exchange(
         &server,
-        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /inspection?class=source HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(!refreshed.contains(&format!("Source · {} r1", source.identity)));
 }
@@ -264,7 +264,7 @@ fn viewer_read_withholds_forgotten_content_during_repair_required_cleanup() {
     let (_temporary, server, project) = setup();
     let initial = exchange(
         &server,
-        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /inspection?class=source HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     let token = request_authenticity(&initial);
     let target = server
@@ -313,7 +313,7 @@ fn viewer_read_withholds_forgotten_content_during_repair_required_cleanup() {
 
     let completed_before_commit = exchange(
         &server,
-        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /inspection?class=candidate HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(completed_before_commit.starts_with("HTTP/1.1 200 OK"));
     assert!(completed_before_commit.contains(RELATED));
@@ -371,14 +371,19 @@ fn viewer_read_withholds_forgotten_content_during_repair_required_cleanup() {
 
     let live_read = exchange(
         &server,
-        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /inspection?class=candidate HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     assert!(live_read.starts_with("HTTP/1.1 200 OK"));
     assert!(!live_read.contains(RELATED));
     assert!(!live_read.contains(&target.identity));
     assert!(live_read.contains(UNRELATED));
-    assert!(live_read.contains(&unrelated_source.identity));
-    assert!(live_read.contains("Candidate data omitted"));
+    let source_read = exchange(
+        &server,
+        format!("GET /inspection?class=source HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+    );
+    assert!(source_read.contains(&unrelated_source.identity));
+    assert!(!source_read.contains(&target.identity));
+    assert!(live_read.contains("withheld"));
 
     let projection = server
         .adapter()
@@ -490,7 +495,7 @@ fn concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls() {
         drop(privacy);
         let page = exchange(
             &worker,
-            format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+            format!("GET /inspection?class=source HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
         );
         let token = request_authenticity(&page);
         controls.push((worker, token, target.identity, candidate, derived));
@@ -782,13 +787,13 @@ fn authority_origin_fetch_metadata_and_token_fail_before_memory_side_effects() {
         .expect("record memory target");
     let page = exchange(
         &server,
-        format!("GET /?view=tools&tool=memory HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
+        format!("GET /inspection?class=source HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n"),
     );
     let request_authenticity = request_authenticity(&page);
     assert_eq!(request_authenticity.len(), 64);
     let rebound = exchange(
         &server,
-        "GET /?view=tools&tool=memory HTTP/1.1\r\nHost: attacker.example\r\n\r\n",
+        "GET /inspection?class=source HTTP/1.1\r\nHost: attacker.example\r\n\r\n",
     );
     assert!(rebound.starts_with("HTTP/1.1 421 Misdirected Request"));
     assert!(!rebound.contains("request_authenticity"));

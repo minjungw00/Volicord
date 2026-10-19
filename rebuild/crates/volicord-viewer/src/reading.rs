@@ -92,12 +92,16 @@ pub(super) fn navigation(html: &mut String, r: &ViewerRequest, snapshot: bool) {
         ),
         (
             ViewerTool::Memory,
-            text(r.locale, "Memory · inspect & edit", "기억 · 검사 및 수정"),
+            text(
+                r.locale,
+                "Project records & memory",
+                "프로젝트 기록 및 기억",
+            ),
             "memory-tool",
         ),
         (
             ViewerTool::Evidence,
-            text(r.locale, "Evidence & history", "근거 및 이력"),
+            text(r.locale, "Sources & history", "Source 및 이력"),
             "evidence-tool",
         ),
     ] {
@@ -125,7 +129,7 @@ pub(super) fn tool_heading(html: &mut String, r: &ViewerRequest, tool: ViewerToo
         ViewerTool::Status => (text(r.locale, "Analysis & privacy", "분석 및 개인정보"), text(r.locale, "Understand coverage and freshness, then inspect local recovery and provider settings.", "분석 범위와 최신성을 확인하고 로컬 복구 안내와 제공자 설정을 살펴봅니다.")),
         ViewerTool::Documents => (text(r.locale, "Documents", "문서"), text(r.locale, "Read grounded previews and explicitly export the document you need.", "근거가 연결된 미리보기를 읽고 필요한 문서를 명시적으로 내보냅니다.")),
         ViewerTool::Memory => (text(r.locale, "Memory", "기억"), text(r.locale, "Inspect original records and retained Candidates. Corrections and forgetting require an explicit authorized action.", "원래 기록과 보존된 Candidate를 검사합니다. 수정과 삭제는 명시적으로 승인된 동작이 필요합니다.")),
-        ViewerTool::Evidence => (text(r.locale, "Evidence & history", "근거 및 이력"), text(r.locale, "Inspect original observations, repository inventory and the full diagnostic record.", "원래 관측, 저장소 목록과 전체 진단 기록을 검사합니다.")),
+        ViewerTool::Evidence => (text(r.locale, "Sources & history", "Source 및 이력"), text(r.locale, "Inspect original observations, repository inventory and the full diagnostic record.", "원래 관측, 저장소 목록과 전체 진단 기록을 검사합니다.")),
     };
     html.push_str("<header class=\"page-head\"><p class=\"eyebrow\">PROJECT TOOLS</p>");
     heading(html, 1, title);

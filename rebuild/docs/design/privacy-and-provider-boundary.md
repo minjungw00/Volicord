@@ -749,7 +749,8 @@ size at most 20 and bounded numeric offsets. Continuation binds query and admitt
 visible basis; changed correction, forgetting or expiry rejects continuation with
 conflict. Hidden content cannot affect a public fingerprint. Reads hold existing
 inspection coordination, use no persistent cache and emit `Cache-Control: no-store`.
-Malformed input is 400, wrong Host 421, wrong Origin/authenticity 403, unavailable
+Malformed input is 400, wrong Host 421, wrong Origin/authenticity or a withheld
+Candidate field 403, unavailable
 exact identity 404, changed continuation/revision 409, failed dependency 503; errors
 contain no private values or database diagnostics. Stored strings and terms are
 escaped; no executable/user-controlled URL or external asset is introduced.

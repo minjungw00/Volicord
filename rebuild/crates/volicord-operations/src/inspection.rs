@@ -156,6 +156,7 @@ fn hex_identity(s: &str, len: usize) -> bool {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
 pub struct InspectionRelation {
+    pub recorded_revision: Option<u64>,
     pub relation: String,
     pub class: InspectionClass,
     pub identity: String,
@@ -172,6 +173,7 @@ pub struct InspectionRow {
     pub summary_omitted: bool,
     pub disclosure: String,
     pub fields: Vec<String>,
+    pub metadata: serde_json::Value,
     pub relationships: Vec<InspectionRelation>,
     pub next_relationship_offset: Option<usize>,
     /// No hidden-target count or identity is exposed.
@@ -195,19 +197,29 @@ pub enum InspectionFailure {
     NotFound,
     Changed,
     Unavailable,
+    Unsupported,
+    Corrupt,
+    Withheld,
 }
 impl std::fmt::Display for InspectionFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self { Self::Invalid => "Invalid bounded inspection query.",
             Self::NotFound => "The requested record is unavailable in this Project.",
             Self::Changed => "The permitted read basis changed. Restart inspection.",
+            Self::Unsupported => "The requested inspection dependency has an unsupported format. Use Analysis for recovery guidance.",
+            Self::Withheld => "The requested Candidate field is withheld; only permitted metadata is readable.",
+            Self::Corrupt => "The requested inspection dependency is corrupt. Use Analysis for recovery guidance.",
             Self::Unavailable => "The requested inspection dependency is unavailable. Use Analysis for recovery guidance." })
     }
 }
 impl std::error::Error for InspectionFailure {}
 impl From<Error> for InspectionFailure {
-    fn from(_: Error) -> Self {
-        Self::Unavailable
+    fn from(error: Error) -> Self {
+        match error.inquiry_cause().map(|e| e.kind()) {
+            Some(volicord_inquiry::ErrorKind::UnsupportedVersion) => Self::Unsupported,
+            Some(volicord_inquiry::ErrorKind::CorruptState) => Self::Corrupt,
+            _ => Self::Unavailable,
+        }
     }
 }
 
@@ -312,6 +324,19 @@ impl LocalOperations {
             return Err(InspectionFailure::Changed);
         }
         if !row.fields.contains(&request.field) {
+            if query.class == InspectionClass::Candidate
+                && [
+                    "summary",
+                    "engineering_choice_discovery",
+                    "materiality_review",
+                    "learning_deliberation",
+                    "repository_research_basis",
+                    "source_status",
+                ]
+                .contains(&request.field.as_str())
+            {
+                return Err(InspectionFailure::Withheld);
+            }
             return Err(InspectionFailure::Invalid);
         }
         let detail = if query.class == InspectionClass::Candidate {
@@ -450,6 +475,16 @@ impl LocalOperations {
                 summary,
                 disclosure,
             );
+            if c == InspectionClass::Source {
+                if let Some(source) = basis
+                    .sources
+                    .iter()
+                    .find(|s| s.source.id.to_string() == row.identity)
+                {
+                    row.metadata = serde_json::json!({"recorded_at_unix_micros":source.source.recorded_at.as_unix_micros(),
+                        "availability":format!("{:?}",source.availability).to_lowercase(),"freshness":row.state});
+                }
+            }
             if c == InspectionClass::Work {
                 if let Some(cp) = basis
                     .checkpoint_history
@@ -535,6 +570,9 @@ impl LocalOperations {
                         InspectionClass::Question,
                         q.question_id.to_string(),
                     );
+                    if let Some(relation) = row.relationships.last_mut() {
+                        relation.recorded_revision = Some(q.revision);
+                    }
                 }
             }
         }
@@ -552,6 +590,9 @@ impl LocalOperations {
                     InspectionClass::Question,
                     d.decision.question_id.to_string(),
                 );
+                if let Some(relation) = row.relationships.last_mut() {
+                    relation.recorded_revision = Some(d.decision.question_revision);
+                }
                 if let DecisionWorkScope::WorkItem(work) = d.decision.work_scope {
                     link(row, "applies_to", InspectionClass::Work, work.to_string());
                 }
@@ -607,6 +648,9 @@ impl LocalOperations {
                         |o| format!("{o:?}"),
                     ),
                 );
+                row.metadata = serde_json::json!({"candidate_kind":format!("{:?}",c.kind),
+                    "created_at_unix_micros":c.created_at.as_unix_micros(),"observed_at_unix_micros":c.observed_at.as_unix_micros(),
+                    "retained_until_unix_micros":c.retention.retained_until.map(|t|t.as_unix_micros())});
                 if i.content_omission.is_none() {
                     row.fields = [
                         "summary",
@@ -668,6 +712,8 @@ impl LocalOperations {
                     format!("{:?} · {state}", d.kind),
                     "metadata_only_no_general_body_reader".into(),
                 );
+                row.metadata = serde_json::json!({"derived_kind":d.kind,"created_at_unix_micros":d.created_at.as_unix_micros(),
+                    "retained_until_unix_micros":d.retained_until.map(|t|t.as_unix_micros()),"analysis_snapshot":d.analysis_snapshot.map(|a|a.to_string())});
                 if !["withheld", "deleted", "expired"].contains(&state.as_str()) {
                     for l in d.canonical_links {
                         use volicord_privacy::ManagedCanonicalLink::*;
@@ -728,6 +774,7 @@ impl LocalOperations {
                 .find(|r| r.class == l.class && r.identity == l.identity)
             {
                 target.relationships.push(InspectionRelation {
+                    recorded_revision: None,
                     relation: format!("referenced_by_{}", l.relation),
                     class,
                     identity: id,
@@ -762,6 +809,7 @@ fn new_row(
         summary: clipped,
         disclosure,
         fields: Vec::new(),
+        metadata: serde_json::json!({}),
         relationships: Vec::new(),
         next_relationship_offset: None,
         relationships_omitted: false,
@@ -769,6 +817,7 @@ fn new_row(
 }
 fn link(row: &mut InspectionRow, relation: &str, class: InspectionClass, identity: String) {
     row.relationships.push(InspectionRelation {
+        recorded_revision: None,
         relation: relation.into(),
         class,
         identity,

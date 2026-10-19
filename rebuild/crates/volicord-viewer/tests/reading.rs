@@ -561,7 +561,7 @@ fn requested_sections_preserve_metadata_and_refuse_incomplete_documents(
         );
     }
     for (tool, graph, candidate, docs) in [
-        (ViewerTool::Memory, 0, 1, 0),
+        (ViewerTool::Memory, 0, 0, 0),
         (ViewerTool::Documents, 1, 1, 4),
         (ViewerTool::Status, 1, 0, 0),
         (ViewerTool::Evidence, 1, 0, 0),

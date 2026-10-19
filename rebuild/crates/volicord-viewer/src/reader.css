@@ -265,3 +265,48 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 /* Supporting-record gaps keep a visible caution title and intentional detail;
    current explanation invalidation and reported failures remain expanded. */
 details.reading-warning>summary { color:inherit; font-size:.9rem; font-weight:650; padding:0; }
+
+/* Deliberate Project record inspection shares the reader's native controls. */
+.inspector { max-width: 1160px; }
+.inspection-query { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; padding: 1.4rem; background: var(--surface-soft,#f0f4f8); border-radius: .7rem; }
+.inspection-query label,.inspection-field label { display: flex; flex-direction: column; gap: .45rem; font-size: .86rem; font-weight: 600; min-width: 0; }
+.inspection-query input,.inspection-query select,.inspection-field input,.inspection-field select { width: 100%; min-width: 0; min-height: 2.7rem; padding: .55rem; font: inherit; border: 1px solid #b5c3d2; border-radius: .35rem; background: white; color: #26384c; }
+.inspection-query button { align-self: end; min-height: 2.7rem; }
+.inspection-record { padding: 1.3rem 0; border-top: 1px solid #dbe2eb; overflow-wrap: anywhere; }
+.inspection-record h3 { max-width: 75ch; margin: .5rem 0; line-height: 1.55; font-size: 1.06rem; font-weight: 600; }
+.record-state { color: #3b5b7e; font-size: .82rem; text-transform: none; margin: .2rem 0; }
+.inspector .button { display: inline-flex; align-items: center; padding: .5rem .8rem; margin: .25rem .35rem .25rem 0; border: 1px solid #bac9d8; border-radius: .35rem; background: #f6f9fc; color: #26496e; text-decoration: none; font-size: .88rem; }
+.inspector a:hover,.inspector button:hover { filter: brightness(.96); }
+.inspector :focus-visible { outline: 3px solid #3578b9; outline-offset: 3px; }
+.inspection-field { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin: 1.5rem 0; }
+.inspection-field label { flex: 1 1 15rem; }
+.inspection-field button { min-height: 2.7rem; }
+.inspection-relationships { list-style: none; padding: 0; }
+.inspection-relationships li { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; padding: .4rem 0; }
+.inspection-detail { margin: 1.5rem 0; padding: 1rem; background: #f2f6fa; border-radius: .4rem; }
+.inspection-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.inspection-paging { display: flex; flex-wrap: wrap; justify-content: space-between; }
+.inspection-support { margin-top: 2rem; }
+.inspector .meta { line-height: 1.65; }
+@media (max-width: 720px) {
+  .inspection-query { grid-template-columns: 1fr; padding: 1rem; }
+  .inspection-query button { width: 100%; }
+  .inspection-field { display: block; }
+  .inspection-field label { margin: .8rem 0; }
+  .inspection-relationships .button { max-width: 100%; overflow-wrap: anywhere; word-break: break-all; }
+}
+.inspection-filters { grid-column: 1 / 3; align-self: end; }
+.inspection-filters > div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .8rem; padding: 1rem 0; }
+.inspection-metadata { font-size: .85rem; }
+.inspection-metadata > div { display: flex; flex-wrap: wrap; gap: 1rem; padding: .3rem 0; }
+.inspection-metadata dt { color: #52667c; }
+@media (max-width: 720px) {
+  .inspection-filters { grid-column: 1; }
+  .inspection-filters > div { grid-template-columns: 1fr; }
+}
+.inspector .page-head { margin-bottom: 1.5rem; }
+.inspection-help { margin: .8rem 0 1.3rem; font-size: .85rem; }
+@media (max-width: 720px) {
+  .inspector .page-head h1 { font-size: 1.75rem; }
+  .inspector .intro { font-size: 1rem; line-height: 1.6; }
+}

@@ -54,3 +54,89 @@ impl ViewerAdapter {
         }
     }
 }
+
+impl ViewerAdapter {
+    pub(crate) fn render_inspection(
+        &self,
+        r: &crate::ViewerRequest,
+        s: &InspectionSelection,
+        token: &str,
+    ) -> Result<crate::ViewerPage, InspectionFailure> {
+        self.render_inspection_profiled(r, s, token).map(|(p, _)| p)
+    }
+    pub(crate) fn render_inspection_profiled(
+        &self,
+        r: &crate::ViewerRequest,
+        s: &InspectionSelection,
+        token: &str,
+    ) -> Result<(crate::ViewerPage, crate::ViewerRenderProfile), InspectionFailure> {
+        let total = std::time::Instant::now();
+        let (page, detail) = self.inspection_read(r.project_id, s)?;
+        let mut profile = crate::ViewerRenderProfile {
+            inspection_query: total.elapsed(),
+            ..Default::default()
+        };
+        let code = matches!(
+            r.view,
+            crate::ViewerView::Tools {
+                tool: crate::ViewerTool::Evidence
+            }
+        );
+        let projection = self
+            .operations()
+            .project_projection_read_profiled(
+                r.project_id,
+                volicord_projections::WorkSelector::Repository,
+                Default::default(),
+                volicord_projections::ProjectionReadRequirements {
+                    code,
+                    inspection: false,
+                },
+            )
+            .ok();
+        if let Some((_, p)) = &projection {
+            profile.projection = *p;
+            profile.project_projection_passes = 1;
+        }
+        let render = std::time::Instant::now();
+        let page = crate::render::inspection_page(
+            self,
+            r,
+            s,
+            page,
+            detail,
+            token,
+            projection.as_ref().map(|(p, _)| p),
+        );
+        profile.html_render = render.elapsed();
+        profile.total = total.elapsed();
+        Ok((page, profile))
+    }
+}
+impl From<InspectionFailure> for crate::ViewerError {
+    fn from(value: InspectionFailure) -> Self {
+        let mut e = crate::ViewerError::new(value.to_string());
+        e.not_found = value == InspectionFailure::NotFound;
+        e
+    }
+}
+pub(crate) fn request(
+    project: volicord_context::ProjectId,
+    locale: crate::ViewerLocale,
+    language: String,
+    class: volicord_operations::InspectionClass,
+) -> crate::ViewerRequest {
+    crate::ViewerRequest {
+        project_id: project,
+        locale,
+        requested_language: language,
+        guarded_request: None,
+        view: crate::ViewerView::Tools {
+            tool: if class == volicord_operations::InspectionClass::Source {
+                crate::ViewerTool::Evidence
+            } else {
+                crate::ViewerTool::Memory
+            },
+        },
+    }
+}

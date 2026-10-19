@@ -76,13 +76,22 @@ impl ViewerServer {
 
     fn route(&self, request: HttpRequest) -> Result<HttpResponse, HttpFailure> {
         self.validate_authority(&request)?;
+        if request.method == "GET"
+            && (request.origin.as_deref().is_some_and(|s| s != self.origin)
+                || request
+                    .fetch_site
+                    .as_deref()
+                    .is_some_and(|s| !["same-origin", "none"].contains(&s)))
+        {
+            return Err(HttpFailure::forbidden());
+        }
         if request.method == "POST" {
             self.validate_mutation_request(&request)?;
         }
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/") => self.render(request.query, None),
             ("GET", "/citation") => self.read_citation(request),
-            ("GET", "/inspection.json") => self.read_inspection(request),
+            ("GET", "/inspection") | ("GET", "/inspection.json") => self.read_inspection(request),
             ("POST", "/memory/context/correct") => {
                 let form = request.form()?;
                 form.require_only(&[
@@ -101,9 +110,11 @@ impl ViewerServer {
                     "language",
                     "guarded",
                     "request_authenticity",
+                    "inspection_class",
                 ])?;
                 let source = self.user_source(form.required("user_turn")?)?;
-                self.adapter
+                let outcome = self
+                    .adapter
                     .correct_context(
                         self.project_id,
                         ContextItemId::from_bytes(identity(form.required("record_id")?)?),
@@ -112,7 +123,13 @@ impl ViewerServer {
                         source,
                     )
                     .map_err(domain_failure)?;
-                Ok(HttpResponse::redirect(form.return_location()))
+                Ok(memory_response(
+                    &form,
+                    &outcome.identity,
+                    outcome.revision,
+                    "Record updated",
+                    false,
+                ))
             }
             ("POST", "/memory/decision/correct") => {
                 let form = request.form()?;
@@ -132,9 +149,11 @@ impl ViewerServer {
                     "language",
                     "guarded",
                     "request_authenticity",
+                    "inspection_class",
                 ])?;
                 let source = self.user_source(form.required("user_turn")?)?;
-                self.adapter
+                let outcome = self
+                    .adapter
                     .correct_decision(
                         self.project_id,
                         DecisionId::from_bytes(identity(form.required("record_id")?)?),
@@ -143,7 +162,13 @@ impl ViewerServer {
                         source,
                     )
                     .map_err(domain_failure)?;
-                Ok(HttpResponse::redirect(form.return_location()))
+                Ok(memory_response(
+                    &form,
+                    &outcome.identity,
+                    outcome.revision,
+                    "Record updated",
+                    false,
+                ))
             }
             ("POST", "/memory/decision/supersede") => {
                 let form = request.form()?;
@@ -163,9 +188,11 @@ impl ViewerServer {
                     "language",
                     "guarded",
                     "request_authenticity",
+                    "inspection_class",
                 ])?;
                 let source = self.user_source(form.required("user_turn")?)?;
-                self.adapter
+                let outcome = self
+                    .adapter
                     .supersede_decision(
                         self.project_id,
                         DecisionId::from_bytes(identity(form.required("record_id")?)?),
@@ -174,7 +201,13 @@ impl ViewerServer {
                         form.optional("rationale").map(ToOwned::to_owned),
                     )
                     .map_err(domain_failure)?;
-                Ok(HttpResponse::redirect(form.return_location()))
+                Ok(memory_response(
+                    &form,
+                    &outcome.identity,
+                    outcome.revision,
+                    "Record updated",
+                    false,
+                ))
             }
             ("POST", "/memory/forget") => {
                 let form = request.form()?;
@@ -193,6 +226,7 @@ impl ViewerServer {
                     "language",
                     "guarded",
                     "request_authenticity",
+                    "inspection_class",
                 ])?;
                 let record = canonical_record(
                     form.required("record_kind")?,
@@ -215,7 +249,13 @@ impl ViewerServer {
                         }),
                     ));
                 }
-                Ok(HttpResponse::redirect(form.return_location()))
+                Ok(memory_response(
+                    &form,
+                    &outcome.identity,
+                    None,
+                    "Forgetting completed",
+                    true,
+                ))
             }
             ("POST", "/guarded/confirm") => {
                 let form = request.form()?;
@@ -389,6 +429,24 @@ impl ViewerServer {
             return Err(HttpFailure::bad_request(
                 "invalid inspection detail selector",
             ));
+        }
+        if request.path == "/inspection" {
+            let locale = match q.optional("locale") {
+                None => self.default_locale,
+                Some("en") => ViewerLocale::English,
+                Some("ko") => ViewerLocale::Korean,
+                _ => return Err(HttpFailure::bad_request("unsupported fixed locale")),
+            };
+            let language = q.optional("language").unwrap_or(&self.requested_language);
+            if language.is_empty() || language.len() > 128 {
+                return Err(HttpFailure::bad_request("invalid content language"));
+            }
+            let r = crate::inspection::request(self.project_id, locale, language.into(), class);
+            let page = self
+                .adapter
+                .render_inspection(&r, &selection, &self.request_authenticity)
+                .map_err(inspection_failure)?;
+            return Ok(HttpResponse::html(page.html));
         }
         let (page, detail) = self
             .adapter
@@ -894,13 +952,56 @@ impl fmt::Display for HttpFailure {
     }
 }
 
+fn memory_response(
+    form: &FormData,
+    identity: &str,
+    revision: Option<u64>,
+    label: &str,
+    forgotten: bool,
+) -> HttpResponse {
+    let Some(class) = form
+        .optional("inspection_class")
+        .and_then(|c| volicord_operations::InspectionClass::parse(c).ok())
+    else {
+        return HttpResponse::redirect(form.return_location());
+    };
+    let mut target = if forgotten {
+        format!("/inspection?class={}", class.key())
+    } else {
+        format!("/inspection?class={}&id={identity}", class.key())
+    };
+    target.push_str(&format!(
+        "&locale={}&language={}",
+        form.optional("locale").unwrap_or("en"),
+        percent_encode(form.optional("language").unwrap_or("en"))
+    ));
+    let label = if form.optional("locale") == Some("ko") {
+        if forgotten {
+            "삭제가 완료되었습니다"
+        } else {
+            "기록이 갱신되었습니다"
+        }
+    } else {
+        label
+    };
+    // Values are server outcomes and fixed class keys; escape return fields as data.
+    let esc = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    };
+    HttpResponse::html(format!("<!doctype html><html lang=\"{locale}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>{label}</title><style>{style}</style></head><body><main class=\"shell inspector\"><h1>{label}</h1><p>Exact record <code>{}</code> {}</p><p>This receipt records the completed Local Operations result.</p><a class=\"button\" href=\"{}\">Inspect current permitted records</a> <a class=\"button\" href=\"{}\">Return to Tools</a></main></body></html>",esc(identity),revision.map(|r|format!("revision {r}")).unwrap_or_default(),esc(&target),esc(&form.return_location()),style=concat!(include_str!("reader.css"),include_str!("presentation.css")),locale=form.optional("locale").unwrap_or("en")))
+}
+
 fn inspection_failure(error: volicord_operations::InspectionFailure) -> HttpFailure {
     use volicord_operations::InspectionFailure::*;
     let (status, reason) = match error {
         Invalid => (400, "Bad Request"),
+        Withheld => (403, "Forbidden"),
         NotFound => (404, "Not Found"),
         Changed => (409, "Conflict"),
-        Unavailable => (503, "Service Unavailable"),
+        Unavailable | Unsupported | Corrupt => (503, "Service Unavailable"),
     };
     HttpFailure::new(status, reason, error.to_string())
 }
