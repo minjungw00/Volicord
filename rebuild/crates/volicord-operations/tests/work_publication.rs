@@ -7,6 +7,24 @@ use volicord_context::*;
 use volicord_operations::*;
 use volicord_projections::*;
 
+fn fixture() -> Result<reading_fixture::Fixture, Box<dyn Error>> {
+    let mut input: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    input["prior_checkpoint_count"] = serde_json::json!(0);
+    input["later_checkpoint_count"] = serde_json::json!(0);
+    input["unassociated_checkpoint"] = serde_json::json!(false);
+    for w in input["works"].as_array_mut().ok_or("Works")? {
+        if w["key"] == "older" || w["key"] == "same_title" {
+            w["title"] = serde_json::json!(
+                "Investigate whether readQuery preserves the supplied value without patching it."
+            );
+        }
+        if w["key"] == "older" {
+            w["checkpoints"] = serde_json::json!([{"key":"inspection","work":"Paused","verification":"NotRun","state_change":"Inspection found readQuery returns its input unchanged. No patch was made.","next_step":"Review the investigation"}]);
+        }
+    }
+    reading_fixture::fixture_scenario(input)
+}
+
 fn draft(plan: &ExplanationPlan, text: &str) -> WorkExplanationDraft {
     WorkExplanationDraft {
         plan_fingerprint: plan.fingerprint.clone(),
@@ -57,12 +75,13 @@ fn work(
 #[test]
 fn admitted_record_identity_survives_deleted_technical_source_and_article_replacement(
 ) -> Result<(), Box<dyn Error>> {
-    let f = reading_fixture::fixture()?;
+    let f = fixture()?;
     let id = f.goals["older"];
     let name = ExplanationSubject::WorkName(id);
     let summary = ExplanationSubject::WorkSummary(id);
-    let title = "Keep the latest query response";
-    let synopsis = "The query race was investigated; the recorded result is distinct from verification and acceptance.";
+    let title = "Inspect query value preservation";
+    let synopsis =
+        "The investigation reports that readQuery returns its input unchanged; no patch was made.";
     record(&f, name, "en", title)?;
     record(&f, summary, "en", synopsis)?;
     let analysis = f
@@ -160,7 +179,7 @@ fn admitted_record_identity_survives_deleted_technical_source_and_article_replac
         ExplanationState::Current
     );
     // Replacing a name replaces only that scope and never silently revives history.
-    record(&f, name, "en", "Investigate query ordering")?;
+    record(&f, name, "en", "Inspect the query boundary")?;
     let replaced = work(&f, id)?;
     assert_eq!(
         replaced.reading.name_explanations[0]
@@ -170,7 +189,7 @@ fn admitted_record_identity_survives_deleted_technical_source_and_article_replac
             .realization
             .paragraphs[0]
             .text,
-        "Investigate query ordering"
+        "Inspect the query boundary"
     );
     assert_eq!(
         replaced.reading.summary_explanations[0],
@@ -182,7 +201,7 @@ fn admitted_record_identity_survives_deleted_technical_source_and_article_replac
 #[test]
 fn goal_correction_invalidates_each_scope_and_failed_admission_preserves_prior_record(
 ) -> Result<(), Box<dyn Error>> {
-    let f = reading_fixture::fixture()?;
+    let f = fixture()?;
     let id = f.goals["goal_only"];
     let name = ExplanationSubject::WorkName(id);
     let summary = ExplanationSubject::WorkSummary(id);
@@ -263,7 +282,7 @@ fn goal_correction_invalidates_each_scope_and_failed_admission_preserves_prior_r
 #[test]
 fn new_report_stales_summary_but_not_goal_name_and_forgetting_cleans_only_linked_scopes(
 ) -> Result<(), Box<dyn Error>> {
-    let f = reading_fixture::fixture()?;
+    let f = fixture()?;
     let id = f.goals["goal_only"];
     let name = ExplanationSubject::WorkName(id);
     let summary = ExplanationSubject::WorkSummary(id);
@@ -358,7 +377,7 @@ fn new_report_stales_summary_but_not_goal_name_and_forgetting_cleans_only_linked
 #[test]
 fn genuinely_source_dependent_summary_expires_without_erasing_record_only_name(
 ) -> Result<(), Box<dyn Error>> {
-    let f = reading_fixture::fixture()?;
+    let f = fixture()?;
     let id = f.goals["goal_only"];
     let name = ExplanationSubject::WorkName(id);
     let summary = ExplanationSubject::WorkSummary(id);
@@ -413,5 +432,350 @@ fn genuinely_source_dependent_summary_expires_without_erasing_record_only_name(
         .operations
         .record_explanation(f.project, summary, "en", response)
         .is_err());
+    Ok(())
+}
+
+#[test]
+fn same_goal_different_works_restart_and_source_independent_import_keep_exact_scope(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let a = f.goals["older"];
+    let b = f.goals["same_title"];
+    let basis = f.operations.canonical_basis(f.project)?;
+    assert_eq!(
+        basis
+            .context_items
+            .iter()
+            .find(|c| c.id == a)
+            .ok_or("A")?
+            .statement,
+        basis
+            .context_items
+            .iter()
+            .find(|c| c.id == b)
+            .ok_or("B")?
+            .statement
+    );
+    let plan =
+        f.operations
+            .prepare_explanation(f.project, ExplanationSubject::WorkName(a), "en")?;
+    let response = f.operations.compose_subject_explanation(
+        f.project,
+        plan.subject,
+        draft(&plan, "Inspect query value preservation"),
+    )?;
+    assert!(f
+        .operations
+        .record_explanation(
+            f.project,
+            ExplanationSubject::WorkName(b),
+            "en",
+            response.clone()
+        )
+        .is_err());
+    f.operations
+        .record_explanation(f.project, plan.subject, "en", response)?;
+    record(
+        &f,
+        ExplanationSubject::WorkName(b),
+        "ko",
+        "쿼리 입력값 보존 조사",
+    )?;
+    let restarted = LocalOperations::new(f.operations.layout().clone());
+    let projection =
+        restarted.project_projection_selected(f.project, WorkSelector::ExactWork(a))?;
+    let selected = projection.selected_work.ok_or("A")?;
+    let answers = work_answers(&selected, "en", FixedLocale::English);
+    assert_eq!(
+        answers.card_name(),
+        Some("Inspect query value preservation")
+    );
+    assert!(work_answers(&selected, "ko", FixedLocale::Korean)
+        .card_name()
+        .is_none());
+    assert!(work_answers(&work(&f, b)?, "en", FixedLocale::English)
+        .card_name()
+        .is_none());
+    let bundle = f._temporary.path().join("portable.json");
+    f.operations.export_bundle(f.project, &bundle)?;
+    let imported = LocalOperations::new(RuntimeLayout::new(f._temporary.path().join("imported"))?);
+    imported.import_bundle(&bundle)?;
+    let selected = imported
+        .project_projection_selected(f.project, WorkSelector::ExactWork(a))?
+        .selected_work
+        .ok_or("imported A")?;
+    assert_eq!(selected.creation_event, work(&f, a)?.creation_event);
+    assert_eq!(
+        selected.latest_work_record_event,
+        work(&f, a)?.latest_work_record_event
+    );
+    assert!(
+        selected.reading.name_explanations.is_empty(),
+        "Derived publications are not portable canonical truth"
+    );
+    let fresh = imported.prepare_explanation(f.project, ExplanationSubject::WorkName(a), "en")?;
+    let response = imported.compose_subject_explanation(
+        f.project,
+        fresh.subject,
+        draft(&fresh, "Inspect the query boundary"),
+    )?;
+    imported.record_explanation(f.project, fresh.subject, "en", response)?;
+    assert_eq!(
+        imported
+            .project_projection_selected(f.project, WorkSelector::ExactWork(a))?
+            .selected_work
+            .ok_or("imported A")?
+            .reading
+            .name_explanations[0]
+            .state,
+        ExplanationState::Current
+    );
+    Ok(())
+}
+
+#[test]
+fn out_of_order_report_changes_article_plan_without_replacing_summary_result(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = f.goals["older"];
+    record(
+        &f,
+        ExplanationSubject::WorkName(id),
+        "en",
+        "Inspect query value preservation",
+    )?;
+    record(
+        &f,
+        ExplanationSubject::WorkSummary(id),
+        "en",
+        "Inspection reports unchanged input and no patch.",
+    )?;
+    let plan = f
+        .operations
+        .prepare_explanation(f.project, ExplanationSubject::Work(id), "en")?;
+    let response = ExplanationRealization {
+        format_kind: EXPLANATION_KIND.into(),
+        format_version: EXPLANATION_VERSION,
+        plan_fingerprint: plan.fingerprint.clone(),
+        language: "en".into(),
+        generator: ExplanationGenerator {
+            host: "authored-control".into(),
+            session: "out-of-order-report".into(),
+            agent: None,
+            model: None,
+        },
+        paragraphs: vec![ExplanationParagraph {
+            question: ExplanationQuestion::Heading,
+            text: "Query boundary investigation".into(),
+            evidence_keys: vec!["goal".into()],
+            citations: vec![],
+        }],
+    };
+    f.operations
+        .record_explanation(f.project, plan.subject, "en", response)?;
+    let before = work(&f, id)?;
+    let basis = f.operations.canonical_basis(f.project)?;
+    let cp = basis
+        .checkpoint_history
+        .iter()
+        .chain(basis.latest_checkpoint.iter())
+        .filter(|c| c.work_item_id == Some(id))
+        .max_by_key(|c| (c.recorded_at, c.id))
+        .ok_or("Checkpoint")?;
+    let mut store = Store::open_with(
+        f.operations.layout().canonical_store(),
+        DeterministicIdGenerator::new([[96; 16]]),
+        FixedClock::new(TimestampMicros::from_unix_micros(
+            cp.recorded_at.as_unix_micros() - 1,
+        )),
+    )?;
+    store.record_checkpoint(
+        OperationId::from_bytes([97; 16]),
+        f.project,
+        CheckpointDraft {
+            expected_project_revision: basis.project.revision,
+            work_item_id: Some(id),
+            kind: cp.kind,
+            goal: cp.goal.clone(),
+            work_state: cp.work_state,
+            state_change: Some("Earlier inspection remained incomplete.".into()),
+            source_basis: cp.source_basis.clone(),
+            changed_source_basis: vec![],
+            changed_paths: vec![],
+            applied_decisions: vec![],
+            verification: vec![],
+            user_review: cp.user_review.clone(),
+            user_acceptance: cp.user_acceptance.clone(),
+            known_limits: vec!["Earlier observation only".into()],
+            non_goals: vec![],
+            open_questions: vec![],
+            next_step: cp.next_step.clone(),
+            handoff_to: cp.handoff_to.clone(),
+        },
+    )?;
+    drop(store);
+    let after = work(&f, id)?;
+    assert_eq!(
+        after.reading.name_explanations,
+        before.reading.name_explanations
+    );
+    assert_eq!(
+        after.reading.summary_explanations,
+        before.reading.summary_explanations
+    );
+    assert_eq!(
+        after.latest_work_record_event,
+        before.latest_work_record_event
+    );
+    assert_eq!(after.reading.explanations[0].state, ExplanationState::Stale);
+    assert!(after.reading.explanations[0]
+        .diagnostic
+        .as_deref()
+        .is_some_and(|d| d.contains("evidence changed")));
+    Ok(())
+}
+
+#[test]
+fn corrupt_foreign_old_and_changed_plan_name_records_never_revive_prior_text(
+) -> Result<(), Box<dyn Error>> {
+    use volicord_privacy::{ManagedDerivedDraft, ManagedDerivedKind, PrivacyStore};
+    let f = fixture()?;
+    let id = f.goals["older"];
+    let name = ExplanationSubject::WorkName(id);
+    record(
+        &f,
+        ExplanationSubject::WorkSummary(id),
+        "en",
+        "The recorded inspection reports an unchanged return value and no patch.",
+    )?;
+    for case in ["old", "corrupt", "foreign", "changed-plan", "overbound"] {
+        let retained = record(&f, name, "en", "Inspect query value preservation")?;
+        let summary = work(&f, id)?.reading.summary_explanations;
+        let mut privacy = PrivacyStore::open(f.operations.layout().privacy_store())?;
+        let previous = privacy
+            .inspect_project(f.project)?
+            .managed_derived
+            .into_iter()
+            .rev()
+            .find(|r| r.purpose == format!("explanation:work_name:{id}:en"))
+            .ok_or("name")?;
+        let mut forged = retained.clone();
+        forged.realization.paragraphs[0].text = "FOREIGN_UNSUPPORTED_CARD_SENTINEL".into();
+        let content = match case {
+            "old" => {
+                forged.realization.format_version = 5;
+                serde_json::to_string(&forged)?
+            }
+            "corrupt" => "{".into(),
+            "foreign" => {
+                forged.subject = ExplanationSubject::WorkName(f.goals["same_title"]);
+                serde_json::to_string(&forged)?
+            }
+            "changed-plan" => {
+                forged.realization.plan_fingerprint = "sha256:obsolete-plan".into();
+                serde_json::to_string(&forged)?
+            }
+            _ => "x".repeat(EXPLANATION_RETAINED_BYTE_LIMIT + 1),
+        };
+        let result = privacy.record_managed_derived(ManagedDerivedDraft {
+            project_id: f.project,
+            kind: ManagedDerivedKind::CachedSummary,
+            provider: None,
+            model: None,
+            purpose: previous.purpose,
+            analysis_snapshot: None,
+            included_sources: previous.included_sources,
+            canonical_links: previous.canonical_links,
+            content,
+            uncertainty: None,
+            retained_until: None,
+            retention_basis: "Authored adversarial managed-content control".into(),
+        });
+        if case == "overbound" {
+            assert!(result.is_err());
+        } else {
+            result?;
+        }
+        drop(privacy);
+        let selected = work(&f, id)?;
+        assert_eq!(selected.reading.summary_explanations, summary);
+        let answers = work_answers(&selected, "en", FixedLocale::English);
+        if case == "overbound" {
+            assert_eq!(
+                answers.card_name(),
+                Some("Inspect query value preservation")
+            );
+        } else {
+            assert!(answers.card_name().is_none(), "{case}");
+            assert!(!answers.text().contains("FOREIGN_UNSUPPORTED_CARD_SENTINEL"));
+            assert_eq!(
+                selected.reading.name_explanations[0].state,
+                match case {
+                    "old" => ExplanationState::Unsupported,
+                    "corrupt" => ExplanationState::Corrupt,
+                    _ => ExplanationState::Stale,
+                }
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn goal_forgetting_deletes_every_linked_scope_and_language_without_erasing_other_work(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = f.goals["goal_only"];
+    let other = f.goals["older"];
+    record(
+        &f,
+        ExplanationSubject::WorkName(id),
+        "en",
+        "Inspect the relay boundary",
+    )?;
+    record(
+        &f,
+        ExplanationSubject::WorkName(id),
+        "ko",
+        "릴레이 경계 조사",
+    )?;
+    record(
+        &f,
+        ExplanationSubject::WorkSummary(id),
+        "en",
+        "Relay investigation was requested; no outcome is reported.",
+    )?;
+    record(
+        &f,
+        ExplanationSubject::WorkName(other),
+        "en",
+        "Investigate the query boundary",
+    )?;
+    let basis = f.operations.canonical_basis(f.project)?;
+    let authorization = basis
+        .context_items
+        .iter()
+        .find(|g| g.id == id)
+        .ok_or("Goal")?
+        .source_basis[0];
+    let forgotten =
+        f.operations
+            .forget_record(f.project, CanonicalRecordId::ContextItem(id), authorization)?;
+    assert_eq!(forgotten.state, ForgettingState::Completed);
+    assert!(work(&f, id).is_err());
+    let records = f.operations.privacy_status(f.project)?;
+    let affected = records
+        .managed_derived
+        .iter()
+        .filter(|r| r.purpose.contains(&id.to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(affected.len(), 3);
+    assert!(affected
+        .iter()
+        .all(|r| r.content.is_none() && r.state == volicord_privacy::ManagedDerivedState::Deleted));
+    assert_eq!(
+        work(&f, other)?.reading.name_explanations[0].state,
+        ExplanationState::Current
+    );
     Ok(())
 }

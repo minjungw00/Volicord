@@ -1129,6 +1129,15 @@ article-only evidence is deleted. These authored controls establish no host or
 human verdict. Actual host-authored publications, Source observations, browser
 captures and numeric child evidence remain ignored and separately classified.
 
+Adversarial publication controls additionally separate stale preparation from real
+body expiry, insert an older Checkpoint without replacing the selected outcome,
+restart and import canonical context without portable Derived authority, reject
+same-title foreign Works and malformed scopes, and withhold corrupt/old-format/
+foreign/changed-plan latest envelopes without historical fallback. Goal forgetting
+deletes every linked language/scope while unrelated Work remains usable. A cited
+summary has its own exact HTTP citation identity; article identity cannot borrow
+that authority, and deletion withholds the summary without inventing an article.
+
 Focused article controls use Host `work_explanation` / `decision_explanation`,
 Operations `explanation_cli` / `cli_work_sources` / `explanation_budgets`, and Viewer
 `work_explanation` / `grounded_reader` / `citation_reading`. They exercise the sole

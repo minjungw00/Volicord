@@ -328,3 +328,120 @@ fn same_work_independent_publications_reach_cli_mcp_http_documents_and_offline(
     }
     Ok(())
 }
+
+#[test]
+fn cited_summary_has_its_own_exact_http_authority_and_cannot_borrow_article_identity(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = f.goals["relay"];
+    let analysis = f
+        .operations
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let source = f
+        .operations
+        .observe_work_file(FileObservationRequest {
+            project_id: f.project,
+            work_item_id: id,
+            analysis_snapshot_id: analysis,
+            path: "runtime/query_boundary.ts".into(),
+            byte_range: None,
+            before_source_id: None,
+            retain_seconds: 3600,
+        })?
+        .source_id;
+    let plan =
+        f.operations
+            .prepare_explanation(f.project, ExplanationSubject::WorkSummary(id), "en")?;
+    let response=f.operations.compose_subject_explanation(f.project,plan.subject,WorkExplanationDraft {
+        plan_fingerprint:plan.fingerprint,language:"en".into(),generator:ExplanationGenerator {host:"authored-control".into(),session:"summary-citation".into(),agent:None,model:None},
+        paragraphs:vec![WorkReaderUnit {question:ExplanationQuestion::Synopsis,text:"The report describes an unchanged input return; the observed implementation directly returns value.".into(),evidence_keys:vec!["goal".into(),"result".into()],sources:vec![WorkClaimRange {source_id:source.to_string(),field:"body".into(),use_kind:ExplanationSourceUse::CurrentCode,start_byte:0,end_byte:57,claim:None}]}]})?;
+    let retained = f.operations.record_explanation(
+        f.project,
+        ExplanationSubject::WorkSummary(id),
+        "en",
+        response,
+    )?;
+    let provenance = ExplanationProvenance::from(&retained);
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let request = |subject: &str| {
+        format!("GET /citation?subject={subject}%3A{id}&language=en&realization={}&unit=0&citation=0&offset=0 HTTP/1.1\r\nHost: 127.0.0.1:3219\r\nOrigin: http://127.0.0.1:3219\r\nSec-Fetch-Site: same-origin\r\n\r\n",provenance.realization_fingerprint)
+    };
+    let read = |subject: &str| -> Result<String, Box<dyn Error>> {
+        let mut output = Vec::new();
+        server.serve_connection(&mut request(subject).as_bytes(), &mut output)?;
+        Ok(String::from_utf8(output)?)
+    };
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let privacy = f.operations.privacy_status(f.project)?;
+    let current = read("work_summary")?;
+    assert!(current.starts_with("HTTP/1.1 200"));
+    assert!(current.contains("return value"));
+    let foreign = read("work")?;
+    assert!(!foreign.starts_with("HTTP/1.1 200"));
+    assert!(!foreign.contains("return value"));
+    assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+    assert_eq!(privacy, f.operations.privacy_status(f.project)?);
+    let unsupported = get(&f, &format!("/?view=work&work={id}&language=fr&locale=en"))?;
+    assert!(!unsupported.contains("The report describes an unchanged input return"));
+    f.operations
+        .delete_work_source_observation(f.project, id, source)?;
+    let denied = read("work_summary")?;
+    assert!(!denied.starts_with("HTTP/1.1 200"));
+    assert!(!denied.contains("return value"));
+    let projection = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::ExactWork(id))?;
+    let answers = work_answers(
+        projection.selected_work.as_ref().ok_or("Work")?,
+        "en",
+        FixedLocale::English,
+    );
+    assert!(answers.card_summary().is_none());
+    assert_eq!(
+        answers
+            .work_summary
+            .as_ref()
+            .ok_or("summary")?
+            .explanation_state,
+        ExplanationState::Stale
+    );
+    assert_eq!(
+        answers.explanation_state,
+        ExplanationState::Missing,
+        "an absent article cannot hide a stale summary"
+    );
+    Ok(())
+}
+
+#[test]
+fn malformed_scope_cannot_default_to_article_or_consume_a_valid_host_request(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = f.goals["relay"];
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let before = f.operations.privacy_status(f.project)?;
+    for scope in [json!(4), json!(null), json!("foreign"), json!(["name"])] {
+        let result=host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"work_explanation","arguments":{"action":"generate","project_id":f.project.to_string(),"work_item_id":id.to_string(),"language":"en","scope":scope}}})).ok_or("response")?;
+        assert_eq!(result["result"]["isError"], true, "{result}");
+    }
+    assert_eq!(before, f.operations.privacy_status(f.project)?);
+    // Rejections create no retained state and do not prevent a valid explicit request.
+    let result = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"generate","project_id":f.project.to_string(),"work_item_id":id.to_string(),"language":"en","scope":"name"}),
+    )?;
+    assert_eq!(result["generation_status"], "awaiting_host_interpretation");
+    Ok(())
+}
