@@ -1069,7 +1069,7 @@ fn work_summary_claim(
     let answers = crate::work_answers(work, language, locale);
     GeneratedDocumentClaim {
         identity: format!("work-summary:{}", work.work_item_id),
-        class: if answers.provenance.is_some() {
+        class: if !answers.publication_provenances().is_empty() {
             ClaimClass::AgentInterpretation
         } else {
             ClaimClass::DeterministicDerived
@@ -1834,8 +1834,9 @@ fn build_metadata(
             .chain(&projection.work_overview.current.items)
             .chain(&projection.work_overview.completed.items)
             .chain(&projection.work_overview.remaining.items)
-            .filter_map(|w| {
-                crate::work_answers(w, &request.requested_language, request.fixed_locale).provenance
+            .flat_map(|w| {
+                crate::work_answers(w, &request.requested_language, request.fixed_locale)
+                    .publication_provenances()
             })
             .chain(projection.resume.decisions.iter().filter_map(|d| {
                 crate::decision_answers(d, &request.requested_language, request.fixed_locale)

@@ -78,15 +78,21 @@ pub(crate) fn context(
         .chain(&projection.work_overview.remaining.items)
         .chain(&projection.work_overview.next_steps.items)
     {
-        subjects.insert(
-            format!("work:{}", w.work_item_id),
-            explanation(
-                "work",
-                w.work_item_id.to_string(),
-                &w.reading.explanations,
-                &request.requested_language,
-            ),
-        );
+        for (kind, readings) in [
+            ("work", &w.reading.explanations),
+            ("work_name", &w.reading.name_explanations),
+            ("work_summary", &w.reading.summary_explanations),
+        ] {
+            subjects.insert(
+                format!("{kind}:{}", w.work_item_id),
+                explanation(
+                    kind,
+                    w.work_item_id.to_string(),
+                    readings,
+                    &request.requested_language,
+                ),
+            );
+        }
     }
     for d in projection
         .decision_catalog

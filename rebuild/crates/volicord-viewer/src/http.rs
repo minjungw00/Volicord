@@ -487,6 +487,9 @@ impl ViewerServer {
             Some(("work", id)) => volicord_projections::ExplanationSubject::Work(
                 ContextItemId::from_bytes(identity(id)?),
             ),
+            Some(("work_summary", id)) => volicord_projections::ExplanationSubject::WorkSummary(
+                ContextItemId::from_bytes(identity(id)?),
+            ),
             Some(("repository", id)) => volicord_projections::ExplanationSubject::Repository(
                 volicord_repository_intelligence::AnalysisSnapshotId::from_hex(id)
                     .map_err(HttpFailure::bad_request)?,

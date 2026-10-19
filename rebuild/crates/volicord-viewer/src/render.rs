@@ -561,7 +561,13 @@ impl ViewerAdapter {
                     .chain(&projection.work_overview.completed.items)
                     .chain(&projection.work_overview.remaining.items)
                     .chain(&projection.work_overview.next_steps.items)
-                    .flat_map(|w| &w.reading.explanations)
+                    .flat_map(|w| {
+                        w.reading
+                            .explanations
+                            .iter()
+                            .chain(&w.reading.name_explanations)
+                            .chain(&w.reading.summary_explanations)
+                    })
                     .chain(&projection.repository_explanations)
                     .chain(
                         projection

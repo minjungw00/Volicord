@@ -1118,10 +1118,21 @@ readbacks under an ignored directory. It creates no genuine prospective Work.
 
 ## Flexible Work/Decision articles and independent verification
 
+Independent card publications use the exact-current explanation format 6.
+Focused Operations `--test work_publication` covers Goal/report/source dependency
+isolation, correction, real expiry, forgetting and failed-admission preservation.
+Viewer `--test work_publication` drives explicit MCP generation requests,
+compose/record, CLI text/JSON, MCP readers, HTTP Overview/catalog/detail, all four
+documents and script-free snapshots in en/ko. It deliberately uses different card
+and article headings and preserves original event/check/review/Decision facts when
+article-only evidence is deleted. These authored controls establish no host or
+human verdict. Actual host-authored publications, Source observations, browser
+captures and numeric child evidence remain ignored and separately classified.
+
 Focused article controls use Host `work_explanation` / `decision_explanation`,
 Operations `explanation_cli` / `cli_work_sources` / `explanation_budgets`, and Viewer
 `work_explanation` / `grounded_reader` / `citation_reading`. They exercise the sole
-exact-current v5 writer/reader, authored section order, individually grounded
+exact-current v6 writer/reader, authored section order, individually grounded
 comparison/flow/reading labels, missing user rationale and existing recommendation
 rationale. Earlier immutable v4 outputs remain historical/Unsupported.
 

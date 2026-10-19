@@ -1587,6 +1587,11 @@ impl HostAdapter {
             .retain(|_, r| r.started.elapsed() < std::time::Duration::from_secs(1800));
         let project = project(args)?;
         let subject = if args.get("decision_id").is_some() {
+            if args.get("scope").is_some() {
+                return Err(HostError::new(
+                    "Work publication scope does not belong to Decision",
+                ));
+            }
             ExplanationSubject::Decision(DecisionId::from_bytes(parse_identity(required_str(
                 args,
                 "decision_id",
@@ -1594,7 +1599,14 @@ impl HostAdapter {
         } else {
             ExplanationSubject::work_publication(
                 parse_context_item(required_str(args, "work_item_id")?)?,
-                args["scope"].as_str().unwrap_or("article"),
+                args.get("scope")
+                    .map(|scope| {
+                        scope
+                            .as_str()
+                            .ok_or_else(|| HostError::new("Work publication scope must be text"))
+                    })
+                    .transpose()?
+                    .unwrap_or("article"),
             )
             .map_err(HostError::new)?
         };
@@ -1638,6 +1650,10 @@ impl HostAdapter {
                         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
                     ) {
                         result["next_action"] = json!("The authorized active host authors exactly the prepared name or summary scope. Follow plan.instructions and question_grounding; name uses Goal alone, summary binds Goal and actual report, and any technical assertion needs permitted Source retrieval with this same generation_id and scope. Compose, then record. Each scope replaces only its own publication; never extract or rebind stale article text. No automatic model dispatch or new authority is granted.");
+                    }
+                    if matches!(subject, ExplanationSubject::Work(_)) {
+                        let article = result["next_action"].as_str().unwrap_or_default();
+                        result["next_action"] = json!(format!("{article} Work card production additionally requires explicit generate/compose/record for scope=name and scope=summary, each from its own current preparation. Article heading/synopsis never substitute for those independently admitted card publications. Do not copy or rebind stale prose."));
                     }
                     if matches!(subject, ExplanationSubject::Decision(_)) {
                         result["next_action"] = json!("The authorized active host authors a reader-directed Decision article from this exact plan: question context, actual alternatives/consequences, recorded recommendation and recommendation rationale, distinct user choice and only recorded user rationale, applicability and qualified later interpretation. Use section_heading/narrative in useful order; no compulsory empty sections. Technical Source unavailability limits independent verification, not the retained recommendation. Compose then record with this generation_id. No Work Source authority or automatic model dispatch is granted; host/access failure remains incomplete.");
@@ -3284,7 +3300,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::DestructiveClosed,
         ),
         "work_explanation" => (
-            "On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, follows plan.instructions and question_grounding to select genuinely supporting canonical evidence_keys for EVERY paragraph alongside exact Source citations, and records its prose. Source citations never replace canonical keys; goal is not generic evidence for technical claims. Host-level transmission authorization is outside canonical Work facts: missing plan data does not prove absent consent. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
+            "Work publications use explicit scope=name|summary|article (default article), with independent preparation, currentness, provenance and replacement for the same canonical Work. Publish name and summary from their own plans; article prose never substitutes for card identity. On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, follows plan.instructions and question_grounding to select genuinely supporting canonical evidence_keys for EVERY paragraph alongside exact Source citations, and records its prose. Source citations never replace canonical keys; goal is not generic evidence for technical claims. Host-level transmission authorization is outside canonical Work facts: missing plan data does not prove absent consent. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
             work_explanation_schema(),
             ToolBehavior::DestructiveClosed,
         ),

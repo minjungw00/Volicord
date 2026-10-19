@@ -1292,7 +1292,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         )
         .expect("render completed working Viewer")
         .html;
-    assert!(working.contains("Name and summary production is incomplete"));
+    assert!(working.contains("Work summary is unavailable"));
     // Missing generated titles do not turn a verbatim Goal into a finished card.
     // The actual instruction remains inspectable on its exact Work detail.
     let detail = viewer

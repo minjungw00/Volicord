@@ -348,6 +348,23 @@ fn project_purpose(html: &mut String, r: &ViewerRequest, u: &ProjectUnderstandin
 }
 fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, snapshot: bool) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
+    let publication_attributes = answers
+        .work_name
+        .iter()
+        .map(|scope| ("name", scope))
+        .chain(answers.work_summary.iter().map(|scope| ("summary", scope)))
+        .map(|(name, scope)| {
+            format!(
+                " data-{name}-state=\"{:?}\" data-{name}-realization=\"{}\"",
+                scope.explanation_state,
+                scope
+                    .provenance
+                    .as_ref()
+                    .map(|p| p.realization_fingerprint.as_str())
+                    .unwrap_or_default()
+            )
+        })
+        .collect::<String>();
     let (title, basis, language) = work_reading_heading(w, r);
     let href = if snapshot {
         format!("#work-{}", w.work_item_id)
@@ -359,10 +376,10 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
             },
         )
     };
-    html.push_str(&format!("<article class=\"work-card\" data-work-id=\"{}\" data-work-state=\"{}\"><div class=\"work-card-heading\"><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3><span class=\"work-status\">{}</span></div>",w.work_item_id,understanding_work_state_key(w.state),escape(&language),basis,escape(&title),understanding_work_state_label(w.state,r.locale)));
-    if let Some(synopsis) = answers.synopsis() {
+    html.push_str(&format!("<article class=\"work-card\" data-work-id=\"{}\" data-work-state=\"{}\"{}><div class=\"work-card-heading\"><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3><span class=\"work-status\">{}</span></div>",w.work_item_id,understanding_work_state_key(w.state),publication_attributes,escape(&language),basis,escape(&title),understanding_work_state_label(w.state,r.locale)));
+    if let Some(synopsis) = answers.card_summary() {
         html.push_str(&format!("<p class=\"work-summary\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p>",escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&synopsis.text)));
-        if answers.reading_title().is_none() {
+        if answers.card_name().is_none() {
             html.push_str(&format!(
                 "<p class=\"content-unavailable\">{}</p>",
                 text(
@@ -374,8 +391,11 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
         }
     } else {
         html.push_str(&format!("<p class=\"work-summary content-unavailable\">{}</p>",text(r.locale,
-            "Name and summary production is incomplete. Read the original instructions and available records in Work detail.",
-            "이름과 요약 생산이 미완료입니다. 작업 상세에서 원래 지시와 사용 가능한 기록을 읽을 수 있습니다.")));
+            "Work summary is unavailable. Read the original instructions and available records in Work detail.",
+            "작업 요약을 사용할 수 없습니다. 작업 상세에서 원래 지시와 사용 가능한 기록을 읽을 수 있습니다.")));
+    }
+    if answers.explanation_state != volicord_projections::ExplanationState::Current {
+        html.push_str(&format!("<p class=\"content-unavailable\" data-publication-scope=\"article\" data-publication-state=\"{:?}\">{}</p>",answers.explanation_state,text(r.locale,"Technical detail is unavailable; valid card content remains readable.","상세 설명을 사용할 수 없습니다. 유효한 카드 내용은 계속 읽을 수 있습니다.")));
     }
     html.push_str("<div class=\"work-card-footer\">");
     work_event_times(html, r, w);
@@ -425,7 +445,7 @@ pub(super) fn work_reading_heading(
     r: &ViewerRequest,
 ) -> (String, &'static str, String) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
-    if let Some(title) = answers.reading_title() {
+    if let Some(title) = answers.card_name() {
         return (
             title.into(),
             "generated-interpretation",
@@ -522,6 +542,21 @@ fn reader_unit(
     reader_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
 }
+fn render_card_publication(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    scope: &str,
+    snapshot: bool,
+) {
+    html.push_str(&format!("<section class=\"work-publication\" data-publication-scope=\"{scope}\" data-publication-state=\"{:?}\"><p class=\"eyebrow\">{}</p>",answers.explanation_state,text(r.locale,"Work summary","작업 요약")));
+    for index in 0..answers.prose.len() {
+        reader_unit(html, r, answers, index);
+    }
+    explanation_diagnostic(html, r, answers);
+    render_source_excerpts(html, r, answers, snapshot);
+    html.push_str("</section>");
+}
 pub(super) fn render_answers(
     html: &mut String,
     r: &ViewerRequest,
@@ -576,6 +611,16 @@ fn render_document(
     html.push_str(&format!("<article class=\"doc\"{}><p class=\"breadcrumb\"><a href=\"{}\">{}</a></p><header class=\"doc-head\"><p class=\"eyebrow\">{} · {}</p>",
         work.map(|w|format!(" data-work-id=\"{}\" data-work-state=\"{}\"",w.work_item_id,understanding_work_state_key(w.state))).unwrap_or_default(),
         if snapshot { format!("#{back_id}") } else { escape(&url(r, &back_view)) }, back_label, kind, text(r.locale,"interpretation and observations","해석과 관측")));
+    if current {
+        if let Some(name) = answers.card_name() {
+            html.push_str(&format!(
+                "<p class=\"work-name\" data-publication-scope=\"name\" lang=\"{}\">{} · {}</p>",
+                escape(&content_language_tag(&r.requested_language)),
+                text(r.locale, "Work", "작업"),
+                escape(name)
+            ));
+        }
+    }
     if let Some((index, title)) = answers
         .prose
         .iter()
@@ -583,6 +628,13 @@ fn render_document(
         .find(|(_, a)| a.question == "Heading")
     {
         html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><h1 data-title-basis=\"generated-interpretation\" data-question=\"Heading\" lang=\"{}\" data-content-language=\"{}\">{}</h1></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&title.text)));
+    } else if let Some(name) = answers
+        .work_name
+        .as_ref()
+        .filter(|name| name.provenance.is_some())
+    {
+        let provenance = name.provenance.as_ref();
+        html.push_str(&format!("<h1 data-title-basis=\"generated-interpretation\" data-publication-scope=\"name\" data-realization=\"{}\" lang=\"{}\">{}</h1>",provenance.map(|p| p.realization_fingerprint.as_str()).unwrap_or_default(),escape(&content_language_tag(&r.requested_language)),escape(name.reading_title().unwrap_or_default())));
     } else {
         html.push_str(&format!(
             "<h1 data-title-basis=\"neutral-label\" lang=\"{}\">{}</h1>",
@@ -604,6 +656,9 @@ fn render_document(
         .filter(|(_, a)| a.question == "Synopsis")
     {
         html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><p class=\"lead\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&lead.text)));
+    }
+    if let Some(summary) = &answers.work_summary {
+        render_card_publication(html, r, summary, "summary", snapshot);
     }
     if let Some(w) = work {
         html.push_str(&format!(
@@ -757,6 +812,12 @@ fn render_document(
         ));
     }
     html.push_str("</div>");
+    for scoped in answers.work_name.iter().chain(answers.work_summary.iter()) {
+        html.push_str(&format!(
+            "<pre class=\"publication-provenance\">{}</pre>",
+            escape(&format!("{:?}", scoped.provenance))
+        ));
+    }
     if let Some(provenance) = &answers.provenance {
         repository_boundaries(html, r, answers, provenance);
         html.push_str(&format!(

@@ -1728,9 +1728,13 @@ they are never copied into the retained explanation envelope.
 
 CLI/MCP, live Viewer and offline snapshot read the same answers and source basis.
 Existing MCP transport omissions remain separate from shared excerpt bounds.
-The optional `reading_title` API uses only a permitted authored Heading unit.
-Synopsis selection likewise uses its own role, never Purpose or a first paragraph as
-result. Each card scope carries its own exact realization fingerprint.
+The public Work `reading_title` uses only the independently admitted name Heading.
+`QuestionAnswers.work_name` and `.work_summary` expose their own availability,
+prose, citations/excerpts and provenance; the enclosing prose/state/provenance
+continues to represent the article. `card_name`/`card_summary` select these scopes;
+`reading_title`/`synopsis` on an individual answer set select that publication's
+Heading/Synopsis. No card falls back to article text. Synopsis selection uses its
+own role, never Purpose or a first paragraph as result. Each card scope carries its own exact realization fingerprint.
 No unit can survive failure of its own dependency or current-language mismatch. Canonical
 Goal, Source and Work identities remain independent of reader wording.
 
@@ -1988,6 +1992,16 @@ exact canonical state, Goal, Decisions and both event bases, and never label a s
 missing screen as successful normal content. Export/publication rechecks every used
 scope independently. Offline copies retain the admitted identities and explicit
 limits of their export instant; they never renew retention or access a Source.
+
+CLI status/Recall, MCP read projections, Overview and Work catalog use those same
+card scopes. Work detail labels the independent summary separately from article
+prose; an unavailable article may use the current name as its heading with the
+name's own realization identity. Source inspection links for a cited summary use
+the exact `work_summary:WORK` subject and its own original unit/citation indices.
+Documents label each scope rather than attributing combined wording to the article.
+Document metadata, Viewer publication barriers and live observation context carry
+every used publication independently, including record-only card content when the
+article is unavailable. GET/render/export preserve Canonical and managed records.
 
 `LocalOperations::compose_work_explanation` and Work CLI/MCP compose consume a
 new host-authored heading, synopsis and reader-ordered narrative. Product derives

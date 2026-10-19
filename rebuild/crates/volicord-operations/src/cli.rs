@@ -1980,6 +1980,18 @@ fn render_field(
         if let Some(title) = value["reading_title"].as_str() {
             write_line(stdout, format_args!("{padding}  {title}"))?;
         }
+        if let Some(summary) = answers.get("work_summary") {
+            render_field(
+                stdout,
+                match locale {
+                    CliLocale::English => "Work summary",
+                    CliLocale::Korean => "작업 요약",
+                },
+                &json!({"answers":summary}),
+                indent + 1,
+                locale,
+            )?;
+        }
         if answers
             .get("provenance")
             .is_some_and(|value| !value.is_null())
@@ -2007,7 +2019,7 @@ fn render_field(
                 )?;
             }
             for a in answers[section].as_array().into_iter().flatten() {
-                if !facts && a["question"] == "Heading" && value["reading_title"].is_string() {
+                if !facts && a["question"] == "Heading" && a["text"] == value["reading_title"] {
                     continue; // This authored heading was already printed above.
                 }
                 if let Some(text) = a["text"].as_str() {

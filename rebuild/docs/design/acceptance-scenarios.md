@@ -1316,6 +1316,19 @@ clean install
 
 ## Current reader acceptance
 
+Independent Work publications add these direct checks to scenario N: a record-grounded
+name/summary survives expiry or deletion of an article-only Source across CLI/MCP,
+Overview/catalog/detail, generated documents and script-free snapshot. A genuinely
+cited summary Source failure withholds that summary, and changed reported results
+require explicit fresh summary admission while a Goal-only name remains current.
+Goal correction/forgetting still invalidates every affected scope. Exact Work/state,
+original creation/latest-Checkpoint events, Decisions and independent check/review/
+acceptance remain readable. Each displayed scope has its own current language,
+preparation/realization and retention basis; no stale text is split or re-admitted by
+a reader. Failed/old-format/oversized records preserve previous valid publications.
+Normal and degraded screens must be presented as their actual class; technical
+checks do not establish host authorship, semantic adequacy or human acceptance.
+
 [Reader experience design](reader-experience-design.md) owns D-01–D-27 and
 AC-01–AC-25, supplementing scenario N and replacing obsolete Viewer layout rules.
 Normal real host-generated Work name/summary/detail, unavailable controls and actual

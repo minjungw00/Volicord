@@ -61,8 +61,12 @@ summary, RECENT WORK eyebrow or Project Decision list. Repository reading works
 with or without Work. Cards require an explicitly host-authored name and meaningful
 problem/actual-approach/outcome synopsis for normal-content completion. Missing
 interpretation is incomplete and links to permitted original instructions; the
-renderer never copies a Goal into a summary. Cards and detail share exact Work,
-realization and event bases: original Goal creation and latest same-Work Checkpoint
+renderer never copies a Goal into a summary. Cards and detail share exact Work and event bases, with separate admitted name,
+summary and article realizations. Each has independent currentness, evidence and
+retention. Explicit Work explanation CLI/MCP `scope=name|summary|article` production
+prepares, composes and records one scope. Article expiry never erases a separately
+current record-grounded card; a genuinely cited card Source still governs that card
+publication. No renderer extracts card text from an article. Event bases remain: original Goal creation and latest same-Work Checkpoint
 recording, in UTC with inspectable record/revision. Missing events stay absent.
 
 A selected Work is a blue-gray editorial document with breadcrumb, authored

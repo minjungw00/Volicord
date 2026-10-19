@@ -117,6 +117,14 @@ pub struct ReadingCaution {
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QuestionAnswers {
+    #[serde(skip)]
+    pub(crate) fixed_locale: FixedLocale,
+    /// Independently admitted card publications. Never merged into article prose
+    /// or represented by the article's provenance/currentness.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_name: Option<Box<QuestionAnswers>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_summary: Option<Box<QuestionAnswers>>,
     pub evidence_index: Vec<ReaderEvidenceEntry>,
     pub cautions: Vec<ReadingCaution>,
     pub prose: Vec<QuestionAnswer>,
@@ -141,6 +149,24 @@ impl QuestionAnswers {
             .iter()
             .find(|a| a.question == "Synopsis" && a.role == AnswerRole::GeneratedInterpretation)
     }
+    pub fn card_name(&self) -> Option<&str> {
+        self.work_name
+            .as_ref()
+            .and_then(|name| name.reading_title())
+    }
+    pub fn card_summary(&self) -> Option<&QuestionAnswer> {
+        self.work_summary
+            .as_ref()
+            .and_then(|summary| summary.synopsis())
+    }
+    pub fn publication_provenances(&self) -> Vec<ExplanationProvenance> {
+        self.work_name
+            .iter()
+            .chain(self.work_summary.iter())
+            .filter_map(|scope| scope.provenance.clone())
+            .chain(self.provenance.clone())
+            .collect()
+    }
     /// The sole task-direction selection rule. Generated NextStep prose is an
     /// interpretation alongside this fact; explanation repair is never an action.
     pub fn next_step_answer(&self) -> Option<&QuestionAnswer> {
@@ -156,7 +182,8 @@ impl QuestionAnswers {
             .and_then(|a| a.recorded_action.as_ref())
     }
     pub fn text(&self) -> String {
-        self.prose
+        let article = self
+            .prose
             .iter()
             .chain(&self.facts)
             .map(|a| {
@@ -177,7 +204,34 @@ impl QuestionAnswers {
                 }
             })
             .collect::<Vec<_>>()
-            .join(" ")
+            .join(" ");
+        if self.work_name.is_none() && self.work_summary.is_none() {
+            return article;
+        }
+        let mut scopes = Vec::new();
+        if let Some(name) = &self.work_name {
+            scopes.push(format!(
+                "{}: {}",
+                fixed(self.fixed_locale, "Work name", "작업 이름"),
+                name.text()
+            ));
+        }
+        if let Some(summary) = &self.work_summary {
+            scopes.push(format!(
+                "{}: {}",
+                fixed(self.fixed_locale, "Work summary", "작업 요약"),
+                summary.text()
+            ));
+        }
+        scopes.push(format!(
+            "{}: {article}",
+            fixed(
+                self.fixed_locale,
+                "Article and recorded facts",
+                "상세 설명과 기록된 사실"
+            )
+        ));
+        scopes.join("\n\n")
     }
 }
 fn fixed(locale: FixedLocale, en: &str, ko: &str) -> String {
@@ -234,6 +288,9 @@ pub fn explanation_answers(
         }]
     };
     let mut result = QuestionAnswers {
+        fixed_locale: locale,
+        work_name: None,
+        work_summary: None,
         evidence_index: if current.is_some() {
             prose
                 .iter()
@@ -418,6 +475,16 @@ pub fn work_answers(
     locale: FixedLocale,
 ) -> QuestionAnswers {
     let mut result = explanation_answers(&work.reading.explanations, language, locale);
+    result.work_name = Some(Box::new(explanation_answers(
+        &work.reading.name_explanations,
+        language,
+        locale,
+    )));
+    result.work_summary = Some(Box::new(explanation_answers(
+        &work.reading.summary_explanations,
+        language,
+        locale,
+    )));
     for check in &work.reading.verification_report.checks {
         let historical = work
             .reading
