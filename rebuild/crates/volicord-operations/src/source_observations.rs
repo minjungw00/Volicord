@@ -543,29 +543,27 @@ impl LocalOperations {
         analysis: &volicord_repository_intelligence::AnalysisSnapshot,
         declaration: &volicord_context::CheckDeclaration,
     ) -> Result<Vec<volicord_context::CheckArtifact>, Error> {
-        declaration
-            .target_paths
-            .iter()
-            .map(|path| {
-                // Verify full included-file identity using the existing bounded reader.
-                let file = self.capture_included_file(
-                    basis,
-                    analysis,
-                    path,
-                    Some(FileByteRange {
-                        start_byte: 0,
-                        end_byte: 1,
-                    }),
-                )?;
-                Ok(volicord_context::CheckArtifact {
-                    path: path.clone(),
-                    sha256: file["sha256"]
-                        .as_str()
-                        .ok_or_else(|| Error::new("missing artifact hash"))?
-                        .into(),
-                })
-            })
-            .collect()
+        let binding = self
+            .open_canonical()?
+            .get_local_binding(basis.project.id)
+            .map_err(|e| Error::with_source("repository binding unavailable", e))?;
+        let root = RepositoryRoot::open(&binding.absolute_path)
+            .map_err(|e| Error::with_source("repository unavailable", e))?;
+        if root.canonical_path() != binding.absolute_path {
+            return Err(Error::new("bound repository root was redirected"));
+        }
+        declaration.target_paths.iter().map(|path| {
+            let expected=analysis.inventory.entries.iter().find(|e|e.area.path==*path)
+                .filter(|e|e.classifications.contains(&InventoryClassification::Included)).and_then(|e|e.content_sha256.as_ref())
+                .ok_or_else(||Error::new("check target is excluded, unavailable or absent from selected analysis"))?;
+            // Verify complete bounded bytes through the existing no-follow reader;
+            // no excerpt boundary assumes ASCII and no body is durably retained.
+            let bytes=root.read_bounded_regular_file(Path::new(path),16*1024*1024).map_err(|e|Error::with_source("check artifact unavailable",e))?;
+            std::str::from_utf8(&bytes).map_err(|e|Error::with_source("check artifact is not UTF-8",e))?;
+            let hash=format!("{:x}",Sha256::digest(&bytes));
+            if hash!=*expected {return Err(Error::new("check artifact changed since selected Analysis Snapshot; analyze afresh"));}
+            Ok(volicord_context::CheckArtifact {path:path.clone(),sha256:hash})
+        }).collect()
     }
 
     #[allow(clippy::too_many_arguments)]
